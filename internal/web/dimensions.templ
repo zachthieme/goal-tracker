@@ -12,26 +12,23 @@ const confirmRetireDimension = "Retire this Dimension? Goals that have its value
 // confirmMerge is what Merge asks before merging a Dimension value away.
 const confirmMerge = "Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone."
 
-// dimensionsPage lists every Dimension as a card of its values, whether a Goal
+// dimensionsPage lists every Dimension as a row of its values, whether a Goal
 // takes one of them or several, whether its list is Fixed or Extendable, and
 // whether it is required, and — for an Admin — the controls to define a Dimension and, behind each
-// card's Edit toggle, to switch between one value and several and between a
+// row's Edit toggle, to switch between one value and several and between a
 // Fixed and an Extendable list, and to add, rename, and retire values
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
 // Retired Dimension stays listed, flagged retired, without the Required mark
 // or its control (CONTEXT.md: Retired). refusal, when
 // set, names the Goals that kept a Dimension from switching to one value;
-// toast, when set, offers Undo for the value just retired.
+// toast, when set, offers Undo for the value just retired. It sits in the flat
+// frame: its title in the page header, and the rest plain sections (DESIGN.md
+// § Direction).
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) {
 	{{ admin := current != nil && current.IsAdmin }}
-	@layout("Dimensions", current) {
+	@framedLayout("Dimensions", current, pageHeader(pageHead{Title: "Dimensions"})) {
 		@dimensionsStyles()
-		<header class="page-head">
-			<div>
-				<h1>Dimensions</h1>
-				<p class="muted">The Dimensions Goals are tagged with, and their values.</p>
-			</div>
-		</header>
+		<p class="muted">The Dimensions Goals are tagged with, and their values.</p>
 		if refusal != nil {
 			@selectionRefusal(refusal)
 		}
@@ -39,8 +36,8 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 		if admin {
 			<details data-testid="create-dimension">
 				<summary class="btn primary">Define a Dimension</summary>
-				<form class="card dm-card dm-new" method="post" action="/dimensions">
-					<h3>Define a Dimension</h3>
+				<form class="dm-new dm-form" method="post" action="/dimensions">
+					<h2>Define a Dimension</h2>
 					<label class="field">
 						<span>Name</span>
 						<input type="text" name="name" required/>
@@ -67,10 +64,10 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 		}
 		<ul data-testid="dimensions" class="dm-list">
 			if len(dims) == 0 {
-				<li data-testid="no-dimensions" class="card dm-card muted">No Dimensions yet.</li>
+				<li data-testid="no-dimensions" class="dm-item muted">No Dimensions yet.</li>
 			}
 			for _, d := range dims {
-				<li data-testid="dimension" class="card dm-card">
+				<li data-testid="dimension" class="dm-item">
 					<h3>
 						{ d.Name }
 						if d.Retired {
@@ -99,8 +96,8 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 // selectionRefusal says why a Dimension couldn't switch to one value, listing
 // the Goals that still carry several of its values so an Admin can fix them.
 templ selectionRefusal(refusal *domain.SeveralValuesError) {
-	<section data-testid="selection-refusal" class="card dm-card" role="alert">
-		<h3>{ refusal.Dimension } still takes several values</h3>
+	<section data-testid="selection-refusal" class="dm-refusal" role="alert">
+		<h2>{ refusal.Dimension } still takes several values</h2>
 		<p>These Goals carry more than one { refusal.Dimension } value. Leave each with one, then try again.</p>
 		<ul>
 			for _, g := range refusal.Goals {
@@ -127,7 +124,7 @@ templ dimensionValues(d domain.Dimension) {
 	</ul>
 }
 
-// dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
+// dimensionEdit is an Admin's Edit toggle on a Dimension's row: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
 // list, a switch between required and optional (CONTEXT.md: Incomplete) —
 // unless it is Retired, where required means nothing — then
@@ -243,9 +240,12 @@ templ mergeValue(d domain.Dimension, v domain.DimensionValue) {
 templ dimensionsStyles() {
 	<style>
 		.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}
-		.dm-list{display:flex;flex-direction:column;gap:16px}
-		.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}
+		.dm-list{display:flex;flex-direction:column;border-top:1px solid var(--color-border)}
+		.dm-item{padding:16px 0;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
 		.dm-new{margin-top:12px}
+		.dm-form{max-width:560px;display:flex;flex-direction:column;gap:16px}
+		.dm-refusal{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--color-danger-ink)}
+		.dm-refusal ul{margin:0;padding-left:20px}
 		.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 		.dm-values li{display:inline-flex;align-items:center;gap:8px}
 		del.tag{border-style:dashed}

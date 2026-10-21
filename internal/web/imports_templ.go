@@ -18,7 +18,9 @@ import (
 
 // importsPage is the spreadsheet-import page. An Admin uploads a CSV or XLSX and
 // runs a dry run or a commit; the row-by-row report renders below the form
-// (ticket #22). A non-Admin sees only a note that imports are Admin-only.
+// (ticket #22). A non-Admin sees only a note that imports are Admin-only. It
+// sits in the flat frame: its title in the page header, and its form and
+// report plain sections (DESIGN.md § Direction).
 func importsPage(current *domain.Account, report *importer.Report, flash string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -57,7 +59,7 @@ func importsPage(current *domain.Account, report *importer.Report, flash string)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Import Goals</h1><p class=\"muted\">Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p></div></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <p class=\"muted\">Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -75,7 +77,7 @@ func importsPage(current *domain.Account, report *importer.Report, flash string)
 					var templ_7745c5c3_Var3 string
 					templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(flash)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 28, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 25, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 					if templ_7745c5c3_Err != nil {
@@ -86,7 +88,7 @@ func importsPage(current *domain.Account, report *importer.Report, flash string)
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <form data-testid=\"import-form\" class=\"card im-form\" method=\"post\" action=\"/imports\" enctype=\"multipart/form-data\"><label class=\"field\"><span>Spreadsheet <span class=\"hint\">— CSV or XLSX</span></span> <input type=\"file\" name=\"file\" accept=\".csv,.xlsx\" required></label><div class=\"im-actions\"><button type=\"submit\" class=\"btn primary\" name=\"action\" value=\"dry-run\">Dry run</button> <button type=\"submit\" class=\"btn\" name=\"action\" value=\"commit\">Commit</button></div><p data-testid=\"import-columns\" class=\"hint\">Beside the Goal's own columns, a column named for a Dimension or a Field sets it. A cell may list several values of a Dimension that takes several, separated by semicolons. A value not yet in an Extendable Dimension's list is added to it; in a Fixed one it is an error.</p><p data-testid=\"import-id-column\" class=\"hint\">A row with an ID, as in the Goal table's Download CSV, updates that Goal's Dimension values and Fields instead of creating a Goal; an empty cell clears the value, and its other columns are ignored.</p><p class=\"hint\">A dry run checks every row and saves nothing. Commit saves the Goals only if no row has errors.</p></form>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <form data-testid=\"import-form\" class=\"im-form\" method=\"post\" action=\"/imports\" enctype=\"multipart/form-data\"><label class=\"field\"><span>Spreadsheet <span class=\"hint\">— CSV or XLSX</span></span> <input type=\"file\" name=\"file\" accept=\".csv,.xlsx\" required></label><div class=\"im-actions\"><button type=\"submit\" class=\"btn primary\" name=\"action\" value=\"dry-run\">Dry run</button> <button type=\"submit\" class=\"btn\" name=\"action\" value=\"commit\">Commit</button></div><p data-testid=\"import-columns\" class=\"hint\">Beside the Goal's own columns, a column named for a Dimension or a Field sets it. A cell may list several values of a Dimension that takes several, separated by semicolons. A value not yet in an Extendable Dimension's list is added to it; in a Fixed one it is an error.</p><p data-testid=\"import-id-column\" class=\"hint\">A row with an ID, as in the Goal table's Download CSV, updates that Goal's Dimension values and Fields instead of creating a Goal; an empty cell clears the value, and its other columns are ignored.</p><p class=\"hint\">A dry run checks every row and saves nothing. Commit saves the Goals only if no row has errors.</p></form>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -99,7 +101,7 @@ func importsPage(current *domain.Account, report *importer.Report, flash string)
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Import Goals", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Import Goals", current, pageHeader(pageHead{Title: "Import Goals"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -143,7 +145,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(report.Rows)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 57, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 54, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -157,7 +159,7 @@ func importReport(report *importer.Report) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(report.Rows) - n))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 59, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 56, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -170,7 +172,7 @@ func importReport(report *importer.Report) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(n))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 59, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 56, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -193,7 +195,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(report.ErrorCount()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 63, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 60, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -211,7 +213,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(len(report.Rows)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 65, Col: 105}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 62, Col: 105}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -230,7 +232,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(strings.Join(report.Ignored, ", "))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 68, Col: 190}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 65, Col: 190}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -241,7 +243,7 @@ func importReport(report *importer.Report) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"card\"><table><thead><tr><th>Row</th><th>Goal</th><th>Errors</th></tr></thead> <tbody data-testid=\"import-rows\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"table-scroll\"><table><thead><tr><th>Row</th><th>Goal</th><th>Errors</th></tr></thead> <tbody data-testid=\"import-rows\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -253,7 +255,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(row.Line))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 78, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 75, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -266,7 +268,7 @@ func importReport(report *importer.Report) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(importRowLabel(row))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 79, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 76, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -289,7 +291,7 @@ func importReport(report *importer.Report) templ.Component {
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(e)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 84, Col: 18}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/imports.templ`, Line: 81, Col: 18}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -345,7 +347,7 @@ func importsStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.im-form{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-errors{margin:0;padding-left:20px;color:var(--color-danger-ink)}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.im-form{display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-report table{border-top:1px solid var(--color-border)}\n\t\t.im-report th{background:none;padding:8px 12px}\n\t\t.im-report td{padding:10px 12px}\n\t\t.im-report th:first-child,.im-report td:first-child{padding-left:0}\n\t\t.im-report tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.im-errors{margin:0;padding-left:20px;color:var(--color-danger-ink)}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

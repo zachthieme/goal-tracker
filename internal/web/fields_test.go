@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -53,6 +54,35 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 		if !strings.Contains(list, want) {
 			t.Errorf("Fields list lacks %q:\n%s", want, list)
 		}
+	}
+}
+
+// The Fields page sits in the flat frame (DESIGN.md § Direction): its title in
+// the page header, and its Fields and the new Field form as plain sections,
+// none of them a card.
+func TestFieldsPageIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+	empty := getBody(t, client, ts.URL+"/fields")
+	if header := between(t, empty, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>Fields") {
+		t.Errorf("the Fields page's header doesn't hold its title:\n%s", header)
+	}
+	pageElement(t, empty, "li", "no-fields")
+	if c := card.FindString(empty); c != "" {
+		t.Errorf("the Fields page with none yet has a card, %s:\n%s", c, empty)
+	}
+
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	page := getBody(t, client, ts.URL+"/fields")
+	pageElement(t, page, "li", "field")
+	if c := card.FindString(page); c != "" {
+		t.Errorf("the Fields page has a card, %s:\n%s", c, page)
 	}
 }
 
