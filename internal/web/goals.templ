@@ -57,9 +57,9 @@ templ goalsHeader(view goalsListData) {
 // Lifecycle, Incomplete, "+ Filter" for More filters' Dimension filters, and
 // Group by — with the search at its right and Clear after the chips, all
 // submitted as a GET so the chosen slice lives in the URL. The chips are the
-// real selects, checkbox and <details>; the page's styles lay them out, so
-// Group by, which sits in More filters' panel, shows in the row while the
-// panel's Dimension filters open below it.
+// real selects, checkbox and <details>. The markup runs in the order they are
+// drawn, so Tab follows the row and then the Dimension filters More filters'
+// panel opens below it (#404).
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
 // search, or Enter GETs the view and swaps in only the list, so the form keeps
@@ -86,7 +86,6 @@ templ goalFilters(view goalsListData) {
 	>
 		<div class="gl-bar">
 			@pageScopeChip("goal-scope-filter", view.Org)
-			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 			<label class="filter-chip">
 				<span class="chip-key chip-key-set" aria-hidden="true">Health:</span>
 				<select data-testid="goal-health-filter" name="health" aria-label="Health">
@@ -119,6 +118,17 @@ templ goalFilters(view goalsListData) {
 				<details data-testid="more-filters" class="gl-more-toggle" open?={ view.moreFiltersSet() }>
 					<summary aria-controls="goal-more-filters" title="More filters"><span aria-hidden="true">+</span> Filter</summary>
 				</details>
+				if view.Table == nil {
+					<label class="filter-chip">
+						<span class="chip-key">Group by:</span>
+						<select name="group">
+							<option value="" selected?={ view.GroupID == 0 }>Health</option>
+							for _, d := range view.Dimensions {
+								<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
+							}
+						</select>
+					</label>
+				}
 			}
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
 			<span
@@ -133,6 +143,7 @@ templ goalFilters(view goalsListData) {
 					<a data-testid="goal-filters-clear" href="/goals" class="btn quiet sm">Clear</a>
 				}
 			</span>
+			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 		</div>
 		if len(view.Dimensions) > 0 {
 			<div data-testid="more-filters-panel" id="goal-more-filters" class="gl-more">
@@ -149,17 +160,6 @@ templ goalFilters(view goalsListData) {
 							</label>
 						}
 					</fieldset>
-				}
-				if view.Table == nil {
-					<label class="filter-chip gl-group-by">
-						<span class="chip-key">Group by:</span>
-						<select name="group">
-							<option value="" selected?={ view.GroupID == 0 }>Health</option>
-							for _, d := range view.Dimensions {
-								<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
-							}
-						</select>
-					</label>
 				}
 			</div>
 		}
@@ -629,10 +629,9 @@ templ goalLinkIf(link bool, g domain.Goal) {
 //   - the header strip's List / Table switch is a segmented control;
 //   - the filter bar is one row of 28px chips (their rules shared, in
 //     app.css), the search at its right. Its row and More filters' panel lay
-//     their controls out in the form's own row, so Group by sits among the
-//     chips and Clear after them, while the panel's Dimension filters, shown
-//     while its "+ Filter" is open (always, where :has() isn't supported),
-//     wrap onto a line below;
+//     their controls out in the form's own row, in markup order, so the
+//     panel's Dimension filters, shown while its "+ Filter" is open (always,
+//     where :has() isn't supported), wrap onto a line below;
 //   - the list is 40px rows on hairlines under a muted row of column labels,
 //     each group under a header row on --color-group, a row's Health as its
 //     11px shape, its chips 22px pills, and its dates in tabular figures. At
@@ -651,13 +650,11 @@ templ goalsStyles() {
 		.gl-bar,.gl-more,.gl-clear{display:contents}
 		.gl-more-toggle>summary{min-height:0;height:28px;gap:4px;padding:0 8px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);color:var(--color-ink-2);font-size:13px;font-weight:500;white-space:nowrap;box-sizing:border-box}
 		.gl-more-toggle[open]>summary,.gl-filters:has(.gl-more input:checked) .gl-more-toggle>summary{background:var(--color-primary-subtle);color:var(--color-ink)}
-		.gl-bar noscript{order:2}
 		@media (scripting:enabled){.gl-bar noscript{display:none}}
-		.gl-group-by{order:1}
-		.gl-clear>a{order:2;height:28px}
-		.gl-bar input[type=search]{order:3;flex:1 1 160px;min-width:0;max-width:240px;margin-left:auto;height:28px;padding:0 12px;font-size:13px}
-		.gl-filters:has(.gl-more-toggle[open])::after{content:"";order:4;flex-basis:100%}
-		.gl-more fieldset{order:5;display:inline-flex;flex-wrap:wrap;gap:4px 12px;margin:0;padding:4px 12px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+		.gl-clear>a{height:28px}
+		.gl-bar input[type=search]{flex:1 1 160px;min-width:0;max-width:240px;margin-left:auto;height:28px;padding:0 12px;font-size:13px}
+		.gl-filters:has(.gl-more-toggle[open]) .gl-more::before{content:"";flex-basis:100%}
+		.gl-more fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;margin:0;padding:4px 12px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
 		.gl-more fieldset label{display:inline-flex;align-items:center;gap:8px}
 		.gl-filters:has(.gl-more-toggle:not([open])) .gl-more fieldset{display:none}
 		.gl-list{table-layout:fixed}
@@ -1027,7 +1024,8 @@ templ goalProperties(v goalView) {
 // under the header strip; the header strip's breadcrumb and actions with the
 // More menu; the column's title, lead and sections, each a 13/600 heading
 // over hairline-ruled rows; the Metric rows with their sparklines; and the
-// rail's label and value rows.
+// rail's label and value rows. On a coarse pointer the More menu's items and a
+// group head's small link (Manage, Edit, + Add) are 44px tall.
 templ goalPageStyles() {
 	<style>
 		.page:has(>.gp-frame){max-width:none;padding:0;gap:0}
@@ -1131,7 +1129,7 @@ templ goalPageStyles() {
 		.gp-prop dd .badge{line-height:20px}
 		.gp-prop strong{font-weight:500}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-		@media (pointer:coarse){.gp-menu li>a{min-height:44px}}
+		@media (pointer:coarse){.gp-menu li>a{min-height:44px}.gp-group-head>a{display:inline-flex;align-items:center;min-height:44px}}
 		@media (max-width:900px){.gp-body{grid-template-columns:minmax(0,1fr)}.gp-doc{max-width:none;padding:20px 16px 32px;gap:32px}.gp-rail{padding:20px 16px 48px;border-left:0;border-top:1px solid var(--color-border)}.gp-banners .alert{padding:8px 16px}}
 		@media (max-width:600px){.gp-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gp-metric{grid-template-columns:minmax(0,1fr) auto}.gp-metric>.gp-metric-spark{grid-column:1/-1;grid-row:2}}
 	</style>

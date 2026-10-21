@@ -1601,10 +1601,10 @@ func TestGoalListFilterChangeUnderHTMXKeepsClearInStep(t *testing.T) {
 	}
 }
 
-// The filter bar is one row: the Scope, search, Health, Lifecycle,
-// Incomplete, More filters' summary and Clear, in that order. More filters'
-// panel, the Dimension filters and Group by, follows the row rather than
-// sitting in it, so opening it adds a row below (#376).
+// The filter bar is one row: the Scope, Health, Lifecycle, Incomplete, More
+// filters' summary, Clear and the search, in that order. More filters' panel,
+// the Dimension filters, follows the row rather than sitting in it, so
+// opening it adds a row below (#376).
 func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	t.Parallel()
 
@@ -1622,13 +1622,13 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	at := -1
 	for _, part := range []string{
 		`data-testid="goal-scope-filter"`,
-		`data-testid="goal-search"`,
 		`data-testid="goal-health-filter"`,
 		`data-testid="goal-lifecycle-filter"`,
 		`data-testid="goal-incomplete-filter"`,
 		`<details data-testid="more-filters"`,
 		`<summary`,
 		`data-testid="goal-filters-clear"`,
+		`data-testid="goal-search"`,
 	} {
 		next := strings.Index(row, part)
 		if next <= at {
@@ -1636,17 +1636,93 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 		}
 		at = next
 	}
-	if strings.Contains(row, "<fieldset") || strings.Contains(row, `name="group"`) {
+	if strings.Contains(row, "<fieldset") {
 		t.Errorf("More filters' panel sits in the filter row:\n%s", row)
 	}
 
 	panel := pageElement(t, form[strings.Index(form, row)+len(row):], "div", "more-filters-panel")
-	if !strings.Contains(panel, "<legend>Pillar</legend>") || !strings.Contains(panel, `<select name="group">`) {
-		t.Errorf("the panel after the row doesn't hold the Dimension filters and Group by:\n%s", panel)
+	if !strings.Contains(panel, "<legend>Pillar</legend>") {
+		t.Errorf("the panel after the row doesn't hold the Dimension filters:\n%s", panel)
 	}
 	summary := between(t, row, `<summary`, `>`)
 	if controls := attr(summary, "aria-controls"); controls == "" || attr(openTag(panel), "id") != controls {
 		t.Errorf("More filters' summary doesn't name the panel it shows: %s, %s", summary, openTag(panel))
+	}
+}
+
+// On a coarse pointer the Goal page's group heads' small links — Manage,
+// Edit, + Add — are 44px tall, as DESIGN.md's accessibility rule asks; on a
+// fine pointer they keep their size (#404).
+func TestGoalPageGroupHeadLinksAre44pxOnCoarsePointer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	head := between(t, page, `<div class="gp-group-head">`, "</div>")
+	if link := between(t, head, "<a ", ">"); attr(link, "class") != "small" {
+		t.Fatalf("the group head's link isn't its small link: %s", head)
+	}
+	coarse := strings.Join(mediaBlocks(page, "@media (pointer:coarse)"), "}")
+	if rule, ok := ruleFor(coarse, ".gp-group-head>a"); !ok || !strings.Contains(rule, "min-height:44px") {
+		t.Errorf("on a coarse pointer the group head's link isn't 44px tall: %q", rule)
+	}
+	if rule, ok := ruleFor(between(t, page, ".gp-group-head{", "@media"), ".gp-group-head>a"); ok && strings.Contains(rule, "min-height") {
+		t.Errorf("on a fine pointer the group head's link is made taller: %q", rule)
+	}
+}
+
+// Tab follows the filter bar as it is drawn (WCAG 2.4.3): the markup runs
+// Scope, Health, Lifecycle, Incomplete, More filters' summary, Group by, Apply
+// and Clear, then the search at the row's right, then the open panel's
+// Dimension filters on the line below. No CSS order redraws it (#404).
+func TestGoalFilterBarTabOrderFollowsItsDrawnOrder(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, pillar.Values[0].ID))
+	form := between(t, page, `data-testid="goal-filters"`, `</form>`)
+	at := -1
+	for _, part := range []string{
+		`data-testid="goal-scope-filter"`,
+		`data-testid="goal-health-filter"`,
+		`data-testid="goal-lifecycle-filter"`,
+		`data-testid="goal-incomplete-filter"`,
+		`<summary`,
+		`<select name="group">`,
+		`<noscript>`,
+		`data-testid="goal-filters-clear"`,
+		`data-testid="goal-search"`,
+		`<legend>Pillar</legend>`,
+	} {
+		next := strings.Index(form, part)
+		if next <= at {
+			t.Fatalf("the filter bar's markup doesn't hold %s after what is drawn before it:\n%s", part, form)
+		}
+		at = next
+	}
+
+	bar := regexp.MustCompile(`\.gl-(filters|bar|more|clear)\b`)
+	order := regexp.MustCompile(`(^|;)\s*order:`)
+	for _, rule := range strings.Split(between(t, page, ".gl-filters{", "</style>"), "}") {
+		at := strings.LastIndex(rule, "{")
+		if at < 0 {
+			continue
+		}
+		if bar.MatchString(rule[:at]) && order.MatchString(rule[at+1:]) {
+			t.Errorf("a filter bar rule redraws it out of markup order: %s}", strings.TrimSpace(rule))
+		}
 	}
 }
 
@@ -3573,12 +3649,12 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals")
-	more := pageElement(t, page, "div", "more-filters-panel")
-	if strings.Contains(more, "Pillar") || strings.Contains(more, "Growth") {
-		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", more)
+	filters := between(t, page, `data-testid="goal-filters"`, "</form>")
+	if strings.Contains(filters, "Pillar") || strings.Contains(filters, "Growth") {
+		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", filters)
 	}
-	if !strings.Contains(more, "Team") {
-		t.Errorf("the live Team isn't offered to filter or group by:\n%s", more)
+	if !strings.Contains(filters, "<legend>Team</legend>") || !strings.Contains(filters, ">Team</option>") {
+		t.Errorf("the live Team isn't offered to filter and group by:\n%s", filters)
 	}
 	row := between(t, page, `<tr data-testid="goal-row"`, "</tr>")
 	if !strings.Contains(row, ">Alpha<") || !strings.Contains(row, `data-testid="goal-value-tag" class="tag">Growth`) || !strings.Contains(row, `data-testid="retired"`) {
@@ -3596,9 +3672,9 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	more = pageElement(t, getBody(t, client, ts.URL+"/goals"), "div", "more-filters-panel")
-	if !strings.Contains(more, "<legend>Pillar</legend>") || !strings.Contains(more, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
-		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", more)
+	filters = between(t, getBody(t, client, ts.URL+"/goals"), `data-testid="goal-filters"`, "</form>")
+	if !strings.Contains(filters, "<legend>Pillar</legend>") || !strings.Contains(filters, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
+		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", filters)
 	}
 	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
 	if !strings.Contains(grouped, `data-testid="goal-group"`) {
