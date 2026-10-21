@@ -1811,7 +1811,19 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 	team := h.CreateDimension(boss, "Team", "Platform")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, addr := range []string{"/follow-ups", "/follow-ups?value=" + strconv.FormatInt(team.Values[0].ID, 10)} {
+	platform := strconv.FormatInt(team.Values[0].ID, 10)
+	for _, c := range []struct {
+		addr string
+		// any and chosen are the Team select's "Team: any" and Platform
+		// options: unset, "Team: any" is chosen; on Platform, Platform is,
+		// which is what puts the chip in its on state (app.css's
+		// .filter-chip:has(option:checked:not([value=""]))).
+		any, chosen string
+	}{
+		{"/follow-ups", `<option value="" selected>Team: any</option>`, `<option value="` + platform + `">Platform</option>`},
+		{"/follow-ups?value=" + platform, `<option value="">Team: any</option>`, `<option value="` + platform + `" selected>Platform</option>`},
+	} {
+		addr := c.addr
 		page := getBody(t, client, ts.URL+addr)
 		filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
 		if !strings.Contains(filters, `<label class="filter-chip on"><span class="chip-key" aria-hidden="true">Scope:</span><select data-testid="follow-ups-scope"`) {
@@ -1819,6 +1831,12 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 		}
 		if !regexp.MustCompile(`<label class="filter-chip"><span class="chip-key chip-key-set" aria-hidden="true">Team:</span>\s*<select data-testid="follow-ups-value" data-dimension="Team"`).MatchString(filters) {
 			t.Errorf("%s: the Team select isn't in a Team chip:\n%s", addr, filters)
+		}
+		options := between(t, filters, `data-testid="follow-ups-value"`, "</select>")
+		for _, want := range []string{c.any, c.chosen} {
+			if !strings.Contains(options, want) {
+				t.Errorf("%s: the Team select has no %s:\n%s", addr, want, options)
+			}
 		}
 		if strings.Contains(page, ".rk-filters select") {
 			t.Errorf("%s: the page's own styles restyle the chips' selects", addr)
