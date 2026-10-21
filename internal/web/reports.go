@@ -244,7 +244,7 @@ type goalsPanel struct {
 // Goals it selects only because of Also include, at the draft's baseline, and
 // linking to Edit definition for a reader m lets manage it.
 func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report, m reportManagement) (goalsPanel, error) {
-	sum, err := s.svc.ReportSummary(r.Context(), report.Definition)
+	sum, err := s.svc.SummarizeReport(r.Context(), report)
 	if err != nil {
 		return goalsPanel{}, err
 	}

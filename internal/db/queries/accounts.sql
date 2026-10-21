@@ -12,6 +12,10 @@ RETURNING *;
 -- name: GetAccount :one
 SELECT * FROM accounts WHERE id = ? LIMIT 1;
 
+-- name: ListAccountsByIDs :many
+-- The Accounts the given IDs name, for reading a level of Managers at once.
+SELECT * FROM accounts WHERE id IN (sqlc.slice(ids)) ORDER BY id;
+
 -- name: SetAccountName :exec
 UPDATE accounts SET name = ? WHERE id = ?;
 
