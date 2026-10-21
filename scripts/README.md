@@ -112,7 +112,10 @@ without Chromium that test is skipped.
 Reads the colour tokens from `internal/web/static/app.css` for the light theme
 and both dark blocks. For each text token and each control-edge token, it
 prints the contrast ratio on each surface, and marks with `!` any ratio under
-4.5:1 for text or 3:1 for edges. It then checks every ratio that `DESIGN.md`'s
+4.5:1 for text or 3:1 for edges. On a surface only text sits on, such as the
+sidebar's current nav item or a chip's fill, the edges print as `—`, and a
+pair no text may use (`NOT_FOR_TEXT`, which `DESIGN.md` lists too) prints
+with `×` and isn't counted. It then checks every ratio that `DESIGN.md`'s
 tables state.
 
 ```sh
