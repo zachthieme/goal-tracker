@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -77,7 +78,10 @@ func assertSubmitsAtOnce(t *testing.T, what, form string) {
 }
 
 // between returns s from the first start up to the first end after it, or to
-// the end of s when end is "", failing the test if either is missing.
+// the end of s when end is "", failing the test if either is missing. It
+// matches strings, not tags: its callers cut markup at any text, often partway
+// through a tag, which no parser reading can give them. It is retired as its
+// callers convert to the parser helpers below (#437).
 func between(t *testing.T, s, start, end string) string {
 	t.Helper()
 	at := strings.Index(s, start)
@@ -131,23 +135,68 @@ func shownAs(emailAddr, label string) string {
 		`</button><span class="person-email" hidden>` + emailAddr + `</span></span>`
 }
 
-// openForms counts the forms a Goal page shows open in place.
+// openForms counts the forms a Goal page shows open in place: the elements
+// carrying data-open-form.
 func openForms(page string) int {
-	return strings.Count(page, `data-open-form="`)
+	n := 0
+	for tag := range markupTags(page) {
+		if tokenHasAttr(tag.tok, "data-open-form") {
+			n++
+		}
+	}
+	return n
 }
 
 // openForm returns the form the Goal page shows open in place, from its
-// wrapper to its Cancel link, failing unless exactly one named form is open.
+// wrapper's opening tag to the end of its Cancel link's, failing unless
+// exactly one named form is open.
 func openForm(t *testing.T, page, form string) string {
 	t.Helper()
 	if n := openForms(page); n != 1 {
 		t.Fatalf("page shows %d forms open, want only %q", n, form)
 	}
-	open := between(t, page, `data-open-form="`, `data-testid="cancel-form"`)
-	if !strings.HasPrefix(open, `data-open-form="`+form+`"`) {
-		t.Fatalf("page shows the wrong form open, want %q: %s", form, open)
+	start := -1
+	for tag := range markupTags(page) {
+		switch {
+		case start < 0 && tokenHasAttr(tag.tok, "data-open-form"):
+			if got := tokenAttr(tag.tok, "data-open-form"); got != form {
+				t.Fatalf("page shows the wrong form open, want %q: %s", form, tag.raw)
+			}
+			start = tag.at
+		case start >= 0 && tokenAttr(tag.tok, "data-testid") == "cancel-form":
+			return page[start : tag.at+len(tag.raw)]
+		}
 	}
-	return open + tagAround(t, page, `data-testid="cancel-form"`)
+	t.Fatalf("the open %q form has no Cancel link", form)
+	return ""
+}
+
+// markupTag is a start or self-closing tag as a page writes it.
+type markupTag struct {
+	at  int    // where it starts in the page
+	raw string // its markup
+	tok html.Token
+}
+
+// markupTags yields the start and self-closing tags in page, in order, read by
+// html's tokenizer.
+func markupTags(page string) iter.Seq[markupTag] {
+	return func(yield func(markupTag) bool) {
+		z := html.NewTokenizer(strings.NewReader(page))
+		for at := 0; ; {
+			tt := z.Next()
+			if tt == html.ErrorToken {
+				return
+			}
+			raw := string(z.Raw())
+			if tt == html.StartTagToken || tt == html.SelfClosingTagToken {
+				if !yield(markupTag{at: at, raw: raw, tok: z.Token()}) {
+					return
+				}
+			}
+			at += len(raw)
+		}
+	}
 }
 
 // postFormHX posts a form with the HX-Request header set, as htmx does, and
@@ -216,6 +265,12 @@ func tokenAttr(tok html.Token, name string) string {
 	return ""
 }
 
+// tokenHasAttr reports whether a token carries the named attribute, whatever
+// its value.
+func tokenHasAttr(tok html.Token, name string) bool {
+	return slices.ContainsFunc(tok.Attr, func(a html.Attribute) bool { return a.Key == name })
+}
+
 // elementTexts returns the text of every tag element carrying data-testid, in
 // order, read as textOf reads it but with hidden elements' text kept, so an
 // assertion can read the order a row's parts come in.
@@ -233,13 +288,29 @@ func elementTexts(page, tag, testID string) []string {
 	return out
 }
 
-// openTag returns element up to the end of its opening tag, so an assertion
-// about the tag's attributes can't match its content.
+// openTag returns element up to the end of its opening tag, without the
+// closing >, so an assertion about the tag's attributes can't match its
+// content. An element cut from partway through a tag, as between cuts one
+// from an attribute, gives the rest of that tag.
 func openTag(element string) string {
-	if end := strings.Index(element, ">"); end >= 0 {
-		return element[:end]
+	lead := partwayTagLead(element)
+	for tag := range markupTags(lead + element) {
+		if tag.at == 0 {
+			return strings.TrimSuffix(tag.raw[len(lead):], ">")
+		}
+		break
 	}
 	return element
+}
+
+// partwayTagLead is what markup cut from partway through a tag, as between
+// cuts it from an attribute, needs before it for html's tokenizer to read it
+// as the rest of a tag: a tag name, or nothing when markup starts a tag.
+func partwayTagLead(markup string) string {
+	if strings.HasPrefix(markup, "<") {
+		return ""
+	}
+	return "<x "
 }
 
 // assertStyledBy checks the element's opening tag carries no style attribute
@@ -258,28 +329,76 @@ func assertStyledBy(t *testing.T, tag, rules, class, want string) {
 }
 
 // tagAround returns the whole opening tag holding marker, its attributes in
-// whatever order they render.
+// whatever order they render, read by html's tokenizer: the first tag marker
+// starts inside, or, where marker starts in text first, the tag of the
+// element around the text. A marker may run on past its tag, as
+// ">Save</button>" finds the button reading Save.
 func tagAround(t *testing.T, page, marker string) string {
 	t.Helper()
-	at := strings.Index(page, marker)
-	if at < 0 {
-		t.Fatalf("page has no %s", marker)
+	var around []openElement // innermost last
+	z := html.NewTokenizer(strings.NewReader(page))
+	for at := 0; ; {
+		tt := z.Next()
+		if tt == html.ErrorToken {
+			break
+		}
+		raw := string(z.Raw())
+		reach := min(at+len(raw)+len(marker)-1, len(page))
+		holds := strings.Contains(page[at:reach], marker)
+		switch tt {
+		case html.SelfClosingTagToken:
+			if holds {
+				return raw
+			}
+		case html.StartTagToken:
+			if holds {
+				return raw
+			}
+			if name, _ := z.TagName(); !voidElements[string(name)] {
+				around = append(around, openElement{name: string(name), tag: raw})
+			}
+		case html.EndTagToken:
+			name, _ := z.TagName()
+			if i := slices.IndexFunc(around, func(e openElement) bool { return e.name == string(name) }); i >= 0 {
+				around = around[:i]
+			}
+		case html.TextToken:
+			if holds && len(around) > 0 {
+				return around[len(around)-1].tag
+			}
+		}
+		at += len(raw)
 	}
-	start := strings.LastIndex(page[:at], "<")
-	end := strings.Index(page[at:], ">")
-	if start < 0 || end < 0 {
-		t.Fatalf("%s is not inside a tag", marker)
-	}
-	return page[start : at+end+1]
+	t.Fatalf("no tag on the page holds %s", marker)
+	return ""
 }
 
-// attr returns the value of the named attribute in an opening tag, or "".
+// openElement is an element tagAround has read the opening tag of but not yet
+// its closing tag: its name and raw opening tag.
+type openElement struct{ name, tag string }
+
+// voidElements are the elements that have no content and no closing tag.
+var voidElements = map[string]bool{
+	"area": true, "base": true, "br": true, "col": true, "embed": true, "hr": true, "img": true,
+	"input": true, "link": true, "meta": true, "source": true, "track": true, "wbr": true,
+}
+
+// attr returns the value of the named attribute in an opening tag, or "",
+// read by html's tokenizer. The value comes as the markup writes it, still
+// HTML-escaped ("Plan &amp; Do"), because callers compare it with escaped
+// text; the tokenizer would decode it. The tag may lack its closing >, as
+// openTag gives it, or start partway through, as between cuts it. Given more
+// than one tag, attr reads the first that carries the attribute.
 func attr(tag, name string) string {
-	m := regexp.MustCompile(`\s` + regexp.QuoteMeta(name) + `="([^"]*)"`).FindStringSubmatch(tag)
-	if m == nil {
-		return ""
+	// A character no page uses stands in for & while the tokenizer reads the
+	// tag, so it finds no entity to decode.
+	const amp = "\uE000"
+	for read := range markupTags(partwayTagLead(tag) + strings.ReplaceAll(tag, "&", amp) + ">") {
+		if tokenHasAttr(read.tok, name) {
+			return strings.ReplaceAll(tokenAttr(read.tok, name), amp, "&")
+		}
 	}
-	return m[1]
+	return ""
 }
 
 // mediaBlocks returns the body of every media block the stylesheet opens with
@@ -422,14 +541,14 @@ func scopeOrgURL(base, path string, who domain.Account) string {
 // the select carrying testID.
 func scopeSelect(t *testing.T, page, testID string) string {
 	t.Helper()
-	if n := strings.Count(page, `aria-label="Scope"`); n != 1 {
-		t.Fatalf("page has %d controls labelled Scope, want 1", n)
+	labelled := findAll(parsePage(t, page), func(n *html.Node) bool { return attrOf(n, "aria-label") == "Scope" })
+	if len(labelled) != 1 {
+		t.Fatalf("page has %d controls labelled Scope, want 1", len(labelled))
 	}
-	sel := pageElement(t, page, "select", testID)
-	if !strings.Contains(openTag(sel), `aria-label="Scope"`) {
-		t.Fatalf("the %s select isn't labelled Scope: %s", testID, openTag(sel))
+	if n := labelled[0]; n.Data != "select" || attrOf(n, "data-testid") != testID {
+		t.Fatalf("the control labelled Scope isn't the %s select: %s", testID, renderNode(n))
 	}
-	return sel
+	return pageElement(t, page, "select", testID)
 }
 
 // scopeChoices reads a Scope select's options in order, each by its label,
@@ -946,4 +1065,63 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 		t.Fatalf("POST %s: %v", rawURL, err)
 	}
 	return resp
+}
+
+// The markup helpers read a tag whatever order its attributes render in, and
+// past a > inside a quoted attribute value (#437).
+func TestMarkupHelpersOpenTagEndsAtTheTagNotAQuotedGreaterThan(t *testing.T) {
+	t.Parallel()
+	const element = `<a title="Due > Today" href="/goals/1">Plan</a>`
+	if got, want := openTag(element), `<a title="Due > Today" href="/goals/1"`; got != want {
+		t.Errorf("openTag = %q, want %q", got, want)
+	}
+}
+
+func TestMarkupHelpersTagAroundHoldsAQuotedGreaterThanInAnyAttributeOrder(t *testing.T) {
+	t.Parallel()
+	const want = `<a href="/goals/1" title="Due > Today">`
+	page := `<p class="plan">` + want + `Plan</a></p>`
+	for _, marker := range []string{`href="/goals/1"`, `title="Due`, `>Plan</a>`} {
+		if got := tagAround(t, page, marker); got != want {
+			t.Errorf("tagAround(%q) = %q, want %q", marker, got, want)
+		}
+	}
+}
+
+func TestMarkupHelpersAttrReadsTheAttributeNotTextLikeIt(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ tag, name, want string }{
+		{`<a title='see href="/wrong"' href="/right">`, "href", "/right"},
+		{openTag(`<a href="/right" title="Due > Today">Plan</a>`), "title", "Due > Today"},
+		{`<a data-name="other" name="plan">`, "name", "plan"},
+		{`<a title="Plan &amp; Do &#39;now&#39;">`, "title", "Plan &amp; Do &#39;now&#39;"},
+		{`<input hidden name="plan">`, "hidden", ""},
+		{`<input name="plan">`, "value", ""},
+	} {
+		if got := attr(tc.tag, tc.name); got != tc.want {
+			t.Errorf("attr(%s, %q) = %q, want %q", tc.tag, tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestMarkupHelpersOpenFormRunsFromItsWrapperToItsCancelLink(t *testing.T) {
+	t.Parallel()
+	const want = `<section aria-label="Hand off > Owner" data-open-form="handoff"><form method="post"><button>Start</button></form>` +
+		`<a href="/goals/1" title="Back > Goal" data-testid="cancel-form">`
+	page := `<p>Open a form with data-open-form="handoff".</p>` + want + `Cancel</a></section>`
+	if n := openForms(page); n != 1 {
+		t.Errorf("openForms = %d, want 1", n)
+	}
+	if got := openForm(t, page, "handoff"); got != want {
+		t.Errorf("openForm = %q, want %q", got, want)
+	}
+}
+
+func TestMarkupHelpersScopeSelectCountsControlsNotTextLikeThem(t *testing.T) {
+	t.Parallel()
+	const sel = `<select title="Org > Team" aria-label="Scope" data-testid="scope"><option value="all">Everyone</option>`
+	page := `<script>document.querySelector('[aria-label="Scope"]')</script>` + sel + `</select>`
+	if got := scopeSelect(t, page, "scope"); got != sel {
+		t.Errorf("scopeSelect = %q, want %q", got, sel)
+	}
 }
