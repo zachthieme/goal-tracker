@@ -2486,7 +2486,7 @@ func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
-	if _, err := h.Service.ActivateGoal(ctx, goal.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(ctx, goal.Owner.ID, goal.ID); err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
 	for _, v := range []float64{1000, 800} {

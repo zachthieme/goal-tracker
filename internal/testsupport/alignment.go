@@ -35,7 +35,7 @@ func (h *Harness) ActiveGoalDue(owner domain.Account, title string, due time.Tim
 	h.T.Helper()
 	ctx := context.Background()
 	g := h.CreateGoal(owner, title, title+" matters.")
-	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, due); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, due); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
 	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
@@ -45,7 +45,7 @@ func (h *Harness) ActiveGoalDue(owner domain.Account, title string, due time.Tim
 	}); err != nil {
 		h.T.Fatalf("AddMilestone: %v", err)
 	}
-	active, err := h.Service.ActivateGoal(ctx, g.ID)
+	active, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID)
 	if err != nil {
 		h.T.Fatalf("ActivateGoal: %v", err)
 	}

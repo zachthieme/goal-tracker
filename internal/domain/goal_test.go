@@ -495,3 +495,32 @@ func TestMarkGoalKindAdmitsOnlyTheOwner(t *testing.T) {
 		t.Errorf("Owner marking it Ongoing: %v", err)
 	}
 }
+
+// Only a Goal's Owner may activate it: anyone else, a Delegate and an Admin
+// included, is refused and it stays Proposed.
+func TestActivateGoalAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+	if _, err := h.Service.MarkGoalOngoing(ctx, owner.ID, g.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, owner.ID, validMetric(g.ID)); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.ActivateGoal(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("Lifecycle after refusals = %q, want Proposed", got.Lifecycle)
+	}
+	if _, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}

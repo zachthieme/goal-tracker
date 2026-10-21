@@ -246,7 +246,11 @@ func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) (
 // has marked required (CONTEXT.md: Incomplete). Every unmet requirement comes back as its own
 // validation error, joined together, so the Owner sees the whole list at once;
 // use ActivationReasons to enumerate them. The Goal stays Proposed on rejection.
-func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) {
+// Only the Goal's Owner may activate it (ErrNotAuthorized).
+func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {
 		return Goal{}, err

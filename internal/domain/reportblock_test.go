@@ -186,7 +186,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				return g
 			},
 			since: func(h *testsupport.Harness, _ domain.Account, g domain.Goal) domain.Goal {
-				if _, err := h.Service.ActivateGoal(context.Background(), g.ID); err != nil {
+				if _, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID); err != nil {
 					h.T.Fatalf("ActivateGoal: %v", err)
 				}
 				return g

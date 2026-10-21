@@ -71,7 +71,7 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 		if g.profile == proposed {
 			continue
 		}
-		if _, err := h.svc.ActivateGoal(ctx, g.id); err != nil {
+		if _, err := h.svc.ActivateGoal(ctx, owner.ID, g.id); err != nil {
 			return 0, fmt.Errorf("activate %q: %w", g.title, err)
 		}
 		g.lifecycle = domain.LifecycleActive

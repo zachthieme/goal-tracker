@@ -35,7 +35,7 @@ func TestActivateRefusesGoalWithoutRequiredDimensionValue(t *testing.T) {
 	h.SetDimensionRequired(boss, pillar, true)
 	g := readyGoal(t, h, sam, "Ship v2")
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
@@ -47,7 +47,7 @@ func TestActivateRefusesGoalWithoutRequiredDimensionValue(t *testing.T) {
 	}
 
 	h.AssignGoalValue(g, pillar.Values[0])
-	if _, err := h.Service.ActivateGoal(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Errorf("ActivateGoal with the value: %v", err)
 	}
 }
@@ -63,13 +63,13 @@ func TestActivateRefusesGoalWithoutRequiredFieldValue(t *testing.T) {
 	h.SetFieldRequired(boss, budget, true)
 	g := readyGoal(t, h, sam, "Ship v2")
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "Budget") {
 		t.Fatalf("err = %v, want a validation error naming Budget", err)
 	}
 
 	h.SetGoalField(sam, g, budget, "1000")
-	if _, err := h.Service.ActivateGoal(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Errorf("ActivateGoal with the value: %v", err)
 	}
 }
@@ -94,7 +94,7 @@ func TestRetiredRequiredDimensionOrFieldHoldsNothing(t *testing.T) {
 	}
 	g := readyGoal(t, h, sam, "Ship v2")
 
-	if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(ctx, g.Owner.ID, g.ID); err != nil {
 		t.Errorf("ActivateGoal: %v", err)
 	}
 }

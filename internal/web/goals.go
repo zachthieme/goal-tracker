@@ -1814,7 +1814,7 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, curr
 		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	_, err := s.svc.ActivateGoal(r.Context(), id)
+	_, err := s.svc.ActivateGoal(r.Context(), current.ID, id)
 	s.writeCommandResult(w, r, id, err)
 }
 

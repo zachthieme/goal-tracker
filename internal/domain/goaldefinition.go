@@ -400,7 +400,7 @@ func (s *Service) linkAndActivate(ctx context.Context, goalID int64, in DefinedG
 		}
 	}
 	if in.Activate {
-		return s.activateDefinedGoal(ctx, goalID)
+		return s.activateDefinedGoal(ctx, in.OwnerID, goalID)
 	}
 	return s.loadGoal(ctx, goalID)
 }
@@ -586,8 +586,8 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 
 // activateDefinedGoal runs the activation gate on the Goal just defined,
 // unchanged, and puts each rule it fails under the activate input.
-func (s *Service) activateDefinedGoal(ctx context.Context, goalID int64) (Goal, error) {
-	g, err := s.ActivateGoal(ctx, goalID)
+func (s *Service) activateDefinedGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	g, err := s.ActivateGoal(ctx, actorID, goalID)
 	if err == nil {
 		return g, nil
 	}

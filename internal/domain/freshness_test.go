@@ -31,7 +31,7 @@ func TestGoalWithNoCheckinIsCheckinOverdueOnceItsCadencePassesSinceActivation(t 
 		t.Fatalf("AddMilestone: %v", err)
 	}
 	h.Clock.Advance(30 * day)
-	if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(ctx, g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
 
@@ -481,7 +481,7 @@ func TestMilestoneOverdueIsJudgedInTheOwnersTimezone(t *testing.T) {
 		if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: beta}); err != nil {
 			t.Fatalf("AddMilestone: %v", err)
 		}
-		if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+		if _, err := h.Service.ActivateGoal(ctx, g.Owner.ID, g.ID); err != nil {
 			t.Fatalf("ActivateGoal: %v", err)
 		}
 	}
