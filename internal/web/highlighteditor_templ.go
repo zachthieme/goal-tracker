@@ -366,7 +366,7 @@ func highlightEditorStyles() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<style>\n\t\t[data-highlight-editor]:not([data-hl-js]) .hl-js-only{display:none}\n\t\t[data-hl-js] .hl-no-js,details:has(>[data-hl-js])>summary{display:none}\n\t\t.hl-head{font-size:18px}\n\t\t.hl-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.hl-items{display:flex;flex-direction:column;gap:8px}\n\t\t.hl-items:empty{display:none}\n\t\t.hl-item-text{white-space:pre-wrap}\n\t\t.hl-draft[hidden]{display:none}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<style>\n\t\t[data-highlight-editor]:not([data-hl-js]) .hl-js-only{display:none}\n\t\t[data-hl-js] .hl-no-js,details:has(>[data-hl-js])>summary{display:none}\n\t\t.hl-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.hl-items{display:flex;flex-direction:column;gap:8px}\n\t\t.hl-items:empty{display:none}\n\t\t.hl-item-text{white-space:pre-wrap}\n\t\t.hl-draft[hidden]{display:none}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -376,10 +376,11 @@ func highlightEditorStyles() templ.Component {
 
 // itemEditorStyles are the look of an item editor, the + → fields → Save
 // pattern the Highlight editor and the New goal form's Milestone and Metric
-// editors share: the editor's box (.ie-editor), its heading
-// (.ie-editor-head), its Save and Cancel row (.ie-actions), and a saved
-// item's row (.ie-item) with its Edit and Remove. Each page lays out its own
-// fields inside.
+// editors share, in the flat frame, where nothing in a form is a box: the
+// editor (.ie-editor), marked by a control-edge rule at its left, its heading
+// (.ie-editor-head), its Save and Cancel row (.ie-actions), and a saved item's
+// row (.ie-item), under a hairline, with its Edit and Remove. Each page lays
+// out its own fields inside.
 func itemEditorStyles() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -401,7 +402,7 @@ func itemEditorStyles() templ.Component {
 			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--color-surface)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px}\n\t\t.ie-item{padding-top:12px;border-top:1px solid var(--color-border)}\n\t\t.ie-editor{padding:4px 0 4px 16px;border-left:2px solid var(--color-border-strong)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-size:13px;font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

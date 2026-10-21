@@ -608,32 +608,28 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 }
 
 // checkinPage is the Check-in on its own page, reached from the Goal page by
-// the Owner or a Delegate: a breadcrumb back to the Goal, then a header with
-// the title, a line saying which week it is, the Goal's cadence and its last
-// Check-in, and, at its right, the one-click No change when there is a
-// previous Check-in to repeat; then the form, showing the latest Check-in's
-// answers as ghost text. Where a No change would be refused, the header says
-// why in place of its button. A refusal in the form's error, such as why a No
-// change couldn't be recorded, shows at the top of the form, and the header
-// then leaves the reason to it. Beside the form, or between the header and the
-// form on a narrow screen, a column gives the context for checking in: what
-// the latest Check-in said, the Goal's children (the Goal page's "Contributed
-// to by" list, read-only, so the Owner sees which set the Rolled-up Health),
-// and the Goal's dates (checkinContextDates). On a phone it keeps only the
-// children, as the form's ghost text already shows the latest answers.
+// the Owner or a Delegate. It sits in the flat frame under its page header,
+// Check in under the Goal's title, which links back to the Goal; then a line
+// saying which week it is, the Goal's cadence and its last Check-in, and, at
+// its right, the one-click No change when there is a previous Check-in to
+// repeat; then the form, a column of plain sections, showing the latest
+// Check-in's answers as ghost text. Where a No change would be refused, the
+// line says why in place of its button. A refusal in the form's error, such
+// as why a No change couldn't be recorded, shows at the top of the form, and
+// the line then leaves the reason to it. Beside the form, or between the line
+// and the form on a narrow screen, a quiet rail gives the context for checking
+// in: what the latest Check-in said, the Goal's children (the Goal page's
+// "Contributed to by" list, read-only, so the Owner sees which set the
+// Rolled-up Health), and the Goal's dates (checkinContextDates). On a phone it
+// keeps only the children, as the form's ghost text already shows the latest
+// answers.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
-	@layout("Check in · "+g.Title, current) {
+	@framedLayout("Check in · "+g.Title, current, pageHeader(pageHead{Parent: g.Title, ParentHref: fmt.Sprintf("/goals/%d", g.ID), Title: "Check in"})) {
 		@checkinStyles()
 		<div class="checkin-page">
-			<nav class="small muted" aria-label="Breadcrumb">
-				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
-			</nav>
 			<div class="checkin-head">
-				<div>
-					<h1>Check in</h1>
-					<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
-				</div>
+				<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
 				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
 					<div data-testid="no-change-card" class="checkin-no-change">
 						<span class="muted">{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
@@ -651,7 +647,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			<aside data-testid="checkin-context" class="checkin-context">
 				if c := v.LatestCheckin; c != nil {
 					<section data-testid="checkin-last-time" class="checkin-context-last">
-						<h3 class="label">{ "Last time · " + v.dates().dayOf(c.CreatedAt) }</h3>
+						<h3 class="checkin-rail-head">{ "Last time · " + v.dates().dayOf(c.CreatedAt) }</h3>
 						if c.Health != "" || c.PathToGreen != "" {
 							<p class="checkin-context-health">
 								if c.Health != "" {
@@ -667,12 +663,12 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 				}
 				if len(v.Children) > 0 {
 					<section data-testid="checkin-children" class="checkin-context-children">
-						<h3>Contributed to by</h3>
+						<h3 class="checkin-rail-head">Contributed to by</h3>
 						@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
 					</section>
 				}
 				<section data-testid="checkin-context-dates" class="checkin-context-dates">
-					<h3 class="label">Dates</h3>
+					<h3 class="checkin-rail-head">Dates</h3>
 					<p>{ checkinContextDates(g, v.Milestones, v.dates()) }</p>
 				</section>
 			</aside>
@@ -1236,20 +1232,20 @@ templ checkinStyles() {
 			.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}
 			.gp-cell{display:flex;flex-direction:column;gap:4px}
 			.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-			.checkin-page{max-width:1112px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,760px) minmax(240px,320px);gap:16px 32px;align-items:start}
+			.checkin-page{max-width:1048px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(240px,280px);gap:24px 48px;align-items:start}
 			.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}
 			.checkin-head>div{min-width:0}
-			.checkin-head p{margin:4px 0 0}
+			.checkin-head p{margin:0}
 			.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
 			.checkin-no-change form, .checkin-no-change p{margin:0}
 			.checkin-page>*{grid-column:1}
-			.checkin-page>nav,.checkin-page>.checkin-head{grid-column:1/-1}
-			.checkin-page>.checkin-context{grid-column:2;grid-row:3}
+			.checkin-page>.checkin-head{grid-column:1/-1}
+			.checkin-page>.checkin-context{grid-column:2;grid-row:2}
 			.checkin-page>.checkin-add-bar{grid-column:1/-1;align-self:stretch;min-width:0}
-			.checkin-page.checkin-js>.checkin-context{grid-row:4}
+			.checkin-page.checkin-js>.checkin-context{grid-row:3}
 			.checkin-page:not(.checkin-js) .checkin-js-only{display:none}
-			.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 16px}
-			.checkin-add-label{font-size:13px;font-weight:600;color:var(--color-ink-muted)}
+			.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}
+			.checkin-add-label{font-size:13px;font-weight:500;color:var(--color-ink-muted)}
 			.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 			.checkin-add-bar .hl-add{display:contents}
 			.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}
@@ -1257,45 +1253,45 @@ templ checkinStyles() {
 			.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}
 			.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}
 			.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}
-			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto}
+			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:13px;box-sizing:border-box}
 			.checkin-context>section{display:flex;flex-direction:column;gap:8px}
 			.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}
 			.checkin-context>.checkin-context-children{gap:12px}
 			.checkin-context p{margin:0}
+			.checkin-rail-head{font-size:12px;font-weight:500;line-height:1.5;color:var(--color-ink-muted)}
 			.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
-			.checkin-last-status{font-size:14px;color:var(--color-ink-muted);overflow-wrap:anywhere}
-			.checkin-context-dates p{font-size:14px;color:var(--color-ink)}
-			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible}}
+			.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}
+			.checkin-context-dates p{color:var(--color-ink-2)}
+			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible;padding:0 0 24px;border-left:0;border-bottom:1px solid var(--color-border)}}
 			@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
 			@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}
-			.checkin-form{display:flex;flex-direction:column;gap:40px}
+			.checkin-form{display:flex;flex-direction:column;gap:24px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 			.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
 			.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
 			.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}
+			.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}
 			.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}
-			legend.checkin-section-head{width:100%;margin-bottom:16px}
-			.checkin-section-head h2{font-size:22px;font-weight:600;line-height:1.3}
-			@media (max-width:600px){.checkin-section-head h2{font-size:20px}}
-			.checkin-form legend{font-weight:600;font-size:14px;padding:0}
-			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:14px}
-			.checkin-form .hint{font-size:14px;color:var(--color-ink-muted)}
+			.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}
+			.checkin-form legend{font-weight:600;font-size:13px;padding:0}
+			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:13px;color:var(--color-ink)}
+			.checkin-form .hint{font-size:13px;font-weight:400;color:var(--color-ink-muted)}
 			.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}
 			.checkin-form label[hidden]{display:none}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}
-			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:56px;padding:0 12px;border:2px solid currentColor;border-radius:var(--radius-lg);cursor:pointer}
+			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:14px;height:44px;padding:0 12px;border:2px solid currentColor;border-radius:var(--radius-md);cursor:pointer}
 			.health-toggle label.badge .dot{width:12px;height:12px}
 			.health-toggle input{position:absolute;opacity:0;pointer-events:none}
 			.health-toggle label.badge:not(:has(input:checked)){background:var(--color-surface);border-color:var(--color-border-strong)}
 			.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 			.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}
-			.checkin-rollup{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:16px;display:flex;flex-direction:column;gap:12px}
+			.checkin-rollup{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:12px}
 			.checkin-rollup p{margin:0}
 			.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
 			.checkin-path-target>.hint{padding-bottom:8px}
 			.checkin-form>fieldset.checkin-readings{gap:0}
-			.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0;border-top:1px solid var(--color-border)}
-			.checkin-metric:last-child{border-bottom:1px solid var(--color-border)}
+			.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0}
+			.checkin-metric+.checkin-metric{border-top:1px solid var(--color-border)}
 			.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}
 			.checkin-metric-name{font-weight:600}
 			.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}
@@ -1305,8 +1301,8 @@ templ checkinStyles() {
 			.checkin-metric-input{flex:none}
 			.checkin-metric-input input{width:120px;font-variant-numeric:tabular-nums;text-align:right}
 			.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}
-			.checkin-more-group{display:flex;flex-direction:column;gap:12px}
-			.checkin-more{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:0 24px}
+			.checkin-more-group{display:flex;flex-direction:column}
+			.checkin-more~.checkin-more{border-top:1px solid var(--color-border)}
 			.checkin-more>summary{font-weight:600}
 			.checkin-more>summary::after{content:"▸";color:var(--color-ink-muted)}
 			.checkin-more[open]>summary::after{content:"▾"}
@@ -1316,10 +1312,9 @@ templ checkinStyles() {
 			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
 			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
-			.checkin-more:has(>.hl-js){padding-top:16px}
-			.checkin-js .checkin-more-group{gap:40px}
 			.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}
-			.checkin-js .checkin-more[open]{background:none;border:none;border-radius:0;padding:0}
+			.checkin-js .checkin-more[open]{padding-bottom:0}
+			.checkin-js .checkin-more[open]~.checkin-more[open]{margin-top:24px;padding-top:24px}
 			.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}
 			.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}
 			.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}
@@ -1333,7 +1328,7 @@ templ checkinStyles() {
 			.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}
 			.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}
 			.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}
-			.checkin-submit-bar{position:sticky;bottom:0;z-index:10;background:var(--color-surface);border-top:1px solid var(--color-border);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+			.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 			.checkin-summary{flex:1;color:var(--color-ink-2);font-size:14px}
 			.checkin-summary>*{white-space:nowrap}
 			.checkin-submit-bar .btn{flex:none}
