@@ -3373,7 +3373,7 @@ func pathReasonLabel(t *testing.T, form string) string {
 }
 
 // isHidden reports whether an open tag carries the hidden attribute.
-func isHidden(tag string) bool {
+func isHiddenTag(tag string) bool {
 	return regexp.MustCompile(`\shidden(\s|>|=|/)`).MatchString(tag)
 }
 
@@ -3393,7 +3393,7 @@ func TestCheckinFormHidesTheBackToGreenReasonUntilTheDateMovesLater(t *testing.T
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	form := between(t, page, `id="checkin-form"`, "</form>")
 	label := pathReasonLabel(t, form)
-	if !isHidden(label) {
+	if !isHiddenTag(label) {
 		t.Errorf("the reason field shows before the date moves: %s", label)
 	}
 	if !strings.Contains(between(t, form, `data-testid="checkin-path-target-reason"`, "</label>"), "Reason for moving it later") {
@@ -3414,7 +3414,7 @@ func TestCheckinFormHidesTheBackToGreenReasonUntilTheDateMovesLater(t *testing.T
 	fresh := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
 	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, fresh.ID))
 	form = between(t, page, `id="checkin-form"`, "</form>")
-	if !isHidden(pathReasonLabel(t, form)) {
+	if !isHiddenTag(pathReasonLabel(t, form)) {
 		t.Errorf("the reason field shows on a Goal with no back-to-Green date")
 	}
 	if date := tagAround(t, form, `name="path_target_date"`); strings.Contains(date, "data-last=") {
@@ -3450,7 +3450,7 @@ func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) 
 	if msg := fieldError(t, body, `name="path_target_date_reason"`); !strings.Contains(msg, `">`+want) {
 		t.Errorf("reason field's error = %q, want it to read %q", msg, want)
 	}
-	if label := pathReasonLabel(t, body); isHidden(label) {
+	if label := pathReasonLabel(t, body); isHiddenTag(label) {
 		t.Errorf("the refused form hides the reason field: %s", label)
 	}
 	if fieldset := tagAround(t, body, `data-testid="path-to-green-field"`); !hasClass(fieldset, "has-error") {
