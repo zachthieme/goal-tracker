@@ -88,12 +88,16 @@ type CurateNarrativeInput struct {
 // publication, replacing whatever was curated before. The author may put a
 // Highlight into any section, whatever it was flagged as; each picked
 // Highlight must be on a Goal the Definition selects, and picked once. A
-// section may hold any number of notes; a blank one is ignored. Anyone
-// signed in may curate, as anyone may publish. Publishing freezes the
+// section may hold any number of notes; a blank one is ignored. Only the
+// Definition's creator, a Report Delegate or an Admin may curate it
+// (ErrNotAuthorized); actorID is who is curating. Publishing freezes the
 // narrative with the snapshot and starts the next one empty.
-func (s *Service) CurateNarrative(ctx context.Context, defID int64, in CurateNarrativeInput) error {
+func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in CurateNarrativeInput) error {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
+		return err
+	}
+	if err := s.requireReportManager(ctx, actorID, def, "curate"); err != nil {
 		return err
 	}
 	for section := range in.Notes {

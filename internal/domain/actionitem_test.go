@@ -92,6 +92,7 @@ func TestAuthorCreatesActionItemDirectly(t *testing.T) {
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.AddReportDelegate(author, reader, def)
 	pub := h.PublishReport(reader, def)
 	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	direct := domain.RaiseActionItemInput{PublicationID: pub.ID, Text: "Book the EU legal review.", OwnerID: owner.ID, DueDate: due}
@@ -500,6 +501,19 @@ func (w reassignWorld) raise(t *testing.T, pub domain.Publication, text string) 
 	return item
 }
 
+// publishAsFormerDelegate publishes the world's Report as publisher, made a
+// Report Delegate to publish it and no longer one after, so they are only its
+// publisher.
+func (w reassignWorld) publishAsFormerDelegate(t *testing.T, publisher domain.Account) domain.Publication {
+	t.Helper()
+	w.h.AddReportDelegate(w.creator, publisher, w.def)
+	pub := w.h.PublishReport(publisher, w.def)
+	if err := w.h.Service.RemoveReportDelegate(context.Background(), w.creator.ID, w.def.ID, publisher.ID); err != nil {
+		t.Fatalf("RemoveReportDelegate: %v", err)
+	}
+	return pub
+}
+
 // After a reassignment the item is the new owner's, it names who had it
 // before, and the reassignment is recorded; only the new owner closes it.
 func TestReassignedActionItemBelongsToItsNewOwner(t *testing.T) {
@@ -544,19 +558,24 @@ func TestReassignedActionItemBelongsToItsNewOwner(t *testing.T) {
 	}
 }
 
-// The Report Definition's creator, whoever published the publication an
-// Action Item was raised on, an Admin, and the creator's Manager may each
-// reassign it; nobody else may, its own owner included (CONTEXT.md: Action
-// Item).
+// The Report Definition's creator, a Report Delegate on it, whoever published
+// the publication an Action Item was raised on, an Admin, and the creator's
+// Manager may each reassign it; nobody else may, its own owner included
+// (CONTEXT.md: Action Item).
 func TestWhoMayReassignAnActionItem(t *testing.T) {
 	t.Parallel()
 
 	for name, who := range map[string]func(t *testing.T, w *reassignWorld) domain.Account{
 		"the Definition's creator": func(_ *testing.T, w *reassignWorld) domain.Account { return w.creator },
+		"a Report Delegate": func(_ *testing.T, w *reassignWorld) domain.Account {
+			delegate := w.h.SignIn("delegate@example.com")
+			w.h.AddReportDelegate(w.creator, delegate, w.def)
+			return delegate
+		},
 		"who published it": func(t *testing.T, w *reassignWorld) domain.Account {
 			publisher := w.h.SignIn("publisher@example.com")
 			w.h.Clock.Advance(day)
-			w.pub = w.h.PublishReport(publisher, w.def)
+			w.pub = w.publishAsFormerDelegate(t, publisher)
 			w.item = w.raise(t, w.pub, "Chase the vendor.")
 			return publisher
 		},
@@ -590,7 +609,7 @@ func TestWhoMayReassignAnActionItem(t *testing.T) {
 	// A later publication's publisher didn't publish the one it was raised on.
 	laterPublisher := w.h.SignIn("later@example.com")
 	w.h.Clock.Advance(day)
-	w.h.PublishReport(laterPublisher, w.def)
+	w.publishAsFormerDelegate(t, laterPublisher)
 	// A manager of someone other than the creator.
 	ownersManager := w.h.SignIn("owners-manager@example.com")
 	w.h.SetManager(w.owner, ownersManager)
@@ -898,8 +917,8 @@ func newChaseWorld(t *testing.T) *chaseWorld {
 	return w
 }
 
-// raise saves a Report Definition as creator, publishes it as publisher, and
-// raises text on it as raiser (who must be one of the two), owned by owner and
+// raise saves a Report Definition as creator, publishes it as publisher (made a
+// Report Delegate to, if not its creator), and raises text on it as raiser (who must be one of the two), owned by owner and
 // due in dueInDays.
 func (w *chaseWorld) raise(t *testing.T, creator, publisher, raiser, owner domain.Account, text string, dueInDays int) domain.ActionItem {
 	t.Helper()
@@ -907,6 +926,9 @@ func (w *chaseWorld) raise(t *testing.T, creator, publisher, raiser, owner domai
 	def := w.h.SaveReportDefinition(creator, domain.SaveReportDefinitionInput{
 		Name: fmt.Sprintf("Report %d", w.n), Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID},
 	})
+	if publisher.ID != creator.ID {
+		w.h.AddReportDelegate(creator, publisher, def)
+	}
 	pub := w.h.PublishReport(publisher, def)
 	item, err := w.h.Service.RaiseActionItem(context.Background(), raiser.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID, Text: text, OwnerID: owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, dueInDays),
@@ -1002,6 +1024,7 @@ func TestOpenActionItemsToChaseLeaveOutThoseOnlyADefinitionByTheirOrgIsPartyTo(t
 	}
 
 	def := w.h.SaveReportDefinition(w.outA, domain.SaveReportDefinitionInput{Name: "Outsiders' report", Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID}})
+	w.h.AddReportDelegate(w.outA, w.outB, def)
 	pub := w.h.PublishReport(w.outB, def)
 	_, err := w.h.Service.RaiseActionItem(context.Background(), w.mid.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID, Text: "Raised by the Org alone.", OwnerID: w.outB.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 5),

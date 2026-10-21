@@ -1310,7 +1310,7 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	if err != nil || len(draft.Highlights) != 1 {
 		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
 	}
-	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
@@ -4710,7 +4710,7 @@ func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
 	if err != nil || len(draft.Highlights) != 1 {
 		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
 	}
-	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)

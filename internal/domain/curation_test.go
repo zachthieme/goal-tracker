@@ -139,7 +139,7 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 	signed := highlightID(t, r, "Signed the first EU customer.")
 	lost := highlightID(t, r, "Lost two big accounts.")
 
-	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{
 			{HighlightID: signed, Section: domain.HighlightAccomplishment},
 			// The author reads the lost accounts as an Insight, not a Miss.
@@ -186,7 +186,7 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 
 	// Curating again replaces the narrative: the author takes the EU customer
 	// back out and clears the Insights notes.
-	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: lost, Section: domain.HighlightMiss}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative again: %v", err)
@@ -230,11 +230,11 @@ func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
 		}},
 		"notes for a section that isn't one": {Notes: map[string][]string{"Wins": {"We won."}}},
 	} {
-		if err := h.Service.CurateNarrative(ctx, def.ID, in); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, in); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("%s: err %v, want ErrValidation", name, err)
 		}
 	}
-	if err := h.Service.CurateNarrative(ctx, 9999, domain.CurateNarrativeInput{}); !errors.Is(err, domain.ErrNotFound) {
+	if err := h.Service.CurateNarrative(ctx, boss.ID, 9999, domain.CurateNarrativeInput{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("unknown Report Definition: err %v, want ErrNotFound", err)
 	}
 }
@@ -258,7 +258,7 @@ func TestCurateNarrativeLeavesOutGoalsFinishedBeforeTheBaseline(t *testing.T) {
 	}
 	signed := highlightID(t, r, "Signed the first EU customer.")
 
-	err = h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{Picks: []domain.NarrativePick{
+	err = h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{Picks: []domain.NarrativePick{
 		{HighlightID: signed, Section: domain.HighlightAccomplishment},
 	}})
 	if !errors.Is(err, domain.ErrValidation) {
@@ -285,7 +285,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 		t.Fatalf("DraftReport: %v", err)
 	}
 	signed := highlightID(t, r, "Signed the first EU customer.")
-	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
 		Notes: map[string][]string{domain.HighlightAccomplishment: {"EU is open for business.", "Invoices come next."}},
 	}); err != nil {
@@ -318,7 +318,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	if got := highlightNotes(next.Highlights); !slices.Equal(got, []string{"Lost the second customer."}) {
 		t.Errorf("next draft's Highlights %q, want only those since the publication", got)
 	}
-	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: highlightID(t, next, "Lost the second customer."), Section: domain.HighlightMiss}},
 		Notes: map[string][]string{domain.HighlightAccomplishment: {"Rewritten."}},
 	}); err != nil {
@@ -357,7 +357,7 @@ func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
 	if got := highlightNotes(r.Highlights); !slices.Equal(got, []string{"Signed the first EU customer.", "Lost the second customer."}) {
 		t.Fatalf("pick list %q, want each Highlight of the Check-in separately", got)
 	}
-	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: highlightID(t, r, "Lost the second customer."), Section: domain.HighlightMiss}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)

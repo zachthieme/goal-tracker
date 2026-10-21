@@ -51,10 +51,14 @@ type PreviousPublication struct {
 // against baseline, as DraftReport does — so by default against the previous
 // publication — and freezes the result, its curated narrative included, and
 // how it selects in plain words. The next publication's narrative then starts
-// empty. Anyone signed in may publish; actorID records who did.
+// empty. Only the Definition's creator, a Report Delegate or an Admin may
+// publish it (ErrNotAuthorized); actorID records who did.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
+		return Publication{}, err
+	}
+	if err := s.requireReportManager(ctx, actorID, def, "publish"); err != nil {
 		return Publication{}, err
 	}
 	report, err := s.DraftReport(ctx, def, baseline)

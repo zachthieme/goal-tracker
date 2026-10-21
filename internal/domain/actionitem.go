@@ -334,15 +334,16 @@ func (s *Service) reassignableActionItem(ctx context.Context, actorID, itemID in
 		return ActionItem{}, err
 	}
 	if !ok {
-		return ActionItem{}, fmt.Errorf("%w: only the Report's creator or publisher, an Admin, or the creator's Manager reassigns an Action Item", ErrNotAuthorized)
+		return ActionItem{}, fmt.Errorf("%w: only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item", ErrNotAuthorized)
 	}
 	return item, nil
 }
 
 // CanReassignActionItem reports whether actorID may hand the Action Item to a
 // new owner (CONTEXT.md: Action Item): it is open, and they are its Report
-// Definition's creator, who published the publication it was raised on, an
-// Admin, or the creator's Manager. A Departed person can't.
+// Definition's creator or one of its Report Delegates, who published the
+// publication it was raised on, an Admin, or the creator's Manager. A Departed
+// person can't.
 func (s *Service) CanReassignActionItem(ctx context.Context, actorID int64, item ActionItem) (bool, error) {
 	if item.Closed {
 		return false, nil
@@ -365,6 +366,13 @@ func (s *Service) CanReassignActionItem(ctx context.Context, actorID int64, item
 		return false, fmt.Errorf("get report definition: %w", err)
 	}
 	if def.CreatedBy == actorID {
+		return true, nil
+	}
+	delegates, err := s.ListReportDelegates(ctx, def.ID)
+	if err != nil {
+		return false, err
+	}
+	if slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == actorID }) {
 		return true, nil
 	}
 	pub, err := s.queries.GetReportPublication(ctx, item.PublicationID)

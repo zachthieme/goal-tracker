@@ -367,6 +367,13 @@ type ReportDefinitionGoal struct {
 	GoalID             int64
 }
 
+type ReportDelegate struct {
+	ID                 int64
+	ReportDefinitionID int64
+	AccountID          int64
+	CreatedAt          string
+}
+
 type ReportPublication struct {
 	ID                 int64
 	ReportDefinitionID int64
