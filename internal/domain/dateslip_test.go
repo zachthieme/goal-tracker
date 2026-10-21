@@ -232,20 +232,20 @@ func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
 	beta := onlyMilestone(t, h, goal.ID)
 	ctx := context.Background()
 
-	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 		MilestoneID: beta.ID, Name: "Beta", TargetDate: beta.TargetDate.AddDate(0, 0, 5),
 	}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("EditMilestone moving the date on an Active Goal: err = %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 		MilestoneID: beta.ID, Name: "Public beta", TargetDate: beta.TargetDate,
 	}); err != nil {
 		t.Errorf("EditMilestone renaming on an Active Goal: %v", err)
 	}
-	if _, err := h.Service.MarkGoalDated(ctx, goal.ID, goal.DeliveryDate.AddDate(0, 1, 0)); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.MarkGoalDated(ctx, goal.Owner.ID, goal.ID, goal.DeliveryDate.AddDate(0, 1, 0)); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("MarkGoalDated on an Active Goal: err = %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.MarkGoalOngoing(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.MarkGoalOngoing(ctx, goal.Owner.ID, goal.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("MarkGoalOngoing on an Active Goal: err = %v, want ErrValidation", err)
 	}
 	g, _ := h.Service.ViewGoal(ctx, goal.ID)

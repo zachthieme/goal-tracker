@@ -171,6 +171,7 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 	if err != nil {
 		return Goal{}, err
 	}
+	s.recordImportedGoal(row.ID)
 
 	return goalFromRow(row, owner), nil
 }
@@ -187,17 +188,15 @@ type WhyItMattersRevision struct {
 
 // EditWhyItMatters replaces a Goal's Why it matters, keeping the previous text as a revision.
 // The new Why it matters is required (CONTEXT.md: Why it matters). authorID records who made
-// the edit.
+// the edit, and must be the Goal's Owner or an Admin (ErrNotAuthorized; see
+// RequireGoalOwnerOrAdmin).
 func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
 	whyItMatters = strings.TrimSpace(whyItMatters)
 	if whyItMatters == "" {
 		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
 	}
-	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-		}
-		return Goal{}, fmt.Errorf("look up goal: %w", err)
+	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
+		return Goal{}, err
 	}
 
 	if _, err := s.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{
@@ -245,7 +244,11 @@ func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) (
 // has marked required (CONTEXT.md: Incomplete). Every unmet requirement comes back as its own
 // validation error, joined together, so the Owner sees the whole list at once;
 // use ActivationReasons to enumerate them. The Goal stays Proposed on rejection.
-func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) {
+// Only the Goal's Owner may activate it (ErrNotAuthorized).
+func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {
 		return Goal{}, err
@@ -403,9 +406,9 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 }
 
 // RequireGoalOwner returns ErrNotAuthorized unless actorID is the Goal's Owner
-// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The web
-// layer calls it before the commands that trust their caller — MarkGoalDated,
-// SetCadence, AddMetric and the like — as DefineGoal does for itself.
+// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The
+// commands only the Owner may make — MarkGoalDated, SetCadence, AddMetric and
+// the like — check it for themselves, as DefineGoal does.
 func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {
@@ -419,8 +422,12 @@ func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) e
 
 // MarkGoalDated marks the Goal as Dated with the given delivery date, against
 // which its Health will be judged (CONTEXT.md: Dated Goal). A Dated Goal needs a
-// delivery date, so a zero date is rejected.
-func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate time.Time) (Goal, error) {
+// delivery date, so a zero date is rejected. Only the Goal's Owner may mark it
+// (ErrNotAuthorized).
+func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deliveryDate time.Time) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if deliveryDate.IsZero() {
 		return Goal{}, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation)
 	}
@@ -438,8 +445,12 @@ func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate 
 }
 
 // SetCadence sets how often a Check-in is expected on the Goal, in days. It
-// must be positive (CONTEXT.md: Check-in cadence, 7 days by default).
-func (s *Service) SetCadence(ctx context.Context, goalID int64, days int) (Goal, error) {
+// must be positive (CONTEXT.md: Check-in cadence, 7 days by default). Only the
+// Goal's Owner may set it (ErrNotAuthorized).
+func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days int) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if days <= 0 {
 		return Goal{}, fmt.Errorf("%w: the Check-in cadence must be a positive number of days", ErrValidation)
 	}
@@ -454,13 +465,17 @@ func (s *Service) SetCadence(ctx context.Context, goalID int64, days int) (Goal,
 
 // AddContributor lists an Account on the Goal as a Contributor: named for
 // information only, with no update duty (CONTEXT.md: Contributor). Adding the
-// same Account twice is rejected.
-func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) error {
+// same Account twice is rejected. Only the Goal's Owner may add one
+// (ErrNotAuthorized).
+func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {
 	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: goal does not exist", ErrValidation)
 		}
 		return fmt.Errorf("look up goal: %w", err)
+	}
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return err
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -490,8 +505,11 @@ func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) e
 // AddContributorByEmail lists the Account with the given email as a Contributor
 // on the Goal. It is the web-facing convenience over AddContributor, since the
 // tool identifies people by email (CONTEXT.md: development sign-in by email). An
-// email with no account is rejected.
-func (s *Service) AddContributorByEmail(ctx context.Context, goalID int64, email string) error {
+// email with no account is rejected, as is anyone but the Goal's Owner.
+func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int64, email string) error {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return err
+	}
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -499,7 +517,7 @@ func (s *Service) AddContributorByEmail(ctx context.Context, goalID int64, email
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
-	return s.AddContributor(ctx, goalID, acc.ID)
+	return s.AddContributor(ctx, actorID, goalID, acc.ID)
 }
 
 // ListContributors returns the Accounts listed as Contributors on the Goal,
@@ -518,7 +536,11 @@ func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account
 
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its
 // Health is judged against its Metrics instead (CONTEXT.md: Ongoing Goal).
-func (s *Service) MarkGoalOngoing(ctx context.Context, goalID int64) (Goal, error) {
+// Only the Goal's Owner may mark it (ErrNotAuthorized).
+func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
 		return Goal{}, err
 	}

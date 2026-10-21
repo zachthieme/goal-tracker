@@ -25,12 +25,15 @@ type TitleRevision struct {
 // EditTitle changes a Goal's title in any Lifecycle, recording the change with
 // the old and new titles. The title is checked as at creation: trimmed, and
 // required. A title the same as the current one changes nothing and records
-// nothing. authorID records who made the change; the caller has already
-// checked they may (RequireGoalOwnerOrAdmin).
+// nothing. authorID records who made the change, and must be the Goal's Owner
+// or an Admin (ErrNotAuthorized; see RequireGoalOwnerOrAdmin).
 func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, authorID int64) (Goal, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return Goal{}, fmt.Errorf("%w: a Goal needs a title", ErrValidation)
+	}
+	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
+		return Goal{}, err
 	}
 	current, err := s.loadGoal(ctx, goalID)
 	if err != nil {
@@ -84,7 +87,7 @@ func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]Title
 
 // RequireGoalOwnerOrAdmin returns ErrNotAuthorized unless actorID is the Goal's
 // Owner or an Admin (a Delegate is refused), or ErrNotFound if no such Goal
-// exists. The web layer calls it before changing a Goal's title and Why it matters.
+// exists. EditTitle and EditWhyItMatters check it for themselves.
 func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {

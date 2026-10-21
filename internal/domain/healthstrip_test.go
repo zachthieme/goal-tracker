@@ -259,7 +259,7 @@ func TestHealthStripPeriodsEndingTodayOrLaterAreNotYetDue(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	// Friday 2 Jan 2026.
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 3); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 3); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Clock.Advance(3 * day)
@@ -330,7 +330,7 @@ func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	h.Clock.Advance(-30 * 7 * day)
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Clock.Advance(29 * 7 * day)

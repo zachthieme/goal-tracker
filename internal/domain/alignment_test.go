@@ -154,7 +154,7 @@ func TestChildDeliveringAfterParentFlagsBoth(t *testing.T) {
 	onTime := h.ActiveGoalDue(sam, "On-time piece", june)
 	h.RequestLink(sam, onTime, parent, "")
 	ongoing := h.CreateGoal(sam, "Ongoing piece", "Always on.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), ongoing.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), ongoing.Owner.ID, ongoing.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	h.RequestLink(sam, ongoing, parent, "")

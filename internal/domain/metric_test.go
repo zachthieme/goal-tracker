@@ -29,7 +29,7 @@ func TestAddMetricListsUnderTheGoal(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
 
-	m, err := h.Service.AddMetric(context.Background(), validMetric(g.ID))
+	m, err := h.Service.AddMetric(context.Background(), g.Owner.ID, validMetric(g.ID))
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestAddMetricValidatesInput(t *testing.T) {
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := h.Service.AddMetric(context.Background(), in); !errors.Is(err, domain.ErrValidation) {
+			if _, err := h.Service.AddMetric(context.Background(), owner.ID, in); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("err = %v, want ErrValidation", err)
 			}
 		})
@@ -89,12 +89,12 @@ func TestEditMetricChangesFields(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Cut checkout latency", "why")
-	m, err := h.Service.AddMetric(context.Background(), validMetric(g.ID))
+	m, err := h.Service.AddMetric(context.Background(), g.Owner.ID, validMetric(g.ID))
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
 
-	got, err := h.Service.EditMetric(context.Background(), domain.EditMetricInput{
+	got, err := h.Service.EditMetric(context.Background(), owner.ID, domain.EditMetricInput{
 		MetricID:   m.ID,
 		Name:       "p99 checkout latency",
 		Unit:       "ms",
@@ -123,7 +123,7 @@ func TestRequireMetricOwnerAdmitsOnlyTheGoalsOwner(t *testing.T) {
 	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
 	h.AddDelegate(owner, delegate, g.ID)
 	ctx := context.Background()
-	m, err := h.Service.AddMetric(ctx, validMetric(g.ID))
+	m, err := h.Service.AddMetric(ctx, g.Owner.ID, validMetric(g.ID))
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
@@ -172,5 +172,39 @@ func TestMetricOffTarget(t *testing.T) {
 		if got := tc.metric.OffTarget(tc.reading, tc.today); got != tc.want {
 			t.Errorf("%s: OffTarget(%v, %s) = %v, want %v", tc.name, tc.reading, tc.today.Format("2006-01-02"), got, tc.want)
 		}
+	}
+}
+
+// Only a Goal's Owner may add or edit its Metrics: anyone else, a Delegate and
+// an Admin included, is refused and the Metrics stay as they were.
+func TestMetricChangesAdmitOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Cut checkout latency", "why")
+	ctx := context.Background()
+	m, err := h.Service.AddMetric(ctx, owner.ID, validMetric(g.ID))
+	if err != nil {
+		t.Fatalf("Owner adding a Metric: %v", err)
+	}
+	edit := domain.EditMetricInput{
+		MetricID: m.ID, Name: "p99 checkout latency", Unit: "ms", Direction: domain.MetricDown,
+		Baseline: 1500, Target: 500, TargetDate: m.TargetDate,
+	}
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.AddMetric(ctx, actor.ID, validMetric(g.ID)); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s adding: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.EditMetric(ctx, actor.ID, edit); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if ms, _ := h.Service.ListMetrics(ctx, g.ID); len(ms) != 1 || ms[0].Name != "p95 checkout latency" {
+		t.Errorf("Metrics after refusals = %+v, want the Owner's one, unedited", ms)
+	}
+	if _, err := h.Service.EditMetric(ctx, owner.ID, edit); err != nil {
+		t.Errorf("Owner editing: %v", err)
 	}
 }

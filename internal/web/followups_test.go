@@ -142,7 +142,7 @@ func TestFollowUpsCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	goals := map[int]domain.Goal{}
 	for cadence := range want {
 		g := h.ActiveGoal(sam, "Every "+strconv.Itoa(cadence)+" days", "It matters.")
-		if _, err := h.Service.SetCadence(t.Context(), g.ID, cadence); err != nil {
+		if _, err := h.Service.SetCadence(t.Context(), g.Owner.ID, g.ID, cadence); err != nil {
 			t.Fatalf("SetCadence: %v", err)
 		}
 		goals[cadence] = g
@@ -1200,7 +1200,7 @@ func TestFollowUpFixOnAScheduleConflictWithAProposedChild(t *testing.T) {
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
 	proposed := h.CreateGoal(kim, "Late plan", "It matters.")
-	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.ID, june.AddDate(0, 1, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.Owner.ID, proposed.ID, june.AddDate(0, 1, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	link := h.RequestLink(kim, proposed, launch, "")
@@ -2808,7 +2808,7 @@ func TestFollowUpsPageListsGoalsThatArentActiveLast(t *testing.T) {
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
 	proposed := h.CreateGoal(sam, "Article backlog", "It matters.")
-	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.ID, june.AddDate(0, 1, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.Owner.ID, proposed.ID, june.AddDate(0, 1, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	h.RequestLink(sam, proposed, launch, "")

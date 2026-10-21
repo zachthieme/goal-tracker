@@ -22,16 +22,16 @@ func TestGoalWithNoCheckinIsCheckinOverdueOnceItsCadencePassesSinceActivation(t 
 	sam := h.SignIn("sam@example.com")
 	ctx := context.Background()
 	g := h.CreateGoal(sam, "Ship search", "People can't find things.")
-	if _, err := h.Service.MarkGoalDated(ctx, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(ctx, g.Owner.ID, domain.AddMilestoneInput{
 		GoalID: g.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 3, 0),
 	}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
 	}
 	h.Clock.Advance(30 * day)
-	if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+	if _, err := h.Service.ActivateGoal(ctx, g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestGoalIsCheckinOverdueWhenItsLastCheckinIsOlderThanItsCadence(t *testing.
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Clock.Advance(20 * day)
@@ -475,17 +475,17 @@ func TestMilestoneOverdueIsJudgedInTheOwnersTimezone(t *testing.T) {
 	tokyo := h.CreateGoal(kenji, "Ship search", "People can't find things.")
 	plain := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	for _, g := range []domain.Goal{tokyo, plain} {
-		if _, err := h.Service.MarkGoalDated(ctx, g.ID, beta.AddDate(0, 6, 0)); err != nil {
+		if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, beta.AddDate(0, 6, 0)); err != nil {
 			t.Fatalf("MarkGoalDated: %v", err)
 		}
-		if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: beta}); err != nil {
+		if _, err := h.Service.AddMilestone(ctx, g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: beta}); err != nil {
 			t.Fatalf("AddMilestone: %v", err)
 		}
-		if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+		if _, err := h.Service.ActivateGoal(ctx, g.Owner.ID, g.ID); err != nil {
 			t.Fatalf("ActivateGoal: %v", err)
 		}
 	}
-	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: plain.ID, Name: "Alpha", TargetDate: beta.AddDate(0, 0, -3)}); err != nil {
+	if _, err := h.Service.AddMilestone(ctx, plain.Owner.ID, domain.AddMilestoneInput{GoalID: plain.ID, Name: "Alpha", TargetDate: beta.AddDate(0, 0, -3)}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
 	}
 	h.Clock.Set(beta.AddDate(0, 0, -5))

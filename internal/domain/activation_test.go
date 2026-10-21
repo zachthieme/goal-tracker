@@ -20,7 +20,7 @@ var futureDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
 func addMilestone(t *testing.T, h *testsupport.Harness, goalID int64) {
 	t.Helper()
-	if _, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(context.Background(), h.GoalOwnerID(goalID), domain.AddMilestoneInput{
 		GoalID:     goalID,
 		Name:       "Beta cut",
 		TargetDate: futureDate,
@@ -31,7 +31,7 @@ func addMilestone(t *testing.T, h *testsupport.Harness, goalID int64) {
 
 func addMetric(t *testing.T, h *testsupport.Harness, goalID int64) {
 	t.Helper()
-	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(context.Background(), h.GoalOwnerID(goalID), domain.AddMetricInput{
 		GoalID:     goalID,
 		Name:       "p95 latency",
 		Unit:       "ms",
@@ -50,12 +50,12 @@ func TestActivateDatedGoalWithAMilestone(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	addMilestone(t, h, g.ID)
 
-	got, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	got, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
@@ -70,12 +70,12 @@ func TestActivateDatedGoalWithAMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	addMetric(t, h, g.ID)
 
-	got, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	got, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
@@ -90,12 +90,12 @@ func TestActivateOngoingGoalWithAMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	addMetric(t, h, g.ID)
 
-	got, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	got, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if err != nil {
 		t.Fatalf("ActivateGoal: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestActivateRejectsGoalNotMarkedDatedOrOngoing(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
@@ -126,11 +126,11 @@ func TestActivateRejectsDatedGoalWithNoMilestoneOrMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
@@ -145,11 +145,11 @@ func TestActivateRejectsOngoingGoalWithNoMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
@@ -170,7 +170,7 @@ func TestActivateReportsEveryMissingItem(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	_, err := h.Service.ActivateGoal(context.Background(), g.ID)
+	_, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID)
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
@@ -192,7 +192,7 @@ func TestActivateLeavesGoalProposedWhenRejected(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	if _, err := h.Service.ActivateGoal(context.Background(), g.ID); err == nil {
+	if _, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID); err == nil {
 		t.Fatal("want the activation to be rejected")
 	}
 	got, err := h.Service.ViewGoal(context.Background(), g.ID)

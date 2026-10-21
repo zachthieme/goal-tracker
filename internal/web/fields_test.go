@@ -175,7 +175,7 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 	cal := h.SignIn("cal@example.com")
 	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(pat, dee, goal.ID)
-	if err := h.Service.AddContributor(context.Background(), goal.ID, cal.ID); err != nil {
+	if err := h.Service.AddContributor(context.Background(), goal.Owner.ID, goal.ID, cal.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
 	fields := []struct {

@@ -613,7 +613,7 @@ func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
 	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(ctx, goal.ID, "cory@example.com"); err != nil {
+	if err := h.Service.AddContributorByEmail(ctx, goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
 		t.Fatalf("AddContributorByEmail: %v", err)
 	}
 
@@ -832,7 +832,7 @@ func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
 	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(ctx, goal.ID, "cory@example.com"); err != nil {
+	if err := h.Service.AddContributorByEmail(ctx, goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
 		t.Fatalf("AddContributorByEmail: %v", err)
 	}
 

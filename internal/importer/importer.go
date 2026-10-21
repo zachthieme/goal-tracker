@@ -158,7 +158,11 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 	stopImport := errors.New("import rolled back")
 	var report Report
 	txErr := im.svc.WithinTx(ctx, func(tx *domain.Service) error {
-		report = applyRows(ctx, tx, adminID, specs)
+		imp, err := tx.ForImportBy(ctx, adminID)
+		if err != nil {
+			return err
+		}
+		report = applyRows(ctx, imp, adminID, specs)
 		if !commit || report.HasErrors() {
 			return stopImport
 		}
@@ -603,7 +607,7 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 			if !ok || goalIDs[i] == 0 {
 				continue
 			}
-			if _, err := tx.ImportLink(ctx, goalIDs[i], parentID); err != nil {
+			if _, err := tx.ImportLink(ctx, adminID, goalIDs[i], parentID); err != nil {
 				results[i].Errors = append(results[i].Errors, linkMessage(err, parentTitle))
 			}
 		}
@@ -638,21 +642,21 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 
 	var errs []string
 	if s.kind == domain.GoalDated {
-		if _, err := tx.MarkGoalDated(ctx, g.ID, s.delivery); err != nil {
+		if _, err := tx.MarkGoalDated(ctx, adminID, g.ID, s.delivery); err != nil {
 			errs = append(errs, message(err))
 		}
 	} else {
-		if _, err := tx.MarkGoalOngoing(ctx, g.ID); err != nil {
+		if _, err := tx.MarkGoalOngoing(ctx, adminID, g.ID); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
 	for _, m := range s.milestones {
-		if _, err := tx.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: m.name, TargetDate: m.date}); err != nil {
+		if _, err := tx.AddMilestone(ctx, adminID, domain.AddMilestoneInput{GoalID: g.ID, Name: m.name, TargetDate: m.date}); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
 	for _, m := range s.metrics {
-		if _, err := tx.AddMetric(ctx, domain.AddMetricInput{
+		if _, err := tx.AddMetric(ctx, adminID, domain.AddMetricInput{
 			GoalID:     g.ID,
 			Name:       m.name,
 			Unit:       m.unit,

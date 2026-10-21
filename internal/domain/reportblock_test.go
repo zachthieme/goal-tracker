@@ -174,10 +174,10 @@ func TestReportExceptionTriggers(t *testing.T) {
 			name: "activated",
 			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
 				g := h.CreateGoal(boss, "Activated", "why")
-				if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+				if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 					h.T.Fatalf("MarkGoalOngoing: %v", err)
 				}
-				if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+				if _, err := h.Service.AddMetric(context.Background(), g.Owner.ID, domain.AddMetricInput{
 					GoalID: g.ID, Name: "NPS", Unit: "points", Direction: domain.MetricUp,
 					Baseline: 10, Target: 40, TargetDate: h.Clock.Now().AddDate(1, 0, 0),
 				}); err != nil {
@@ -186,7 +186,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				return g
 			},
 			since: func(h *testsupport.Harness, _ domain.Account, g domain.Goal) domain.Goal {
-				if _, err := h.Service.ActivateGoal(context.Background(), g.ID); err != nil {
+				if _, err := h.Service.ActivateGoal(context.Background(), g.Owner.ID, g.ID); err != nil {
 					h.T.Fatalf("ActivateGoal: %v", err)
 				}
 				return g
@@ -304,7 +304,7 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 	// Due 2026-07-02 with Milestone Beta on 2026-04-02 (ActiveGoal's defaults).
 	g := h.ActiveGoal(boss, "Launch in EU", "EU shoppers can't pay in euros.")
 	child := h.ActiveChildOf(boss, g, "Localize checkout", "why")
-	revenue, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	revenue, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{
 		GoalID: g.ID, Name: "EU revenue", Unit: "$M", Direction: domain.MetricUp,
 		Baseline: 10, Target: 20, TargetDate: date(2026, 12, 31),
 	})
@@ -414,7 +414,7 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 // addDatedMilestone adds a Milestone to g, failing the test on error.
 func addDatedMilestone(h *testsupport.Harness, g domain.Goal, name string, date time.Time) domain.Milestone {
 	h.T.Helper()
-	m, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{GoalID: g.ID, Name: name, TargetDate: date})
+	m, err := h.Service.AddMilestone(context.Background(), g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: name, TargetDate: date})
 	if err != nil {
 		h.T.Fatalf("AddMilestone: %v", err)
 	}

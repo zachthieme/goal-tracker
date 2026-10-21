@@ -261,15 +261,15 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 	var err error
 	switch {
 	case in.Kind == GoalDated && (current.Kind != GoalDated || !current.DeliveryDate.Equal(in.DeliveryDate)):
-		_, err = s.MarkGoalDated(ctx, goalID, in.DeliveryDate)
+		_, err = s.MarkGoalDated(ctx, in.OwnerID, goalID, in.DeliveryDate)
 	case in.Kind == GoalOngoing && current.Kind != GoalOngoing:
-		_, err = s.MarkGoalOngoing(ctx, goalID)
+		_, err = s.MarkGoalOngoing(ctx, in.OwnerID, goalID)
 	}
 	if err != nil {
 		return Goal{}, err
 	}
 	if in.CadenceDays != 0 && in.CadenceDays != current.CadenceDays {
-		if _, err := s.SetCadence(ctx, goalID, in.CadenceDays); err != nil {
+		if _, err := s.SetCadence(ctx, in.OwnerID, goalID, in.CadenceDays); err != nil {
 			return Goal{}, err
 		}
 	}
@@ -325,15 +325,15 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 	}
 	switch in.Kind {
 	case GoalDated:
-		_, err = s.MarkGoalDated(ctx, g.ID, in.DeliveryDate)
+		_, err = s.MarkGoalDated(ctx, in.OwnerID, g.ID, in.DeliveryDate)
 	case GoalOngoing:
-		_, err = s.MarkGoalOngoing(ctx, g.ID)
+		_, err = s.MarkGoalOngoing(ctx, in.OwnerID, g.ID)
 	}
 	if err != nil {
 		return Goal{}, err
 	}
 	if in.CadenceDays != 0 {
-		if _, err := s.SetCadence(ctx, g.ID, in.CadenceDays); err != nil {
+		if _, err := s.SetCadence(ctx, in.OwnerID, g.ID, in.CadenceDays); err != nil {
 			return Goal{}, err
 		}
 	}
@@ -370,12 +370,12 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 // Goal, within the transaction the caller holds.
 func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in DefinedGoalInput) error {
 	for _, m := range in.Milestones {
-		if _, err := s.AddMilestone(ctx, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
+		if _, err := s.AddMilestone(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
 			return err
 		}
 	}
 	for _, m := range in.Metrics {
-		if _, err := s.AddMetric(ctx, AddMetricInput{
+		if _, err := s.AddMetric(ctx, in.OwnerID, AddMetricInput{
 			GoalID:     goalID,
 			Name:       m.Name,
 			Unit:       m.Unit,
@@ -400,7 +400,7 @@ func (s *Service) linkAndActivate(ctx context.Context, goalID int64, in DefinedG
 		}
 	}
 	if in.Activate {
-		return s.activateDefinedGoal(ctx, goalID)
+		return s.activateDefinedGoal(ctx, in.OwnerID, goalID)
 	}
 	return s.loadGoal(ctx, goalID)
 }
@@ -586,8 +586,8 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 
 // activateDefinedGoal runs the activation gate on the Goal just defined,
 // unchanged, and puts each rule it fails under the activate input.
-func (s *Service) activateDefinedGoal(ctx context.Context, goalID int64) (Goal, error) {
-	g, err := s.ActivateGoal(ctx, goalID)
+func (s *Service) activateDefinedGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	g, err := s.ActivateGoal(ctx, actorID, goalID)
 	if err == nil {
 		return g, nil
 	}

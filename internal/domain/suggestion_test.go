@@ -400,7 +400,7 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 		}, true},
 		{"the link imported", func(h *testsupport.Harness, _, _ domain.Account, goal, parent domain.Goal) func() {
 			return func() {
-				if _, err := h.Service.ImportLink(ctx, goal.ID, parent.ID); err != nil {
+				if _, err := importLinkAsAdmin(t, h, goal.ID, parent.ID); err != nil {
 					t.Fatalf("ImportLink: %v", err)
 				}
 			}
@@ -435,7 +435,7 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			h := testsupport.New(t)
+			h := testsupport.New(t, "admin@example.com")
 			sam := h.SignIn("sam@example.com") // owns the Goal
 			pat := h.SignIn("pat@example.com") // suggests
 			kim := h.SignIn("kim@example.com") // owns the parent

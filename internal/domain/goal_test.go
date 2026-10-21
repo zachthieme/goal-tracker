@@ -126,7 +126,7 @@ func TestMarkGoalDatedSetsKindAndDeliveryDate(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
 	date := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
-	got, err := h.Service.MarkGoalDated(context.Background(), g.ID, date)
+	got, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, date)
 	if err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestMarkGoalDatedRequiresADate(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Time{}); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, time.Time{}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }
@@ -158,10 +158,10 @@ func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
 
 	// Mark Dated first, then Ongoing, to prove the delivery date is cleared.
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	got, err := h.Service.MarkGoalOngoing(context.Background(), g.ID)
+	got, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID)
 	if err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
@@ -192,12 +192,48 @@ func TestSetCadenceChangesTheCheckInInterval(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	got, err := h.Service.SetCadence(context.Background(), g.ID, 14)
+	got, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 14)
 	if err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	if got.CadenceDays != 14 {
 		t.Errorf("CadenceDays = %d, want 14", got.CadenceDays)
+	}
+}
+
+// Only a Goal's Owner may set its cadence: anyone else, a Delegate and an
+// Admin included, is refused and the cadence stays as it was.
+func TestSetCadenceAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.SetCadence(ctx, actor.ID, g.ID, 14); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.CadenceDays != 7 {
+		t.Errorf("CadenceDays after refusals = %d, want 7", got.CadenceDays)
+	}
+	if _, err := h.Service.SetCadence(ctx, owner.ID, g.ID, 14); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}
+
+// notTheOwner signs in the people an Owner-only command refuses on goalID: a
+// stranger, one of its Delegates, and an Admin. The harness must list
+// admin@example.com as an Admin.
+func notTheOwner(h *testsupport.Harness, owner domain.Account, goalID int64) map[string]domain.Account {
+	delegate := h.SignIn("tpm@example.com")
+	h.AddDelegate(owner, delegate, goalID)
+	return map[string]domain.Account{
+		"a stranger": h.SignIn("pat@example.com"),
+		"a Delegate": delegate,
+		"an Admin":   h.SignIn("admin@example.com"),
 	}
 }
 
@@ -208,7 +244,7 @@ func TestSetCadenceRejectsNonPositive(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 0); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 0); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }
@@ -221,7 +257,7 @@ func TestAddContributorListsThem(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	dana := h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
 	list, err := h.Service.ListContributors(context.Background(), g.ID)
@@ -241,10 +277,10 @@ func TestAddContributorRejectsDuplicate(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	dana := h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); !errors.Is(err, domain.ErrValidation) {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation on duplicate", err)
 	}
 }
@@ -379,7 +415,7 @@ func TestAddContributorByEmailResolvesTheAccount(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "dana@example.com"); err != nil {
+	if err := h.Service.AddContributorByEmail(context.Background(), g.Owner.ID, g.ID, "dana@example.com"); err != nil {
 		t.Fatalf("AddContributorByEmail: %v", err)
 	}
 	list, err := h.Service.ListContributors(context.Background(), g.ID)
@@ -398,7 +434,7 @@ func TestAddContributorByEmailRejectsUnknownEmail(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
+	if err := h.Service.AddContributorByEmail(context.Background(), g.Owner.ID, g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation for an unknown email", err)
 	}
 }
@@ -427,5 +463,132 @@ func TestRequireGoalOwnerAdmitsOnlyTheOwner(t *testing.T) {
 	}
 	if err := h.Service.RequireGoalOwner(ctx, owner.ID, 999); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing Goal: err = %v, want ErrNotFound", err)
+	}
+}
+
+// Only a Goal's Owner may mark it Dated or Ongoing: anyone else, a Delegate
+// and an Admin included, is refused and its Kind stays as it was.
+func TestMarkGoalKindAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+	due := testsupport.Epoch.AddDate(0, 6, 0)
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.MarkGoalDated(ctx, actor.ID, g.ID, due); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s marking it Dated: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.MarkGoalOngoing(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s marking it Ongoing: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Kind != "" {
+		t.Errorf("Kind after refusals = %q, want none", got.Kind)
+	}
+	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, due); err != nil {
+		t.Errorf("Owner marking it Dated: %v", err)
+	}
+	if _, err := h.Service.MarkGoalOngoing(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner marking it Ongoing: %v", err)
+	}
+}
+
+// Only a Goal's Owner may activate it: anyone else, a Delegate and an Admin
+// included, is refused and it stays Proposed.
+func TestActivateGoalAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+	if _, err := h.Service.MarkGoalOngoing(ctx, owner.ID, g.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, owner.ID, validMetric(g.ID)); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.ActivateGoal(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("Lifecycle after refusals = %q, want Proposed", got.Lifecycle)
+	}
+	if _, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}
+
+// Only a Goal's Owner may list a Contributor on it, by Account or by email:
+// anyone else, a Delegate and an Admin included, is refused and no
+// Contributor is listed.
+func TestAddContributorAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	dana := h.SignIn("dana@example.com")
+	ctx := context.Background()
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if err := h.Service.AddContributor(ctx, actor.ID, g.ID, dana.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by Account: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if err := h.Service.AddContributorByEmail(ctx, actor.ID, g.ID, "dana@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by email: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if err := h.Service.AddContributorByEmail(ctx, actor.ID, g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by an unknown email: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if list, _ := h.Service.ListContributors(ctx, g.ID); len(list) != 0 {
+		t.Errorf("Contributors after refusals = %+v, want none", list)
+	}
+	if err := h.Service.AddContributorByEmail(ctx, owner.ID, g.ID, "dana@example.com"); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}
+
+// Only a Goal's Owner or an Admin may change its title or Why it matters: a
+// stranger and a Delegate are refused, and neither changes.
+func TestTitleAndWhyItMattersEditsAdmitOnlyTheOwnerOrAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	delegate := h.SignIn("tpm@example.com")
+	admin := h.SignIn("admin@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "Customers wait.")
+	h.AddDelegate(owner, delegate, g.ID)
+	ctx := context.Background()
+
+	for name, actor := range map[string]domain.Account{
+		"a stranger": h.SignIn("pat@example.com"),
+		"a Delegate": delegate,
+	} {
+		if _, err := h.Service.EditTitle(ctx, g.ID, "Ship v3", actor.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing the title: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Customers leave.", actor.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing Why it matters: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Title != "Ship v2" || got.WhyItMatters != "Customers wait." {
+		t.Errorf("after refusals the Goal is %q / %q, want it unchanged", got.Title, got.WhyItMatters)
+	}
+	for name, actor := range map[string]domain.Account{"the Owner": owner, "an Admin": admin} {
+		if _, err := h.Service.EditTitle(ctx, g.ID, "Ship v2 by "+actor.Email, actor.ID); err != nil {
+			t.Errorf("%s editing the title: %v", name, err)
+		}
+		if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Customers leave "+actor.Email, actor.ID); err != nil {
+			t.Errorf("%s editing Why it matters: %v", name, err)
+		}
 	}
 }

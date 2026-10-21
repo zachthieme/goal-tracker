@@ -81,7 +81,7 @@ func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	weekly := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	fortnightly := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
-	if _, err := h.Service.SetCadence(context.Background(), fortnightly.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), fortnightly.Owner.ID, fortnightly.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Checkin(sam, weekly.ID, domain.HealthGreen, "On track.", "", time.Time{})

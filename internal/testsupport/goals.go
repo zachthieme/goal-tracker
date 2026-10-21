@@ -20,3 +20,14 @@ func (h *Harness) CreateGoal(owner domain.Account, title, whyItMatters string) d
 	}
 	return g
 }
+
+// GoalOwnerID returns the ID of goalID's Owner, failing the test on error, for
+// a test that has only the Goal's ID to hand and needs to act as its Owner.
+func (h *Harness) GoalOwnerID(goalID int64) int64 {
+	h.T.Helper()
+	g, err := h.Service.ViewGoal(context.Background(), goalID)
+	if err != nil {
+		h.T.Fatalf("ViewGoal: %v", err)
+	}
+	return g.Owner.ID
+}

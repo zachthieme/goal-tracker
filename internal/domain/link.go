@@ -143,8 +143,12 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 // and any link that would close a cycle (ADR-0001). The request is attributed to
 // the child's Owner, who is the person a normal request would come from. Any
 // open Parent suggestion of the same parent for the child closes as no longer
-// applying (ADR-0006).
-func (s *Service) ImportLink(ctx context.Context, childID, parentID int64) (Link, error) {
+// applying (ADR-0006). Only the Admin running the import, actorID, may make one
+// (ErrNotAuthorized; see ForImportBy).
+func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int64) (Link, error) {
+	if err := s.requireImportingAdmin(actorID); err != nil {
+		return Link{}, err
+	}
 	if childID == parentID {
 		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
 	}
