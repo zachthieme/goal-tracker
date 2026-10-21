@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -919,5 +920,55 @@ func TestNonAdminCantMakeOrRemoveAnAdmin(t *testing.T) {
 	admins, err := h.Service.Admins(t.Context())
 	if err != nil || len(admins) != 1 || admins[0].ID != ada.ID {
 		t.Errorf("Admins after a non-Admin's attempts = %+v, %v; want only Ada", admins, err)
+	}
+}
+
+// A Sync now whose directory fails logs its ERROR with the request's ID, the
+// same one its access line carries, so an operator can tie the failure to the
+// Admin's press (ticket #436).
+func TestSyncNowLogsItsFailureWithTheRequestsID(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	dir := &adminDirectoryFake{err: errors.New("the directory is down")}
+	sync := directory.NewSync(h.Service, dir, logger)
+	srv := web.NewServer(h.Service, web.WithLogger(logger), web.WithDirectorySync(sync))
+
+	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
+	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	signedIn := httptest.NewRecorder()
+	srv.ServeHTTP(signedIn, signIn)
+	buf.Reset()
+
+	r := httptest.NewRequest(http.MethodPost, "/admin/directory-sync", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range signedIn.Result().Cookies() {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Sync now: status %d, want 303:\n%s", w.Code, w.Body)
+	}
+	id := w.Header().Get("X-Request-ID")
+	var errs []map[string]any
+	for _, rec := range logRecords(t, &buf) {
+		if rec["level"] == "ERROR" {
+			errs = append(errs, rec)
+		}
+	}
+	lines := accessLines(t, &buf)
+	if len(errs) != 1 || len(lines) != 1 {
+		t.Fatalf("logged %d ERRORs and %d access lines, want 1 of each:\n%s", len(errs), len(lines), &buf)
+	}
+	if id == "" || lines[0]["request_id"] != id {
+		t.Fatalf("access line %v, want request_id %q", lines[0], id)
+	}
+	cause, _ := errs[0]["err"].(string)
+	if errs[0]["request_id"] != id || !strings.Contains(cause, "the directory is down") {
+		t.Errorf("ERROR record %v, want the directory's error with request_id %q", errs[0], id)
 	}
 }
