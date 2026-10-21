@@ -63,6 +63,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On the Goal page, Remove on each Draft Highlight is disabled while a Draft Highlight editor is open, like + Log a highlight and Edit, so it can't swap the block and lose what was typed (#372).
 
 **Infrastructure:**
+- [internal] `make start` and `make restart` take `SERVE_DIRECTORY_FILE=<csv>` to sync people and their Managers from a CSV file (`GOAL_TRACKER_DIRECTORY_FILE`) instead of Authentik's directory, and `make restart` keeps it. `dev/directory/people.csv` is the local Authentik's people and Managers, exported, so `make start NO_SSO=1 SERVE_DIRECTORY_FILE=dev/directory/people.csv` runs the same hierarchy without Authentik.
 - [internal] The vetinari agent image pre-creates `~/go/pkg`, `~/.cache` and `~/.cargo` as the agent user, so a cache bind-mounted beneath one of them no longer leaves its parent root-owned and unwritable (e.g. Go's `~/go/pkg/sumdb` beside a mounted `~/go/pkg/mod`). Rebuild with `vetinari build`.
 - [internal] The vetinari agent image pins Go to 1.27.1 instead of tracking the `golang:1.27` tag: go1.27.2 writes export data golangci-lint v2.13.2 can't read, so the `lint` gate failed every package's typecheck in a freshly built image.
 

@@ -111,13 +111,17 @@ endif
 # sign-on as the org would have it (GOAL_TRACKER_SIGNIN=oidc), and the app
 # syncs people and their Managers from its directory.
 # NO_SSO=1 uses the development email form instead (GOAL_TRACKER_SIGNIN=dev),
-# and leaves Authentik be. Authentik is started, told the app's tailnet callback, and put on the
+# and leaves Authentik be. SERVE_DIRECTORY_FILE=<csv> syncs people and their
+# Managers from that file instead of Authentik's directory
+# (GOAL_TRACKER_DIRECTORY_FILE); dev/directory/people.csv is the Authentik
+# blueprint's people, exported. Authentik is started, told the app's tailnet callback, and put on the
 # tailnet at https://<this machine>.<tailnet>.ts.net:$(AUTHENTIK_PORT), so
 # sign-in works from any device on the tailnet.
 SERVE_PORT ?= 8090
 SERVE_DB ?= goal-tracker.db
 SERVE_ADMINS ?= admin@example.com
 SERVE_LOG ?= serve.log
+SERVE_DIRECTORY_FILE ?=
 NO_SSO ?= 0
 SSO = $(if $(filter 1,$(NO_SSO)),0,1)
 AUTHENTIK_PORT ?= 9443
@@ -148,11 +152,14 @@ serve-app:
 	GOAL_TRACKER_OIDC_ISSUER=https://$$host:$(AUTHENTIK_PORT)/application/o/goal-tracker/ \
 	GOAL_TRACKER_OIDC_CLIENT_ID=goal-tracker \
 	GOAL_TRACKER_OIDC_CLIENT_SECRET=$(call env_value,GOAL_TRACKER_OIDC_CLIENT_SECRET) \
+	$(if $(SERVE_DIRECTORY_FILE),,\
 	GOAL_TRACKER_DIRECTORY_URL=http://127.0.0.1:9000 \
 	GOAL_TRACKER_DIRECTORY_TOKEN=$(call env_value,GOAL_TRACKER_DIRECTORY_TOKEN) \
+	)\
 	,\
 	GOAL_TRACKER_SIGNIN=dev \
 	) \
+	$(if $(SERVE_DIRECTORY_FILE),GOAL_TRACKER_DIRECTORY_FILE=$(abspath $(SERVE_DIRECTORY_FILE))) \
 	exec bin/goal-tracker
 
 # Start the local Authentik knowing the app's tailnet address (for its sign-in
@@ -180,7 +187,7 @@ endef
 # Build and start the app in the background, logging to $(SERVE_LOG), first
 # stopping the one a previous `make start` left running. Starting with NO_SSO=1
 # after a start without it also stops Authentik.
-start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the background, with Authentik sign-in (SERVE_*, NO_SSO=1)
+start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the background, with Authentik sign-in (SERVE_*, SERVE_DIRECTORY_FILE, NO_SSO=1)
 	@if [ -f $(SERVE_STATE) ]; then \
 		old=$$(sed -n 's/^SERVE_PORT := //p' $(SERVE_STATE)); \
 		if [ -n "$$old" ] && [ "$$old" != "$(SERVE_PORT)" ]; then $(call stop_server,$$old); fi; \
@@ -188,9 +195,9 @@ start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the 
 			echo "stopping Authentik"; (cd dev/authentik && docker compose stop); fi; \
 	fi
 	@$(call stop_server,$(SERVE_PORT))
-	@printf 'SERVE_PORT := %s\nSERVE_DB := %s\nSERVE_ADMINS := %s\nSERVE_LOG := %s\nNO_SSO := %s\n' \
-		'$(SERVE_PORT)' '$(SERVE_DB)' '$(SERVE_ADMINS)' '$(SERVE_LOG)' '$(if $(filter 1,$(SSO)),0,1)' >$(SERVE_STATE)
-	setsid nohup $(MAKE) serve-app SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT) >$(SERVE_LOG) 2>&1 </dev/null &
+	@printf 'SERVE_PORT := %s\nSERVE_DB := %s\nSERVE_ADMINS := %s\nSERVE_LOG := %s\nSERVE_DIRECTORY_FILE := %s\nNO_SSO := %s\n' \
+		'$(SERVE_PORT)' '$(SERVE_DB)' '$(SERVE_ADMINS)' '$(SERVE_LOG)' '$(SERVE_DIRECTORY_FILE)' '$(if $(filter 1,$(SSO)),0,1)' >$(SERVE_STATE)
+	setsid nohup $(MAKE) serve-app SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT) >$(SERVE_LOG) 2>&1 </dev/null &
 	@for i in $$(seq 100); do \
 		if ss -ltnH 'sport = :$(SERVE_PORT)' src 127.0.0.1 | grep -q .; then \
 			echo "goal-tracker is serving on :$(SERVE_PORT)$(if $(filter 1,$(SSO)), with Authentik sign-in, with the development sign-in form) (log: $(SERVE_LOG))"; exit 0; fi; \
@@ -206,4 +213,4 @@ stop: ## Stop the app `make start` started, and its Authentik
 # Rebuild and start the app again as the last `make start` did; any setting
 # given here replaces the recorded one.
 restart: ## Rebuild and restart the app as the last `make start` did
-	@$(MAKE) --no-print-directory start SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_LOG=$(SERVE_LOG) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT)
+	@$(MAKE) --no-print-directory start SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_LOG=$(SERVE_LOG) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT)
