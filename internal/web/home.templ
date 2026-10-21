@@ -22,13 +22,15 @@ templ homePage(current *domain.Account, v homeView) {
 		</header>
 		<div class="hm-col">
 			<section data-testid="home-needs-you" class="hm-section">
-				<h2 data-testid="home-needs-you-heading">{ homeNeedsYouHeading(v.NeedsYou()) }</h2>
+				<h2 data-testid="home-needs-you-heading">
+					@homeHeading("Needs you", v.NeedsYou())
+				</h2>
 				if v.NeedsYou() == 0 {
 					<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
 				}
 				if len(v.Due) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Check-ins due</h4>
+						<h3 class="hm-group-head">Check-ins due</h3>
 						<ul data-testid="home-due" class="hm-list">
 							for _, g := range v.Due {
 								@dueRow(g, g.CheckedIn && !v.NoChangeRefused[g.Goal.ID])
@@ -38,7 +40,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.Asks) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Asks for help</h4>
+						<h3 class="hm-group-head">Asks for help</h3>
 						<ul data-testid="home-asks" class="hm-list">
 							for _, a := range v.Asks {
 								@askRow(a)
@@ -48,7 +50,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.ActionItems) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Action Items</h4>
+						<h3 class="hm-group-head">Action Items</h3>
 						<ul data-testid="home-action-items" class="hm-list">
 							for _, l := range v.ActionItems {
 								@actionItemRow(l)
@@ -58,7 +60,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.Requests) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Requests</h4>
+						<h3 class="hm-group-head">Requests</h3>
 						<ul data-testid="home-requests" class="hm-list">
 							for _, req := range v.Requests {
 								switch  {
@@ -79,7 +81,9 @@ templ homePage(current *domain.Account, v homeView) {
 			}
 			if len(v.AtRisk) > 0 {
 				<section data-testid="home-not-green" class="hm-section">
-					<h2>Your Yellow or Red goals</h2>
+					<h2>
+						@homeHeading("Your Yellow or Red goals", len(v.AtRisk))
+					</h2>
 					<ul class="hm-list hm-compact">
 						for _, g := range v.AtRisk {
 							<li>
@@ -143,7 +147,9 @@ templ homeYourGoals(v homeView) {
 // Follow-ups for the detail.
 templ homeOrgSection(org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
-		<h2>My org</h2>
+		<h2>
+			@homeHeading("My org", len(org.Flagged))
+		</h2>
 		if org.Total.Any() {
 			<p data-testid="home-org-total">
 				for i, b := range homeOrgBadges(org.Total) {
@@ -180,6 +186,17 @@ templ homeOrgSection(org homeOrg) {
 			<a data-testid="home-org-follow-ups-link" href={ templ.SafeURL(fmt.Sprintf("/follow-ups?org=%d", org.ViewerID)) }>My org on Follow-ups →</a>
 		</p>
 	</section>
+}
+
+// homeHeading is a section heading's text: its name, then its count in muted
+// text, with no count when it is zero.
+templ homeHeading(name string, n int) {
+	if n > 0 {
+		{ name }
+		<span class="hm-count">{ strconv.Itoa(n) }</span>
+	} else {
+		{ name }
+	}
 }
 
 // homeOrgCounts badges each of a My org row's counts that has anything,
@@ -373,8 +390,9 @@ templ homeStyles() {
 		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
 		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted)}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
-		.hm-card,.hm-section{display:flex;flex-direction:column;gap:12px;min-width:0}
-		.hm-card>h2,.hm-section>h2{font-size:19px;line-height:1.4;letter-spacing:normal}
+		.hm-section{display:flex;flex-direction:column;gap:12px;min-width:0}
+		.hm-section>h2{display:flex;align-items:baseline;gap:8px;margin:0;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}
+		.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
 		.hm-section>.hm-list>li:first-child{border-top:1px solid var(--color-border);padding-top:8px}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
@@ -398,7 +416,7 @@ templ homeStyles() {
 		.hm-bar>.r{background:var(--health-r-ink)}
 		.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}
 		.hm-group{display:flex;flex-direction:column;gap:8px}
-		.hm-group>h4{margin:0}
+		.hm-group-head{margin:0;font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
 		.badge.as-of{padding:0 8px;background:var(--color-surface);color:var(--color-ink-muted);border:1px solid var(--color-border)}
 	</style>
 }

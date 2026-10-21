@@ -342,15 +342,6 @@ func homeTodayISO(d displayDates) string {
 	return d.Now.In(d.Loc).Format(dateLayout)
 }
 
-// homeNeedsYouHeading titles the Needs you card with the count of what's waiting
-// on the person ("Needs you · 2"), plain "Needs you" when nothing is.
-func homeNeedsYouHeading(n int) string {
-	if n == 0 {
-		return "Needs you"
-	}
-	return fmt.Sprintf("Needs you · %d", n)
-}
-
 // othersAllClear reads the count of people directly under the viewer whose
 // Org has nothing flagged.
 func othersAllClear(n int) string {
