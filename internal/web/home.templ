@@ -8,28 +8,29 @@ import (
 )
 
 // homePage is the signed-in person's week: the Goals to check in on, and what
-// else is waiting on them. It is one column: Needs you is its one card, the
-// page's job, and the rest is context on the canvas, Your goals as a line in
-// the page head.
+// else is waiting on them. It is one surface with no card: under the page
+// header's "Home" and its New goal, the page title, Your week, over today's
+// date and Your goals, then Needs you, the page's job, My org and Your Yellow
+// or Red goals as sections of ruled rows (DESIGN.md § Direction: Page shapes).
 templ homePage(current *domain.Account, v homeView) {
-	@layout("Home", current) {
+	@framedLayout("Home", current, homePageHeader()) {
 		@homeStyles()
-		<header data-testid="home-head" class="page-head">
-			<div class="hm-head">
-				<h1>Your week</h1>
-				@homeYourGoals(v)
-			</div>
-			<a class="btn primary" href="/goals/new">New goal</a>
+		<header data-testid="home-head" class="hm-head">
+			<h1>Your week</h1>
+			<p class="hm-date"><time datetime={ homeTodayISO(v.Dates) }>{ homeToday(v.Dates) }</time></p>
+			@homeYourGoals(v)
 		</header>
 		<div class="hm-col">
-			<section data-testid="home-needs-you" class="card hm-card">
-				<h2 data-testid="home-needs-you-heading">{ homeNeedsYouHeading(v.NeedsYou()) }</h2>
+			<section data-testid="home-needs-you" class="hm-section">
+				<h2 data-testid="home-needs-you-heading">
+					@homeHeading("Needs you", v.NeedsYou())
+				</h2>
 				if v.NeedsYou() == 0 {
 					<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
 				}
 				if len(v.Due) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Check-ins due</h4>
+						<h3 class="hm-group-head">Check-ins due</h3>
 						<ul data-testid="home-due" class="hm-list">
 							for _, g := range v.Due {
 								@dueRow(g, g.CheckedIn && !v.NoChangeRefused[g.Goal.ID])
@@ -39,7 +40,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.Asks) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Asks for help</h4>
+						<h3 class="hm-group-head">Asks for help</h3>
 						<ul data-testid="home-asks" class="hm-list">
 							for _, a := range v.Asks {
 								@askRow(a)
@@ -49,7 +50,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.ActionItems) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Action Items</h4>
+						<h3 class="hm-group-head">Action Items</h3>
 						<ul data-testid="home-action-items" class="hm-list">
 							for _, l := range v.ActionItems {
 								@actionItemRow(l)
@@ -59,7 +60,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 				if len(v.Requests) > 0 {
 					<div class="hm-group">
-						<h4 class="label">Requests</h4>
+						<h3 class="hm-group-head">Requests</h3>
 						<ul data-testid="home-requests" class="hm-list">
 							for _, req := range v.Requests {
 								switch  {
@@ -80,15 +81,19 @@ templ homePage(current *domain.Account, v homeView) {
 			}
 			if len(v.AtRisk) > 0 {
 				<section data-testid="home-not-green" class="hm-section">
-					<h2>Your Yellow or Red goals</h2>
-					<ul class="hm-list hm-compact">
+					<h2>
+						@homeHeading("Your Yellow or Red goals", len(v.AtRisk))
+					</h2>
+					<ul class="hm-list">
 						for _, g := range v.AtRisk {
 							<li>
-								<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
-								if asOf := healthAsOf(g); asOf != "" {
-									<span data-testid="home-goal-as-of" class="muted small">{ asOf }</span>
-								}
-								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+								<div class="hm-what">
+									<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+									if asOf := healthAsOf(g); asOf != "" {
+										<span data-testid="home-goal-as-of" class="hm-meta">{ asOf }</span>
+									}
+								</div>
 							</li>
 						}
 					</ul>
@@ -99,7 +104,15 @@ templ homePage(current *domain.Account, v homeView) {
 	}
 }
 
-// homeYourGoals is the page head's Your goals line: the Health distribution
+// homePageHeader is Home's header strip: "Home", with New goal as its primary
+// action at the right.
+templ homePageHeader() {
+	@pageHeader(pageHead{Title: "Home"}) {
+		<a class="btn primary hm-btn" href="/goals/new">New goal</a>
+	}
+}
+
+// homeYourGoals is the page title's Your goals line: the Health distribution
 // bar of the Goals the person Owns, their counts by Health, and the links on to
 // the Goals they own or help with and, when there are any, those they're a
 // Delegate on.
@@ -130,13 +143,15 @@ templ homeYourGoals(v homeView) {
 }
 
 // homeOrgSection is the My org section, a plain section on the canvas: counts and
-// people, never Goals. The total line is plain text, set apart from the
-// badges counting each person's Org, and each person's name leads to their
-// Org on Goals; the section ends with links on to the whole Org's Goals and
-// Follow-ups for the detail.
+// people, never Goals. The total line is plain text, set apart from the pills
+// and chips counting each person's Org, and each person's row, their initials,
+// Name and counts, is one link to their Org on Goals; the section ends with
+// links on to the whole Org's Goals and Follow-ups for the detail.
 templ homeOrgSection(org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
-		<h2>My org</h2>
+		<h2>
+			@homeHeading("My org", len(org.Flagged))
+		</h2>
 		if org.Total.Any() {
 			<p data-testid="home-org-total">
 				for i, b := range homeOrgBadges(org.Total) {
@@ -146,18 +161,19 @@ templ homeOrgSection(org homeOrg) {
 					<span data-testid="home-org-count" data-kind={ b.Kind }>{ b.Label }</span>
 				}
 			</p>
-			<ul class="hm-list hm-compact">
+			<ul class="hm-list">
 				for _, p := range org.Flagged {
 					<li data-testid="home-org-person">
-						<div class="hm-what">
-							<a data-testid="home-org-person-link" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
+						<a data-testid="home-org-person-link" class="hm-org-row" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
+							<span class="avatar hm-avatar" aria-hidden="true">{ initials(p.Person) }</span>
+							<span class="hm-org-name">
 								@personPlain(p.Person)
-							</a>
+							</span>
 							if p.Person.Departed {
 								<span data-testid="home-org-departed" class="badge lc">departed</span>
 							}
 							@homeOrgCounts(p.Counts)
-						</div>
+						</a>
 					</li>
 				}
 			</ul>
@@ -175,6 +191,17 @@ templ homeOrgSection(org homeOrg) {
 	</section>
 }
 
+// homeHeading is a section heading's text: its name, then its count in muted
+// text, with no count when it is zero.
+templ homeHeading(name string, n int) {
+	if n > 0 {
+		{ name }
+		<span class="hm-count">{ strconv.Itoa(n) }</span>
+	} else {
+		{ name }
+	}
+}
+
 // homeOrgCounts badges each of a My org row's counts that has anything,
 // labelled to read without colour, Red, then Path to Green overdue, Check-in
 // overdue and Yellow.
@@ -184,24 +211,25 @@ templ homeOrgCounts(c domain.SignalCounts) {
 	}
 }
 
-// dueRow is one Goal to check in on: its title, then a status line of its
-// Health, muted when Check-in overdue, how long since its last Check-in and how
-// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal
-// it is. When noChange says one would be recorded, the one-click No change sits
-// beside the Check in link to the Goal's Check-in page.
+// dueRow is one Goal to check in on: its Health pill, muted when Check-in
+// overdue, then its title, then a meta line of how long since its last
+// Check-in and how often one is due, its Check-in overdue mark and, for a
+// Delegate, whose Goal it is. When noChange says one would be recorded, the
+// one-click No change sits beside the Check in link to the Goal's Check-in
+// page at the row's right.
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
+			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
+				<span class="dot"></span>
+				if g.Health == "" {
+					No Health yet
+				} else {
+					{ g.Health }
+				}
+			</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-			<p data-testid="home-due-status" class="hm-status muted small">
-				<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
-					<span class="dot"></span>
-					if g.Health == "" {
-						No Health yet
-					} else {
-						{ g.Health }
-					}
-				</span>
+			<p data-testid="home-due-status" class="hm-meta">
 				<span class="hm-phrase">{ homeDueAge(g) }</span>
 				{ "·" }
 				<span class="hm-phrase">{ homeDueCadence(g.Freshness) }</span>
@@ -235,7 +263,7 @@ templ askRow(a domain.AskForHelp) {
 		<div class="hm-what">
 			<span class={ "badge", healthClass(a.Health) }><span class="dot"></span>{ a.Health }</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d#comments", a.Goal.ID)) }>{ a.Goal.Title }</a>
-			<p class="muted small">
+			<p class="hm-meta">
 				{ "from " }
 				@person(a.Goal.Owner)
 			</p>
@@ -255,7 +283,7 @@ templ actionItemRow(l domain.ActionItemListing) {
 			if l.Overdue {
 				<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>
 			}
-			<span class="muted">{ homeActionItemPlace(l) }</span>
+			<span class="hm-meta">{ homeActionItemPlace(l) }</span>
 		</div>
 		<div class="hm-actions">
 			@closeActionItemForm(l.Item, "/home")
@@ -355,43 +383,55 @@ templ healthBar(v homeView) {
 	</div>
 }
 
-// homeStyles are Home's own rules on top of app.css: the page head stacks the
-// title over the Your goals line, the Needs you card and each plain section
-// stack their title over a list of ruled rows, each title an h2 kept at the
-// card title's size, a plain section's first row ruled off from its title too,
-// and a row puts what it's about on the left and its actions on the right,
-// wrapping the actions underneath when the column is narrow.
+// homeStyles are Home's own rules on top of app.css (DESIGN.md § Direction).
+// The page title stacks Your week over the date and the Your goals line. Each
+// section stacks its h2, 13px at 600 with its count muted, over hairline-ruled
+// rows at least 44px tall. A row puts what it's about on the left, led by a
+// Health pill or a chip, the title, then a muted meta line, and its 30px
+// actions on the right, wrapping underneath when the column is narrow.
 templ homeStyles() {
 	<style>
 		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
-		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted)}
+		.hm-date{color:var(--color-ink-muted);font-size:13px}
+		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
-		.hm-card,.hm-section{display:flex;flex-direction:column;gap:12px;min-width:0}
-		.hm-card>h2,.hm-section>h2{font-size:19px;line-height:1.4;letter-spacing:normal}
-		.hm-section>.hm-list>li:first-child{border-top:1px solid var(--color-border);padding-top:8px}
+		.hm-section{display:flex;flex-direction:column;gap:8px;min-width:0}
+		.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}
+		.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
+		.hm-group{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+		.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
-		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 0;border-top:1px solid var(--color-border)}
-		.hm-list>li:first-child{border-top:none;padding-top:0}
-		.hm-list>li:last-child{padding-bottom:0}
-		.hm-compact>li{gap:4px 8px;padding:8px 0}
+		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:4px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
+		.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
-		.hm-what>p{flex-basis:100%}
-		.hm-status .badge,.hm-status .tag{margin-right:4px}
+		.hm-what>a{font-size:14px;font-weight:500}
+		.hm-what>p:not(.hm-meta){flex-basis:100%}
+		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
 		.hm-phrase{white-space:nowrap}
-		.hm-what>a,.hm-compact a{font-weight:500}
+		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
+		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
+		.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}
+		.hm-list>li:has(>.hm-org-row){padding:0}
+		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
+		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
+		.hm-org-name{font-size:14px;font-weight:500}
+		.hm-org-row:hover .hm-org-name{text-decoration:underline}
+		.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}
+		.hm-org-row .badge.r::before,.hm-org-row .badge.y::before{content:"";flex:none;width:8px;height:8px;background:currentColor}
+		.hm-org-row .badge.r::before{border-radius:1px}
+		.hm-org-row .badge.y::before{width:10px;height:9px;clip-path:polygon(50% 0,100% 100%,0 100%)}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
+		.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}
+		.hm-btn{height:30px;padding:0 12px;font-size:13px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}
 		.hm-bar>span{flex:1 1 0;min-width:2px}
-		.hm-bar>.g{background:var(--health-g-ink)}
-		.hm-bar>.y{background:var(--health-y-ink)}
-		.hm-bar>.r{background:var(--health-r-ink)}
+		.hm-bar>.g{background:var(--health-g-mark)}
+		.hm-bar>.y{background:var(--health-y-mark)}
+		.hm-bar>.r{background:var(--health-r-mark)}
 		.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}
-		.hm-group{display:flex;flex-direction:column;gap:8px}
-		.hm-group>h4{margin:0}
-		.badge.as-of{padding:0 8px;background:var(--color-surface);color:var(--color-ink-muted);border:1px solid var(--color-border)}
 	</style>
 }

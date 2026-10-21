@@ -26,6 +26,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 		s.serverError(w, r, "could not load your week", err)
 		return
 	}
+	v.Dates = s.displayDates()
 	offer := takeUndo(w, r)
 	v.Toast = cmp.Or(
 		s.linkRejectionToast(r.Context(), offer, current, fromHome),
@@ -63,6 +64,9 @@ type homeView struct {
 	Delegated int
 	// Org is the My org section, nil for someone with no one under them.
 	Org *homeOrg
+	// Dates is the clock the page title's date is read from. Only Home's own
+	// handler fills it, not the sidebar's count.
+	Dates displayDates
 	// Toast, when set, offers Undo for the request just rejected, or the
 	// suggestion just declined, from Home.
 	Toast *toast
@@ -327,13 +331,15 @@ func healthBarLabel(v homeView) string {
 	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)
 }
 
-// homeNeedsYouHeading titles the Needs you card with the count of what's waiting
-// on the person ("Needs you · 2"), plain "Needs you" when nothing is.
-func homeNeedsYouHeading(n int) string {
-	if n == 0 {
-		return "Needs you"
-	}
-	return fmt.Sprintf("Needs you · %d", n)
+// homeToday reads today, in the org's timezone, as the page title's date:
+// "Monday, Jan 12".
+func homeToday(d displayDates) string {
+	return d.Now.In(d.Loc).Weekday().String() + ", " + showDayOf(d.Now, d.Now, d.Loc)
+}
+
+// homeTodayISO is today, in the org's timezone, for the date's datetime=.
+func homeTodayISO(d displayDates) string {
+	return d.Now.In(d.Loc).Format(dateLayout)
 }
 
 // othersAllClear reads the count of people directly under the viewer whose
