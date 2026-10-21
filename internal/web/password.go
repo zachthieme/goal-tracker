@@ -141,7 +141,7 @@ func (s *Server) clientIP(r *http.Request) string {
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	if !s.trustedProxy(host) {
+	if remote, err := netip.ParseAddr(host); err != nil || !s.trustedProxy(remote) {
 		return host
 	}
 	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
@@ -150,21 +150,17 @@ func (s *Server) clientIP(r *http.Request) string {
 		if err != nil {
 			return host
 		}
-		if !s.trustedProxy(addr.String()) {
+		if !s.trustedProxy(addr) {
 			return addr.Unmap().String()
 		}
 	}
 	return host
 }
 
-// trustedProxy reports whether host is an address within one of the trusted
-// proxies' ranges.
-func (s *Server) trustedProxy(host string) bool {
-	addr, err := netip.ParseAddr(host)
-	if err != nil {
-		return false
-	}
-	addr = addr.Unmap()
+// trustedProxy reports whether addr is within one of the trusted proxies'
+// ranges.
+func (s *Server) trustedProxy(addr netip.Addr) bool {
+	addr = addr.Unmap().WithZone("") // a range can't name a zone
 	for _, p := range s.trustedProxies {
 		if p.Contains(addr) {
 			return true

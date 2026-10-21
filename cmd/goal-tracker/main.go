@@ -12,6 +12,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"slices"
 	"strings"
@@ -113,6 +114,10 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 		_, _ = rand.Read(cfg.sessionKey)
 	}
 	webOpts = append(webOpts, web.WithSessionKey(cfg.sessionKey))
+	if len(cfg.trustedProxies) > 0 {
+		webOpts = append(webOpts, web.WithTrustedProxies(cfg.trustedProxies))
+		logger.Info("the password sign-in throttle counts a request from a trusted proxy against the client its X-Forwarded-For names", "trusted_proxies", fmt.Sprint(cfg.trustedProxies))
+	}
 	if cfg.signIn == signInPassword {
 		webOpts = append(webOpts, web.WithPasswordSignIn())
 		logger.Info("signing in with passwords")
@@ -223,6 +228,11 @@ type config struct {
 	// or else one found on PATH; "" when there's none, and a PDF download is
 	// the print page.
 	chrome string
+	// trustedProxies are the reverse proxies, from
+	// GOAL_TRACKER_TRUSTED_PROXIES, whose X-Forwarded-For names the client the
+	// password sign-in throttle counts a request against; none when it's
+	// unset, and the throttle counts each against the address it came from.
+	trustedProxies []netip.Prefix
 }
 
 // The sign-in methods GOAL_TRACKER_SIGNIN accepts: the org's OpenID Connect
@@ -283,6 +293,11 @@ func loadConfig() (config, error) {
 	cfg.chrome, err = pdf.Find(trimmedEnv("GOAL_TRACKER_CHROME"))
 	if err != nil {
 		return config{}, fmt.Errorf("GOAL_TRACKER_CHROME: %w", err)
+	}
+
+	cfg.trustedProxies, err = parseTrustedProxies(os.Getenv("GOAL_TRACKER_TRUSTED_PROXIES"))
+	if err != nil {
+		return config{}, fmt.Errorf("GOAL_TRACKER_TRUSTED_PROXIES: %w", err)
 	}
 
 	if v := os.Getenv("GOAL_TRACKER_SESSION_KEY"); v != "" {
@@ -365,6 +380,32 @@ func loadDirectoryConfig() (*directoryConfig, error) {
 		return &directoryConfig{url: trimmedEnv(vars[0]), token: trimmedEnv(vars[1])}, nil
 	}
 	return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing " + strings.Join(missing, ", "))
+}
+
+// parseTrustedProxies is the comma-separated list of CIDRs and bare IPs in v,
+// a bare IP being a range of just that address, and an IPv4-mapped IPv6 one
+// its IPv4 address. Blank entries are skipped, and
+// the space around each is trimmed; any other entry that isn't a CIDR or an IP
+// is an error naming it.
+func parseTrustedProxies(v string) ([]netip.Prefix, error) {
+	var proxies []netip.Prefix
+	for _, entry := range strings.Split(v, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(entry); err == nil {
+			proxies = append(proxies, p.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("%q is neither a CIDR nor an IP", entry)
+		}
+		addr = addr.Unmap() // the address clientIP compares is unmapped
+		proxies = append(proxies, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return proxies, nil
 }
 
 // trimmedEnv is the environment variable key without the whitespace around
