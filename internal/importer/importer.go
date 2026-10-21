@@ -656,7 +656,7 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	for _, m := range s.metrics {
-		if _, err := tx.AddMetric(ctx, domain.AddMetricInput{
+		if _, err := tx.AddMetric(ctx, adminID, domain.AddMetricInput{
 			GoalID:     g.ID,
 			Name:       m.name,
 			Unit:       m.unit,

@@ -238,7 +238,7 @@ func TestSubmitCheckinRecordsMetricReadings(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
 
-	latency, err := h.Service.AddMetric(context.Background(), validMetric(goal.ID))
+	latency, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, validMetric(goal.ID))
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestSubmitCheckinRejectsReadingForForeignMetric(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
 	other := h.ActiveGoal(sam, "Grow signups", "More signups, more revenue.")
-	foreign, err := h.Service.AddMetric(context.Background(), validMetric(other.ID))
+	foreign, err := h.Service.AddMetric(context.Background(), other.Owner.ID, validMetric(other.ID))
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
@@ -646,7 +646,7 @@ func offTargetMetricGoal(t *testing.T, h *testsupport.Harness, owner domain.Acco
 	t.Helper()
 	ctx := context.Background()
 	goal := h.ActiveGoal(owner, "Reclaim idle capacity", "Idle machines cost money.")
-	m, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	m, err := h.Service.AddMetric(ctx, goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
 		Name:       "Idle capacity",
 		Unit:       "percent",
@@ -762,7 +762,7 @@ func TestGreenWithUnreadMetricPastItsDateNeedsNoConfirming(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reclaim idle capacity", "Idle machines cost money.")
-	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "Idle capacity", Unit: "percent", Direction: domain.MetricDown,
 		Baseline: 55, Target: 20, TargetDate: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC),
 	}); err != nil {

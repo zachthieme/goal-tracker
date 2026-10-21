@@ -31,7 +31,7 @@ func addMilestone(t *testing.T, h *testsupport.Harness, goalID int64) {
 
 func addMetric(t *testing.T, h *testsupport.Harness, goalID int64) {
 	t.Helper()
-	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(context.Background(), h.GoalOwnerID(goalID), domain.AddMetricInput{
 		GoalID:     goalID,
 		Name:       "p95 latency",
 		Unit:       "ms",

@@ -375,7 +375,7 @@ func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in Defin
 		}
 	}
 	for _, m := range in.Metrics {
-		if _, err := s.AddMetric(ctx, AddMetricInput{
+		if _, err := s.AddMetric(ctx, in.OwnerID, AddMetricInput{
 			GoalID:     goalID,
 			Name:       m.Name,
 			Unit:       m.Unit,

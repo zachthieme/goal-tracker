@@ -1644,7 +1644,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
 	}
-	if _, err := h.Service.AddMetric(ctx, domain.AddMetricInput{GoalID: g.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300, TargetDate: testsupport.Epoch.AddDate(0, 6, 0)}); err != nil {
+	if _, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{GoalID: g.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300, TargetDate: testsupport.Epoch.AddDate(0, 6, 0)}); err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
 	web := fits.channel.Values[0]

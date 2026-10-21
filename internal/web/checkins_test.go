@@ -118,7 +118,7 @@ func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
-	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	metric, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
 		Name:       "p95 checkout latency",
 		Unit:       "ms",
@@ -528,7 +528,7 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
-	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	metric, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
 		Name:       "p95 checkout latency",
 		Unit:       "ms",
@@ -615,7 +615,7 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
-	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	metric, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
 		Name:       "Signups",
 		Unit:       "per week",
@@ -664,7 +664,7 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
 	addMetric := func(name string) domain.Metric {
 		t.Helper()
-		m, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		m, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 			GoalID:     goal.ID,
 			Name:       name,
 			Unit:       "per week",
@@ -2806,7 +2806,7 @@ func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
 // addCheckinGhostMetric adds a Metric to goal, failing the test on error.
 func addCheckinGhostMetric(t *testing.T, h *testsupport.Harness, goal domain.Goal, name string) domain.Metric {
 	t.Helper()
-	m, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	m, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
 		Name:       name,
 		Unit:       "per second",
@@ -2829,7 +2829,7 @@ func offTargetIdleGoal(t *testing.T, h *testsupport.Harness, owner domain.Accoun
 	t.Helper()
 	ctx := context.Background()
 	goal := h.ActiveGoal(owner, "Reclaim idle capacity", "Idle machines cost money.")
-	idle, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	idle, err := h.Service.AddMetric(ctx, goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "Idle capacity", Unit: "percent", Direction: domain.MetricDown,
 		Baseline: 55, Target: 20, TargetDate: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC),
 	})
@@ -3659,7 +3659,7 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
-	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "Signups", Unit: "per week", Direction: domain.MetricUp,
 		Baseline: 100, Target: 500, TargetDate: h.Clock.Now().AddDate(0, 6, 0),
 	}); err != nil {

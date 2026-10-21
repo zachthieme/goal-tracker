@@ -177,7 +177,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 					h.T.Fatalf("MarkGoalOngoing: %v", err)
 				}
-				if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+				if _, err := h.Service.AddMetric(context.Background(), g.Owner.ID, domain.AddMetricInput{
 					GoalID: g.ID, Name: "NPS", Unit: "points", Direction: domain.MetricUp,
 					Baseline: 10, Target: 40, TargetDate: h.Clock.Now().AddDate(1, 0, 0),
 				}); err != nil {
@@ -304,7 +304,7 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 	// Due 2026-07-02 with Milestone Beta on 2026-04-02 (ActiveGoal's defaults).
 	g := h.ActiveGoal(boss, "Launch in EU", "EU shoppers can't pay in euros.")
 	child := h.ActiveChildOf(boss, g, "Localize checkout", "why")
-	revenue, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	revenue, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{
 		GoalID: g.ID, Name: "EU revenue", Unit: "$M", Direction: domain.MetricUp,
 		Baseline: 10, Target: 20, TargetDate: date(2026, 12, 31),
 	})

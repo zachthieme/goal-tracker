@@ -2479,7 +2479,7 @@ func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	if _, err := h.Service.MarkGoalDated(ctx, goal.Owner.ID, goal.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	metric, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	metric, err := h.Service.AddMetric(ctx, goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
 		Baseline: 1200, Target: 400, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})
@@ -3364,7 +3364,7 @@ func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	withMetric := func(g domain.Goal) domain.Goal {
 		t.Helper()
-		if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
+		if _, err := h.Service.AddMetric(t.Context(), g.Owner.ID, domain.AddMetricInput{
 			GoalID: g.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
 			Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
 		}); err != nil {
@@ -3421,7 +3421,7 @@ func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 	h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
 	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	active := h.ActiveChildOf(sam, parent, "Reduce outages", "Outages cost trust.")
-	if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(t.Context(), active.Owner.ID, domain.AddMetricInput{
 		GoalID: active.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
 		Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
 	}); err != nil {
@@ -4771,7 +4771,7 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 	if _, err := h.Service.MarkGoalOngoing(context.Background(), goal.Owner.ID, goal.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
-	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+	if _, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "p95", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300,
 		TargetDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
@@ -6075,7 +6075,7 @@ func ownerOnlyGoal(t *testing.T, h *testsupport.Harness, owner domain.Account) (
 	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	m, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	m, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{
 		GoalID: g.ID, Name: "p95 checkout latency", Unit: "ms", Direction: domain.MetricDown,
 		Baseline: 1200, Target: 400, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
 	})

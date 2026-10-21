@@ -67,8 +67,9 @@ type AddMetricInput struct {
 }
 
 // AddMetric adds a Metric to a Goal. Name, unit, a valid direction, and a
-// target date are required.
-func (s *Service) AddMetric(ctx context.Context, in AddMetricInput) (Metric, error) {
+// target date are required. Only the Goal's Owner may add one
+// (ErrNotAuthorized).
+func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInput) (Metric, error) {
 	name := strings.TrimSpace(in.Name)
 	unit := strings.TrimSpace(in.Unit)
 	if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
@@ -79,6 +80,9 @@ func (s *Service) AddMetric(ctx context.Context, in AddMetricInput) (Metric, err
 			return Metric{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
 		}
 		return Metric{}, fmt.Errorf("look up goal: %w", err)
+	}
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, in.GoalID); err != nil {
+		return Metric{}, err
 	}
 
 	row, err := s.queries.CreateMetric(ctx, db.CreateMetricParams{
@@ -108,18 +112,23 @@ type EditMetricInput struct {
 	TargetDate time.Time
 }
 
-// EditMetric changes a Metric's fields. The same rules as AddMetric apply.
-func (s *Service) EditMetric(ctx context.Context, in EditMetricInput) (Metric, error) {
+// EditMetric changes a Metric's fields. The same rules as AddMetric apply,
+// its Goal's Owner alone included.
+func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricInput) (Metric, error) {
 	name := strings.TrimSpace(in.Name)
 	unit := strings.TrimSpace(in.Unit)
 	if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
 		return Metric{}, err
 	}
-	if _, err := s.queries.GetMetric(ctx, in.MetricID); err != nil {
+	current, err := s.queries.GetMetric(ctx, in.MetricID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Metric{}, fmt.Errorf("%w: metric %d", ErrNotFound, in.MetricID)
 		}
 		return Metric{}, fmt.Errorf("look up metric: %w", err)
+	}
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, current.GoalID); err != nil {
+		return Metric{}, err
 	}
 
 	row, err := s.queries.UpdateMetric(ctx, db.UpdateMetricParams{

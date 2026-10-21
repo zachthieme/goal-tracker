@@ -1746,7 +1746,7 @@ func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	in.GoalID = id
-	_, err = s.svc.AddMetric(r.Context(), in)
+	_, err = s.svc.AddMetric(r.Context(), current.ID, in)
 	s.writeCommandResult(w, r, id, err)
 }
 
@@ -1764,7 +1764,7 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
-	m, err := s.svc.EditMetric(r.Context(), domain.EditMetricInput{
+	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
 		Name:       in.Name,
 		Unit:       in.Unit,

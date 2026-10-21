@@ -151,7 +151,7 @@ func addNamedMetric(t *testing.T, h *testsupport.Harness, goalID int64, name str
 	t.Helper()
 	in := validMetric(goalID)
 	in.Name = name
-	m, err := h.Service.AddMetric(context.Background(), in)
+	m, err := h.Service.AddMetric(context.Background(), h.GoalOwnerID(goalID), in)
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}

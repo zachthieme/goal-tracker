@@ -399,7 +399,7 @@ func TestGoalHistoryCheckinShowsWhatItRecorded(t *testing.T) {
 	dee := h.SignInNamed("dee@example.com", "Dee Delegate")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	h.AddDelegate(sam, dee, goal.ID)
-	latency, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+	latency, err := h.Service.AddMetric(ctx, goal.Owner.ID, domain.AddMetricInput{
 		GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
 		Baseline: 1000, Target: 400, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
 	})
@@ -1767,7 +1767,7 @@ func TestGoalHistoryCheckinThatRecordsMoreEndsTheRun(t *testing.T) {
 			ctx := context.Background()
 			sam := h.SignIn("sam@example.com")
 			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
-			latency, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+			latency, err := h.Service.AddMetric(ctx, goal.Owner.ID, domain.AddMetricInput{
 				GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
 				Baseline: 1000, Target: 400, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
 			})
