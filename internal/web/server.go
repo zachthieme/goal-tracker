@@ -22,6 +22,9 @@ type Server struct {
 	svc *domain.Service
 	mux *http.ServeMux
 	log *slog.Logger
+	// app is the mux behind the checks every request passes first (see
+	// ServeHTTP).
+	app http.Handler
 	// sessions signs and checks the session cookie.
 	sessions sessionCodec
 	// secureCookies marks the session cookie Secure, for an app served over
@@ -110,13 +113,37 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 		opt(s)
 	}
 	s.routes()
+	s.app = http.NewCrossOriginProtection().Handler(http.HandlerFunc(s.serveRoutes))
 	return s
 }
 
-// ServeHTTP makes Server an http.Handler. It records the browser's chosen
+// ServeHTTP makes Server an http.Handler. It refuses, with a 403, a request
+// other than GET, HEAD or OPTIONS that a browser says came from another
+// origin, so a page elsewhere can't act as whoever is signed in. Every
+// response carries securityHeaders.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for name, value := range securityHeaders {
+		w.Header().Set(name, value)
+	}
+	s.app.ServeHTTP(w, r)
+}
+
+// securityHeaders are set on every response before its handler runs, so a
+// handler that sets one of its own, as the set-password page does with
+// Referrer-Policy, has the last word. They keep the app out of other sites'
+// frames, so a click there can't land on one of its buttons; stop the browser
+// guessing a response's content type; and send the app's addresses as Referer
+// only to the app itself.
+var securityHeaders = map[string]string{
+	"Content-Security-Policy": "frame-ancestors 'none'",
+	"X-Content-Type-Options":  "nosniff",
+	"Referrer-Policy":         "same-origin",
+}
+
+// serveRoutes hands r to the route it matches. It records the browser's chosen
 // theme in the request context, so every page the request renders is pinned to
 // it, and the Server's logger, so a page that fails to draw is logged there.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 	r = withTheme(r)
 	s.mux.ServeHTTP(w, r.WithContext(withRequestLogger(r.Context(), s.log)))
 }
