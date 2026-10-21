@@ -70,7 +70,10 @@ there, not from `@playwright/test`. Each test gets:
   writes, so the suite runs `fullyParallel`. `page` and `as` resolve paths
   such as `"/home"` against it. The server runs in UTC with the default weekly
   reminder (Monday 09:00) and its clock offset to start at `startAt`; no
-  `GOAL_TRACKER_*` variable from your shell reaches it. **`app.now()`** is the
+  `GOAL_TRACKER_*` variable from your shell reaches it, `GOAL_TRACKER_CHROME`
+  included: a Report's PDF download is a rendered file only when a Chromium is
+  on `PATH`, and otherwise its print page. Playwright's own Chromium isn't on
+  `PATH`, so in the vetinari image it's the print page. **`app.now()`** is the
   app's current time: `startAt` plus the time since that test's server
   started.
 - **`appToday()`**: the app's date, `2026-10-05`, as `YYYY-MM-DD`. No run

@@ -531,7 +531,7 @@ func TestAFailedPDFRenderIsAServerErrorOverHTTP(t *testing.T) {
 func reportRowNamed(t *testing.T, page, name string) string {
 	t.Helper()
 	for _, row := range strings.Split(page, `<tr data-testid="report-row"`)[1:] {
-		row = row[:strings.Index(row, "</tr>")]
+		row, _, _ = strings.Cut(row, "</tr>")
 		if strings.Contains(row, ">"+name+"</a>") {
 			return row
 		}

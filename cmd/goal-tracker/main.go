@@ -24,6 +24,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/notify"
+	"github.com/zachthieme/goal-tracker/internal/pdf"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
@@ -134,6 +135,7 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 		webOpts = append(webOpts, startDirectorySync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
 	}
+	webOpts = append(webOpts, pdfDownloads(cfg.chrome, logger))
 	srv := web.NewServer(svc, webOpts...)
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
@@ -159,6 +161,18 @@ func startDirectorySync(svc *domain.Service, dir domain.Directory, logger *slog.
 	sync := directory.NewSync(svc, dir, logger)
 	go sync.RunEvery(context.Background(), time.Hour)
 	return web.WithDirectorySync(sync)
+}
+
+// pdfDownloads is how a publication downloads as a PDF: rendered by the
+// Chromium at chrome, or, with none, as its print page, printed from the
+// browser. It logs which.
+func pdfDownloads(chrome string, logger *slog.Logger) web.Option {
+	if chrome == "" {
+		logger.Info("no Chromium in GOAL_TRACKER_CHROME or on PATH (chromium, chromium-browser, google-chrome, google-chrome-stable): PDF downloads fall back to the print page, to print from the browser")
+		return web.WithPDFRenderer(nil)
+	}
+	logger.Info("rendering PDF downloads with Chromium", "chrome", chrome)
+	return web.WithPDFRenderer(pdf.Chromium{Path: chrome})
 }
 
 type config struct {
@@ -192,6 +206,10 @@ type config struct {
 	// directory, when set, is the org's directory Managers are synced from
 	// (ADR 0008); nil leaves no one with a Manager.
 	directory *directoryConfig
+	// chrome is the Chromium that renders PDF downloads: GOAL_TRACKER_CHROME,
+	// or else one found on PATH; "" when there's none, and a PDF download is
+	// the print page.
+	chrome string
 }
 
 // The sign-in methods GOAL_TRACKER_SIGNIN accepts: the org's OpenID Connect
@@ -247,6 +265,11 @@ func loadConfig() (config, error) {
 	cfg.directory, err = loadDirectoryConfig()
 	if err != nil {
 		return config{}, err
+	}
+
+	cfg.chrome, err = pdf.Find(trimmedEnv("GOAL_TRACKER_CHROME"))
+	if err != nil {
+		return config{}, fmt.Errorf("GOAL_TRACKER_CHROME: %w", err)
 	}
 
 	if v := os.Getenv("GOAL_TRACKER_SESSION_KEY"); v != "" {

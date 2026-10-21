@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -60,11 +62,11 @@ func TestAppClockRejectsAMalformedStartAt(t *testing.T) {
 // oidcVars are the variables that switch organization sign-in on.
 var oidcVars = []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
 
-// clearAuthEnv unsets the sign-in and directory variables for the test, so the host's own
-// settings don't leak in.
+// clearAuthEnv unsets the sign-in, directory and Chromium variables for the
+// test, so the host's own settings don't leak in.
 func clearAuthEnv(t *testing.T) {
 	t.Helper()
-	for _, v := range slices.Concat(oidcVars, directoryVars, []string{directoryFileVar, "GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
+	for _, v := range slices.Concat(oidcVars, directoryVars, []string{directoryFileVar, "GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL", "GOAL_TRACKER_CHROME"}) {
 		t.Setenv(v, "")
 	}
 }
@@ -666,5 +668,77 @@ func TestANamedTimezoneIsKept(t *testing.T) {
 	}
 	if cfg.timezone != "America/Los_Angeles" {
 		t.Errorf("timezone %q, want America/Los_Angeles", cfg.timezone)
+	}
+}
+
+// A GOAL_TRACKER_CHROME that isn't there stops startup with an error naming
+// it, rather than PDF downloads failing one by one.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestAMissingChromeStopsStartup(t *testing.T) {
+	devEnv(t)
+	missing := filepath.Join(t.TempDir(), "chromium")
+	t.Setenv("GOAL_TRACKER_CHROME", missing)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+
+	err := run(discardLogger(), nil, io.Discard)
+	if err == nil {
+		t.Fatal("goal-tracker started with GOAL_TRACKER_CHROME naming a missing file")
+	}
+	for _, want := range []string{"GOAL_TRACKER_CHROME", missing} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q doesn't name %s", err, want)
+		}
+	}
+}
+
+// Without GOAL_TRACKER_CHROME, the app renders PDFs with a Chromium on PATH,
+// and logs which.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestAChromeOnPATHRendersPDFs(t *testing.T) {
+	devEnv(t)
+	dir := t.TempDir()
+	chromium := filepath.Join(dir, "chromium")
+	if err := os.WriteFile(chromium, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.chrome != chromium {
+		t.Errorf("Chromium %q, want %s from PATH", cfg.chrome, chromium)
+	}
+	var log bytes.Buffer
+	pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil)))
+	if !strings.Contains(log.String(), chromium) {
+		t.Errorf("startup doesn't log the Chromium it renders PDFs with:\n%s", log.String())
+	}
+}
+
+// With no Chromium named or on PATH, startup logs that PDF downloads fall back
+// to the print page.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestWithoutChromePDFDownloadsFallBackToThePrintPage(t *testing.T) {
+	devEnv(t)
+	t.Setenv("PATH", t.TempDir())
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.chrome != "" {
+		t.Errorf("Chromium %q with none on PATH", cfg.chrome)
+	}
+	var log bytes.Buffer
+	pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil)))
+	for _, want := range []string{"GOAL_TRACKER_CHROME", "PDF downloads fall back to the print page"} {
+		if !strings.Contains(log.String(), want) {
+			t.Errorf("startup log doesn't say %q:\n%s", want, log.String())
+		}
 	}
 }
