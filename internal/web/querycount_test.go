@@ -27,8 +27,8 @@ type queryCountFixture struct {
 	report domain.ReportDefinition
 }
 
-// seedQueryCountFixture arranges n Goals over three Owners, two of them under a
-// Manager. Every tenth Goal is of the same kind, so ten or more Goals hold
+// seedQueryCountFixture arranges n Goals over three Owners, the first two under
+// a Manager, so the first Ask for help asks someone at any n. Every tenth Goal is of the same kind, so ten or more Goals hold
 // every kind: Proposed; Active with no Check-in; Green, with a Metric read and
 // a Highlight; Yellow with a Path to Green, every other one Asking for help;
 // Red with its delivery date slipped and a Yellow child contributing to it;
@@ -45,12 +45,12 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 	admin := h.SignInNamed(queryCountAdmin, "Ada Admin")
 	manager := h.SignInNamed("morgan@example.com", "Morgan Wu")
 	owners := []domain.Account{
-		admin,
 		h.SignInNamed("priya@example.com", "Priya Raman"),
 		h.SignInNamed("sam@example.com", "Sam Lee"),
+		admin,
 	}
+	h.SetManager(owners[0], manager)
 	h.SetManager(owners[1], manager)
-	h.SetManager(owners[2], manager)
 	team := h.CreateDimension(admin, "Team", "Platform", "Growth")
 	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "USD")
 
