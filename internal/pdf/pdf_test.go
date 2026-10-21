@@ -109,6 +109,78 @@ func TestChromiumFailsARenderOutOfTime(t *testing.T) {
 	}
 }
 
+// A render killed for time leaves nothing behind, even a second on: nothing of
+// Chromium's in TMPDIR, and no core dumped in the working directory.
+//
+//nolint:paralleltest // sets TMPDIR and the working directory
+func TestARenderKilledForTimeLeavesNothingBehind(t *testing.T) {
+	chrome := chromeForTest(t)
+	app := appForTest(t)
+	tmp, work := shortTMPDIR(t), t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Chdir(work)
+	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
+	defer cancel()
+
+	if b, err := chrome.Render(ctx, []byte(servedFontPage), app.URL); err == nil {
+		t.Fatalf("Render in 150ms gave %d bytes and no error; want it killed for time", len(b))
+	}
+	time.Sleep(time.Second)
+
+	if left, _ := os.ReadDir(tmp); len(left) > 0 {
+		t.Errorf("TMPDIR has %v after the render; want it empty", names(left))
+	}
+	if cores, _ := filepath.Glob(filepath.Join(work, "core*")); len(cores) > 0 {
+		t.Errorf("the render dumped %v in the working directory", cores)
+	}
+}
+
+// A TMPDIR too long for Chromium's socket in a render's own directory, though
+// not in TMPDIR itself, still renders: Chromium's socket path is at most 107
+// bytes, 45 of them its own, under TMPDIR.
+//
+//nolint:paralleltest // sets TMPDIR and the working directory
+func TestARenderUnderALongTMPDIRStillRenders(t *testing.T) {
+	chrome := chromeForTest(t)
+	app := appForTest(t)
+	const long = 58
+	short := shortTMPDIR(t)
+	tmp := filepath.Join(short, strings.Repeat("t", long-len(short)-1))
+	if err := os.Mkdir(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TMPDIR", tmp)
+	t.Chdir(t.TempDir()) // where a Chromium that aborts dumps core
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	if _, err := chrome.Render(ctx, []byte(servedFontPage), app.URL); err != nil {
+		t.Fatalf("Render under the %d-byte TMPDIR %s: %v", len(tmp), tmp, err)
+	}
+}
+
+// shortTMPDIR is an empty directory with a path short enough for Chromium's
+// socket in a render's own directory in it, as t.TempDir, named for the test,
+// isn't: in the TMPDIR the tests run with, as a TMPDIR such as /tmp is.
+func shortTMPDIR(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "tmp-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// names are the entries' names.
+func names(entries []os.DirEntry) []string {
+	var out []string
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
+
 // A Chromium that writes no PDF fails the render, naming the binary, rather
 // than giving a broken PDF.
 func TestARenderWithoutAPDFFails(t *testing.T) {
@@ -125,6 +197,25 @@ func TestARenderWithoutAPDFFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), fake) {
 		t.Errorf("error %q doesn't name the Chromium %s", err, fake)
+	}
+}
+
+// Render returns only once every process Chromium started is gone, even one
+// that let go of Chromium's output, as a helper can: none is left running.
+func TestARenderOutlastsChromiumsHelpers(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	gone := filepath.Join(dir, "gone")
+	fake := filepath.Join(dir, "chromium")
+	script := "#!/bin/sh\n(sleep 0.3; touch '" + gone + "') </dev/null >/dev/null 2>&1 &\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _ = pdf.Chromium{Path: fake}.Render(t.Context(), []byte("<p>hi</p>"), "http://127.0.0.1:1")
+	if _, err := os.Stat(gone); err != nil {
+		t.Error("Render returned with Chromium's helper still running")
 	}
 }
 
