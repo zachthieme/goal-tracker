@@ -275,7 +275,10 @@ func (g goalHealthGroup) name() string {
 
 // groupGoalRowsByHealth buckets rows by Health — Red, Yellow, Green, then no
 // Health, the Health filter's order — keeping their sorted order in each
-// bucket and leaving out a Health no row has.
+// bucket and leaving out a Health no row has. When a Goal with no Health needs
+// a decision or an update (Ownerless, Check-in overdue or Milestone overdue:
+// problemRank 1 or 2), the whole No Health group leads instead, so that Goal is
+// surfaced as prominently as Red (CONTEXT.md).
 func groupGoalRowsByHealth(rows []goalRow) []goalHealthGroup {
 	var groups []goalHealthGroup
 	for _, hf := range healthFilters {
@@ -288,6 +291,13 @@ func groupGoalRowsByHealth(rows []goalRow) []goalHealthGroup {
 		if len(grp.Rows) > 0 {
 			groups = append(groups, grp)
 		}
+	}
+	// The No Health group, when there is one, is last.
+	if n := len(groups); n > 1 && groups[n-1].Health == "" && slices.ContainsFunc(groups[n-1].Rows, func(r goalRow) bool {
+		rank := r.problemRank()
+		return rank == 1 || rank == 2
+	}) {
+		groups = slices.Concat(groups[n-1:], groups[:n-1])
 	}
 	return groups
 }

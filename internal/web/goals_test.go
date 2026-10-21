@@ -605,7 +605,9 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 }
 
 // The Goal list is grouped by Health: Red, Yellow, Green, then the Goals with
-// no Health, each under a header row with its shape, name and count. Within a
+// no Health, each under a header row with its shape, name and count — except
+// that the No Health group leads when it holds a Goal that needs a decision or
+// update, as the Check-in overdue "Overdue work" does here. Within a
 // group, Goals that need a decision or update come first: Ownerless, then
 // Check-in overdue or Path to Green overdue, then the rest, alphabetical
 // within each. Each row leads with its Health's shape alone, named by an
@@ -649,10 +651,10 @@ func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 		rows              []string
 	}
 	want := []group{
+		{"none", "No Health", "2", []string{"Overdue work", "Proposed idea"}},
 		{"r", "Red", "1", []string{"Zulu fire"}},
 		{"y", "Yellow", "1", []string{"Wobbly"}},
 		{"g", "Green", "3", []string{"Orphaned", "Alpha green", "Beta green"}},
-		{"none", "No Health", "2", []string{"Overdue work", "Proposed idea"}},
 	}
 	if len(groups) != len(want) {
 		t.Fatalf("got %d Health groups, want %d:\n%s", len(groups), len(want), swappedList(t, list))
@@ -682,7 +684,7 @@ func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 			}
 		}
 	}
-	if chip := pageElement(t, goalRows(t, groups[3])[1], "span", "goal-row-lifecycle"); !strings.Contains(chip, `class="badge lc"`) || !strings.HasSuffix(chip, ">Proposed") {
+	if chip := pageElement(t, goalRows(t, groups[0])[1], "span", "goal-row-lifecycle"); !strings.Contains(chip, `class="badge lc"`) || !strings.HasSuffix(chip, ">Proposed") {
 		t.Errorf("a Goal with no Health doesn't show its Lifecycle as a chip: %s", chip)
 	}
 }
