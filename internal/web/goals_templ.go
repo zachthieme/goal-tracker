@@ -4321,9 +4321,9 @@ func openGoalForm(v goalView, form goalForm, title string) templ.Component {
 	})
 }
 
-// groupHead is a sidebar group's heading with, for whoever may use it, a small
-// link beside it that opens the group's form in place (goalForm), hidden while
-// that form is open. linkName is the link's accessible name, which holds its
+// groupHead is a section's or rail group's heading with, for whoever may use
+// it, a small link beside it that opens the group's form in place (goalForm),
+// hidden while that form is open. linkName is the link's accessible name, which holds its
 // visible text.
 func groupHead(v goalView, form goalForm, link, linkName string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
