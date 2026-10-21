@@ -23,19 +23,28 @@ THEME_SELECTORS = {
     "dark-pinned": ':root[data-theme="dark"]',
 }
 
-# The surfaces text and control edges sit on (--color-primary-light is the
-# selected-row fill; --color-primary-subtle is the hover fill of quiet controls
-# and of a Name), and the marks checked on each with the ratio WCAG asks
-# of it: 4.5:1 for text, 3:1 for a control's edge or focus ring.
+# The surfaces text and control edges sit on: the flat frame's canvas,
+# sidebar, hovered row and group header, then the card surfaces pages that
+# haven't moved to the frame still use (--color-primary-light is the selected
+# fill; --color-primary-subtle is the hover fill of quiet controls and of a
+# Name). The marks are checked on each with the ratio WCAG asks of it: 4.5:1
+# for text, 3:1 for a control's edge, a focus ring or a Health shape.
 # --color-border is left out: it draws rules, not control edges.
 SURFACES = [
     "--color-canvas",
+    "--color-sidebar",
+    "--color-row-hover",
+    "--color-group",
     "--color-surface",
     "--color-surface-hover",
     "--color-surface-alt",
     "--color-primary-light",
     "--color-primary-subtle",
 ]
+# Surfaces only text sits on, so the edge and shape marks aren't checked
+# there: --color-primary-light fills the current Theme choice and History's
+# current chip, and no input, chip edge or Health shape sits on either.
+TEXT_ONLY = {"--color-primary-light"}
 MARKS = {
     "--color-ink": 4.5,
     "--color-ink-2": 4.5,
@@ -44,6 +53,9 @@ MARKS = {
     "--color-danger-ink": 4.5,
     "--color-border-strong": 3.0,
     "--color-focus": 3.0,
+    "--health-r-mark": 3.0,
+    "--health-y-mark": 3.0,
+    "--health-g-mark": 3.0,
 }
 
 
@@ -148,8 +160,12 @@ def stated(markdown):
 
 
 def colour(cell):
-    """The token a table cell names, else the hex it gives, else None."""
-    m = re.search(r"`(--color-[\w-]+)`", cell) or re.search(r"(#[0-9A-Fa-f]{6})\b", cell)
+    """The token a table cell names, else the hex it gives, else None.
+
+    >>> colour("Yellow mark `--health-y-mark` `#B27B00`"), colour("`#3B4048`"), colour("Home")
+    ('--health-y-mark', '#3B4048', None)
+    """
+    m = re.search(r"`(--(?:color|health)-[\w-]+)`", cell) or re.search(r"(#[0-9A-Fa-f]{6})\b", cell)
     return m and resolve(m.group(1), {})
 
 
@@ -192,13 +208,16 @@ def main():
 
     width = max(map(len, MARKS)) + len(" (text)")
     for name, theme in tokens.items():
-        print(f"{name}: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges")
+        print(f"{name}: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges, — not checked")
         heads = [s.removeprefix("--color-") for s in SURFACES]
         print(" " * width + "".join(f"  {h:>{len(h)}}" for h in heads))
         for mark, minimum in MARKS.items():
             kind = "(text)" if minimum == 4.5 else "(edge)"
             line = f"{mark} {kind}".ljust(width)
             for s, h in zip(SURFACES, heads):
+                if minimum < 4.5 and s in TEXT_ONLY:
+                    line += f"  {'—':>{len(h) - 1}} "
+                    continue
                 r = ratio(theme[mark], theme[s])
                 flag = "!" if r < minimum else " "
                 low += r < minimum

@@ -6,8 +6,10 @@ deliberately; don't override it on one page.
 
 **The system is moving to the flat frame** (§ Direction, adopted 2026-10-20).
 Where § Direction and a later section disagree, § Direction is the target. The
-sections after it describe the app as built, and each is rewritten to match as
-its page moves over.
+frame itself has landed: § Tokens, § Type scale and the Sidebar, Page header,
+Theme menu and Nav counts components describe it as built. The other sections
+describe the app as built, and each is rewritten to match as its page moves
+over.
 
 ## Provenance
 
@@ -152,8 +154,9 @@ focus ring and Health mark at least 3:1, in both themes. The lowest pairs are:
 - the Yellow mark: 3.40;
 - dark input edge: 3.42.
 
-When the tokens land, the frame's change adds its ratio table to
-§ Deviations so `scripts/contrast.py` checks it.
+They landed with the frame: § Tokens holds them, with the roles § Direction
+leaves out marked *(chosen)*, and § Deviations 10 their ratios, which
+`scripts/contrast.py` checks.
 
 ### Type
 
@@ -252,13 +255,13 @@ current look inside the new frame.
 
 ## System
 
-- **Mood:** warm, editorial and calm. A neutral off-white canvas, neutral ink,
-  and teal only for what a person can act on: links, buttons, focus and the
-  current top-bar item. The one data accent is a Metric's trend: its sparkline
-  on the Goal page and its progress bar on the Check-in page, both in teal
-  (see § Deviations 6). No neon, and no tint on the canvas, so Health's
-  fills stand out from the page (see § Deviations 7). Cards sit on the canvas
-  in plain white (see § Accepted audit findings).
+- **Mood:** calm and dense. One white canvas (near-black in dark), neutral
+  ink and hairlines, and teal only for what a person can act on: links,
+  buttons, focus and the logo mark. The one data accent is a Metric's trend:
+  its sparkline on the Goal page and its progress bar on the Check-in page,
+  both in teal (see § Deviations 6). No neon, and no tint on the canvas, so Health's
+  fills stand out from the page (see § Deviations 7). Until its page moves, a
+  card sits on the canvas as a white box behind a 1px hairline.
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
 - **Cards are earned** (superseded by § Direction: One surface, and kept
@@ -278,30 +281,42 @@ current look inside the new frame.
 
 ## Tokens
 
+The flat frame's tokens (§ Direction: Tokens). The roles § Direction leaves
+out are marked *(chosen)*: the card surfaces pages still use until they move,
+and the dark chips.
+
 ```css
 :root {
   /* Brand */
   --color-primary:        #14B8A6; /* Teal 500: active pills, accents */
   --color-primary-hover:  #0D9488; /* Teal 600 */
-  --color-primary-strong: #0F766E; /* Teal 700: filled buttons, links. See Deviations */
-  --color-primary-light:  #CCFBF1; /* Teal 100: selected rows, current choices */
+  --color-primary-strong: #0F766E; /* Teal 700: filled buttons, links, the logo mark. See Deviations */
+  --color-primary-light:  #CCFBF1; /* Teal 100: the current choice in a menu */
   --color-primary-subtle: #F0FDFA; /* Teal 50: faint tints */
 
-  /* Canvas & surfaces */
-  --color-canvas:        #F6F6F3; /* neutral off-white body background. See Deviations */
-  --color-surface:       #FFFFFF; /* cards, raised containers */
-  --color-surface-hover: #FCFCFA; /* See Deviations */
-  --color-surface-alt:   #F2F2EE; /* secondary panels, table headers. See Deviations */
+  /* The frame: one white surface, and the steps off it */
+  --color-canvas:        #FFFFFF; /* the page */
+  --color-sidebar:       #F7F7F8;
+  --color-sidebar-hover: #EEEEF0;
+  --color-sidebar-on:    #E8E8EB; /* the current nav item */
+  --color-row-hover:     #F6F6F7; /* a list row under the pointer */
+  --color-group:         #FAFAFB; /* a list's group header row */
+
+  /* (chosen) Cards, a hovered card, and panels and table heads, for pages
+   * that haven't moved to the frame */
+  --color-surface:       #FFFFFF;
+  --color-surface-hover: var(--color-row-hover);
+  --color-surface-alt:   var(--color-sidebar);
 
   /* Ink */
-  --color-ink:         #18211F; /* headings, primary labels. See Deviations */
-  --color-ink-2:       #3E4946; /* body text. See Deviations */
-  --color-ink-muted:   #66706D; /* placeholders, timestamps. See Deviations */
+  --color-ink:         #1B1D22; /* headings, primary labels. See Deviations */
+  --color-ink-2:       #33363C; /* body text */
+  --color-ink-muted:   #5F636B; /* meta, counts, placeholders */
   --color-ink-inverse: #FFFFFF; /* text on --color-primary-strong */
 
   /* Lines */
-  --color-border:        #E1E1DC; /* cards, dividers. See Deviations */
-  --color-border-strong: #7B908C; /* inputs. See Deviations */
+  --color-border:        #EDEDEF; /* hairlines */
+  --color-border-strong: #8A8D93; /* inputs and chip edges: 3:1 on every surface. See Deviations */
   --color-focus:         #0D9488; /* Teal 600. See Deviations */
 
   /* Feedback */
@@ -310,38 +325,31 @@ current look inside the new frame.
   --color-error:   #EF4444;
   --color-danger-ink: #9A231B; /* destructive text (.btn.danger, form errors). See Deviations */
 
-  /* Top bar */
-  --nav-bg:    #134E4A; /* Teal 900, its own value now --color-ink is neutral */
-  --nav-ink:   #FFFFFF;
-  --nav-ink-2: rgba(255,255,255,.78); /* resting nav items */
-  --nav-hover: rgba(255,255,255,.10); /* translucent-white hover */
-  --nav-focus: #2DD4BF; /* focus ring on the top bar. See Deviations */
-  --nav-count-bg:  #E3E6E5; /* neutral grey count pill. See Deviations */
-  --nav-count-ink: #18211F;
-  --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
+  /* Signal chips and tags */
+  --color-chip-bg:  #F1F1F3;
+  --color-chip-ink: #4A4D54;
 
   /* Check-in overdue and Path to Green overdue: chip and banner. See Components */
   --checkin-overdue-bg:   #E9EAEC; /* chip fill */
   --checkin-overdue-ink:  #3B4048; /* chip text */
   --checkin-overdue-edge: #888F97; /* dashed edge of chip and banner. See Deviations */
 
-  /* Goal Health. See Deviations */
-  --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
-  --health-y-bg: #FAEBC4; --health-y-ink: #6B4800;
-  --health-r-bg: #F9DEDB; --health-r-ink: #9A231B;
+  /* Goal Health: a pill's fill and ink, and the shape a list shows alone.
+   * See Deviations */
+  --health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
+  --health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
+  --health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
 
   /* Type */
-  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
-  --font-body:    "Inter", system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --font-body: "Inter", system-ui, sans-serif;
 
   /* Shape */
-  --radius-sm: 4px;    /* badges, Health strip cells */
-  --radius-md: 8px;    /* buttons, inputs, selects */
-  --radius-lg: 12px;   /* cards, dialogs */
-  --radius-full: 9999px; /* pills, avatars, counts */
+  --radius-sm: 4px;      /* badges, Health strip cells */
+  --radius-md: 6px;      /* buttons, inputs, chips, nav items */
+  --radius-lg: 10px;     /* menus, dialogs, the toast, cards */
+  --radius-full: 9999px; /* pills, avatars, Home's count */
 
-  /* Elevation (teal-tinted): menus and popovers only. Cards are flat.
+  /* Elevation (teal-tinted): what floats only. Cards are flat.
    * See Deviations */
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
 
@@ -366,18 +374,27 @@ current look inside the new frame.
   --color-primary-light:  #063530; /* scale step 1 */
   --color-primary-subtle: #031613; /* the preview's tile colour */
 
-  --color-canvas:        #020E0C; /* scale step 0 (preview canvas) */
-  --color-surface:       #052E29; /* preview card */
-  --color-surface-hover: #063530; /* scale step 1 */
-  --color-surface-alt:   #031613; /* preview tile */
+  /* (chosen) the frame, in neutral near-blacks */
+  --color-canvas:        #0F1012;
+  --color-sidebar:       #151618;
+  --color-sidebar-hover: #1C1D20;
+  --color-sidebar-on:    #222327;
+  --color-row-hover:     #1A1B1E;
+  --color-group:         #17181B;
 
-  --color-ink:         #E8E8E8; /* preview text */
-  --color-ink-2:       #C2C2C2; /* (chosen) neutral grey. See Deviations */
-  --color-ink-muted:   #9E9E9E; /* (chosen) neutral grey. See Deviations */
+  /* (chosen) a card lifts by lightness, as dark themes show elevation;
+   * panels and table heads sink to the canvas */
+  --color-surface:       var(--color-sidebar);
+  --color-surface-hover: var(--color-sidebar-hover);
+  --color-surface-alt:   var(--color-canvas);
+
+  --color-ink:         #EDEEF0; /* (chosen) */
+  --color-ink-2:       #C9CBD0; /* (chosen) */
+  --color-ink-muted:   #9A9EA6; /* (chosen) */
   --color-ink-inverse: #042F2E; /* (chosen) Teal 950 on teal */
 
-  --color-border:        #0A3F39; /* (chosen) */
-  --color-border-strong: #2F8479; /* (chosen) 3.3:1 on the surface */
+  --color-border:        #26282C; /* (chosen) */
+  --color-border-strong: #6B6F77; /* (chosen) 3:1 on every surface */
   --color-focus:         #2DD4BF;
 
   --color-success: #2DD4BF;
@@ -385,13 +402,8 @@ current look inside the new frame.
   --color-error:   #F87171; /* (chosen) Red 400 reads better on dark */
   --color-danger-ink: #F87171; /* (chosen) same as --color-error */
 
-  --nav-bg:    var(--color-surface-alt);
-  --nav-ink:   var(--color-ink);
-  --nav-ink-2: var(--color-ink-2);
-  --nav-hover: rgba(255,255,255,.06); /* (chosen) */
-  --nav-focus: var(--color-focus);
-  --nav-count-bg:  #626766; /* (chosen) neutral grey count pill */
-  --nav-count-ink: #FFFFFF;
+  --color-chip-bg:  #222327; /* (chosen) the current nav item's fill */
+  --color-chip-ink: #C9CBD0; /* (chosen) --color-ink-2 */
 
   /* (chosen) Check-in overdue: the light chip's ink becomes the fill, and the UX
    * Review's grey the edge */
@@ -399,10 +411,11 @@ current look inside the new frame.
   --checkin-overdue-ink:  #E8E8E8;
   --checkin-overdue-edge: #8C939C;
 
-  /* (chosen) Health hues on 20%-alpha fills with light text */
-  --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
-  --health-y-bg: rgba(234,179,8,.20); --health-y-ink: #F5D06B;
-  --health-r-bg: rgba(239,68,68,.20); --health-r-ink: #F8A39B;
+  /* (chosen) Health hues on 20%-alpha fills with light text, and bright
+   * shapes */
+  --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
+  --health-y-bg: rgba(234,179,8,.20); --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
+  --health-r-bg: rgba(239,68,68,.20); --health-r-ink: #F8A39B; --health-r-mark: #F07171;
 
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
 
@@ -416,20 +429,23 @@ In the stylesheet, the empty dark `@media` block above repeats the full
 
 ## Type scale
 
-| Role | Face | Size / line-height | Weight | Tracking |
-| --- | --- | --- | --- | --- |
-| Display | Plus Jakarta Sans | 56 / 1.1 | 700 | -0.03em |
-| H1 (page title) | Plus Jakarta Sans | 36 / 1.2 | 700 | -0.02em |
-| H2 (section) | Plus Jakarta Sans | 26 / 1.3 | 600 | -0.01em |
-| H3 (card title) | Plus Jakarta Sans | 19 / 1.4 | 600 | — |
-| Body | Inter | 15 / 1.6 | 400 | — |
-| Body small | Inter | 13 / 1.5 | 400 | — |
-| Micro / badge / `.label` | Inter | 11 | 500, uppercase | — |
-| Numbers (`.num`) | JetBrains Mono | inherit | 500 | — |
+One face, Inter, for headings and text alike (§ Direction: Type).
 
-The app serves the faces itself, from `internal/web/static/fonts/`, by
-`@font-face` rules at the top of `app.css`: Inter and Plus Jakarta Sans as
-variable fonts, JetBrains Mono at 500. No page loads a font from another host.
+| Role | Size / line-height | Weight | Tracking |
+| --- | --- | --- | --- |
+| Page title (`h1`) | 28 / 1.2 | 600 | -0.02em |
+| Section heading (`h2`) | 13 / 1.4 | 600 | — |
+| Card title (`h3`), until its page moves | 14 / 1.4 | 600 | — |
+| Row title | 14 | 500 | — |
+| Body | 14 / 1.5 | 400 | — |
+| Meta, `.small` | 12.5–13 / 1.5, in `--color-ink-muted` | 400 | — |
+| Small label (`.label`, `th`) | 12, sentence case, never uppercase | 500 | — |
+| Numbers (`.num`) | inherit, `font-variant-numeric: tabular-nums` | 500 | — |
+
+Dates, counts and Metric values line up in tabular figures, not a monospace
+face. The app serves Inter itself, from `internal/web/static/fonts/`, as a
+variable font by `@font-face` rules at the top of `app.css`. No page loads a
+font from another host. The Print variant keeps its own serif.
 
 ## Dates and times
 
@@ -450,43 +466,70 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   date) is the day it names and is never shifted.
 - **Inputs stay ISO:** an `<input type="date">` holds `2026-11-07`, as do
   query strings such as `?baseline=`; `datetime=` attributes are RFC 3339.
-- **Monospace only in tables:** a date takes `.num` only in a table column,
-  such as the Goal list's Due or the Milestones table. Elsewhere it is body
-  type.
+- **Tabular figures only in tables:** a date takes `.num` only in a table
+  column, such as the Goal list's Due or the Milestones table. Elsewhere it
+  is body type.
 
 ## Components (mapped to `internal/web/static/app.css`)
 
-- **Top bar (`.nav`):** `--nav-bg`, which is deep teal `#134E4A` in light
-  mode and `--color-surface-alt` in dark mode, with `--nav-ink` text. The light
-  value is the top bar's own, not `--color-ink`, so the bar stays teal while the
-  ink is neutral. Resting items use `--nav-ink-2`; hover is the
-  translucent-white `--nav-hover`.
-  The nav items read **Home · Goals · Follow-ups · Reports**, then **Admin** for an
-  Admin. Home counts what needs the person and Follow-ups counts the Goals it flags
-  in the person's default scope (see Scope), as many as a bare `/follow-ups` lists
-  for them; Goals and Reports carry no count. The brand link goes to Home.
-  The current item (`.on`) gets a `--color-primary` underline or pill. An item
-  is current on its own page and every page under it, so a Goal's page, New
-  goal and a Check-in all mark Goals.
-  Above 900px it is one 56px row. At 900px and below it takes two rows and
-  never scrolls sideways. The brand, the person and Sign out are on the first
-  row and the nav items (`.navitems`) are on the second, each label on one line.
-  The person shows by Name alone, and a long Name truncates with an ellipsis.
-  "Signed in as" and "(Admin)" are hidden visually with `font-size:0`, so screen
-  readers still read them. At 360px and below the nav items' padding tightens
-  to fit an Admin's five items at 320px with two-digit counts. If they still
-  don't fit on one line, the nav items' row wraps onto another line
-  (`flex-wrap:wrap` on `.navitems`) rather than overflow, each label still on
-  one line. The gaps and padding beside Sign out tighten too, so the Theme menu
-  fits beside it.
-- **Theme menu (`.theme`):** a quiet "Theme" disclosure in the top bar beside
-  Sign out, on every page including sign-in. Opened, it lists three choices in
-  words: **System** (the default: follow the operating system), **Light** and
-  **Dark**. The current choice is marked with a `--color-primary-light` fill
-  and a check, and `aria-current="true"`. It is a `<details>` and each choice is
-  a plain form post, so it works without script. Its panel
-  (`.theme-menu`) is a card that floats under the button, anchored right and
-  no wider than the screen, so it never widens the top bar.
+- **Sidebar (`.sidebar`, `sidebar` in `layout.templ`):** every signed-in page
+  sits in the flat frame (`.frame`): a 240px column on the left in
+  `--color-sidebar`, with a 1px `--color-border` right edge, beside the
+  content column. It stays in view as the page scrolls. Top to bottom:
+  1. **The app's name (`.brand`)** with its 18px `--color-primary-strong`
+     mark. It links to Home.
+  2. **Search (`.sb-search`)**, a GET form to the Goal list's search
+     (`/goals?q=`). It shows no shortcut hint, as the app has none.
+  3. **The nav (`.navitems`):** **Home · Goals · Follow-ups · Reports**, then
+     **Admin** for an Admin. Each item is 32px tall with `--radius-md`, a 16px
+     stroke icon and its label in `--color-ink-2`, and its count at the right
+     edge (§ Nav counts). Hover takes `--color-sidebar-hover` and the current
+     item (`.on`, `aria-current="page"`) `--color-sidebar-on`, both with
+     `--color-ink` text. An item is current on its own page and every page
+     under it, so a Goal's page, New goal and a Check-in all mark Goals.
+     Home counts what needs the person and Follow-ups counts the Goals it
+     flags in the person's default scope (see Scope), as many as a bare
+     `/follow-ups` lists for them; Goals and Reports carry no count.
+  4. **My org (`.sb-org`):** for someone with people directly under them by
+     Manager, a muted "My org" heading over each of those people by Name,
+     sorted by Name, each linking to their Org on Goals (`/goals?org=<id>`).
+     Anyone without people under them gets no My org. The people are read
+     once per request, with the counts.
+  5. **The person's menu (`.sb-person`)**, at the foot: their initials in a
+     24px avatar and their Name, truncated with an ellipsis when long. It is
+     a `<details>`, so it works without script. Its panel floats above it on
+     `--shadow-pop`: "Signed in as" their Name (the Name shows their email,
+     as everywhere), "(Admin)" for an Admin, then the Theme choices (§ Theme
+     menu) and **Sign out**.
+
+  **At 900px and below** the sidebar is a 48px strip across the top: the
+  app's name, Home's count (so it isn't hidden), and **Menu**, a `<details>`.
+  Opening Menu shows the rest of the sidebar (Search, the nav, My org and the
+  person's menu) as a sheet under the strip, on `--shadow-pop`. The sheet is
+  the sidebar's own body, shown by the open Menu beside it
+  (`.sb-menu[open]~.sb-body`), so it works without script and the page has
+  one copy of each nav item. Nothing scrolls sideways. On a coarse pointer
+  the nav items, My org's people, the Theme choices and the person's button
+  are at least 44px tall.
+
+  **Signed-out pages** (sign-in, set password, Not found while signed out)
+  have no sidebar. The app's name and a Theme disclosure sit in a bar over
+  the page (`.signed-out-bar`), and the content is centred on the canvas.
+- **Page header (`.page-header`, `pageHeader` in `layout.templ`):** a 48px
+  strip across the top of the content column with a 1px `--color-border`
+  under it. It holds the page's title, or a breadcrumb on a page under
+  another ("Goals › <Goal title>"), with a muted count where the page has one,
+  and the page's actions at its right. It isn't sticky. A page fills it by
+  rendering through `framedLayout` with a header; a page that hasn't moved to
+  the frame renders through `layout` and keeps its own head in its content.
+- **Theme menu (`.theme-menu`):** three choices in words: **System** (the
+  default: follow the operating system), **Light** and **Dark**. Signed in,
+  they sit in the person's menu beside Sign out. Signed out, they sit in a
+  quiet "Theme" disclosure (`.theme`) in the bar over the page, whose panel
+  (`.theme-float`) floats under the button, anchored right and no wider than
+  the screen, so it never widens the page. The current choice is marked
+  with a `--color-primary-light` fill and a check, and `aria-current="true"`.
+  Each choice is a plain form post, so it works without script.
   The choice is kept per browser in the `gt_theme` cookie, not on the Account,
   so it holds before sign-in and after sign-out. It lasts a year and each
   choice renews it. Choosing System clears it. The server pins
@@ -539,7 +582,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   bare text. A page you open that doesn't exist (an unknown URL, asked with
   any method, or a Goal, Report, publication or other thing that doesn't
   exist or has been removed) answers 404 with a "Not found" page inside the
-  normal chrome, top-bar counts included: one plain sentence, "There's
+  normal chrome, the sidebar's counts included: one plain sentence, "There's
   nothing here. It may have been removed, or the link may be wrong.", and a
   way back: **Back to Home** when signed in, **Sign in** when not. The page
   is `notFoundPage` in `notfound.templ`, written by `s.notFound`; a handler
@@ -551,7 +594,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   found, Can't undo, Can't remove link, a refused Nudge, a Check-in that
   can't be reached) sets its heading, sentence and way back in a 760px column
   with 16px gaps. The column starts at the page's left edge, like every
-  other page's content, and isn't centred.
+  other page's content, and isn't centred, except signed out, where every
+  page's content is centred (§ Sidebar).
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.
@@ -572,8 +616,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   hover it takes a `--color-primary-subtle` fill.
 - **A person's Name (`.person`):** plain text in the surrounding ink, with no
   underline, so it never reads as a link. On hover and keyboard focus it takes a
-  faint `--color-primary-subtle` tint (`--nav-hover` in the top bar), as a quiet
-  button does, and focus keeps the focus ring. Clicking, tapping or activating
+  faint `--color-primary-subtle` tint, as a quiet button does, and focus keeps the focus ring. Clicking, tapping or activating
   it from the keyboard shows the person's email beside it, and doing it again
   hides it (CONTEXT.md: Name). `personPlain`, inside another control, and the
   Print view's "Name (email)" have no control.
@@ -585,8 +628,11 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   it is 44px wide as well as tall. It shows only the ×, so it always carries
   an `aria-label` and a matching `title` naming what it removes ("Remove
   rule", "Remove <Goal title>").
-- **Card (`.card`):** `--color-surface`, 1px `--color-border`,
-  `--radius-lg`, 24px padding, and no shadow in either theme. On hover a
+- **Card (`.card`):** retired as a page container by the flat frame, and kept
+  until each page moves. It sits quietly on the canvas: `--color-surface`
+  (white on the white canvas in light, a step lighter than the canvas in
+  dark), a 1px `--color-border` hairline, `--radius-lg` (10px), 24px padding,
+  and no shadow in either theme. On hover a
   clickable card's border becomes `--color-border-strong` over `--dur-base`,
   and nothing else changes: it doesn't move. That is darker in light and
   lighter in dark, so either way the edge stands further out from the card.
@@ -855,7 +901,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     the left, its name in 600 over a muted "per week · 100 → 500 by Jun 30 ·
     last 135.5" and, once it has a reading, a 6px progress bar from baseline
     toward target in `--color-primary-strong`. On the right, a 120px reading
-    input with right-aligned numbers in `--font-mono`.
+    input with right-aligned numbers in tabular figures.
   - **Optional sections** follow, as below (Check-in form's optional
     sections), then the submit bar: with script, 40px apart like the rest,
     each a plain headed section; without, folded panels 12px apart.
@@ -943,7 +989,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 
   A subgroup with nothing in it is left out, and with all four empty the card
   shows one muted "You're all caught up." line. The heading's count and the
-  top bar's Home count both count every row. Goals the person is a Delegate
+  nav's Home count both count every row. Goals the person is a Delegate
   on aren't listed again elsewhere: the Your goals line has one link to the
   Delegate page with their number, shown only above zero.
 - **Home's My org section (`homeOrgCard` in `home.templ`):** shown only to
@@ -979,7 +1025,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages include the
     person's own Goals.
 
-  The section adds nothing to Needs you or the top bar's Home count.
+  The section adds nothing to Needs you or the nav's Home count.
 - **Scope (Goals and Follow-ups, `pageScopeSelect` in `scope.templ`):** the one
   select scoping the Goal list and the Follow-ups page, submitted as `?org=`:
   **Everyone** (`all`), **Mine** (`mine`, the Goals the person Owns or is a
@@ -1200,19 +1246,21 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   link, because CONTEXT.md surfaces both the same way.
 
   The ratios are in § Deviations 9.
-- **Nav counts (`.count`):** a `--radius-full` pill after a top-bar item's
-  label, shown only above zero. Two styles, so the one that needs the person
-  stands out:
-  - **Home's count (`.count.needs-you`)** counts what needs the person, so it is
-    a dark pill: `--nav-needs-bg` (`#18211F`) with `--nav-ink` numbers, ringed
-    1px in `--nav-ink` so it shows against the top bar.
-  - **Every other count (`.count`)**, such as Follow-ups, is a neutral grey pill:
-    `--nav-count-bg` with `--nav-count-ink` numbers.
+- **Nav counts (`.count`):** a count after a nav item's label, at the item's
+  right edge, shown only above zero. Two styles, so the one that needs the
+  person stands out:
+  - **Home's count (`.count.needs-you`)** counts what needs the person, so it
+    is a filled `--radius-full` pill: `--color-ink` with `--color-canvas`
+    numbers, dark on light and light on dark.
+  - **Every other count (`.count`)**, such as Follow-ups, is muted
+    `--color-ink-muted` tabular figures with no pill.
 
   The ratios are in § Deviations 2.
 - **Health badges (`.g` / `.y` / `.r`):** `--health-*-bg` fill with
   `--health-*-ink` text; see Deviations. They keep their dot
-  shapes (circle, triangle, square) so color is never the only signal.
+  shapes (circle, triangle, square) so color is never the only signal. A list
+  that shows the shape alone draws it in `--health-*-mark` (§ Direction:
+  Components in the frame).
 
 ## Motion
 
@@ -1268,51 +1316,67 @@ stays black on white whatever is chosen.
    `#688E8B`, which reaches only 3.6:1 on white. With text, links and buttons
    all teal, nothing separated what a person can act on from what they only
    read (UX Review, mocks 1b and 1d). Text is neutral in both themes instead,
-   and teal is kept for links, buttons, focus and the current top-bar item.
-   The top bar keeps its teal through its own `--nav-bg`.
+   and teal is kept for links, buttons, focus and the logo mark.
 
    Each ink's contrast on every surface text sits on (`--color-primary-light`
-   is the selected-row fill, and `--color-primary-subtle` the hover fill of a
-   quiet control and of a Name):
+   is the current choice in a menu, and `--color-primary-subtle` the hover
+   fill of a quiet control and of a Name):
 
    | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light | Primary subtle |
    | --- | --- | --- | --- | --- | --- | --- | --- |
-   | Light | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 | 14.60 | 15.78 |
-   | Light | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 | 8.30 | 8.96 |
-   | Light | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 | 4.54 | 4.91 |
-   | Dark | `--color-ink` `#E8E8E8` | 16.01 | 11.99 | 10.99 | 15.19 | 10.99 | 15.19 |
-   | Dark | `--color-ink-2` `#C2C2C2` | 11.01 | 8.25 | 7.56 | 10.45 | 7.56 | 10.45 |
-   | Dark | `--color-ink-muted` `#9E9E9E` | 7.32 | 5.48 | 5.03 | 6.95 | 5.03 | 6.95 |
+   | Light | `--color-ink` `#1B1D22` | 16.86 | 16.86 | 15.61 | 15.75 | 14.96 | 16.17 |
+   | Light | `--color-ink-2` `#33363C` | 12.11 | 12.11 | 11.22 | 11.31 | 10.75 | 11.61 |
+   | Light | `--color-ink-muted` `#5F636B` | 6.03 | 6.03 | 5.58 | 5.63 | 5.35 | 5.78 |
+   | Dark | `--color-ink` `#EDEEF0` | 16.40 | 15.60 | 14.52 | 16.40 | 11.60 | 16.04 |
+   | Dark | `--color-ink-2` `#C9CBD0` | 11.73 | 11.15 | 10.38 | 11.73 | 8.29 | 11.47 |
+   | Dark | `--color-ink-muted` `#9A9EA6` | 7.08 | 6.74 | 6.27 | 7.08 | 5.01 | 6.93 |
 
-   The nav counts' numbers reach 4.5:1 on their pills, and each pill's edge
-   reaches 3:1 against the top bar so the shape shows:
+   In the sidebar, a nav item's label and its count reach 4.5:1 at rest, on
+   hover and as the current item, and Home's count pill reaches 3:1 against
+   the sidebar so its shape shows:
 
-   | Theme | Count | Number on pill | Edge on top bar |
+   | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |
-   | Light | Home, `#FFFFFF` on `#18211F` | 16.46 | 9.48 (`#FFFFFF` ring on `#134E4A`) |
-   | Light | Other, `#18211F` on `#E3E6E5` | 13.10 | 7.54 (fill on `#134E4A`) |
-   | Dark | Home, `#E8E8E8` on `#18211F` | 13.43 | 15.19 (`#E8E8E8` ring on `#031613`) |
-   | Dark | Other, `#FFFFFF` on `#626766` | 5.75 | 3.24 (fill on `#031613`) |
+   | Light | Nav item `--color-ink-2` `#33363C` | sidebar | 11.31 |
+   | Light | Hovered or current item `--color-ink` `#1B1D22` | hovered item `#EEEEF0` / current item `#E8E8EB` | 14.55 / 13.79 |
+   | Light | Other count `--color-ink-muted` `#5F636B` | sidebar / hovered item `#EEEEF0` / current item `#E8E8EB` | 5.63 / 5.20 / 4.93 |
+   | Light | Home's number `#FFFFFF` | pill `#1B1D22` | 16.86 |
+   | Light | Home's pill `--color-ink` `#1B1D22` | sidebar / current item `#E8E8EB` | 15.75 / 13.79 |
+   | Dark | Nav item `--color-ink-2` `#C9CBD0` | sidebar | 11.15 |
+   | Dark | Hovered or current item `--color-ink` `#EDEEF0` | hovered item `#1C1D20` / current item `#222327` | 14.52 / 13.52 |
+   | Dark | Other count `--color-ink-muted` `#9A9EA6` | sidebar / hovered item `#1C1D20` / current item `#222327` | 6.74 / 6.27 / 5.84 |
+   | Dark | Home's number `#0F1012` | pill `#EDEEF0` | 16.40 |
+   | Dark | Home's pill `--color-ink` `#EDEEF0` | sidebar / current item `#222327` | 15.60 / 13.52 |
 3. **Goal Health.** The source's success teal (`#2DD4BF`) is almost the same
    as the primary colour, so a Green Health badge would read as a button.
-   Health badges therefore keep their own hues:
-   - Green: `#DDEFE3` / `#17593A`
-   - Yellow: `#FAEBC4` / `#6B4800`
-   - Red: `#F9DEDB` / `#9A231B`
+   Health badges therefore keep their own hues, as a pill's fill and ink and
+   as the shape a list shows alone (§ Direction: Tokens):
+   - Green: `#E5F3EA` / `#1C6435`, shape `#2E7D4F`
+   - Yellow: `#FFF3D1` / `#7A4F00`, shape `#B27B00`
+   - Red: `#FDECEC` / `#A61B1B`, shape `#C62828`
 
    In dark mode, the same hues sit on 20%-alpha fills with light text
-   (`--health-*` in the dark block). The `--color-success`/`warning`/`error`
-   tokens are for alerts and form validation, not for Health.
+   (`--health-*` in the dark block), and the shapes go bright. The
+   `--color-success`/`warning`/`error` tokens are for alerts and form
+   validation, not for Health. A pill's text reaches 4.5:1 on its fill, and
+   the shapes' ratios are in § Deviations 10:
+
+   | Theme | Mark | On | Ratio |
+   | --- | --- | --- | --- |
+   | Light | Red ink `#A61B1B` | Red fill `#FDECEC` | 6.58 |
+   | Light | Yellow ink `#7A4F00` | Yellow fill `#FFF3D1` | 6.45 |
+   | Light | Green ink `#1C6435` | Green fill `#E5F3EA` | 6.27 |
 4. **Danger text.** `--color-error` (`#EF4444`) reaches only 3.76:1 on white,
    too low for 13–15px text. Destructive buttons and inline errors use
-   `--color-danger-ink` (`#9A231B`, the Red Health ink) in light mode instead;
+   `--color-danger-ink` (`#9A231B`, the Red Health ink before the flat frame)
+   in light mode instead;
    `--color-error` stays for borders and icons.
 5. **Focus ring.** The source rings focus in `#14B8A6`, which reaches only
-   2.41:1 on the canvas, below WCAG's 3:1 for focus indicators. Light mode
-   rings focus in `--color-focus: #0D9488` instead (3.46:1 on the canvas,
-   3.74:1 on white, 3.34:1 on `--color-surface-alt`). On the dark-teal top
-   bar that drops to 2.53:1, so nav items ring in `--nav-focus: #2DD4BF`
-   (5.09:1). Dark mode keeps `#2DD4BF` everywhere.
+   2.41:1 on the off-white canvas it had, below WCAG's 3:1 for focus
+   indicators. Light mode rings focus in `--color-focus: #0D9488` instead:
+   3.74:1 on the white canvas, 3.47:1 on a hovered row, its lowest on a
+   surface, and 3.06:1 on the sidebar's current item. Dark mode keeps
+   `#2DD4BF` everywhere.
 
    The source also rings a focused input in a 25%-alpha halo of the primary,
    which reaches only 1.36:1 on white. Inputs take the solid ring instead, and
@@ -1321,10 +1385,11 @@ stays black on white whatever is chosen.
 6. **Input borders and other non-text marks.** The source's input border
    (`#D5D2BD`) reaches 1.52:1 on white, and the dark preview's scale step 2
    (`#0A5C53`) reaches 1.87:1 on the dark surface. WCAG asks 3:1 of the edge
-   that identifies a control. `--color-border-strong` is `#7B908C` in light
-   mode (3.38:1 on white, 3.12:1 on the canvas, 3.01:1 on
-   `--color-surface-alt`) and `#2F8479` in dark mode
-   (3.29:1 on the surface). Two more marks follow the same rule:
+   that identifies a control. `--color-border-strong` is `#8A8D93` in light
+   mode (3.33:1 on the canvas, 3.08:1 on a hovered row, its lowest) and
+   `#6B6F77` in dark mode (3.34:1 on a hovered card, its lowest). The current
+   choice's `--color-primary-light` fill holds text only, so no edge is
+   measured on it. Two more marks follow the same rule:
    - A Metric's sparkline, the one data accent allowed teal (§ System), strokes
      in `--color-primary-strong`, not `--color-primary`, which reaches only
      2.49:1 on white. The Check-in page's Metric progress bar fills in the
@@ -1335,34 +1400,35 @@ stays black on white whatever is chosen.
 
 7. **Neutral canvas.** The source's light canvas is a pale yellow
    (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory
-   tint. Beside it, Yellow Health's fill (`#FAEBC4`) lost its hue, and white
-   cards looked cut out of the page (UX Review). The light canvas is a neutral
-   off-white instead, and the tokens beside it lose their tint while keeping
-   their order: white cards, then a hovered row, the canvas, panels and table
-   heads, and rules, each a step darker. The dark theme is unchanged.
+   tint. Beside it, Yellow Health's fill lost its hue, and white cards looked
+   cut out of the page (UX Review). The canvas went a neutral off-white, and
+   the flat frame then made it white (§ Direction: One surface), with neutral
+   steps off it for the sidebar, a hovered row and a group header. The dark
+   theme's teal canvas and cards went neutral near-black with it.
 
    | Token | Source | Now |
    | --- | --- | --- |
-   | `--color-canvas` | `#FEFCE8` | `#F6F6F3` |
-   | `--color-surface-hover` | `#FDFCF7` | `#FCFCFA` |
-   | `--color-surface-alt` | `#F7F6E8` | `#F2F2EE` |
-   | `--color-border` | `#E8E6D5` | `#E1E1DC` |
+   | `--color-canvas` | `#FEFCE8` | `#FFFFFF` |
+   | `--color-surface-hover` | `#FDFCF7` | `#F6F6F7` |
+   | `--color-surface-alt` | `#F7F6E8` | `#F7F7F8` |
+   | `--color-border` | `#E8E6D5` | `#EDEDEF` |
 
    Each light-theme text colour reaches 4.5:1, and each control edge 3:1, on
-   the canvas and every surface beside it:
+   the canvas and every card surface beside it (the frame's own surfaces are
+   in § Deviations 10):
 
    | Mark | Canvas | Surface | Surface hover | Surface alt |
    | --- | --- | --- | --- | --- |
-   | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 |
-   | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 |
-   | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 |
-   | Links, `--color-primary-strong` `#0F766E` | 5.05 | 5.47 | 5.33 | 4.88 |
-   | `--color-danger-ink` `#9A231B` | 7.37 | 7.98 | 7.77 | 7.11 |
-   | Input edge, `--color-border-strong` `#7B908C` | 3.12 | 3.38 | 3.29 | 3.01 |
-   | Focus ring, `--color-focus` `#0D9488` | 3.46 | 3.74 | 3.65 | 3.34 |
+   | `--color-ink` `#1B1D22` | 16.86 | 16.86 | 15.61 | 15.75 |
+   | `--color-ink-2` `#33363C` | 12.11 | 12.11 | 11.22 | 11.31 |
+   | `--color-ink-muted` `#5F636B` | 6.03 | 6.03 | 5.58 | 5.63 |
+   | Links, `--color-primary-strong` `#0F766E` | 5.47 | 5.47 | 5.07 | 5.11 |
+   | `--color-danger-ink` `#9A231B` | 7.98 | 7.98 | 7.39 | 7.46 |
+   | Input edge, `--color-border-strong` `#8A8D93` | 3.33 | 3.33 | 3.08 | 3.11 |
+   | Focus ring, `--color-focus` `#0D9488` | 3.74 | 3.74 | 3.47 | 3.50 |
 
-   `--color-surface-alt` is as dark as it can go: one step darker and the input
-   edge on it falls under 3:1.
+   `--color-surface-alt` takes the sidebar's grey: the warmer `#F2F2EE` it had
+   would hold the new input edge at only 2.96:1.
 8. **Flat cards.** The source lifts every card off the canvas on a large
    teal-tinted shadow (`--shadow-card`, deepening to `--shadow-card-hover` on
    hover), so nothing read as nearer than anything else (UX Review). Cards are
@@ -1370,16 +1436,16 @@ stays black on white whatever is chosen.
    dark, the card's `--color-surface` against the darker `--color-canvas`
    sets it apart. A clickable card's hover changes its border colour alone
    (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
-   the Theme menu, the Goal page's More menu and the toast. The two card
-   shadow tokens are gone.
+   the person's menu, the signed-out Theme menu, the phone Menu's sheet, the
+   Goal page's More menu and the toast. The two card shadow tokens are gone.
 9. **Check-in overdue, apart from tags.** Check-in overdue chips and banners,
    tags and nav counts all shared the pale teal `--color-primary-light` fill, so
    "Check-in overdue" read like a label such as "Platform" (UX Review). Check-in
    overdue is now a grey chip in a dashed edge, its banners a surface in the
    same edge, and tags an outline with no fill (§ Components). The UX Review
-   gave the light edge as `#8C939C`, which reaches only 2.87:1 on the canvas the
-   banners sit on. The edge is one step darker in the same hue, `#888F97`, which
-   reaches 3:1 there.
+   gave the light edge as `#8C939C`, which reached only 2.87:1 on the
+   off-white canvas the banners then sat on. The edge is one step darker in
+   the same hue, `#888F97`, which reaches 3:1 there and on every surface since.
 
    Chip and banner text reaches 4.5:1 on its fill, and the dashed edge 3:1 on
    the surfaces around it. A chip sits on a card, plain or as a hovered row. A
@@ -1388,19 +1454,55 @@ stays black on white whatever is chosen.
    | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |
    | Light | Chip text `#3B4048` | chip fill `#E9EAEC` | 8.67 |
-   | Light | Chip edge `#888F97` | surface `#FFFFFF` / surface hover `#FCFCFA` | 3.27 / 3.18 |
-   | Light | Banner text `--color-ink` `#18211F` | surface `#FFFFFF` | 16.46 |
+   | Light | Chip edge `#888F97` | surface `#FFFFFF` / surface hover `#F6F6F7` | 3.27 / 3.03 |
+   | Light | Banner text `--color-ink` `#1B1D22` | surface `#FFFFFF` | 16.86 |
    | Light | Banner link `--color-primary-strong` `#0F766E` | surface `#FFFFFF` | 5.47 |
-   | Light | Banner edge `#888F97` | canvas `#F6F6F3` / surface `#FFFFFF` | 3.02 / 3.27 |
-   | Light | Tag text `--color-ink` `#18211F` | canvas / surface / surface hover | 15.20 / 16.46 / 16.02 |
-   | Light | Tag edge `--color-border-strong` `#7B908C` | canvas / surface | 3.12 / 3.38 |
+   | Light | Banner edge `#888F97` | canvas `#FFFFFF` / surface `#FFFFFF` | 3.27 / 3.27 |
+   | Light | Tag text `--color-ink` `#1B1D22` | canvas / surface / surface hover | 16.86 / 16.86 / 15.61 |
+   | Light | Tag edge `--color-border-strong` `#8A8D93` | canvas / surface | 3.33 / 3.33 |
    | Dark | Chip text `#E8E8E8` | chip fill `#3B4048` | 8.51 |
-   | Dark | Chip edge `#8C939C` | surface `#052E29` / surface hover `#063530` | 4.74 / 4.34 |
-   | Dark | Banner text `--color-ink` `#E8E8E8` | surface `#052E29` | 11.99 |
-   | Dark | Banner link `--color-primary-strong` `#14B8A6` | surface `#052E29` | 5.90 |
-   | Dark | Banner edge `#8C939C` | canvas `#020E0C` / surface `#052E29` | 6.32 / 4.74 |
-   | Dark | Tag text `--color-ink` `#E8E8E8` | canvas / surface / surface hover | 16.01 / 11.99 / 10.99 |
-   | Dark | Tag edge `--color-border-strong` `#2F8479` | canvas / surface | 4.39 / 3.29 |
+   | Dark | Chip edge `#8C939C` | surface `#151618` / surface hover `#1C1D20` | 5.84 / 5.43 |
+   | Dark | Banner text `--color-ink` `#EDEEF0` | surface `#151618` | 15.60 |
+   | Dark | Banner link `--color-primary-strong` `#14B8A6` | surface `#151618` | 7.27 |
+   | Dark | Banner edge `#8C939C` | canvas `#0F1012` / surface `#151618` | 6.14 / 5.84 |
+   | Dark | Tag text `--color-ink` `#EDEEF0` | canvas / surface / surface hover | 16.40 / 15.60 / 14.52 |
+   | Dark | Tag edge `--color-border-strong` `#6B6F77` | canvas / surface | 3.78 / 3.59 |
+10. **The flat frame's surfaces.** § Direction's tokens add the sidebar, a
+    hovered row and a group header beside the white canvas. Every text ink
+    reaches 4.5:1 on each, and every input edge, focus ring and Health shape
+    3:1, in both themes. The lowest are the light muted ink on a hovered row
+    (5.58), the light input edge on a hovered row (3.08), the Yellow shape on
+    a hovered row (3.40) and the dark input edge on a hovered row (3.42).
+
+    | Theme | Mark | Canvas | Sidebar | Row hover | Group |
+    | --- | --- | --- | --- | --- | --- |
+    | Light | `--color-ink` `#1B1D22` | 16.86 | 15.75 | 15.61 | 16.16 |
+    | Light | `--color-ink-2` `#33363C` | 12.11 | 11.31 | 11.22 | 11.61 |
+    | Light | `--color-ink-muted` `#5F636B` | 6.03 | 5.63 | 5.58 | 5.78 |
+    | Light | Links, `--color-primary-strong` `#0F766E` | 5.47 | 5.11 | 5.07 | 5.25 |
+    | Light | `--color-danger-ink` `#9A231B` | 7.98 | 7.46 | 7.39 | 7.65 |
+    | Light | Input edge, `--color-border-strong` `#8A8D93` | 3.33 | 3.11 | 3.08 | 3.19 |
+    | Light | Focus ring, `--color-focus` `#0D9488` | 3.74 | 3.50 | 3.47 | 3.59 |
+    | Light | Red shape, `--health-r-mark` `#C62828` | 5.62 | 5.25 | 5.21 | 5.39 |
+    | Light | Yellow shape, `--health-y-mark` `#B27B00` | 3.67 | 3.43 | 3.40 | 3.52 |
+    | Light | Green shape, `--health-g-mark` `#2E7D4F` | 5.05 | 4.71 | 4.67 | 4.84 |
+    | Dark | `--color-ink` `#EDEEF0` | 16.40 | 15.60 | 14.83 | 15.29 |
+    | Dark | `--color-ink-2` `#C9CBD0` | 11.73 | 11.15 | 10.61 | 10.94 |
+    | Dark | `--color-ink-muted` `#9A9EA6` | 7.08 | 6.74 | 6.41 | 6.61 |
+    | Dark | Links, `--color-primary-strong` `#14B8A6` | 7.65 | 7.27 | 6.92 | 7.13 |
+    | Dark | `--color-danger-ink` `#F87171` | 6.88 | 6.55 | 6.23 | 6.42 |
+    | Dark | Input edge, `--color-border-strong` `#6B6F77` | 3.78 | 3.59 | 3.42 | 3.52 |
+    | Dark | Focus ring, `--color-focus` `#2DD4BF` | 10.23 | 9.73 | 9.25 | 9.54 |
+    | Dark | Red shape, `--health-r-mark` `#F07171` | 6.62 | 6.30 | 5.99 | 6.18 |
+    | Dark | Yellow shape, `--health-y-mark` `#E0B23A` | 9.61 | 9.14 | 8.69 | 8.96 |
+    | Dark | Green shape, `--health-g-mark` `#4CC38A` | 8.59 | 8.17 | 7.77 | 8.01 |
+
+    Signal chips and tags reach 4.5:1 on their fill:
+
+    | Theme | Mark | On | Ratio |
+    | --- | --- | --- | --- |
+    | Light | Chip text `--color-chip-ink` `#4A4D54` | chip fill `#F1F1F3` | 7.50 |
+    | Dark | Chip text `--color-chip-ink` `#C9CBD0` | chip fill `#222327` | 9.67 |
 
 ## Accepted audit findings
 
@@ -1410,9 +1512,9 @@ again.
 
 1. **White card surface.** The 2026-10-01 audit called the light theme's
    `--color-surface` (`#FFFFFF`) flat beside the canvas, then ivory. It stays
-   white.
+   white, and the flat frame made the canvas white too.
    The light-theme contrast ratios in § Deviations are quoted against it, and
-   two of them have little room to lose: the input border at 3.38:1 and the
+   two of them have little room to lose: the input border at 3.33:1 and the
    focus ring at 3.74:1, against WCAG's 3:1. Tinting the surface would mean
    recomputing every one.
 2. **Hex and rgba tokens.** The same audit asked for tokens in OKLCH. They
