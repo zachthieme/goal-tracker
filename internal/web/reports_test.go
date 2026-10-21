@@ -4774,18 +4774,18 @@ func TestOnlyThoseWhoManageAReportEditCurateAndPublishOverHTTP(t *testing.T) {
 	edit := url.Values{"name": {"Renamed"}, "mode": {domain.ReportModePicked}, "picked": {strconv.FormatInt(g.ID, 10)}}
 	curate := url.Values{"text-" + domain.HighlightInsight: {"Pricing drives churn."}}
 	controls := map[string]string{
-		"Edit definition":   `data-testid="edit-definition"`,
-		"the curation form": `data-testid="narrative-curation"`,
-		"Publish…":          `data-testid="publish-confirm"`,
+		"Edit definition":   "edit-definition",
+		"the curation form": "narrative-curation",
+		"Publish…":          "publish-confirm",
 	}
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
-	draft := getBody(t, sam, draftURL)
-	if !strings.Contains(draft, `data-testid="report-draft"`) {
-		t.Errorf("Sam can't read the draft; body:\n%s", draft)
+	draft := getPage(t, sam, draftURL)
+	if !hasTestID(draft, "report-draft") {
+		t.Errorf("Sam can't read the draft; body:\n%s", renderNode(draft))
 	}
-	for name, marker := range controls {
-		if strings.Contains(draft, marker) {
+	for name, testID := range controls {
+		if hasTestID(draft, testID) {
 			t.Errorf("Sam, who may not manage the Report, is offered %s", name)
 		}
 	}
@@ -4803,9 +4803,9 @@ func TestOnlyThoseWhoManageAReportEditCurateAndPublishOverHTTP(t *testing.T) {
 	}
 
 	client := signInClient(t, ts.URL, "dana@example.com")
-	draft = getBody(t, client, draftURL)
-	for name, marker := range controls {
-		if !strings.Contains(draft, marker) {
+	draft = getPage(t, client, draftURL)
+	for name, testID := range controls {
+		if !hasTestID(draft, testID) {
 			t.Errorf("Dana, a Report Delegate, is not offered %s", name)
 		}
 	}
@@ -4837,12 +4837,12 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	}
 
 	creator := signInClient(t, ts.URL, "alice@example.com")
-	draft := getBody(t, creator, draftURL)
-	if !strings.Contains(pageElement(t, draft, "section", "report-delegates"), `data-testid="no-report-delegates"`) {
-		t.Errorf("the draft's Delegates doesn't say there are none; body:\n%s", draft)
+	draft := getPage(t, creator, draftURL)
+	if !hasTestID(findByTestID(t, draft, "report-delegates"), "no-report-delegates") {
+		t.Errorf("the draft's Delegates doesn't say there are none; body:\n%s", renderNode(draft))
 	}
-	if !strings.Contains(draft, `data-testid="add-report-delegate"`) {
-		t.Fatalf("the creator is not offered Add Delegate; body:\n%s", draft)
+	if !hasTestID(draft, "add-report-delegate") {
+		t.Fatalf("the creator is not offered Add Delegate; body:\n%s", renderNode(draft))
 	}
 	resp := postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"dana@example.com"}})
 	page := readBody(t, resp)
@@ -4858,11 +4858,12 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("adding an unknown email: status %d, want 422", resp.StatusCode)
 	}
-	if refused := pageElement(t, page, "p", "report-delegate-refused"); !strings.Contains(refused, "nobody@example.com") {
+	refusedPage := parsePage(t, page)
+	if refused := textOf(findByTestID(t, refusedPage, "report-delegate-refused")); !strings.Contains(refused, "nobody@example.com") {
 		t.Errorf("refusal %q doesn't name the email", refused)
 	}
-	if form := pageElement(t, page, "form", "add-report-delegate"); !strings.Contains(form, `value="nobody@example.com"`) {
-		t.Errorf("the refused email isn't kept in the form:\n%s", form)
+	if email := formField(t, findByTestID(t, refusedPage, "add-report-delegate"), "email"); email.Value != "nobody@example.com" {
+		t.Errorf("the refused email isn't kept in the form: it holds %q", email.Value)
 	}
 
 	client := signInClient(t, ts.URL, "dana@example.com")
@@ -4870,7 +4871,7 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	if got := delegates(page); len(got) != 1 {
 		t.Errorf("Dana's draft lists Report Delegates %q, want Dana", got)
 	}
-	if strings.Contains(page, `data-testid="add-report-delegate"`) || strings.Contains(page, `data-testid="remove-report-delegate"`) {
+	if delegatePage := parsePage(t, page); hasTestID(delegatePage, "add-report-delegate") || hasTestID(delegatePage, "remove-report-delegate") {
 		t.Errorf("Dana, a Report Delegate, is offered to add or remove Report Delegates")
 	}
 	for path, form := range map[string]url.Values{
