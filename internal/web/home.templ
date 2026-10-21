@@ -391,7 +391,7 @@ templ healthBar(v homeView) {
 // actions on the right, wrapping underneath when the column is narrow.
 templ homeStyles() {
 	<style>
-		.hm-head{display:flex;flex-direction:column;gap:6px;min-width:0}
+		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
 		.hm-date{color:var(--color-ink-muted);font-size:13px}
 		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
@@ -402,18 +402,18 @@ templ homeStyles() {
 		.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
-		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:6px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
+		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:4px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
 		.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
 		.hm-what>a{font-size:14px;font-weight:500}
 		.hm-what>p:not(.hm-meta){flex-basis:100%}
-		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;color:var(--color-ink-muted);font-size:13px}
+		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
 		.hm-phrase{white-space:nowrap}
-		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:6px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
+		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
 		.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}
 		.hm-list>li:has(>.hm-org-row){padding:0}
-		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:6px 0;box-sizing:border-box;color:var(--color-ink)}
+		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
 		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
 		.hm-org-name{font-size:14px;font-weight:500}
 		.hm-org-row:hover .hm-org-name{text-decoration:underline}

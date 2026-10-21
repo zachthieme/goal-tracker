@@ -1268,7 +1268,7 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 		if !strings.Contains(link, `<span class="avatar hm-avatar" aria-hidden="true">`+want.initials+`</span>`) {
 			t.Errorf("%s's row doesn't lead with their initials:\n%s", want.who.Name, link)
 		}
-		if after := rows[i][strings.Index(rows[i], "</a>"):]; strings.Contains(after, "home-org-count") {
+		if _, after, _ := strings.Cut(rows[i], "</a>"); strings.Contains(after, "home-org-count") {
 			t.Errorf("%s's counts sit outside their row's link:\n%s", want.who.Name, rows[i])
 		}
 	}
