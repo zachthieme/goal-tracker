@@ -24,6 +24,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Home's Needs you, My org and Your Yellow or Red goals headings are section headings (`h2`) for screen readers and outlines, looking as before (#386).
 - [user] The app moves to the flat frame's look: a white canvas with neutral greys and hairlines (a neutral near-black in dark), Inter for every heading and number, page titles at 28px, section headings at 13px, labels in sentence case, and numbers in tabular figures. Cards stay, quieter, until each page moves to the frame (#390).
 - [user] Signed-out pages (sign-in, set password, Not found) centre their content under the app's name, with the Theme menu at the top right (#390).
+- [user] A Report's Print / PDF page is now in colour: each Health badge prints in its Red, Yellow or Green tint, with No Health in grey, and so do a Milestone's Red or Yellow mark, Ownerless, New Date, Overdue, Check-in overdue (its dashed grey chip) and a past-due Path to Green's status box. Browsers keep the tints in print and PDF. Health still shows its shape (■ ▲ ●) and its word, so a black-and-white printer reads it as before. Body text stays black, and the page stays light whatever the Theme (#389).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -40,6 +41,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
 - [internal] DESIGN.md's Tokens, Type scale, Sidebar, Page header, Theme menu and Nav counts describe the frame as built, and § Deviations 10 tabulates the new surfaces' contrast, which `scripts/contrast.py` now checks along with the Health shapes (#390).
+- [internal] DESIGN.md's Print variant describes colour that degrades to black and white, lists the print colour tokens, and tables each badge's contrast on its tint and on paper, which `scripts/contrast.py` checks (#389).
 
 ### Collected changes — October 20, 2026
 
