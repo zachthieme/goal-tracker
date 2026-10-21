@@ -553,3 +553,29 @@ func TestCheckinAddBarStyles(t *testing.T) {
 		}
 	}
 }
+
+// A filter chip is in its on state, filled with the primary tint and its key
+// shown as set, when it is marked on, when its select has a value other than
+// the blank "any" option chosen (the Follow-ups Team chip on
+// ?value=<Platform>), or when its checkbox is ticked (#433, #438).
+func TestFilterChipOnStateStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for _, sel := range []string{
+		".filter-chip.on",
+		`.filter-chip:has(option:checked:not([value=""]))`,
+		".filter-chip:has(input:checked)",
+	} {
+		if decls, ok := ruleFor(css, sel); !ok || !strings.Contains(decls, "background:var(--color-primary-subtle)") {
+			t.Errorf("app.css %s{%s} isn't filled with --color-primary-subtle", sel, decls)
+		}
+	}
+	keySet := `.filter-chip:has(option:checked:not([value=""])) .chip-key-set`
+	if decls, ok := ruleFor(css, keySet); !ok || !strings.Contains(decls, "display:inline") {
+		t.Errorf("app.css %s{%s} doesn't show the set key", keySet, decls)
+	}
+}
