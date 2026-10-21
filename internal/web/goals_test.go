@@ -385,13 +385,13 @@ func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
 			t.Errorf("group %d should be %s holding Alpha:\n%s", i, label, group)
 		}
 	}
-	if got := pageElement(t, grouped, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
-		t.Errorf("total = %q, want 2 Goals", got)
+	if got := pageElement(t, grouped, "span", "goal-count"); !strings.HasSuffix(got, ">2") {
+		t.Errorf("total = %q, want 2", got)
 	}
 
 	flat := getBody(t, client, ts.URL+"/goals")
-	if got := pageElement(t, flat, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
-		t.Errorf("flat total = %q, want 2 Goals", got)
+	if got := pageElement(t, flat, "span", "goal-count"); !strings.HasSuffix(got, ">2") {
+		t.Errorf("flat total = %q, want 2", got)
 	}
 }
 
@@ -429,9 +429,9 @@ func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
 	}
 }
 
-// A grouped Goal list's group headers sit on the neutral alternate surface, not
-// a teal fill: a header row is nothing to act on, and teal is kept for what is
-// (DESIGN.md § System Mood).
+// A grouped Goal list's group headers sit on the neutral group-header surface,
+// not a teal fill: a header row is nothing to act on, and teal is kept for
+// what is (DESIGN.md § Direction: List rows).
 func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -443,11 +443,11 @@ func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 
 	grouped := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if !strings.Contains(grouped, `class="gl-group"`) {
+	if !strings.Contains(grouped, `class="gl-group">`) {
 		t.Fatalf("grouped list has no group header row; body:\n%s", grouped)
 	}
-	if rule := cssRule(t, grouped, ".gl-group th"); !strings.Contains(rule, "background:var(--color-surface-alt)") {
-		t.Errorf("group header isn't on --color-surface-alt; rule: %s", rule)
+	if rule := cssRule(t, grouped, ".gl-group th"); !strings.Contains(rule, "background:var(--color-group)") {
+		t.Errorf("group header isn't on --color-group; rule: %s", rule)
 	}
 }
 
@@ -604,11 +604,14 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 	return titles
 }
 
-// The Goal list is a table led by each Goal's Health, and Goals that need a
-// decision or update come first: Red, then Ownerless, then Check-in overdue or
-// Path to Green overdue, then Yellow, then Green, then Goals with no Health,
-// alphabetical within each group.
-func TestGoalListSortsProblemsFirst(t *testing.T) {
+// The Goal list is grouped by Health: Red, Yellow, Green, then the Goals with
+// no Health, each under a header row with its shape, name and count. Within a
+// group, Goals that need a decision or update come first: Ownerless, then
+// Check-in overdue or Path to Green overdue, then the rest, alphabetical
+// within each. Each row leads with its Health's shape alone, named by an
+// aria-label so colour is never the only signal, and a Goal with no Health
+// shows its Lifecycle as a chip. Nothing sits in a card.
+func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -634,33 +637,61 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 	red := h.ActiveGoal(sam, "Zulu fire", "It matters.")
 	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
 	ts := newServer(t, h)
+	goals := []domain.Goal{checkinOverdue, proposed, betaGreen, alphaGreen, yellow, ownerless, red}
 
 	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all")
-	rows := goalRows(t, list)
-
-	got := rowTitles(rows, checkinOverdue, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
-	want := []string{"Zulu fire", "Orphaned", "Overdue work", "Wobbly", "Alpha green", "Beta green", "Proposed idea"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("row order = %q, want %q", got, want)
+	if strings.Contains(list, `class="card`) {
+		t.Errorf("the Goal list sits in a card:\n%s", swappedList(t, list))
 	}
-	if !strings.Contains(list, "<th>Health</th>") {
-		t.Errorf("Goal list has no Health column; body:\n%s", list)
+	groups := strings.Split(swappedList(t, list), `<tbody data-testid="goal-health-group"`)[1:]
+	type group struct {
+		mark, name, count string
+		rows              []string
 	}
-	for i, class := range []string{"r", "g", "lc", "y", "g", "g", "lc"} {
-		health := pageElement(t, rows[i], "span", "goal-row-health")
-		if !strings.Contains(openTag(health), `class="badge `+class+`"`) {
-			t.Errorf("%s: Health badge is not .%s: %s", want[i], class, health)
+	want := []group{
+		{"r", "Red", "1", []string{"Zulu fire"}},
+		{"y", "Yellow", "1", []string{"Wobbly"}},
+		{"g", "Green", "3", []string{"Orphaned", "Alpha green", "Beta green"}},
+		{"none", "No Health", "2", []string{"Overdue work", "Proposed idea"}},
+	}
+	if len(groups) != len(want) {
+		t.Fatalf("got %d Health groups, want %d:\n%s", len(groups), len(want), swappedList(t, list))
+	}
+	for i, w := range want {
+		head := pageElement(t, groups[i], "tr", "goal-group-head")
+		if !strings.Contains(openTag(head), `class="gl-group"`) {
+			t.Errorf("%s: header row isn't a .gl-group row: %s", w.name, head)
+		}
+		if !strings.Contains(head, `<span class="gl-mark `+w.mark+`" aria-hidden="true"></span>`) {
+			t.Errorf("%s: header row lacks its shape: %s", w.name, head)
+		}
+		if got := pageElement(t, head, "span", "goal-group-label"); !strings.HasSuffix(got, ">"+w.name) {
+			t.Errorf("%s: header label = %s", w.name, got)
+		}
+		if got := pageElement(t, head, "span", "goal-group-count"); !strings.HasSuffix(got, ">"+w.count) {
+			t.Errorf("%s: header count = %s, want %s", w.name, got, w.count)
+		}
+		rows := goalRows(t, groups[i])
+		if got := rowTitles(rows, goals...); !slices.Equal(got, w.rows) {
+			t.Errorf("%s group rows = %q, want %q", w.name, got, w.rows)
+		}
+		for _, row := range rows {
+			mark := openTag(pageElement(t, row, "span", "goal-row-health"))
+			if attr(mark, "class") != "gl-mark "+w.mark || attr(mark, "role") != "img" || attr(mark, "aria-label") != w.name {
+				t.Errorf("%s row's Health mark = %s, want a .gl-mark.%s img labelled %q", w.name, mark, w.mark, w.name)
+			}
 		}
 	}
-	if health := pageElement(t, rows[6], "span", "goal-row-health"); !strings.Contains(health, "Proposed") {
-		t.Errorf("a Goal with no Health shows no Lifecycle: %s", health)
+	if chip := pageElement(t, goalRows(t, groups[3])[1], "span", "goal-row-lifecycle"); !strings.Contains(chip, `class="badge lc"`) || !strings.HasSuffix(chip, ">Proposed") {
+		t.Errorf("a Goal with no Health doesn't show its Lifecycle as a chip: %s", chip)
 	}
 }
 
 // A Goal whose latest Check-in is Green while a Milestone is overdue is marked
-// Milestone overdue beside its Health, in Check-in overdue's chip, and sorts
-// with the Check-in overdue Goals, above an unmarked Yellow one. Its Health
-// stays Green, and a plain Green Goal carries no such mark.
+// Milestone overdue beside its title, in Check-in overdue's chip, and sorts
+// with the Check-in overdue Goals, at the head of the Green group, below the
+// Yellow one. Its Health stays Green, and a plain Green Goal carries no such
+// mark.
 func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
 	t.Parallel()
 
@@ -674,17 +705,17 @@ func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
 	ts := newServer(t, h)
 
 	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all"))
-	if got, want := rowTitles(rows, overdue, yellow, green), []string{"Zulu launch", "Wobbly", "Alpha green"}; !slices.Equal(got, want) {
+	if got, want := rowTitles(rows, overdue, yellow, green), []string{"Wobbly", "Zulu launch", "Alpha green"}; !slices.Equal(got, want) {
 		t.Fatalf("row order = %q, want %q", got, want)
 	}
-	chip := pageElement(t, rows[0], "span", "milestone-overdue")
+	chip := pageElement(t, rows[1], "span", "milestone-overdue")
 	if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.Contains(chip, ">Milestone overdue") {
 		t.Errorf("Milestone overdue chip = %s, want a .badge.st reading \"Milestone overdue\"", chip)
 	}
-	if health := pageElement(t, rows[0], "span", "goal-row-health"); !strings.Contains(openTag(health), `class="badge g"`) {
+	if health := pageElement(t, rows[1], "span", "goal-row-health"); attr(openTag(health), "aria-label") != "Green" {
 		t.Errorf("Health = %s, want the Owner's Green", health)
 	}
-	for _, row := range rows[1:] {
+	for _, row := range []string{rows[0], rows[2]} {
 		if strings.Contains(row, `data-testid="milestone-overdue"`) {
 			t.Errorf("an unmarked row carries a Milestone overdue chip: %s", row)
 		}
@@ -745,9 +776,10 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 }
 
-// At phone width the Goal list's rows stack as cards, as Follow-ups' do: the Goal
-// across the top, then Health and Owner, then Due and Last check-in, each led
-// by a label only the phone shows, with the Dimension tags hidden (#258).
+// At phone width the Goal list's rows stack (#258): the Goal across the top,
+// its Health's shape in the row's gutter beside it, then Owner, Due and Last
+// check-in wrapping under it, Due and Last check-in each led by a label only
+// the phone shows, with the Dimension tags hidden.
 func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -773,14 +805,15 @@ func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	phone := mediaBlock(t, page, "@media (max-width:600px)")
 	for selector, want := range map[string]string{
 		".gl-list thead":      "display:none",
-		".gl-list tr":         "display:grid",
+		".gl-list tr":         "display:flex",
 		".gl-list td":         "display:block",
 		".gl-list .gl-goal":   "order:-1",
 		".gl-list .gl-tags":   "display:none",
 		".gl-dates::before":   `content:"Due "`,
 		".gl-checkin::before": `content:"Last check-in "`,
 		".gl-list .gl-owner":  "white-space:normal",
-		".gl-list [colspan]":  "grid-column:1/-1",
+		".gl-list [colspan]":  "flex-basis:100%",
+		".gl-list .gl-health": "order:-2",
 	} {
 		rule, ok := ruleFor(phone, selector)
 		if !ok {
@@ -789,8 +822,8 @@ func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
 		}
 	}
-	if rule, _ := ruleFor(phone, ".gl-list .gl-goal"); !strings.Contains(rule, "grid-column:1/-1") {
-		t.Errorf("at 600px the Goal cell .gl-list .gl-goal{%s} shares its line with Health rather than heading the card", rule)
+	if rule, _ := ruleFor(phone, ".gl-list .gl-goal"); !strings.Contains(rule, "flex-basis:100%") {
+		t.Errorf("at 600px the Goal cell .gl-list .gl-goal{%s} shares its line with the Owner rather than heading the row", rule)
 	}
 	outside := strings.Replace(page, phone, "", 1)
 	for _, label := range []string{".gl-dates::before", ".gl-checkin::before"} {
@@ -1026,13 +1059,13 @@ func TestGoalListScopesToMyOrg(t *testing.T) {
 		t.Errorf("the Scope select doesn't submit ?org=: %s", openTag(sel))
 	}
 	bar := between(t, page, `<div class="gl-bar">`, "</div>")
-	if !strings.HasPrefix(bar, `<div class="gl-bar"><select data-testid="goal-scope-filter"`) {
+	if !strings.HasPrefix(bar, `<div class="gl-bar"><label class="filter-chip on"><span class="chip-key" aria-hidden="true">Scope:</span><select data-testid="goal-scope-filter"`) {
 		t.Errorf("the Scope select isn't the filter bar's first control: %s", bar)
 	}
 	if strings.Contains(page, `name="mine"`) || strings.Contains(page, "Mine only") {
 		t.Errorf("the filter bar still has a Mine only checkbox")
 	}
-	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "5 Goals in My org") {
+	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">5 in My org") {
 		t.Errorf("the count doesn't name My org: %s", count)
 	}
 
@@ -1078,7 +1111,7 @@ func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	if want := []string{"Pax's goal", "Max's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Max's org: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
 	}
-	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in Max Marsh&#39;s org") {
+	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">2 in Max Marsh&#39;s org") {
 		t.Errorf("the count doesn't name Max's org: %s", count)
 	}
 	orgSel = scopeSelect(t, page, "goal-scope-filter")
@@ -1105,7 +1138,7 @@ func TestGoalListOpensOnTheViewersDefaultScope(t *testing.T) {
 	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) || label != "My org" {
 		t.Errorf("Mia's default: the Scope select shows %q %q chosen, want My org", value, label)
 	}
-	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in My org") {
+	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">2 in My org") {
 		t.Errorf("Mia's default: the count doesn't name My org: %s", count)
 	}
 
@@ -1180,7 +1213,7 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 	orgID := strconv.FormatInt(org.Mia.ID, 10)
 
 	page := getBody(t, client, ts.URL+"/goals?org="+orgID+"&group="+strconv.FormatInt(team.ID, 10))
-	if got := elementTexts(page, "th", "goal-group-label"); !slices.Equal(got, []string{"Core", "Unassigned"}) {
+	if got := elementTexts(page, "span", "goal-group-label"); !slices.Equal(got, []string{"Core", "Unassigned"}) {
 		t.Errorf("grouped in Mia's org, groups = %q", got)
 	}
 	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal", "Mia's goal"}; !slices.Equal(got, want) {
@@ -1416,12 +1449,14 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 		t.Errorf("More filters is closed with a value chosen: %s", more)
 	}
 
+	// Group by shows among the filter bar's chips, so grouping alone leaves
+	// More filters closed.
 	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if more := pageTag(t, grouped, "details", "more-filters"); !strings.Contains(more, "open") {
-		t.Errorf("More filters is closed while grouping: %s", more)
+	if more := pageTag(t, grouped, "details", "more-filters"); strings.Contains(more, "open") {
+		t.Errorf("More filters opens for a grouping alone: %s", more)
 	}
 	section := pageElement(t, grouped, "tbody", "goal-group")
-	if label := pageElement(t, section, "th", "goal-group-label"); !strings.Contains(label, "Growth") {
+	if label := pageElement(t, section, "span", "goal-group-label"); !strings.Contains(label, "Growth") {
 		t.Errorf("first section is not headed Growth: %s", label)
 	}
 	if got := rowTitles(goalRows(t, section), calm, fire, loose); !slices.Equal(got, []string{"Burning growth", "Calm growth"}) {
@@ -1613,9 +1648,10 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	}
 }
 
-// The Goal list's header names the page and offers New goal, a primary
-// button linking to the New goal page. The Follow-ups page has replaced the links to
-// the signal pages.
+// The Goal list's header strip names the page with the muted count of the
+// Goals it lists, then offers the List / Table switch and New goal, a primary
+// button linking to the New goal page (DESIGN.md § Direction: Page header).
+// The Follow-ups page has replaced the links to the signal pages.
 func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	t.Parallel()
 
@@ -1625,14 +1661,17 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals")
-	head := pageElement(t, page, "header", "goals-head")
-	for _, want := range []string{"<h1>Goals</h1>", "Goals that need a decision or update come first."} {
+	head := between(t, page, `<div data-testid="goals-head"`, "<main")
+	if !strings.Contains(head, `class="page-header gl-ph"`) {
+		t.Errorf("the Goal list's header isn't the page's header strip: %s", head)
+	}
+	for _, want := range []string{"<h1>Goals</h1>", `<span data-testid="goal-count" id="goal-count" class="ph-count">0</span>`, `<nav id="goal-layout" class="gl-seg" aria-label="Layout">`} {
 		if !strings.Contains(head, want) {
 			t.Errorf("header lacks %q: %s", want, head)
 		}
 	}
 	newGoal := pageElement(t, head, "a", "new-goal")
-	if tag := openTag(newGoal); attr(tag, "href") != "/goals/new" || attr(tag, "class") != "btn primary" || !strings.Contains(newGoal, "New goal") {
+	if tag := openTag(newGoal); attr(tag, "href") != "/goals/new" || attr(tag, "class") != "btn primary sm" || !strings.Contains(newGoal, "New goal") {
 		t.Errorf("New goal is not a primary button linking to /goals/new: %s", newGoal)
 	}
 	for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
@@ -4777,13 +4816,14 @@ func TestGoalListFiltersApplyOnChange(t *testing.T) {
 		page := getBody(t, client, ts.URL+layout)
 		form := tagAround(t, page, `data-testid="goal-filters"`)
 		for name, want := range map[string]string{
-			"hx-get":      "/goals",
-			"hx-trigger":  "submit, change[target.type!='search'], input[target.type=='search'] delay:400ms",
-			"hx-target":   "#goal-list",
-			"hx-select":   "#goal-list",
-			"hx-swap":     "outerHTML",
-			"hx-push-url": "true",
-			"hx-sync":     "this:replace",
+			"hx-get":        "/goals",
+			"hx-trigger":    "submit, change[target.type!='search'], input[target.type=='search'] delay:400ms",
+			"hx-target":     "#goal-list",
+			"hx-select":     "#goal-list",
+			"hx-select-oob": "#goal-count,#goal-layout",
+			"hx-swap":       "outerHTML",
+			"hx-push-url":   "true",
+			"hx-sync":       "this:replace",
 		} {
 			if got := html.UnescapeString(attr(form, name)); got != want {
 				t.Errorf("%s: filter form %s = %q, want %q", layout, name, got, want)
@@ -4897,7 +4937,9 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	if !regexp.MustCompile(`aria-sort="descending"><a [^>]*>Title</a>`).MatchString(swapped) {
 		t.Errorf("the table under htmx lost its sort:\n%s", swapped)
 	}
-	if toList := linkQuery(t, swapped, "layout-list"); toList.Get("group") != group || toList.Get("q") != "launch" {
+	// The List / Table switch sits in the header strip, which the filter form
+	// selects out of band.
+	if toList := linkQuery(t, between(t, body, `<nav id="goal-layout"`, "</nav>"), "layout-list"); toList.Get("group") != group || toList.Get("q") != "launch" {
 		t.Errorf("the table under htmx lost its grouping or search: List links to %v", toList)
 	}
 
@@ -4905,7 +4947,7 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	list := getBody(t, client, ts.URL+"/goals?org=all&group="+group)
 	body, address = htmxFilter(t, client, ts.URL, list, func(v url.Values) { v.Set("org", "mine") })
 	swapped = swappedList(t, body)
-	if got, want := cellTexts(swapped, "th"), []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Dimension tags", "Growth", "Trust"}; !slices.Equal(got, want) {
+	if got, want := cellTexts(swapped, "th"), []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Growth 1", "Trust 2"}; !slices.Equal(got, want) {
 		t.Errorf("the list under htmx heads %q, want %q: grouping lost", got, want)
 	}
 	if got, want := rowTitles(goalRows(t, swapped), goals...), []string{"Alpha launch", "Charlie launch", "Delta audit"}; !slices.Equal(got, want) {

@@ -8,33 +8,64 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// goalsPage is the Goal list an exec scans in seconds: a header offering New
-// goal, the filter bar, and the Goals as a table led by Health, problems first
-// (CONTEXT.md: filter and group Goals). New goal links to the New goal page.
+// goalsPage is the Goal list an exec scans in seconds, in the flat frame: a
+// header strip with the count, the List / Table switch and New goal, the
+// filter bar, and the Goals as a full-bleed list grouped by Health, problems
+// first in each group (CONTEXT.md: filter and group Goals). New goal links to
+// the New goal page.
 templ goalsPage(current *domain.Account, view goalsListData) {
-	@layout("Goals", current) {
+	@framedLayout("Goals", current, goalsHeader(view)) {
 		@goalsStyles()
-		<header data-testid="goals-head" class="page-head">
-			<div>
-				<h1>Goals</h1>
-				<p class="muted">Goals that need a decision or update come first.</p>
-			</div>
-			<a data-testid="new-goal" class="btn primary" href="/goals/new">New goal</a>
-		</header>
 		@goalFilters(view)
 		@goalList(view)
 	}
 }
 
-// goalFilters is the filter bar — the Scope (Everyone, Mine or an Org),
-// search, Health, Lifecycle and Incomplete — with the Dimension filters and
-// Group by folded under More filters, all submitted as a GET so the chosen
-// slice lives in the URL.
+// goalsHeader is the Goal list's header strip: "Goals" with the muted count of
+// the Goals listed, then the List / Table switch and New goal. An htmx filter
+// change swaps in only the list, so the filter form selects the count and the
+// switch, whose links keep every filter, out of band (goalFilters).
+templ goalsHeader(view goalsListData) {
+	<div data-testid="goals-head" class="page-header gl-ph">
+		<div class="ph-title">
+			<h1>Goals</h1>
+			<span data-testid="goal-count" id="goal-count" class="ph-count">{ view.countLabel() }</span>
+		</div>
+		<div class="ph-actions">
+			<nav id="goal-layout" class="gl-seg" aria-label="Layout">
+				<a
+					data-testid="layout-list"
+					href={ view.layoutURL("") }
+					if view.Table == nil {
+						aria-current="page"
+					}
+				>List</a>
+				<a
+					data-testid="layout-table"
+					href={ view.layoutURL(layoutTable) }
+					if view.Table != nil {
+						aria-current="page"
+					}
+				>Table</a>
+			</nav>
+			<a data-testid="new-goal" class="btn primary sm" href="/goals/new">New goal</a>
+		</div>
+	</div>
+}
+
+// goalFilters is the filter bar, one row of chips — the Scope, Health,
+// Lifecycle, Incomplete, "+ Filter" for More filters' Dimension filters, and
+// Group by — with the search at its right and Clear after the chips, all
+// submitted as a GET so the chosen slice lives in the URL. The chips are the
+// real selects, checkbox and <details>; the page's styles lay them out, so
+// Group by, which sits in More filters' panel, shows in the row while the
+// panel's Dimension filters open below it.
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
 // search, or Enter GETs the view and swaps in only the list, so the form keeps
 // its focus and an open More filters, and pushes the address. Clear's slot
-// rides along out of band, so Clear comes and goes with the filter (#385).
+// rides along out of band, so Clear comes and goes with the filter (#385), and
+// the header's count and List / Table switch are selected out of band too.
 // hx-history="false" keeps htmx from snapshotting the page, whose form controls
 // would come back unchosen: Back loads the earlier address afresh instead.
 templ goalFilters(view goalsListData) {
@@ -47,39 +78,46 @@ templ goalFilters(view goalsListData) {
 		hx-trigger="submit, change[target.type!='search'], input[target.type=='search'] delay:400ms"
 		hx-target="#goal-list"
 		hx-select="#goal-list"
+		hx-select-oob="#goal-count,#goal-layout"
 		hx-swap="outerHTML"
 		hx-push-url="true"
 		hx-sync="this:replace"
 		hx-history="false"
 	>
 		<div class="gl-bar">
-			@pageScopeSelect("goal-scope-filter", view.Org)
+			@pageScopeChip("goal-scope-filter", view.Org)
 			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
-			<select data-testid="goal-health-filter" name="health" aria-label="Health">
-				<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
-				for _, hf := range healthFilters {
-					<option value={ hf.Value } selected?={ view.Filter.Health == hf.Value }>
-						if hf.Health == "" {
-							No Health
-						} else {
-							{ hf.Health }
-						}
-					</option>
-				}
-			</select>
-			<select data-testid="goal-lifecycle-filter" name="lifecycle" aria-label="Lifecycle">
-				<option value="" selected?={ view.Filter.Lifecycle == "" }>Any Lifecycle</option>
-				for _, lc := range lifecycleFilters {
-					<option value={ lc } selected?={ view.Filter.Lifecycle == lc }>{ lc }</option>
-				}
-			</select>
-			<label class="gl-mine">
+			<label class="filter-chip">
+				<span class="chip-key chip-key-set" aria-hidden="true">Health:</span>
+				<select data-testid="goal-health-filter" name="health" aria-label="Health">
+					<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
+					for _, hf := range healthFilters {
+						<option value={ hf.Value } selected?={ view.Filter.Health == hf.Value }>
+							if hf.Health == "" {
+								No Health
+							} else {
+								{ hf.Health }
+							}
+						</option>
+					}
+				</select>
+			</label>
+			<label class="filter-chip">
+				<span class="chip-key chip-key-set" aria-hidden="true">Lifecycle:</span>
+				<select data-testid="goal-lifecycle-filter" name="lifecycle" aria-label="Lifecycle">
+					<option value="" selected?={ view.Filter.Lifecycle == "" }>Any Lifecycle</option>
+					for _, lc := range lifecycleFilters {
+						<option value={ lc } selected?={ view.Filter.Lifecycle == lc }>{ lc }</option>
+					}
+				</select>
+			</label>
+			<label class="filter-chip gl-mine">
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
 				Incomplete
 			</label>
 			if len(view.Dimensions) > 0 {
-				<details data-testid="more-filters" open?={ view.moreFiltersSet() }>
-					<summary aria-controls="goal-more-filters">More filters</summary>
+				<details data-testid="more-filters" class="gl-more-toggle" open?={ view.moreFiltersSet() }>
+					<summary aria-controls="goal-more-filters" title="More filters"><span aria-hidden="true">+</span> Filter</summary>
 				</details>
 			}
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
@@ -92,7 +130,7 @@ templ goalFilters(view goalsListData) {
 				}
 			>
 				if view.anyGoalFilterSet() {
-					<a data-testid="goal-filters-clear" href="/goals" class="btn quiet">Clear</a>
+					<a data-testid="goal-filters-clear" href="/goals" class="btn quiet sm">Clear</a>
 				}
 			</span>
 		</div>
@@ -113,10 +151,10 @@ templ goalFilters(view goalsListData) {
 					</fieldset>
 				}
 				if view.Table == nil {
-					<label>
-						Group by
+					<label class="filter-chip gl-group-by">
+						<span class="chip-key">Group by:</span>
 						<select name="group">
-							<option value="" selected?={ view.GroupID == 0 }>— none —</option>
+							<option value="" selected?={ view.GroupID == 0 }>Health</option>
 							for _, d := range view.Dimensions {
 								<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
 							}
@@ -141,9 +179,9 @@ templ goalFilters(view goalsListData) {
 }
 
 // goalList is the htmx swap target: the Goal list as a table led by Health,
-// flat or with a section per value of the grouping Dimension, under a total of
-// the Goals it lists. Grouped by a several-values Dimension a Goal can appear in
-// more than one section, so the total counts each Goal once (ADR 0005).
+// or its table layout. Grouped by a several-values Dimension a Goal can appear
+// in more than one group, so the header's total counts each Goal once (ADR
+// 0005).
 templ goalList(view goalsListData) {
 	if view.Table != nil {
 		@goalTableLayout(view)
@@ -152,13 +190,20 @@ templ goalList(view goalsListData) {
 	}
 }
 
-// goalListLayout is the Goal list's list layout, led by Health.
+// goalListLayout is the Goal list's list layout: a full-bleed list under a
+// muted row of column labels, grouped by Health, or by a value of the grouping
+// Dimension, each group under a header row with its name and count.
 templ goalListLayout(view goalsListData) {
-	<div id="goal-list" data-testid="goal-list" class="card">
-		@goalListHead(view)
+	<div id="goal-list" data-testid="goal-list" class="gl-wrap">
 		<table class="gl-list">
 			<thead>
-				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
+				<tr>
+					<th scope="col" class="gl-col-health"><span class="sr-only">Health</span></th>
+					<th scope="col" class="gl-col-goal">Goal</th>
+					<th scope="col" class="gl-col-owner">Owner</th>
+					<th scope="col" class="gl-col-due">Due</th>
+					<th scope="col" class="gl-col-checkin">Last check-in</th>
+				</tr>
 			</thead>
 			if view.GroupID != 0 {
 				if len(view.Groups) == 0 {
@@ -168,12 +213,12 @@ templ goalListLayout(view goalsListData) {
 				}
 				for _, grp := range view.Groups {
 					<tbody data-testid="goal-group">
-						<tr class="gl-group">
-							<th data-testid="goal-group-label" colspan="6" scope="colgroup">
+						<tr data-testid="goal-group-head" class="gl-group">
+							<th colspan="5" scope="colgroup">
 								if grp.Value != nil {
-									{ grp.Value.Value }
+									@goalGroupLabel(grp.Value.Value, len(grp.Rows))
 								} else {
-									Unassigned
+									@goalGroupLabel("Unassigned", len(grp.Rows))
 								}
 							</th>
 						</tr>
@@ -183,51 +228,43 @@ templ goalListLayout(view goalsListData) {
 					</tbody>
 				}
 			} else {
-				<tbody>
-					if len(view.Rows) == 0 && view.filtered() {
-						@noGoals(view, view.noMatch())
-					} else if len(view.Rows) == 0 {
-						@noGoals(view, "No Goals yet.")
-					}
-					for _, row := range view.Rows {
-						@goalListRow(row, view.Dates)
-					}
-				</tbody>
+				if len(view.HealthGroups) == 0 {
+					<tbody>
+						if view.filtered() {
+							@noGoals(view, view.noMatch())
+						} else {
+							@noGoals(view, "No Goals yet.")
+						}
+					</tbody>
+				}
+				for _, grp := range view.HealthGroups {
+					<tbody data-testid="goal-health-group">
+						<tr data-testid="goal-group-head" class="gl-group">
+							<th colspan="5" scope="colgroup">
+								<span class={ "gl-mark", healthMarkClass(grp.Health) } aria-hidden="true"></span>
+								@goalGroupLabel(grp.name(), len(grp.Rows))
+							</th>
+						</tr>
+						for _, row := range grp.Rows {
+							@goalListRow(row, view.Dates)
+						}
+					</tbody>
+				}
 			}
 		</table>
 	</div>
 }
 
-// goalListHead tops the Goal list with its total and the List / Table toggle,
-// whose links keep every filter.
-templ goalListHead(view goalsListData) {
-	<div class="gl-head">
-		<p data-testid="goal-count" class="muted small gl-count">{ view.countLabel() }</p>
-		<nav class="gl-layout" aria-label="Layout">
-			<a
-				data-testid="layout-list"
-				class="btn quiet sm"
-				href={ view.layoutURL("") }
-				if view.Table == nil {
-					aria-current="page"
-				}
-			>List</a>
-			<a
-				data-testid="layout-table"
-				class="btn quiet sm"
-				href={ view.layoutURL(layoutTable) }
-				if view.Table != nil {
-					aria-current="page"
-				}
-			>Table</a>
-		</nav>
-	</div>
+// goalGroupLabel is a group header's name and its count of rows: "Red 4".
+templ goalGroupLabel(name string, n int) {
+	<span data-testid="goal-group-label">{ name }</span>
+	<span data-testid="goal-group-count" class="gl-group-count">{ fmt.Sprint(n) }</span>
 }
 
 // noGoals is the Goal list's empty state, spanning the table.
 templ noGoals(view goalsListData, text string) {
 	<tr>
-		<td data-testid="no-goals" colspan="6" class="muted">
+		<td data-testid="no-goals" colspan="5" class="muted">
 			{ text }
 			@seeEveryonesGoals(view)
 		</td>
@@ -242,35 +279,48 @@ templ seeEveryonesGoals(view goalsListData) {
 	}
 }
 
-// goalListRow is one Goal in the list: its Health, its title with the
-// Ownerless, freshness and Incomplete marks under it (Incomplete the quietest),
-// its Owner, and its Dimension values, a Retired one or one in a Retired
-// Dimension marked retired.
+// goalListRow is one Goal in the list: its Health's shape, named for
+// assistive technology, then its title with its chips beside it — the
+// Lifecycle of a Goal with no Health, the Ownerless, freshness and Incomplete
+// marks (Incomplete the quietest), and its Dimension values, a Retired one or
+// one in a Retired Dimension marked retired — then its Owner with their
+// initials, Due and Last check-in.
 templ goalListRow(row goalRow, dates displayDates) {
 	{{ g := row.Goal }}
+	{{ health := row.health() }}
 	<tr data-testid="goal-row">
 		<td class="gl-health">
-			if health := row.health(); health != "" {
-				<span data-testid="goal-row-health" class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
-			} else {
-				<span data-testid="goal-row-health" class="badge lc">{ g.Lifecycle }</span>
-			}
+			@goalHealthMark(health)
 		</td>
 		<td class="gl-goal">
-			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-			if g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
-				<div class="gl-marks">
-					if g.Ownerless {
-						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
+			<div class="gl-line">
+				<a class="gl-title" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
+				if health == "" || g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
+					<span class="gl-marks">
+						if health == "" {
+							<span data-testid="goal-row-lifecycle" class="badge lc">{ g.Lifecycle }</span>
+						}
+						if g.Ownerless {
+							<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
+						}
+						@goalRowFreshness(row.Freshness)
+						if len(row.Incomplete) > 0 {
+							<span data-testid="incomplete" class="badge lc" title={ "No value yet in " + strings.Join(row.Incomplete, ", ") }>Incomplete</span>
+						}
+					</span>
+				}
+				<span class="gl-tags">
+					for _, val := range row.Values {
+						<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
+						if val.Retired || val.DimensionRetired {
+							<span class="muted small" data-testid="retired">(retired)</span>
+						}
 					}
-					@goalRowFreshness(row.Freshness)
-					if len(row.Incomplete) > 0 {
-						<span data-testid="incomplete" class="badge lc" title={ "No value yet in " + strings.Join(row.Incomplete, ", ") }>Incomplete</span>
-					}
-				</div>
-			}
+				</span>
+			</div>
 		</td>
 		<td class="gl-owner">
+			<span class="gl-avatar" aria-hidden="true">{ initials(g.Owner) }</span>
 			@person(g.Owner)
 		</td>
 		<td data-testid="goal-row-due" class="num gl-dates">
@@ -282,26 +332,26 @@ templ goalListRow(row goalRow, dates displayDates) {
 			}
 		</td>
 		<td data-testid="goal-row-last-checkin" class="muted gl-checkin">{ row.lastCheckin() }</td>
-		<td class="gl-tags">
-			for _, val := range row.Values {
-				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
-				if val.Retired || val.DimensionRetired {
-					<span class="muted small" data-testid="retired">(retired)</span>
-				}
-			}
-		</td>
 	</tr>
 }
 
+// goalHealthMark is a list row's Health: its shape alone — square for Red,
+// triangle for Yellow, circle for Green, an empty ring for none — named by an
+// aria-label, so colour is never the only signal (DESIGN.md § Direction:
+// Health).
+templ goalHealthMark(health string) {
+	{{ name := goalHealthGroup{Health: health}.name() }}
+	<span data-testid="goal-row-health" class={ "gl-mark", healthMarkClass(health) } role="img" aria-label={ name }><span class="sr-only">{ name }</span></span>
+}
+
 // goalTableLayout is the Goal list's table layout: one row per Goal, a column
-// per live Dimension and Field, and no totals row (ADR 0005). It scrolls
-// sideways inside its own container rather than widening the page, and
-// downloads as CSV in the import format (#81). Edit values turns it into one
-// plain form, saved by one Save, that sets the Dimension values and Fields of
-// the Goals the person may (#80).
+// per live Dimension and Field, and no totals row (ADR 0005), full-bleed under
+// the filter bar like the list. It scrolls sideways inside its own container
+// rather than widening the page, and downloads as CSV in the import format
+// (#81). Edit values turns it into one plain form, saved by one Save, that
+// sets the Dimension values and Fields of the Goals the person may (#80).
 templ goalTableLayout(view goalsListData) {
-	<div id="goal-list" data-testid="goal-list" class="card">
-		@goalListHead(view)
+	<div id="goal-list" data-testid="goal-list" class="gl-wrap gl-table">
 		@goalTableColumns(view)
 		<p class="gl-download">
 			<a data-testid="goal-table-download" class="btn quiet sm" href={ view.downloadURL() } download>Download CSV</a>
@@ -572,44 +622,107 @@ templ goalLinkIf(link bool, g domain.Goal) {
 	}
 }
 
-// goalsStyles are the Goal list's own rules on top of app.css: the one-row
-// filter bar, with More filters' panel shown below it while its summary is
-// open (where :has() isn't supported, the panel always shows), the table's
-// group headers and marks,
-// and the table layout's toggle, Columns control, sort headers and edit mode.
+// goalsStyles are the Goal list's own rules on top of app.css, in the flat
+// frame (DESIGN.md § Direction):
+//   - the page drops its padding and width cap, so the filter bar and the
+//     list run edge to edge with 28px sides;
+//   - the header strip's List / Table switch is a segmented control;
+//   - the filter bar is one row of 28px chips, the search at its right. Its
+//     row and More filters' panel lay their controls out in the form's own
+//     row, so Group by sits among the chips and Clear after them, while the
+//     panel's Dimension filters, shown while its "+ Filter" is open (always,
+//     where :has() isn't supported), wrap onto a line below. A set chip reads
+//     its key ("Health: Red") on the subtle teal;
+//   - the list is 40px rows on hairlines under a muted row of column labels,
+//     each group under a header row on --color-group, a row's Health as its
+//     11px shape, its chips 22px pills, and its dates in tabular figures. At
+//     600px and below a row stacks: its Goal first, beside its shape in the
+//     row's gutter, then its Owner, Due and Last check-in wrapping under it;
+//   - the table layout keeps its Columns control, sort headers and edit mode,
+//     restyled as the same hairline list, scrolling sideways in its own box.
 templ goalsStyles() {
 	<style>
-		.gl-filters{display:flex;flex-direction:column;gap:8px}
-		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-		.gl-bar select[name=org]{flex:none;field-sizing:content}
-		.gl-bar input[type=search]{flex:1;min-width:200px}
-		.gl-clear{display:contents}
-		.gl-mine{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-		.gl-bar details>summary{padding:0 4px;color:var(--color-primary-strong);font-weight:600;white-space:nowrap}
-		.gl-more{padding:0 4px}
-		.gl-filters:has(.gl-bar>details:not([open]))>.gl-more{display:none}
-		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
-		.gl-count{margin:0;padding:8px 12px}
-		.gl-group th{background:var(--color-surface-alt);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
+		.page:has(>#goal-list){max-width:none;padding:0 0 64px;gap:0}
+		.gl-seg{display:inline-flex;height:32px;border:2px solid var(--color-chip-bg);border-radius:var(--radius-md);background:var(--color-chip-bg);box-sizing:border-box}
+		.gl-seg a{display:inline-flex;align-items:center;padding:0 12px;border-radius:4px;color:var(--color-ink-2);font-size:13px;font-weight:500}
+		.gl-seg a:hover{color:var(--color-ink);text-decoration:none}
+		.gl-seg a[aria-current=page]{background:var(--color-canvas);color:var(--color-ink)}
+		.gl-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 28px;border-bottom:1px solid var(--color-border)}
+		.gl-bar,.gl-more,.gl-clear{display:contents}
+		.filter-chip{position:relative;display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-canvas);color:var(--color-ink-2);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;box-sizing:border-box;cursor:pointer}
+		.filter-chip:has(select){padding-right:24px}
+		.filter-chip:has(select)::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-75%) rotate(45deg);pointer-events:none}
+		.filter-chip select{appearance:none;height:26px;min-height:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;field-sizing:content;cursor:pointer}
+		.filter-chip select:focus{outline:none}
+		.filter-chip:focus-within{outline:2px solid var(--color-focus);outline-offset:1px}
+		.filter-chip input[type=checkbox]{margin:0}
+		.chip-key{color:var(--color-ink-muted)}
+		.chip-key-set{display:none}
+		.filter-chip:has(option:checked:not([value=""])) .chip-key-set{display:inline}
+		.filter-chip.on,.filter-chip:has(option:checked:not([value=""])),.filter-chip:has(input:checked){background:var(--color-primary-subtle);color:var(--color-ink)}
+		.gl-more-toggle>summary{min-height:0;height:28px;gap:4px;padding:0 8px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);color:var(--color-ink-2);font-size:13px;font-weight:500;white-space:nowrap;box-sizing:border-box}
+		.gl-more-toggle[open]>summary,.gl-filters:has(.gl-more input:checked) .gl-more-toggle>summary{background:var(--color-primary-subtle);color:var(--color-ink)}
+		.gl-bar noscript{order:2}
+		@media (scripting:enabled){.gl-bar noscript{display:none}}
+		.gl-group-by{order:1}
+		.gl-clear>a{order:2;height:28px}
+		.gl-bar input[type=search]{order:3;flex:1 1 160px;min-width:0;max-width:240px;margin-left:auto;height:28px;padding:0 12px;font-size:13px}
+		.gl-filters:has(.gl-more-toggle[open])::after{content:"";order:4;flex-basis:100%}
+		.gl-more fieldset{order:5;display:inline-flex;flex-wrap:wrap;gap:4px 12px;margin:0;padding:4px 12px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+		.gl-more fieldset label{display:inline-flex;align-items:center;gap:8px}
+		.gl-filters:has(.gl-more-toggle:not([open])) .gl-more fieldset{display:none}
+		.gl-list{table-layout:fixed}
+		.gl-list th,.gl-list td{height:40px;padding:4px 12px;border-bottom:1px solid var(--color-border);background:none;box-sizing:border-box}
+		.gl-list tr>:first-child{padding-left:28px}
+		.gl-list tr>:last-child{padding-right:28px}
+		.gl-list thead th{height:32px;padding-top:0;padding-bottom:0;color:var(--color-ink-muted);font-size:12px;font-weight:500}
+		.gl-list .gl-col-health{width:40px;padding-right:0}
+		.gl-list .gl-health{padding-right:0;line-height:0}
+		.gl-list .gl-col-owner{width:200px}
+		.gl-list .gl-col-due{width:168px}
+		.gl-list .gl-col-checkin{width:148px}
+		.gl-group th{height:36px;background:var(--color-group);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
+		.gl-group .gl-mark{margin-right:8px}
+		.gl-group-count{margin-left:8px;color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
+		.gl-list tr[data-testid=goal-row]:hover{background:var(--color-row-hover)}
+		.gl-mark{display:inline-block;flex:none;width:11px;height:11px;box-sizing:border-box;vertical-align:middle}
+		.gl-mark.r{background:var(--health-r-mark);border-radius:2px}
+		.gl-mark.y{width:12px;background:var(--health-y-mark);clip-path:polygon(50% 0,100% 100%,0 100%)}
+		.gl-mark.g{background:var(--health-g-mark);border-radius:50%}
+		.gl-mark.none{background:none;border:1.5px solid var(--color-ink-muted);border-radius:50%}
+		.gl-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
+		.gl-title{flex:0 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-ink);font-weight:500}
+		.gl-title:hover{color:var(--color-ink)}
+		.gl-marks,.gl-tags{display:flex;flex:0 1 auto;flex-wrap:wrap;align-items:center;gap:4px;min-width:0}
+		.gl-tags:empty{display:none}
+		.gl-marks .badge{height:22px;padding:0 8px;border-radius:var(--radius-full);background:var(--color-chip-bg);color:var(--color-chip-ink);font-size:12px;font-weight:500;line-height:20px}
+		.gl-marks .badge.lc{border-color:transparent}
+		.gl-tags .tag{height:22px;padding:0 8px;font-size:12px;line-height:20px;box-sizing:border-box}
+		.gl-owner{overflow-wrap:anywhere}
+		.gl-avatar{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-right:8px;border-radius:var(--radius-full);background:var(--color-chip-bg);color:var(--color-chip-ink);font-size:10px;font-weight:600;vertical-align:middle}
+		.gl-list .gl-dates,.gl-list .gl-checkin{font-size:13px;font-variant-numeric:tabular-nums}
+		.gl-list .gl-dates{color:var(--color-ink-2);font-weight:400}
 		.gl-dates>*{white-space:nowrap}
-		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-		#goal-list td .tag{margin:4px 4px 4px 0}
-		.gl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-right:12px}
-		.gl-layout{display:inline-flex;gap:4px}
-		.gl-layout a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
-		.gl-columns{padding:0 12px}
-		.gl-download{margin:0;padding:0 12px 8px}
+		#goal-list [data-testid=no-goals]{height:auto;padding-top:24px;padding-bottom:24px}
+		.gl-columns{padding:0 28px}
+		.gl-download{margin:0;padding:0 16px 8px}
 		.gl-columns>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
 		.gl-columns form{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:12px}
 		.gl-columns label{display:inline-flex;align-items:center;gap:8px}
+		.gl-table th{height:32px;padding:0 12px;background:none;color:var(--color-ink-muted);font-size:12px;font-weight:500}
+		.gl-table td{height:40px;padding:4px 12px;font-size:14px}
+		.gl-table tr>:first-child{padding-left:28px}
+		.gl-table tr>:last-child{padding-right:28px}
+		.gl-table tbody tr:hover{background:var(--color-row-hover)}
+		.gl-table tr:last-child td{border-bottom:1px solid var(--color-border)}
 		#goal-list th a{color:inherit;text-decoration:none}
 		#goal-list th[aria-sort=ascending] a::after{content:" ↑"}
 		#goal-list th[aria-sort=descending] a::after{content:" ↓"}
 		.table-scroll td{white-space:nowrap}
 		.table-scroll td.gl-long{white-space:normal;min-width:240px}
-		.gl-edit-hint{margin:0;padding:0 12px 8px}
-		.gl-edit-errors{margin:0 12px 12px;color:var(--color-danger-ink)}
-		.gl-edit-actions{display:flex;gap:8px;padding:12px}
+		.gl-edit-hint{margin:0;padding:0 28px 8px}
+		.gl-edit-errors{margin:0 28px 12px;color:var(--color-danger-ink)}
+		.gl-edit-actions{display:flex;gap:8px;padding:12px 28px}
 		.gl-edit-cell{vertical-align:top}
 		.gl-edit-cell input[type=number]{width:128px}
 		.gl-edit-cell input[type=text]{min-width:160px}
@@ -618,7 +731,10 @@ templ goalsStyles() {
 		.gl-values{display:flex;flex-direction:column;gap:4px;border:0;margin:0;padding:0}
 		.gl-values label{display:inline-flex;align-items:center;gap:8px}
 		.gl-cell-error{margin:4px 0 0;max-width:240px;white-space:normal;font-size:13px;color:var(--color-danger-ink)}
-		@media (max-width:600px){.gl-list thead{display:none}.gl-list tr{display:grid;grid-template-columns:fit-content(50%) minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.gl-list tbody:last-child tr:last-child{border-bottom:none}.gl-list td,.gl-list th{display:block;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-surface-alt)}.gl-list [colspan]{grid-column:1/-1}.gl-list .gl-goal{order:-1;grid-column:1/-1}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:13px;font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}}
+		@media (pointer:coarse){.filter-chip,.gl-more-toggle>summary,.gl-bar input[type=search],.gl-seg{height:auto;min-height:44px}.filter-chip select{min-height:42px}.gl-seg a{min-height:40px}}
+		@media (max-width:1200px){.gl-list .gl-col-owner{width:168px}.gl-list .gl-col-due{width:152px}.gl-list .gl-col-checkin{width:136px}}
+		@media (max-width:900px){.gl-filters{padding:12px 16px}.gl-list tr>:first-child,.gl-table tr>:first-child{padding-left:16px}.gl-list tr>:last-child,.gl-table tr>:last-child{padding-right:16px}.gl-list .gl-col-health{width:28px}.gl-list .gl-col-owner{width:160px}.gl-list .gl-col-due{width:136px}.gl-list .gl-col-checkin{width:120px}.gl-columns,.gl-edit-hint,.gl-edit-actions{padding-left:16px;padding-right:16px}.gl-download{padding-left:4px;padding-right:4px}.gl-edit-errors{margin-left:16px;margin-right:16px}}
+		@media (max-width:600px){.gl-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gl-bar input[type=search]{flex:1 1 100%;max-width:none;margin-left:0}.gl-list{table-layout:auto}.gl-list thead{display:none}.gl-list tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:12px 16px 12px 40px;border-bottom:1px solid var(--color-border)}.gl-list td,.gl-list th,.gl-list tr>*,.gl-list tr>:first-child,.gl-list tr>:last-child{display:block;height:auto;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-group)}.gl-list [colspan]{flex-basis:100%}.gl-list .gl-health{order:-2;width:12px;margin-left:-24px}.gl-list .gl-goal{order:-1;flex-basis:100%}.gl-title{white-space:normal}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:13px;font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}}
 	</style>
 }
 

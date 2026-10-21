@@ -27,3 +27,13 @@ templ pageScopeSelect(testID string, c pageOrgScope) {
 		}
 	</select>
 }
+
+// pageScopeChip is pageScopeSelect as a filter bar chip, reading "Scope:"
+// before the scope the page is on (DESIGN.md § Direction: Filter bar). Its
+// select stays the one control labelled Scope; the chip's look is the page's.
+templ pageScopeChip(testID string, c pageOrgScope) {
+	<label class="filter-chip on">
+		<span class="chip-key" aria-hidden="true">Scope:</span>
+		@pageScopeSelect(testID, c)
+	</label>
+}
