@@ -1685,7 +1685,8 @@ and so on).
     rule with 24px each side, then the preview pane. At 900px and below they
     stack, compose first, with a hairline between them.
   - **Compose pane:** **Introduction** (the Report Definition's, or a muted
-    "No introduction."), then **Narrative**, then **Delegates**. Only those
+    "No introduction."), then **Narrative**, then **Delegates**, then
+    **Report log**. Only those
     who may manage the Report get Narrative; anyone else reads the narrative
     in the preview. **Narrative**:
     - **Highlights since <baseline>**, with a small muted "2 of 5 in" at its
@@ -1714,6 +1715,15 @@ and so on).
     `alert r` above the form, the email kept in its field. Everyone sees the
     list; a Report Delegate gets neither form, as only the creator and Admins
     add and remove them.
+  - **Report log (`reportLog`, `.rp-log`):** 24px under Delegates, a
+    "Report log" `h2` over every change to the Report Definition, newest
+    first, as hairline rows: what changed in words ("Title: EU MBR → EU
+    monthly review", "Rule added: Owner is in the org of Priya", "Report
+    Delegate added: Dana", "Narrative: picked “Signed Acme” into
+    Accomplishments; Insights notes changed", "Published"), then a small muted
+    "— <person> at <date, time>" in the company's timezone. The newest 20
+    show, the rest behind **Show all N**. Everyone who can open the Report
+    reads it, and nothing on it can be changed or undone.
   - **Preview pane:** first the Goals panel (`.rp-goals`), for the author:
     "N Goals in this report" as its `h2`, the selection in small muted text and
     a quiet small **Edit definition**, then each Goal in two columns (one at

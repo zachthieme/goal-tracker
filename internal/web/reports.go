@@ -115,8 +115,13 @@ func (s *Server) renderReportDraft(w http.ResponseWriter, r *http.Request, curre
 		s.serverError(w, r, "could not summarise the report", err)
 		return
 	}
+	log, err := s.svc.ReportLog(r.Context(), def.ID)
+	if err != nil {
+		s.serverError(w, r, "could not load the Report log", err)
+		return
+	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, savedNarrativeForm(report, chip), ""))
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, log, savedNarrativeForm(report, chip), ""))
 }
 
 // reportManagement is what a Report's draft page lets its reader do to the
@@ -469,7 +474,12 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		s.serverError(w, r, "could not summarise the report", err)
 		return
 	}
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, form, status))
+	log, err := s.svc.ReportLog(r.Context(), def.ID)
+	if err != nil {
+		s.serverError(w, r, "could not load the Report log", err)
+		return
+	}
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, log, form, status))
 }
 
 // narrativeForm is what the draft's compose form shows: each Highlight in the

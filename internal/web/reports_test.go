@@ -4892,3 +4892,84 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 		t.Errorf("Report Delegates after removing Dana = %q, want none", got)
 	}
 }
+
+// The draft page's Report log shows anyone who can open the Report every
+// change to its Definition, newest first, each with who made it and when in
+// the company's timezone (CONTEXT.md: Report log; ticket #435).
+func TestReportLogShowsOnTheDraftToAnyoneSignedIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	priya := h.SignInNamed("priya@example.com", "Priya Raman")
+	dana := h.SignInNamed("dana@example.com", "Dana Cole")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(priya, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.AddReportDelegate(priya, dana, def)
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.UpdateReportDefinition(context.Background(), dana.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name: "EU monthly review", Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+	}); err != nil {
+		t.Fatalf("UpdateReportDefinition: %v", err)
+	}
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(tokyo))))
+	t.Cleanup(ts.Close)
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	page := getPage(t, sam, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	section := findByTestID(t, page, "report-log")
+	got := textsOf(findAllByTestID(section, "report-log-entry"))
+	// Jan 2, 2026, 15:04 UTC is 00:04 the next day in Tokyo.
+	want := []string{
+		"Title: EU MBR → EU monthly review — Dana Cole at Jan 3, 2026, 01:04",
+		"Report Delegate added: Dana Cole — Priya Raman at Jan 3, 2026, 00:04",
+		"Created — Priya Raman at Jan 3, 2026, 00:04",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Sam's Report log reads %q, want %q", got, want)
+	}
+	if hasTestID(section, "report-log-more") {
+		t.Errorf("a short Report log hides some of its entries behind Show all")
+	}
+}
+
+// A long Report log shows its newest 20 entries, and the rest behind Show
+// all.
+func TestALongReportLogShowsTheNewestTwentyFirst(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	priya := h.SignIn("priya@example.com")
+	g := h.ActiveGoal(priya, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{Name: "Rename 0", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	for i := 1; i <= 24; i++ {
+		if _, err := h.Service.UpdateReportDefinition(context.Background(), priya.ID, def.ID, domain.SaveReportDefinitionInput{
+			Name: fmt.Sprintf("Rename %d", i), Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+		}); err != nil {
+			t.Fatalf("UpdateReportDefinition: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+
+	page := getPage(t, signInClient(t, ts.URL, "priya@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	section := findByTestID(t, page, "report-log")
+	more := findByTestID(t, section, "report-log-more")
+	all := findAllByTestID(section, "report-log-entry")
+	rest := findAllByTestID(more, "report-log-entry")
+	if len(all) != 25 || len(rest) != 5 {
+		t.Fatalf("the Report log shows %d entries, %d behind Show all; want 25, 5 behind it", len(all), len(rest))
+	}
+	if first := textOf(all[0]); !strings.HasPrefix(first, "Title: Rename 23 → Rename 24") {
+		t.Errorf("the newest entry reads %q, want the last rename", first)
+	}
+	if shown := textOf(more); !strings.HasPrefix(shown, "Show all 25 ") {
+		t.Errorf("the rest of the Report log reads %q, want it behind Show all 25", shown)
+	}
+	if last := textOf(rest[len(rest)-1]); !strings.HasPrefix(last, "Created") {
+		t.Errorf("the oldest entry reads %q, want Created", last)
+	}
+}
