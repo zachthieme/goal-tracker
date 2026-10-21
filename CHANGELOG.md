@@ -78,6 +78,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The finding-trouble e2e scenario again requires its Check-in overdue Goal to sort above every unmarked Green row, with no conditional escape (#405).
 
 **Code quality:**
+- [internal] Two stale comments now match the code: the Health grouping's No Health group (#405) and the Scope chip's styles (#406). `scripts/__pycache__` is untracked and ignored (#401).
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
 - [internal] The layout gains a page-header slot (`framedLayout` with `pageHeader`) for pages to fill as they move to the frame. The `--nav-*` and `--font-display`/`--font-mono` tokens and the Plus Jakarta Sans and JetBrains Mono font files are gone (#390).
 - [internal] The filter chip's rules move from the Goal list's own styles to `app.css`, unchanged, so every page that draws a chip loads them (#406).

@@ -33,3 +33,6 @@ dev/authentik/.env
 
 # What `make start` recorded for `make stop` and `make restart`
 /.serve-state.mk
+
+# Python bytecode (scripts/contrast.py run without -B).
+__pycache__/

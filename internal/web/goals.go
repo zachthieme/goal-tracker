@@ -292,7 +292,8 @@ func groupGoalRowsByHealth(rows []goalRow) []goalHealthGroup {
 			groups = append(groups, grp)
 		}
 	}
-	// The No Health group, when there is one, is last.
+	// The No Health group comes last; it moves to the front when it holds a
+	// Goal with a Check-in or Milestone overdue, or no Owner (problemRank 1 or 2).
 	if n := len(groups); n > 1 && groups[n-1].Health == "" && slices.ContainsFunc(groups[n-1].Rows, func(r goalRow) bool {
 		rank := r.problemRank()
 		return rank == 1 || rank == 2

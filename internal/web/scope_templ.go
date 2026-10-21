@@ -194,7 +194,8 @@ func pageScopeSelect(testID string, c pageOrgScope) templ.Component {
 
 // pageScopeChip is pageScopeSelect as a filter bar chip, reading "Scope:"
 // before the scope the page is on (DESIGN.md § Scope). Its
-// select stays the one control labelled Scope; the chip's look is the page's.
+// select stays the one control labelled Scope; the chip's look is app.css's
+// shared .filter-chip.
 func pageScopeChip(testID string, c pageOrgScope) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
