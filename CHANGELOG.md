@@ -47,6 +47,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
 - [user] The Check-in cadence control's segments are 44px tall on a touch screen, as every touch target is; they were 36px (#396).
 - [user] Every message page (Can't undo, Can't remove link, a refused Nudge, a Check-in that can't be reached) is centred like Not found (#397).
+- [ops] A PDF render that runs out of time leaves nothing behind: Chromium's scratch files, its `org.chromium.Chromium.*` socket directory and on-disk shared memory, go in the render's own directory as its `TMPDIR`, and that directory is removed only once every Chromium process the render started has exited. Where `TMPDIR` is too long for Chromium's socket to fit in a render's directory, Chromium keeps its scratch files in `TMPDIR` as before (#408).
 
 **Testing:**
 - [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
@@ -56,6 +57,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `e2e/phone-width.spec.ts` checks Home at 390px on the `due` template, with a Check-in due in Needs you showing its No change and Check in: nothing inside main clips or scrolls sideways and every control is on screen. `e2e/README.md` lists Home among the pages the spec covers (#387).
 - [internal] The smoke e2e spec checks that Home's page header reads Home with New goal and that Home has no card (#391).
 - [internal] HTTP tests check that Admin, Dimensions, Fields, Import, Sign in, Set password and Not found have no card class, and that each settings page's title sits in the page header (#397).
+- [internal] The Goal page's section tests cover Action Items: they come after Draft Highlights and before Comments, and the section is a plain `gp-section` opening with its h2 (#407).
+- [internal] The Goal page's no-card test covers an Admin's and a stranger's view as well as the Owner's, and the page with each of its 13 `?open=` forms open, each opened by someone it is offered to (#407).
+- [internal] `scripts/contrast.py` checks the text on the sidebar's hovered and current nav item (`--color-sidebar-hover`, `--color-sidebar-on`) and on a chip's fill (`--color-chip-bg`), `--color-chip-ink` included, in both themes. `--color-primary-strong` on `--color-sidebar-on`, 4.48:1 in light, is a pair no text may use: the script prints it with × and DESIGN.md § Deviations 10's new table says why, rather than the link colour being raised (#407).
+- [internal] A new e2e spec, `e2e/download-menu.spec.ts`, opens the Download menu on a Report's row and on a publication. At 390px it checks the popover lies inside the window and nothing on the page passes the window's edge. Without script it checks the menu still opens and both items are links (#407).
+- [internal] `expectFitsAPhone` (`e2e/phone-width.spec.ts`) checks that no visible element on the page passes the window's edge, not only the links, buttons, inputs and selects in main. html's `overflow-x:clip` cuts such an element off rather than letting the page scroll to it, so its scroll width couldn't tell. What a listed scroller holds is still left out (#407).
+- [internal] `scripts/shots.mjs` fails a shot when a visible element lies past the window's edge, as it does on an unexpected status, still saving its PNG and printing its facts. An element inside a box that only clips it now counts too: only a box that scrolls sideways on its own excuses what it holds (#407).
 
 **Code quality:**
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
