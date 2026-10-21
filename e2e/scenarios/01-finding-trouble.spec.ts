@@ -503,16 +503,18 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
   });
 
   await test.step("It worked if: a Goal nobody has updated is as loud as a Red one", async () => {
-    // On Goals, grouped by Health, the Check-in overdue row sorts above every
-    // unmarked row of its Health, and carries its own mark.
+    // On Goals, grouped by Health, the Check-in overdue row — Green in the
+    // seed — sorts above every unmarked Green row, and carries its own mark.
+    // A Check-in overdue Goal with no Health, whose No Health group then
+    // leads, is covered by the Go tests: the seed has none.
     await page.goto("/goals");
     const rows = await goalRows(page);
     const at = rows.findIndex((r) => r.title === checkinOverdue.title);
     expect(rows[at]?.checkinOverdue, `${checkinOverdue.title} carries its Check-in overdue mark`).toBe(true);
-    const quieter = rows.findIndex((r) => r.health === rows[at]?.health && !marked(r));
-    if (quieter >= 0) {
-      expect(at, `${checkinOverdue.title} sorts above every unmarked row of its Health`).toBeLessThan(quieter);
-    }
+    expect(rows[at]?.health, `${checkinOverdue.title} is Green`).toBe("Green");
+    const quieter = rows.findIndex((r) => r.health === "Green" && !marked(r));
+    expect(quieter, "the list has a Green row with no problem mark").toBeGreaterThanOrEqual(0);
+    expect(at, `${checkinOverdue.title} sorts above every unmarked Green row`).toBeLessThan(quieter);
 
     // On Follow-ups, it's a row in the main table, with its chip and a Fix, and
     // counted on the owner card.
