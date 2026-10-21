@@ -84,14 +84,16 @@ templ homePage(current *domain.Account, v homeView) {
 					<h2>
 						@homeHeading("Your Yellow or Red goals", len(v.AtRisk))
 					</h2>
-					<ul class="hm-list hm-compact">
+					<ul class="hm-list">
 						for _, g := range v.AtRisk {
 							<li>
-								<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
-								if asOf := healthAsOf(g); asOf != "" {
-									<span data-testid="home-goal-as-of" class="muted small">{ asOf }</span>
-								}
-								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+								<div class="hm-what">
+									<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+									if asOf := healthAsOf(g); asOf != "" {
+										<span data-testid="home-goal-as-of" class="hm-meta">{ asOf }</span>
+									}
+								</div>
 							</li>
 						}
 					</ul>
@@ -159,7 +161,7 @@ templ homeOrgSection(org homeOrg) {
 					<span data-testid="home-org-count" data-kind={ b.Kind }>{ b.Label }</span>
 				}
 			</p>
-			<ul class="hm-list hm-compact">
+			<ul class="hm-list">
 				for _, p := range org.Flagged {
 					<li data-testid="home-org-person">
 						<a data-testid="home-org-person-link" class="hm-org-row" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
@@ -403,7 +405,7 @@ templ homeStyles() {
 		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:6px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
 		.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
-		.hm-what>a,.hm-compact a{font-size:14px;font-weight:500}
+		.hm-what>a{font-size:14px;font-weight:500}
 		.hm-what>p:not(.hm-meta){flex-basis:100%}
 		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;color:var(--color-ink-muted);font-size:13px}
 		.hm-phrase{white-space:nowrap}

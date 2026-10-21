@@ -205,12 +205,12 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</h2><ul class=\"hm-list hm-compact\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</h2><ul class=\"hm-list\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, g := range v.AtRisk {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<li>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<li><div class=\"hm-what\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -239,62 +239,62 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(g.Health)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 90, Col: 161}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 91, Col: 162}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span> <a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if asOf := healthAsOf(g); asOf != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<span data-testid=\"home-goal-as-of\" class=\"muted small\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var8 string
-						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(asOf)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 92, Col: 71}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</span> ")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
+					var templ_7745c5c3_Var8 templ.SafeURL
+					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 92, Col: 69}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<a href=\"")
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var9 templ.SafeURL
-					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)))
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\">")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 94, Col: 68}
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var9 string
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(g.Goal.Title)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 92, Col: 86}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</a> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var10 string
-					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(g.Goal.Title)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 94, Col: 85}
+					if asOf := healthAsOf(g); asOf != "" {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<span data-testid=\"home-goal-as-of\" class=\"hm-meta\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var10 string
+						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(asOf)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 94, Col: 68}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</span>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</a></li>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div></li>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -413,7 +413,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(v.Green))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 124, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 126, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -426,7 +426,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(" " + domain.HealthGreen + " · ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 125, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 127, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -439,7 +439,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(v.Yellow))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 126, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 128, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -452,7 +452,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(" " + domain.HealthYellow + " · ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 127, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 129, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
@@ -465,7 +465,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(v.Red))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 128, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 130, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
@@ -478,7 +478,7 @@ func homeYourGoals(v homeView) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(" " + domain.HealthRed + " · ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 129, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 131, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -492,7 +492,7 @@ func homeYourGoals(v homeView) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 132, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 134, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -505,7 +505,7 @@ func homeYourGoals(v homeView) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(v.Delegated))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 135, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 137, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -518,7 +518,7 @@ func homeYourGoals(v homeView) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(" →")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 136, Col: 13}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 138, Col: 13}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -585,7 +585,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 157, Col: 14}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 159, Col: 14}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -599,7 +599,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(b.Kind)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 159, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 161, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 				if templ_7745c5c3_Err != nil {
@@ -612,7 +612,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(b.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 159, Col: 70}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 161, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
@@ -623,7 +623,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</p><ul class=\"hm-list hm-compact\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</p><ul class=\"hm-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -635,7 +635,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 				var templ_7745c5c3_Var27 templ.SafeURL
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 165, Col: 126}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 167, Col: 126}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -648,7 +648,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(initials(p.Person))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 166, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 168, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -693,7 +693,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(othersAllClear(org.Clear))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 179, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 181, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -717,7 +717,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 		var templ_7745c5c3_Var30 templ.SafeURL
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals?org=%d", org.ViewerID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 185, Col: 104}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 187, Col: 104}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -730,7 +730,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 186, Col: 11}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 188, Col: 11}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -743,7 +743,7 @@ func homeOrgSection(org homeOrg) templ.Component {
 		var templ_7745c5c3_Var32 templ.SafeURL
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/follow-ups?org=%d", org.ViewerID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 187, Col: 114}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 189, Col: 114}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -784,7 +784,7 @@ func homeHeading(name string, n int) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 196, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 198, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -797,7 +797,7 @@ func homeHeading(name string, n int) templ.Component {
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(n))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 197, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 199, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -811,7 +811,7 @@ func homeHeading(name string, n int) templ.Component {
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 199, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 201, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -859,7 +859,7 @@ func homeOrgCounts(c domain.SignalCounts) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(b.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 208, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 210, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 			if templ_7745c5c3_Err != nil {
@@ -885,7 +885,7 @@ func homeOrgCounts(c domain.SignalCounts) templ.Component {
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(b.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 208, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 210, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -962,7 +962,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(g.Health)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 226, Col: 15}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 228, Col: 15}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -976,7 +976,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var46 templ.SafeURL
 		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 229, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 231, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 		if templ_7745c5c3_Err != nil {
@@ -989,7 +989,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var47 string
 		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(g.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 229, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 231, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 		if templ_7745c5c3_Err != nil {
@@ -1002,7 +1002,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var48 string
 		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(homeDueAge(g))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 231, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 233, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 		if templ_7745c5c3_Err != nil {
@@ -1015,7 +1015,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("·")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 232, Col: 10}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 234, Col: 10}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 		if templ_7745c5c3_Err != nil {
@@ -1028,7 +1028,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var50 string
 		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(homeDueCadence(g.Freshness))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 233, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 235, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 		if templ_7745c5c3_Err != nil {
@@ -1052,7 +1052,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs("for ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 239, Col: 14}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 241, Col: 14}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1079,7 +1079,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 			var templ_7745c5c3_Var52 templ.SafeURL
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 247, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 249, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1097,7 +1097,7 @@ func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 		var templ_7745c5c3_Var53 templ.SafeURL
 		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 251, Col: 125}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 253, Col: 125}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 		if templ_7745c5c3_Err != nil {
@@ -1164,7 +1164,7 @@ func askRow(a domain.AskForHelp) templ.Component {
 		var templ_7745c5c3_Var57 string
 		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(a.Health)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 262, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 264, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 		if templ_7745c5c3_Err != nil {
@@ -1177,7 +1177,7 @@ func askRow(a domain.AskForHelp) templ.Component {
 		var templ_7745c5c3_Var58 templ.SafeURL
 		templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d#comments", a.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 263, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 265, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 		if templ_7745c5c3_Err != nil {
@@ -1190,7 +1190,7 @@ func askRow(a domain.AskForHelp) templ.Component {
 		var templ_7745c5c3_Var59 string
 		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(a.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 263, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 265, Col: 89}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 		if templ_7745c5c3_Err != nil {
@@ -1203,7 +1203,7 @@ func askRow(a domain.AskForHelp) templ.Component {
 		var templ_7745c5c3_Var60 string
 		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs("from ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 265, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 267, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 		if templ_7745c5c3_Err != nil {
@@ -1253,7 +1253,7 @@ func actionItemRow(l domain.ActionItemListing) templ.Component {
 		var templ_7745c5c3_Var62 templ.SafeURL
 		templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(homeActionItemPath(l.Item)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 280, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 282, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 		if templ_7745c5c3_Err != nil {
@@ -1266,7 +1266,7 @@ func actionItemRow(l domain.ActionItemListing) templ.Component {
 		var templ_7745c5c3_Var63 string
 		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(l.Item.Text)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 280, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 282, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 		if templ_7745c5c3_Err != nil {
@@ -1289,7 +1289,7 @@ func actionItemRow(l domain.ActionItemListing) templ.Component {
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(homeActionItemPlace(l))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 284, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 286, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 		if templ_7745c5c3_Err != nil {
@@ -1340,7 +1340,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var66 templ.SafeURL
 		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 297, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 299, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 		if templ_7745c5c3_Err != nil {
@@ -1353,7 +1353,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var67 string
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(l.Child.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 297, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 299, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 		if templ_7745c5c3_Err != nil {
@@ -1366,7 +1366,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var68 string
 		templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs("(")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 299, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 301, Col: 9}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
 		if templ_7745c5c3_Err != nil {
@@ -1379,7 +1379,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(") wants to contribute to")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 301, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 303, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 		if templ_7745c5c3_Err != nil {
@@ -1392,7 +1392,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var70 templ.SafeURL
 		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 303, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 305, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 		if templ_7745c5c3_Err != nil {
@@ -1405,7 +1405,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		var templ_7745c5c3_Var71 string
 		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(l.Parent.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 303, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 305, Col: 84}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 		if templ_7745c5c3_Err != nil {
@@ -1459,7 +1459,7 @@ func handoffRequestRow(ho domain.Handoff) templ.Component {
 		var templ_7745c5c3_Var73 templ.SafeURL
 		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 319, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 321, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 		if templ_7745c5c3_Err != nil {
@@ -1472,7 +1472,7 @@ func handoffRequestRow(ho domain.Handoff) templ.Component {
 		var templ_7745c5c3_Var74 string
 		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(ho.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 319, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 321, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 		if templ_7745c5c3_Err != nil {
@@ -1489,7 +1489,7 @@ func handoffRequestRow(ho domain.Handoff) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(" wants to hand this Goal to you")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 322, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 324, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 		if templ_7745c5c3_Err != nil {
@@ -1552,7 +1552,7 @@ func acceptReject(base string) templ.Component {
 		var templ_7745c5c3_Var77 templ.SafeURL
 		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/accept"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 339, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 341, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 		if templ_7745c5c3_Err != nil {
@@ -1565,7 +1565,7 @@ func acceptReject(base string) templ.Component {
 		var templ_7745c5c3_Var78 templ.SafeURL
 		templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/reject"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 342, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 344, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var78))
 		if templ_7745c5c3_Err != nil {
@@ -1614,7 +1614,7 @@ func rejectAccept(base string) templ.Component {
 		var templ_7745c5c3_Var80 templ.SafeURL
 		templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/accept"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 352, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 354, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 		if templ_7745c5c3_Err != nil {
@@ -1657,7 +1657,7 @@ func rejectButton(base string) templ.Component {
 		var templ_7745c5c3_Var82 templ.SafeURL
 		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/reject"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 359, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 361, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 		if templ_7745c5c3_Err != nil {
@@ -1670,7 +1670,7 @@ func rejectButton(base string) templ.Component {
 		var templ_7745c5c3_Var83 string
 		templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.ResolveAttributeValue(fromHome)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 360, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 362, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var83)
 		if templ_7745c5c3_Err != nil {
@@ -1717,7 +1717,7 @@ func healthBar(v homeView) templ.Component {
 		var templ_7745c5c3_Var85 string
 		templ_7745c5c3_Var85, templ_7745c5c3_Err = templ.ResolveAttributeValue(healthBarLabel(v))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 371, Col: 92}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 373, Col: 92}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var85)
 		if templ_7745c5c3_Err != nil {
@@ -1780,7 +1780,7 @@ func homeStyles() templ.Component {
 			templ_7745c5c3_Var86 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<style>\n\t\t.hm-head{display:flex;flex-direction:column;gap:6px;min-width:0}\n\t\t.hm-date{color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}\n\t\t.hm-section{display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}\n\t\t.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}\n\t\t.hm-group{display:flex;flex-direction:column;gap:4px;margin-top:8px}\n\t\t.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}\n\t\t.hm-list{list-style:none;margin:0;padding:0}\n\t\t.hm-list:empty{display:none}\n\t\t.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:6px 0;border-top:1px solid var(--color-border);box-sizing:border-box}\n\t\t.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}\n\t\t.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}\n\t\t.hm-what>a,.hm-compact a{font-size:14px;font-weight:500}\n\t\t.hm-what>p:not(.hm-meta){flex-basis:100%}\n\t\t.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-phrase{white-space:nowrap}\n\t\t.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:6px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}\n\t\t.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}\n\t\t.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}\n\t\t.hm-list>li:has(>.hm-org-row){padding:0}\n\t\t.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:6px 0;box-sizing:border-box;color:var(--color-ink)}\n\t\t.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}\n\t\t.hm-org-name{font-size:14px;font-weight:500}\n\t\t.hm-org-row:hover .hm-org-name{text-decoration:underline}\n\t\t.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}\n\t\t.hm-org-row .badge.r::before,.hm-org-row .badge.y::before{content:\"\";flex:none;width:8px;height:8px;background:currentColor}\n\t\t.hm-org-row .badge.r::before{border-radius:1px}\n\t\t.hm-org-row .badge.y::before{width:10px;height:9px;clip-path:polygon(50% 0,100% 100%,0 100%)}\n\t\t.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}\n\t\t.hm-actions form{margin:0}\n\t\t.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}\n\t\t.hm-btn{height:30px;padding:0 12px;font-size:13px}\n\t\t.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}\n\t\t.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}\n\t\t.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}\n\t\t.hm-bar>span{flex:1 1 0;min-width:2px}\n\t\t.hm-bar>.g{background:var(--health-g-mark)}\n\t\t.hm-bar>.y{background:var(--health-y-mark)}\n\t\t.hm-bar>.r{background:var(--health-r-mark)}\n\t\t.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<style>\n\t\t.hm-head{display:flex;flex-direction:column;gap:6px;min-width:0}\n\t\t.hm-date{color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}\n\t\t.hm-section{display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}\n\t\t.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}\n\t\t.hm-group{display:flex;flex-direction:column;gap:4px;margin-top:8px}\n\t\t.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}\n\t\t.hm-list{list-style:none;margin:0;padding:0}\n\t\t.hm-list:empty{display:none}\n\t\t.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:6px 0;border-top:1px solid var(--color-border);box-sizing:border-box}\n\t\t.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}\n\t\t.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}\n\t\t.hm-what>a{font-size:14px;font-weight:500}\n\t\t.hm-what>p:not(.hm-meta){flex-basis:100%}\n\t\t.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;color:var(--color-ink-muted);font-size:13px}\n\t\t.hm-phrase{white-space:nowrap}\n\t\t.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:6px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}\n\t\t.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}\n\t\t.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}\n\t\t.hm-list>li:has(>.hm-org-row){padding:0}\n\t\t.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:6px 0;box-sizing:border-box;color:var(--color-ink)}\n\t\t.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}\n\t\t.hm-org-name{font-size:14px;font-weight:500}\n\t\t.hm-org-row:hover .hm-org-name{text-decoration:underline}\n\t\t.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}\n\t\t.hm-org-row .badge.r::before,.hm-org-row .badge.y::before{content:\"\";flex:none;width:8px;height:8px;background:currentColor}\n\t\t.hm-org-row .badge.r::before{border-radius:1px}\n\t\t.hm-org-row .badge.y::before{width:10px;height:9px;clip-path:polygon(50% 0,100% 100%,0 100%)}\n\t\t.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}\n\t\t.hm-actions form{margin:0}\n\t\t.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}\n\t\t.hm-btn{height:30px;padding:0 12px;font-size:13px}\n\t\t.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}\n\t\t.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}\n\t\t.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}\n\t\t.hm-bar>span{flex:1 1 0;min-width:2px}\n\t\t.hm-bar>.g{background:var(--health-g-mark)}\n\t\t.hm-bar>.y{background:var(--health-y-mark)}\n\t\t.hm-bar>.r{background:var(--health-r-mark)}\n\t\t.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -16,6 +16,17 @@ test("a lead signs in and sees Your week", async ({ page }) => {
   await expect(page.getByTestId("home-your-goals")).toBeVisible();
 });
 
+// Home sits in the flat frame: a page header reading Home with New goal at
+// its right, and its sections on the one surface, with no card.
+test("Home has a page header with New goal, and no card", async ({ page }) => {
+  await signIn(page, "platform-lead@example.com");
+  const header = page.locator(".page-header");
+  await expect(header.getByRole("heading", { level: 1, name: "Home" })).toBeVisible();
+  await expect(header.getByRole("link", { name: "New goal" })).toHaveAttribute("href", "/goals/new");
+  await expect(page.getByTestId("home-needs-you").getByRole("heading", { level: 2, name: /^Needs you/ })).toBeVisible();
+  await expect(page.locator("main .card")).toHaveCount(0);
+});
+
 test("two people are signed in at once, each in their own context", async ({ as }) => {
   const adminPage = await as(admin);
   const lead = await as("platform-lead@example.com");
