@@ -371,13 +371,15 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     await delegates.getByRole("button", { name: "Add Delegate" }).click();
     await expect(page.getByTestId("report-delegates").getByTestId("report-delegate")).toHaveCount(1);
 
-    // The other lead, now a Report Delegate, composes a note and publishes it.
+    // The other lead, now a Report Delegate, composes a note, saves it and
+    // publishes it.
     await lead.goto(`/reports/${pickedReport}`);
     await expect(lead.getByTestId("edit-definition").first()).toBeVisible();
     await expect(lead.getByTestId("add-report-delegate")).toHaveCount(0);
     const curation = lead.getByTestId("narrative-curation");
     await curation.getByTestId("section-text-Insight").getByTestId("section-text-summary").click();
     await curation.getByLabel("Insights, note 1").fill("Two of these are what our launch waits on.");
+    await curation.getByRole("button", { name: "Save narrative" }).click();
     await expect(lead.getByTestId("save-result")).toHaveText("Saved");
     await expect(lead.getByTestId("report-narrative").getByTestId("narrative-text")).toHaveText(
       "Two of these are what our launch waits on.",
