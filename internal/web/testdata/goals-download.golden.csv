@@ -1,0 +1,56 @@
+ID,Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Team,Budget
+5,Goal 04,sam@example.com,It matters.,Dated,2026-08-02,Beta @ 2026-04-02,,,,5000
+16,Goal 14,admin@example.com,It matters.,Dated,2026-08-03,Beta @ 2026-04-03,,,,
+27,Goal 24,priya@example.com,It matters.,Dated,2026-08-03,Beta @ 2026-04-03,,,Platform,25000
+38,Goal 34,sam@example.com,It matters.,Dated,2026-08-04,Beta @ 2026-04-04,,,,
+49,Goal 44,admin@example.com,It matters.,Dated,2026-08-04,Beta @ 2026-04-04,,,,45000
+7,Goal 05,admin@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,,,,
+8,Goal 06,priya@example.com,It matters.,Dated,2026-07-02,Pilot @ 2026-01-04; Beta @ 2026-04-02,,,Platform,
+18,Goal 15,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,Growth,
+19,Goal 16,sam@example.com,It matters.,Dated,2026-07-03,Pilot @ 2026-01-05; Beta @ 2026-04-03,,,,17000
+29,Goal 25,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+30,Goal 26,admin@example.com,It matters.,Dated,2026-07-03,Pilot @ 2026-01-05; Beta @ 2026-04-03,,,,
+40,Goal 35,admin@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+41,Goal 36,priya@example.com,It matters.,Dated,2026-07-04,Pilot @ 2026-01-06; Beta @ 2026-04-04,,,Platform,37000
+51,Goal 45,priya@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,Growth,
+52,Goal 46,sam@example.com,It matters.,Dated,2026-07-04,Pilot @ 2026-01-06; Beta @ 2026-04-04,,,,
+3,Goal 02,admin@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,Signups | people | up | 10 | 100 | 2026-03-03,,,
+4,Goal 03,priya@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,,,Growth,
+6,Goal 04 child,sam@example.com,It helps.,Dated,2026-07-02,Beta @ 2026-04-02,,Goal 04,,
+14,Goal 12,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,Signups | people | up | 10 | 100 | 2026-03-04,,Platform,13000
+15,Goal 13,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+17,Goal 14 child,admin@example.com,It helps.,Dated,2026-07-03,Beta @ 2026-04-03,,Goal 14,,
+25,Goal 22,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,Signups | people | up | 10 | 100 | 2026-03-04,,,
+26,Goal 23,admin@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+28,Goal 24 child,priya@example.com,It helps.,Dated,2026-07-03,Beta @ 2026-04-03,,Goal 24,,
+36,Goal 32,admin@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,Signups | people | up | 10 | 100 | 2026-03-04,,,33000
+37,Goal 33,priya@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,Growth,
+39,Goal 34 child,sam@example.com,It helps.,Dated,2026-07-04,Beta @ 2026-04-04,,Goal 34,,
+47,Goal 42,priya@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,Signups | people | up | 10 | 100 | 2026-03-05,,Platform,
+48,Goal 43,sam@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+50,Goal 44 child,admin@example.com,It helps.,Dated,2026-07-04,Beta @ 2026-04-04,,Goal 44,,
+1,Goal 00,priya@example.com,It matters.,,,,,,Platform,1000
+2,Goal 01,sam@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,,,,
+9,Goal 07,sam@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,,,,
+10,Goal 08,admin@example.com,It matters.,Dated,2026-07-02,Beta @ 2026-04-02,,,,9000
+11,Goal 09,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,Growth,
+12,Goal 10,sam@example.com,It matters.,,,,,,,
+13,Goal 11,admin@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+20,Goal 17,admin@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+21,Goal 18,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,Platform,
+22,Goal 19,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+23,Goal 20,admin@example.com,It matters.,,,,,,,21000
+24,Goal 21,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,Growth,
+31,Goal 27,priya@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,Growth,
+32,Goal 28,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,29000
+33,Goal 29,admin@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+34,Goal 30,priya@example.com,It matters.,,,,,,Platform,
+35,Goal 31,sam@example.com,It matters.,Dated,2026-07-03,Beta @ 2026-04-03,,,,
+42,Goal 37,sam@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+43,Goal 38,admin@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+44,Goal 39,priya@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,Growth,
+45,Goal 40,sam@example.com,It matters.,,,,,,,41000
+46,Goal 41,admin@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+53,Goal 47,admin@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,
+54,Goal 48,priya@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,Platform,49000
+55,Goal 49,sam@example.com,It matters.,Dated,2026-07-04,Beta @ 2026-04-04,,,,

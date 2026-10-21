@@ -700,10 +700,11 @@ func updateGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 	} else if err != nil {
 		return "", nil, []string{message(err)}
 	}
-	current, err := goalCells(ctx, tx, g)
+	columns, err := readGoalColumns(ctx, tx, []int64{g.ID})
 	if err != nil {
 		return "", nil, []string{message(err)}
 	}
+	current := goalCells(g, columns)
 	for _, col := range goalColumns {
 		if cellText, ok := s.cells[col]; ok && canonical(col, cellText) != canonical(col, current[col]) {
 			ignored = append(ignored, col)

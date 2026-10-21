@@ -821,8 +821,17 @@ func (s *Service) ReportRuleManagers(ctx context.Context) ([]Account, error) {
 	return out, nil
 }
 
+// GoalValuesByGoal returns every Goal's assigned Dimension values, keyed by
+// Goal ID, as GoalValues returns one Goal's, in one query, so a page or file
+// listing many Goals reads them all at once. A Goal with no values has no
+// entry.
+func (s *Service) GoalValuesByGoal(ctx context.Context) (map[int64][]DimensionValue, error) {
+	return s.goalValuesByGoal(ctx)
+}
+
 // goalValuesByGoal returns every Goal's assigned Dimension values keyed by Goal
-// id, for applying a Report Definition's Dimension filter across the candidates.
+// id, as GoalValues reads one Goal's, for applying a Report Definition's
+// Dimension filter across the candidates.
 func (s *Service) goalValuesByGoal(ctx context.Context) (map[int64][]DimensionValue, error) {
 	valRows, err := s.queries.ListAllGoalValues(ctx)
 	if err != nil {
@@ -830,7 +839,7 @@ func (s *Service) goalValuesByGoal(ctx context.Context) (map[int64][]DimensionVa
 	}
 	byGoal := make(map[int64][]DimensionValue, len(valRows))
 	for _, r := range valRows {
-		byGoal[r.GoalID] = append(byGoal[r.GoalID], dimensionValueFromRow(r.DimensionValue))
+		byGoal[r.GoalID] = append(byGoal[r.GoalID], goalValueFromRow(r.DimensionValue, r.Dimension))
 	}
 	return byGoal, nil
 }
