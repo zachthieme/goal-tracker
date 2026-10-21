@@ -23,10 +23,11 @@ Read these first; some may decide whether the install goes ahead now.
   for everyone in the file on the first start, so list at least one Admin
   **before the first start**. Admins can make others Admins later on the Admin
   page; see [Making someone an Admin later](#making-someone-an-admin-later).
-- **Stopping is abrupt.** The server doesn't wait for in-flight requests on
-  `SIGTERM`. Each change is one database transaction, so nothing is left half
-  written, but a request in progress at the moment of a restart fails and the
-  person has to resubmit.
+- **Stopping waits up to 30 seconds.** On `SIGTERM` or `SIGINT` the server
+  stops taking connections and gives the requests in flight up to 30 seconds
+  to finish before it exits, so give your service manager a stop timeout
+  longer than that. A weekly email run in progress is cut short; each change
+  is one database transaction, so nothing is left half written.
 
 ## Requirements
 

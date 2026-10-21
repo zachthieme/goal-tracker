@@ -1,10 +1,12 @@
 package web_test
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -907,4 +909,41 @@ func renderNode(n *html.Node) string {
 		return fmt.Sprintf("<unrenderable: %v>", err)
 	}
 	return b.String()
+}
+
+// postImport uploads a spreadsheet and returns the rendered body, failing on a
+// non-2xx status.
+func postImport(t *testing.T, client *http.Client, rawURL, filename, content, action string) string {
+	t.Helper()
+	resp := postImportRaw(t, client, rawURL, filename, content, action)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST %s: status %d", rawURL, resp.StatusCode)
+	}
+	return readBody(t, resp)
+}
+
+// postImportRaw uploads a spreadsheet as multipart form data with the given
+// action, returning the raw response.
+func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content, action string) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := mw.WriteField("action", action); err != nil {
+		t.Fatalf("write action field: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	resp, err := client.Post(rawURL, mw.FormDataContentType(), &buf)
+	if err != nil {
+		t.Fatalf("POST %s: %v", rawURL, err)
+	}
+	return resp
 }
