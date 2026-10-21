@@ -92,8 +92,8 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 
 // goalsListData is everything the Goal list renders: the Goals (filtered and
 // sorted problems first), the Dimensions offered for filtering and grouping,
-// which values are currently selected, and — when grouping — the Goals bucketed
-// by a Dimension's values.
+// which values are currently selected, and the Goals bucketed by Health or,
+// when grouping, by a Dimension's values.
 type goalsListData struct {
 	Rows   []goalRow
 	Filter goalFilter
@@ -104,6 +104,9 @@ type goalsListData struct {
 	Selected   map[int64]bool
 	GroupID    int64
 	Groups     []goalRowGroup
+	// HealthGroups is the list layout's default grouping, by Health, when no
+	// Dimension groups it.
+	HealthGroups []goalHealthGroup
 	// Query is the request's query string, so the layout toggle and the table's
 	// column headers link to the same view with one thing changed.
 	Query url.Values
@@ -116,25 +119,18 @@ type goalsListData struct {
 	SwapClearOOB bool
 }
 
-// moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
-// More filters, where they're folded away, opens to show it.
+// moreFiltersSet reports whether a Dimension filter is chosen, so More
+// filters, where they're folded away, opens to show it. Group by sits in the
+// filter bar's row of chips, so a grouping needs no opening.
 func (v goalsListData) moreFiltersSet() bool {
-	return len(v.Selected) > 0 || (v.GroupID != 0 && v.Table == nil)
+	return len(v.Selected) > 0
 }
 
 // anyGoalFilterSet reports whether the filter bar differs from a bare /goals —
 // a Scope other than the viewer's default, or any other filter or grouping —
 // so Clear, which goes back to it, is offered (#376).
 func (v goalsListData) anyGoalFilterSet() bool {
-	return v.moreFiltersSet() || v.Filter != goalFilter{} || !v.Org.isDefault()
-}
-
-// goalCount is the Goal list's total: "1 Goal", "3 Goals".
-func goalCount(n int) string {
-	if n == 1 {
-		return "1 Goal"
-	}
-	return fmt.Sprintf("%d Goals", n)
+	return v.moreFiltersSet() || (v.GroupID != 0 && v.Table == nil) || v.Filter != goalFilter{} || !v.Org.isDefault()
 }
 
 // filtered reports whether any filter is narrowing the list, so an empty list
@@ -156,13 +152,14 @@ func (v goalsListData) noMatch() string {
 	return "No Goals in " + v.Org.Name() + " match."
 }
 
-// countLabel is the Goal list's total, naming the Org it is scoped to:
-// "3 Goals", "3 Goals in My org".
+// countLabel is the Goal list's total, the muted count beside the page's
+// "Goals" title, naming the Org it is scoped to: "3", "3 in My org".
 func (v goalsListData) countLabel() string {
+	n := strconv.Itoa(len(v.Rows))
 	if v.Org.Of == nil {
-		return goalCount(len(v.Rows))
+		return n
 	}
-	return goalCount(len(v.Rows)) + " in " + v.Org.Name()
+	return n + " in " + v.Org.Name()
 }
 
 // goalFilter is the Goal list's filter bar, read from the URL so a filtered
@@ -258,6 +255,50 @@ type goalRow struct {
 type goalRowGroup struct {
 	Value *domain.DimensionValue
 	Rows  []goalRow
+}
+
+// goalHealthGroup is one Health's rows in the Goal list's default grouping:
+// the Goals at Health, or those with no Health when it is "", in their sorted
+// order.
+type goalHealthGroup struct {
+	Health string
+	Rows   []goalRow
+}
+
+// name is the group's header: its Health, or "No Health".
+func (g goalHealthGroup) name() string {
+	if g.Health == "" {
+		return "No Health"
+	}
+	return g.Health
+}
+
+// groupGoalRowsByHealth buckets rows by Health — Red, Yellow, Green, then no
+// Health, the Health filter's order — keeping their sorted order in each
+// bucket and leaving out a Health no row has.
+func groupGoalRowsByHealth(rows []goalRow) []goalHealthGroup {
+	var groups []goalHealthGroup
+	for _, hf := range healthFilters {
+		grp := goalHealthGroup{Health: hf.Health}
+		for _, row := range rows {
+			if row.health() == hf.Health {
+				grp.Rows = append(grp.Rows, row)
+			}
+		}
+		if len(grp.Rows) > 0 {
+			groups = append(groups, grp)
+		}
+	}
+	return groups
+}
+
+// healthMarkClass is the class of the shape a list shows for health: the
+// Health's own, or "none" for no Health.
+func healthMarkClass(health string) string {
+	if health == "" {
+		return "none"
+	}
+	return healthClass(health)
 }
 
 // health is the Goal's current Health — its latest Check-in's — or "" when it
@@ -394,6 +435,9 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 				}
 			}
 		}
+	}
+	if view.GroupID == 0 {
+		view.HealthGroups = groupGoalRowsByHealth(rows)
 	}
 	return view, nil
 }

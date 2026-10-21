@@ -256,8 +256,8 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     const rows = await goalRows(page);
     expect(rows.length, "the Goal list lists the seed's Goals").toBeGreaterThan(10);
 
-    // Problem order (problemRank): every Red row comes first, and no unmarked
-    // Green row comes before a Yellow one.
+    // Health groups, problems first in each: every Red row comes first, and no
+    // unmarked Green row comes before a Yellow one.
     const firstNotRed = rows.findIndex((r) => r.health !== "Red");
     expect(
       rows.slice(firstNotRed).filter((r) => r.health === "Red"),
@@ -279,20 +279,21 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     await expect(goalRow(page, checkinOverdue.title).getByTestId("checkin-overdue")).toBeVisible();
     await expect(goalRow(page, departing.title).getByTestId("ownerless")).toBeVisible();
 
-    // Filter: Team = Platform, under More filters. Every row is a Platform Goal.
-    await page.getByTestId("more-filters").getByText("More filters").click();
+    // Filter: Team = Platform, under More filters ("+ Filter"). Every row is a
+    // Platform Goal.
+    await page.getByTestId("more-filters").locator("summary").click();
     const more = page.getByTestId("more-filters-panel");
     await more.getByRole("group", { name: "Team" }).getByLabel("Platform").check();
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const platform = page.getByTestId("goal-row");
     await expect(platform.first()).toBeVisible();
-    await expect(page.getByTestId("goal-count")).not.toHaveText(`${rows.length} Goals`);
+    await expect(page.getByTestId("goal-count")).not.toHaveText(String(rows.length));
     for (const row of await platform.all()) {
       await expect(row.getByTestId("goal-value-tag").filter({ hasText: /^Platform$/ })).toHaveCount(1);
     }
 
-    // Group: by the second Dimension, one group per value a listed Goal
-    // carries, plus Unassigned.
+    // Group: by the second Dimension, from Group by among the filter chips, one
+    // group per value a listed Goal carries, plus Unassigned.
     await more.getByLabel("Group by").selectOption({ label: tier.name });
     await expect(page).toHaveURL(/[?&]group=\d+/);
     await expect(page.getByTestId("goal-group-label")).toHaveText([...tier.values, "Unassigned"]);
@@ -502,14 +503,16 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
   });
 
   await test.step("It worked if: a Goal nobody has updated is as loud as a Red one", async () => {
-    // On Goals, the Check-in overdue row sorts above every unmarked Yellow and
-    // Green row, and carries its own mark.
+    // On Goals, grouped by Health, the Check-in overdue row sorts above every
+    // unmarked row of its Health, and carries its own mark.
     await page.goto("/goals");
     const rows = await goalRows(page);
     const at = rows.findIndex((r) => r.title === checkinOverdue.title);
     expect(rows[at]?.checkinOverdue, `${checkinOverdue.title} carries its Check-in overdue mark`).toBe(true);
-    const quieter = rows.findIndex((r) => (r.health === "Yellow" || r.health === "Green") && !marked(r));
-    expect(at, `${checkinOverdue.title} sorts above every unmarked Yellow and Green row`).toBeLessThan(quieter);
+    const quieter = rows.findIndex((r) => r.health === rows[at]?.health && !marked(r));
+    if (quieter >= 0) {
+      expect(at, `${checkinOverdue.title} sorts above every unmarked row of its Health`).toBeLessThan(quieter);
+    }
 
     // On Follow-ups, it's a row in the main table, with its chip and a Fix, and
     // counted on the owner card.
@@ -639,7 +642,7 @@ type GoalListRow = {
 };
 
 // goalRows reads the Goal list's rows in order: each Goal's title, Health
-// (or Lifecycle when it has none) and marks.
+// ("No Health" when it has none) and marks.
 function goalRows(page: Page): Promise<GoalListRow[]> {
   return page.getByTestId("goal-row").evaluateAll((trs) =>
     trs.map((tr) => {
