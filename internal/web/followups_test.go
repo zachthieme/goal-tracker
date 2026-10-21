@@ -1796,6 +1796,36 @@ func TestFollowUpsFiltersWrapAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
+// The Follow-ups filters are the Goal list's chips: the Scope select sits in
+// the same always-on Scope chip, and each Dimension's select in a chip whose
+// "Team:" key shows once a value is chosen, so it reads "Team: any" or
+// "Team: Platform", filled while set. No rule of the page's own restyles the
+// selects inside them (#406).
+func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, addr := range []string{"/follow-ups", "/follow-ups?value=" + strconv.FormatInt(team.Values[0].ID, 10)} {
+		page := getBody(t, client, ts.URL+addr)
+		filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
+		if !strings.Contains(filters, `<label class="filter-chip on"><span class="chip-key" aria-hidden="true">Scope:</span><select data-testid="follow-ups-scope"`) {
+			t.Errorf("%s: the Scope select isn't in the Scope chip:\n%s", addr, filters)
+		}
+		if !regexp.MustCompile(`<label class="filter-chip"><span class="chip-key chip-key-set" aria-hidden="true">Team:</span>\s*<select data-testid="follow-ups-value" data-dimension="Team"`).MatchString(filters) {
+			t.Errorf("%s: the Team select isn't in a Team chip:\n%s", addr, filters)
+		}
+		if strings.Contains(page, ".rk-filters select") {
+			t.Errorf("%s: the page's own styles restyle the chips' selects", addr)
+		}
+	}
+}
+
 // orgScopedFollowUpTitles names the Goals the Follow-ups table lists, in order, by matching each
 // row against the Goals it could be.
 func orgScopedFollowUpTitles(page string, goals ...domain.Goal) []string {
