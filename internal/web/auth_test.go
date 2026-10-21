@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -280,14 +281,15 @@ func TestATamperedSessionCookieIsSignedOut(t *testing.T) {
 		t.Fatal("sam's own session cookie doesn't sign sam in")
 	}
 
-	id, sig, ok := strings.Cut(sam.Value, ".")
-	if !ok {
-		t.Fatalf("session cookie %q isn't signed", sam.Value)
+	parts := strings.Split(sam.Value, ".")
+	if len(parts) != 5 {
+		t.Fatalf("session cookie %q isn't <id>.<generation>.<signed-in>.<last-seen>.<signature>", sam.Value)
 	}
-	if id == strconv.FormatInt(boss.ID, 10) {
-		t.Fatalf("sam and boss share Account ID %s", id)
+	if parts[0] == strconv.FormatInt(boss.ID, 10) {
+		t.Fatalf("sam and boss share Account ID %s", parts[0])
 	}
-	forged := &http.Cookie{Name: "gt_session", Value: strconv.FormatInt(boss.ID, 10) + "." + sig}
+	parts[0] = strconv.FormatInt(boss.ID, 10)
+	forged := &http.Cookie{Name: "gt_session", Value: strings.Join(parts, ".")}
 	if !signedOut(t, ts.URL, forged) {
 		t.Errorf("a cookie with boss's ID and sam's signature signs someone in")
 	}
@@ -393,11 +395,165 @@ func TestASessionCookieWithAnEditedGenerationIsSignedOut(t *testing.T) {
 	}
 
 	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 3 || parts[1] != "0" {
-		t.Fatalf("session cookie %q isn't <id>.0.<signature>", cookie.Value)
+	if len(parts) != 5 || parts[1] != "0" {
+		t.Fatalf("session cookie %q isn't <id>.0.<signed-in>.<last-seen>.<signature>", cookie.Value)
 	}
-	edited := &http.Cookie{Name: "gt_session", Value: parts[0] + ".1." + parts[2]}
+	parts[1] = "1"
+	edited := &http.Cookie{Name: "gt_session", Value: strings.Join(parts, ".")}
 	if !signedOut(t, ts.URL, edited) {
 		t.Errorf("a cookie with its generation edited to the current one signs sam in")
+	}
+}
+
+// A session left idle for 7 days ends: 8 days after sign-in with no request in
+// between, the cookie sends /home to sign-in.
+func TestASessionIdleForAWeekIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	cookie := sessionCookieOf(t, ts.URL, "sam@example.com")
+
+	h.Clock.Advance(8 * 24 * time.Hour)
+
+	if !signedOut(t, ts.URL, cookie) {
+		t.Error("a session idle for 8 days still signs sam in")
+	}
+}
+
+// A request slides the idle limit: with a request 6 days after sign-in, the
+// session still signs sam in 12 days after it, past 7 days from sign-in.
+func TestARequestKeepsASessionFromIdling(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	for _, day := range []int{6, 12} {
+		h.Clock.Advance(6 * 24 * time.Hour)
+		if clientSignedOut(t, client, ts.URL) {
+			t.Fatalf("day %d, with a request every 6 days: sam is signed out", day)
+		}
+	}
+}
+
+// clientSignedOut reports whether client's GET /home is sent to sign-in.
+func clientSignedOut(t *testing.T, client *http.Client, baseURL string) bool {
+	t.Helper()
+	resp, err := client.Get(baseURL + "/home")
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
+}
+
+// A session ends 30 days after sign-in however often it is used: with a request
+// every 6 days, sam is signed in on day 24 and signed out on day 30.
+func TestASessionEnds30DaysAfterSignIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	for _, day := range []int{6, 12, 18, 24} {
+		h.Clock.Advance(6 * 24 * time.Hour)
+		if clientSignedOut(t, client, ts.URL) {
+			t.Fatalf("day %d, with a request every 6 days: sam is signed out", day)
+		}
+	}
+	h.Clock.Advance(6 * 24 * time.Hour)
+	if !clientSignedOut(t, client, ts.URL) {
+		t.Error("day 30 after sign-in: sam is still signed in")
+	}
+}
+
+// The session cookie lasts what remains of the 30 days from sign-in: all of it
+// when issued at sign-in, 24 days of it when a request re-issues it on day 6.
+func TestTheSessionCookieLastsWhatRemainsOf30Days(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	cookie := sessionCookieOf(t, ts.URL, "sam@example.com")
+	if want := 30 * 24 * 60 * 60; cookie.MaxAge != want {
+		t.Errorf("at sign-in: session cookie Max-Age %d, want %d", cookie.MaxAge, want)
+	}
+
+	h.Clock.Advance(6 * 24 * time.Hour)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/home", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := noRedirects(http.DefaultClient).Do(req)
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	var reissued *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_session" {
+			reissued = c
+		}
+	}
+	if reissued == nil {
+		t.Fatal("a request 6 days after sign-in didn't re-issue the session cookie")
+	}
+	if want := 24 * 24 * 60 * 60; reissued.MaxAge != want {
+		t.Errorf("on day 6: session cookie Max-Age %d, want %d", reissued.MaxAge, want)
+	}
+}
+
+// Signing out ends every session the Account has on the server, not just this
+// browser's cookie: a cookie captured before sign-out, from this browser or
+// another, no longer signs sam in.
+func TestSigningOutEndsEverySessionOnTheServer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	here := sessionCookieOf(t, ts.URL, "sam@example.com")
+	elsewhere := sessionCookieOf(t, ts.URL, "sam@example.com")
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL+"/signout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(here)
+	resp, err := noRedirects(http.DefaultClient).Do(req)
+	if err != nil {
+		t.Fatalf("POST /signout: %v", err)
+	}
+	_ = readBody(t, resp)
+
+	if !signedOut(t, ts.URL, here) {
+		t.Error("the signed-out browser's cookie, replayed, still signs sam in")
+	}
+	if !signedOut(t, ts.URL, elsewhere) {
+		t.Error("another browser's cookie from before sign-out still signs sam in")
+	}
+}
+
+// A "<id>.<generation>.<signature>" cookie, the shape issued before cookies
+// carried sign-in and last-seen times, counts as signed out even when signed
+// with the right key (the breaking change: everyone signs in once more).
+func TestAThreePartSessionCookieIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	h := testsupport.New(t)
+	ts := httptest.NewServer(web.NewServer(h.Service, web.WithSessionKey(key)))
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com")
+
+	payload := strconv.FormatInt(sam.ID, 10) + ".0"
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	old := &http.Cookie{Name: "gt_session", Value: payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))}
+	if !signedOut(t, ts.URL, old) {
+		t.Errorf("a three-part gt_session=%s signs sam in", old.Value)
 	}
 }

@@ -2951,6 +2951,8 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 	h.Clock.Set(time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC))
 	h.PublishReport(boss, def)
 	h.Clock.Set(time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	// The session from before the clock moved has ended; sign in again.
+	client = signInClient(t, ts.URL, "boss@example.com")
 
 	if page := getBody(t, client, ts.URL+path); strings.Contains(page, "Showing what changed since") || strings.Count(page, `data-testid="report-baseline"`) != 1 {
 		t.Errorf("the draft keeps the old baseline sentence or a baseline form outside the chip; body:\n%s", page)

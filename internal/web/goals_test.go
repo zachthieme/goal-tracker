@@ -2029,6 +2029,8 @@ func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) 
 	}
 
 	h.Clock.Set(time.Date(2026, 4, 3, 2, 0, 0, 0, time.UTC)) // Apr 2, 7pm in Los Angeles
+	// The session from before the clock moved has ended; sign in again.
+	client = signInClient(t, ts.URL, "sam@example.com")
 	page, beta := load()
 	if beta != "Apr 2 Beta" {
 		t.Errorf("Beta's row reads %q on its date in the Owner's timezone, want no mark", beta)

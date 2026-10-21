@@ -149,38 +149,30 @@ func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
-// if there is none, its signature doesn't verify, or it carries a session
-// generation EndSessions has since ended. A Departed person's session ends with
-// their departure, so their Account resolves to nil too (CONTEXT.md: Departed).
+// if there is none or it no longer signs anyone in (see openSession): its
+// signature doesn't verify, it carries a session generation EndSessions has
+// since ended, or it has expired. A Departed person's session ends with their
+// departure, so their Account resolves to nil too (CONTEXT.md: Departed).
 func (s *Server) currentAccount(r *http.Request) *domain.Account {
-	c, err := r.Cookie(sessionCookie)
-	if err != nil {
-		return nil
-	}
-	id, gen, ok := s.sessions.decode(c.Value)
+	_, acc, ok := s.openSession(r)
 	if !ok {
-		return nil
-	}
-	acc, err := s.svc.Account(r.Context(), id)
-	if err != nil || acc.Departed {
-		return nil
-	}
-	if current, err := s.svc.SessionGeneration(r.Context(), id); err != nil || gen != current {
 		return nil
 	}
 	return &acc
 }
 
 // requireAuth wraps a handler so it runs only for a signed-in Account, which it
-// passes along, with what the sidebar shows in the request context.
+// passes along, with what the sidebar shows in the request context. It slides
+// the session's idle limit on (see slideSession).
 func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		acc := s.currentAccount(r)
-		if acc == nil {
+		sess, acc, ok := s.openSession(r)
+		if !ok {
 			http.Redirect(w, r, "/signin", http.StatusSeeOther)
 			return
 		}
-		h(w, s.withSidebar(r, *acc), *acc)
+		s.slideSession(w, sess)
+		h(w, s.withSidebar(r, acc), acc)
 	}
 }
 

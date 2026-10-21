@@ -557,6 +557,8 @@ func TestFollowUpsPageHeadsWithHowManyGoalsToReview(t *testing.T) {
 
 	h.ActiveGoal(sam, "More silent work", "It matters.")
 	h.Clock.Advance(10 * day)
+	// The session from before the clock moved has ended; sign in again.
+	client = signInClient(t, ts.URL, "sam@example.com")
 	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
 
 	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals to review, most urgent first.") {
