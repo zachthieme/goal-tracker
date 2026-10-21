@@ -3587,7 +3587,7 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
 	list := pageElement(t, page, "section", "checkin-children")
-	if !strings.Contains(list, "<h3>Contributed to by</h3>") {
+	if !strings.Contains(list, `<h3 class="checkin-rail-head">Contributed to by</h3>`) {
 		t.Errorf("children list is not headed Contributed to by; list:\n%s", list)
 	}
 	for _, child := range []struct {
@@ -3763,6 +3763,33 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 	}
 	if numbered := regexp.MustCompile(`<h2[^>]*>\s*\d`).FindString(page); numbered != "" {
 		t.Errorf("a heading is numbered: %s", numbered)
+	}
+}
+
+// The Check-in page is a form in the flat frame: its page header reads Check
+// in under the Goal's title, which links back to the Goal, and nothing on it
+// is a card, whether it has a No change to offer and Contributed to by to
+// show or not (DESIGN.md § Direction: Forms).
+func TestCheckinPageIsAFlatForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+	h.Checkin(sam, f.parent.ID, domain.HealthYellow, "Slipping.", "Fix the paywall.", pathDate)
+	lone := h.ActiveGoal(sam, "Ship it", "It matters.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, g := range []domain.Goal{f.parent, lone} {
+		page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
+		assertFlatFormFrame(t, page, g.Title, "Check in")
+		if crumb := tagAround(t, page, `class="ph-parent"`); attr(crumb, "href") != fmt.Sprintf("/goals/%d", g.ID) {
+			t.Errorf("%s: the breadcrumb doesn't link to the Goal: %s", g.Title, crumb)
+		}
+		if strings.Contains(page, `aria-label="Breadcrumb"`) {
+			t.Errorf("%s: the page keeps its own breadcrumb under the header", g.Title)
+		}
 	}
 }
 
@@ -3955,11 +3982,12 @@ func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
 	}
 }
 
-// The submit bar sticks to the bottom of the window while the form runs past
-// it, flat on the surface under a 1px rule, and the page keeps a field it
-// scrolls to clear of it. At 600px and below Cancel hides, the summary
+// The submit bar sticks just above the bottom of the window while the form
+// runs past it, a floating surface: bordered, rounded and cast by
+// --shadow-pop, as DESIGN.md § Direction keeps it, and the page keeps a field
+// it scrolls to clear of it. At 600px and below Cancel hides, the summary
 // shrinks and Submit check-in grows to a thumb's size (ticket #367).
-func TestCheckinSubmitBarSticksFlatToTheWindowsBottom(t *testing.T) {
+func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3970,16 +3998,17 @@ func TestCheckinSubmitBarSticksFlatToTheWindowsBottom(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	bar := cssRule(t, page, ".checkin-submit-bar")
 	for _, want := range []string{
-		"position:sticky", "bottom:0", "z-index:10",
-		"background:var(--color-surface)", "border-top:1px solid var(--color-border)",
+		"position:sticky", "bottom:16px", "z-index:10",
+		"background:var(--color-surface)", "border:1px solid var(--color-border)",
+		"border-radius:var(--radius-lg)", "box-shadow:var(--shadow-pop)",
 		"padding:12px 16px", "display:flex", "align-items:center", "gap:16px", "flex-wrap:wrap",
 	} {
 		if !strings.Contains(bar, want) {
 			t.Errorf(".checkin-submit-bar declares %q, missing %s", bar, want)
 		}
 	}
-	if strings.Contains(bar, "shadow") || strings.Contains(bar, "#") {
-		t.Errorf(".checkin-submit-bar floats or names a colour by hex: %q", bar)
+	if strings.Contains(bar, "#") {
+		t.Errorf(".checkin-submit-bar names a colour by hex: %q", bar)
 	}
 	summary := cssRule(t, page, ".checkin-summary")
 	for _, want := range []string{"flex:1", "color:var(--color-ink-2)", "font-size:14px"} {
@@ -4102,7 +4131,7 @@ func TestCheckinPageShowsLastTimeAndDates(t *testing.T) {
 	aside := pageElement(t, page, "aside", "checkin-context")
 	last := pageElement(t, aside, "section", "checkin-last-time")
 	for _, want := range []string{
-		`<h3 class="label">Last time · Jan 2</h3>`,
+		`<h3 class="checkin-rail-head">Last time · Jan 2</h3>`,
 		`<span class="badge y"><span class="dot"></span>Yellow</span>`,
 		`<span class="muted">back to Green by Mar 2</span>`,
 	} {
@@ -4114,7 +4143,7 @@ func TestCheckinPageShowsLastTimeAndDates(t *testing.T) {
 		t.Errorf("Last time's Status = %q, want %q", got, status)
 	}
 	dates := pageElement(t, aside, "section", "checkin-context-dates")
-	if !strings.Contains(dates, `<h3 class="label">Dates</h3>`) {
+	if !strings.Contains(dates, `<h3 class="checkin-rail-head">Dates</h3>`) {
 		t.Errorf("the Dates section isn't headed Dates:\n%s", dates)
 	}
 	if got, want := checkinPageText(dates), "Dates Delivers Jul 2 · 1 planned Milestone, next Beta Apr 2"; got != want {
@@ -4192,9 +4221,9 @@ func TestCheckinRefusedSubmitLeavesTheContextAlone(t *testing.T) {
 	}
 }
 
-// The column sticks beside the form on a wide screen, and on a phone drops
-// Last time and Dates, which the form's ghost text already covers (ticket
-// #366), leaving Contributed to by with no rule above it.
+// The column sticks beside the form on a wide screen as a quiet rail, and on
+// a phone drops Last time and Dates, which the form's ghost text already
+// covers (ticket #366), leaving Contributed to by with no rule above it.
 func TestCheckinPageContextStyles(t *testing.T) {
 	t.Parallel()
 
@@ -4207,6 +4236,19 @@ func TestCheckinPageContextStyles(t *testing.T) {
 	styles := between(t, page, ".checkin-page{", "</style>")
 	if rule, ok := ruleFor(styles, ".checkin-context"); !ok || !strings.Contains(rule, "position:sticky") {
 		t.Errorf(".checkin-context{%s} isn't sticky", rule)
+	}
+	// It reads as a quiet rail: behind a hairline, in small text, headed by
+	// small muted labels (DESIGN.md § Direction).
+	for sel, want := range map[string]string{
+		".checkin-context":   "border-left:1px solid var(--color-border)",
+		".checkin-rail-head": "color:var(--color-ink-muted)",
+	} {
+		if rule, ok := ruleFor(styles, sel); !ok || !strings.Contains(rule, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
+		}
+	}
+	if rule, _ := ruleFor(styles, ".checkin-context"); !strings.Contains(rule, "font-size:13px") {
+		t.Errorf(".checkin-context{%s} isn't in small text", rule)
 	}
 	phone := mediaBlock(t, styles, "@media (max-width:600px)")
 	// Each phone rule's selector outranks the base rule it overrides
@@ -4365,10 +4407,11 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 }
 
 // Without script the add bar and the sections' headings hide, and the
-// sections stay collapsed <details>; once script marks the page checkin-js,
-// a closed section and every summary hide, so a section shows, unboxed, once
-// opened. On a phone the bar's buttons keep to one line that scrolls sideways
-// (ticket #365).
+// sections stay collapsed <details>, rows divided by hairlines; once script
+// marks the page checkin-js, a closed section and every summary hide, so a
+// section shows once opened. Neither the bar nor a section is a box: the bar
+// is a plain row over a hairline. On a phone the bar's buttons keep to one
+// line that scrolls sideways (ticket #365, DESIGN.md § Direction).
 func TestCheckinAddBarStyles(t *testing.T) {
 	t.Parallel()
 
@@ -4383,12 +4426,17 @@ func TestCheckinAddBarStyles(t *testing.T) {
 		".checkin-page:not(.checkin-js) .checkin-js-only": "display:none",
 		".checkin-js .checkin-more:not([open])":           "display:none",
 		".checkin-js .checkin-more>summary":               "display:none",
-		".checkin-js .checkin-more[open]":                 "border:none",
-		".checkin-add-bar":                                "background:var(--color-surface)",
+		".checkin-more~.checkin-more":                     "border-top:1px solid var(--color-border)",
+		".checkin-add-bar":                                "border-bottom:1px solid var(--color-border)",
 		".checkin-add-bar .btn[data-used]":                "background:var(--color-surface-alt)",
 	} {
 		if rule, ok := ruleFor(styles, sel); !ok || !strings.Contains(rule, want) {
 			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
+		}
+	}
+	for _, sel := range []string{".checkin-add-bar", ".checkin-more", ".checkin-rollup"} {
+		if rule, _ := ruleFor(styles, sel); strings.Contains(rule, "background") || strings.Contains(rule, "border-radius") || strings.Contains(rule, "border:") {
+			t.Errorf("%s{%s} is a box", sel, rule)
 		}
 	}
 	phone := mediaBlocks(styles, "@media (max-width:600px)")

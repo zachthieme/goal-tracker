@@ -144,8 +144,9 @@ func borderColour(t *testing.T, theme map[string]string, border string) string {
 	return resolve(t, theme, m[1])
 }
 
-// Cards are flat: only the menus and popovers float over the page, and they
-// float by --shadow-pop, so an open menu reads as nearer than any card (#88).
+// Cards are flat: only the menus and popovers, and the Check-in's sticky
+// submit bar, float over the page, and they float by --shadow-pop, so an open
+// menu reads as nearer than any card (#88, DESIGN.md § Direction).
 func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 	t.Parallel()
 
@@ -153,7 +154,7 @@ func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 
-	floats := map[string]bool{".theme-float": true, ".sb-person-menu": true, ".sb-menu[open]~.sb-body": true, ".toast": true, ".gp-menu": true, ".rk-pop": true, ".rp-download-menu": true}
+	floats := map[string]bool{".theme-float": true, ".sb-person-menu": true, ".sb-menu[open]~.sb-body": true, ".toast": true, ".gp-menu": true, ".rk-pop": true, ".rp-download-menu": true, ".checkin-submit-bar": true}
 	comment := regexp.MustCompile(`(?s)/\*.*?\*/`)
 	shadow := regexp.MustCompile(`(?:^|;)box-shadow:([^;]*var\(--shadow-[^;]*)`)
 	for source, sheet := range styleSheets(t, css) {

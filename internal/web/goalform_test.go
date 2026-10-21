@@ -2309,11 +2309,11 @@ func assertFlatFormFrame(t *testing.T, page, parent, title string) {
 }
 
 // The New goal page is a form in the flat frame: "New goal" heads it in the
-// page header, and it has no card. Its single column holds the Title and Why
-// it matters, then Delivery, How you'll know, More detail and Ready to
-// activate, each a plain section headed by an <h2> with no step number. A
-// muted line above the Title, which reads as a heading itself, says the Goal
-// is Proposed until it's activated.
+// page header, and it has no card. Its column holds the Title and Why it
+// matters, then Delivery, How you'll know and More detail, and Ready to
+// activate follows it, each a plain section headed by an <h2> with no step
+// number. A muted line above the Title, which reads as a heading itself, says
+// the Goal is Proposed until it's activated.
 func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	t.Parallel()
 

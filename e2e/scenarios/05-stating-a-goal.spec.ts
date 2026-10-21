@@ -115,9 +115,10 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(priya.getByRole("heading", { level: 1, name: "New goal" })).toBeVisible();
 
     const form = priya.getByTestId("goal-form");
-    // The Title and Why it matters come first, with no heading of their own.
+    // The Title and Why it matters come first, with no heading of their own:
+    // the page's title is in its page header.
     const what = form.getByTestId("goal-form-what");
-    await expect(what.getByRole("heading")).toHaveCount(1);
+    await expect(what.getByRole("heading")).toHaveCount(0);
     await expect(what.getByLabel("Title")).toBeVisible();
     await expect(what.getByLabel("Title")).toHaveAttribute("placeholder", "Name the outcome");
     await expect(what.getByLabel(/^Why it matters/)).toBeVisible();
