@@ -153,6 +153,7 @@ func assertGolden(t *testing.T, name, got string) {
 // The Goal list and a Report render the same for the seeded Goals as they did
 // before their reads were batched (#411).
 func TestGoalListAndReportRenderAsGolden(t *testing.T) {
+	t.Parallel()
 	h := testsupport.New(t, queryCountAdmin)
 	fx := seedQueryCountFixture(t, h, 50)
 	ts := newServer(t, h)
@@ -165,6 +166,7 @@ func TestGoalListAndReportRenderAsGolden(t *testing.T) {
 // Showing the Goal list or a Report runs as many queries for 50 Goals as for
 // 10: their per-Goal reads are batched, not run once per Goal (#411).
 func TestGoalListAndReportQueriesDontGrowWithGoals(t *testing.T) {
+	t.Parallel()
 	type counts struct{ list, report int64 }
 	countFor := func(n int) counts {
 		h := testsupport.New(t, queryCountAdmin)

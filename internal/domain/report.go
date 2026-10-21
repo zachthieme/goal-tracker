@@ -518,13 +518,19 @@ func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since f
 	if err != nil {
 		return nil, err
 	}
+	var ended []int64
+	for _, sg := range candidates {
+		if hasEnded(sg.Goal) {
+			ended = append(ended, sg.Goal.ID)
+		}
+	}
+	checkins, err := s.checkinsByGoal(ctx, ended)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]SelectedGoal, 0, len(candidates))
 	for _, sg := range candidates {
-		finished, err := s.finishedBefore(ctx, sg.Goal, since)
-		if err != nil {
-			return nil, err
-		}
-		if !finished {
+		if !finishedBeforeGiven(sg.Goal, checkins[sg.Goal.ID], since) {
 			out = append(out, sg)
 		}
 	}
@@ -533,25 +539,35 @@ func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since f
 
 // reportCandidates returns the Goals def selects before finished work drops
 // out: its picked list, or the Goals that meet every rule or are in Also
-// include, less those in Leave out.
+// include, less those in Leave out. It runs the same few queries however many
+// Goals there are.
 func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, since func(time.Time) bool) ([]SelectedGoal, error) {
 	if def.Mode == ReportModePicked {
-		out := make([]SelectedGoal, 0, len(def.Picked))
-		for _, id := range def.Picked {
-			g, err := s.loadGoal(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			sg, err := s.selectedGoal(ctx, g)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, sg)
+		rows, err := s.queries.ListGoalsByID(ctx, def.Picked)
+		if err != nil {
+			return nil, fmt.Errorf("list goals: %w", err)
 		}
-		return out, nil
+		byID := make(map[int64]Goal, len(rows))
+		for _, r := range rows {
+			byID[r.Goal.ID] = goalFromRow(r.Goal, r.Account)
+		}
+		goals := make([]Goal, 0, len(def.Picked))
+		for _, id := range def.Picked {
+			g, ok := byID[id]
+			if !ok {
+				return nil, fmt.Errorf("%w: goal %d", ErrNotFound, id)
+			}
+			goals = append(goals, g)
+		}
+		return s.selectedGoals(ctx, goals)
 	}
 
 	goals, err := s.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	goals = slices.DeleteFunc(goals, func(g Goal) bool { return slices.Contains(def.Exclude, g.ID) })
+	selected, err := s.selectedGoals(ctx, goals)
 	if err != nil {
 		return nil, err
 	}
@@ -563,21 +579,24 @@ func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, si
 	if err != nil {
 		return nil, err
 	}
+	subjects := make([]ruleSubject, 0, len(selected))
+	var decidedByHistory []int64
+	for _, sg := range selected {
+		subject := ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID], orgs: orgs}
+		subjects = append(subjects, subject)
+		if lifecycleHistoryDecides(def.Rules, subject) {
+			decidedByHistory = append(decidedByHistory, sg.Goal.ID)
+		}
+	}
+	checkins, err := s.checkinsByGoal(ctx, decidedByHistory)
+	if err != nil {
+		return nil, err
+	}
 	var out []SelectedGoal
-	for _, g := range goals {
-		if slices.Contains(def.Exclude, g.ID) {
-			continue
-		}
-		sg, err := s.selectedGoal(ctx, g)
-		if err != nil {
-			return nil, err
-		}
-		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[g.ID], orgs: orgs}, since)
-		if err != nil {
-			return nil, err
-		}
-		if meets || slices.Contains(def.Include, g.ID) {
-			out = append(out, sg)
+	for _, subject := range subjects {
+		h := goalHistory{goal: subject.Goal, checkins: checkins[subject.Goal.ID]}
+		if meetsRulesGiven(def.Rules, subject, h, since) || slices.Contains(def.Include, subject.Goal.ID) {
+			out = append(out, subject.SelectedGoal)
 		}
 	}
 	return out, nil
@@ -587,52 +606,113 @@ func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, si
 // Lifecycle since the baseline passes a Lifecycle rule it no longer meets, so
 // its change is reported once.
 func (s *Service) meetsRules(ctx context.Context, rules []ReportRule, subject ruleSubject, since func(time.Time) bool) (bool, error) {
+	h := goalHistory{goal: subject.Goal}
+	if lifecycleHistoryDecides(rules, subject) {
+		checkins, err := s.checkinsByGoal(ctx, []int64{subject.Goal.ID})
+		if err != nil {
+			return false, err
+		}
+		h.checkins = checkins[subject.Goal.ID]
+	}
+	return meetsRulesGiven(rules, subject, h, since), nil
+}
+
+// lifecycleHistoryDecides reports whether the Goal meets rules turns on
+// its Check-ins: the first rule it doesn't meet is a Lifecycle rule, which it
+// still passes if it changed Lifecycle since the baseline.
+func lifecycleHistoryDecides(rules []ReportRule, subject ruleSubject) bool {
+	for _, r := range rules {
+		if !r.matches(subject) {
+			return r.Attribute == RuleLifecycle
+		}
+	}
+	return false
+}
+
+// meetsRulesGiven is meetsRules for a Goal whose history h holds its
+// Check-ins when lifecycleHistoryDecides says they are needed.
+func meetsRulesGiven(rules []ReportRule, subject ruleSubject, h goalHistory, since func(time.Time) bool) bool {
 	for _, r := range rules {
 		if r.matches(subject) {
 			continue
 		}
-		if r.Attribute != RuleLifecycle {
-			return false, nil
-		}
-		h, err := s.goalHistory(ctx, subject.Goal)
-		if err != nil {
-			return false, err
-		}
-		if !h.lifecycleChanged(since) {
-			return false, nil
+		if r.Attribute != RuleLifecycle || !h.lifecycleChanged(since) {
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 // finishedBefore reports whether g was Done or Cancelled before the baseline:
 // it is now, and the Check-in that moved it there isn't since.
 func (s *Service) finishedBefore(ctx context.Context, g Goal, since func(time.Time) bool) (bool, error) {
-	if g.Lifecycle != LifecycleDone && g.Lifecycle != LifecycleCancelled {
+	if !hasEnded(g) {
 		return false, nil
 	}
-	checkins, err := s.ListCheckins(ctx, g.ID)
+	checkins, err := s.checkinsByGoal(ctx, []int64{g.ID})
 	if err != nil {
 		return false, err
+	}
+	return finishedBeforeGiven(g, checkins[g.ID], since), nil
+}
+
+// hasEnded reports whether g is Done or Cancelled.
+func hasEnded(g Goal) bool {
+	return g.Lifecycle == LifecycleDone || g.Lifecycle == LifecycleCancelled
+}
+
+// finishedBeforeGiven is finishedBefore for g, whose Check-ins, newest first,
+// are checkins.
+func finishedBeforeGiven(g Goal, checkins []Checkin, since func(time.Time) bool) bool {
+	if !hasEnded(g) {
+		return false
 	}
 	// Newest first, so the first that moved it to its Lifecycle moved it last.
 	for _, c := range checkins {
 		if c.LifecycleChange.To == g.Lifecycle {
-			return !since(c.CreatedAt), nil
+			return !since(c.CreatedAt)
 		}
 	}
 	// No Check-in records the move, so it can't have been since the baseline.
-	return true, nil
+	return true
 }
 
-// selectedGoal is g as a Report lists it, with its Health: its latest
-// Check-in's, empty when it has none.
-func (s *Service) selectedGoal(ctx context.Context, g Goal) (SelectedGoal, error) {
-	latest, err := s.queries.GetLatestCheckin(ctx, g.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return SelectedGoal{}, fmt.Errorf("get latest checkin: %w", err)
+// checkinsByGoal reads the Check-ins of each of goalIDs, newest first, keyed by
+// Goal ID, in one query: what selecting a Report's Goals reads of their
+// Lifecycle changes. Unlike ListCheckins it leaves out the Milestone changes
+// and discarded Draft Highlights each Check-in recorded. No Goals reads
+// nothing.
+func (s *Service) checkinsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Checkin, error) {
+	out := map[int64][]Checkin{}
+	if len(goalIDs) == 0 {
+		return out, nil
 	}
-	return SelectedGoal{Goal: g, Health: latest.Health}, nil
+	rows, err := s.queries.ListCheckinsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list checkins: %w", err)
+	}
+	for _, r := range rows {
+		out[r.Checkin.GoalID] = append(out[r.Checkin.GoalID], checkinFromRow(r.Checkin, r.Account, r.Account_2))
+	}
+	return out, nil
+}
+
+// selectedGoals is goals as a Report lists them, in order, each with its
+// Health: its latest Check-in's, empty when it has none.
+func (s *Service) selectedGoals(ctx context.Context, goals []Goal) ([]SelectedGoal, error) {
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
+	}
+	latest, err := s.LatestCheckinsByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SelectedGoal, 0, len(goals))
+	for _, g := range goals {
+		out = append(out, SelectedGoal{Goal: g, Health: latest[g.ID].Health})
+	}
+	return out, nil
 }
 
 // ruleSubject is what Report rules test a Goal on: the Goal, its Owner-set
