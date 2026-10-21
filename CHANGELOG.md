@@ -18,6 +18,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [user] Every signed-in page sits in a new frame: a sidebar on the left replaces the teal top bar. It holds the app's name (linking Home), a Search that asks the Goal list, the nav with icons and counts, My org (the people directly under you, each linking to their org on Goals, shown only to someone with people under them), and your Name and initials at the foot, opening a menu with Theme and Sign out (#390).
 - [user] At 900px and below the sidebar becomes a 48px strip with the app's name, Home's count and a Menu that opens the rest as a sheet, without script (#390).
+- [user] Each published Report's row on Reports, and a publication's page, has a **Download** menu: **Markdown (.md)** or **PDF (.pdf)**, for the Report's latest publication on the list. It replaces the publication page's Markdown and Print / PDF buttons (#388).
+- [user] A PDF download is a real PDF file, the publication's print page rendered by a headless Chromium, at `/reports/{id}/publications/{pub}/pdf`. Without Chromium, the menu's item reads **PDF (print from browser)** and opens the print page, and the `/pdf` link redirects there (#388).
+- [ops] `GOAL_TRACKER_CHROME` names the Chromium that renders PDF downloads; unset, the app looks on `PATH` for `chromium`, `chromium-browser`, `google-chrome` or `google-chrome-stable`. Startup logs which it uses or that PDF downloads fall back to the print page, and stops when `GOAL_TRACKER_CHROME` isn't there or can't run. At most two PDFs render at once, each within 30 seconds (#388).
 
 **Improvements:**
 - [user] The Reports page's Open Action Items is a plain section on the canvas rather than a second card, so the Reports table is the page's one card (#386).
