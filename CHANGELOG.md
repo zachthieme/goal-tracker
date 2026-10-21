@@ -57,6 +57,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] The HTTP server times out a request that takes over a minute to arrive, a response not sent within 90 seconds of the request's headers (time enough for a PDF download's wait and render), and a connection idle for two minutes (#416).
 
 **Bug fixes:**
+- [internal] The Report log's actor column is indexed, like every other actor column; the Report log (#435) and the foreign-key index check (#427) merged in the same wave and left `main` failing `make test` (#435).
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
 - [user] The Check-in cadence control's segments are 44px tall on a touch screen, as every touch target is; they were 36px (#396).
 - [user] Every message page (Can't undo, Can't remove link, a refused Nudge, a Check-in that can't be reached) is centred like Not found (#397).
