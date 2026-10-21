@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -141,6 +142,37 @@ func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
 
 	assertNotFoundPage(t, pat, ts.URL+"/no-such-page", "/home")
 	assertNotFoundPage(t, http.DefaultClient, ts.URL+"/no-such-page", "/signin")
+}
+
+// The Not found page is plain text centred on the canvas with its link home,
+// no card around it, signed in or not (DESIGN.md § Direction).
+func TestNotFoundPageIsPlainCentredText(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("pat@example.com")
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+	for who, client := range map[string]*http.Client{"signed in": signInClient(t, ts.URL, "pat@example.com"), "signed out": http.DefaultClient} {
+		resp, err := client.Get(ts.URL + "/no-such-page")
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := readBody(t, resp)
+		if tag := tagAround(t, page, `class="message-page nf-message"`); !strings.HasPrefix(tag, "<div") {
+			t.Errorf("%s, the Not found message isn't its own block: %s", who, tag)
+		}
+		if !strings.Contains(between(t, page, `class="message-page nf-message"`, "</div>"), `data-testid="not-found"`) {
+			t.Errorf("%s, the Not found sentence isn't in the centred message:\n%s", who, page)
+		}
+		if rule := cssRule(t, page, ".nf-message"); !strings.Contains(rule, "text-align:center") {
+			t.Errorf("%s, .nf-message{%s} doesn't centre its text", who, rule)
+		}
+		if c := card.FindString(page); c != "" {
+			t.Errorf("%s, the Not found page has a card, %s:\n%s", who, c, page)
+		}
+	}
 }
 
 // sidebarCounts returns the sidebar's Home and Follow-ups items on page.

@@ -1,74 +1,94 @@
 package web
 
-// signInPage is the development sign-in form: one narrow card in the middle of
-// the page with the heading, a note on how development sign-in works, and the
-// email field. A failed sign-in shows its reason above the field.
+// signInPage is the development sign-in form: one narrow column in the middle
+// of the canvas under the app's mark, with the heading, a note on how
+// development sign-in works, and the email field. A failed sign-in shows its
+// reason above the field.
 templ signInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
-		<form data-testid="signin-card" class="card si-card" method="post" action="/signin">
-			<h1>Sign in</h1>
-			<p class="muted">Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>
-			if failure != "" {
-				<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
-			}
-			<label class="field">
-				<span>Email</span>
-				<input type="email" name="email" required autofocus/>
-			</label>
-			<button type="submit" class="btn primary">Sign in</button>
-		</form>
+		@signInColumn() {
+			<form data-testid="signin-card" class="si-form" method="post" action="/signin">
+				<h1>Sign in</h1>
+				<p class="muted">Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>
+				if failure != "" {
+					<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
+				}
+				<label class="field">
+					<span>Email</span>
+					<input type="email" name="email" required autofocus/>
+				</label>
+				<button type="submit" class="btn primary">Sign in</button>
+			</form>
+		}
 	}
 }
 
-// orgSignInPage is sign-in through the company's provider: the same card as
+// orgSignInPage is sign-in through the company's provider: the same column as
 // the development form, with one button that starts the sign-in. A failed
 // sign-in shows its reason, and the button offers to try again.
 templ orgSignInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
-		<div data-testid="signin-card" class="card si-card">
-			<h1>Sign in</h1>
-			if failure != "" {
-				<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
-				<a data-testid="signin-org" class="btn primary" href="/auth/start">Try again</a>
-			} else {
-				<a data-testid="signin-org" class="btn primary" href="/auth/start">Sign in with your organization</a>
-			}
-		</div>
+		@signInColumn() {
+			<div data-testid="signin-card" class="si-form">
+				<h1>Sign in</h1>
+				if failure != "" {
+					<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
+					<a data-testid="signin-org" class="btn primary" href="/auth/start">Try again</a>
+				} else {
+					<a data-testid="signin-org" class="btn primary" href="/auth/start">Sign in with your organization</a>
+				}
+			</div>
+		}
 	}
+}
+
+// signInColumn is a signed-out page's single centred column on the canvas,
+// the app's mark above its content and no card around it (DESIGN.md §
+// Direction). Sign-in and Set password share it.
+templ signInColumn() {
+	<div class="si-column">
+		<span class="brand-mark si-mark" aria-hidden="true"></span>
+		{ children... }
+	</div>
 }
 
 // signInStyles are the sign-in page's own rules on top of app.css.
 templ signInStyles() {
 	<style>
-		.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}
+		.si-column{width:100%;max-width:360px;margin:56px auto 0;display:flex;flex-direction:column;align-items:center;gap:24px;box-sizing:border-box}
+		.si-mark{width:32px;height:32px;border-radius:8px}
+		.si-form{width:100%;display:flex;flex-direction:column;gap:16px}
+		.si-form h1{text-align:center}
 		.si-error{color:var(--color-danger-ink);margin:0}
 	</style>
 }
 
-// passwordSignInPage is password sign-in: the same card as the development
+// passwordSignInPage is password sign-in: the same column as the development
 // form, with the email and password fields, and where to turn for a forgotten
 // password. A failed sign-in shows its reason above the fields, with the email
 // kept.
 templ passwordSignInPage(failure, emailAddr string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
-		<form data-testid="signin-card" class="card si-card" method="post" action="/signin">
-			<h1>Sign in</h1>
-			if failure != "" {
-				<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
-			}
-			<label class="field">
-				<span>Email</span>
-				<input type="email" name="email" value={ emailAddr } required autocomplete="username" autofocus/>
-			</label>
-			<label class="field">
-				<span>Password</span>
-				<input type="password" name="password" required autocomplete="current-password"/>
-			</label>
-			<button type="submit" class="btn primary">Sign in</button>
-			<p class="muted">Forgot your password? Ask an Admin for a set-password link.</p>
-		</form>
+		@signInColumn() {
+			<form data-testid="signin-card" class="si-form" method="post" action="/signin">
+				<h1>Sign in</h1>
+				if failure != "" {
+					<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
+				}
+				<label class="field">
+					<span>Email</span>
+					<input type="email" name="email" value={ emailAddr } required autocomplete="username" autofocus/>
+				</label>
+				<label class="field">
+					<span>Password</span>
+					<input type="password" name="password" required autocomplete="current-password"/>
+				</label>
+				<button type="submit" class="btn primary">Sign in</button>
+				<p class="muted">Forgot your password? Ask an Admin for a set-password link.</p>
+			</form>
+		}
 	}
 }
