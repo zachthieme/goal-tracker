@@ -448,3 +448,24 @@ func clientSignedOut(t *testing.T, client *http.Client, baseURL string) bool {
 	_ = readBody(t, resp)
 	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
 }
+
+// A session ends 30 days after sign-in however often it is used: with a request
+// every 6 days, sam is signed in on day 24 and signed out on day 30.
+func TestASessionEnds30DaysAfterSignIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	for _, day := range []int{6, 12, 18, 24} {
+		h.Clock.Advance(6 * 24 * time.Hour)
+		if clientSignedOut(t, client, ts.URL) {
+			t.Fatalf("day %d, with a request every 6 days: sam is signed out", day)
+		}
+	}
+	h.Clock.Advance(6 * 24 * time.Hour)
+	if !clientSignedOut(t, client, ts.URL) {
+		t.Error("day 30 after sign-in: sam is still signed in")
+	}
+}

@@ -66,6 +66,9 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
+	// sessionLifetime is how long a session lasts from sign-in, however often
+	// it is used.
+	sessionLifetime = 30 * 24 * time.Hour
 	// sessionIdleLimit is how long a session lasts without a request.
 	sessionIdleLimit = 7 * 24 * time.Hour
 	// sessionSlideAfter is how stale a session's last-seen time gets before a
@@ -112,8 +115,8 @@ func (s *Server) slideSession(w http.ResponseWriter, sess session) {
 
 // openSession is the session r's cookie carries and the Account it signs in,
 // if it still does: its signature verifies, its generation is the Account's
-// current one, the Account hasn't Departed, and it hasn't sat idle past
-// sessionIdleLimit.
+// current one, the Account hasn't Departed, it was signed in less than
+// sessionLifetime ago, and it hasn't sat idle past sessionIdleLimit.
 func (s *Server) openSession(r *http.Request) (session, domain.Account, bool) {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -123,7 +126,8 @@ func (s *Server) openSession(r *http.Request) (session, domain.Account, bool) {
 	if !ok {
 		return session{}, domain.Account{}, false
 	}
-	if s.svc.Now().Sub(sess.lastSeen) >= sessionIdleLimit {
+	now := s.svc.Now()
+	if now.Sub(sess.signedIn) >= sessionLifetime || now.Sub(sess.lastSeen) >= sessionIdleLimit {
 		return session{}, domain.Account{}, false
 	}
 	acc, err := s.svc.Account(r.Context(), sess.accountID)
