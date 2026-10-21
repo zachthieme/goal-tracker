@@ -65,12 +65,19 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] Startup refuses a database that already holds a row breaking a foreign key: migrations run with foreign keys off, then `PRAGMA foreign_key_check` runs, and if it finds rows the app and `cmd/seed` stop with an error naming each one's table, rowid and missing parent table (the first 20, plus a count of the rest) (#409).
 - [user] Creating a Goal now saves the Goal and the first entry of its Definition log together, so a failure part-way no longer leaves a Goal with no Why it matters history (#421).
 - [ops] With a Chromium to render PDF downloads, startup checks `TMPDIR`: it logs a `WARN` when `TMPDIR` is too long for a render's own directory (over 47 bytes), so a render killed for time may leave `org.chromium.Chromium.*` in it, and stops with an error naming `TMPDIR` when it's too long for Chromium to render at all (over 62 bytes). `docs/install.md` says `TMPDIR` must be short; `/tmp` and the Docker image's are (#432).
+- [user] On the Check-in form, when two new Milestones share a name, an error about the second now shows by the second row instead of the first (#419).
+- [user] On New goal, an unticked Where it fits option now has an edge you can see in light mode: 3:1 on the page instead of 1.17:1 (#431).
 
 **Security:**
 - [user] A session now ends 30 days after sign-in, or after 7 days without a request, however it is used; a request at least a day after the last re-issues the cookie to keep it from idling out (#414).
 - [user] Signing out now ends every session you have on the server, on this browser and any other, so a copy of the session cookie taken earlier no longer signs anyone in (#414).
 - [user] The app refuses, with a 403, a form post or other change another site's page sends on a signed-in person's behalf, and no other site can show its pages in a frame to trick a click onto one of its buttons; every response now also sends `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` (#415).
 - [user] The Goal table's **Download CSV** no longer writes a cell that a spreadsheet would run as a formula. A Goal title, Field value or other cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is written behind a `'`, so `=1+1` downloads as `'=1+1` and `-5` as `'-5`. The import drops that `'` again, so importing an unchanged download still changes nothing; any other leading `'` is kept (#424).
+- [internal] The domain now checks who may change a Goal instead of relying on the web handler: activating a Goal, marking it Dated or Ongoing, setting its cadence, and adding Contributors, Metrics and Milestones each refuse anyone the Goal page refuses, and editing a title or Why it matters refuses anyone but the Owner or an Admin. A spreadsheet import makes these changes as the importing Admin, and only to the Goals it creates (#420).
+- [internal] The Goal page asks the domain whether to offer the Check-in form and the value and Field forms, so the page and the commands can't disagree (#420).
+- [ops] `GOAL_TRACKER_TRUSTED_PROXIES` names, as comma-separated CIDRs or IPs, the reverse proxies whose `X-Forwarded-For` the password sign-in throttle reads. A sign-in from one of them counts against the right-most address in the header that isn't a trusted proxy, so clients behind one proxy no longer share a single 50-failure limit. A sign-in from any other address counts against that address, whatever header it carries. Unset, the default, `X-Forwarded-For` is ignored as before. An entry that is neither a CIDR nor an IP stops startup with an error naming the variable, and startup logs the trusted proxies (#425).
+- [user] Signing in through your organization now finds your Account by who the organization's sign-in says you are, not only by your email: your first sign-in links the Account to you, a later one still finds it after your email changes, and someone given an email that once belonged to another person is refused with a sentence to ask an Admin instead of being signed in as them (#426).
+- [ops] Migration `0055_account_oidc_subjects` adds a nullable, unique `oidc_subject` column to `accounts`; existing Accounts link on their next OIDC sign-in, and a refused sign-in logs a warning naming the Account, not the subject (#426).
 
 **Infrastructure:**
 - [ops] A `Dockerfile` builds the app into a Debian image with Chromium for PDF downloads and `sqlite3` for backups. It runs as a non-root user on port 8080, with the database in the `/data` volume. `docs/install.md` says how to run it and back it up (#418).
@@ -102,6 +109,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The layout gains a page-header slot (`framedLayout` with `pageHeader`) for pages to fill as they move to the frame. The `--nav-*` and `--font-display`/`--font-mono` tokens and the Plus Jakarta Sans and JetBrains Mono font files are gone (#390).
 - [internal] The filter chip's rules move from the Goal list's own styles to `app.css`, unchanged, so every page that draws a chip loads them (#406).
 - [internal] `.card`, its rules and `.page-head` are gone from `app.css`, as no page draws one. Code and test comments citing DESIGN.md's retired § Direction now name the section that holds each rule, and "top bar" wording says sidebar (#403).
+- [internal] Check-in refusals now come back as `domain.InputError`s naming the form input they are about. The Check-in form picks the field to highlight from that, not from the message text, so rewording a message no longer breaks the highlight (#419).
 
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
@@ -111,6 +119,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] DESIGN.md describes the Definition log, Delegated to me, Pending links, Pending handoffs and Suggest a parent as built, and drops its note that five pages hadn't moved to the flat frame (#403).
 - [internal] CONTEXT.md defines Report Delegate and Report log: only a Report Definition's creator, its Report Delegates and Admins may change, curate or publish it, and every change is logged (#428).
 - [internal] ADR 0009 records staying on SQLite: the October review's storage gaps are closed on SQLite, and the ADR names what would trigger a move to Postgres (#430).
+- [internal] `docs/install.md` lists `GOAL_TRACKER_TRUSTED_PROXIES` with the other settings and says when to set it, and its nginx example now appends `X-Forwarded-For`; the README's lockout note points to it (#425).
 
 ### Collected changes — October 20, 2026
 
