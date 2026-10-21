@@ -42,7 +42,7 @@ func homeRow(t *testing.T, section string, g domain.Goal) string {
 
 // needsYouHeading reads the Needs you card's heading, "" when Home has none.
 func needsYouHeading(page string) string {
-	if got := elementTexts(page, "h3", "home-needs-you-heading"); len(got) == 1 {
+	if got := elementTexts(page, "h2", "home-needs-you-heading"); len(got) == 1 {
 		return got[0]
 	}
 	return ""
@@ -120,6 +120,34 @@ func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
 	}
 	if notGreen := pageElement(t, main, "section", "home-not-green"); !strings.Contains(notGreen, navTo(mine.ID)) {
 		t.Errorf("the lead's Red Goal isn't listed as not Green:\n%s", notGreen)
+	}
+}
+
+// Home's outline reads Your week, then a section heading (h2) for each of
+// Needs you, My org and Your Yellow or Red goals, so no heading skips a level
+// (#386).
+func TestHomeSectionsAreHeadedH2(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+	mine := h.ActiveGoal(f.lead, "Hire", "We need people.")
+	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	main := between(t, page, "<main", "</main>")
+
+	for _, testID := range []string{"home-needs-you", "home-org", "home-not-green"} {
+		section := pageElement(t, main, "section", testID)
+		heading := regexp.MustCompile(`<h[1-6][ >]`).FindString(section)
+		if heading != "<h2 " && heading != "<h2>" {
+			t.Errorf("%s's heading is %q, want an h2:\n%s", testID, heading, section)
+		}
+	}
+	firstH2, firstH3 := strings.Index(main, "<h2"), strings.Index(main, "<h3")
+	if firstH2 < 0 || (firstH3 >= 0 && firstH3 < firstH2) {
+		t.Errorf("an h3 (at %d) comes before Home's first h2 (at %d):\n%s", firstH3, firstH2, main)
 	}
 }
 
@@ -637,7 +665,7 @@ func TestHomeHeadsYellowOrRedGoals(t *testing.T) {
 	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
-	heading := strings.Index(yours, `<h3>Your Yellow or Red goals</h3>`)
+	heading := strings.Index(yours, `<h2>Your Yellow or Red goals</h2>`)
 	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
 	if heading < 0 || first < heading || second < first {
 		t.Errorf("Your goals does not list Red then Yellow under a Yellow or Red heading:\n%s", yours)
@@ -1088,7 +1116,7 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
 	card := homeOrgSection(t, page)
-	if !strings.Contains(card, "<h3>My org</h3>") {
+	if !strings.Contains(card, "<h2>My org</h2>") {
 		t.Errorf("My org section isn't titled My org:\n%s", card)
 	}
 	if needsYou, org := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`); needsYou >= org {

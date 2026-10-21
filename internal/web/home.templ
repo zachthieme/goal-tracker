@@ -23,7 +23,7 @@ templ homePage(current *domain.Account, v homeView) {
 		</header>
 		<div class="hm-col">
 			<section data-testid="home-needs-you" class="card hm-card">
-				<h3 data-testid="home-needs-you-heading">{ homeNeedsYouHeading(v.NeedsYou()) }</h3>
+				<h2 data-testid="home-needs-you-heading">{ homeNeedsYouHeading(v.NeedsYou()) }</h2>
 				if v.NeedsYou() == 0 {
 					<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
 				}
@@ -80,7 +80,7 @@ templ homePage(current *domain.Account, v homeView) {
 			}
 			if len(v.AtRisk) > 0 {
 				<section data-testid="home-not-green" class="hm-section">
-					<h3>Your Yellow or Red goals</h3>
+					<h2>Your Yellow or Red goals</h2>
 					<ul class="hm-list hm-compact">
 						for _, g := range v.AtRisk {
 							<li>
@@ -136,7 +136,7 @@ templ homeYourGoals(v homeView) {
 // Follow-ups for the detail.
 templ homeOrgSection(org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
-		<h3>My org</h3>
+		<h2>My org</h2>
 		if org.Total.Any() {
 			<p data-testid="home-org-total">
 				for i, b := range homeOrgBadges(org.Total) {
@@ -357,16 +357,17 @@ templ healthBar(v homeView) {
 
 // homeStyles are Home's own rules on top of app.css: the page head stacks the
 // title over the Your goals line, the Needs you card and each plain section
-// stack their title over a list of ruled rows, a plain section's first row
-// ruled off from its title too, and a row puts what it's about on the left and
-// its actions on the right, wrapping the actions underneath when the column is
-// narrow.
+// stack their title over a list of ruled rows, each title an h2 kept at the
+// card title's size, a plain section's first row ruled off from its title too,
+// and a row puts what it's about on the left and its actions on the right,
+// wrapping the actions underneath when the column is narrow.
 templ homeStyles() {
 	<style>
 		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
 		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted)}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
 		.hm-card,.hm-section{display:flex;flex-direction:column;gap:12px;min-width:0}
+		.hm-card>h2,.hm-section>h2{font-size:19px;line-height:1.4;letter-spacing:normal}
 		.hm-section>.hm-list>li:first-child{border-top:1px solid var(--color-border);padding-top:8px}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
