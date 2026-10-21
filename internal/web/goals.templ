@@ -33,7 +33,8 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
 // search, or Enter GETs the view and swaps in only the list, so the form keeps
-// its focus and an open More filters, and pushes the address.
+// its focus and an open More filters, and pushes the address. Clear's slot
+// rides along out of band, so Clear comes and goes with the filter (#385).
 // hx-history="false" keeps htmx from snapshotting the page, whose form controls
 // would come back unchosen: Back loads the earlier address afresh instead.
 templ goalFilters(view goalsListData) {
@@ -82,9 +83,18 @@ templ goalFilters(view goalsListData) {
 				</details>
 			}
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
-			if view.anyGoalFilterSet() {
-				<a data-testid="goal-filters-clear" href="/goals" class="btn quiet">Clear</a>
-			}
+			<span
+				data-testid="goal-filters-clear-slot"
+				id="goal-filters-clear-slot"
+				class="gl-clear"
+				if view.SwapClearOOB {
+					hx-swap-oob="true"
+				}
+			>
+				if view.anyGoalFilterSet() {
+					<a data-testid="goal-filters-clear" href="/goals" class="btn quiet">Clear</a>
+				}
+			</span>
 		</div>
 		if len(view.Dimensions) > 0 {
 			<div data-testid="more-filters-panel" id="goal-more-filters" class="gl-more">
@@ -573,6 +583,7 @@ templ goalsStyles() {
 		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gl-bar select[name=org]{flex:none;field-sizing:content}
 		.gl-bar input[type=search]{flex:1;min-width:200px}
+		.gl-clear{display:contents}
 		.gl-mine{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 		.gl-bar details>summary{padding:0 4px;color:var(--color-primary-strong);font-weight:600;white-space:nowrap}
 		.gl-more{padding:0 4px}

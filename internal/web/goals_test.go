@@ -1488,6 +1488,82 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 	}
 }
 
+// goalClearSlot returns the Clear slot's element on page and whether it is
+// swapped out of band, failing unless it is the only out-of-band swap, so
+// htmx replaces neither the form nor More filters.
+func goalClearSlot(t *testing.T, page string) (string, bool) {
+	t.Helper()
+	slot := pageElement(t, page, "span", "goal-filters-clear-slot")
+	oob := regexp.MustCompile(`<[^>]*\shx-swap-oob="[^"]*"[^>]*>`).FindAllString(page, -1)
+	switch {
+	case len(oob) == 0:
+		return slot, false
+	case len(oob) > 1 || !strings.Contains(oob[0], `data-testid="goal-filters-clear-slot"`):
+		t.Fatalf("out-of-band swaps other than the Clear slot: %q", oob)
+	}
+	if attr(oob[0], "id") == "" || attr(oob[0], "id") != attr(openTag(slot), "id") {
+		t.Fatalf("the Clear slot's out-of-band swap has no id to land on: %s", oob[0])
+	}
+	return slot, true
+}
+
+// A filter changed under htmx swaps in only the list, so its response carries
+// the Clear slot out of band: Clear when the address loaded in full would
+// offer it, an empty slot when it wouldn't (#385). A full load swaps nothing
+// out of band.
+func TestGoalListFilterChangeUnderHTMXKeepsClearInStep(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	bare := getBody(t, client, ts.URL+"/goals")
+	if slot, oob := goalClearSlot(t, bare); oob || strings.Contains(slot, `data-testid="goal-filters-clear"`) {
+		t.Errorf("a full load of /goals swaps the Clear slot out of band or offers Clear: %s", slot)
+	}
+	for name, set := range map[string]func(url.Values){
+		"Scope":      func(v url.Values) { v.Set("org", "all") },
+		"search":     func(v url.Values) { v.Set("q", "grow") },
+		"Health":     func(v url.Values) { v.Set("health", "red") },
+		"Lifecycle":  func(v url.Values) { v.Set("lifecycle", "Active") },
+		"Incomplete": func(v url.Values) { v.Set("incomplete", "1") },
+		"Dimension":  func(v url.Values) { v.Add("value", fmt.Sprint(pillar.Values[0].ID)) },
+		"Group by":   func(v url.Values) { v.Set("group", fmt.Sprint(pillar.ID)) },
+	} {
+		body, address := htmxFilter(t, client, ts.URL, bare, set)
+		slot, oob := goalClearSlot(t, body)
+		if !oob {
+			t.Errorf("%s set under htmx (%s): the Clear slot isn't swapped out of band", name, address)
+			continue
+		}
+		if !strings.Contains(slot, `data-testid="goal-filters-clear"`) {
+			t.Errorf("%s set under htmx (%s): the Clear slot lacks Clear: %s", name, address, slot)
+			continue
+		}
+		if href := attr(openTag(pageElement(t, slot, "a", "goal-filters-clear")), "href"); href != "/goals" {
+			t.Errorf("%s set under htmx (%s): Clear links to %q, want the bare /goals", name, address, href)
+		}
+	}
+
+	filtered := getBody(t, client, ts.URL+"/goals?health=red")
+	if slot, oob := goalClearSlot(t, filtered); oob || !strings.Contains(slot, `data-testid="goal-filters-clear"`) {
+		t.Errorf("a full load of /goals?health=red swaps the Clear slot out of band or lacks Clear: %s", slot)
+	}
+	body, address := htmxFilter(t, client, ts.URL, filtered, func(v url.Values) { v.Set("health", "") })
+	slot, oob := goalClearSlot(t, body)
+	if !oob {
+		t.Errorf("the last filter unset under htmx (%s): the Clear slot isn't swapped out of band", address)
+	}
+	if inner := slot[strings.Index(slot, ">")+1:]; strings.TrimSpace(inner) != "" {
+		t.Errorf("the last filter unset under htmx (%s): the Clear slot isn't empty: %s", address, slot)
+	}
+}
+
 // The filter bar is one row: the Scope, search, Health, Lifecycle,
 // Incomplete, More filters' summary and Clear, in that order. More filters'
 // panel, the Dimension filters and Group by, follows the row rather than
