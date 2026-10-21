@@ -39,8 +39,11 @@ deliberately; don't override it on one page.
   Every other section is a plain section on the canvas: a heading over rows
   separated by 1px `--color-border` hairlines, with no surface, border or
   padding box. So the eye finds the page's job first, and the context around
-  it reads lighter. Home follows the rule (Needs you is its one card); other
-  pages are brought in line one at a time.
+  it reads lighter. A page's primary section may be that card and still keep
+  a section-level `h2` on it, as Home's Needs you does (§ Components: Card).
+  Home follows the rule (Needs you is its one card), and so does the Reports
+  list (its table is its one card; Open Action Items above it is a plain
+  section); other pages are brought in line one at a time.
 - **Depth:** cards lie flat on the canvas, set off by their surface and a
   1px border. Only menus and popovers float, on `--shadow-pop`, so an open
   one reads as nearer than anything under it (see § Deviations 8).
@@ -359,8 +362,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   clickable card's border becomes `--color-border-strong` over `--dur-base`,
   and nothing else changes: it doesn't move. That is darker in light and
   lighter in dark, so either way the edge stands further out from the card.
-  A card's own heading is an `h3` (card title); `h2` is for page sections
-  that sit outside cards.
+  A card nested inside a section takes an `h3` (card title) for its own
+  heading; `h2` is for page sections. The one exception is a page's primary
+  section when it is a card (§ System: Cards are earned): it keeps the
+  section-level `h2`, as Home's Needs you does.
   Where a card earns its place is § System: Cards are earned. The Goal page
   predates that rule: there a card is for something a person acts on or
   reads as a unit of status, such as the Check-in, each Metric and
@@ -645,10 +650,14 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Goal), the summary drops to 13px and Submit check-in grows to 48px.
 - **Home (`homePage` in `home.templ`):** one column, read top to bottom: the
   page head, then **Needs you**, its one card, then My org and Your Yellow
-  or Red goals, plain sections on the canvas (§ System: Cards are earned). A
-  plain section is an `h3` over a compact list (`.hm-section`), its first row
-  ruled off from the heading by a hairline as each row is from the next, so
-  the context headings stay quieter than the card's.
+  or Red goals, plain sections on the canvas (§ System: Cards are earned).
+  All three are page sections headed by an `h2`, Needs you's on its card, so
+  the outline reads Your week (H1), then an `h2` per section, then Needs
+  you's `h4` group labels. Home sets these `h2`s at the H3 card-title size
+  (19px, 600), so the headings stay no louder than the rows under them. A
+  plain section is its `h2` over a compact list (`.hm-section`), its first
+  row ruled off from the heading by a hairline as each row is from the next,
+  so the context sections stay quieter than the card.
   - **Page head:** **Your week** (H1), and under it the Your goals line
     (`.hm-summary`), with **New goal** on the right. The line reads "Your
     goals:", the Health distribution bar, then plain muted text, "1 Green ·

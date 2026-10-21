@@ -12,7 +12,9 @@ import (
 // reportsPage lists every saved Report Definition as a row of a status table —
 // its scope, its Goals and their Health, when it was last published and by
 // whom, and how much its draft has changed since — and links New report to the
-// builder (CONTEXT.md: Report Definition). Dates are the company's (loc).
+// builder (CONTEXT.md: Report Definition). Dates are the company's (loc). The
+// table is the page's one card; the Open Action Items above it are a plain
+// section on the canvas, each group's rows ruled off by hairlines.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
@@ -24,7 +26,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 			<a data-testid="new-report" class="btn primary" href="/reports/new">New report</a>
 		</header>
 		if len(data.YourActionItems) + len(data.OrgActionItems) > 0 {
-			<section data-testid="reports-action-items" class="card rp-chase">
+			<section data-testid="reports-action-items" class="rp-chase">
 				<h2>Open Action Items</h2>
 				if len(data.YourActionItems) > 0 {
 					@reportsActionItemGroup("Yours", "reports-action-items-yours", data.YourActionItems)
@@ -1353,13 +1355,12 @@ templ reportStyles() {
 			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
 		}
 		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
-		.rp-chase{padding:24px;display:flex;flex-direction:column;gap:16px}
+		.rp-chase{display:flex;flex-direction:column;gap:16px}
 		.rp-chase h2{margin:0}
 		.rp-chase-group{display:flex;flex-direction:column;gap:8px}
 		.rp-chase-group>h4{margin:0}
 		.rp-chase-list{list-style:none;margin:0;padding:0}
 		.rp-chase-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:12px 0;border-top:1px solid var(--color-border)}
-		.rp-chase-list>li:first-child{border-top:none;padding-top:0}
 		.rp-chase-list>li:last-child{padding-bottom:0}
 		.rp-chase-list>li>a{font-weight:500}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}

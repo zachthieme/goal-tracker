@@ -4221,6 +4221,14 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 	if !strings.Contains(page[section:table], "<h2>Open Action Items</h2>") {
 		t.Errorf("the section is not headed Open Action Items:\n%s", page[section:table])
 	}
+	// The Reports table is the page's one card; Open Action Items is a plain
+	// section on the canvas (DESIGN.md § System: Cards are earned, #386).
+	if tag := openTag(page[section:]); hasClass(tag, "card") {
+		t.Errorf("Open Action Items is a card: %s", tag)
+	}
+	if tag := openTag(page[strings.LastIndex(page[:table], "<div"):]); !hasClass(tag, "card") {
+		t.Errorf("the Reports table's container isn't a card: %s", tag)
+	}
 	if strings.Contains(page, "Nobody's to chase.") {
 		t.Errorf("the page lists an item nobody in the viewer's Org is party to")
 	}
