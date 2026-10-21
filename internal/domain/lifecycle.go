@@ -38,7 +38,7 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 		case LifecycleActive:
 			return LifecycleChange{}, nil
 		case LifecycleOnHold:
-			return LifecycleChange{}, fmt.Errorf("%w: an On Hold Goal can only be resumed or Cancelled in a Check-in", ErrValidation)
+			return LifecycleChange{}, inputError(CheckinInputLifecycle, "an On Hold Goal can only be resumed or Cancelled in a Check-in")
 		default:
 			return LifecycleChange{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
 		}
@@ -49,23 +49,23 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 	case current == LifecycleActive && (to == LifecycleOnHold || to == LifecycleCancelled),
 		current == LifecycleOnHold && to == LifecycleCancelled:
 		if reason == "" && to == LifecycleCancelled {
-			return LifecycleChange{}, fmt.Errorf("%w: cancelling a Goal needs a reason", ErrValidation)
+			return LifecycleChange{}, inputError(CheckinInputLifecycleReason, "cancelling a Goal needs a reason")
 		}
 		if reason == "" {
-			return LifecycleChange{}, fmt.Errorf("%w: putting a Goal On Hold needs a reason", ErrValidation)
+			return LifecycleChange{}, inputError(CheckinInputLifecycleReason, "putting a Goal On Hold needs a reason")
 		}
 	case current == LifecycleActive && to == LifecycleDone:
 		if outcome == "" {
-			return LifecycleChange{}, fmt.Errorf("%w: marking a Goal Done needs an outcome", ErrValidation)
+			return LifecycleChange{}, inputError(CheckinInputOutcome, "marking a Goal Done needs an outcome")
 		}
 		if strings.ContainsAny(outcome, "\r\n") {
-			return LifecycleChange{}, fmt.Errorf("%w: a Goal's outcome is one line", ErrValidation)
+			return LifecycleChange{}, inputError(CheckinInputOutcome, "a Goal's outcome is one line")
 		}
 		change.Outcome = outcome
 	case current == LifecycleOnHold && to == LifecycleActive:
 		// Resuming is not leaving Active, so no reason is needed.
 	case current == LifecycleActive || current == LifecycleOnHold:
-		return LifecycleChange{}, fmt.Errorf("%w: a Check-in can't move a %s Goal to %q", ErrValidation, current, to)
+		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
 	default:
 		return LifecycleChange{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
 	}
@@ -94,7 +94,7 @@ func (s *Service) requireFinalValues(ctx context.Context, goalID int64, readings
 	}
 	for _, m := range metrics {
 		if !read[m.ID] {
-			return fmt.Errorf("%w: marking a Goal Done needs a final value for every Metric; %q has none", ErrValidation, m.Name)
+			return inputError(CheckinReadingInput(m.ID), "marking a Goal Done needs a final value for every Metric; %q has none", m.Name)
 		}
 	}
 	return nil

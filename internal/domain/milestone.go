@@ -134,10 +134,32 @@ func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db
 	if health != HealthGreen {
 		return nil
 	}
-	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
-		return fmt.Errorf("%w, so the Goal can't be Green", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
+	m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat))
+	if !ok {
+		return nil
 	}
-	return nil
+	overdue := &MilestoneOverdueError{Milestone: milestoneFromRow(m)}
+	return &InputError{Input: milestoneDateInput(milestones, m), Message: validationMessage(overdue) + ", so the Goal can't be Green", Err: overdue}
+}
+
+// milestoneDateInput names the Check-in input that dates m, one of milestones
+// as a Check-in leaves them: the Goal's Milestones, then those it adds, which
+// have no ID yet and are named by their place among the added.
+func milestoneDateInput(milestones []db.Milestone, m db.Milestone) string {
+	if m.ID != 0 {
+		return CheckinMilestoneInput(m.ID, "date")
+	}
+	added := 0
+	for _, r := range milestones {
+		if r.ID != 0 {
+			continue
+		}
+		if r == m {
+			return CheckinNewMilestoneInput(added)
+		}
+		added++
+	}
+	return ""
 }
 
 // AddMilestoneInput is the add-Milestone command's input.
@@ -376,7 +398,7 @@ func planMilestoneStatus(m db.Milestone, status, removedReason string) (*milesto
 	case MilestoneRemoved:
 		reason := strings.TrimSpace(removedReason)
 		if reason == "" {
-			return nil, fmt.Errorf("%w: removing Milestone %q needs a reason", ErrValidation, m.Name)
+			return nil, inputError(CheckinMilestoneInput(m.ID, "removed_reason"), "removing Milestone %q needs a reason", m.Name)
 		}
 		return &milestoneStatusChange{milestoneID: m.ID, name: m.Name, status: MilestoneRemoved, removedReason: reason}, nil
 	default:
@@ -438,13 +460,13 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 			m.Status = change.status
 		}
 	}
-	for _, a := range added {
+	for i, a := range added {
 		name := strings.TrimSpace(a.Name)
 		if name == "" {
-			return milestonePlan{}, fmt.Errorf("%w: a new Milestone needs a name", ErrValidation)
+			return milestonePlan{}, inputError(CheckinNewMilestoneInput(i), "a new Milestone needs a name")
 		}
 		if a.TargetDate.IsZero() {
-			return milestonePlan{}, fmt.Errorf("%w: new Milestone %q needs a date", ErrValidation, name)
+			return milestonePlan{}, inputError(CheckinNewMilestoneInput(i), "new Milestone %q needs a date", name)
 		}
 		plan.added = append(plan.added, NewMilestoneInput{Name: name, TargetDate: a.TargetDate})
 		plan.resulting = append(plan.resulting, db.Milestone{Name: name, TargetDate: a.TargetDate.Format(dateFormat), Status: MilestonePlanned})

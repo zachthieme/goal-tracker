@@ -1229,3 +1229,277 @@ func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
 		})
 	}
 }
+
+// Each refusal of a Check-in names the input it is about, as the Check-in form
+// names it, so the form can show it there whatever the message says; the
+// refusal is still an ErrValidation, and reads as it always has.
+func TestCheckinRefusalNamesItsInput(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		// refused builds a Check-in on goal that is refused, and the input the
+		// refusal should name.
+		refused func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string)
+		// message is the refusal's reason, as it reads without the
+		// ErrValidation prefix.
+		message string
+	}{
+		{
+			name: "an unknown Health",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: "Blue", Status: "Fine."}, domain.CheckinInputHealth
+			},
+			message: `Health must be "Green", "Yellow", or "Red"`,
+		},
+		{
+			name: "no status",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: " "}, domain.CheckinInputStatus
+			},
+			message: "a Check-in needs a status",
+		},
+		{
+			name: "no status when putting the Goal On Hold",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Reorg."}, domain.CheckinInputStatus
+			},
+			message: "a Check-in needs a status",
+		},
+		{
+			name: "a Yellow without a Path to Green",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Slipping.", PathTargetDate: pathDate}, domain.CheckinInputPathToGreen
+			},
+			message: "a Yellow Goal needs a Path to Green",
+		},
+		{
+			name: "a Path to Green without a target date",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthRed, Status: "Slipping.", PathToGreen: "Add two engineers."}, domain.CheckinInputPathToGreen
+			},
+			message: "a Path to Green needs a target date",
+		},
+		{
+			name: "a later back-to-Green date without a reason",
+			refused: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				h.Checkin(sam, goal.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", pathDate)
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Still behind.", PathToGreen: "Add a reviewer.", PathTargetDate: pathDate.AddDate(0, 0, 7)}, domain.CheckinInputPathTargetDateReason
+			},
+			message: "moving the back-to-Green date later needs a reason",
+		},
+		{
+			name: "a Health unlike the Rolled-up Health, unexplained",
+			refused: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				child := h.ActiveChildOf(sam, goal, "Fix the pager", "Pages wake people.")
+				h.Checkin(sam, child.ID, domain.HealthRed, "Paging storm.", "Tune alerts.", pathDate)
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine."}, domain.CheckinInputExplanation
+			},
+			message: "this Health differs from the Rolled-up Health (Red); explain why",
+		},
+		{
+			name: "putting the Goal On Hold without a reason",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Paused.", Lifecycle: domain.LifecycleOnHold}, domain.CheckinInputLifecycleReason
+			},
+			message: "putting a Goal On Hold needs a reason",
+		},
+		{
+			name: "cancelling the Goal without a reason",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Stopping.", Lifecycle: domain.LifecycleCancelled}, domain.CheckinInputLifecycleReason
+			},
+			message: "cancelling a Goal needs a reason",
+		},
+		{
+			name: "marking the Goal Done without an outcome",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone}, domain.CheckinInputOutcome
+			},
+			message: "marking a Goal Done needs an outcome",
+		},
+		{
+			name: "an outcome of two lines",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Shipped.\nMostly."}, domain.CheckinInputOutcome
+			},
+			message: "a Goal's outcome is one line",
+		},
+		{
+			name: "a Lifecycle a Check-in can't move to",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Back to the drawing board.", Lifecycle: domain.LifecycleProposed}, domain.CheckinInputLifecycle
+			},
+			message: `a Check-in can't move a Active Goal to "Proposed"`,
+		},
+		{
+			name: "an On Hold Goal left On Hold",
+			refused: func(h *testsupport.Harness, sam domain.Account, _ domain.Goal) (domain.SubmitCheckinInput, string) {
+				held := h.OnHoldGoal(sam, "Migrate billing", "Old billing is costly.", "Waiting on finance.")
+				return domain.SubmitCheckinInput{GoalID: held.ID, AuthorID: sam.ID, Status: "Still waiting."}, domain.CheckinInputLifecycle
+			},
+			message: "an On Hold Goal can only be resumed or Cancelled in a Check-in",
+		},
+		{
+			name: "marking the Goal Done without a Metric's final value",
+			refused: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				latency := addNamedMetric(h.T, h, goal.ID, "p99 latency")
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Shipped."}, domain.CheckinReadingInput(latency.ID)
+			},
+			message: `marking a Goal Done needs a final value for every Metric; "p99 latency" has none`,
+		},
+		{
+			name: "a Green moving the delivery date later",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", DeliveryDate: goal.DeliveryDate.AddDate(0, 0, 7), DeliveryDateReason: "Vendor slipped."}, domain.CheckinInputDeliveryDate
+			},
+			message: "a Check-in that moves the delivery date later can't be Green",
+		},
+		{
+			name: "a new delivery date without a reason",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Ahead.", DeliveryDate: goal.DeliveryDate.AddDate(0, 0, -7)}, domain.CheckinInputDeliveryDateReason
+			},
+			message: "changing the delivery date needs a reason",
+		},
+		{
+			name: "a Milestone's new date without a reason",
+			refused: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				beta := onlyMilestone(h.T, h, goal.ID)
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", Milestones: []domain.MilestoneChangeInput{
+					{MilestoneID: beta.ID, TargetDate: beta.TargetDate.AddDate(0, 0, 7)},
+				}}, domain.CheckinMilestoneInput(beta.ID, "date_reason")
+			},
+			message: `changing the date of Milestone "Beta" needs a reason`,
+		},
+		{
+			name: "removing a Milestone without a reason",
+			refused: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				beta := onlyMilestone(h.T, h, goal.ID)
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", Milestones: []domain.MilestoneChangeInput{
+					{MilestoneID: beta.ID, Status: domain.MilestoneRemoved},
+				}}, domain.CheckinMilestoneInput(beta.ID, "removed_reason")
+			},
+			message: `removing Milestone "Beta" needs a reason`,
+		},
+		{
+			name: "a new Milestone without a name",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", NewMilestones: []domain.NewMilestoneInput{
+					{Name: "Launch", TargetDate: pathDate},
+					{Name: " ", TargetDate: pathDate},
+				}}, domain.CheckinNewMilestoneInput(1)
+			},
+			message: "a new Milestone needs a name",
+		},
+		{
+			name: "a new Milestone without a date",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", NewMilestones: []domain.NewMilestoneInput{
+					{Name: "Launch"},
+				}}, domain.CheckinNewMilestoneInput(0)
+			},
+			message: `new Milestone "Launch" needs a date`,
+		},
+		{
+			name: "a Highlight without a kind",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", Highlights: []domain.HighlightInput{
+					{Kind: domain.HighlightInsight, Note: "Caching helped."},
+					{Note: "Paging is noisy."},
+				}}, domain.CheckinHighlightInput(2)
+			},
+			message: "Highlight 2 needs a kind: Insight, Accomplishment, or Miss",
+		},
+		{
+			name: "a Highlight of an unknown kind",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Fine.", Highlights: []domain.HighlightInput{
+					{Kind: "Rumour", Note: "Paging is noisy."},
+				}}, domain.CheckinHighlightInput(1)
+			},
+			message: `Highlight 1 must be an "Insight", "Accomplishment", or "Miss"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			in, want := tc.refused(h, sam, goal)
+
+			_, err := h.Service.SubmitCheckin(context.Background(), in)
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			problems := domain.InputErrors(err)
+			if len(problems) != 1 || problems[0].Input != want {
+				t.Fatalf("InputErrors(%v) = %+v, want one naming %q", err, problems, want)
+			}
+			if got := problems[0].Message; got != tc.message {
+				t.Errorf("Message = %q, want %q", got, tc.message)
+			}
+			if got, want := err.Error(), "validation failed: "+tc.message; got != want {
+				t.Errorf("err = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A Green refused for an overdue Milestone names that Milestone's date: a
+// Planned one's, or a new one's added already past. It is still a
+// *MilestoneOverdueError, so a page can show the due date as it shows dates.
+func TestGreenWhileMilestoneOverdueNamesItsDate(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a Planned Milestone", func(t *testing.T) {
+		t.Parallel()
+
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+		beta := onlyMilestone(t, h, goal.ID)
+		h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+
+		_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track.",
+		})
+		assertMilestoneOverdueError(t, err, beta)
+		assertNamesInput(t, err, domain.CheckinMilestoneInput(beta.ID, "date"))
+		if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), so the Goal can't be Green`; err.Error() != want {
+			t.Errorf("err = %q, want %q", err, want)
+		}
+	})
+
+	t.Run("a new Milestone", func(t *testing.T) {
+		t.Parallel()
+
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+		past := h.Clock.Now().AddDate(0, 0, -3)
+
+		_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Backfilling a gate.",
+			NewMilestones: []domain.NewMilestoneInput{{Name: "Launch", TargetDate: pathDate}, {Name: "Kickoff", TargetDate: past}},
+		})
+		var overdue *domain.MilestoneOverdueError
+		if !errors.As(err, &overdue) || overdue.Milestone.Name != "Kickoff" {
+			t.Fatalf("err = %v, want a *MilestoneOverdueError for Kickoff", err)
+		}
+		assertNamesInput(t, err, domain.CheckinNewMilestoneInput(1))
+	})
+}
+
+// assertNamesInput fails unless err refuses exactly the one input named.
+func assertNamesInput(t *testing.T, err error, input string) {
+	t.Helper()
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != input {
+		t.Errorf("InputErrors(%v) = %+v, want one naming %q", err, problems, input)
+	}
+}

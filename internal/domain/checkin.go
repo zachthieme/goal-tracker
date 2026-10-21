@@ -60,6 +60,38 @@ const (
 	HealthRed    = "Red"
 )
 
+// The inputs of a Check-in, by the names its refusals (see InputError) and the
+// Check-in form share. A Metric's reading, a Milestone's, a new Milestone's or a
+// Highlight row's is made by its function below.
+const (
+	CheckinInputHealth               = "health"
+	CheckinInputStatus               = "status"
+	CheckinInputPathToGreen          = "path_to_green"
+	CheckinInputPathTargetDateReason = "path_target_date_reason"
+	CheckinInputExplanation          = "explanation"
+	CheckinInputLifecycle            = "lifecycle"
+	CheckinInputLifecycleReason      = "lifecycle_reason"
+	CheckinInputOutcome              = "outcome"
+	CheckinInputDeliveryDate         = "delivery_date"
+	CheckinInputDeliveryDateReason   = "delivery_date_reason"
+)
+
+// CheckinReadingInput names the reading given for a Metric.
+func CheckinReadingInput(metricID int64) string { return fmt.Sprintf("reading_%d", metricID) }
+
+// CheckinMilestoneInput names one part ("date", "date_reason",
+// "removed_reason") of a Planned Milestone's change.
+func CheckinMilestoneInput(milestoneID int64, part string) string {
+	return fmt.Sprintf("milestone_%s_%d", part, milestoneID)
+}
+
+// CheckinNewMilestoneInput names the i-th Milestone added, counting from 0.
+func CheckinNewMilestoneInput(i int) string { return fmt.Sprintf("new_milestone_%d", i) }
+
+// CheckinHighlightInput names the n-th Highlight row, counting from 1 as the
+// Check-in form numbers them.
+func CheckinHighlightInput(n int) string { return fmt.Sprintf("highlight_%d", n) }
+
 func validHealth(h string) bool {
 	return h == HealthGreen || h == HealthYellow || h == HealthRed
 }
@@ -174,7 +206,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 	} else {
 		if status == "" {
-			return Checkin{}, fmt.Errorf("%w: a Check-in needs a status", ErrValidation)
+			return Checkin{}, inputError(CheckinInputStatus, "a Check-in needs a status")
 		}
 		health, path, explanation = "", "", ""
 	}
@@ -196,7 +228,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// A slip is never hidden behind a Green: moving the delivery date later
 	// means the Goal is not on track (CONTEXT.md: Date Slip).
 	if health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
-		return Checkin{}, fmt.Errorf("%w: a Check-in that moves the delivery date later can't be Green", ErrValidation)
+		return Checkin{}, inputError(CheckinInputDeliveryDate, "a Check-in that moves the delivery date later can't be Green")
 	}
 	// A Milestone slip that doesn't move the delivery date doesn't affect Health
 	// (CONTEXT.md: Milestone), so it is recorded but never gates the Health.
@@ -604,7 +636,7 @@ func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, he
 	}
 	if rollup.Present && rollup.Health != health {
 		if explanation == "" {
-			return "", fmt.Errorf("%w: this Health differs from the Rolled-up Health (%s); explain why", ErrValidation, rollup.Health)
+			return "", inputError(CheckinInputExplanation, "this Health differs from the Rolled-up Health (%s); explain why", rollup.Health)
 		}
 		return explanation, nil
 	}
@@ -615,17 +647,17 @@ func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, he
 // status, and — when Yellow or Red — a Path to Green with text and a target date.
 func validateCheckin(health, status, path string, pathTargetDate time.Time) error {
 	if !validHealth(health) {
-		return fmt.Errorf("%w: Health must be %q, %q, or %q", ErrValidation, HealthGreen, HealthYellow, HealthRed)
+		return inputError(CheckinInputHealth, "Health must be %q, %q, or %q", HealthGreen, HealthYellow, HealthRed)
 	}
 	if status == "" {
-		return fmt.Errorf("%w: a Check-in needs a status", ErrValidation)
+		return inputError(CheckinInputStatus, "a Check-in needs a status")
 	}
 	if needsPathToGreen(health) {
 		if path == "" {
-			return fmt.Errorf("%w: a %s Goal needs a Path to Green", ErrValidation, health)
+			return inputError(CheckinInputPathToGreen, "a %s Goal needs a Path to Green", health)
 		}
 		if pathTargetDate.IsZero() {
-			return fmt.Errorf("%w: a Path to Green needs a target date", ErrValidation)
+			return inputError(CheckinInputPathToGreen, "a Path to Green needs a target date")
 		}
 	}
 	return nil

@@ -88,13 +88,13 @@ func planDeliverySlip(goal db.Goal, newDate time.Time, reason string) (*slipPlan
 	if !newDate.IsZero() && newDate.Format(dateFormat) != goal.DeliveryDate && goal.Kind != GoalDated {
 		return nil, fmt.Errorf("%w: only a Dated Goal has a delivery date to change", ErrValidation)
 	}
-	return planSlip(0, "the delivery date", goal.DeliveryDate, newDate, reason)
+	return planSlip(0, "the delivery date", CheckinInputDeliveryDateReason, goal.DeliveryDate, newDate, reason)
 }
 
 // planMilestoneSlip validates a Check-in's new date for a Milestone. A zero or
 // unchanged date is no slip (nil); a change needs a reason.
 func planMilestoneSlip(m db.Milestone, newDate time.Time, reason string) (*slipPlan, error) {
-	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), m.TargetDate, newDate, reason)
+	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), CheckinMilestoneInput(m.ID, "date_reason"), m.TargetDate, newDate, reason)
 }
 
 // planBackToGreenSlip validates a Check-in's back-to-Green date against the
@@ -115,15 +115,16 @@ func planBackToGreenSlip(last, newDate time.Time, reason string) (*slipPlan, err
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return nil, fmt.Errorf("%w: moving the back-to-Green date later needs a reason", ErrValidation)
+		return nil, inputError(CheckinInputPathTargetDateReason, "moving the back-to-Green date later needs a reason")
 	}
 	return &slipPlan{backToGreen: true, oldDate: last, newDate: newDate, reason: reason}, nil
 }
 
 // planSlip validates moving a stored date (oldDate, in dateFormat) to newDate.
 // A zero or unchanged newDate is no slip (nil); a change needs a reason. what
-// names the date for the error message.
-func planSlip(milestoneID int64, what, oldDate string, newDate time.Time, reason string) (*slipPlan, error) {
+// names the date for the error message, and reasonInput the Check-in input its
+// reason is given in.
+func planSlip(milestoneID int64, what, reasonInput, oldDate string, newDate time.Time, reason string) (*slipPlan, error) {
 	if newDate.IsZero() || newDate.Format(dateFormat) == oldDate {
 		return nil, nil
 	}
@@ -133,7 +134,7 @@ func planSlip(milestoneID int64, what, oldDate string, newDate time.Time, reason
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return nil, fmt.Errorf("%w: changing %s needs a reason", ErrValidation, what)
+		return nil, inputError(reasonInput, "changing %s needs a reason", what)
 	}
 	return &slipPlan{milestoneID: milestoneID, oldDate: old, newDate: newDate, reason: reason}, nil
 }

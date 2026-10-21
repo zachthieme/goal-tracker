@@ -1037,6 +1037,34 @@ func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 	}
 }
 
+// Two new Milestones may share a name: the error is shown by the row the
+// refusal is about, not the first row its message's wording could match.
+func TestCheckinNewMilestoneErrorShownNextToItsRowAmongNamesakes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Adding docs."},
+		"new_milestone_name": {"Docs", "Docs"},
+		"new_milestone_date": {"2026-05-01", ""},
+	})
+	doc := parsePage(t, body)
+	dates := formFields(doc, "new_milestone_date")
+	if len(dates) < 2 {
+		t.Fatalf("form lost a new Milestone row; body:\n%s", body)
+	}
+	if msg := errorAfter(t, doc, dates[1].Node); !strings.Contains(msg, "needs a date") {
+		t.Errorf("second Docs row's error = %q, want the missing date one", msg)
+	}
+}
+
 // A Green Check-in adding a Milestone that is already overdue gets its error
 // next to that new Milestone.
 func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {

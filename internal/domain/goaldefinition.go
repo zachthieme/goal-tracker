@@ -615,18 +615,27 @@ const (
 )
 
 // InputError refuses one input of a Goal's definition, naming it as the New
-// goal form does, and saying why as the Goal page would. It is an
-// ErrValidation.
+// goal form does, and saying why as the Goal page would; or one input of a
+// Check-in, named as the Check-in form does. It is an ErrValidation, and the
+// refusal Err when it carries one.
 type InputError struct {
 	Input   string
 	Message string
+	// Err is the typed refusal Message tells of, for a caller to find with
+	// errors.As (as a *MilestoneOverdueError); nil when there is none.
+	Err error
 }
 
 func (e *InputError) Error() string {
 	return fmt.Sprintf("%v: %s", ErrValidation, e.Message)
 }
 
-func (e *InputError) Unwrap() error { return ErrValidation }
+func (e *InputError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrValidation}
+	}
+	return []error{ErrValidation, e.Err}
+}
 
 func inputError(input, format string, args ...any) *InputError {
 	return &InputError{Input: input, Message: fmt.Sprintf(format, args...)}

@@ -64,10 +64,10 @@ func planHighlights(rows []HighlightInput) ([]HighlightInput, error) {
 			continue
 		}
 		if row.Kind == "" {
-			return nil, fmt.Errorf("%w: Highlight %d needs a kind: %s, %s, or %s", ErrValidation, i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+			return nil, inputError(CheckinHighlightInput(i+1), "Highlight %d needs a kind: %s, %s, or %s", i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
 		}
 		if !validHighlightKind(row.Kind) {
-			return nil, fmt.Errorf("%w: Highlight %d must be an %q, %q, or %q", ErrValidation, i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+			return nil, inputError(CheckinHighlightInput(i+1), "Highlight %d must be an %q, %q, or %q", i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
 		}
 		out = append(out, HighlightInput{Kind: row.Kind, Note: note})
 	}
