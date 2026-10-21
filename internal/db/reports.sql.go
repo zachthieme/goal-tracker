@@ -76,6 +76,22 @@ func (q *Queries) AddReportDefinitionGoal(ctx context.Context, arg AddReportDefi
 	return err
 }
 
+const addReportDelegate = `-- name: AddReportDelegate :exec
+INSERT INTO report_delegates (report_definition_id, account_id, created_at)
+VALUES (?, ?, ?)
+`
+
+type AddReportDelegateParams struct {
+	ReportDefinitionID int64
+	AccountID          int64
+	CreatedAt          string
+}
+
+func (q *Queries) AddReportDelegate(ctx context.Context, arg AddReportDelegateParams) error {
+	_, err := q.db.ExecContext(ctx, addReportDelegate, arg.ReportDefinitionID, arg.AccountID, arg.CreatedAt)
+	return err
+}
+
 const addReportRule = `-- name: AddReportRule :one
 INSERT INTO report_rules (report_definition_id, attribute, dimension_id, op)
 VALUES (?, ?, ?, ?)
@@ -466,6 +482,52 @@ func (q *Queries) ListReportDefinitions(ctx context.Context) ([]ReportDefinition
 	return items, nil
 }
 
+const listReportDelegates = `-- name: ListReportDelegates :many
+SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+FROM report_delegates
+JOIN accounts ON accounts.id = report_delegates.account_id
+WHERE report_delegates.report_definition_id = ?
+ORDER BY accounts.email
+`
+
+type ListReportDelegatesRow struct {
+	Account Account
+}
+
+// The Accounts authorized to change, curate and publish a Report Definition
+// beside its creator, ordered by email (CONTEXT.md: Report Delegate).
+func (q *Queries) ListReportDelegates(ctx context.Context, reportDefinitionID int64) ([]ListReportDelegatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listReportDelegates, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReportDelegatesRow
+	for rows.Next() {
+		var i ListReportDelegatesRow
+		if err := rows.Scan(
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReportPublications = `-- name: ListReportPublications :many
 SELECT id, report_definition_id, published_by, published_at, snapshot FROM report_publications
 WHERE report_definition_id = ?
@@ -612,6 +674,21 @@ type RemoveMergedRuleValueWhereTargetListedParams struct {
 // list the target, so no rule lists the target twice.
 func (q *Queries) RemoveMergedRuleValueWhereTargetListed(ctx context.Context, arg RemoveMergedRuleValueWhereTargetListedParams) error {
 	_, err := q.db.ExecContext(ctx, removeMergedRuleValueWhereTargetListed, arg.MergedValue, arg.TargetValue)
+	return err
+}
+
+const removeReportDelegate = `-- name: RemoveReportDelegate :exec
+DELETE FROM report_delegates
+WHERE report_definition_id = ? AND account_id = ?
+`
+
+type RemoveReportDelegateParams struct {
+	ReportDefinitionID int64
+	AccountID          int64
+}
+
+func (q *Queries) RemoveReportDelegate(ctx context.Context, arg RemoveReportDelegateParams) error {
+	_, err := q.db.ExecContext(ctx, removeReportDelegate, arg.ReportDefinitionID, arg.AccountID)
 	return err
 }
 

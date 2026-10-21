@@ -53,20 +53,42 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current d
 // reader picks (the baseline query parameter, a date) or by default the
 // previous publication, or 30 days ago when there is none.
 func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	def, ok := s.reportFromPath(w, r)
+	if !ok {
+		return
+	}
+	m, err := s.reportManagement(r, current, def)
+	if err != nil {
+		s.serverError(w, r, "could not load Report Delegates", err)
+		return
+	}
+	// Closing an Action Item comes back to this draft, baseline and all.
+	s.renderReportDraft(w, r, current, def, m, r.URL.RequestURI(), http.StatusOK)
+}
+
+// reportFromPath loads the Report Definition the path names, writing Not found
+// when there is none.
+func (s *Server) reportFromPath(w http.ResponseWriter, r *http.Request) (domain.ReportDefinition, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		s.notFound(w, r)
-		return
+		return domain.ReportDefinition{}, false
 	}
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			s.notFound(w, r)
-			return
+			return domain.ReportDefinition{}, false
 		}
 		s.serverError(w, r, "could not load report", err)
-		return
+		return domain.ReportDefinition{}, false
 	}
+	return def, true
+}
+
+// renderReportDraft renders def's draft page as code, as m lets current manage
+// it, against the baseline the reader picked. Its forms come back to draft.
+func (s *Server) renderReportDraft(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, m reportManagement, draft string, code int) {
 	baseline, err := parseDate(r.URL.Query().Get("baseline"))
 	if err != nil {
 		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
@@ -87,22 +109,48 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		s.serverError(w, r, "could not load Action Items", err)
 		return
 	}
-	// Closing an Action Item comes back to this draft, baseline and all.
-	d.Return = r.URL.RequestURI()
-	panel, err := s.draftGoalsPanel(r, report)
+	d.Return = draft
+	panel, err := s.draftGoalsPanel(r, report, m)
 	if err != nil {
 		s.serverError(w, r, "could not summarise the report", err)
 		return
 	}
-	if domain.CanEditReportDefinition(current, def) {
-		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
-	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, savedNarrativeForm(report, chip), ""))
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, savedNarrativeForm(report, chip), ""))
+}
+
+// reportManagement is what a Report's draft page lets its reader do to the
+// Report Definition: change, curate and publish it (its creator, a Report
+// Delegate or an Admin), and add and remove its Report Delegates (its creator
+// or an Admin); and who those Report Delegates are (CONTEXT.md: Report
+// Delegate).
+type reportManagement struct {
+	DefID           int64
+	Manage          bool
+	ManageDelegates bool
+	Delegates       []domain.Account
+	// Email and Refused are a refused add: the email posted, and why.
+	Email   string
+	Refused string
+}
+
+// reportManagement is what current may do to def, as its draft page offers it.
+func (s *Server) reportManagement(r *http.Request, current domain.Account, def domain.ReportDefinition) (reportManagement, error) {
+	delegates, err := s.svc.ListReportDelegates(r.Context(), def.ID)
+	if err != nil {
+		return reportManagement{}, err
+	}
+	return reportManagement{
+		DefID:           def.ID,
+		Manage:          domain.CanManageReport(current, def, delegates),
+		ManageDelegates: domain.CanManageReportDelegates(current, def),
+		Delegates:       delegates,
+	}, nil
 }
 
 // handleEditReportForm shows the builder filled with the saved Report
-// Definition, to its creator or an Admin (CONTEXT.md: Report Definition).
+// Definition, to its creator, a Report Delegate or an Admin (CONTEXT.md:
+// Report Definition).
 func (s *Server) handleEditReportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	def, ok := s.editableReport(w, r, current)
 	if !ok {
@@ -131,24 +179,19 @@ func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, curren
 
 // editableReport loads the Report Definition the path names for current to
 // edit, writing Not found when there is none and 403 when current is neither
-// its creator nor an Admin.
+// its creator, a Report Delegate nor an Admin.
 func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current domain.Account) (domain.ReportDefinition, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		s.notFound(w, r)
+	def, ok := s.reportFromPath(w, r)
+	if !ok {
 		return domain.ReportDefinition{}, false
 	}
-	def, err := s.svc.GetReportDefinition(r.Context(), id)
+	m, err := s.reportManagement(r, current, def)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			s.notFound(w, r)
-			return domain.ReportDefinition{}, false
-		}
-		s.serverError(w, r, "could not load report", err)
+		s.serverError(w, r, "could not load Report Delegates", err)
 		return domain.ReportDefinition{}, false
 	}
-	if !domain.CanEditReportDefinition(current, def) {
-		http.Error(w, "only its creator or an Admin may edit "+def.Name, http.StatusForbidden)
+	if !m.Manage {
+		http.Error(w, "only its creator, a Report Delegate or an Admin may edit "+def.Name, http.StatusForbidden)
 		return domain.ReportDefinition{}, false
 	}
 	return def, true
@@ -193,8 +236,9 @@ type goalsPanel struct {
 }
 
 // draftGoalsPanel builds the Goals panel of the draft report, marking the
-// Goals it selects only because of Also include, at the draft's baseline.
-func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report) (goalsPanel, error) {
+// Goals it selects only because of Also include, at the draft's baseline, and
+// linking to Edit definition for a reader m lets manage it.
+func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report, m reportManagement) (goalsPanel, error) {
 	sum, err := s.svc.ReportSummary(r.Context(), report.Definition)
 	if err != nil {
 		return goalsPanel{}, err
@@ -203,7 +247,11 @@ func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report) (goalsPa
 	if err != nil {
 		return goalsPanel{}, err
 	}
-	return goalsPanel{Goals: reportGoals(report, added), Scope: sum.Scope}, nil
+	panel := goalsPanel{Goals: reportGoals(report, added), Scope: sum.Scope}
+	if m.Manage {
+		panel.Edit = "/reports/" + strconv.FormatInt(report.Definition.ID, 10) + "/edit"
+	}
+	return panel, nil
 }
 
 // baselineChip is the draft header's "Changes since …" menu, and the baseline
@@ -306,7 +354,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 	if baseline := r.URL.Query().Get("baseline"); baseline != "" {
 		target += "?baseline=" + url.QueryEscape(baseline)
 	}
-	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
+	if err := s.svc.CurateNarrative(r.Context(), current.ID, id, in); err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
@@ -411,15 +459,17 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		render(w, r, http.StatusOK, narrativeFormAgain(form, s.svc.Now(), d, status, refused == ""))
 		return
 	}
-	panel, err := s.draftGoalsPanel(r, report)
+	m, err := s.reportManagement(r, current, def)
+	if err != nil {
+		s.serverError(w, r, "could not load Report Delegates", err)
+		return
+	}
+	panel, err := s.draftGoalsPanel(r, report, m)
 	if err != nil {
 		s.serverError(w, r, "could not summarise the report", err)
 		return
 	}
-	if domain.CanEditReportDefinition(current, def) {
-		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
-	}
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, form, status))
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, form, status))
 }
 
 // narrativeForm is what the draft's compose form shows: each Highlight in the
@@ -736,7 +786,62 @@ func (s *Server) writeReportError(w http.ResponseWriter, r *http.Request, err er
 	switch {
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+	case errors.Is(err, domain.ErrNotAuthorized):
+		http.Error(w, err.Error(), http.StatusForbidden)
 	default:
 		s.serverError(w, r, "report action failed", err)
+	}
+}
+
+// handleAddReportDelegate makes the Account named by email a Report Delegate on
+// the Report Definition in the path. Only its creator or an Admin may, so
+// anyone else's attempt is 403; an email the domain refuses comes back on the
+// draft page, 422, with the reason beside the Delegates form (CONTEXT.md:
+// Report Delegate).
+func (s *Server) handleAddReportDelegate(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	def, ok := s.reportFromPath(w, r)
+	if !ok {
+		return
+	}
+	email := r.FormValue("email")
+	err := s.svc.AddReportDelegateByEmail(r.Context(), current.ID, def.ID, email)
+	s.writeReportDelegateResult(w, r, current, def, email, err)
+}
+
+// handleRemoveReportDelegate revokes the Report Delegate the form names by
+// account id on the Report Definition in the path. Only its creator or an
+// Admin may.
+func (s *Server) handleRemoveReportDelegate(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	def, ok := s.reportFromPath(w, r)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(r.FormValue("account"), 10, 64)
+	if err != nil {
+		http.Error(w, "unknown Report Delegate", http.StatusBadRequest)
+		return
+	}
+	err = s.svc.RemoveReportDelegate(r.Context(), current.ID, def.ID, accountID)
+	s.writeReportDelegateResult(w, r, current, def, "", err)
+}
+
+// writeReportDelegateResult redirects back to def's draft on success; a refusal
+// for who is asking is 403, and a refused email (posted) the draft page again,
+// 422, saying why.
+func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, email string, err error) {
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
+	switch {
+	case err == nil:
+		http.Redirect(w, r, draft, http.StatusSeeOther)
+	case errors.Is(err, domain.ErrValidation):
+		m, lerr := s.reportManagement(r, current, def)
+		if lerr != nil {
+			s.serverError(w, r, "could not load Report Delegates", lerr)
+			return
+		}
+		m.Email, m.Refused = email, plainReason(err)
+		s.renderReportDraft(w, r, current, def, m, draft, http.StatusUnprocessableEntity)
+	default:
+		s.writeReportError(w, r, err)
 	}
 }

@@ -740,7 +740,7 @@ func TestMigrationKeepsDraftNotesAndAllowsSeveralPerSection(t *testing.T) {
 		}
 	}
 
-	if err := h.Service.CurateNarrative(context.Background(), mbr.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, mbr.ID, domain.CurateNarrativeInput{
 		Notes: map[string][]string{domain.HighlightInsight: {"Pricing drives churn.", "Discounts don't save accounts."}},
 	}); err != nil {
 		t.Fatalf("a second note in the same section: %v", err)

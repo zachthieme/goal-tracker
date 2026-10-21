@@ -1310,7 +1310,7 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	if err != nil || len(draft.Highlights) != 1 {
 		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
 	}
-	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
@@ -1473,6 +1473,7 @@ func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 		Rules: []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
 	})
 	h.Clock.Set(time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC))
+	h.AddReportDelegate(boss, ada, def)
 	h.PublishReport(ada, def)
 	h.Clock.Advance(24 * time.Hour)
 	for _, title := range []string{"Hire", "Ship", "Sell"} {
@@ -2561,6 +2562,7 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	h.Clock.Set(time.Date(2026, 3, 2, 3, 0, 0, 0, time.UTC))
 	h.PublishReport(boss, def)
 	h.Clock.Set(time.Date(2026, 3, 3, 3, 0, 0, 0, time.UTC))
+	h.AddReportDelegate(boss, ada, def)
 	h.PublishReport(ada, def)
 
 	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
@@ -3466,9 +3468,9 @@ func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
 	}
 }
 
-// Only the definition's creator or an Admin may edit it: anyone else signed in
-// gets 403 on both the page and the post, which changes nothing. An unknown
-// definition is Not found (ticket #151).
+// Only the definition's creator, a Report Delegate or an Admin may edit it:
+// anyone else signed in gets 403 on both the page and the post, which changes
+// nothing. An unknown definition is Not found (tickets #151, #434).
 func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3526,8 +3528,8 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 }
 
 // Edit definition links to the edit page from both the draft's header and its
-// Goals panel, for the definition's creator and an Admin; anyone else sees
-// neither (ticket #151).
+// Goals panel, for the definition's creator and an Admin; anyone else who isn't
+// a Report Delegate sees neither (ticket #151).
 func TestDraftLinksToEditTheDefinitionForThoseWhoMayOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4710,7 +4712,7 @@ func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
 	if err != nil || len(draft.Highlights) != 1 {
 		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
 	}
-	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
@@ -4745,5 +4747,146 @@ func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
 				t.Errorf("%s has a card: %s", tc.page, openTag(m[0]+">"))
 			}
 		}
+	}
+}
+
+// Only the definition's creator, a Report Delegate or an Admin may edit it,
+// curate its narrative or publish it: anyone else signed in gets 403 on each
+// post, which changes nothing, and still reads the draft but without Edit
+// definition, the curation form or Publish…. A Report Delegate's draft offers
+// all three, and their posts go through (CONTEXT.md: Report Delegate; ticket
+// #434).
+func TestOnlyThoseWhoManageAReportEditCurateAndPublishOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	dana := h.SignIn("dana@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.AddReportDelegate(alice, dana, def)
+	ts := newServer(t, h)
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	edit := url.Values{"name": {"Renamed"}, "mode": {domain.ReportModePicked}, "picked": {strconv.FormatInt(g.ID, 10)}}
+	curate := url.Values{"text-" + domain.HighlightInsight: {"Pricing drives churn."}}
+	controls := map[string]string{
+		"Edit definition":   `data-testid="edit-definition"`,
+		"the curation form": `data-testid="narrative-curation"`,
+		"Publish…":          `data-testid="publish-confirm"`,
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	draft := getBody(t, sam, draftURL)
+	if !strings.Contains(draft, `data-testid="report-draft"`) {
+		t.Errorf("Sam can't read the draft; body:\n%s", draft)
+	}
+	for name, marker := range controls {
+		if strings.Contains(draft, marker) {
+			t.Errorf("Sam, who may not manage the Report, is offered %s", name)
+		}
+	}
+	for path, form := range map[string]url.Values{"/edit": edit, "/narrative": curate, "/publications": {}} {
+		resp := postForm(t, noRedirects(sam), draftURL+path, form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Sam's POST to %s: status %d, want 403; body:\n%s", path, resp.StatusCode, body)
+		}
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "Alice's MBR" {
+		t.Errorf("Sam's refused edit renamed it %q", got.Name)
+	}
+	if pubs, _ := h.Service.ListPublications(context.Background(), def.ID); len(pubs) != 0 {
+		t.Errorf("Sam's refused publish made %d publications", len(pubs))
+	}
+
+	client := signInClient(t, ts.URL, "dana@example.com")
+	draft = getBody(t, client, draftURL)
+	for name, marker := range controls {
+		if !strings.Contains(draft, marker) {
+			t.Errorf("Dana, a Report Delegate, is not offered %s", name)
+		}
+	}
+	for path, form := range map[string]url.Values{"/edit": edit, "/narrative": curate, "/publications": {}} {
+		resp := postForm(t, noRedirects(client), draftURL+path, form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("Dana's POST to %s: status %d, want 303; body:\n%s", path, resp.StatusCode, body)
+		}
+	}
+}
+
+// The draft's Delegates lists the Report Delegates to everyone. Its creator
+// adds one by email and removes them again; an email the domain refuses comes
+// back on the draft, 422, saying why. A Report Delegate is offered neither
+// form, and their posts are 403 (CONTEXT.md: Report Delegate; ticket #434).
+func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	alice := h.SignIn("alice@example.com")
+	dana := h.SignIn("dana@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	delegates := func(page string) []string {
+		return elementTexts(page, "li", "report-delegate")
+	}
+
+	creator := signInClient(t, ts.URL, "alice@example.com")
+	draft := getBody(t, creator, draftURL)
+	if !strings.Contains(pageElement(t, draft, "section", "report-delegates"), `data-testid="no-report-delegates"`) {
+		t.Errorf("the draft's Delegates doesn't say there are none; body:\n%s", draft)
+	}
+	if !strings.Contains(draft, `data-testid="add-report-delegate"`) {
+		t.Fatalf("the creator is not offered Add Delegate; body:\n%s", draft)
+	}
+	resp := postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"dana@example.com"}})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != draftURL {
+		t.Fatalf("adding Dana: status %d at %s, want the draft", resp.StatusCode, resp.Request.URL)
+	}
+	if got := delegates(page); len(got) != 1 || !strings.Contains(got[0], "dana@example.com") {
+		t.Errorf("Report Delegates after adding Dana = %q, want Dana", got)
+	}
+
+	resp = postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"nobody@example.com"}})
+	page = readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("adding an unknown email: status %d, want 422", resp.StatusCode)
+	}
+	if refused := pageElement(t, page, "p", "report-delegate-refused"); !strings.Contains(refused, "nobody@example.com") {
+		t.Errorf("refusal %q doesn't name the email", refused)
+	}
+	if form := pageElement(t, page, "form", "add-report-delegate"); !strings.Contains(form, `value="nobody@example.com"`) {
+		t.Errorf("the refused email isn't kept in the form:\n%s", form)
+	}
+
+	client := signInClient(t, ts.URL, "dana@example.com")
+	page = getBody(t, client, draftURL)
+	if got := delegates(page); len(got) != 1 {
+		t.Errorf("Dana's draft lists Report Delegates %q, want Dana", got)
+	}
+	if strings.Contains(page, `data-testid="add-report-delegate"`) || strings.Contains(page, `data-testid="remove-report-delegate"`) {
+		t.Errorf("Dana, a Report Delegate, is offered to add or remove Report Delegates")
+	}
+	for path, form := range map[string]url.Values{
+		"/delegates":        {"email": {"sam@example.com"}},
+		"/delegates/remove": {"account": {strconv.FormatInt(dana.ID, 10)}},
+	} {
+		resp := postForm(t, noRedirects(client), draftURL+path, form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Dana's POST to %s: status %d, want 403; body:\n%s", path, resp.StatusCode, body)
+		}
+	}
+
+	resp = postForm(t, creator, draftURL+"/delegates/remove", url.Values{"account": {strconv.FormatInt(dana.ID, 10)}})
+	page = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != draftURL {
+		t.Fatalf("removing Dana: status %d at %s, want the draft", resp.StatusCode, resp.Request.URL)
+	}
+	if got := delegates(page); len(got) != 0 {
+		t.Errorf("Report Delegates after removing Dana = %q, want none", got)
 	}
 }

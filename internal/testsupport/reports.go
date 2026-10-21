@@ -29,3 +29,13 @@ func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinitio
 	}
 	return pub
 }
+
+// AddReportDelegate authorizes delegate to change, curate and publish def,
+// acting as actor (its creator or an Admin), failing the test on error
+// (CONTEXT.md: Report Delegate).
+func (h *Harness) AddReportDelegate(actor, delegate domain.Account, def domain.ReportDefinition) {
+	h.T.Helper()
+	if err := h.Service.AddReportDelegate(context.Background(), actor.ID, def.ID, delegate.ID); err != nil {
+		h.T.Fatalf("AddReportDelegate: %v", err)
+	}
+}

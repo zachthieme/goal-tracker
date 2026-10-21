@@ -789,10 +789,11 @@ func TestUpdateReportDefinitionChangesOnlyTheDraft(t *testing.T) {
 	}
 }
 
-// Only a Report Definition's creator or an Admin may edit it; anyone else is
-// refused with ErrNotAuthorized and the definition stays as it was. Anyone
-// signed in may still save one of their own (ticket #151).
-func TestUpdateReportDefinitionOnlyByItsCreatorOrAnAdmin(t *testing.T) {
+// Only a Report Definition's creator, a Report Delegate or an Admin may edit
+// it; anyone else is refused with ErrNotAuthorized and the definition stays as
+// it was. Anyone signed in may still save one of their own (tickets #151,
+// #434).
+func TestUpdateReportDefinitionOnlyByItsCreatorADelegateOrAnAdmin(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -817,12 +818,18 @@ func TestUpdateReportDefinitionOnlyByItsCreatorOrAnAdmin(t *testing.T) {
 		t.Errorf("listed definitions = %+v, want Alice's, created by %d", defs, alice.ID)
 	}
 	for _, c := range []struct {
-		who  string
-		as   domain.Account
-		want bool
-	}{{"the creator", alice, true}, {"an Admin", boss, true}, {"anyone else", sam, false}} {
-		if got := domain.CanEditReportDefinition(c.as, def); got != c.want {
-			t.Errorf("CanEditReportDefinition(%s) = %v, want %v", c.who, got, c.want)
+		who       string
+		as        domain.Account
+		delegates []domain.Account
+		want      bool
+	}{
+		{"the creator", alice, nil, true},
+		{"an Admin", boss, nil, true},
+		{"a Report Delegate", sam, []domain.Account{sam}, true},
+		{"anyone else", sam, []domain.Account{boss}, false},
+	} {
+		if got := domain.CanManageReport(c.as, def, c.delegates); got != c.want {
+			t.Errorf("CanManageReport(%s) = %v, want %v", c.who, got, c.want)
 		}
 	}
 

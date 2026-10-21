@@ -145,3 +145,20 @@ VALUES (?, ?, ?);
 SELECT * FROM narrative_texts
 WHERE report_definition_id = ?
 ORDER BY id;
+
+-- name: AddReportDelegate :exec
+INSERT INTO report_delegates (report_definition_id, account_id, created_at)
+VALUES (?, ?, ?);
+
+-- name: RemoveReportDelegate :exec
+DELETE FROM report_delegates
+WHERE report_definition_id = ? AND account_id = ?;
+
+-- name: ListReportDelegates :many
+-- The Accounts authorized to change, curate and publish a Report Definition
+-- beside its creator, ordered by email (CONTEXT.md: Report Delegate).
+SELECT sqlc.embed(accounts)
+FROM report_delegates
+JOIN accounts ON accounts.id = report_delegates.account_id
+WHERE report_delegates.report_definition_id = ?
+ORDER BY accounts.email;

@@ -37,16 +37,10 @@ type ReportDefinition struct {
 	// FieldIDs are the Fields the Report shows beside each Goal that has a
 	// value in them. Empty, the default, shows none.
 	FieldIDs []int64
-	// CreatedBy is the id of the Account that saved it, who with an Admin may
-	// edit it.
+	// CreatedBy is the id of the Account that saved it, who with its Report
+	// Delegates and an Admin may change, curate and publish it.
 	CreatedBy int64
 	CreatedAt time.Time
-}
-
-// CanEditReportDefinition reports whether actor may edit def: its creator or
-// an Admin may. Anyone signed in may save and publish one.
-func CanEditReportDefinition(actor Account, def ReportDefinition) bool {
-	return actor.IsAdmin || actor.ID == def.CreatedBy
 }
 
 // The modes a Report Definition selects its Goals in.
@@ -158,19 +152,15 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 // introduction, scope and Fields are replaced by in. Only its draft changes;
 // its publications stay frozen as they were published. It refuses each input
 // it can't take with an *InputError naming it, as SaveReportDefinition does.
-// Only its creator or an Admin may edit it (ErrNotAuthorized); ErrNotFound
-// when there is no such definition.
+// Only its creator, a Report Delegate or an Admin may edit it
+// (ErrNotAuthorized); ErrNotFound when there is no such definition.
 func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
 	def, err := s.GetReportDefinition(ctx, id)
 	if err != nil {
 		return ReportDefinition{}, err
 	}
-	actor, err := s.queries.GetAccount(ctx, actorID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return ReportDefinition{}, fmt.Errorf("look up actor: %w", err)
-	}
-	if err != nil || !CanEditReportDefinition(accountFromRow(actor), def) {
-		return ReportDefinition{}, fmt.Errorf("%w: only its creator or an Admin may edit %s", ErrNotAuthorized, def.Name)
+	if err := s.requireReportManager(ctx, actorID, def, "edit"); err != nil {
+		return ReportDefinition{}, err
 	}
 	in = normalizeReportDefinition(in)
 	if err := s.validateReportDefinition(ctx, in, def.FieldIDs); err != nil {
