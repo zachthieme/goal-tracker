@@ -90,8 +90,9 @@ type CurateNarrativeInput struct {
 // Highlight must be on a Goal the Definition selects, and picked once. A
 // section may hold any number of notes; a blank one is ignored. Only the
 // Definition's creator, a Report Delegate or an Admin may curate it
-// (ErrNotAuthorized); actorID is who is curating. Publishing freezes the
-// narrative with the snapshot and starts the next one empty.
+// (ErrNotAuthorized); actorID is who is curating, whom the Report log records
+// with what changed. Re-saving the same narrative changes nothing. Publishing
+// freezes the narrative with the snapshot and starts the next one empty.
 func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in CurateNarrativeInput) error {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
@@ -122,7 +123,26 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 		}
 		picked[p.HighlightID] = true
 	}
+	notes := make(map[string][]string, len(narrativeKinds))
+	for _, section := range narrativeKinds {
+		for _, note := range in.Notes[section] {
+			if note = strings.TrimSpace(note); note != "" {
+				notes[section] = append(notes[section], note)
+			}
+		}
+	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		edit, err := tx.narrativeEdit(ctx, def.ID, in.Picks, notes)
+		if err != nil {
+			return err
+		}
+		if edit == "" {
+			// Re-saving the same narrative changes nothing to log or store.
+			return nil
+		}
+		if err := tx.recordReportLog(ctx, def.ID, actorID, ReportLogNarrative, edit); err != nil {
+			return err
+		}
 		if err := tx.clearNarrative(ctx, def.ID); err != nil {
 			return err
 		}
@@ -136,11 +156,7 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 			}
 		}
 		for _, section := range narrativeKinds {
-			for _, note := range in.Notes[section] {
-				note = strings.TrimSpace(note)
-				if note == "" {
-					continue
-				}
+			for _, note := range notes[section] {
 				if err := tx.queries.AddNarrativeText(ctx, db.AddNarrativeTextParams{
 					ReportDefinitionID: def.ID,
 					Section:            section,

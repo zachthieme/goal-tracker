@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -233,5 +235,235 @@ func TestReportLogRecordsIntroductionModeAndFieldChanges(t *testing.T) {
 	}
 	if !equalStrings(got, want) {
 		t.Errorf("Report log = %q, want %q", got, want)
+	}
+}
+
+// Adding and removing a Report Delegate logs each, naming the Delegate and
+// who added or removed them; removing someone who isn't one logs nothing.
+func TestReportLogRecordsReportDelegatesAddedAndRemoved(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Boss")
+	priya := h.SignInNamed("priya@example.com", "Priya")
+	dana := h.SignInNamed("dana@example.com", "Dana")
+	sam := h.SignInNamed("sam@example.com", "Sam")
+	g := h.CreateGoal(priya, "Grow revenue", "why")
+	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{
+		Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+	})
+	ctx := context.Background()
+
+	h.AddReportDelegate(priya, dana, def)
+	if err := h.Service.RemoveReportDelegate(ctx, boss.ID, def.ID, dana.ID); err != nil {
+		t.Fatalf("RemoveReportDelegate: %v", err)
+	}
+	if err := h.Service.RemoveReportDelegate(ctx, boss.ID, def.ID, sam.ID); err != nil {
+		t.Fatalf("RemoveReportDelegate of someone who isn't one: %v", err)
+	}
+
+	got := reportLogLines(t, h, def)
+	want := []string{
+		"Boss: Report Delegate removed: Dana",
+		"Priya: Report Delegate added: Dana",
+		"Priya: Created",
+	}
+	if !equalStrings(got, want) {
+		t.Errorf("Report log = %q, want %q", got, want)
+	}
+}
+
+// Curating the narrative logs one entry saying which Highlights were picked
+// or dropped and which sections' notes changed, summarised rather than
+// quoted; re-saving the same narrative logs nothing.
+func TestReportLogRecordsNarrativeCuration(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	priya := h.SignInNamed("priya@example.com", "Priya")
+	eu := h.ActiveGoal(priya, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlights(priya, eu.ID,
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Signed the first EU customer."},
+		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Lost Globex."},
+	)
+	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	signed := highlightID(t, r, "Signed the first EU customer.")
+	lost := highlightID(t, r, "Lost Globex.")
+	curate := func(in domain.CurateNarrativeInput) {
+		t.Helper()
+		if err := h.Service.CurateNarrative(ctx, priya.ID, def.ID, in); err != nil {
+			t.Fatalf("CurateNarrative: %v", err)
+		}
+	}
+
+	curate(domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
+		Notes: map[string][]string{domain.HighlightInsight: {"EU is steady."}},
+	})
+	second := domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: lost, Section: domain.HighlightMiss}},
+		Notes: map[string][]string{
+			domain.HighlightInsight:        {"EU is steady.", "Pricing holds."},
+			domain.HighlightAccomplishment: {"  "},
+		},
+	}
+	curate(second)
+	curate(second)
+
+	got := reportLogLines(t, h, def)
+	want := []string{
+		"Priya: Narrative: picked “Lost Globex.” into Misses; dropped “Signed the first EU customer.”; Insights notes changed",
+		"Priya: Narrative: picked “Signed the first EU customer.” into Accomplishments; Insights notes changed",
+		"Priya: Created",
+	}
+	if !equalStrings(got, want) {
+		t.Errorf("Report log = %q, want %q", got, want)
+	}
+}
+
+// Publishing a Report logs the publication with who published it.
+func TestReportLogRecordsAPublication(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	priya := h.SignInNamed("priya@example.com", "Priya")
+	dana := h.SignInNamed("dana@example.com", "Dana")
+	g := h.ActiveGoal(priya, "Grow revenue", "why")
+	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.AddReportDelegate(priya, dana, def)
+
+	h.PublishReport(dana, def)
+
+	entries, err := h.Service.ReportLog(context.Background(), def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
+	if got := entries[0]; got.Kind != domain.ReportLogPublished || got.Actor.ID != dana.ID || got.Detail != "Published" {
+		t.Errorf("newest Report log entry = %+v, want Dana's publication", got)
+	}
+}
+
+// A change whose Report log entry can't be written is rolled back: a change
+// never commits without its entries.
+func TestReportLogFailureRollsTheChangeBack(t *testing.T) {
+	t.Parallel()
+
+	// world is a picked Definition Priya created, with a Highlight in scope
+	// and Lee a Report Delegate on it.
+	type world struct {
+		h                *testsupport.Harness
+		priya, dana, lee domain.Account
+		def              domain.ReportDefinition
+		highlight        int64
+	}
+	newWorld := func(t *testing.T) world {
+		t.Helper()
+		h := testsupport.New(t)
+		w := world{h: h, priya: h.SignIn("priya@example.com"), dana: h.SignIn("dana@example.com"), lee: h.SignIn("lee@example.com")}
+		g := h.ActiveGoal(w.priya, "Grow revenue", "why")
+		h.CheckinWithHighlight(w.priya, g.ID, domain.HighlightAccomplishment, "Signed Acme.")
+		w.def = h.SaveReportDefinition(w.priya, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+		h.AddReportDelegate(w.priya, w.lee, w.def)
+		r, err := h.Service.DraftReport(context.Background(), w.def, time.Time{})
+		if err != nil {
+			t.Fatalf("DraftReport: %v", err)
+		}
+		w.highlight = highlightID(t, r, "Signed Acme.")
+		if _, err := h.DB.Exec(`CREATE TRIGGER fail_report_log BEFORE INSERT ON report_log
+			BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+			t.Fatalf("install failing trigger: %v", err)
+		}
+		return w
+	}
+	ctx := context.Background()
+
+	for _, change := range []struct {
+		what      string
+		change    func(w world) error
+		unchanged func(t *testing.T, w world)
+	}{
+		{
+			what: "creating a Definition",
+			change: func(w world) error {
+				_, err := w.h.Service.SaveReportDefinition(ctx, w.priya.ID, domain.SaveReportDefinitionInput{Name: "Another", Mode: domain.ReportModePicked, Picked: w.def.Picked})
+				return err
+			},
+			unchanged: func(t *testing.T, w world) {
+				if defs, err := w.h.Service.ListReportDefinitions(ctx); err != nil || len(defs) != 1 {
+					t.Errorf("Report Definitions = %d (%v), want only the first", len(defs), err)
+				}
+			},
+		},
+		{
+			what: "editing it",
+			change: func(w world) error {
+				in := reportLogInput(w.def)
+				in.Name = "EU monthly review"
+				_, err := w.h.Service.UpdateReportDefinition(ctx, w.priya.ID, w.def.ID, in)
+				return err
+			},
+			unchanged: func(t *testing.T, w world) {
+				if got, err := w.h.Service.GetReportDefinition(ctx, w.def.ID); err != nil || got.Name != "EU MBR" {
+					t.Errorf("name = %q (%v), want EU MBR", got.Name, err)
+				}
+			},
+		},
+		{
+			what:   "adding a Report Delegate",
+			change: func(w world) error { return w.h.Service.AddReportDelegate(ctx, w.priya.ID, w.def.ID, w.dana.ID) },
+			unchanged: func(t *testing.T, w world) {
+				if got := reportDelegateEmails(t, w.h, w.def); !equalStrings(got, []string{"lee@example.com"}) {
+					t.Errorf("Report Delegates = %v, want [lee@example.com]", got)
+				}
+			},
+		},
+		{
+			what:   "removing a Report Delegate",
+			change: func(w world) error { return w.h.Service.RemoveReportDelegate(ctx, w.priya.ID, w.def.ID, w.lee.ID) },
+			unchanged: func(t *testing.T, w world) {
+				if got := reportDelegateEmails(t, w.h, w.def); !equalStrings(got, []string{"lee@example.com"}) {
+					t.Errorf("Report Delegates = %v, want [lee@example.com]", got)
+				}
+			},
+		},
+		{
+			what: "curating the narrative",
+			change: func(w world) error {
+				return w.h.Service.CurateNarrative(ctx, w.priya.ID, w.def.ID, domain.CurateNarrativeInput{
+					Picks: []domain.NarrativePick{{HighlightID: w.highlight, Section: domain.HighlightAccomplishment}},
+				})
+			},
+			unchanged: func(t *testing.T, w world) {
+				if r, err := w.h.Service.DraftReport(ctx, w.def, time.Time{}); err != nil || len(r.Narrative) != 0 {
+					t.Errorf("narrative = %+v (%v), want none", r.Narrative, err)
+				}
+			},
+		},
+		{
+			what: "publishing it",
+			change: func(w world) error {
+				_, err := w.h.Service.PublishReport(ctx, w.priya.ID, w.def.ID, time.Time{})
+				return err
+			},
+			unchanged: func(t *testing.T, w world) {
+				if pubs, err := w.h.Service.ListPublications(ctx, w.def.ID); err != nil || len(pubs) != 0 {
+					t.Errorf("publications = %d (%v), want none", len(pubs), err)
+				}
+			},
+		},
+	} {
+		t.Run(change.what, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			if err := change.change(w); err == nil || !strings.Contains(err.Error(), "injected failure") {
+				t.Fatalf("%s: err = %v, want the injected failure", change.what, err)
+			}
+			change.unchanged(t, w)
+		})
 	}
 }

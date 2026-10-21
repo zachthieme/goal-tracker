@@ -11,3 +11,9 @@ FROM report_log
 JOIN accounts ON accounts.id = report_log.actor_id
 WHERE report_log.report_definition_id = ?
 ORDER BY report_log.id DESC;
+
+-- name: ListReportLogHighlightNotes :many
+-- The notes of the given Highlights, for the Report log to name the ones a
+-- narrative picked or dropped.
+SELECT id, note FROM highlights
+WHERE id IN (sqlc.slice(ids));

@@ -258,3 +258,85 @@ func reportRuleKey(r ReportRule) string {
 	slices.Sort(values)
 	return fmt.Sprintf("%s|%d|%s|%s", r.Attribute, r.DimensionID, r.Op, strings.Join(values, ","))
 }
+
+// narrativeEdit says in one entry how saving picks and notes changes the
+// Report Definition defID's draft narrative: each Highlight picked into a
+// section, moved to another or dropped, by its note, then each section whose
+// notes changed, summarised rather than quoted. notes are as stored: trimmed,
+// blank ones left out. It is "" when nothing changed.
+func (s *Service) narrativeEdit(ctx context.Context, defID int64, picks []NarrativePick, notes map[string][]string) (string, error) {
+	oldPicks, err := s.queries.ListNarrativePicks(ctx, defID)
+	if err != nil {
+		return "", fmt.Errorf("list narrative picks: %w", err)
+	}
+	oldTexts, err := s.queries.ListNarrativeTexts(ctx, defID)
+	if err != nil {
+		return "", fmt.Errorf("list narrative texts: %w", err)
+	}
+	oldSection := make(map[int64]string, len(oldPicks))
+	ids := make([]int64, 0, len(oldPicks)+len(picks))
+	for _, p := range oldPicks {
+		oldSection[p.HighlightID] = p.Section
+		ids = append(ids, p.HighlightID)
+	}
+	newSection := make(map[int64]string, len(picks))
+	for _, p := range picks {
+		newSection[p.HighlightID] = p.Section
+		ids = append(ids, p.HighlightID)
+	}
+	noteOf, err := s.reportLogHighlightNotes(ctx, ids)
+	if err != nil {
+		return "", err
+	}
+	heading := func(section string) string { return NarrativeSection{Kind: section}.Heading() }
+
+	var parts []string
+	for _, p := range picks {
+		switch was, ok := oldSection[p.HighlightID]; {
+		case !ok:
+			parts = append(parts, fmt.Sprintf("picked %s into %s", noteOf(p.HighlightID), heading(p.Section)))
+		case was != p.Section:
+			parts = append(parts, fmt.Sprintf("moved %s to %s", noteOf(p.HighlightID), heading(p.Section)))
+		}
+	}
+	for _, p := range oldPicks {
+		if _, ok := newSection[p.HighlightID]; !ok {
+			parts = append(parts, "dropped "+noteOf(p.HighlightID))
+		}
+	}
+	oldNotes := make(map[string][]string, len(narrativeKinds))
+	for _, t := range oldTexts {
+		oldNotes[t.Section] = append(oldNotes[t.Section], t.Text)
+	}
+	for _, section := range narrativeKinds {
+		if !slices.Equal(oldNotes[section], notes[section]) {
+			parts = append(parts, heading(section)+" notes changed")
+		}
+	}
+	if len(parts) == 0 {
+		return "", nil
+	}
+	return "Narrative: " + strings.Join(parts, "; "), nil
+}
+
+// reportLogHighlightNotes reads the notes of the Highlights ids name in one
+// query, returning how the Report log names each: its note in quotes, or "a
+// Highlight" for one it can't find.
+func (s *Service) reportLogHighlightNotes(ctx context.Context, ids []int64) (func(int64) string, error) {
+	notes := make(map[int64]string, len(ids))
+	if len(ids) > 0 {
+		rows, err := s.queries.ListReportLogHighlightNotes(ctx, dedupeIDs(ids))
+		if err != nil {
+			return nil, fmt.Errorf("list highlight notes: %w", err)
+		}
+		for _, r := range rows {
+			notes[r.ID] = r.Note
+		}
+	}
+	return func(id int64) string {
+		if note, ok := notes[id]; ok {
+			return "“" + note + "”"
+		}
+		return "a Highlight"
+	}, nil
+}

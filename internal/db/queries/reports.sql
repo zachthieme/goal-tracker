@@ -150,7 +150,9 @@ ORDER BY id;
 INSERT INTO report_delegates (report_definition_id, account_id, created_at)
 VALUES (?, ?, ?);
 
--- name: RemoveReportDelegate :exec
+-- name: RemoveReportDelegate :execrows
+-- Revoke a Report Delegate, saying how many were removed: none when the
+-- Account wasn't one.
 DELETE FROM report_delegates
 WHERE report_definition_id = ? AND account_id = ?;
 
