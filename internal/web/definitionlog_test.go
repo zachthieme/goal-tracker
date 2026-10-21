@@ -45,10 +45,10 @@ func TestAdminPageLinksToTheDefinitionLog(t *testing.T) {
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
 
-	card := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-definition-log")
-	for _, want := range []string{`href="/definition-log"`, `class="card`, "Definition log"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("Admin page's Definition log card lacks %s: %s", want, card)
+	row := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-definition-log")
+	for _, want := range []string{`href="/definition-log"`, "Definition log"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("Admin page's Definition log link lacks %s: %s", want, row)
 		}
 	}
 }

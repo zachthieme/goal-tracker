@@ -23,10 +23,10 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
 
-	card := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-fields")
-	for _, want := range []string{`href="/fields"`, `class="card`, "Fields"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("Admin page's Fields card lacks %s: %s", want, card)
+	row := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-fields")
+	for _, want := range []string{`href="/fields"`, "Fields"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("Admin page's Fields link lacks %s: %s", want, row)
 		}
 	}
 

@@ -6,21 +6,18 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// adminPage gathers the Admin tools: a card per tool, then the directory sync
+// adminPage gathers the Admin tools: a row per tool, then the directory sync
 // when the app has one (nil, it shows nothing), then set-password links with
 // password sign-in (nil, it shows nothing), then the Admins, then the
 // Ownerless Goals waiting for an Admin to reassign them (CONTEXT.md:
 // Ownerless), then the Departed people an Admin can mark returned (CONTEXT.md:
-// Departed).
+// Departed). It sits in the flat frame: its title in the page header, and
+// every part a plain section of rows, its forms included (DESIGN.md §
+// Direction).
 templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account) {
-	@layout("Admin", current) {
+	@framedLayout("Admin", current, pageHeader(pageHead{Title: "Admin"})) {
 		@adminStyles()
-		<header class="page-head">
-			<div>
-				<h1>Admin</h1>
-				<p class="muted">The tools only an Admin uses.</p>
-			</div>
-		</header>
+		<p class="muted">The tools only an Admin uses.</p>
 		<nav class="ad-tools" aria-label="Admin tools">
 			@adminTool("admin-dimensions", "/dimensions", "Dimensions", "Define the Dimensions Goals are tagged with")
 			@adminTool("admin-fields", "/fields", "Fields", "Define the Fields typed on a Goal to describe it")
@@ -39,10 +36,10 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 				<h2>Ownerless Goals</h2>
 				<p class="muted">Goals whose Owner has left the company, waiting for an Admin to reassign them on the Goal's page.</p>
 			</div>
-			<div class="card">
-				if len(ownerless) == 0 {
-					<p data-testid="admin-ownerless-empty" class="muted">No Goals are waiting for reassignment.</p>
-				} else {
+			if len(ownerless) == 0 {
+				<p data-testid="admin-ownerless-empty" class="muted">No Goals are waiting for reassignment.</p>
+			} else {
+				<div class="table-scroll">
 					<table>
 						<thead>
 							<tr><th>Goal</th><th>Former Owner</th><th>Lifecycle</th></tr>
@@ -59,18 +56,18 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 							}
 						</tbody>
 					</table>
-				}
-			</div>
+				</div>
+			}
 		</section>
 		<section data-testid="admin-departed" class="ad-section">
 			<div>
 				<h2>Departed people</h2>
 				<p class="muted">People who have left the company. Mark someone returned to let them sign in and act again.</p>
 			</div>
-			<div class="card">
-				if len(departed) == 0 {
-					<p data-testid="admin-departed-empty" class="muted">No departed people.</p>
-				} else {
+			if len(departed) == 0 {
+				<p data-testid="admin-departed-empty" class="muted">No departed people.</p>
+			} else {
+				<div class="table-scroll">
 					<table>
 						<thead>
 							<tr><th>Person</th><th><span class="sr-only">Action</span></th></tr>
@@ -90,8 +87,8 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 							}
 						</tbody>
 					</table>
-				}
-			</div>
+				</div>
+			}
 		</section>
 	}
 }
@@ -113,7 +110,7 @@ templ adminAdmins(viewerID int64, v adminsSectionView) {
 			<h2>Admins</h2>
 			<p class="muted">Admins define Dimensions and Fields, reassign Ownerless Goals and use this page.</p>
 		</div>
-		<div class="card ad-links">
+		<div class="ad-links">
 			<table>
 				<thead>
 					<tr><th>Person</th><th><span class="sr-only">Action</span></th></tr>
@@ -159,7 +156,7 @@ templ adminDirectorySync(v directorySyncView) {
 			<h2>Directory sync</h2>
 			<p class="muted">People and their Managers come from the company's directory, synced at startup and then hourly.</p>
 		</div>
-		<div class="card ad-sync">
+		<div class="ad-sync">
 			if !v.Ran {
 				<p data-testid="admin-directory-sync-status">Not synced yet.</p>
 			} else if v.Err != "" {
@@ -182,7 +179,7 @@ templ adminPasswordLinks(v passwordLinksView) {
 			<h2>Set-password links</h2>
 			<p class="muted">A person sets or resets their password through a link only an Admin can issue. Issuing one for an email with no account creates the account.</p>
 		</div>
-		<div class="card ad-links">
+		<div class="ad-links">
 			<form class="ad-link-form" method="post" action="/admin/password-links">
 				<label class="field">
 					<span>Email</span>
@@ -204,9 +201,9 @@ templ adminPasswordLinks(v passwordLinksView) {
 	</section>
 }
 
-// adminTool is a card linking to one Admin tool, saying what it's for.
+// adminTool is a row linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
-	<a data-testid={ testID } class="card ad-tool" href={ templ.SafeURL(href) }>
+	<a data-testid={ testID } class="ad-tool" href={ templ.SafeURL(href) }>
 		<h3>{ label }</h3>
 		<p class="muted">{ blurb }</p>
 	</a>
@@ -215,20 +212,28 @@ templ adminTool(testID, href, label, blurb string) {
 // adminStyles are the Admin page's own rules on top of app.css.
 templ adminStyles() {
 	<style>
-		.ad-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-		.ad-tool{padding:24px;display:flex;flex-direction:column;gap:8px}
+		.ad-tools{display:flex;flex-direction:column;border-top:1px solid var(--color-border)}
+		.ad-tool{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:16px;min-height:44px;padding:10px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;color:var(--color-ink-2)}
+		.ad-tool:hover{text-decoration:none;color:var(--color-ink-2)}
+		.ad-tool h3{font-weight:500}
+		.ad-tool:hover h3{color:var(--color-primary-strong);text-decoration:underline}
 		.ad-section{display:flex;flex-direction:column;gap:12px}
+		.ad-section table{border-top:1px solid var(--color-border)}
+		.ad-section th{background:none;padding:8px 12px}
+		.ad-section td{padding:10px 12px}
+		.ad-section th:first-child,.ad-section td:first-child{padding-left:0}
+		.ad-section th:last-child,.ad-section td:last-child{padding-right:0}
+		.ad-section tr:last-child td{border-bottom:1px solid var(--color-border)}
 		.ad-action{text-align:right}
-		.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px}
-		.ad-links{display:flex;flex-direction:column;gap:12px}
-		.ad-link-form{display:flex;align-items:flex-end;gap:12px}
+		.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
+		.ad-links{display:flex;flex-direction:column;gap:16px}
+		.ad-link-form{display:flex;align-items:flex-end;gap:12px;max-width:560px}
 		.ad-link-form .field{flex:1}
 		.ad-link{display:flex;flex-direction:column;gap:8px}
 		.ad-link p{margin:0}
 		.ad-link-url{width:100%;font-variant-numeric:tabular-nums}
 		.ad-error{color:var(--color-danger-ink);margin:0}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-		@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}
-		@media (max-width:600px){.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}
+		@media (max-width:600px){.ad-tool{grid-template-columns:1fr;gap:2px}.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}
 	</style>
 }

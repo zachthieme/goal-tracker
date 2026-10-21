@@ -21,7 +21,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// The Admin page is the home of the Admin tools: an Admin sees cards linking to
+// The Admin page is the home of the Admin tools: an Admin sees rows linking to
 // Dimensions and to Import goals; anyone else is refused.
 func TestAdminPageIsForAdminsOnly(t *testing.T) {
 	t.Parallel()
@@ -44,12 +44,37 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 		{"admin-dimensions", `href="/dimensions"`, "Dimensions", "Define the Dimensions Goals are tagged with"},
 		{"admin-imports", `href="/imports"`, "Import goals", "Load Goals from a CSV or XLSX spreadsheet"},
 	} {
-		card := pageElement(t, page, "a", tc.testID)
-		for _, want := range []string{tc.href, `class="card`, tc.label, tc.blurb} {
-			if !strings.Contains(card, want) {
-				t.Errorf("Admin card %s lacks %s: %s", tc.testID, want, card)
+		row := pageElement(t, page, "a", tc.testID)
+		for _, want := range []string{tc.href, tc.label, tc.blurb} {
+			if !strings.Contains(row, want) {
+				t.Errorf("Admin tool %s lacks %s: %s", tc.testID, want, row)
 			}
 		}
+	}
+}
+
+// The Admin page sits in the flat frame (DESIGN.md § Direction): its title in
+// the page header, and its tools, its lists and its forms as plain sections of
+// rows, none of them a card.
+func TestAdminPageIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/admin")
+	if header := between(t, page, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>Admin") {
+		t.Errorf("the Admin page's header doesn't hold its title:\n%s", header)
+	}
+	if card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`).FindString(page); card != "" {
+		t.Errorf("the Admin page still has a card, %s:\n%s", card, page)
 	}
 }
 
