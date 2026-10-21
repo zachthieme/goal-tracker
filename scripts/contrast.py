@@ -24,15 +24,18 @@ THEME_SELECTORS = {
 }
 
 # The surfaces text and control edges sit on: the flat frame's canvas,
-# sidebar, hovered row and group header, then the card surfaces pages that
-# haven't moved to the frame still use (--color-primary-light is the selected
-# fill; --color-primary-subtle is the hover fill of quiet controls and of a
-# Name). The marks are checked on each with the ratio WCAG asks of it: 4.5:1
-# for text, 3:1 for a control's edge, a focus ring or a Health shape.
+# sidebar, the sidebar's hovered and current nav item, hovered row and group
+# header, then the card surfaces pages that haven't moved to the frame still
+# use (--color-primary-light is the selected fill; --color-primary-subtle is
+# the hover fill of quiet controls and of a Name), and a signal chip's or
+# tag's fill. The marks are checked on each with the ratio WCAG asks of it:
+# 4.5:1 for text, 3:1 for a control's edge, a focus ring or a Health shape.
 # --color-border is left out: it draws rules, not control edges.
 SURFACES = [
     "--color-canvas",
     "--color-sidebar",
+    "--color-sidebar-hover",
+    "--color-sidebar-on",
     "--color-row-hover",
     "--color-group",
     "--color-surface",
@@ -40,23 +43,56 @@ SURFACES = [
     "--color-surface-alt",
     "--color-primary-light",
     "--color-primary-subtle",
+    "--color-chip-bg",
 ]
 # Surfaces only text sits on, so the edge and shape marks aren't checked
 # there: --color-primary-light fills the current Theme choice and History's
-# current chip, and no input, chip edge or Health shape sits on either.
-TEXT_ONLY = {"--color-primary-light"}
+# current chip, the sidebar's hovered and current nav item hold a label and
+# its count, and --color-chip-bg holds a chip's or tag's text. No input, chip
+# edge or Health shape sits on any of them.
+TEXT_ONLY = {"--color-primary-light", "--color-sidebar-hover", "--color-sidebar-on", "--color-chip-bg"}
 MARKS = {
     "--color-ink": 4.5,
     "--color-ink-2": 4.5,
     "--color-ink-muted": 4.5,
     "--color-primary-strong": 4.5,
     "--color-danger-ink": 4.5,
+    "--color-chip-ink": 4.5,
     "--color-border-strong": 3.0,
     "--color-focus": 3.0,
     "--health-r-mark": 3.0,
     "--health-y-mark": 3.0,
     "--health-g-mark": 3.0,
 }
+# Text marks no text may use on a surface, because the pair falls under 4.5:1
+# in some theme: each is printed with × and not counted, and DESIGN.md
+# § Deviations 10 lists it as not for text. --color-primary-strong on
+# --color-sidebar-on is 4.48:1 in light. The current nav item's label and
+# count are --color-ink and --color-ink-muted, and no link sits on it, while
+# raising the link colour would move every link and filled button in the app.
+NOT_FOR_TEXT = {("--color-primary-strong", "--color-sidebar-on")}
+
+
+def flag(mark, surface, r):
+    """How the table marks mark's ratio r on surface: "—" for a pair not
+    checked, "×" for a pair no text may use, "!" for one under its minimum,
+    else a space. Only "!" counts against the run.
+
+    >>> flag("--color-border-strong", "--color-chip-bg", 2.95)
+    '—'
+    >>> flag("--color-primary-strong", "--color-sidebar-on", 4.48)
+    '×'
+    >>> flag("--color-ink-muted", "--color-sidebar-on", 4.49), flag("--color-chip-ink", "--color-chip-bg", 7.50)
+    ('!', ' ')
+    >>> flag("--color-border-strong", "--color-sidebar", 2.99), flag("--color-primary-strong", "--color-sidebar-hover", 4.49)
+    ('!', '!')
+    """
+    minimum = MARKS[mark]
+    if minimum < 4.5 and surface in TEXT_ONLY:
+        return "—"
+    if (mark, surface) in NOT_FOR_TEXT:
+        return "×"
+    return "!" if r < minimum else " "
 
 
 def themes(css):
@@ -208,20 +244,20 @@ def main():
 
     width = max(map(len, MARKS)) + len(" (text)")
     for name, theme in tokens.items():
-        print(f"{name}: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges, — not checked")
+        print(f"{name}: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges, × not for text, — not checked")
         heads = [s.removeprefix("--color-") for s in SURFACES]
         print(" " * width + "".join(f"  {h:>{len(h)}}" for h in heads))
         for mark, minimum in MARKS.items():
             kind = "(text)" if minimum == 4.5 else "(edge)"
             line = f"{mark} {kind}".ljust(width)
             for s, h in zip(SURFACES, heads):
-                if minimum < 4.5 and s in TEXT_ONLY:
+                r = ratio(theme[mark], theme[s])
+                f = flag(mark, s, r)
+                if f == "—":
                     line += f"  {'—':>{len(h) - 1}} "
                     continue
-                r = ratio(theme[mark], theme[s])
-                flag = "!" if r < minimum else " "
-                low += r < minimum
-                line += f"  {r:>{len(h) - 1}.2f}{flag}"
+                low += f == "!"
+                line += f"  {r:>{len(h) - 1}.2f}{f}"
             print(line)
         print()
     print(f"{low} ratios under the minimum (marked !)." if low else "Every ratio meets its minimum.")

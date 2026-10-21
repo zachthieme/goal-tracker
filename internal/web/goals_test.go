@@ -3271,7 +3271,6 @@ func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
 	for lifecycle, g := range map[string]domain.Goal{
 		domain.LifecycleProposed:  proposed,
 		domain.LifecycleActive:    active,
@@ -3283,8 +3282,84 @@ func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 		if !strings.Contains(page, `data-testid="goal-lifecycle">`+lifecycle+"<") {
 			t.Errorf("%s: the page doesn't show its Lifecycle", lifecycle)
 		}
-		if c := card.FindString(page); c != "" {
+		if c := goalPageCardClass.FindString(page); c != "" {
 			t.Errorf("a %s Goal's page has a card, %s", lifecycle, c)
+		}
+	}
+}
+
+// goalPageCardClass matches a class attribute that holds card.
+var goalPageCardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+// The Goal page stays one flat surface whoever reads it and whatever form is
+// open in place: an Admin's and a stranger's view have no card, as the
+// Owner's hasn't, and nor has the page with any of its ?open= forms open,
+// each opened by someone it is offered to (DESIGN.md § Direction: the flat
+// frame).
+func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	lee := h.SignIn("lee@example.com")
+	h.SignIn("kim@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth", "Reliability")
+	h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
+	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	active := h.ActiveChildOf(sam, parent, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
+		GoalID: active.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
+		Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	h.CheckinWithHighlights(sam, active.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+	h.LogDraftHighlight(sam, active.ID, domain.HighlightAccomplishment, "Paged nobody all week.")
+	proposed := h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything.")
+	orphaned := h.ActiveGoal(lee, "Migrate displays", "Displays fail often.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, lee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{}
+	for _, viewer := range []string{"ada@example.com", "sam@example.com", "kim@example.com"} {
+		clients[viewer] = signInClient(t, ts.URL, viewer)
+	}
+
+	for viewer, client := range clients {
+		page := getBody(t, client, goalPageURL(ts.URL, active))
+		if !strings.Contains(page, `data-testid="goal-lifecycle">Active<`) {
+			t.Errorf("%s: the page doesn't show the Goal", viewer)
+		}
+		if c := goalPageCardClass.FindString(page); c != "" {
+			t.Errorf("%s's view of the Goal page has a card, %s", viewer, c)
+		}
+	}
+
+	for _, tc := range []struct {
+		form   string
+		viewer string
+		goal   domain.Goal
+	}{
+		{"handoff", "sam@example.com", active},
+		{"reassign", "ada@example.com", orphaned},
+		{"depart", "ada@example.com", active},
+		{"return", "ada@example.com", orphaned},
+		{"top-level", "ada@example.com", active},
+		{"parent-link", "sam@example.com", active},
+		{"delegates", "sam@example.com", active},
+		{"contributors", "sam@example.com", proposed},
+		{"milestones", "sam@example.com", active},
+		{"dimensions", "sam@example.com", active},
+		{"fields", "sam@example.com", active},
+		{"draft-highlight", "sam@example.com", active},
+		{"title-why-it-matters", "sam@example.com", active},
+	} {
+		page := getBody(t, clients[tc.viewer], goalPageURL(ts.URL, tc.goal)+"?open="+tc.form)
+		openForm(t, page, tc.form)
+		if c := goalPageCardClass.FindString(page); c != "" {
+			t.Errorf("the Goal page with %s open has a card, %s", tc.form, c)
 		}
 	}
 }
@@ -3300,18 +3375,15 @@ func hasClass(openTag, class string) bool {
 }
 
 // The Goal page's document column reads Latest status, Metrics, Milestones,
-// Highlights, Draft Highlights, Comments and History, in that order, each a
-// section opening with its h2; the rail's groups open with an h3 (DESIGN.md §
-// Direction: Page shapes).
+// Highlights, Draft Highlights, Action Items, Comments and History, in that
+// order, each a section opening with its h2; the rail's groups open with an h3
+// (DESIGN.md § Direction: Page shapes).
 func TestGoalPageSectionHeadings(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	page := goalPageWithEverySection(t, h, ts)
 
 	main := between(t, page, `data-testid="goal-main"`, `data-testid="goal-sidebar"`)
 	at := 0
@@ -3321,6 +3393,7 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 		{"section", "goal-milestones", "<h2>Milestones</h2>"},
 		{"section", "goal-highlights", "<h2>Highlights</h2>"},
 		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
+		{"section", "goal-action-items", "<h2>Action Items</h2>"},
 		{"section", "goal-comments", "<h2>Comments</h2>"},
 		{"div", "goal-history", "<h2>History</h2>"},
 	} {
@@ -3345,6 +3418,17 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 	}
 }
 
+// goalPageWithEverySection is the Owner's view of an Active Goal whose page
+// shows every section its document column can: a Check-in with a Highlight,
+// and an open Action Item raised on a Report covering it.
+func goalPageWithEverySection(t *testing.T, h *testsupport.Harness, ts *httptest.Server) string {
+	t.Helper()
+	f := newGoalActionItemFixture(h)
+	h.CheckinWithHighlights(f.author, f.goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+	f.raise(f.mbrPub, f.sam, "Explain the slip.", 5, f.goal.ID)
+	return getBody(t, signInClient(t, ts.URL, f.author.Email), goalPageURL(ts.URL, f.goal))
+}
+
 // assertOpensWith checks the tag element carrying testID opens with heading,
 // beside the link a group whose form opens in place puts by it.
 func assertOpensWith(t *testing.T, page, tag, testID, heading string) {
@@ -3364,11 +3448,8 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	page := goalPageWithEverySection(t, h, ts)
 
 	for _, tc := range []struct{ tag, testID string }{
 		{"section", "goal-checkins"},
@@ -3376,6 +3457,7 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 		{"section", "goal-milestones"},
 		{"section", "goal-highlights"},
 		{"section", "goal-draft-highlights"},
+		{"section", "goal-action-items"},
 		{"section", "goal-comments"},
 		{"div", "goal-history"},
 	} {

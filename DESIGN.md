@@ -2165,6 +2165,25 @@ given):
     | Light | Chip text `--color-chip-ink` `#4A4D54` | chip fill `#F1F1F3` | 7.50 |
     | Dark | Chip text `--color-chip-ink` `#C9CBD0` | chip fill `#222327` | 9.67 |
 
+    The sidebar's hovered and current nav item and a chip's or tag's fill hold
+    text only, so `scripts/contrast.py` measures only the inks on them, in
+    both themes. Each reaches 4.5:1 but one pair, which no text may use: a
+    link, `--color-primary-strong`, on the current nav item (4.48:1 in light).
+    That pair is listed rather than the link colour raised, as the Note says.
+
+    | Theme | Mark | Sidebar hover | Sidebar on | Chip bg | Note |
+    | --- | --- | --- | --- | --- | --- |
+    | Light | `--color-ink` `#1B1D22` | 14.55 | 13.79 | 14.95 | |
+    | Light | `--color-ink-2` `#33363C` | 10.45 | 9.91 | 10.74 | |
+    | Light | `--color-ink-muted` `#5F636B` | 5.20 | 4.93 | 5.34 | |
+    | Light | Chip text, `--color-chip-ink` `#4A4D54` | 7.31 | 6.92 | 7.50 | |
+    | Light | Links, `--color-primary-strong` `#0F766E` | 4.72 | 4.48 | 4.85 | Not for text on the current nav item. Its label and count are `--color-ink` and `--color-ink-muted`, and no link sits on it, while raising the link colour would move every link and filled button in the app. |
+    | Dark | `--color-ink` `#EDEEF0` | 14.52 | 13.52 | 13.52 | |
+    | Dark | `--color-ink-2` `#C9CBD0` | 10.38 | 9.67 | 9.67 | |
+    | Dark | `--color-ink-muted` `#9A9EA6` | 6.27 | 5.84 | 5.84 | |
+    | Dark | Chip text, `--color-chip-ink` `#C9CBD0` | 10.38 | 9.67 | 9.67 | |
+    | Dark | Links, `--color-primary-strong` `#14B8A6` | 6.77 | 6.31 | 6.31 | Not for text on the current nav item either, so the pair is the same in both themes. |
+
 ## Accepted audit findings
 
 Places where the app follows the source on purpose, though a design audit has

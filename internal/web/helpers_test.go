@@ -170,13 +170,15 @@ func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Value
 
 // pageElement returns the tag element carrying data-testid, up to its first
 // closing tag, so an assertion can't be satisfied by the same text elsewhere on
-// the page. It suits elements that don't nest their own tag.
+// the page. It suits elements that don't nest their own tag. An id, as on a
+// section a link jumps to, may come before the data-testid.
 func pageElement(t *testing.T, page, tag, testID string) string {
 	t.Helper()
-	start := strings.Index(page, "<"+tag+` data-testid="`+testID+`"`)
-	if start < 0 {
+	loc := regexp.MustCompile(`<` + tag + `(?: id="[^"]*")? data-testid="` + regexp.QuoteMeta(testID) + `"`).FindStringIndex(page)
+	if loc == nil {
 		t.Fatalf("page has no <%s> %q", tag, testID)
 	}
+	start := loc[0]
 	end := strings.Index(page[start:], "</"+tag+">")
 	if end < 0 {
 		t.Fatalf("<%s> %q is not closed", tag, testID)
