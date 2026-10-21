@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"html"
 	"math/big"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -74,6 +76,13 @@ func newFakeProvider(t *testing.T, claims map[string]any) *fakeProvider {
 }
 
 func (p *fakeProvider) issuer() string { return p.srv.URL }
+
+// signsInAs makes claims the person the provider signs in as from now on.
+func (p *fakeProvider) signsInAs(claims map[string]any) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.claims = claims
+}
 
 func (p *fakeProvider) discovery(w http.ResponseWriter, _ *http.Request) {
 	doc := map[string]any{
@@ -160,9 +169,11 @@ func (p *fakeProvider) token(w http.ResponseWriter, r *http.Request) {
 		"iss": p.issuer(), "aud": oidcClientID, "sub": "subject-1",
 		"iat": now.Unix(), "exp": now.Add(time.Hour).Unix(), "nonce": pending.nonce,
 	}
+	p.mu.Lock()
 	for k, v := range p.claims {
 		claims[k] = v
 	}
+	p.mu.Unlock()
 	if p.tamper != nil {
 		p.tamper(claims)
 	}
@@ -371,6 +382,77 @@ func TestTheProvidersAnswerIsRefusedUnlessItProvesAVerifiedEmail(t *testing.T) {
 				t.Errorf("after a refused sign-in, /home answers %d, want a redirect to sign-in", home.StatusCode)
 			}
 		})
+	}
+}
+
+// A person's first sign-in through the provider links their Account to the
+// provider's subject for them, so a later sign-in with that subject finds the
+// same Account even after the provider changes their email.
+func TestALinkedPersonIsMatchedBySubjectAfterTheirEmailChanges(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	noor := h.SignIn("noor.haddad@example.com")
+	p := newFakeProvider(t, map[string]any{"sub": "noor-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Noor Haddad"})
+	ts := newOIDCServer(t, h, p)
+	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+		t.Fatalf("Noor's first sign-in ended at %s, want Home:\n%s", resp.Request.URL, page)
+	}
+
+	p.signsInAs(map[string]any{"sub": "noor-subject", "email": "noor.okafor@example.com", "email_verified": true, "name": "Noor Okafor"})
+	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+		t.Fatalf("signing in under Noor's new email ended at %s, want Home:\n%s", resp.Request.URL, page)
+	}
+	got, err := h.Service.Account(t.Context(), noor.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "Noor Okafor" {
+		t.Errorf("Noor's Account Name = %q, want the second sign-in's Noor Okafor", got.Name)
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "noor.okafor@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("signing in under Noor's new email made another Account (err = %v)", err)
+	}
+}
+
+// An email the provider has given to someone new doesn't sign them in as the
+// Account it once named: that Account is linked to its first sign-in's
+// subject, so a sign-in with the same email and another subject is refused
+// with a sentence to ask an Admin, and gets no session.
+func TestAReassignedEmailCantSignInAsTheAccountLinkedToAnotherSubject(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	p := newFakeProvider(t, map[string]any{"sub": "noor-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Noor Haddad"})
+	ts := newOIDCServer(t, h, p)
+	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+		t.Fatalf("Noor's first sign-in ended at %s, want Home:\n%s", resp.Request.URL, page)
+	}
+
+	p.signsInAs(map[string]any{"sub": "new-hire-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Pat Newhire"})
+	client, resp, page := signInThroughProvider(t, ts.URL)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("the new hire's sign-in answered %d, want 403", resp.StatusCode)
+	}
+	doc := parsePage(t, page)
+	if msg := textOf(findByTestID(t, doc, "signin-error")); !strings.Contains(msg, "Ask an Admin") {
+		t.Errorf("the sign-in page says %q, want it to tell them to ask an Admin", msg)
+	}
+	appURL, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range client.Jar.Cookies(appURL) {
+		if c.Name == "gt_session" {
+			t.Errorf("the refused sign-in set a session cookie")
+		}
+	}
+	noor, err := h.Service.AccountByEmail(t.Context(), "noor.haddad@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if noor.Name != "Noor Haddad" {
+		t.Errorf("the refused sign-in renamed Noor's Account to %q", noor.Name)
 	}
 }
 

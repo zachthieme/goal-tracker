@@ -108,7 +108,7 @@ func (q *Queries) CreateParentSuggestion(ctx context.Context, arg CreateParentSu
 }
 
 const getOpenParentSuggestionFor = `-- name: GetOpenParentSuggestionFor :one
-SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone
+SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone, suggester.oidc_subject
 FROM parent_suggestions
 JOIN accounts suggester ON suggester.id = parent_suggestions.suggested_by
 WHERE parent_suggestions.goal_id = ? AND parent_suggestions.parent_id = ? AND parent_suggestions.status = 'open'
@@ -147,12 +147,13 @@ func (q *Queries) GetOpenParentSuggestionFor(ctx context.Context, arg GetOpenPar
 		&i.Account.Name,
 		&i.Account.ManagerID,
 		&i.Account.Timezone,
+		&i.Account.OidcSubject,
 	)
 	return i, err
 }
 
 const getParentSuggestion = `-- name: GetParentSuggestion :one
-SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone
+SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, goal_owner.oidc_subject, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, parent_owner.oidc_subject, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone, suggester.oidc_subject
 FROM parent_suggestions
 JOIN goals goal ON goal.id = parent_suggestions.goal_id
 JOIN accounts goal_owner ON goal_owner.id = goal.owner_id
@@ -203,6 +204,7 @@ func (q *Queries) GetParentSuggestion(ctx context.Context, id int64) (GetParentS
 		&i.Account.Name,
 		&i.Account.ManagerID,
 		&i.Account.Timezone,
+		&i.Account.OidcSubject,
 		&i.Goal_2.ID,
 		&i.Goal_2.Title,
 		&i.Goal_2.WhyItMatters,
@@ -222,6 +224,7 @@ func (q *Queries) GetParentSuggestion(ctx context.Context, id int64) (GetParentS
 		&i.Account_2.Name,
 		&i.Account_2.ManagerID,
 		&i.Account_2.Timezone,
+		&i.Account_2.OidcSubject,
 		&i.Account_3.ID,
 		&i.Account_3.Email,
 		&i.Account_3.IsAdmin,
@@ -230,12 +233,13 @@ func (q *Queries) GetParentSuggestion(ctx context.Context, id int64) (GetParentS
 		&i.Account_3.Name,
 		&i.Account_3.ManagerID,
 		&i.Account_3.Timezone,
+		&i.Account_3.OidcSubject,
 	)
 	return i, err
 }
 
 const listOpenParentSuggestionsForOwner = `-- name: ListOpenParentSuggestionsForOwner :many
-SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone
+SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, goal_owner.oidc_subject, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, parent_owner.oidc_subject, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone, suggester.oidc_subject
 FROM parent_suggestions
 JOIN goals goal ON goal.id = parent_suggestions.goal_id
 JOIN accounts goal_owner ON goal_owner.id = goal.owner_id
@@ -294,6 +298,7 @@ func (q *Queries) ListOpenParentSuggestionsForOwner(ctx context.Context, ownerID
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 			&i.Goal_2.ID,
 			&i.Goal_2.Title,
 			&i.Goal_2.WhyItMatters,
@@ -313,6 +318,7 @@ func (q *Queries) ListOpenParentSuggestionsForOwner(ctx context.Context, ownerID
 			&i.Account_2.Name,
 			&i.Account_2.ManagerID,
 			&i.Account_2.Timezone,
+			&i.Account_2.OidcSubject,
 			&i.Account_3.ID,
 			&i.Account_3.Email,
 			&i.Account_3.IsAdmin,
@@ -321,6 +327,7 @@ func (q *Queries) ListOpenParentSuggestionsForOwner(ctx context.Context, ownerID
 			&i.Account_3.Name,
 			&i.Account_3.ManagerID,
 			&i.Account_3.Timezone,
+			&i.Account_3.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -336,7 +343,7 @@ func (q *Queries) ListOpenParentSuggestionsForOwner(ctx context.Context, ownerID
 }
 
 const listParentSuggestionsForGoal = `-- name: ListParentSuggestionsForGoal :many
-SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone
+SELECT parent_suggestions.id, parent_suggestions.goal_id, parent_suggestions.parent_id, parent_suggestions.suggested_by, parent_suggestions.note, parent_suggestions.status, parent_suggestions.created_at, parent_suggestions.closed_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, goal_owner.id, goal_owner.email, goal_owner.is_admin, goal_owner.created_at, goal_owner.departed, goal_owner.name, goal_owner.manager_id, goal_owner.timezone, goal_owner.oidc_subject, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone, parent_owner.oidc_subject, suggester.id, suggester.email, suggester.is_admin, suggester.created_at, suggester.departed, suggester.name, suggester.manager_id, suggester.timezone, suggester.oidc_subject
 FROM parent_suggestions
 JOIN goals goal ON goal.id = parent_suggestions.goal_id
 JOIN accounts goal_owner ON goal_owner.id = goal.owner_id
@@ -394,6 +401,7 @@ func (q *Queries) ListParentSuggestionsForGoal(ctx context.Context, goalID int64
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 			&i.Goal_2.ID,
 			&i.Goal_2.Title,
 			&i.Goal_2.WhyItMatters,
@@ -413,6 +421,7 @@ func (q *Queries) ListParentSuggestionsForGoal(ctx context.Context, goalID int64
 			&i.Account_2.Name,
 			&i.Account_2.ManagerID,
 			&i.Account_2.Timezone,
+			&i.Account_2.OidcSubject,
 			&i.Account_3.ID,
 			&i.Account_3.Email,
 			&i.Account_3.IsAdmin,
@@ -421,6 +430,7 @@ func (q *Queries) ListParentSuggestionsForGoal(ctx context.Context, goalID int64
 			&i.Account_3.Name,
 			&i.Account_3.ManagerID,
 			&i.Account_3.Timezone,
+			&i.Account_3.OidcSubject,
 		); err != nil {
 			return nil, err
 		}

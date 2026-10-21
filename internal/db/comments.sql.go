@@ -47,7 +47,7 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (C
 }
 
 const getComment = `-- name: GetComment :one
-SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM comments
 JOIN accounts ON accounts.id = comments.author_id
 WHERE comments.id = ?
@@ -78,12 +78,13 @@ func (q *Queries) GetComment(ctx context.Context, id int64) (GetCommentRow, erro
 		&i.Account.Name,
 		&i.Account.ManagerID,
 		&i.Account.Timezone,
+		&i.Account.OidcSubject,
 	)
 	return i, err
 }
 
 const listGoalComments = `-- name: ListGoalComments :many
-SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone,
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject,
        COALESCE(report_definitions.name, '') AS report_name,
        COALESCE(report_definitions.id, 0) AS definition_id
 FROM comments
@@ -129,6 +130,7 @@ func (q *Queries) ListGoalComments(ctx context.Context, goalID int64) ([]ListGoa
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 			&i.ReportName,
 			&i.DefinitionID,
 		); err != nil {
@@ -146,7 +148,7 @@ func (q *Queries) ListGoalComments(ctx context.Context, goalID int64) ([]ListGoa
 }
 
 const listGoalThreadComments = `-- name: ListGoalThreadComments :many
-SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM comments
 JOIN accounts ON accounts.id = comments.author_id
 WHERE comments.goal_id = ? AND comments.publication_id = 0
@@ -185,6 +187,7 @@ func (q *Queries) ListGoalThreadComments(ctx context.Context, goalID int64) ([]L
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -200,7 +203,7 @@ func (q *Queries) ListGoalThreadComments(ctx context.Context, goalID int64) ([]L
 }
 
 const listPublicationComments = `-- name: ListPublicationComments :many
-SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM comments
 JOIN accounts ON accounts.id = comments.author_id
 WHERE comments.publication_id = ?
@@ -239,6 +242,7 @@ func (q *Queries) ListPublicationComments(ctx context.Context, publicationID int
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -254,7 +258,7 @@ func (q *Queries) ListPublicationComments(ctx context.Context, publicationID int
 }
 
 const listThreadAuthors = `-- name: ListThreadAuthors :many
-SELECT DISTINCT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT DISTINCT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM comments
 JOIN accounts ON accounts.id = comments.author_id
 WHERE comments.id = ?1 OR comments.parent_id = ?1
@@ -281,6 +285,7 @@ func (q *Queries) ListThreadAuthors(ctx context.Context, threadID int64) ([]Acco
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}

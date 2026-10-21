@@ -43,6 +43,18 @@ var ErrNotFound = errors.New("not found")
 // left the company and can't sign in or act (CONTEXT.md: Departed).
 var ErrDeparted = errors.New("account has departed")
 
+// OIDCSubjectConflictError is returned when an OIDC sign-in's email names an
+// Account already linked to another subject: the provider has likely given the
+// email to someone new, who must not sign in as the person it once named
+// (ticket #426). AccountID is the Account the email names.
+type OIDCSubjectConflictError struct {
+	AccountID int64
+}
+
+func (e *OIDCSubjectConflictError) Error() string {
+	return fmt.Sprintf("account %d is linked to another OIDC subject", e.AccountID)
+}
+
 // timeFormat is how timestamps are stored in SQLite TEXT columns.
 const timeFormat = time.RFC3339Nano
 
@@ -334,6 +346,52 @@ func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error)
 	}
 	if acc.Departed {
 		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, emailAddr)
+	}
+	return acc, nil
+}
+
+// SignInWithOIDC resolves a sign-in through the org's OpenID Connect provider,
+// finding the Account by the subject the provider gives the person rather than
+// by their email, which the provider may later give to someone else:
+//
+//  1. The Account linked to subject, whatever its email now.
+//  2. Else the Account emailAddr names, created as SignIn would if there is
+//     none, which is then linked to subject.
+//  3. Else, when that Account is linked to another subject, nothing: the
+//     sign-in is refused with an *OIDCSubjectConflictError.
+//
+// A Departed Account is refused with ErrDeparted, and isn't linked.
+func (s *Service) SignInWithOIDC(ctx context.Context, subject, emailAddr string) (Account, error) {
+	if subject == "" {
+		return Account{}, errors.New("OIDC sign-in has no subject")
+	}
+	linked, err := s.queries.GetAccountByOIDCSubject(ctx, &subject)
+	if err == nil {
+		acc := accountFromRow(linked)
+		if acc.Departed {
+			return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+		}
+		return acc, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return Account{}, fmt.Errorf("look up account by OIDC subject: %w", err)
+	}
+
+	acc, err := s.SignIn(ctx, emailAddr)
+	if err != nil {
+		return Account{}, err
+	}
+	n, err := s.queries.LinkAccountOIDCSubject(ctx, db.LinkAccountOIDCSubjectParams{OidcSubject: &subject, ID: acc.ID})
+	if err != nil {
+		return Account{}, fmt.Errorf("link account to OIDC subject: %w", err)
+	}
+	if n == 0 {
+		// Already linked: to this subject by a sign-in racing this one, or to
+		// another.
+		if again, err := s.queries.GetAccountByOIDCSubject(ctx, &subject); err == nil && again.ID == acc.ID {
+			return acc, nil
+		}
+		return Account{}, &OIDCSubjectConflictError{AccountID: acc.ID}
 	}
 	return acc, nil
 }

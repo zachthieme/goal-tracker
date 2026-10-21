@@ -5,14 +5,15 @@
 package db
 
 type Account struct {
-	ID        int64
-	Email     string
-	IsAdmin   int64
-	CreatedAt string
-	Departed  int64
-	Name      *string
-	ManagerID *int64
-	Timezone  string
+	ID          int64
+	Email       string
+	IsAdmin     int64
+	CreatedAt   string
+	Departed    int64
+	Name        *string
+	ManagerID   *int64
+	Timezone    string
+	OidcSubject *string
 }
 
 type AccountPassword struct {

@@ -13,7 +13,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
 VALUES (lower(trim(?1)), ?2, ?3)
-RETURNING id, email, is_admin, created_at, departed, name, manager_id, timezone
+RETURNING id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject
 `
 
 type CreateAccountParams struct {
@@ -34,12 +34,13 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Name,
 		&i.ManagerID,
 		&i.Timezone,
+		&i.OidcSubject,
 	)
 	return i, err
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE id = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -54,12 +55,13 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 		&i.Name,
 		&i.ManagerID,
 		&i.Timezone,
+		&i.OidcSubject,
 	)
 	return i, err
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE email = lower(trim(?1)) LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE email = lower(trim(?1)) LIMIT 1
 `
 
 // An email names one Account whatever its case or surrounding spaces
@@ -77,12 +79,53 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 		&i.Name,
 		&i.ManagerID,
 		&i.Timezone,
+		&i.OidcSubject,
 	)
 	return i, err
 }
 
+const getAccountByOIDCSubject = `-- name: GetAccountByOIDCSubject :one
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE oidc_subject = ? LIMIT 1
+`
+
+func (q *Queries) GetAccountByOIDCSubject(ctx context.Context, oidcSubject *string) (Account, error) {
+	row := q.db.QueryRowContext(ctx, getAccountByOIDCSubject, oidcSubject)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.IsAdmin,
+		&i.CreatedAt,
+		&i.Departed,
+		&i.Name,
+		&i.ManagerID,
+		&i.Timezone,
+		&i.OidcSubject,
+	)
+	return i, err
+}
+
+const linkAccountOIDCSubject = `-- name: LinkAccountOIDCSubject :execrows
+UPDATE accounts SET oidc_subject = ? WHERE id = ? AND oidc_subject IS NULL
+`
+
+type LinkAccountOIDCSubjectParams struct {
+	OidcSubject *string
+	ID          int64
+}
+
+// Links an Account to its OIDC subject only while it has none, so a link,
+// once made, is never overwritten; zero rows means it already had one.
+func (q *Queries) LinkAccountOIDCSubject(ctx context.Context, arg LinkAccountOIDCSubjectParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, linkAccountOIDCSubject, arg.OidcSubject, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const listAccountsUnder = `-- name: ListAccountsUnder :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
 `
 
 // The people whose Manager is one of the given Accounts: one level of an Org.
@@ -114,6 +157,7 @@ func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -129,7 +173,7 @@ func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([
 }
 
 const listAdminAccounts = `-- name: ListAdminAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE is_admin = 1 ORDER BY email
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE is_admin = 1 ORDER BY email
 `
 
 func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
@@ -150,6 +194,7 @@ func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -165,7 +210,7 @@ func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listDepartedAccounts = `-- name: ListDepartedAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE departed = 1 ORDER BY email
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE departed = 1 ORDER BY email
 `
 
 func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
@@ -186,6 +231,7 @@ func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -201,7 +247,7 @@ func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listManagedAccounts = `-- name: ListManagedAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE manager_id IS NOT NULL ORDER BY id
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE manager_id IS NOT NULL ORDER BY id
 `
 
 // Every Account with a Manager, for finding the cycles the directory gave.
@@ -223,6 +269,7 @@ func (q *Queries) ListManagedAccounts(ctx context.Context) ([]Account, error) {
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
