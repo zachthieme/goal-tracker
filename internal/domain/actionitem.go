@@ -372,7 +372,7 @@ func (s *Service) CanReassignActionItem(ctx context.Context, actorID int64, item
 	if err != nil {
 		return false, err
 	}
-	if slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == actorID }) {
+	if isReportDelegate(delegates, actorID) {
 		return true, nil
 	}
 	pub, err := s.queries.GetReportPublication(ctx, item.PublicationID)

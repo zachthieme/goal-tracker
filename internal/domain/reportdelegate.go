@@ -21,8 +21,12 @@ import (
 // ListReportDelegates returns them) or an Admin may (CONTEXT.md: Report
 // Definition).
 func CanManageReport(actor Account, def ReportDefinition, delegates []Account) bool {
-	return CanManageReportDelegates(actor, def) ||
-		slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == actor.ID })
+	return CanManageReportDelegates(actor, def) || isReportDelegate(delegates, actor.ID)
+}
+
+// isReportDelegate reports whether accountID is among delegates.
+func isReportDelegate(delegates []Account, accountID int64) bool {
+	return slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == accountID })
 }
 
 // CanManageReportDelegates reports whether actor may add and remove def's
@@ -31,9 +35,9 @@ func CanManageReportDelegates(actor Account, def ReportDefinition) bool {
 	return actor.IsAdmin || actor.ID == def.CreatedBy
 }
 
-// requireReportManager returns ErrNotAuthorized, naming what actorID tried, unless
-// they may change def, curate its narrative and publish it. An unknown actor
-// may do none of it.
+// requireReportManager returns ErrNotAuthorized, naming what actorID tried
+// (doing), unless they may change def, curate its narrative and publish it. An
+// unknown actor may do none of it.
 func (s *Service) requireReportManager(ctx context.Context, actorID int64, def ReportDefinition, doing string) error {
 	actor, err := s.queries.GetAccount(ctx, actorID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -93,7 +97,7 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 	if err != nil {
 		return err
 	}
-	if slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == accountID }) {
+	if isReportDelegate(delegates, accountID) {
 		return fmt.Errorf("%w: %s is already a Report Delegate", ErrValidation, acc.Email)
 	}
 	if err := s.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
