@@ -168,8 +168,9 @@ GOAL_TRACKER_REMINDER_TIME=09:00
 Startup checks this and stops with a message naming the problem: an unset or
 unknown sign-in method, a missing or short session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
-`GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), or a
-`GOAL_TRACKER_CHROME` that isn't there or can't run. Never set
+`GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
+`GOAL_TRACKER_CHROME` that isn't there or can't run, or, with a Chromium, a
+`TMPDIR` too long for it (see § PDF downloads). Never set
 `GOAL_TRACKER_START_AT`; it's for tests.
 
 ### PDF downloads
@@ -182,6 +183,16 @@ two render at once, each within 30 seconds; a download that can't start in
 time gets a "try again" page, and a render that fails logs an `ERROR`. Without
 a Chromium, the PDF choice opens the print page instead, for the reader to
 print to PDF from the browser, and startup logs that it falls back.
+
+With a Chromium, `TMPDIR` must be short: Chromium keeps a socket under it, and
+a socket's path on Linux is at most 107 bytes. `/tmp`, the default when
+`TMPDIR` is unset, is short enough, and so is the Docker image's. Up to 47
+bytes, each render keeps Chromium's files in a directory of its own, removed
+when it ends, so a render killed for time leaves nothing behind. Up to 62
+bytes, renders still work, but one killed for time may leave
+`org.chromium.Chromium.*` in `TMPDIR`, and startup logs a `WARN` saying so.
+Longer, Chromium can't render at all, and startup stops with an error naming
+`TMPDIR`.
 
 ## 5. The CSV file
 

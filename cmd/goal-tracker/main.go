@@ -135,7 +135,11 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 		webOpts = append(webOpts, startDirectorySync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
 	}
-	webOpts = append(webOpts, pdfDownloads(cfg.chrome, logger))
+	pdfOpt, err := pdfDownloads(cfg.chrome, logger)
+	if err != nil {
+		return err
+	}
+	webOpts = append(webOpts, pdfOpt)
 	srv := web.NewServer(svc, webOpts...)
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
@@ -165,14 +169,23 @@ func startDirectorySync(svc *domain.Service, dir domain.Directory, logger *slog.
 
 // pdfDownloads is how a publication downloads as a PDF: rendered by the
 // Chromium at chrome, or, with none, as its print page, printed from the
-// browser. It logs which.
-func pdfDownloads(chrome string, logger *slog.Logger) web.Option {
+// browser. It logs which. With a Chromium, it checks TMPDIR, as
+// pdf.CheckTMPDIR does: a warning it logs, and an error it returns, as
+// Chromium couldn't render at all.
+func pdfDownloads(chrome string, logger *slog.Logger) (web.Option, error) {
 	if chrome == "" {
 		logger.Info("no Chromium in GOAL_TRACKER_CHROME or on PATH (chromium, chromium-browser, google-chrome, google-chrome-stable): PDF downloads fall back to the print page, to print from the browser")
-		return web.WithPDFRenderer(nil)
+		return web.WithPDFRenderer(nil), nil
+	}
+	warning, err := pdf.CheckTMPDIR()
+	if err != nil {
+		return nil, fmt.Errorf("rendering PDF downloads with %s: %w", chrome, err)
+	}
+	if warning != "" {
+		logger.Warn(warning)
 	}
 	logger.Info("rendering PDF downloads with Chromium", "chrome", chrome)
-	return web.WithPDFRenderer(pdf.Chromium{Path: chrome})
+	return web.WithPDFRenderer(pdf.Chromium{Path: chrome}), nil
 }
 
 type config struct {

@@ -54,15 +54,18 @@ type Chromium struct {
 // path no one can guess, which hands every other path to the app: so the
 // page's fonts load from its own origin, as a font must, and the app needn't
 // serve the page to a browser without a session. It fails rather than giving a
-// broken PDF, and when ctx ends, and leaves no file behind, nor a Chromium
-// process running.
+// broken PDF, and when ctx ends, and leaves no Chromium process running. It
+// leaves no file behind when TMPDIR is short enough for Chromium's socket in a
+// render's own directory, as CheckTMPDIR, which startup runs, tells: under a
+// longer TMPDIR, a render killed for time may leave org.chromium.Chromium.*
+// there.
 func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]byte, error) {
 	app, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("base URL %q: %w", baseURL, err)
 	}
 	// Named short, as it's Chromium's TMPDIR, and a socket's path can't be long.
-	dir, err := os.MkdirTemp("", "pdf-")
+	dir, err := os.MkdirTemp("", renderDir)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +131,31 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 const (
 	chromiumSocket = "org.chromium.Chromium.XXXXXX/SingletonSocket"
 	maxSocketPath  = 107
+)
+
+// CheckTMPDIR is whether renders can run under TMPDIR, and leave nothing
+// behind when killed for time: nothing to say when it has room for Chromium's
+// socket in a render's own directory; a warning, naming TMPDIR and its length,
+// when it has room for the socket only in TMPDIR itself, where a render killed
+// for time may leave it; and an error, naming TMPDIR and the limit, when it
+// hasn't room even there, and Chromium can't render at all.
+func CheckTMPDIR() (warning string, err error) {
+	tmp := os.TempDir()
+	if len(filepath.Join(tmp, longestRenderDir, chromiumSocket)) <= maxSocketPath {
+		return "", nil
+	}
+	if limit := maxSocketPath - len("/"+chromiumSocket); len(filepath.Join(tmp, chromiumSocket)) > maxSocketPath {
+		return "", fmt.Errorf("TMPDIR %s is %d bytes, too long for Chromium's socket, which needs it at most %d bytes: set TMPDIR to a short directory, such as /tmp", tmp, len(tmp), limit)
+	}
+	return fmt.Sprintf("TMPDIR %s is %d bytes, too long for Chromium's socket in a render's own directory: a render killed for time may leave org.chromium.Chromium.* in TMPDIR. Set TMPDIR to a short directory, such as /tmp", tmp, len(tmp)), nil
+}
+
+// renderDir is the name of a render's own directory in TMPDIR, as
+// os.MkdirTemp's pattern; longestRenderDir is the longest it makes of it, with
+// a uint32 in decimal after.
+const (
+	renderDir        = "pdf-"
+	longestRenderDir = renderDir + "4294967295"
 )
 
 // awaitExit waits, for at most limit, until no process runs with env, a
