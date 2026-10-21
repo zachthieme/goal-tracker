@@ -177,7 +177,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	if err := serve(ctx, newHTTPServer(cfg.addr, srv), ln, shutdownTimeout); err != nil {
 		return err
 	}
-	logger.Info("goal-tracker stopped")
+	logger.Info("goal-tracker stopped serving: every request in flight finished")
 	return nil
 }
 
