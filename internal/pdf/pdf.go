@@ -54,17 +54,36 @@ type Chromium struct {
 // path no one can guess, which hands every other path to the app: so the
 // page's fonts load from its own origin, as a font must, and the app needn't
 // serve the page to a browser without a session. It fails rather than giving a
-// broken PDF, and when ctx ends, and leaves no file behind.
+// broken PDF, and when ctx ends, and leaves no file behind, nor a Chromium
+// process running.
 func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]byte, error) {
 	app, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("base URL %q: %w", baseURL, err)
 	}
-	dir, err := os.MkdirTemp("", "goal-tracker-pdf-")
+	// Named short, as it's Chromium's TMPDIR, and a socket's path can't be long.
+	dir, err := os.MkdirTemp("", "pdf-")
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	// Every process the render starts runs with render in its environment, so
+	// dir goes only once they're all gone: none is left running, and none is
+	// left writing to a dir that's gone, which crashes it.
+	render := "GOAL_TRACKER_PDF_RENDER=" + dir
+	defer func() {
+		awaitExit(render, 2*time.Second)
+		_ = os.RemoveAll(dir)
+	}()
+	env := append(os.Environ(), render)
+	// Chromium's scratch files go in dir as its TMPDIR, so a render killed for
+	// time leaves nothing behind: its socket as the profile's one browser, in
+	// a directory it removes only as it exits, and the shared memory it keeps
+	// on disk without /dev/shm, which a helper killed mid-way leaves. Only
+	// where TMPDIR is too long for Chromium's socket in dir does it keep them
+	// in TMPDIR.
+	if len(filepath.Join(dir, chromiumSocket)) <= maxSocketPath {
+		env = append(env, "TMPDIR="+dir)
+	}
 
 	pageURL, stop, err := servePage(html, app)
 	if err != nil {
@@ -79,14 +98,14 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--no-pdf-header-footer",
-		// Its profile in dir, so a render killed for time leaves nothing
-		// behind; incognito, as with a profile of its own Chromium otherwise
-		// never prints.
+		// Its profile in dir too; incognito, as with a profile of its own
+		// Chromium otherwise never prints.
 		"--incognito",
 		"--user-data-dir="+filepath.Join(dir, "profile"),
 		"--print-to-pdf="+out,
 		pageURL,
 	)
+	cmd.Env = env
 	var output bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &output, &output
 	cmd.WaitDelay = 5 * time.Second // Chromium's helpers may hold its output open after it's killed
@@ -101,6 +120,42 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 		return nil, fmt.Errorf("%s wrote no PDF%s", c.Path, lastLine(output.String()))
 	}
 	return b, nil
+}
+
+// chromiumSocket is the socket Chromium makes in its TMPDIR, as the profile's
+// one browser: its path, like any socket's on Linux, can be no longer than
+// maxSocketPath, or Chromium aborts.
+const (
+	chromiumSocket = "org.chromium.Chromium.XXXXXX/SingletonSocket"
+	maxSocketPath  = 107
+)
+
+// awaitExit waits, for at most limit, until no process runs with env, a
+// variable such as NAME=value, among its environment.
+func awaitExit(env string, limit time.Duration) {
+	for deadline := time.Now().Add(limit); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if !runningWith(env) {
+			return
+		}
+	}
+}
+
+// runningWith is whether a process runs with env among its environment, as
+// /proc tells: where there's no /proc, none does.
+func runningWith(env string) bool {
+	environs, _ := filepath.Glob("/proc/[0-9]*/environ")
+	for _, environ := range environs {
+		b, err := os.ReadFile(environ)
+		if err != nil {
+			continue
+		}
+		for kv := range bytes.SplitSeq(b, []byte{0}) {
+			if string(kv) == env {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // servePage serves html at a URL on the loopback interface, and every other
