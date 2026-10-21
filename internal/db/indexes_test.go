@@ -3,6 +3,9 @@ package db
 import (
 	"database/sql"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -132,6 +135,135 @@ func TestEveryForeignKeyColumnLeadsAnIndex(t *testing.T) {
 		}
 		if reason == "" {
 			t.Errorf("allow-listed %s gives no reason", column)
+		}
+	}
+}
+
+// fkIndexHotQueries are the queries read on every Goal page and list, by the
+// Goal or the person they are for. Each must find its rows by index; queries
+// meant to read a whole table stay off this list. No query lists Goals by
+// Owner alone: the two "ForOwner" queries are the ones that find an Owner's
+// Goals.
+var fkIndexHotQueries = map[string]string{
+	"ListOpenParentSuggestionsForOwner": listOpenParentSuggestionsForOwner,
+	"ListPendingLinksForOwner":          listPendingLinksForOwner,
+	"GetLatestCheckin":                  getLatestCheckin,
+	"ListMetrics":                       listMetrics,
+	"ListMilestones":                    listMilestones,
+	"ListGoalComments":                  listGoalComments,
+	"ListActionItemsForGoal":            listActionItemsForGoal,
+	"ListParentGoals":                   listParentGoals,
+	"ListChildGoals":                    listChildGoals,
+}
+
+// fkIndexNoScanTables are the tables that grow with every Goal: a hot query
+// must never read one of them whole.
+var fkIndexNoScanTables = []string{"goals", "checkins", "metrics", "comments", "links", "action_items"}
+
+// fkIndexScanDetail matches a plan step that reads a table, or a whole index
+// of it, end to end: "SCAN goals", "SCAN parent", "SCAN g USING INDEX ...".
+var fkIndexScanDetail = regexp.MustCompile(`^SCAN (\S+)`)
+
+// fkIndexParams counts query's parameters as SQLite numbers them: "?N" is
+// parameter N, and a bare "?" is one past the highest so far. A "?" in a
+// string, quoted name or comment is not a parameter.
+func fkIndexParams(query string) int {
+	highest := 0
+	for i := 0; i < len(query); i++ {
+		switch {
+		case query[i] == '\'' || query[i] == '"':
+			end := strings.IndexByte(query[i+1:], query[i])
+			if end < 0 {
+				return highest
+			}
+			i += end + 1
+		case strings.HasPrefix(query[i:], "--"):
+			end := strings.IndexByte(query[i:], '\n')
+			if end < 0 {
+				return highest
+			}
+			i += end
+		case strings.HasPrefix(query[i:], "/*"):
+			end := strings.Index(query[i:], "*/")
+			if end < 0 {
+				return highest
+			}
+			i += end + 1
+		case query[i] == '?':
+			j := i + 1
+			for j < len(query) && query[j] >= '0' && query[j] <= '9' {
+				j++
+			}
+			n := highest + 1
+			if j > i+1 {
+				n, _ = strconv.Atoi(query[i+1 : j])
+			}
+			highest = max(highest, n)
+			i = j - 1
+		}
+	}
+	return highest
+}
+
+// fkIndexPlan returns the steps of query's plan, with NULL bound to each of
+// its parameters.
+func fkIndexPlan(t *testing.T, sqlDB *sql.DB, query string) []string {
+	t.Helper()
+	rows, err := sqlDB.Query("EXPLAIN QUERY PLAN "+query, make([]any, fkIndexParams(query))...)
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	return plan
+}
+
+// fkIndexTableAliases maps each name query reads a table by, its own or an
+// alias ("goals g", "goals AS parent"), to that table.
+func fkIndexTableAliases(query string) map[string]string {
+	aliases := map[string]string{}
+	for _, table := range fkIndexNoScanTables {
+		aliases[table] = table
+		alias := regexp.MustCompile(`(?i)\b(?:FROM|JOIN)\s+` + table + `\s+(?:AS\s+)?(\w+)`)
+		for _, m := range alias.FindAllStringSubmatch(query, -1) {
+			switch strings.ToUpper(m[1]) {
+			case "ON", "WHERE", "JOIN", "LEFT", "INNER", "ORDER", "GROUP", "LIMIT", "USING":
+			default:
+				aliases[m[1]] = table
+			}
+		}
+	}
+	return aliases
+}
+
+// The queries every Goal page and list runs find their rows by index rather
+// than reading a growing table whole.
+func TestHotQueriesScanNoGrowingTable(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := fkIndexMigratedDB(t)
+	for name, query := range fkIndexHotQueries {
+		aliases := fkIndexTableAliases(query)
+		plan := fkIndexPlan(t, sqlDB, query)
+		for _, step := range plan {
+			m := fkIndexScanDetail.FindStringSubmatch(step)
+			if m == nil {
+				continue
+			}
+			if table, ok := aliases[m[1]]; ok {
+				t.Errorf("%s scans %s (%q); plan: %s", name, table, step, strings.Join(plan, "; "))
+			}
 		}
 	}
 }
