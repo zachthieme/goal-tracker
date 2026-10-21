@@ -271,6 +271,36 @@ func TestCreateGoalRecordsFirstWhyItMattersRevision(t *testing.T) {
 	}
 }
 
+// A Goal whose first Why it matters revision can't be recorded is not kept, so
+// every Goal has a Definition log to start from (#421).
+func TestCreateGoalKeepsNothingWhenItsFirstRevisionFails(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_revision BEFORE INSERT ON why_it_matters_revisions
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	if _, err := h.Service.CreateGoal(ctx, domain.CreateGoalInput{
+		Title:        "Ship v2",
+		WhyItMatters: "Customers wait too long for v2.",
+		OwnerID:      owner.ID,
+	}); err == nil {
+		t.Fatal("CreateGoal succeeded despite the injected failure")
+	}
+
+	goals, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 0 {
+		t.Errorf("goals after a failed create = %d, want none", len(goals))
+	}
+}
+
 func TestEditWhyItMattersKeepsEveryRevision(t *testing.T) {
 	t.Parallel()
 

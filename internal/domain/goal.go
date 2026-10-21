@@ -141,26 +141,35 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 	}
 
 	now := s.clock.Now()
-	row, err := s.queries.CreateGoal(ctx, db.CreateGoalParams{
-		Title:        title,
-		WhyItMatters: whyItMatters,
-		OwnerID:      in.OwnerID,
-		Lifecycle:    LifecycleProposed,
-		CreatedAt:    now.Format(timeFormat),
+	var row db.Goal
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		row, err = tx.queries.CreateGoal(ctx, db.CreateGoalParams{
+			Title:        title,
+			WhyItMatters: whyItMatters,
+			OwnerID:      in.OwnerID,
+			Lifecycle:    LifecycleProposed,
+			CreatedAt:    now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create goal: %w", err)
+		}
+
+		// Keep the Why it matters as its first revision so later edits are auditable
+		// (CONTEXT.md: Why it matters edits are tracked). It commits with the Goal,
+		// so no Goal is ever without one (#421).
+		if _, err := tx.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
+			GoalID:       row.ID,
+			WhyItMatters: whyItMatters,
+			AuthorID:     in.OwnerID,
+			CreatedAt:    now.Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("record why it matters revision: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return Goal{}, fmt.Errorf("create goal: %w", err)
-	}
-
-	// Keep the Why it matters as its first revision so later edits are auditable
-	// (CONTEXT.md: Why it matters edits are tracked).
-	if _, err := s.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
-		GoalID:       row.ID,
-		WhyItMatters: whyItMatters,
-		AuthorID:     in.OwnerID,
-		CreatedAt:    now.Format(timeFormat),
-	}); err != nil {
-		return Goal{}, fmt.Errorf("record why it matters revision: %w", err)
+		return Goal{}, err
 	}
 
 	return goalFromRow(row, owner), nil
