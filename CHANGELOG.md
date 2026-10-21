@@ -15,9 +15,15 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 21, 2026
 
+**New features:**
+- [user] Every signed-in page sits in a new frame: a sidebar on the left replaces the teal top bar. It holds the app's name (linking Home), a Search that asks the Goal list, the nav with icons and counts, My org (the people directly under you, each linking to their org on Goals, shown only to someone with people under them), and your Name and initials at the foot, opening a menu with Theme and Sign out (#390).
+- [user] At 900px and below the sidebar becomes a 48px strip with the app's name, Home's count and a Menu that opens the rest as a sheet, without script (#390).
+
 **Improvements:**
 - [user] The Reports page's Open Action Items is a plain section on the canvas rather than a second card, so the Reports table is the page's one card (#386).
 - [user] Home's Needs you, My org and Your Yellow or Red goals headings are section headings (`h2`) for screen readers and outlines, looking as before (#386).
+- [user] The app moves to the flat frame's look: a white canvas with neutral greys and hairlines (a neutral near-black in dark), Inter for every heading and number, page titles at 28px, section headings at 13px, labels in sentence case, and numbers in tabular figures. Cards stay, quieter, until each page moves to the frame (#390).
+- [user] Signed-out pages (sign-in, set password, Not found) centre their content under the app's name, with the Theme menu at the top right (#390).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -29,9 +35,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Code quality:**
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
+- [internal] The layout gains a page-header slot (`framedLayout` with `pageHeader`) for pages to fill as they move to the frame. The `--nav-*` and `--font-display`/`--font-mono` tokens and the Plus Jakarta Sans and JetBrains Mono font files are gone (#390).
 
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
+- [internal] DESIGN.md's Tokens, Type scale, Sidebar, Page header, Theme menu and Nav counts describe the frame as built, and § Deviations 10 tabulates the new surfaces' contrast, which `scripts/contrast.py` now checks along with the Health shapes (#390).
 
 ### Collected changes — October 20, 2026
 
