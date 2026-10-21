@@ -50,6 +50,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Check-in cadence control's segments are 44px tall on a touch screen, as every touch target is; they were 36px (#396).
 - [user] Every message page (Can't undo, Can't remove link, a refused Nudge, a Check-in that can't be reached) is centred like Not found (#397).
 - [ops] A PDF render that runs out of time leaves nothing behind: Chromium's scratch files, its `org.chromium.Chromium.*` socket directory and on-disk shared memory, go in the render's own directory as its `TMPDIR`, and that directory is removed only once every Chromium process the render started has exited. Where `TMPDIR` is too long for Chromium's socket to fit in a render's directory, Chromium keeps its scratch files in `TMPDIR` as before (#408).
+- [user] On the Goal list's filter bar, Tab now follows the controls in the order they are drawn: Scope, Health, Lifecycle, Incomplete, + Filter, Group by, Clear, the search, then the open Dimension filters (#404).
+- [user] On a touch screen, the Goal page's Manage, Edit and + Add links are 44px tall (#404).
 
 **Testing:**
 - [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
