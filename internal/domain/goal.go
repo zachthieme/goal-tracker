@@ -188,17 +188,15 @@ type WhyItMattersRevision struct {
 
 // EditWhyItMatters replaces a Goal's Why it matters, keeping the previous text as a revision.
 // The new Why it matters is required (CONTEXT.md: Why it matters). authorID records who made
-// the edit.
+// the edit, and must be the Goal's Owner or an Admin (ErrNotAuthorized; see
+// RequireGoalOwnerOrAdmin).
 func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
 	whyItMatters = strings.TrimSpace(whyItMatters)
 	if whyItMatters == "" {
 		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
 	}
-	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-		}
-		return Goal{}, fmt.Errorf("look up goal: %w", err)
+	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
+		return Goal{}, err
 	}
 
 	if _, err := s.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{

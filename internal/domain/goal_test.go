@@ -555,3 +555,40 @@ func TestAddContributorAdmitsOnlyTheOwner(t *testing.T) {
 		t.Errorf("Owner: %v", err)
 	}
 }
+
+// Only a Goal's Owner or an Admin may change its title or Why it matters: a
+// stranger and a Delegate are refused, and neither changes.
+func TestTitleAndWhyItMattersEditsAdmitOnlyTheOwnerOrAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	delegate := h.SignIn("tpm@example.com")
+	admin := h.SignIn("admin@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "Customers wait.")
+	h.AddDelegate(owner, delegate, g.ID)
+	ctx := context.Background()
+
+	for name, actor := range map[string]domain.Account{
+		"a stranger": h.SignIn("pat@example.com"),
+		"a Delegate": delegate,
+	} {
+		if _, err := h.Service.EditTitle(ctx, g.ID, "Ship v3", actor.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing the title: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Customers leave.", actor.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing Why it matters: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Title != "Ship v2" || got.WhyItMatters != "Customers wait." {
+		t.Errorf("after refusals the Goal is %q / %q, want it unchanged", got.Title, got.WhyItMatters)
+	}
+	for name, actor := range map[string]domain.Account{"the Owner": owner, "an Admin": admin} {
+		if _, err := h.Service.EditTitle(ctx, g.ID, "Ship v2 by "+actor.Email, actor.ID); err != nil {
+			t.Errorf("%s editing the title: %v", name, err)
+		}
+		if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Customers leave "+actor.Email, actor.ID); err != nil {
+			t.Errorf("%s editing Why it matters: %v", name, err)
+		}
+	}
+}
