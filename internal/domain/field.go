@@ -240,6 +240,13 @@ func (s *Service) GoalFields(ctx context.Context, goalID int64) ([]FieldValue, e
 	return out, nil
 }
 
+// GoalFieldsByGoal returns each of goalIDs' values, keyed by Goal ID, as
+// GoalFields returns one Goal's, in one query, so a page listing many Goals
+// reads them all at once. A Goal with no values has no entry.
+func (s *Service) GoalFieldsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]FieldValue, error) {
+	return s.fieldValuesByGoal(ctx, goalIDs)
+}
+
 // fieldValuesByGoal returns each of goalIDs' values in Fields, as GoalFields
 // reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
 func (s *Service) fieldValuesByGoal(ctx context.Context, goalIDs []int64) (map[int64][]FieldValue, error) {

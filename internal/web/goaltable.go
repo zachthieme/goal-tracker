@@ -81,13 +81,17 @@ func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domai
 			table.Columns = append(table.Columns, col)
 		}
 	}
+	ids := make([]int64, 0, len(rows))
 	for _, row := range rows {
-		values, err := s.svc.GoalFields(ctx, row.Goal.ID)
-		if err != nil {
-			return nil, err
-		}
+		ids = append(ids, row.Goal.ID)
+	}
+	fieldValues, err := s.svc.GoalFieldsByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
 		tr := goalTableRow{goalRow: row, Fields: map[int64]string{}}
-		for _, fv := range values {
+		for _, fv := range fieldValues[row.Goal.ID] {
 			tr.Fields[fv.Field.ID] = fv.Value
 		}
 		table.Rows = append(table.Rows, tr)
