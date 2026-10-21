@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -280,14 +281,15 @@ func TestATamperedSessionCookieIsSignedOut(t *testing.T) {
 		t.Fatal("sam's own session cookie doesn't sign sam in")
 	}
 
-	id, sig, ok := strings.Cut(sam.Value, ".")
-	if !ok {
-		t.Fatalf("session cookie %q isn't signed", sam.Value)
+	parts := strings.Split(sam.Value, ".")
+	if len(parts) != 5 {
+		t.Fatalf("session cookie %q isn't <id>.<generation>.<signed-in>.<last-seen>.<signature>", sam.Value)
 	}
-	if id == strconv.FormatInt(boss.ID, 10) {
-		t.Fatalf("sam and boss share Account ID %s", id)
+	if parts[0] == strconv.FormatInt(boss.ID, 10) {
+		t.Fatalf("sam and boss share Account ID %s", parts[0])
 	}
-	forged := &http.Cookie{Name: "gt_session", Value: strconv.FormatInt(boss.ID, 10) + "." + sig}
+	parts[0] = strconv.FormatInt(boss.ID, 10)
+	forged := &http.Cookie{Name: "gt_session", Value: strings.Join(parts, ".")}
 	if !signedOut(t, ts.URL, forged) {
 		t.Errorf("a cookie with boss's ID and sam's signature signs someone in")
 	}
@@ -393,11 +395,28 @@ func TestASessionCookieWithAnEditedGenerationIsSignedOut(t *testing.T) {
 	}
 
 	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 3 || parts[1] != "0" {
-		t.Fatalf("session cookie %q isn't <id>.0.<signature>", cookie.Value)
+	if len(parts) != 5 || parts[1] != "0" {
+		t.Fatalf("session cookie %q isn't <id>.0.<signed-in>.<last-seen>.<signature>", cookie.Value)
 	}
-	edited := &http.Cookie{Name: "gt_session", Value: parts[0] + ".1." + parts[2]}
+	parts[1] = "1"
+	edited := &http.Cookie{Name: "gt_session", Value: strings.Join(parts, ".")}
 	if !signedOut(t, ts.URL, edited) {
 		t.Errorf("a cookie with its generation edited to the current one signs sam in")
+	}
+}
+
+// A session left idle for 7 days ends: 8 days after sign-in with no request in
+// between, the cookie sends /home to sign-in.
+func TestASessionIdleForAWeekIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	cookie := sessionCookieOf(t, ts.URL, "sam@example.com")
+
+	h.Clock.Advance(8 * 24 * time.Hour)
+
+	if !signedOut(t, ts.URL, cookie) {
+		t.Error("a session idle for 8 days still signs sam in")
 	}
 }

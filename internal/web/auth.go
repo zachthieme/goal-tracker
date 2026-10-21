@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -64,22 +65,58 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
+// sessionIdleLimit is how long a session lasts without a request.
+const sessionIdleLimit = 7 * 24 * time.Hour
+
 // startSession signs acc in on this browser: a signed session cookie carrying
-// their current session generation, so EndSessions ends it.
+// their current session generation, so EndSessions ends it, and the time they
+// signed in.
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, acc domain.Account) error {
 	gen, err := s.svc.SessionGeneration(r.Context(), acc.ID)
 	if err != nil {
 		return err
 	}
+	now := s.svc.Now()
+	s.setSessionCookie(w, session{accountID: acc.ID, generation: gen, signedIn: now, lastSeen: now})
+	return nil
+}
+
+// setSessionCookie sets the session cookie to carry sess.
+func (s *Server) setSessionCookie(w http.ResponseWriter, sess session) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    s.sessions.encode(acc.ID, gen),
+		Value:    s.sessions.encode(sess),
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   s.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
-	return nil
+}
+
+// openSession is the session r's cookie carries and the Account it signs in,
+// if it still does: its signature verifies, its generation is the Account's
+// current one, the Account hasn't Departed, and it hasn't sat idle past
+// sessionIdleLimit.
+func (s *Server) openSession(r *http.Request) (session, domain.Account, bool) {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		return session{}, domain.Account{}, false
+	}
+	sess, ok := s.sessions.decode(c.Value)
+	if !ok {
+		return session{}, domain.Account{}, false
+	}
+	if s.svc.Now().Sub(sess.lastSeen) >= sessionIdleLimit {
+		return session{}, domain.Account{}, false
+	}
+	acc, err := s.svc.Account(r.Context(), sess.accountID)
+	if err != nil || acc.Departed {
+		return session{}, domain.Account{}, false
+	}
+	if current, err := s.svc.SessionGeneration(r.Context(), acc.ID); err != nil || sess.generation != current {
+		return session{}, domain.Account{}, false
+	}
+	return sess, acc, true
 }
 
 // departedSentence is what the sign-in page says to a Departed person.
@@ -108,42 +145,61 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/signin", http.StatusSeeOther)
 }
 
-// sessionCodec turns an Account ID and its session generation into a session
-// cookie value and back. The value carries them with their HMAC-SHA256 under
-// key, so a cookie can't be edited to name someone else or an ended
-// generation.
+// session is what a session cookie carries: the Account it signs in, at which
+// session generation, when they signed in, and when the app last re-issued it.
+type session struct {
+	accountID  int64
+	generation int64
+	signedIn   time.Time
+	lastSeen   time.Time
+}
+
+// sessionCodec turns a session into a session cookie value and back. The value
+// carries it with its HMAC-SHA256 under key, so a cookie can't be edited to
+// name someone else, an ended generation, or a later time.
 type sessionCodec struct {
 	key []byte
 }
 
-// encode is the cookie value that signs id in at session generation gen:
-// "<id>.<generation>.<signature>".
-func (c sessionCodec) encode(id, gen int64) string {
-	payload := strconv.FormatInt(id, 10) + "." + strconv.FormatInt(gen, 10)
+// encode is the cookie value that carries sess:
+// "<id>.<generation>.<signed-in>.<last-seen>.<signature>", the times in Unix
+// seconds.
+func (c sessionCodec) encode(sess session) string {
+	payload := strings.Join([]string{
+		strconv.FormatInt(sess.accountID, 10),
+		strconv.FormatInt(sess.generation, 10),
+		strconv.FormatInt(sess.signedIn.Unix(), 10),
+		strconv.FormatInt(sess.lastSeen.Unix(), 10),
+	}, ".")
 	return payload + "." + c.sign(payload)
 }
 
-// decode is the Account ID and session generation value carries, and whether
-// its signature verifies. A value of any other shape, like the "<id>.<signature>"
-// or bare IDs older versions issued, doesn't.
-func (c sessionCodec) decode(value string) (id, gen int64, ok bool) {
+// decode is the session value carries, and whether its signature verifies. A
+// value of any other shape, like the "<id>.<generation>.<signature>",
+// "<id>.<signature>" or bare IDs older versions issued, doesn't.
+func (c sessionCodec) decode(value string) (session, bool) {
 	parts := strings.Split(value, ".")
-	if len(parts) != 3 {
-		return 0, 0, false
+	if len(parts) != 5 {
+		return session{}, false
 	}
-	payload := parts[0] + "." + parts[1]
-	if !c.verify(payload, parts[2]) {
-		return 0, 0, false
+	payload := strings.Join(parts[:4], ".")
+	if !c.verify(payload, parts[4]) {
+		return session{}, false
 	}
-	id, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, 0, false
+	var nums [4]int64
+	for i, part := range parts[:4] {
+		n, err := strconv.ParseInt(part, 10, 64)
+		if err != nil {
+			return session{}, false
+		}
+		nums[i] = n
 	}
-	gen, err = strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, 0, false
-	}
-	return id, gen, true
+	return session{
+		accountID:  nums[0],
+		generation: nums[1],
+		signedIn:   time.Unix(nums[2], 0),
+		lastSeen:   time.Unix(nums[3], 0),
+	}, true
 }
 
 // verify reports whether sig is payload's signature.
