@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
@@ -1813,6 +1815,30 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 	team := h.CreateDimension(boss, "Team", "Platform")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
+	// filterChip is the chip around a filter's select: the classes of the
+	// label it sits in, and the key the label opens with, its classes, whether
+	// it's hidden from screen readers and what it reads.
+	type filterChip struct{ class, keyClass, keyHidden, key string }
+	chipAround := func(sel *nethtml.Node) filterChip {
+		label := sel.Parent
+		if label == nil || label.Data != "label" {
+			return filterChip{}
+		}
+		key := label.FirstChild
+		for key != nil && key.Type != nethtml.ElementNode {
+			key = key.NextSibling
+		}
+		if key == nil || key.Data != "span" {
+			return filterChip{class: attrOf(label, "class")}
+		}
+		return filterChip{attrOf(label, "class"), attrOf(key, "class"), attrOf(key, "aria-hidden"), textOf(key)}
+	}
+	// teamOption is one of the Team select's options as a person picks it.
+	type teamOption struct {
+		value, text string
+		selected    bool
+	}
+
 	platform := strconv.FormatInt(team.Values[0].ID, 10)
 	for _, c := range []struct {
 		addr string
@@ -1820,28 +1846,41 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 		// options: unset, "Team: any" is chosen; on Platform, Platform is,
 		// which is what puts the chip in its on state (app.css's
 		// .filter-chip:has(option:checked:not([value=""]))).
-		any, chosen string
+		any, chosen teamOption
 	}{
-		{"/follow-ups", `<option value="" selected>Team: any</option>`, `<option value="` + platform + `">Platform</option>`},
-		{"/follow-ups?value=" + platform, `<option value="">Team: any</option>`, `<option value="` + platform + `" selected>Platform</option>`},
+		{"/follow-ups", teamOption{"", "Team: any", true}, teamOption{platform, "Platform", false}},
+		{"/follow-ups?value=" + platform, teamOption{"", "Team: any", false}, teamOption{platform, "Platform", true}},
 	} {
 		addr := c.addr
-		page := getBody(t, client, ts.URL+addr)
-		filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
-		if !strings.Contains(filters, `<label class="filter-chip on"><span class="chip-key" aria-hidden="true">Scope:</span><select data-testid="follow-ups-scope"`) {
-			t.Errorf("%s: the Scope select isn't in the Scope chip:\n%s", addr, filters)
+		doc := getPage(t, client, ts.URL+addr)
+		filters := findByTestID(t, doc, "follow-ups-filters")
+		if got, want := chipAround(findByTestID(t, filters, "follow-ups-scope")), (filterChip{"filter-chip on", "chip-key", "true", "Scope:"}); got != want {
+			t.Errorf("%s: the Scope select isn't in the Scope chip: got %+v, want %+v", addr, got, want)
 		}
-		if !regexp.MustCompile(`<label class="filter-chip"><span class="chip-key chip-key-set" aria-hidden="true">Team:</span>\s*<select data-testid="follow-ups-value" data-dimension="Team"`).MatchString(filters) {
-			t.Errorf("%s: the Team select isn't in a Team chip:\n%s", addr, filters)
+		value := findByTestID(t, filters, "follow-ups-value")
+		if got, want := chipAround(value), (filterChip{"filter-chip", "chip-key chip-key-set", "true", "Team:"}); got != want || attrOf(value, "data-dimension") != "Team" {
+			t.Errorf("%s: the Team select isn't in a Team chip: got %+v for dimension %q, want %+v", addr, got, attrOf(value, "data-dimension"), want)
 		}
-		options := between(t, filters, `data-testid="follow-ups-value"`, "</select>")
-		for _, want := range []string{c.any, c.chosen} {
-			if !strings.Contains(options, want) {
-				t.Errorf("%s: the Team select has no %s:\n%s", addr, want, options)
+		var options []teamOption
+		for _, o := range findAll(value, func(n *nethtml.Node) bool { return n.Data == "option" }) {
+			options = append(options, teamOption{attrOf(o, "value"), textOf(o), hasAttr(o, "selected")})
+		}
+		for _, want := range []teamOption{c.any, c.chosen} {
+			if !slices.Contains(options, want) {
+				t.Errorf("%s: the Team select has no %+v among %+v", addr, want, options)
 			}
 		}
-		if strings.Contains(page, ".rk-filters select") {
-			t.Errorf("%s: the page's own styles restyle the chips' selects", addr)
+		for _, style := range findAll(doc, func(n *nethtml.Node) bool { return n.Data == "style" }) {
+			for css := style.FirstChild; css != nil; css = css.NextSibling {
+				for _, rule := range strings.Split(css.Data, "}") {
+					selectors, _, _ := strings.Cut(rule, "{")
+					for _, s := range strings.Split(selectors, ",") {
+						if strings.HasPrefix(strings.TrimSpace(s), ".rk-filters select") {
+							t.Errorf("%s: the page's own styles restyle the chips' selects: %s", addr, strings.TrimSpace(s))
+						}
+					}
+				}
+			}
 		}
 	}
 }
