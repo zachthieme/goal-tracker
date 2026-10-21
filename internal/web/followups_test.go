@@ -13,6 +13,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // followUpRows returns every row of the Follow-ups page's table.
@@ -586,17 +587,12 @@ func TestFollowUpsPageDefinesEachSignalBesideItsCount(t *testing.T) {
 		t.Fatalf("What each signal means isn't a button opening a popover: %s", button)
 	}
 	list := html.UnescapeString(followUpPopover(t, page, attr(button, "popovertarget")))
-	last := -1
-	for _, m := range followUpMeanings {
-		def := "<dt>" + m.name + "</dt><dd>" + m.means + "</dd>"
-		if n := strings.Count(list, def); n != 1 {
-			t.Errorf("the list defines %s %d times, want 1:\n%s", m.name, n, list)
-		}
-		if at := strings.Index(list, def); at < last {
-			t.Errorf("the list defines %s out of order", m.name)
-		} else {
-			last = at
-		}
+	var want strings.Builder
+	for _, d := range web.FollowUpSignalDefinitions {
+		want.WriteString("<dt>" + d.Name + "</dt><dd>" + d.Means + "</dd>")
+	}
+	if got := strings.TrimSpace(list); got != "<dl>"+want.String()+"</dl>" {
+		t.Errorf("the list doesn't define each signal once, in the page's order:\n%s\nwant\n<dl>%s</dl>", got, want.String())
 	}
 	for _, gone := range []string{`data-testid="follow-ups-definitions"`, "What each risk means"} {
 		if strings.Contains(page, gone) {
@@ -2943,34 +2939,6 @@ func TestFollowUpsNotGreenRowsTagASlippedBackToGreenDate(t *testing.T) {
 	}
 }
 
-// followUpMeanings are what each of the Follow-ups page's signals means, keyed by the
-// kind its chip carries, in the page's order.
-var followUpMeanings = []struct{ kind, name, means string }{
-	{"red", "Red", "Active Goals whose latest Check-in is Red."},
-	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
-	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
-	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
-	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date and not yet Green."},
-	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in."},
-	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
-	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
-	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
-	{"schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to."},
-	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
-}
-
-// followUpMeaning returns what the signal of kind means.
-func followUpMeaning(t *testing.T, kind string) string {
-	t.Helper()
-	for _, m := range followUpMeanings {
-		if m.kind == kind {
-			return m.means
-		}
-	}
-	t.Fatalf("no signal of kind %q", kind)
-	return ""
-}
-
 // followUpPopover returns the content of the page's native popover with id,
 // failing the test unless one is there.
 func followUpPopover(t *testing.T, page, id string) string {
@@ -2986,42 +2954,17 @@ func followUpPopover(t *testing.T, page, id string) string {
 // Each signal chip in the Follow-ups table names its signal with a button that,
 // with no script, opens a popover saying what the signal means, so a tap
 // explains it where it's shown. Chips holding a link or a person name the
-// signal with the button and keep the link outside it.
+// signal with the button and keep the link outside it. Every signal but Red
+// and Yellow, which the Health badge says, takes a chip, and each is checked.
 func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "ada@example.com")
-	ts := newServer(t, h)
-	ada := h.SignIn("ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	kim := h.SignIn("kim@example.com")
-	mia := h.SignInNamed("mia@example.com", "Mia Chen")
-	h.SetManager(sam, mia)
-	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue, Unlinked and an overdue Action Item
-	h.Clock.Advance(10 * day)
-	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	raiseFollowUpActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
-	orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
-	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
-		t.Fatalf("MarkDeparted: %v", err)
-	}
-	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
-	h.RequestLink(sam, late, launch, "")
-	stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Asks for help
-	h.AskForHelp(sam, stalled.ID, domain.HealthRed, "Blocked.", "Need budget.", june)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
-
-	for g, kinds := range map[*domain.Goal][]string{
-		&silent:   {"checkin-overdue", "action-item-overdue", "unlinked"},
-		&orphaned: {"ownerless", "unlinked"},
-		&late:     {"schedule-conflicts"},
-		&stalled:  {"asks-for-help"},
-	} {
-		row := followUpRowOf(t, page, *g)
+	checked := map[string]bool{}
+	check := func(t *testing.T, page string, g domain.Goal, kinds ...string) {
+		t.Helper()
+		row := followUpRowOf(t, page, g)
 		for _, kind := range kinds {
+			checked[kind] = true
 			chip := followUpChip(t, row, kind)
 			at := strings.Index(chip, "<button")
 			if at < 0 {
@@ -3041,11 +2984,85 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 				t.Errorf("%q's %s button opens no popover: %s", g.Title, kind, openTag(button))
 				continue
 			}
-			if pop := html.UnescapeString(followUpPopover(t, page, target)); !strings.Contains(pop, followUpMeaning(t, kind)) {
-				t.Errorf("%q's %s popover doesn't say what it means:\n%s", g.Title, kind, pop)
+			def := followUpSignalDefinition(t, kind)
+			if pop, want := html.UnescapeString(followUpPopover(t, page, target)), "<strong>"+def.Name+"</strong> "+def.Means; pop != want {
+				t.Errorf("%q's %s popover = %q, want %q", g.Title, kind, pop, want)
 			}
 		}
 	}
+
+	t.Run("by who acts", func(t *testing.T) {
+		h := testsupport.New(t, "ada@example.com")
+		ts := newServer(t, h)
+		ada := h.SignIn("ada@example.com")
+		sam := h.SignIn("sam@example.com")
+		kim := h.SignIn("kim@example.com")
+		mia := h.SignInNamed("mia@example.com", "Mia Chen")
+		h.SetManager(sam, mia)
+		june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+		launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+		silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue, Unlinked and an overdue Action Item
+		h.Clock.Advance(10 * day)
+		h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+		raiseFollowUpActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
+		orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
+		if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+		late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
+		h.RequestLink(sam, late, launch, "")
+		stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Asks for help
+		h.AskForHelp(sam, stalled.ID, domain.HealthRed, "Blocked.", "Need budget.", june)
+
+		page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+
+		check(t, page, silent, "checkin-overdue", "action-item-overdue", "unlinked")
+		check(t, page, orphaned, "ownerless", "unlinked")
+		check(t, page, late, "schedule-conflicts")
+		check(t, page, stalled, "asks-for-help")
+	})
+
+	t.Run("by what is late or halted", func(t *testing.T) {
+		h := testsupport.New(t)
+		ts := newServer(t, h)
+		sam := h.SignIn("sam@example.com")
+		passed, _ := h.GreenGoalWithOverdueMilestone(sam, "Ship search") // Milestone overdue
+		stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")  // Path to Green overdue
+		h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 0, 1))
+		paused := h.ActiveGoal(sam, "Paused outcome", "It mattered.")
+		under := h.ActiveChildOf(sam, paused, "Under paused", "Feeds paused.") // Parent On Hold
+		if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+			GoalID: paused.ID, AuthorID: sam.ID, Status: "Stopping.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget freeze.",
+		}); err != nil {
+			t.Fatalf("SubmitCheckin On Hold: %v", err)
+		}
+		h.Clock.Advance(3 * day)
+
+		page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+
+		check(t, page, passed, "milestone-overdue")
+		check(t, page, stalled, "path-overdue")
+		check(t, page, under, "halted-parents")
+	})
+
+	for _, d := range web.FollowUpSignalDefinitions {
+		if d.Kind != "red" && d.Kind != "yellow" && !checked[d.Kind] {
+			t.Errorf("no %s chip is checked for what it means", d.Kind)
+		}
+	}
+}
+
+// followUpSignalDefinition returns the Follow-ups page's definition of the
+// signal of kind.
+func followUpSignalDefinition(t *testing.T, kind string) web.FollowUpSignalDefinition {
+	t.Helper()
+	for _, d := range web.FollowUpSignalDefinitions {
+		if d.Kind == kind {
+			return d
+		}
+	}
+	t.Fatalf("no signal of kind %q", kind)
+	return web.FollowUpSignalDefinition{}
 }
 
 // A group card stays a link holding no button, though the table's chips for

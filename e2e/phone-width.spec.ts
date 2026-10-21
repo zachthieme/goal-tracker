@@ -1,8 +1,8 @@
-// Phone width: at 390px the Goals list, Follow-ups, the Admin page, a Report draft,
-// the New goal page, with its Metric editor open, and the Check-in page fit
-// the screen. Nothing inside main is clipped or scrolls sideways, and every
-// control lies within the window (#343: #258, #268, #338, #229; #368; #369;
-// #364).
+// Phone width: at 390px Home, with a Check-in due in Needs you, the Goals
+// list, Follow-ups, the Admin page, a Report draft, the New goal page, with
+// its Metric editor open, and the Check-in page fit the screen. Nothing inside
+// main is clipped or scrolls sideways, and every control lies within the
+// window (#343: #258, #268, #338, #229; #368; #369; #364; #387).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, signIn, test } from "./fixtures";
@@ -76,6 +76,47 @@ async function buildRuleReport(page: Page, name: string): Promise<void> {
   await builder.getByRole("button", { name: "Save report" }).click();
   await page.waitForURL(/\/reports\/\d+$/);
 }
+
+// dueNoChangeGoal is a 7-day Goal, due on Home on the due template, whose
+// Owner's Needs you row offers No change beside Check in: Active, checked in
+// before, no accepted contributors (so no Rolled-up Health to refuse a
+// repeat), no overdue Planned Milestone, and no back-to-Green date passed on
+// its latest Check-in, as in isolation.spec.ts.
+const dueNoChangeGoal = `
+  select g.id, g.title, a.email
+  from goals g join accounts a on a.id = g.owner_id
+  where g.lifecycle = 'Active' and a.departed = 0 and g.cadence_days = 7
+    and exists (select 1 from checkins c where c.goal_id = g.id)
+    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
+    and not exists (select 1 from milestones m
+                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
+    and not exists (select 1 from checkins c
+                    where c.id = (select c2.id from checkins c2 where c2.goal_id = g.id
+                                  order by c2.created_at desc, c2.id desc limit 1)
+                      and c.path_target_date <> '' and c.path_target_date < date($now))
+  order by g.id
+  limit 1`;
+
+test.describe("on the due template", () => {
+  test.use({ template: "due" });
+
+  test("at 390px Home fits, a Check-in due in Needs you with its No change and Check in", async ({
+    page,
+    seedLookup,
+  }) => {
+    const [goal] = seedLookup<{ id: number; title: string; email: string }>(dueNoChangeGoal);
+    expect(goal, "the due template has a 7-day Goal its Owner can press No change on").toBeDefined();
+    await signIn(page, goal.email);
+    const row = page
+      .getByTestId("home-needs-you")
+      .getByTestId("home-due-goal")
+      .filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
+    await expect(row).toBeVisible();
+    await expect(row.getByRole("button", { name: "No change" })).toBeVisible();
+    await expect(row.getByTestId("home-due-checkin")).toBeVisible();
+    await expectFitsAPhone(page);
+  });
+});
 
 test("at 390px the Goals list stacks each Goal's Owner and Due under its title", async ({ page }) => {
   await signIn(page, "ceo@example.com");

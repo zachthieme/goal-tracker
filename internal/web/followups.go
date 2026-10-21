@@ -381,8 +381,8 @@ func (c followUpCard) Attrs() templ.Attributes {
 // there is company-wide.
 func (p followUpsPageView) Cards() []followUpCard {
 	names := map[string]string{}
-	for _, rt := range p.Types() {
-		names[rt.Anchor] = rt.Name
+	for _, d := range followUpDefinitions {
+		names[d.Kind] = d.Name
 	}
 	groups, company := followUpGroups(p.Rows), followUpGroups(p.CompanyRows)
 	cards := make([]followUpCard, 0, len(groups))
@@ -438,36 +438,11 @@ type followUpOverdueGoal struct {
 	Days int
 }
 
-// followUpType is one of the Follow-ups page's signals, or its chip on a group card:
-// its kind, its name, and how many Goals it flags.
+// followUpType is a signal's chip on a group card: its kind, its name, and how
+// many Goals it flags.
 type followUpType struct {
 	Anchor, Name string
 	Count        int
-}
-
-// Types are the Follow-ups page's signals in the page's order.
-func (v followUpsView) Types() []followUpType {
-	red, yellow := 0, 0
-	for _, gf := range v.NotGreen {
-		if followUpHealthKind(gf.Health) == "red" {
-			red++
-		} else {
-			yellow++
-		}
-	}
-	return []followUpType{
-		{"red", "Red", red},
-		{"yellow", "Yellow", yellow},
-		{"asks-for-help", "Asks for help", len(v.Asks)},
-		{"checkin-overdue", "Check-in overdue", len(v.CheckinOverdue)},
-		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
-		{"milestone-overdue", "Milestone overdue", len(v.OverdueMilestones)},
-		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
-		{"ownerless", "Ownerless", len(v.Ownerless)},
-		{"unlinked", "Unlinked", len(v.Unlinked)},
-		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
-		{"halted-parents", "Parent On Hold or Cancelled", len(v.HaltedParents)},
-	}
 }
 
 // followUpDefinition is one of the Follow-ups page's signals: the kind its chips
@@ -476,7 +451,8 @@ type followUpDefinition struct{ Kind, Name, Means string }
 
 // followUpDefinitions are the Follow-ups page's signals in the page's order, each with
 // what it means: what a chip's button opens, and what "What each signal
-// means" lists.
+// means" lists. They are the one place a signal is named: the group cards'
+// chips take their names from here too.
 var followUpDefinitions = []followUpDefinition{
 	{"red", "Red", "Active Goals whose latest Check-in is Red."},
 	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
