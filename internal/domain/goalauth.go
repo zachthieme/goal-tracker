@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"fmt"
 )
 
 // goalImport is an Admin's spreadsheet import in progress: the Admin running
@@ -30,6 +31,15 @@ func (s *Service) ForImportBy(ctx context.Context, adminID int64) (*Service, err
 // actorID.
 func (s *Service) importedBy(actorID, goalID int64) bool {
 	return s.goalImport != nil && s.goalImport.adminID == actorID && s.goalImport.created[goalID]
+}
+
+// requireImportingAdmin refuses anyone but the Admin running the import s runs
+// for, and everyone when it runs for none.
+func (s *Service) requireImportingAdmin(actorID int64) error {
+	if s.goalImport == nil || s.goalImport.adminID != actorID {
+		return fmt.Errorf("%w: only an Admin's import may do this", ErrNotAuthorized)
+	}
+	return nil
 }
 
 // recordImportedGoal notes that the import s runs, if any, created goalID.

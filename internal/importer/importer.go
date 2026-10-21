@@ -607,7 +607,7 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 			if !ok || goalIDs[i] == 0 {
 				continue
 			}
-			if _, err := tx.ImportLink(ctx, goalIDs[i], parentID); err != nil {
+			if _, err := tx.ImportLink(ctx, adminID, goalIDs[i], parentID); err != nil {
 				results[i].Errors = append(results[i].Errors, linkMessage(err, parentTitle))
 			}
 		}

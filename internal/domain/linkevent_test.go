@@ -173,12 +173,12 @@ func TestRemoveLinkAndItsUndoAreRecorded(t *testing.T) {
 func TestImportLinkRecordsLinkedByTheChildsOwner(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t)
+	h := testsupport.New(t, "admin@example.com")
 	pat := h.SignIn("pat@example.com")
 	sam := h.SignIn("sam@example.com")
 	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
-	if _, err := h.Service.ImportLink(context.Background(), child.ID, parent.ID); err != nil {
+	if _, err := importLinkAsAdmin(t, h, child.ID, parent.ID); err != nil {
 		t.Fatalf("ImportLink: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func TestRefusedLinkCommandsRecordNothing(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	h := testsupport.New(t)
+	h := testsupport.New(t, "admin@example.com")
 	pat, sam, child, parent, link := pendingAcrossOwners(t, h)
 	recorded := len(linkEvents(t, h, child))
 	// did runs a command that must succeed, which records one event.
@@ -237,7 +237,7 @@ func TestRefusedLinkCommandsRecordNothing(t *testing.T) {
 	did("AcceptLink", err)
 	_, err = request(pat, parent, child)
 	refused("a request closing a cycle", err)
-	_, err = h.Service.ImportLink(ctx, parent.ID, child.ID)
+	_, err = importLinkAsAdmin(t, h, parent.ID, child.ID)
 	refused("an import closing a cycle", err)
 
 	first, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)

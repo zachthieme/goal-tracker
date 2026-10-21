@@ -50,3 +50,54 @@ func TestAnImportWritesOnlyTheGoalsItCreates(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 }
+
+// Only the Admin running an import may link Goals without the parent's Owner
+// accepting: the child's Owner, a stranger, and an Admin outside an import are
+// refused, and no link is made.
+func TestImportLinkAdmitsOnlyTheImportingAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	ctx := context.Background()
+	imp, err := h.Service.ForImportBy(ctx, admin.ID)
+	if err != nil {
+		t.Fatalf("ForImportBy: %v", err)
+	}
+
+	for name, try := range map[string]struct {
+		svc   *domain.Service
+		actor domain.Account
+	}{
+		"the child's Owner":                  {h.Service, sam},
+		"a stranger":                         {h.Service, h.SignIn("kim@example.com")},
+		"an Admin outside an import":         {h.Service, admin},
+		"someone else in the Admin's import": {imp, sam},
+	} {
+		if _, err := try.svc.ImportLink(ctx, try.actor.ID, child.ID, parent.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("parents after refusals = %+v, want none", got)
+	}
+	if _, err := imp.ImportLink(ctx, admin.ID, child.ID, parent.ID); err != nil {
+		t.Errorf("the importing Admin: %v", err)
+	}
+}
+
+// importLinkAsAdmin links childID to parentID as an Admin's import does, as
+// admin@example.com, whom the harness must list as an Admin.
+func importLinkAsAdmin(t *testing.T, h *testsupport.Harness, childID, parentID int64) (domain.Link, error) {
+	t.Helper()
+	admin := h.SignIn("admin@example.com")
+	imp, err := h.Service.ForImportBy(context.Background(), admin.ID)
+	if err != nil {
+		t.Fatalf("ForImportBy: %v", err)
+	}
+	return imp.ImportLink(context.Background(), admin.ID, childID, parentID)
+}
