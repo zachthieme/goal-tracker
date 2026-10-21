@@ -222,8 +222,8 @@ func goalDiscussion(goalID int64, d discussion) templ.Component {
 	})
 }
 
-// goalComments is the Goal page's Comments block, on the canvas between its
-// Highlights and History: the threads started on the Goal itself, oldest
+// goalComments is the Goal page's Comments section, between its Action Items
+// and History: the threads started on the Goal itself, oldest
 // first, each with a reply form behind a Reply toggle as on a Report, and the
 // form to start a new one, which everyone signed in gets (ticket #350). A
 // Goal's Comment belongs to no Report, so none is offered as an Action Item.
@@ -249,7 +249,7 @@ func goalComments(current *domain.Account, v goalView) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		d := discussion{Current: current, Loc: v.History.Loc}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<section data-testid=\"goal-comments\" id=\"comments\" class=\"gp-block ruled\"><h2>Comments</h2>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<section data-testid=\"goal-comments\" id=\"comments\" class=\"gp-block gp-section\"><h2>Comments</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -738,142 +738,109 @@ templ goalsStyles() {
 	</style>
 }
 
-// goalPage shows a single Goal: a header summarizing it with every action in
-// reach and its Why it matters beneath, then its latest status, Metrics, Milestones,
-// Highlights, Comments and history in the main column, and its links, people,
-// Dimension values and Fields in the sidebar. Only the latest status, each Metric and
-// Milestones are cards; the rest sit on the canvas under a rule.
+// goalPage shows a single Goal in the flat frame (DESIGN.md § Direction: Page
+// shapes). Its header strip is the breadcrumb, with Check in and the More menu
+// at its right. Under it, any warning banners run as quiet full-width strips,
+// then a document column — the title, Why it matters as a lead paragraph, then
+// Latest status, Metrics, Milestones, Highlights, Draft Highlights, Action
+// Items, Comments and History as sections — beside a properties rail of its
+// Health, Lifecycle, people, cadence, delivery, level, Dimension values and
+// Fields, then what it contributes to and what contributes to it. Nothing on
+// it is a card; at 900px and below the rail stacks under the column.
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	{{ owner := current != nil && current.ID == g.Owner.ID }}
-	{{ admin := current != nil && current.IsAdmin }}
-	@layout(g.Title, current) {
+	@framedLayout(g.Title, current, goalPageHeader(v)) {
 		@goalPageStyles()
-		if g.Ownerless {
-			<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the company and it needs an Admin to reassign it.</span></p>
-		}
-		<nav data-testid="goal-breadcrumb" class="small muted" aria-label="Breadcrumb">
-			<a href="/goals">Goals</a>
-			{ " / " }
-			if len(v.Parents) > 0 {
-				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", v.Parents[0].Goal.ID)) }>{ v.Parents[0].Goal.Title }</a>
-				{ " / " }
-			}
-			<span aria-current="page">{ g.Title }</span>
-		</nav>
-		@goalFreshness(g.ID, v.Freshness, v.CanCheckin, v.dates())
-		@goalSignals(v.Signals, v.dates())
-		@goalIncomplete(v.Incomplete)
-		@goalHead(v, owner, admin)
-		@toastNotice(v.Toast)
-		<div class="grid-main-aside">
-			<div data-testid="goal-main" class="gp-col">
-				if owner && g.Lifecycle == domain.LifecycleProposed {
-					@defineGoal(v)
+		<div class="gp-frame">
+			<div class="gp-banners">
+				if g.Ownerless {
+					<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the company and it needs an Admin to reassign it.</span></p>
 				}
-				@checkinSection(v)
-				<section data-testid="goal-metrics" class="gp-block">
-					<h2>Metrics</h2>
-					@metricList(v.Trends, owner, v.dates())
-				</section>
-				<section data-testid="goal-milestones" class="card gp-card">
-					@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
-						<h3>Milestones</h3>
-					}
-					@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
-					if v.opens(formMilestones) {
-						@openGoalForm(v, formMilestones, "Add Milestone") {
-							<form data-testid="add-milestone" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
-								<input type="text" name="name" value={ v.FormInput.Get("name") } aria-label="Milestone name" placeholder="Milestone name" required autofocus/>
-								<input type="date" name="target_date" value={ v.FormInput.Get("target_date") } aria-label="Milestone date" required/>
-								<button type="submit" class="btn sm">Add Milestone</button>
-							</form>
-						}
-					}
-				</section>
-				if items := v.openActionItems(); len(items) > 0 {
-					<section id="action-items" data-testid="goal-action-items" class="gp-block ruled">
-						<h2>Action Items</h2>
-						<ul class="gp-list">
-							for _, l := range items {
-								@goalActionItemRow(l, current, fmt.Sprintf("/goals/%d#action-items", g.ID))
-							}
-						</ul>
-					</section>
-				}
-				@draftHighlightSection(v)
-				if len(v.Highlights) > 0 {
-					<section data-testid="goal-highlights" class="gp-block ruled">
-						<h2>Highlights</h2>
-						@highlightList(v.Highlights, v.dates())
-					</section>
-				}
-				@goalComments(current, v)
-				@goalHistory(v.History)
+				@goalFreshness(g.ID, v.Freshness, v.CanCheckin, v.dates())
+				@goalSignals(v.Signals, v.dates())
+				@goalIncomplete(v.Incomplete)
 			</div>
-			<aside data-testid="goal-sidebar" class="gp-col gp-side">
-				<section data-testid="goal-parents" class="gp-block ruled">
-					@groupHead(v, formParentLink, "+ Add", "Add a parent Goal") {
-						<h3>Contributes to</h3>
+			@toastNotice(v.Toast)
+			<div class="gp-body">
+				<div data-testid="goal-main" class="gp-doc">
+					@goalHead(v)
+					if owner && g.Lifecycle == domain.LifecycleProposed {
+						@defineGoal(v)
 					}
-					@linkList(g, current, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
-					@requestParentLink(v)
-					@suggestedParents(v)
-				</section>
-				<section data-testid="goal-children" class="gp-block ruled">
-					<h3>Contributed to by</h3>
-					@linkList(g, current, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
-				</section>
-				<div data-testid="goal-people" class="gp-block ruled">
-					<h3>People</h3>
-					<p>
-						<span class="label">Owner</span>
-						<br/>
-						@person(g.Owner)
-					</p>
-					@ownerForms(v)
-					@delegatesSection(v)
-					<section data-testid="goal-contributors">
-						@groupHead(v, formContributors, "Manage", "Manage Contributors") {
-							<h3 class="label">Contributors</h3>
+					@checkinSection(v)
+					<section data-testid="goal-metrics" class="gp-block gp-section">
+						<h2>Metrics</h2>
+						@metricList(v.Trends, owner, v.dates())
+					</section>
+					<section data-testid="goal-milestones" class="gp-block gp-section gp-milestones">
+						@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
+							<h2>Milestones</h2>
 						}
-						<ul class="gp-list">
-							if len(v.Contributors) == 0 {
-								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
-							}
-							for _, c := range v.Contributors {
-								<li>
-									@person(c)
-								</li>
-							}
-						</ul>
-						if v.opens(formContributors) {
-							@openGoalForm(v, formContributors, "Add a Contributor") {
-								<form data-testid="add-contributor" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
-									<input type="email" name="email" value={ v.FormInput.Get("email") } aria-label="Contributor email" placeholder="Contributor email" required autofocus/>
-									<button type="submit" class="btn sm">Add Contributor</button>
+						@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
+						if v.opens(formMilestones) {
+							@openGoalForm(v, formMilestones, "Add Milestone") {
+								<form data-testid="add-milestone" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
+									<input type="text" name="name" value={ v.FormInput.Get("name") } aria-label="Milestone name" placeholder="Milestone name" required autofocus/>
+									<input type="date" name="target_date" value={ v.FormInput.Get("target_date") } aria-label="Milestone date" required/>
+									<button type="submit" class="btn sm">Add Milestone</button>
 								</form>
 							}
 						}
 					</section>
+					if len(v.Highlights) > 0 {
+						<section data-testid="goal-highlights" class="gp-block gp-section">
+							<h2>Highlights</h2>
+							@highlightList(v.Highlights, v.dates())
+						</section>
+					}
+					@draftHighlightSection(v)
+					if items := v.openActionItems(); len(items) > 0 {
+						<section id="action-items" data-testid="goal-action-items" class="gp-block gp-section">
+							<h2>Action Items</h2>
+							<ul class="gp-list gp-rows">
+								for _, l := range items {
+									@goalActionItemRow(l, current, fmt.Sprintf("/goals/%d#action-items", g.ID))
+								}
+							</ul>
+						</section>
+					}
+					@goalComments(current, v)
+					@goalHistory(v.History)
 				</div>
-				<section data-testid="goal-dimensions" class="gp-block ruled">
-					@groupHead(v, formDimensions, "Edit", "Edit Dimensions") {
-						<h3>Dimensions</h3>
-					}
-					<button type="button" class="disclose help explain" aria-expanded="false" aria-controls="dimension-values-help" title={ dimensionValuesHelp }>What are Dimension values?</button>
-					<p id="dimension-values-help" class="explain" hidden>{ dimensionValuesHelp }</p>
-					@goalDimensions(v)
-				</section>
-				<section data-testid="goal-field-block" class="gp-block ruled">
-					@groupHead(v, formFields, "Edit", "Edit Fields") {
-						<h3>Fields</h3>
-					}
-					@goalFields(v)
-				</section>
-			</aside>
+				@goalRail(current, v)
+			</div>
 		</div>
 	}
+}
+
+// goalPageHeader is the Goal page's header strip: the breadcrumb — Goals, the
+// first Goal it contributes to when it has one, then its own title — with, at
+// its right, Check in and No change for whoever may check in, and the More
+// menu (DESIGN.md § Direction: Page header). The title's own <h1> heads the
+// document column, so the strip has none.
+templ goalPageHeader(v goalView) {
+	{{ g := v.Goal }}
+	<div data-testid="goal-page-header" class="page-header gp-ph">
+		<nav data-testid="goal-breadcrumb" class="ph-title gp-crumbs" aria-label="Breadcrumb">
+			<a class="ph-parent" href="/goals">Goals</a>
+			<span class="ph-sep" aria-hidden="true">›</span>
+			if len(v.Parents) > 0 {
+				<a class="ph-parent gp-crumb" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", v.Parents[0].Goal.ID)) }>{ v.Parents[0].Goal.Title }</a>
+				<span class="ph-sep" aria-hidden="true">›</span>
+			}
+			<span class="gp-crumb" aria-current="page">{ g.Title }</span>
+		</nav>
+		<div data-testid="goal-actions" class="ph-actions gp-actions">
+			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
+				<a class="btn primary sm" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
+				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
+					@noChangeCheckinButton(g.ID, "No change", "btn quiet sm")
+				}
+			}
+			@goalMore(v)
+		</div>
+	</div>
 }
 
 // goalActionItemRow is an open Action Item about the Goal: what it asks, who
@@ -896,138 +863,287 @@ templ goalActionItemRow(l domain.ActionItemListing, current *domain.Account, ret
 	</li>
 }
 
-// goalHead is the Goal's summary a reader takes in at a glance: its title, its
-// Why it matters as a lead paragraph, and one metadata line — the Health badge, then
-// the Lifecycle, Kind, Owner, delivery date with its slips struck, cadence and
-// Top-level as plain text — with Check in and No change top right for whoever
-// may check in. Dimension values and Fields stay in the sidebar.
-templ goalHead(v goalView, owner, admin bool) {
+// goalHead opens the document column: the Goal's title at 28px, its Why it
+// matters as a 16px lead paragraph, and what its Lifecycle came with — the
+// outcome of a Done Goal or why it is On Hold or Cancelled. The Edit title and
+// Why it matters form and Mark Top-level open here in place.
+templ goalHead(v goalView) {
 	{{ g := v.Goal }}
 	<header data-testid="goal-head" class="gp-head">
-		<div class="gp-summary">
-			<h1 data-testid="goal-title">{ g.Title }</h1>
-			<article data-testid="goal" class="gp-statement" aria-labelledby="why-it-matters-label">
-				<h2 id="why-it-matters-label" class="sr-only">Why it matters</h2>
-				<p data-testid="goal-why-it-matters" class="gp-lead">{ g.WhyItMatters }</p>
-				<button type="button" class="disclose help explain gp-lead-help" aria-expanded="false" aria-controls="why-it-matters-help" title={ whyItMattersHelp }>What goes here?</button>
-				<p id="why-it-matters-help" class="explain" hidden>{ whyItMattersHelp }</p>
-			</article>
-			<p data-testid="goal-meta" class="gp-meta">
-				if health := v.health(); health != "" {
-					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
-				}
-				<span data-testid="goal-lifecycle">{ g.Lifecycle }</span>
-				<span data-testid="goal-kind">
-					if g.Kind == "" {
-						Not yet Dated or Ongoing
+		<h1 data-testid="goal-title">{ g.Title }</h1>
+		<article data-testid="goal" class="gp-statement" aria-labelledby="why-it-matters-label">
+			<h2 id="why-it-matters-label" class="sr-only">Why it matters</h2>
+			<p data-testid="goal-why-it-matters" class="gp-lead">{ g.WhyItMatters }</p>
+			<button type="button" class="disclose help explain gp-lead-help" aria-expanded="false" aria-controls="why-it-matters-help" title={ whyItMattersHelp }>What goes here?</button>
+			<p id="why-it-matters-help" class="explain" hidden>{ whyItMattersHelp }</p>
+		</article>
+		if note := v.lifecycleNote(); note != "" {
+			<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
+		}
+		if v.opens(formTitleWhyItMatters) {
+			@titleWhyItMattersForm(v)
+		}
+		if v.opens(formTopLevel) {
+			@openGoalForm(v, formTopLevel, "") {
+				@topLevelControl(g)
+			}
+		}
+	</header>
+}
+
+// goalRail is the Goal page's properties rail, behind a 1px left edge: its
+// properties as label and value rows (goalProperties), then its Dimension
+// values, its Fields, the Goals it contributes to and those contributing to it.
+// Each group's form opens in place in the rail from its heading's link.
+templ goalRail(current *domain.Account, v goalView) {
+	{{ g := v.Goal }}
+	<aside data-testid="goal-sidebar" class="gp-rail" aria-label="Properties">
+		@goalProperties(v)
+		<section data-testid="goal-dimensions" class="gp-block gp-rail-group">
+			@groupHead(v, formDimensions, "Edit", "Edit Dimensions") {
+				<h3>Dimensions</h3>
+			}
+			<button type="button" class="disclose help explain" aria-expanded="false" aria-controls="dimension-values-help" title={ dimensionValuesHelp }>What are Dimension values?</button>
+			<p id="dimension-values-help" class="explain" hidden>{ dimensionValuesHelp }</p>
+			@goalDimensions(v)
+		</section>
+		<section data-testid="goal-field-block" class="gp-block gp-rail-group">
+			@groupHead(v, formFields, "Edit", "Edit Fields") {
+				<h3>Fields</h3>
+			}
+			@goalFields(v)
+		</section>
+		<section data-testid="goal-parents" class="gp-block gp-rail-group">
+			@groupHead(v, formParentLink, "+ Add", "Add a parent Goal") {
+				<h3>Contributes to</h3>
+			}
+			@linkList(g, current, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
+			@requestParentLink(v)
+			@suggestedParents(v)
+		</section>
+		<section data-testid="goal-children" class="gp-block gp-rail-group">
+			<h3>Contributed to by</h3>
+			@linkList(g, current, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
+		</section>
+	</aside>
+}
+
+// goalProperties are the rail's label and value rows, in the order DESIGN.md §
+// Direction gives them: Health as its pill, Lifecycle, Kind, then the people —
+// the Owner, with the forms about them opened in place under them, the
+// Delegates and the Contributors — then the cadence, the delivery date with
+// its slips struck, and Top-level for a Goal that is one.
+templ goalProperties(v goalView) {
+	{{ g := v.Goal }}
+	<div data-testid="goal-meta" class="gp-props">
+		<dl class="gp-prop-list">
+			<div class="gp-prop">
+				<dt>Health</dt>
+				<dd>
+					if health := v.health(); health != "" {
+						<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
 					} else {
-						<button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title={ kindHelp(g.Kind) }>{ g.Kind }</button>
+						<span class="muted">No Health</span>
 					}
-				</span>
-				<span>
-					Owner 
-					<strong data-testid="goal-owner">
-						@person(g.Owner)
-					</strong>
-				</span>
-				if !g.DeliveryDate.IsZero() {
-					<span>
-						Delivers 
+				</dd>
+			</div>
+			<div class="gp-prop">
+				<dt>Lifecycle</dt>
+				<dd><span data-testid="goal-lifecycle">{ g.Lifecycle }</span></dd>
+			</div>
+			<div class="gp-prop">
+				<dt>Kind</dt>
+				<dd>
+					<span data-testid="goal-kind">
+						if g.Kind == "" {
+							Not yet Dated or Ongoing
+						} else {
+							<button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title={ kindHelp(g.Kind) }>{ g.Kind }</button>
+						}
+					</span>
+				</dd>
+			</div>
+		</dl>
+		if g.Kind != "" {
+			<p id="kind-help" class="explain" hidden>{ kindHelp(g.Kind) }</p>
+		}
+		<div data-testid="goal-people" class="gp-people">
+			<dl class="gp-prop-list">
+				<div class="gp-prop">
+					<dt>Owner</dt>
+					<dd>
+						<strong data-testid="goal-owner">
+							@person(g.Owner)
+						</strong>
+					</dd>
+				</div>
+			</dl>
+			@ownerForms(v)
+			@delegatesSection(v)
+			<section data-testid="goal-contributors" class="gp-prop">
+				@groupHead(v, formContributors, "Manage", "Manage Contributors") {
+					<h3 class="label">Contributors</h3>
+				}
+				<ul class="gp-list">
+					if len(v.Contributors) == 0 {
+						<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
+					}
+					for _, c := range v.Contributors {
+						<li>
+							@person(c)
+						</li>
+					}
+				</ul>
+				if v.opens(formContributors) {
+					@openGoalForm(v, formContributors, "Add a Contributor") {
+						<form data-testid="add-contributor" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
+							<input type="email" name="email" value={ v.FormInput.Get("email") } aria-label="Contributor email" placeholder="Contributor email" required autofocus/>
+							<button type="submit" class="btn sm">Add Contributor</button>
+						</form>
+					}
+				}
+			</section>
+		</div>
+		<dl class="gp-prop-list">
+			<div class="gp-prop">
+				<dt>Cadence</dt>
+				<dd><span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></dd>
+			</div>
+			if !g.DeliveryDate.IsZero() {
+				<div class="gp-prop">
+					<dt>Delivers</dt>
+					<dd>
 						<span data-testid="goal-delivery-date" class="gp-dates">
 							@struckDates(g.DeliveryDate, v.priorDates(0), v.dates())
 							<strong>{ v.dates().date(g.DeliveryDate) }</strong>
 						</span>
-					</span>
-				}
-				<span>Checks in <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></span>
-				if g.TopLevel {
-					<span><button type="button" class="disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button></span>
-				}
-			</p>
-			if g.Kind != "" {
-				<p id="kind-help" class="explain" hidden>{ kindHelp(g.Kind) }</p>
+					</dd>
+				</div>
 			}
 			if g.TopLevel {
-				<p id="top-level-help" class="explain" hidden>{ topLevelHelp }</p>
+				<div class="gp-prop">
+					<dt>Level</dt>
+					<dd><button type="button" class="disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button></dd>
+				</div>
 			}
-			if note := v.lifecycleNote(); note != "" {
-				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
-			}
-			if v.opens(formTitleWhyItMatters) {
-				@titleWhyItMattersForm(v)
-			}
-			if v.opens(formTopLevel) {
-				@openGoalForm(v, formTopLevel, "") {
-					@topLevelControl(g)
-				}
-			}
-		</div>
-		<div data-testid="goal-actions" class="gp-actions">
-			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
-				<a class="btn primary" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
-				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
-					@noChangeCheckinButton(g.ID, "No change", "btn quiet")
-				}
-			}
-			@goalMore(v)
-		</div>
-	</header>
+		</dl>
+		if g.TopLevel {
+			<p id="top-level-help" class="explain" hidden>{ topLevelHelp }</p>
+		}
+	</div>
 }
 
-// goalPageStyles are the Goal page's own rules on top of app.css: the header
-// with its actions and More menu, the main column and sidebar, the Milestone
-// dates, each kept whole on its line, and the Metric cards.
+// goalPageStyles are the Goal page's own rules on top of app.css: the frame of
+// banners, document column and rail, which runs full width and full height
+// under the header strip; the header strip's breadcrumb and actions with the
+// More menu; the column's title, lead and sections, each a 13/600 heading
+// over hairline-ruled rows; the Metric rows with their sparklines; and the
+// rail's label and value rows.
 templ goalPageStyles() {
 	<style>
-		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
+		.page:has(>.gp-frame){max-width:none;padding:0;gap:0}
+		.gp-frame{display:flex;flex-direction:column;min-height:calc(100vh - 48px)}
+		.gp-frame:has(.toast){padding-bottom:128px}
+		.gp-banners{display:flex;flex-direction:column}
+		.gp-banners:empty{display:none}
+		.gp-banners .alert{gap:8px;margin:0;padding:8px 28px;border:0;border-bottom:1px solid var(--color-border);border-radius:0;background:var(--color-group);color:var(--color-ink);font-size:13px;line-height:1.5;flex-wrap:wrap}
+		.gp-banners .alert.st{border-bottom:1px dashed var(--checkin-overdue-edge)}
+		.gp-banners .alert.ol{border-bottom:1px dashed var(--color-ink-muted)}
+		.gp-banners .alert>strong{font-weight:600}
+		.gp-crumbs{flex:1 1 auto}
+		.gp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+		.gp-crumbs>[aria-current]{color:var(--color-ink);font-weight:500}
+		.gp-ph .ph-parent:hover{color:var(--color-ink)}
 		.gp-dates>*{white-space:nowrap}
-		.gp-summary{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1 1 320px}
-		.gp-summary h1{margin:0}
-		.gp-statement{display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:720px}
-		.gp-lead{margin:0;font-size:18px;line-height:1.55;color:var(--color-ink)}
-		.gp-lead-help{font-size:13px}
-		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:0;color:var(--color-ink-muted)}
-		.gp-meta>*+*::before{content:"·";margin-right:8px;color:var(--color-ink-muted)}
-		.gp-meta strong{color:var(--color-ink)}
-		.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}
+		.gp-actions{display:flex;gap:8px;align-items:center;margin-left:auto}
 		.gp-actions form{margin:0}
 		.gp-more{position:relative}
-		.gp-more>summary{justify-content:center}
-		.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:240px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
+		.gp-more>summary{justify-content:center;min-height:0}
+		.gp-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:10;width:240px;max-width:calc(100vw - 32px);padding:8px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);box-sizing:border-box}
 		.gp-menu ul{list-style:none;margin:0;padding:0}
 		.gp-menu li>a{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}
 		.gp-menu li>a:hover{background:var(--color-primary-subtle);text-decoration:none}
+		.gp-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 300px}
+		.gp-doc{width:100%;max-width:860px;margin:0 auto;padding:32px 28px 64px;box-sizing:border-box;display:flex;flex-direction:column;gap:40px;min-width:0}
+		.gp-head{display:flex;flex-direction:column;gap:12px}
+		.gp-head h1{margin:0;font-size:28px;line-height:1.2;font-weight:600;letter-spacing:-0.02em}
+		.gp-head>p{margin:0}
+		.gp-statement{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+		.gp-lead{margin:0;font-size:16px;line-height:1.6;color:var(--color-ink-2)}
+		.gp-lead-help{font-size:13px}
+		.gp-section{gap:0}
+		.gp-section>h2,.gp-section>.gp-group-head{min-height:32px;padding-bottom:8px;border-bottom:1px solid var(--color-border);box-sizing:border-box}
+		.gp-section>.gp-group-head{align-items:center}
+		.gp-doc h2{margin:0;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:0;color:var(--color-ink)}
+		.gp-section>*+*{margin-top:12px}
+		.gp-section>p{margin-bottom:0}
+		.gp-section>.gp-rows,.gp-section>.gp-metric,.gp-section>.rp-thread,.gp-milestones>.table-scroll{margin-top:0}
+		.gp-rows{gap:0}
+		.gp-rows>li{padding:8px 0;border-bottom:1px solid var(--color-border)}
+		.gp-milestones th{height:32px;padding:0 16px 0 0;background:none;color:var(--color-ink-muted);font-size:12px;font-weight:500}
+		.gp-milestones td{padding:8px 16px 8px 0;border-bottom:1px solid var(--color-border);vertical-align:baseline}
+		.gp-milestones tr:last-child td{border-bottom:1px solid var(--color-border)}
+		.gp-metric{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(96px,auto);align-items:center;gap:4px 24px;padding:12px 0;border-bottom:1px solid var(--color-border)}
+		.gp-metric>details{grid-column:1/-1}
+		.gp-metric>details>summary{min-height:32px;justify-content:flex-start}
+		.gp-metric h3{margin:0;font-size:14px;line-height:1.4;font-weight:500;color:var(--color-ink)}
+		.gp-metric-name>p{margin:4px 0 0}
+		.gp-current{margin:0;text-align:right;white-space:nowrap}
+		.gp-current .num{font-size:20px;line-height:1.2;font-weight:600}
+		.gp-spark{width:160px;max-width:100%;height:auto;display:block;overflow:visible}
+		.gp-spark-target{stroke:var(--color-ink-muted)}
+		.gp-spark-line{stroke:var(--color-primary-strong)}
+		.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-canvas)}
 		.gp-group-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-		.gp-group-head>h3{margin:0}
+		.gp-group-head>h2,.gp-group-head>h3{margin:0}
 		.gp-open{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
 		.gp-open form{align-self:stretch}
-		.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}
-		.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.gp-block{display:flex;flex-direction:column;gap:12px}
 		.gp-block>.help{align-self:flex-start}
-		@media (max-width:900px){.gp-side>.ruled:first-child{border-top:1px solid var(--color-border);padding-top:20px}}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.rp-thread{border-left:1px solid var(--color-border);padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+		.gp-section>.rp-thread{margin:0;padding:12px 0;border-left:0;border-bottom:1px solid var(--color-border)}
+		.gp-section>.rp-thread>p{margin:0}
 		.rp-reply{margin-left:24px}
 		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 		.gp-decide{display:flex;gap:8px;margin-left:auto}
 		.gp-link-meta .gp-decide form{margin:0}
-		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
-		.gp-current .num{font-size:28px;line-height:1.1}
-		.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}
-		.gp-spark-target{stroke:var(--color-ink-muted)}
-		.gp-spark-line{stroke:var(--color-primary-strong)}
-		.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-surface)}
 		.gp-edit form{flex-direction:column}
 		.gp-activation{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}
+		.gp-activation h3{margin:0;font-size:13px;font-weight:600}
 		.gp-check{display:flex;gap:8px;align-items:baseline}
 		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--color-ink-muted)}
 		.gp-check.done>span:first-child{color:var(--health-g-ink)}
+		.gp-rail{display:flex;flex-direction:column;gap:16px;min-width:0;padding:20px 20px 48px;border-left:1px solid var(--color-border);box-sizing:border-box;font-size:13px}
+		.gp-rail>*+*{padding-top:16px;border-top:1px solid var(--color-border)}
+		.gp-rail h3{margin:0;font-size:12px;line-height:1.5;font-weight:600;letter-spacing:0;color:var(--color-ink)}
+		.gp-rail .gp-block{gap:8px}
+		.gp-rail p{margin:0}
+		.gp-rail .gp-list{gap:4px}
+		.gp-rail .gp-link{padding:4px 0}
+		.gp-rail .gp-link>a{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--color-ink)}
+		.gp-props,.gp-people{display:flex;flex-direction:column}
+		.gp-prop-list{margin:0}
+		.gp-prop{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:baseline;gap:4px 8px;min-height:32px;padding:4px 0;box-sizing:border-box}
+		.gp-prop>dt,.gp-prop>.gp-group-head>h3{grid-column:1;margin:0;font-size:12.5px;line-height:24px;font-weight:500;color:var(--color-ink-muted)}
+		.gp-prop>dd{grid-column:2/-1;margin:0;min-width:0;line-height:24px;color:var(--color-ink)}
+		.gp-prop>.gp-group-head{display:contents}
+		.gp-prop>.gp-group-head>a{grid-column:3;grid-row:1}
+		.gp-prop>:not(dt):not(dd):not(.gp-group-head):not(.gp-open){grid-column:2/-1;min-width:0}
+		.gp-prop>.gp-open{grid-column:1/-1}
+		.gp-prop .gp-list{line-height:24px}
+		.gp-prop .help.explain{font-size:12px}
+		.gp-props>.explain,.gp-people>.gp-open{margin:4px 0 8px}
+		.gp-prop dd .badge{line-height:20px}
+		.gp-prop strong{font-weight:500}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+		@media (pointer:coarse){.gp-menu li>a{min-height:44px}}
+		@media (max-width:900px){.gp-body{grid-template-columns:minmax(0,1fr)}.gp-doc{max-width:none;padding:20px 16px 32px;gap:32px}.gp-rail{padding:20px 16px 48px;border-left:0;border-top:1px solid var(--color-border)}.gp-banners .alert{padding:8px 16px}}
+		@media (max-width:600px){.gp-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gp-metric{grid-template-columns:minmax(0,1fr) auto}.gp-metric>.gp-metric-spark{grid-column:1/-1;grid-row:2}}
 	</style>
 }
 
@@ -1038,8 +1154,8 @@ templ goalPageStyles() {
 templ goalMore(v goalView) {
 	if actions := v.actions(); len(actions) > 0 {
 		<details data-testid="goal-more" class="gp-more">
-			<summary class="btn" aria-label="More actions" title="More actions">More ▾</summary>
-			<div class="card gp-menu">
+			<summary class="btn sm" aria-label="More actions" title="More actions">More ▾</summary>
+			<div class="gp-menu">
 				<ul>
 					for _, a := range actions {
 						<li><a href={ a.URL }>{ a.Label }</a></li>
@@ -1202,8 +1318,8 @@ const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Own
 // departure.
 const confirmReturn = "Mark this Owner returned? They can sign in again, and the Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
-// goalDimensions shows the Goal's values in each Dimension as tags — retired
-// values stay readable — and, for its Owner, a Delegate or an Admin, a form
+// goalDimensions shows the Goal's values in each Dimension as the rail's label
+// and value rows, the values as tags — retired values stay readable — and, for its Owner, a Delegate or an Admin, a form
 // to set them that opens in place from the block's Edit link:
 // a select for a Dimension that takes one value, whose "None" clears it, and a
 // checkbox per value, saved together, for one that takes several (CONTEXT.md:
@@ -1218,26 +1334,27 @@ templ goalDimensions(v goalView) {
 	if len(v.Dimensions) == 0 {
 		<p data-testid="no-dimensions-defined" class="muted">No Dimensions defined yet.</p>
 	}
-	<ul class="gp-list">
+	<dl class="gp-prop-list">
 		for _, d := range v.Dimensions {
 			{{ assigned := v.assignedValues(d.ID) }}
 			if !d.Retired || len(assigned) > 0 {
-				<li data-testid="goal-dimension">
-					<span class="label">{ d.Name }</span>
-					<br/>
-					for _, current := range assigned {
-						<span class="tag" data-testid="goal-dimension-value">{ current.Value }</span>
-						if current.Retired || d.Retired {
-							<span class="muted small" data-testid="retired">(retired)</span>
+				<div data-testid="goal-dimension" class="gp-prop">
+					<dt>{ d.Name }</dt>
+					<dd>
+						for _, current := range assigned {
+							<span class="tag" data-testid="goal-dimension-value">{ current.Value }</span>
+							if current.Retired || d.Retired {
+								<span class="muted small" data-testid="retired">(retired)</span>
+							}
 						}
-					}
-					if len(assigned) == 0 {
-						<span class="muted" data-testid="goal-dimension-unassigned">unassigned</span>
-					}
-				</li>
+						if len(assigned) == 0 {
+							<span class="muted" data-testid="goal-dimension-unassigned">unassigned</span>
+						}
+					</dd>
+				</div>
 			}
 		}
-	</ul>
+	</dl>
 	if v.opens(formDimensions) {
 		@openGoalForm(v, formDimensions, "Edit Dimension values") {
 			for i, d := range domain.OfferedDimensions(v.Dimensions) {
@@ -1321,12 +1438,12 @@ templ requestParentLink(v goalView) {
 // defineGoal is the Owner's toolkit for a Proposed Goal: the activation
 // checklist, Activate Goal once it is done, and Finish defining, which opens
 // the define page to set the Kind, cadence, Why it matters, Milestones, Metrics and
-// the rest on one form. Contributors are added from the sidebar's
-// Contributors group.
+// the rest on one form. Contributors are added from the rail's Contributors
+// row.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
-	<section data-testid="define-goal" class="card gp-card gp-define">
-		<h3>Define this Goal</h3>
+	<section data-testid="define-goal" class="gp-block gp-section gp-define">
+		<h2>Define this Goal</h2>
 		<p><a data-testid="finish-defining" class="btn" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/define", g.ID)) }>Finish defining</a></p>
 		<div data-testid="activation" class="gp-activation">
 			<h3>Ready to activate?</h3>
@@ -1371,6 +1488,7 @@ templ milestoneList(v goalView, editable bool) {
 	if len(v.Milestones) == 0 {
 		<p data-testid="no-milestones" class="muted">No Milestones yet.</p>
 	} else {
+		<div class="table-scroll">
 		<table>
 			<thead>
 				<tr>
@@ -1417,6 +1535,7 @@ templ milestoneList(v goalView, editable bool) {
 				}
 			</tbody>
 		</table>
+		</div>
 	}
 }
 
@@ -1459,33 +1578,34 @@ templ slippedDates(current time.Time, prior []time.Time, dates displayDates, cou
 	}
 }
 
-// metricList shows each of a Goal's Metrics as a card: its current value, its
-// baseline and target, and its trend over time against the target (CONTEXT.md:
-// the Goal page shows each Metric's trend); the Owner edits one in a collapsed
-// section.
+// metricList shows each of a Goal's Metrics as a row: its name over its
+// baseline and target, its trend over time against the target as a sparkline,
+// and its current value in tabular figures (CONTEXT.md: the Goal page shows
+// each Metric's trend); its readings and, for the Owner, its edit form fold
+// under it.
 templ metricList(trends []metricTrend, owner bool, dates displayDates) {
 	if len(trends) == 0 {
 		<p data-testid="no-metrics" class="muted">No Metrics yet.</p>
 	}
 	for _, t := range trends {
 		{{ m := t.Metric }}
-		<div data-testid="goal-metric" class="card gp-card gp-metric">
-			<div class="gp-metric-head">
-				<div>
-					<h3>{ m.Name }</h3>
-					<p class="muted small">{ fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } by { dates.date(m.TargetDate) }</p>
-				</div>
-				<p class="gp-current">
-					if v, ok := t.current(); ok {
-						<span class="num" data-testid="metric-current">{ fmtNum(v) }</span> <span class="muted">{ m.Unit }</span>
-					} else {
-						<span class="num muted" data-testid="metric-current">—</span>
-					}
-				</p>
+		<div data-testid="goal-metric" class="gp-metric">
+			<div class="gp-metric-name">
+				<h3>{ m.Name }</h3>
+				<p class="muted small">{ fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } by { dates.date(m.TargetDate) }</p>
 			</div>
-			if len(t.Readings) > 0 {
-				@metricSparkline(t, dates)
-			}
+			<div class="gp-metric-spark">
+				if len(t.Readings) > 0 {
+					@metricSparkline(t, dates)
+				}
+			</div>
+			<p class="gp-current">
+				if v, ok := t.current(); ok {
+					<span class="num" data-testid="metric-current">{ fmtNum(v) }</span> <span class="muted">{ m.Unit }</span>
+				} else {
+					<span class="num muted" data-testid="metric-current">—</span>
+				}
+			</p>
 			@metricTrendReadings(t, dates)
 			if owner {
 				<details data-testid="metric-edit" class="gp-edit">
@@ -1539,7 +1659,7 @@ templ metricTrendReadings(t metricTrend, dates displayDates) {
 // note, the Owner credited, and when it was flagged (CONTEXT.md: Highlight).
 // The Goal page leaves it out for a Goal with none.
 templ highlightList(highlights []domain.Highlight, dates displayDates) {
-	<ul>
+	<ul class="gp-list gp-rows">
 		for _, hl := range highlights {
 			<li data-testid="highlight">
 				<strong>{ hl.Kind }</strong>: { hl.Note }

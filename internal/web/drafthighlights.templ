@@ -37,7 +37,7 @@ templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 		<section
 			data-testid="goal-draft-highlights"
 			id="draft-highlights"
-			class="gp-block ruled"
+			class="gp-block gp-section"
 			data-highlight-editor
 			data-kind-optional
 			data-hl-noun="Draft Highlight"
@@ -54,7 +54,7 @@ templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 			}
 			<div class="hl-items dh-new" data-hl-items></div>
 			if len(v.DraftHighlights) > 0 {
-				<ul class="gp-list">
+				<ul class="gp-list gp-rows">
 					for _, d := range v.DraftHighlights {
 						<li
 							data-testid="draft-highlight"

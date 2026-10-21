@@ -102,11 +102,12 @@ templ haltedParent(hp domain.HaltedParent) {
 	<span>, which is { hp.Parent.Lifecycle }</span>
 }
 
-// goalSignalsStyles stacks the Goal page's signal banners. It lives beside the
+// goalSignalsStyles stacks the Goal page's signal banners, strip on strip
+// with no gap, as the other banners above the title run. It lives beside the
 // banners rather than in goalPageStyles, rendered only when they are.
 templ goalSignalsStyles() {
 	<style>
-		.gp-signals{display:flex;flex-direction:column;gap:8px}
+		.gp-signals{display:flex;flex-direction:column}
 	</style>
 }
 

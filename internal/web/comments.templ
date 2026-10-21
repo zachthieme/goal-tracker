@@ -83,14 +83,14 @@ templ goalDiscussion(goalID int64, d discussion) {
 	}
 }
 
-// goalComments is the Goal page's Comments block, on the canvas between its
-// Highlights and History: the threads started on the Goal itself, oldest
+// goalComments is the Goal page's Comments section, between its Action Items
+// and History: the threads started on the Goal itself, oldest
 // first, each with a reply form behind a Reply toggle as on a Report, and the
 // form to start a new one, which everyone signed in gets (ticket #350). A
 // Goal's Comment belongs to no Report, so none is offered as an Action Item.
 templ goalComments(current *domain.Account, v goalView) {
 	{{ d := discussion{Current: current, Loc: v.History.Loc} }}
-	<section data-testid="goal-comments" id="comments" class="gp-block ruled">
+	<section data-testid="goal-comments" id="comments" class="gp-block gp-section">
 		<h2>Comments</h2>
 		if len(v.Threads) == 0 {
 			<p data-testid="no-goal-comments" class="muted">No comments yet.</p>

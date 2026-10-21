@@ -473,7 +473,7 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 	return d
 }
 
-// checkinSection is the Goal page's Latest status card: the Goal's current
+// checkinSection is the Goal page's Latest status section: the Goal's current
 // Health with its Run off Green, status, and Path to Green from its latest
 // Check-in, any open Ask for
 // help with whom it asks, its Rolled-up Health and any explanation of the
@@ -483,9 +483,9 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 // and a comment there would write one.
 templ checkinSection(v goalView) {
 	{{ g := v.Goal }}
-	<section data-testid="goal-checkins" class="card gp-card">
+	<section data-testid="goal-checkins" class="gp-block gp-section">
+		<h2>Latest status</h2>
 		@checkinStyles()
-		<h3>Latest status</h3>
 		if g.Lifecycle != domain.LifecycleActive && g.Lifecycle != domain.LifecycleProposed {
 			<p data-testid="goal-no-health" class="muted">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
 			if v.LatestCheckin != nil {
@@ -537,7 +537,7 @@ templ checkinSection(v goalView) {
 	</section>
 }
 
-// statusCells open the Latest status card: a row of cells, each a small label
+// statusCells open the Latest status section: a row of cells, each a small label
 // over a value. The Owner's Health is always there, with its Run off Green
 // beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with its
 // Check-in overdue children count, only when the Goal has Active children; and

@@ -392,7 +392,8 @@ func haltedParent(hp domain.HaltedParent) templ.Component {
 	})
 }
 
-// goalSignalsStyles stacks the Goal page's signal banners. It lives beside the
+// goalSignalsStyles stacks the Goal page's signal banners, strip on strip
+// with no gap, as the other banners above the title run. It lives beside the
 // banners rather than in goalPageStyles, rendered only when they are.
 func goalSignalsStyles() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -415,7 +416,7 @@ func goalSignalsStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<style>\n\t\t.gp-signals{display:flex;flex-direction:column;gap:8px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<style>\n\t\t.gp-signals{display:flex;flex-direction:column}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -483,7 +484,7 @@ func goalSignals(signals domain.GoalSignals, dates displayDates) templ.Component
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(hp.Parent.Lifecycle)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 132, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 133, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {

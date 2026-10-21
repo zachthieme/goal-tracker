@@ -199,7 +199,7 @@ func TestTopLevelControlHeadingIsALabel(t *testing.T) {
 }
 
 // The Goal page's signals section stacks its banners through a class rather
-// than a style attribute.
+// than a style attribute, strip on strip with no gap between.
 func TestGoalSignalsLayoutComesFromAClass(t *testing.T) {
 	t.Parallel()
 
@@ -209,5 +209,5 @@ func TestGoalSignalsLayoutComesFromAClass(t *testing.T) {
 	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, loner.ID))
-	assertStyledBy(t, tagAround(t, page, `data-testid="goal-signals"`), page, "gp-signals", "display:flex;flex-direction:column;gap:8px")
+	assertStyledBy(t, tagAround(t, page, `data-testid="goal-signals"`), page, "gp-signals", "display:flex;flex-direction:column")
 }
