@@ -469,3 +469,40 @@ func TestASessionEnds30DaysAfterSignIn(t *testing.T) {
 		t.Error("day 30 after sign-in: sam is still signed in")
 	}
 }
+
+// The session cookie lasts what remains of the 30 days from sign-in: all of it
+// when issued at sign-in, 24 days of it when a request re-issues it on day 6.
+func TestTheSessionCookieLastsWhatRemainsOf30Days(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	cookie := sessionCookieOf(t, ts.URL, "sam@example.com")
+	if want := 30 * 24 * 60 * 60; cookie.MaxAge != want {
+		t.Errorf("at sign-in: session cookie Max-Age %d, want %d", cookie.MaxAge, want)
+	}
+
+	h.Clock.Advance(6 * 24 * time.Hour)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/home", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := noRedirects(http.DefaultClient).Do(req)
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	var reissued *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_session" {
+			reissued = c
+		}
+	}
+	if reissued == nil {
+		t.Fatal("a request 6 days after sign-in didn't re-issue the session cookie")
+	}
+	if want := 24 * 24 * 60 * 60; reissued.MaxAge != want {
+		t.Errorf("on day 6: session cookie Max-Age %d, want %d", reissued.MaxAge, want)
+	}
+}
