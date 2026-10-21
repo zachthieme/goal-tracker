@@ -1,4 +1,4 @@
-.PHONY: build test test-quick lint generate generate-check check test-scripts e2e e2e-typecheck clean help seed serve serve-app authentik-up start stop restart
+.PHONY: build test test-quick lint generate generate-check check test-scripts e2e e2e-typecheck clean help seed serve serve-app authentik-up start stop restart password-link
 
 # A bare `make` runs generate. Each target's `## ` comment is its line in
 # `make help`.
@@ -97,7 +97,7 @@ seed: ## Fill a fresh database with a fake org (SEED_DB)
 # `make restart` act on the same port, database and sign-in. Only they read it;
 # `make start` and `make serve` take their settings fresh. Git-ignored.
 SERVE_STATE := .serve-state.mk
-ifneq ($(filter stop restart,$(MAKECMDGOALS)),)
+ifneq ($(filter stop restart password-link,$(MAKECMDGOALS)),)
 -include $(SERVE_STATE)
 endif
 
@@ -110,6 +110,10 @@ endif
 # it needs dev/authentik/.env, GOAL_TRACKER_SESSION_KEY included), single
 # sign-on as the org would have it (GOAL_TRACKER_SIGNIN=oidc), and the app
 # syncs people and their Managers from its directory.
+# SIGNIN picks how people sign in: oidc (the default, Authentik), password
+# (GOAL_TRACKER_SIGNIN=password: passwords set through one-time links, with the
+# session key from dev/authentik/.env; `make password-link EMAIL=<email>` prints
+# one for the app `make start` started), or dev. NO_SSO=1 is SIGNIN=dev.
 # NO_SSO=1 uses the development email form instead (GOAL_TRACKER_SIGNIN=dev),
 # and leaves Authentik be. SERVE_DIRECTORY_FILE=<csv> syncs people and their
 # Managers from that file instead of Authentik's directory
@@ -123,7 +127,11 @@ SERVE_ADMINS ?= admin@example.com
 SERVE_LOG ?= serve.log
 SERVE_DIRECTORY_FILE ?=
 NO_SSO ?= 0
-SSO = $(if $(filter 1,$(NO_SSO)),0,1)
+SIGNIN ?= $(if $(filter 1,$(NO_SSO)),dev,oidc)
+ifneq ($(filter-out oidc password dev,$(SIGNIN)),)
+$(error SIGNIN must be oidc, password or dev, not $(SIGNIN))
+endif
+SSO = $(if $(filter oidc,$(SIGNIN)),1,0)
 AUTHENTIK_PORT ?= 9443
 TAILNET_HOST = $$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')
 WITH_AUTHENTIK = $(if $(filter 1,$(SSO)),authentik-up)
@@ -139,7 +147,7 @@ serve: build $(WITH_AUTHENTIK) serve-app ## Build and serve the app on the tailn
 
 # The server itself, in the foreground, for `make serve` and `make start`.
 serve-app:
-	$(if $(filter 1,$(SSO)),@$(CHECK_SESSION_KEY))
+	$(if $(filter oidc password,$(SIGNIN)),@$(CHECK_SESSION_KEY))
 	tailscale serve --bg --https=$(SERVE_PORT) http://127.0.0.1:$(SERVE_PORT)
 	host=$(TAILNET_HOST) && \
 	GOAL_TRACKER_ADDR=127.0.0.1:$(SERVE_PORT) \
@@ -157,7 +165,8 @@ serve-app:
 	GOAL_TRACKER_DIRECTORY_TOKEN=$(call env_value,GOAL_TRACKER_DIRECTORY_TOKEN) \
 	)\
 	,\
-	GOAL_TRACKER_SIGNIN=dev \
+	GOAL_TRACKER_SIGNIN=$(SIGNIN) \
+	$(if $(filter password,$(SIGNIN)),GOAL_TRACKER_SESSION_KEY=$(call env_value,GOAL_TRACKER_SESSION_KEY)) \
 	) \
 	$(if $(SERVE_DIRECTORY_FILE),GOAL_TRACKER_DIRECTORY_FILE=$(abspath $(SERVE_DIRECTORY_FILE))) \
 	exec bin/goal-tracker
@@ -187,7 +196,7 @@ endef
 # Build and start the app in the background, logging to $(SERVE_LOG), first
 # stopping the one a previous `make start` left running. Starting with NO_SSO=1
 # after a start without it also stops Authentik.
-start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the background, with Authentik sign-in (SERVE_*, SERVE_DIRECTORY_FILE, NO_SSO=1)
+start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the background, with Authentik sign-in (SERVE_*, SERVE_DIRECTORY_FILE, SIGNIN=password|dev, NO_SSO=1)
 	@if [ -f $(SERVE_STATE) ]; then \
 		old=$$(sed -n 's/^SERVE_PORT := //p' $(SERVE_STATE)); \
 		if [ -n "$$old" ] && [ "$$old" != "$(SERVE_PORT)" ]; then $(call stop_server,$$old); fi; \
@@ -195,12 +204,12 @@ start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the 
 			echo "stopping Authentik"; (cd dev/authentik && docker compose stop); fi; \
 	fi
 	@$(call stop_server,$(SERVE_PORT))
-	@printf 'SERVE_PORT := %s\nSERVE_DB := %s\nSERVE_ADMINS := %s\nSERVE_LOG := %s\nSERVE_DIRECTORY_FILE := %s\nNO_SSO := %s\n' \
-		'$(SERVE_PORT)' '$(SERVE_DB)' '$(SERVE_ADMINS)' '$(SERVE_LOG)' '$(SERVE_DIRECTORY_FILE)' '$(if $(filter 1,$(SSO)),0,1)' >$(SERVE_STATE)
-	setsid nohup $(MAKE) serve-app SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT) >$(SERVE_LOG) 2>&1 </dev/null &
+	@printf 'SERVE_PORT := %s\nSERVE_DB := %s\nSERVE_ADMINS := %s\nSERVE_LOG := %s\nSERVE_DIRECTORY_FILE := %s\nSIGNIN := %s\nNO_SSO := %s\n' \
+		'$(SERVE_PORT)' '$(SERVE_DB)' '$(SERVE_ADMINS)' '$(SERVE_LOG)' '$(SERVE_DIRECTORY_FILE)' '$(SIGNIN)' '$(if $(filter 1,$(SSO)),0,1)' >$(SERVE_STATE)
+	setsid nohup $(MAKE) serve-app SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) SIGNIN=$(SIGNIN) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT) >$(SERVE_LOG) 2>&1 </dev/null &
 	@for i in $$(seq 100); do \
 		if ss -ltnH 'sport = :$(SERVE_PORT)' src 127.0.0.1 | grep -q .; then \
-			echo "goal-tracker is serving on :$(SERVE_PORT)$(if $(filter 1,$(SSO)), with Authentik sign-in, with the development sign-in form) (log: $(SERVE_LOG))"; exit 0; fi; \
+			echo "goal-tracker is serving on :$(SERVE_PORT)$(if $(filter oidc,$(SIGNIN)), with Authentik sign-in,$(if $(filter password,$(SIGNIN)), with password sign-in (make password-link EMAIL=<email>), with the development sign-in form)) (log: $(SERVE_LOG))"; exit 0; fi; \
 		sleep 0.1; done; \
 	echo "goal-tracker did not come up; see $(SERVE_LOG)" >&2; tail -20 $(SERVE_LOG) >&2; exit 1
 
@@ -213,4 +222,19 @@ stop: ## Stop the app `make start` started, and its Authentik
 # Rebuild and start the app again as the last `make start` did; any setting
 # given here replaces the recorded one.
 restart: ## Rebuild and restart the app as the last `make start` did
-	@$(MAKE) --no-print-directory start SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_LOG=$(SERVE_LOG) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT)
+	@$(MAKE) --no-print-directory start SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_LOG=$(SERVE_LOG) SERVE_DIRECTORY_FILE=$(SERVE_DIRECTORY_FILE) SIGNIN=$(SIGNIN) NO_SSO=$(NO_SSO) AUTHENTIK_PORT=$(AUTHENTIK_PORT)
+
+# Print a one-time set-password link for EMAIL against the app `make start`
+# started with SIGNIN=password: its database, Admins and tailnet address. It is
+# how the first Admin gets a password; Admins issue the rest on the Admin page.
+password-link: build ## Print a set-password link for EMAIL for the app `make start` started with SIGNIN=password
+	@test -n "$(EMAIL)" || { echo "usage: make password-link EMAIL=<email>" >&2; exit 1; }
+	@test "$(SIGNIN)" = password || { echo "the app wasn't started with SIGNIN=password; run make start SIGNIN=password first" >&2; exit 1; }
+	@$(CHECK_SESSION_KEY)
+	@host=$(TAILNET_HOST) && \
+	GOAL_TRACKER_DB=$(SERVE_DB) \
+	GOAL_TRACKER_ADMINS=$(SERVE_ADMINS) \
+	GOAL_TRACKER_BASE_URL=https://$$host:$(SERVE_PORT) \
+	GOAL_TRACKER_SIGNIN=password \
+	GOAL_TRACKER_SESSION_KEY=$(call env_value,GOAL_TRACKER_SESSION_KEY) \
+	bin/goal-tracker password-link $(EMAIL)
