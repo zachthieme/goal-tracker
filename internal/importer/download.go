@@ -29,7 +29,9 @@ const entrySeparator = "; "
 // Owner is written as an email, so the file can be edited and imported again.
 // A Goal carrying a value that contains a semicolon, named so before that was
 // refused, would split on import, so the download is refused naming the value,
-// and nothing is written (#101).
+// and nothing is written (#101). Every cell but an ID that a spreadsheet would
+// run as a formula is written behind a ' (see quoteFormula), which the import
+// drops again (#424).
 func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Goal) error {
 	dims, err := im.svc.ListDimensions(ctx)
 	if err != nil {
@@ -91,6 +93,11 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 		}
 		records = append(records, record)
 	}
+	for _, record := range records {
+		for i := 1; i < len(record); i++ {
+			record[i] = quoteFormula(record[i])
+		}
+	}
 	if err := csv.NewWriter(w).WriteAll(records); err != nil {
 		return fmt.Errorf("write CSV: %w", err)
 	}
@@ -146,4 +153,27 @@ func goalCells(ctx context.Context, svc *domain.Service, g domain.Goal) (map[str
 
 func formatNumber(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// formulaTriggers are the characters that make a spreadsheet run a cell
+// starting with one as a formula, so a cell such as =HYPERLINK(…) in a Goal's
+// title can't run when an Admin opens the download (#424).
+const formulaTriggers = "=+-@\t\r"
+
+// quoteFormula is a download cell written so a spreadsheet opens it as text: a
+// cell starting with a formula trigger gets a leading '.
+func quoteFormula(text string) string {
+	if text != "" && strings.ContainsRune(formulaTriggers, rune(text[0])) {
+		return "'" + text
+	}
+	return text
+}
+
+// unquoteFormula is an imported cell with the ' that quoteFormula put in front
+// of a formula trigger dropped again. Any other leading ' is part of the cell.
+func unquoteFormula(text string) string {
+	if len(text) > 1 && text[0] == '\'' && strings.ContainsRune(formulaTriggers, rune(text[1])) {
+		return text[1:]
+	}
+	return text
 }

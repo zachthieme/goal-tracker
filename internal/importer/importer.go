@@ -836,8 +836,9 @@ type sheetRow struct {
 }
 
 // parseGrid reads the spreadsheet into rows of cells, choosing the CSV or XLSX
-// reader by the filename extension and content. It errors if the file has no
-// header row.
+// reader by the filename extension and content, and drops the ' a download put
+// in front of a cell that would run as a formula (#424). It errors if the file
+// has no header row.
 func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 	var (
 		grid []sheetRow
@@ -853,6 +854,11 @@ func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 	}
 	if len(grid) == 0 {
 		return nil, fmt.Errorf("%w: the spreadsheet has no rows", domain.ErrValidation)
+	}
+	for _, row := range grid {
+		for i, c := range row.cells {
+			row.cells[i] = unquoteFormula(c)
+		}
 	}
 	return grid, nil
 }

@@ -381,6 +381,47 @@ func date(y int, m time.Month, d int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
+// A cell that starts with ' and then a formula trigger — how the download
+// writes such a cell so it opens as text — imports without the ', before it is
+// read as a title or a number; any other leading ' is kept (#424).
+func TestAQuotedFormulaCellImportsWithoutItsQuote(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+
+	data := xlsxOf(t,
+		[]any{"Title", "Owner", "Why it matters", "Kind", "Budget"},
+		[]any{"'=1+1", "owner@example.com", "'@mention matters.", "Ongoing", "'-5"},
+		[]any{"'quoted", "owner@example.com", "It matters.", "Ongoing", ""},
+	)
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.xlsx", data)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("import not clean: committed=%v rows=%+v", rep.Committed, rep.Rows)
+	}
+	formula, err := h.Service.ViewGoal(context.Background(), rep.Rows[0].GoalID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if formula.Title != "=1+1" || formula.WhyItMatters != "@mention matters." {
+		t.Errorf("Goal = %q / %q, want =1+1 / @mention matters.", formula.Title, formula.WhyItMatters)
+	}
+	if fields, _ := h.Service.GoalFields(context.Background(), formula.ID); len(fields) != 1 || fields[0].Value != "-5" {
+		t.Errorf("=1+1 Fields = %+v, want Budget -5", fields)
+	}
+	quoted, err := h.Service.ViewGoal(context.Background(), rep.Rows[1].GoalID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if quoted.Title != "'quoted" {
+		t.Errorf("Goal title = %q, want 'quoted", quoted.Title)
+	}
+}
+
 // A date-typed Delivery Date cell — what Excel and Sheets make of a typed
 // 2026-06-30 — imports as its date, not as the displayed text (#30). The first
 // of a month is included because spreadsheets display it without the day.

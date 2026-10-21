@@ -119,15 +119,29 @@ func historyLen(t *testing.T, h *testsupport.Harness, g domain.Goal) int {
 }
 
 // Importing a download unchanged updates each Goal it names to what it already
-// is: no Goal is created, nothing changes, and no history is written (#81).
+// is: no Goal is created, nothing changes, and no history is written (#81). A
+// cell the download quoted so it can't run as a formula imports as it was, and
+// a title that really starts with ' keeps it (#424).
 func TestReimportingAnUnchangedDownloadChangesNothing(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	parent, child := arrangeRoundTrip(t, h, admin)
-	before := downloadCSV(t, h, parent, child)
-	parentHistory, childHistory := historyLen(t, h, parent), historyLen(t, h, child)
+	formula := h.CreateGoal(admin, "=1+1", "It matters.")
+	h.SetGoalField(admin, formula, budgetField(t, h), "-5")
+	quoted := h.CreateGoal(admin, "'quoted", "It matters.")
+	goals := []domain.Goal{parent, child, formula, quoted}
+	before := downloadCSV(t, h, goals...)
+	for _, want := range []string{",'=1+1,", ",'-5,", ",'quoted,"} {
+		if !strings.Contains(before, want) {
+			t.Errorf("download lacks %q:\n%s", want, before)
+		}
+	}
+	histories := make([]int, len(goals))
+	for i, g := range goals {
+		histories[i] = historyLen(t, h, g)
+	}
 
 	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "download.csv", []byte(before))
 	if err != nil {
@@ -136,7 +150,7 @@ func TestReimportingAnUnchangedDownloadChangesNothing(t *testing.T) {
 	if !rep.Committed || rep.HasErrors() {
 		t.Fatalf("re-import not committed cleanly: %+v", rep)
 	}
-	for i, want := range []domain.Goal{parent, child} {
+	for i, want := range goals {
 		if row := rep.Rows[i]; row.GoalID != want.ID || !row.Updated {
 			t.Errorf("row %d = %+v, want an update of Goal %d", i, row, want.ID)
 		}
@@ -144,18 +158,36 @@ func TestReimportingAnUnchangedDownloadChangesNothing(t *testing.T) {
 	if len(rep.Ignored) != 0 {
 		t.Errorf("unchanged re-import reported ignored columns %v", rep.Ignored)
 	}
-	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 2 {
-		t.Errorf("re-import left %d Goals, want 2", len(goals))
+	if got, _ := h.Service.ListGoals(context.Background()); len(got) != len(goals) {
+		t.Errorf("re-import left %d Goals, want %d", len(got), len(goals))
 	}
-	if got := historyLen(t, h, parent); got != parentHistory {
-		t.Errorf("parent history grew from %d to %d", parentHistory, got)
+	for i, g := range goals {
+		if got := historyLen(t, h, g); got != histories[i] {
+			t.Errorf("%q history grew from %d to %d", g.Title, histories[i], got)
+		}
 	}
-	if got := historyLen(t, h, child); got != childHistory {
-		t.Errorf("child history grew from %d to %d", childHistory, got)
+	if fields, _ := h.Service.GoalFields(context.Background(), formula.ID); len(fields) != 1 || fields[0].Value != "-5" {
+		t.Errorf("=1+1 Fields = %+v, want Budget -5", fields)
 	}
-	if after := downloadCSV(t, h, parent, child); after != before {
+	if after := downloadCSV(t, h, goals...); after != before {
 		t.Errorf("download after re-import =\n%s\nwant\n%s", after, before)
 	}
+}
+
+// budgetField is the Budget Field arrangeRoundTrip defines.
+func budgetField(t *testing.T, h *testsupport.Harness) domain.Field {
+	t.Helper()
+	fields, err := h.Service.ListFields(context.Background())
+	if err != nil {
+		t.Fatalf("ListFields: %v", err)
+	}
+	for _, f := range fields {
+		if f.Name == "Budget" {
+			return f
+		}
+	}
+	t.Fatalf("no Budget Field in %+v", fields)
+	return domain.Field{}
 }
 
 // Changing a Field cell and a Dimension cell in a download and importing it
@@ -315,5 +347,23 @@ func TestDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 	// Goals not carrying it still download.
 	if got := downloadCSV(t, h, alpha); !strings.Contains(got, "Alpha") {
 		t.Errorf("download of Alpha = %q, want its row", got)
+	}
+}
+
+// A cell that a spreadsheet would run as a formula — one starting with =, +,
+// -, @, a tab or a carriage return — downloads behind a ' so it opens as text;
+// the ID column alone is left as it is (#424).
+func TestDownloadQuotesACellThatWouldRunAsAFormula(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	g := h.CreateGoal(admin, "=1+1", "It matters.")
+
+	got := downloadCSV(t, h, g)
+	want := "ID,Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents\n" +
+		strconv.FormatInt(g.ID, 10) + ",'=1+1,admin@example.com,It matters.,,,,,\n"
+	if got != want {
+		t.Errorf("download =\n%s\nwant\n%s", got, want)
 	}
 }
