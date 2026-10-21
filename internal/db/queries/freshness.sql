@@ -24,3 +24,8 @@ ORDER BY goals.created_at DESC, goals.id DESC;
 SELECT * FROM milestones
 WHERE status = 'Planned' AND target_date < ?
 ORDER BY goal_id, target_date, id;
+
+-- name: ListMilestonesForGoals :many
+-- The given Goals' Milestones, each Goal's soonest first, as ListMilestones
+-- reads one Goal's, for judging which are Milestone overdue.
+SELECT * FROM milestones WHERE goal_id IN (sqlc.slice(goal_ids)) ORDER BY goal_id, target_date, id;

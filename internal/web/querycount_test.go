@@ -2,15 +2,20 @@ package web_test
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // queryCountAdmin is the Admin the query-count fixture signs in as.
@@ -155,4 +160,101 @@ func TestGoalListAndReportRenderAsGolden(t *testing.T) {
 
 	assertGolden(t, "goal-list.golden.html", getBody(t, client, ts.URL+"/goals?org=all"))
 	assertGolden(t, "report.golden.html", getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, fx.report.ID)))
+}
+
+// Showing the Goal list or a Report runs as many queries for 50 Goals as for
+// 10: their per-Goal reads are batched, not run once per Goal (#411).
+func TestGoalListAndReportQueriesDontGrowWithGoals(t *testing.T) {
+	type counts struct{ list, report int64 }
+	countFor := func(n int) counts {
+		h := testsupport.New(t, queryCountAdmin)
+		fx := seedQueryCountFixture(t, h, n)
+		ts, queries := newQueryCountingServer(t, h)
+		client := signInClient(t, ts.URL, queryCountAdmin)
+		var c counts
+		queries.Store(0)
+		getBody(t, client, ts.URL+"/goals?org=all")
+		c.list = queries.Swap(0)
+		getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, fx.report.ID))
+		c.report = queries.Swap(0)
+		return c
+	}
+	ten, fifty := countFor(10), countFor(50)
+	if ten.list != fifty.list {
+		t.Errorf("the Goal list ran %d queries for 10 Goals and %d for 50; want the same", ten.list, fifty.list)
+	}
+	if ten.report != fifty.report {
+		t.Errorf("a Report ran %d queries for 10 Goals and %d for 50; want the same", ten.report, fifty.report)
+	}
+}
+
+// newQueryCountingServer serves h's database through a Service whose every
+// statement is counted, returning the server and the count.
+func newQueryCountingServer(t *testing.T, h *testsupport.Harness) (*httptest.Server, *atomic.Int64) {
+	t.Helper()
+	var path string
+	if err := h.DB.QueryRow("SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&path); err != nil {
+		t.Fatalf("read the database's path: %v", err)
+	}
+	queries := new(atomic.Int64)
+	sqlDB := sql.OpenDB(countingConnector{
+		dsn:     "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate",
+		driver:  h.DB.Driver(),
+		queries: queries,
+	})
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	svc := domain.NewService(sqlDB, h.Clock, h.Email, []string{queryCountAdmin})
+	ts := httptest.NewServer(web.NewServer(svc))
+	t.Cleanup(ts.Close)
+	return ts, queries
+}
+
+// countingConnector opens connections that count each statement they run.
+type countingConnector struct {
+	dsn     string
+	driver  driver.Driver
+	queries *atomic.Int64
+}
+
+func (c countingConnector) Connect(context.Context) (driver.Conn, error) {
+	conn, err := c.driver.Open(c.dsn)
+	if err != nil {
+		return nil, err
+	}
+	return countingConn{Conn: conn, queries: c.queries}, nil
+}
+
+func (c countingConnector) Driver() driver.Driver { return c.driver }
+
+// countingConn hides its driver's direct query and exec, so database/sql
+// prepares every statement, and counts each one prepared.
+type countingConn struct {
+	driver.Conn
+	queries *atomic.Int64
+}
+
+func (c countingConn) Prepare(query string) (driver.Stmt, error) {
+	return c.PrepareContext(context.Background(), query)
+}
+
+func (c countingConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	c.queries.Add(1)
+	if p, ok := c.Conn.(driver.ConnPrepareContext); ok {
+		return p.PrepareContext(ctx, query)
+	}
+	return c.Conn.Prepare(query)
+}
+
+func (c countingConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if b, ok := c.Conn.(driver.ConnBeginTx); ok {
+		return b.BeginTx(ctx, opts)
+	}
+	return c.Conn.Begin() //nolint:staticcheck // the fallback for a driver without BeginTx
+}
+
+func (c countingConn) CheckNamedValue(nv *driver.NamedValue) error {
+	if checker, ok := c.Conn.(driver.NamedValueChecker); ok {
+		return checker.CheckNamedValue(nv)
+	}
+	return driver.ErrSkip
 }

@@ -15,6 +15,14 @@ FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 ORDER BY goals.created_at DESC, goals.id DESC;
 
+-- name: ListGoalsByID :many
+-- The given Goals, each with its Owner, as GetGoal reads one. A Goal that
+-- doesn't exist has no row.
+SELECT sqlc.embed(goals), sqlc.embed(accounts)
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.id IN (sqlc.slice(goal_ids));
+
 -- name: SetGoalKind :one
 UPDATE goals SET kind = ?, delivery_date = ? WHERE id = ?
 RETURNING *;
@@ -139,3 +147,17 @@ JOIN goals parent ON parent.id = links.parent_id
 JOIN accounts parent_owner ON parent_owner.id = parent.owner_id
 WHERE links.status = 'accepted'
 ORDER BY links.created_at, links.id;
+
+-- name: ListDimensionsCarriedByGoals :many
+-- The Dimensions each given Goal has a value in, Retired values included, for
+-- judging which required ones it lacks (CONTEXT.md: Incomplete).
+SELECT DISTINCT goal_dimension_values.goal_id, dimension_values.dimension_id
+FROM goal_dimension_values
+JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+WHERE goal_dimension_values.goal_id IN (sqlc.slice(goal_ids));
+
+-- name: ListFieldsSetOnGoals :many
+-- The Fields each given Goal has a value in, Retired ones included, for judging
+-- which required ones it lacks (CONTEXT.md: Incomplete).
+SELECT goal_id, field_id FROM goal_field_values
+WHERE goal_id IN (sqlc.slice(goal_ids));

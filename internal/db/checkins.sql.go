@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const countMilestoneChurn = `-- name: CountMilestoneChurn :one
@@ -348,6 +349,91 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 	return items, nil
 }
 
+const listCheckinsForGoals = `-- name: ListCheckinsForGoals :many
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, checkins.asks_for_help, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, author.oidc_subject, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone, owner.oidc_subject
+FROM checkins
+JOIN accounts author ON author.id = checkins.author_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY checkins.goal_id, checkins.created_at DESC, checkins.id DESC
+`
+
+type ListCheckinsForGoalsRow struct {
+	Checkin   Checkin
+	Account   Account
+	Account_2 Account
+}
+
+// The given Goals' Check-in histories, each Goal's newest first, with each
+// Check-in's author and the Owner it was written for resolved, as ListCheckins
+// reads one Goal's.
+func (q *Queries) ListCheckinsForGoals(ctx context.Context, goalIds []int64) ([]ListCheckinsForGoalsRow, error) {
+	query := listCheckinsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCheckinsForGoalsRow
+	for rows.Next() {
+		var i ListCheckinsForGoalsRow
+		if err := rows.Scan(
+			&i.Checkin.ID,
+			&i.Checkin.GoalID,
+			&i.Checkin.AuthorID,
+			&i.Checkin.OwnerID,
+			&i.Checkin.Health,
+			&i.Checkin.Status,
+			&i.Checkin.PathToGreen,
+			&i.Checkin.PathTargetDate,
+			&i.Checkin.CreatedAt,
+			&i.Checkin.Explanation,
+			&i.Checkin.LifecycleFrom,
+			&i.Checkin.LifecycleTo,
+			&i.Checkin.LifecycleReason,
+			&i.Checkin.Outcome,
+			&i.Checkin.AsksForHelp,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+			&i.Account_2.ID,
+			&i.Account_2.Email,
+			&i.Account_2.IsAdmin,
+			&i.Account_2.CreatedAt,
+			&i.Account_2.Departed,
+			&i.Account_2.Name,
+			&i.Account_2.ManagerID,
+			&i.Account_2.Timezone,
+			&i.Account_2.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDateSlips = `-- name: ListDateSlips :many
 SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green FROM date_slips WHERE goal_id = ? ORDER BY created_at, id
 `
@@ -355,6 +441,55 @@ SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, create
 // A Goal's Date Slips, earliest first, so a date's history reads in order.
 func (q *Queries) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, error) {
 	rows, err := q.db.QueryContext(ctx, listDateSlips, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DateSlip
+	for rows.Next() {
+		var i DateSlip
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.CheckinID,
+			&i.MilestoneID,
+			&i.OldDate,
+			&i.NewDate,
+			&i.Reason,
+			&i.CreatedAt,
+			&i.BackToGreen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDateSlipsForGoals = `-- name: ListDateSlipsForGoals :many
+SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green FROM date_slips WHERE goal_id IN (/*SLICE:goal_ids*/?) ORDER BY goal_id, created_at, id
+`
+
+// The given Goals' Date Slips, each Goal's earliest first, as ListDateSlips
+// reads one Goal's.
+func (q *Queries) ListDateSlipsForGoals(ctx context.Context, goalIds []int64) ([]DateSlip, error) {
+	query := listDateSlipsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -489,6 +624,96 @@ func (q *Queries) ListHighlightsByGoalInRange(ctx context.Context, arg ListHighl
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
 			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLatestCheckinsForGoals = `-- name: ListLatestCheckinsForGoals :many
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, checkins.asks_for_help, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, author.oidc_subject, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone, owner.oidc_subject
+FROM checkins
+JOIN accounts author ON author.id = checkins.author_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (/*SLICE:goal_ids*/?)
+  AND checkins.id = (
+    SELECT c.id FROM checkins c
+    WHERE c.goal_id = checkins.goal_id
+    ORDER BY c.created_at DESC, c.id DESC
+    LIMIT 1
+)
+`
+
+type ListLatestCheckinsForGoalsRow struct {
+	Checkin   Checkin
+	Account   Account
+	Account_2 Account
+}
+
+// Each given Goal's most recent Check-in, picked as GetLatestCheckin picks it,
+// with its author and the Owner it was written for resolved. A Goal with no
+// Check-in has no row.
+func (q *Queries) ListLatestCheckinsForGoals(ctx context.Context, goalIds []int64) ([]ListLatestCheckinsForGoalsRow, error) {
+	query := listLatestCheckinsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLatestCheckinsForGoalsRow
+	for rows.Next() {
+		var i ListLatestCheckinsForGoalsRow
+		if err := rows.Scan(
+			&i.Checkin.ID,
+			&i.Checkin.GoalID,
+			&i.Checkin.AuthorID,
+			&i.Checkin.OwnerID,
+			&i.Checkin.Health,
+			&i.Checkin.Status,
+			&i.Checkin.PathToGreen,
+			&i.Checkin.PathTargetDate,
+			&i.Checkin.CreatedAt,
+			&i.Checkin.Explanation,
+			&i.Checkin.LifecycleFrom,
+			&i.Checkin.LifecycleTo,
+			&i.Checkin.LifecycleReason,
+			&i.Checkin.Outcome,
+			&i.Checkin.AsksForHelp,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+			&i.Account_2.ID,
+			&i.Account_2.Email,
+			&i.Account_2.IsAdmin,
+			&i.Account_2.CreatedAt,
+			&i.Account_2.Departed,
+			&i.Account_2.Name,
+			&i.Account_2.ManagerID,
+			&i.Account_2.Timezone,
+			&i.Account_2.OidcSubject,
 		); err != nil {
 			return nil, err
 		}

@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const listActiveGoalsWithLatestCheckin = `-- name: ListActiveGoalsWithLatestCheckin :many
@@ -71,6 +72,54 @@ func (q *Queries) ListActiveGoalsWithLatestCheckin(ctx context.Context) ([]ListA
 			&i.CheckinCreatedAt,
 			&i.CheckinHealth,
 			&i.CheckinPathTargetDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMilestonesForGoals = `-- name: ListMilestonesForGoals :many
+SELECT id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active FROM milestones WHERE goal_id IN (/*SLICE:goal_ids*/?) ORDER BY goal_id, target_date, id
+`
+
+// The given Goals' Milestones, each Goal's soonest first, as ListMilestones
+// reads one Goal's, for judging which are Milestone overdue.
+func (q *Queries) ListMilestonesForGoals(ctx context.Context, goalIds []int64) ([]Milestone, error) {
+	query := listMilestonesForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Milestone
+	for rows.Next() {
+		var i Milestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.TargetDate,
+			&i.CreatedAt,
+			&i.Status,
+			&i.RemovedReason,
+			&i.AddedWhileActive,
 		); err != nil {
 			return nil, err
 		}

@@ -10,6 +10,22 @@ RETURNING *;
 -- Check-in).
 SELECT * FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1;
 
+-- name: ListLatestCheckinsForGoals :many
+-- Each given Goal's most recent Check-in, picked as GetLatestCheckin picks it,
+-- with its author and the Owner it was written for resolved. A Goal with no
+-- Check-in has no row.
+SELECT sqlc.embed(checkins), sqlc.embed(author), sqlc.embed(owner)
+FROM checkins
+JOIN accounts author ON author.id = checkins.author_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (sqlc.slice(goal_ids))
+  AND checkins.id = (
+    SELECT c.id FROM checkins c
+    WHERE c.goal_id = checkins.goal_id
+    ORDER BY c.created_at DESC, c.id DESC
+    LIMIT 1
+);
+
 -- name: ListCheckins :many
 -- A Goal's Check-in history, newest first, with each Check-in's author and the
 -- Owner it was written for resolved for display.
@@ -19,6 +35,17 @@ JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = @goal_id
 ORDER BY checkins.created_at DESC, checkins.id DESC;
+
+-- name: ListCheckinsForGoals :many
+-- The given Goals' Check-in histories, each Goal's newest first, with each
+-- Check-in's author and the Owner it was written for resolved, as ListCheckins
+-- reads one Goal's.
+SELECT sqlc.embed(checkins), sqlc.embed(author), sqlc.embed(owner)
+FROM checkins
+JOIN accounts author ON author.id = checkins.author_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY checkins.goal_id, checkins.created_at DESC, checkins.id DESC;
 
 -- name: CreateMetricReading :one
 -- Record a Metric's current value against the Check-in that read it (CONTEXT.md:
@@ -73,6 +100,11 @@ RETURNING *;
 -- name: ListDateSlips :many
 -- A Goal's Date Slips, earliest first, so a date's history reads in order.
 SELECT * FROM date_slips WHERE goal_id = ? ORDER BY created_at, id;
+
+-- name: ListDateSlipsForGoals :many
+-- The given Goals' Date Slips, each Goal's earliest first, as ListDateSlips
+-- reads one Goal's.
+SELECT * FROM date_slips WHERE goal_id IN (sqlc.slice(goal_ids)) ORDER BY goal_id, created_at, id;
 
 -- name: SetGoalDeliveryDate :exec
 UPDATE goals SET delivery_date = ? WHERE id = ?;
