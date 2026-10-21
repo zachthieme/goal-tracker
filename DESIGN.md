@@ -4,13 +4,6 @@ The design system for Goal Tracker's web UI, with a light and a dark theme.
 Pages follow this file. If you need to change the system, edit this file
 deliberately; don't override it on one page.
 
-**The system is moving to the flat frame** (§ Direction, adopted 2026-10-20).
-Where § Direction and a later section disagree, § Direction is the target. The
-frame itself has landed: § Tokens, § Type scale and the Sidebar, Page header,
-Theme menu and Nav counts components describe it as built. The other sections
-describe the app as built, and each is rewritten to match as its page moves
-over.
-
 ## Provenance
 
 - **Source:** "d3kn Warm Teal" by D3KN-prog,
@@ -30,260 +23,68 @@ over.
 - The source's Arabic faces (Tajawal, Cairo) are dropped because this app is
   English-only.
 
-## Direction: the flat frame
-
-Adopted 2026-10-20 from the maintainer's mockups of Home, the Goal list and the
-Goal page, which were modelled on Linear. The aim is to get rid of the "everything in a card"
-look: a grey canvas under white bordered boxes. A page becomes one surface, and
-type, space and hairlines carry the hierarchy.
-
-### Principles
-
-- **One surface.** The page is a single plain background, white in light. No
-  section sits in a box. Sections are a heading over rows separated by 1px
-  hairlines, with space between sections doing the grouping.
-- **Surfaces are for what floats.** A raised surface (fill, border, shadow) is
-  kept for menus, popovers, dialogs, the toast and the Check-in page's sticky
-  submit bar. A raised surface then means "this is on top". `.card` is
-  retired as a page container. A form is a plain section, and its fields have
-  their own edges.
-- **Type leads.** Each page has one confident title and real section headings.
-  The `.label` caps style is retired for headings.
-- **Health is the colour.** Red, Yellow and Green, as their shape and pill, are
-  the page's strongest colour. Teal stays the accent for what a person acts
-  on: primary buttons, links, focus, and the logo mark.
-- **Tight, aligned density.** It is built for long lists: 40–44px rows, 13–14px
-  text, a 4px grid, and numbers in tabular figures so columns line up.
-
-### The frame
-
-- **Sidebar (replaces the top bar).**
-  - **Size and surface:** a 240px column on the left of every signed-in page,
-    in `--color-sidebar` with a 1px `--color-border` right edge.
-  - **Order, top to bottom:**
-    1. The app's name, with a small teal mark. It links to Home.
-    2. A **Search** field. It submits a GET to the Goal list's search
-       (`/goals?q=`). It shows no keyboard-shortcut hint: the app has no
-       shortcut.
-    3. The nav: **Home · Goals · Follow-ups · Reports**, and **Admin** for an
-       Admin. Each has a 16px stroke icon and its label, and the count sits at
-       the right edge in muted tabular figures. Home's count keeps its emphasis
-       (§ Nav counts) as a filled pill.
-    4. **My org.** For someone with people under them, their direct reports by
-       Name, each linking to that person's org on Goals. It isn't shown to
-       anyone without reports.
-    5. At the foot, the signed-in person's Name with their initials. It opens a
-       menu holding **Theme** (System, Light, Dark) and **Sign out**.
-  - **Nav items:** 32px tall with a 6px radius, `--color-ink-2` at rest. Hover
-    and the current item take `--color-sidebar-hover` and `--color-sidebar-on`
-    fills with `--color-ink` text. The current item is marked
-    `aria-current="page"`, and the rule that marks Goals current on a Goal's
-    pages stays.
-- **Page header.**
-  - **Layout:** a 48px strip across the top of the content, with a 1px
-    `--color-border` under it. It holds the page's title, or a breadcrumb on a
-    page under another ("Goals › <Goal title>"), with a muted count where the
-    page has one ("24 in My org").
-  - **Actions:** the page's actions sit at its right, with the primary one as
-    a filled button (New goal, Check in). It isn't sticky.
-- **Content.** Pages are fluid within the content column:
-  - a list fills it edge to edge, with 28px side padding;
-  - a reading page centres a column up to 880px;
-  - the Goal page uses a document column with a 300px properties rail beside it
-    (§ Page shapes).
-- **Phone (900px and below).** The sidebar collapses into a 48px top strip:
-  - the app's name on the left, then **Menu**, a `<details>` disclosure that
-    opens the nav, counts, My org and the person's menu as a sheet;
-  - Home's count also shows on the strip, so it isn't hidden in the menu.
-
-  Nothing scrolls sideways. A wide list scrolls inside its own container.
-
-### Tokens
-
-These replace the matching tokens in § Tokens when the frame lands. Light:
-
-```css
---color-canvas:        #FFFFFF; /* the page */
---color-sidebar:       #F7F7F8;
---color-sidebar-hover: #EEEEF0;
---color-sidebar-on:    #E8E8EB; /* the current nav item */
---color-row-hover:     #F6F6F7; /* a list row under the pointer */
---color-group:         #FAFAFB; /* a list's group header row */
---color-border:        #EDEDEF; /* hairlines */
---color-border-strong: #8A8D93; /* inputs and chip edges: 3:1 on every surface above */
---color-ink:           #1B1D22;
---color-ink-2:         #33363C;
---color-ink-muted:     #5F636B;
---color-chip-bg:       #F1F1F3; --color-chip-ink: #4A4D54; /* signals and tags */
---health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
---health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
---health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
---radius-md: 6px;      /* buttons, inputs, chips, nav items */
---radius-lg: 10px;     /* menus, dialogs, the toast */
-```
-
-Dark (chosen):
-
-```css
---color-canvas:        #0F1012;
---color-sidebar:       #151618;
---color-sidebar-hover: #1C1D20;
---color-sidebar-on:    #222327;
---color-row-hover:     #1A1B1E;
---color-group:         #17181B;
---color-border:        #26282C;
---color-border-strong: #6B6F77;
---color-ink:           #EDEEF0;
---color-ink-2:         #C9CBD0;
---color-ink-muted:     #9A9EA6;
---health-r-mark: #F07171; --health-y-mark: #E0B23A; --health-g-mark: #4CC38A;
-/* Health pill fills and inks keep the dark 20%-alpha fills in § Tokens */
-```
-
-These stay as they are:
-- the teal `--color-primary-*` tokens, `--color-focus` and `--color-danger-ink`;
-- the Check-in overdue tokens;
-- `--shadow-pop`, now used by every floating surface.
-
-The `--nav-*` tokens go with the top bar. Measured on canvas, sidebar, row hover
-and group header, every text ink is at least 4.5:1, and every input edge,
-focus ring and Health mark at least 3:1, in both themes. The lowest pairs are:
-
-- light muted ink: 5.58;
-- light input edge: 3.08;
-- the Yellow mark: 3.40;
-- dark input edge: 3.42.
-
-They landed with the frame: § Tokens holds them, with the roles § Direction
-leaves out marked *(chosen)*, and § Deviations 10 their ratios, which
-`scripts/contrast.py` checks.
-
-### Type
-
-- **One face: Inter**, for headings and text alike. Plus Jakarta Sans and
-  JetBrains Mono are retired.
-- **Sizes and weights:**
-  - page title: 28/1.2, 600, -0.02em;
-  - section heading: 13/1.4, 600 (an `h2`);
-  - row title: 14, 500;
-  - body: 14/1.5;
-  - meta: 12.5–13 in `--color-ink-muted`;
-  - small label: 12, 500, sentence case, never uppercase.
-- **Numbers:** dates, counts and Metric values use
-  `font-variant-numeric: tabular-nums`, not a monospace face.
-- **Exception:** the Print variant keeps its own serif.
-
-### Components in the frame
-
-- **List rows.** These replace tables-in-cards for the Goal list, Follow-ups,
-  the Reports list and the like.
-  - **Rows:** 40–44px tall, full-bleed, separated by `--color-border`, with
-    `--color-row-hover` under the pointer.
-  - **Columns** sit on a CSS grid: a Health mark, the title (500 weight, an
-    ellipsis when long), signal chips, then the Owner with initials, then the
-    tabular dates.
-  - **Column labels:** a muted 12px row at the top, not a filled table head.
-  - **Groups:** a `--color-group` header row with the group's shape, name and
-    count, for example "Red 4".
-  - **Phone:** at phone width a row stacks: title first, meta under it.
-- **Health.**
-  - **In a list:** the 11px shape alone in `--health-*-mark`, with an
-    `aria-label` naming the Health.
-  - **Elsewhere:** a pill on `--health-*-bg` with `--health-*-ink`, holding the
-    shape and the word. Examples are "Red · 9 wks", Home's rows and the Goal
-    page's properties.
-  - **Shapes stay:** square for Red, triangle for Yellow, circle for Green, so
-    colour is never the only signal.
-- **Signal chips.**
-  - **What they cover:** Check-in overdue, Path to Green overdue, Milestone
-    overdue, Schedule conflict, the back-to-Green date, and the like.
-  - **Look:** a 22px pill on `--color-chip-bg` with `--color-chip-ink`. Check-in
-    overdue keeps its dashed edge, so it still reads as a warning, not a tag.
-- **Filter bar.**
-  - **Filters:** a row of 28px chip buttons with a 1px `--color-border-strong`
-    edge: Scope, Health, Lifecycle, Incomplete, "+ Filter" for More filters,
-    and Group by.
-  - **Set filters:** a set chip reads its value ("Scope: My org") on
-    `--color-primary-subtle`.
-  - **Search and Clear:** search sits at the row's right, and Clear follows the
-    chips when anything is set.
-  - **Kept as is:** what the filters do and their no-script behaviour.
-- **Buttons.**
-  - **Size:** 30px tall with a 6px radius. A coarse pointer still gets 44px.
-  - **Primary:** a teal fill.
-  - **Secondary:** a white fill and a 1px `#DEDEE2` edge.
-  - **Quiet:** text only.
-- **Avatars.** A person's Name may carry a 22px circle with their initials, in
-  a colour fixed for that person. The Name stays the control that shows their
-  email (CONTEXT.md: Name).
-- **Segmented control.** Two or three choices in one 30px track, as on the Goal
-  list's List / Table switch: a `--color-chip-bg` track with a white current
-  segment.
-
-### Page shapes
-
-- **Home:**
-  - Your week as the page title, with the date and the Your goals line under
-    it;
-  - then Needs you, My org and Your Yellow or Red goals as sections of rows;
-  - no card, Needs you included: its rows lead the page, and each row's actions
-    sit at its right.
-- **The Goal list:** a full-bleed grouped list under the filter bar, with
-  Health groups by default.
-- **The Goal page:**
-  - **Document column:** the title, Why it matters as a lead paragraph, then
-    Latest status, Metrics, Milestones, Highlights, Action Items, Comments and
-    History as sections. The column is up to 860px.
-  - **Properties rail:** at its right, behind a 1px left edge, a list of label
-    and value rows. It holds Health, Lifecycle, Owner, Delegates, cadence,
-    delivery, level and Dimensions, then Contributes to and Contributed to by
-    as lists, each Goal with its Health shape.
-  - **Phone:** the rail stacks under the column.
-- **Follow-ups:**
-  - its group summaries become a row of plain counts with their chips, not
-    cards;
-  - its flagged Goals become a list in the shape above.
-- **Forms** (New goal, Check-in, Report builder): a single centred column of
-  plain sections, with no outer card. The Check-in's sticky submit bar stays a
-  floating surface.
-
-### Rollout
-
-The change lands as one frame-and-tokens change, then one change per page,
-each rewriting its section below to match. Until a page moves, it keeps its
-current look inside the new frame.
-
 ## System
 
-- **Mood:** calm and dense. One white canvas (near-black in dark), neutral
-  ink and hairlines, and teal only for what a person can act on: links,
-  buttons, focus and the logo mark. The one data accent is a Metric's trend:
-  its sparkline on the Goal page and its progress bar on the Check-in page,
-  both in teal (see § Deviations 6). No neon, and no tint on the canvas, so Health's
-  fills stand out from the page (see § Deviations 7). Until its page moves, a
-  card sits on the canvas as a white box behind a 1px hairline.
-- **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
-  and everything aligns to a 4px grid.
-- **Cards are earned** (superseded by § Direction: One surface, and kept
-  here until each page moves): a card is for a form, a table, or a page's single
-  primary task list, the one thing the page is there for a person to do now.
-  Every other section is a plain section on the canvas: a heading over rows
-  separated by 1px `--color-border` hairlines, with no surface, border or
-  padding box. So the eye finds the page's job first, and the context around
-  it reads lighter. A page's primary section may be that card and still keep
-  a section-level `h2` on it, as Home's Needs you does (§ Components: Card).
-  Home follows the rule (Needs you is its one card), and so does the Reports
-  list (its table is its one card; Open Action Items above it is a plain
-  section); other pages are brought in line one at a time.
-- **Depth:** cards lie flat on the canvas, set off by their surface and a
-  1px border. Only menus and popovers float, on `--shadow-pop`, so an open
-  one reads as nearer than anything under it (see § Deviations 8).
+The flat frame, adopted 2026-10-20 from the maintainer's mockups of Home, the
+Goal list and the Goal page, which were modelled on Linear. A page is one
+surface, and type, space and hairlines carry the hierarchy.
+
+- **One surface.** The page is a single plain background, `--color-canvas`:
+  white in light, near-black in dark. No section sits in a box. A section is
+  a heading over rows separated by 1px `--color-border` hairlines, and space
+  between sections does the grouping. A form is a plain section too, and its
+  fields have their own edges (§ Components: Sections).
+- **Surfaces are for what floats.** A raised surface (`--color-surface`, a
+  1px edge, `--radius-lg` and `--shadow-pop`) means "this is on top", so an
+  open one reads as nearer than anything under it (see § Deviations 8). These
+  float:
+  - the person's menu, the signed-out Theme panel and the phone Menu's sheet;
+  - the Goal page's More menu;
+  - Follow-ups' popovers;
+  - the Download menu;
+  - the Check-in page's sticky submit bar;
+  - the toast, which takes a `--color-border-strong` edge.
+
+  A draft Report's baseline and History panels float with no shadow, and its
+  Publish… panel on a shadow of its own. Nothing else is raised.
+- **Type leads.** One face, Inter (§ Type scale). Every page names itself in
+  its header strip. A page about one thing (Home's week, a Goal, a
+  publication, the Report builder) also opens its content with a 28px title.
+  Sections take real `h2` headings at 13/600, and `.label` is a small
+  sentence-case label, never caps.
+- **Health is the colour.** Red, Yellow and Green, as their shape and pill,
+  are the page's strongest colour. Teal is the accent for what a person acts
+  on: primary buttons, links, focus, the logo mark and the current choice in
+  a menu or filter.
+- **Mood:** calm and dense, with neutral ink and hairlines. The one data
+  accent is a Metric's trend: its sparkline on the Goal page and its progress
+  bar on the Check-in page, both in teal (see § Deviations 6). No neon, and no
+  tint on the canvas, so Health's colours stand out from the page (see
+  § Deviations 7).
+- **Density:** tight and aligned. It is built for long lists: rows of 40–44px,
+  13–14px text, a 4px grid, and numbers in tabular figures so columns line up.
+  Sections sit 24–40px apart.
+- **The frame.** Every signed-in page is a 240px sidebar beside a content
+  column that opens with a 48px header strip (§ Components: Sidebar, Page
+  header). Within the column:
+  - a list page (the Goal list, Follow-ups, the Reports list) fills it edge to
+    edge, with 28px sides;
+  - a reading or form page centres a column: the Goal page's 860px document
+    column beside its 300px properties rail, a publication's 880px, and the
+    720px form of New goal, the Check-in page and the Report builder, the first
+    two with a rail beside it;
+  - every other page sits in the default content column (`.page`), up to
+    1152px.
+
+  At 900px and below the sidebar becomes a 48px strip across the top. Nothing
+  scrolls sideways: a wide list scrolls inside its own container.
 
 ## Tokens
 
-The flat frame's tokens (§ Direction: Tokens). The roles § Direction leaves
-out are marked *(chosen)*: the card surfaces pages still use until they move,
-and the dark chips.
+The flat frame's tokens, as `app.css` declares them. The light frame's
+values come from the maintainer's mockups; a role neither they nor the source
+give is marked *(chosen)*, as are the dark values § Provenance's preview
+leaves out.
 
 ```css
 :root {
@@ -302,8 +103,8 @@ and the dark chips.
   --color-row-hover:     #F6F6F7; /* a list row under the pointer */
   --color-group:         #FAFAFB; /* a list's group header row */
 
-  /* (chosen) Cards, a hovered card, and panels and table heads, for pages
-   * that haven't moved to the frame */
+  /* (chosen) What floats, and buttons and inputs; a hovered button or menu
+   * item; a neutral badge's fill and a used add-bar button */
   --color-surface:       #FFFFFF;
   --color-surface-hover: var(--color-row-hover);
   --color-surface-alt:   var(--color-sidebar);
@@ -346,11 +147,10 @@ and the dark chips.
   /* Shape */
   --radius-sm: 4px;      /* badges, Health strip cells */
   --radius-md: 6px;      /* buttons, inputs, chips, nav items */
-  --radius-lg: 10px;     /* menus, dialogs, the toast, cards */
+  --radius-lg: 10px;     /* menus, popovers, the toast, the submit bar */
   --radius-full: 9999px; /* pills, avatars, Home's count */
 
-  /* Elevation (teal-tinted): what floats only. Cards are flat.
-   * See Deviations */
+  /* Elevation (teal-tinted): what floats only. See Deviations */
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
 
   /* Primary button hover fill. Light darkens to Teal 800: white text on it is
@@ -382,8 +182,8 @@ and the dark chips.
   --color-row-hover:     #1A1B1E;
   --color-group:         #17181B;
 
-  /* (chosen) a card lifts by lightness, as dark themes show elevation;
-   * panels and table heads sink to the canvas */
+  /* (chosen) what floats lifts by lightness, as dark themes show
+   * elevation; a neutral badge sinks to the canvas */
   --color-surface:       var(--color-sidebar);
   --color-surface-hover: var(--color-sidebar-hover);
   --color-surface-alt:   var(--color-canvas);
@@ -429,23 +229,25 @@ In the stylesheet, the empty dark `@media` block above repeats the full
 
 ## Type scale
 
-One face, Inter, for headings and text alike (§ Direction: Type).
+One face, Inter, for headings and text alike. The Print variant keeps its own
+serif, and no other face is loaded.
 
 | Role | Size / line-height | Weight | Tracking |
 | --- | --- | --- | --- |
-| Page title (`h1`) | 28 / 1.2 | 600 | -0.02em |
+| Page title (`h1` in the content) | 28 / 1.2 | 600 | -0.02em |
+| Header strip title (`.ph-title h1`) | 14 / 1.4 | 600 | — |
 | Section heading (`h2`) | 13 / 1.4 | 600 | — |
-| Card title (`h3`), until its page moves | 14 / 1.4 | 600 | — |
+| Sub-heading (`h3`), unless its page sets its own | 14 / 1.4 | 600 | — |
 | Row title | 14 | 500 | — |
 | Body | 14 / 1.5 | 400 | — |
-| Meta, `.small` | 12.5–13 / 1.5, in `--color-ink-muted` | 400 | — |
-| Small label (`.label`, `th`) | 12, sentence case, never uppercase | 500 | — |
+| Meta (`.small`), usually muted (`.muted`, `--color-ink-muted`) | 13 / 1.5 | 400 | — |
+| Small label (`.label`, `th`), in `--color-ink-muted` | 12, sentence case, never uppercase | 500 | — |
 | Numbers (`.num`) | inherit, `font-variant-numeric: tabular-nums` | 500 | — |
 
 Dates, counts and Metric values line up in tabular figures, not a monospace
 face. The app serves Inter itself, from `internal/web/static/fonts/`, as a
 variable font by `@font-face` rules at the top of `app.css`. No page loads a
-font from another host. The Print variant keeps its own serif.
+font from another host.
 
 ## Dates and times
 
@@ -472,78 +274,150 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 
 ## Components (mapped to `internal/web/static/app.css`)
 
+`app.css` holds the tokens, the frame and the shared components. Each page
+adds its own rules in a `<style>` block in its template, under a prefix of
+its own (`.hm-` for Home, `.gl-` for the Goal list, `.gp-` for the Goal page,
+and so on).
+
+### The frame
+
 - **Sidebar (`.sidebar`, `sidebar` in `layout.templ`):** every signed-in page
-  sits in the flat frame (`.frame`): a 240px column on the left in
-  `--color-sidebar`, with a 1px `--color-border` right edge, beside the
-  content column. It stays in view as the page scrolls. Top to bottom:
-  1. **The app's name (`.brand`)** with its 18px `--color-primary-strong`
-     mark. It links to Home.
-  2. **Search (`.sb-search`)**, a GET form to the Goal list's search
-     (`/goals?q=`). It shows no shortcut hint, as the app has none.
-  3. **The nav (`.navitems`):** **Home · Goals · Follow-ups · Reports**, then
-     **Admin** for an Admin. Each item is 32px tall with `--radius-md`, a 16px
-     stroke icon and its label in `--color-ink-2`, and its count at the right
-     edge (§ Nav counts). Hover takes `--color-sidebar-hover` and the current
-     item (`.on`, `aria-current="page"`) `--color-sidebar-on`, both with
-     `--color-ink` text. An item is current on its own page and every page
-     under it, so a Goal's page, New goal and a Check-in all mark Goals.
-     Home counts what needs the person and Follow-ups counts the Goals it
-     flags in the person's default scope (see Scope), as many as a bare
-     `/follow-ups` lists for them; Goals and Reports carry no count.
-  4. **My org (`.sb-org`):** for someone with people directly under them by
-     Manager, a muted "My org" heading over each of those people by Name,
-     sorted by Name, each linking to their Org on Goals (`/goals?org=<id>`).
-     Anyone without people under them gets no My org. The people are read
-     once per request, with the counts.
-  5. **The person's menu (`.sb-person`)**, at the foot: their initials in a
-     24px avatar and their Name, truncated with an ellipsis when long. It is
-     a `<details>`, so it works without script. Its panel floats above it on
-     `--shadow-pop`: "Signed in as" their Name (the Name shows their email,
-     as everywhere), "(Admin)" for an Admin, then the Theme choices (§ Theme
-     menu) and **Sign out**.
-
-  **At 900px and below** the sidebar is a 48px strip across the top: the
-  app's name, Home's count (so it isn't hidden), and **Menu**, a `<details>`.
-  Opening Menu shows the rest of the sidebar (Search, the nav, My org and the
-  person's menu) as a sheet under the strip, on `--shadow-pop`. The sheet is
-  the sidebar's own body, shown by the open Menu beside it
-  (`.sb-menu[open]~.sb-body`), so it works without script and the page has
-  one copy of each nav item. Nothing scrolls sideways. On a coarse pointer
-  the nav items, My org's people, the Theme choices and the person's button
-  are at least 44px tall.
-
-  **Signed-out pages** (sign-in, set password, Not found while signed out)
-  have no sidebar. The app's name and a Theme disclosure sit in a bar over
-  the page (`.signed-out-bar`), and the content is centred on the canvas.
+  sits in the flat frame (`.frame`).
+  - **Size and surface:** a 240px column on the left in `--color-sidebar`,
+    with a 1px `--color-border` right edge, beside the content column
+    (`.frame-content`). It has 12px padding, 16px gaps and 13px type. It is
+    sticky and as tall as the window, and scrolls inside itself when its
+    content is longer.
+  - **Order, top to bottom:**
+    1. **The app's name (`.brand`):** 14px, 600, `--color-ink`, after an 18px
+       `--color-primary-strong` square mark with 5px corners. It links to
+       Home.
+    2. **Search (`.sb-search`):** a GET form to the Goal list's search
+       (`/goals?q=`), `role="search"`. Its field is 32px tall on
+       `--color-canvas`, with the placeholder "Search" and a visually hidden
+       label, "Search Goals". It shows no shortcut hint, as the app has none.
+    3. **The nav (`.navitems`):** **Home · Goals · Follow-ups · Reports**,
+       then **Admin** for an Admin, 4px apart.
+       - **Items (`.navitem`):** each is 32px tall with `--radius-md` and 8px
+         sides. It holds a 16px stroke icon 12px from its 500-weight label in
+         `--color-ink-2`, and its count at the right edge (§ Nav counts).
+       - **States:** the icon is `--color-ink-muted` at rest. Hover takes
+         `--color-sidebar-hover` and the current item (`.on`,
+         `aria-current="page"`) `--color-sidebar-on`, both turning the label
+         and icon `--color-ink`.
+       - **The current item:** an item is current on its own address and
+         every page under it, so a Goal's page, New goal and a Check-in all
+         mark Goals.
+       - **Counts:** Home counts what needs the person. Follow-ups counts the
+         Goals it flags in the person's default scope (see Scope), as many as
+         a bare `/follow-ups` lists for them. Goals, Reports and Admin carry no
+         count.
+    4. **My org (`.sb-org`):** for someone with people directly under them by
+       Manager, a muted 12px "My org" heading over each of those people by
+       Name, sorted by Name. Each is a 30px row in `--color-ink-2`, cut short
+       with an ellipsis, with their email as its tooltip and the nav's hover.
+       It links to their Org on Goals (`/goals?org=<id>`). Anyone without
+       people under them gets no My org. The people are read once per
+       request, with the counts.
+    5. **The person's menu (`.sb-person`):** at the foot, a 40px `<details>`
+       button holding their initials in a 24px avatar and their Name in
+       500-weight `--color-ink`, truncated with an ellipsis when long. It
+       takes `--color-sidebar-hover` on hover and while open, and works
+       without script. Its panel floats 4px above it, as wide as the sidebar
+       (§ System: Surfaces are for what floats): "Signed in as" their Name in
+       muted 12px (the Name shows their email, as everywhere), "(Admin)" for
+       an Admin, then the Theme choices (§ Theme menu) and **Sign out**, a
+       full-width quiet small button.
+  - **At 900px and below** the sidebar is a 48px strip across the top, with
+    a 1px `--color-border` bottom edge, and it scrolls away with the page.
+    - **The strip:** the app's name at the left. Home's count pill (only above
+      zero, as a 44px link to Home, so it isn't hidden) and **Menu**, a small
+      secondary button on a `<details>`, sit at the right.
+    - **The sheet:** opening Menu shows the rest of the sidebar (Search, the
+      nav, My org and the person's menu) as a sheet under the strip, in
+      `--color-sidebar` on `--shadow-pop`, scrolling inside itself when it is
+      taller than the window. The person's menu opens in place in it, with no
+      shadow.
+    - **No script needed:** the sheet is the sidebar's own body (`.sb-body`),
+      shown by the open Menu beside it (`.sb-menu[open]~.sb-body`), so it
+      works without script and the page has one copy of each nav item.
+- **Content column (`.page`):** the page under the header strip, a centred
+  column up to 1152px wide with 32px padding (64px at its foot) and 32px
+  between its parts. At 900px and below it is 20px and 16px, with 24px gaps.
+  A list page and the Goal page lift the width limit and the padding and run
+  edge to edge (§ System: The frame).
 - **Page header (`.page-header`, `pageHeader` in `layout.templ`):** a 48px
-  strip across the top of the content column with a 1px `--color-border`
-  under it. It holds the page's title, or a breadcrumb on a page under
-  another ("Goals › <Goal title>"), with a muted count where the page has one,
-  and the page's actions at its right. It isn't sticky. A page fills it by
-  rendering through `framedLayout` with a header; a page that hasn't moved to
-  the frame renders through `layout` and keeps its own head in its content.
-- **Theme menu (`.theme-menu`):** three choices in words: **System** (the
-  default: follow the operating system), **Light** and **Dark**. Signed in,
-  they sit in the person's menu beside Sign out. Signed out, they sit in a
-  quiet "Theme" disclosure (`.theme`) in the bar over the page, whose panel
-  (`.theme-float`) floats under the button, anchored right and no wider than
-  the screen, so it never widens the page. The current choice is marked
-  with a `--color-primary-light` fill and a check, and `aria-current="true"`.
-  Each choice is a plain form post, so it works without script.
-  The choice is kept per browser in the `gt_theme` cookie, not on the Account,
-  so it holds before sign-in and after sign-out. It lasts a year and each
-  choice renews it. Choosing System clears it. The server pins
-  `data-theme="light"` or `data-theme="dark"` on `<html>` from the cookie, so
-  the page has the right theme on first paint with no script. With no cookie,
-  or a value it doesn't know, it pins nothing and the page follows the system.
-  A Report's Print view and emails ignore the choice.
-- **Toast (`.toast`):** the one shared notice for an action that can be
-  undone. It says what was done, in `--color-ink` on `--color-surface`, with a
-  secondary **Undo** button beside it, inside a 1px `--color-border-strong`
-  edge, `--radius-lg` and `--shadow-pop`. It is fixed 24px above the bottom of
-  the window, centred, over the page content (`z-index` 30), and the page under
-  it gains bottom padding so nothing ends up hidden behind it. At 600px and
-  below it spans the window less 16px each side and its message wraps.
+  strip across the top of the content column, with 28px sides (16px at 900px
+  and below) and a 1px `--color-border` under it.
+  - **The title:** at its left, the page's title as an `h1` at 14/1.4, 600,
+    cut short with an ellipsis when long. On a page under another, its parent
+    leads it as a muted link and `›` ("Goal title › Check in"), the `›` hidden
+    from screen readers. A muted count in tabular figures follows where the
+    page has one ("24 in My org").
+  - **Breadcrumbs:** the Goal page, a publication and the Report builder
+    put a `<nav aria-label="Breadcrumb">` there instead ("Goals › <Goal
+    title>"), ending in the current page in `--color-ink`, marked
+    `aria-current="page"`. The Goal page's strip holds no `h1`, because the
+    Goal's title heads its document column.
+  - **The actions:** at its right, kept at full width, with the primary one
+    as a filled small button (New goal, Check in, New report).
+  - **Scroll:** it isn't sticky. A Report's draft page is the one exception
+    (§ A Report's draft page).
+  - **How a page gets one:** it renders through `framedLayout` with a header.
+    A page rendered through `layout` has no strip and keeps its own head in
+    its content: the Message pages, and Delegated to me, Pending links,
+    Pending handoffs, Suggest a parent, the Definition log, Graph signals and
+    Freshness signals.
+- **Signed-out pages (`.signed-out`):** sign-in, set password, and Not found
+  while signed out, have no sidebar. A 56px bar (`.signed-out-bar`), with no
+  edge or fill, holds the app's name at the left and a quiet small **Theme**
+  disclosure at the right, with 24px sides (16px at 900px and below). The
+  content is centred on the canvas.
+- **Sign-in and Set password (`signInColumn` in `signin.templ`):** one column
+  up to 360px wide, centred 56px under the bar. It opens with
+  the app's mark at 32px with 8px corners, 24px above the form (`.si-form`),
+  whose parts are stacked 16px apart: the centred 28px `h1`, a muted note
+  where there is one, the fields, then a full-width primary button. A refusal
+  shows above the fields in `--color-danger-ink`, `role="alert"`, with the
+  email kept.
+  - **Development sign-in:** a note saying any email signs in, then Email and
+    **Sign in**.
+  - **The company's provider:** one button, **Sign in with your
+    organization**, or **Try again** after a refusal.
+  - **Password sign-in:** Email, Password and **Sign in**, then a muted
+    "Forgot your password? Ask an Admin for a set-password link."
+  - **Set password:** "For <email>. At least 12 characters.", **New password**
+    and **New password again**, then **Set password**. A link that can't be
+    used shows only the heading and the reason.
+- **Theme menu (`.theme-menu`, `themeMenu` in `layout.templ`):** three
+  choices in words, under a muted "Theme" label: **System** (the default:
+  follow the operating system), **Light** and **Dark**.
+  - **Where:** signed in, they sit in the person's menu above Sign out.
+    Signed out, they sit in the bar's "Theme" disclosure (`.theme`), whose
+    160px panel (`.theme-float`) floats 8px under the button, anchored right
+    and no wider than the screen less 32px, so it never widens the page.
+  - **A choice (`.theme-choice`):** 36px, `--radius-md`, 500-weight
+    `--color-ink`, with `--color-primary-subtle` on hover. The current choice
+    takes a `--color-primary-light` fill, 600 weight, a
+    `--color-primary-strong` ✓ at its right, and `aria-current="true"`.
+  - **No script needed:** each choice is a plain form post, and comes back to
+    the page it was made on.
+  - **Where the choice is kept:** per browser, in the `gt_theme` cookie, not
+    on the Account, so it holds before sign-in and after sign-out. It lasts a
+    year, and each choice renews it. Choosing System clears it. The server
+    pins `data-theme="light"` or `data-theme="dark"` on `<html>` from the
+    cookie, so the page has the right theme on first paint with no script.
+    With no cookie, or a value it doesn't know, it pins nothing and the page
+    follows the system. A Report's Print view and emails ignore the choice.
+- **Toast (`.toast`, `toastNotice` in `layout.templ`):** the one shared
+  notice for an action that can be undone. It says what was done, in
+  `--color-ink` on `--color-surface`, with a small secondary **Undo** 16px
+  beside it, inside a 1px `--color-border-strong` edge, `--radius-lg` and
+  `--shadow-pop`. It is fixed 24px above the bottom of the window, centred,
+  over the page content (`z-index` 30) and no wider than the window less
+  32px, and the page under it gains 128px of bottom padding so nothing ends
+  up hidden behind it. At 600px and below it spans the window less 16px each
+  side, 16px from the bottom, and its message wraps.
   - **Once, with no script.** The server renders it only on the page shown
     straight after the action. The post that made the change sets the
     `gt_undo` cookie, scoped to that page's path, and the page clears it as it
@@ -565,217 +439,766 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     value's own Restore button on the Dimensions page is not an Undo: it takes
     no token and works at any time.
   - **A refused Undo shows a page, not bare text.** It keeps its status and
-    renders a "Can't undo" page inside the normal chrome, with one plain
-    sentence saying why (no internal prefixes or IDs) and a **Back** link to
-    the page the Undo was offered on: the Goal page for a link removal (Home
-    when it names none), Home or the pending page for a rejection, and
+    renders a "Can't undo" Message page, with one plain sentence saying why
+    (no internal prefixes or IDs) and a **Back** link to the page the Undo was
+    offered on: the Goal page for a link removal (Home when it names none),
+    Home, the pending page or the Goal page for a rejection or a decline, and
     Dimensions for a retired value. The page is `undoRefusedPage` in
     `toast.templ`.
   - **Announced politely:** an `<aside role="status">`, so a screen reader
     reads it without moving focus.
   - **Where:** removing a link (Goal page), retiring a Dimension value
-    (Dimensions page), and rejecting a link request or a Handoff (Home, or the
-    request's pending page, whichever the Reject came from). The templ
-    component is `toastNotice` in `layout.templ`; a new Undo reuses it rather
-    than making its own notice.
-- **Not found page:** like a refused Undo, a missing page shows a page, not
-  bare text. A page you open that doesn't exist (an unknown URL, asked with
-  any method, or a Goal, Report, publication or other thing that doesn't
-  exist or has been removed) answers 404 with a "Not found" page inside the
-  normal chrome, the sidebar's counts included: one plain sentence, "There's
-  nothing here. It may have been removed, or the link may be wrong.", and a
-  way back: **Back to Home** when signed in, **Sign in** when not. The page
-  is `notFoundPage` in `notfound.templ`, written by `s.notFound`; a handler
-  that 404s calls it rather than `http.NotFound`. An action (a form's POST)
-  refused as "not found" answers as before, with its area's plain-text
-  error, and a known address asked with a method it doesn't take still
-  answers 405.
+    (Dimensions page), rejecting a link request or a Handoff (Home, or the
+    request's pending page, whichever the Reject came from), and declining a
+    Parent suggestion (Home or the Goal page). A new Undo reuses `toastNotice`
+    rather than making its own notice.
 - **Message page (`.message-page`):** a page that only says one thing (Not
   found, Can't undo, Can't remove link, a refused Nudge, a Check-in that
-  can't be reached) sets its heading, sentence and way back in a 760px column
-  with 16px gaps. The column starts at the page's left edge, like every
-  other page's content, and isn't centred, except signed out, where every
-  page's content is centred (§ Sidebar).
-- **Primary button (`.btn.primary`):**
-  - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
-    `--radius-md`, 14px, weight 600.
-  - Hover: the fill changes to `--btn-primary-hover`, and nothing else does:
-    no lift, no shadow. The border follows the fill, so the button still
-    reads as one surface.
-    - Light: the fill darkens to Teal 800 (`#115E59`), and white text on it is
-      7.58:1. Light `--color-primary-hover` is only 3.74:1 under white text,
-      so it can't be the fill.
-    - Dark: the fill lightens to `--color-primary-hover` (`#2DD4BF`), because
-      dark themes show elevation by lightness. `--color-ink-inverse` text on
-      it is 7.77:1.
-  - Active: `scale(0.98)`.
-- **Secondary button (`.btn`):** `--color-surface` fill, 1px `--color-border`,
-  `--color-ink` text. On hover, the fill becomes `--color-surface-hover` and
-  the border becomes `--color-primary`.
-- **Quiet button (`.btn.quiet`):** no fill, `--color-primary-strong` text. On
-  hover it takes a `--color-primary-subtle` fill.
-- **A person's Name (`.person`):** plain text in the surrounding ink, with no
-  underline, so it never reads as a link. On hover and keyboard focus it takes a
-  faint `--color-primary-subtle` tint, as a quiet button does, and focus keeps the focus ring. Clicking, tapping or activating
-  it from the keyboard shows the person's email beside it, and doing it again
-  hides it (CONTEXT.md: Name). `personPlain`, inside another control, and the
-  Print view's "Name (email)" have no control.
-- **Icon remove button (`.btn.rb-remove`):** the Report builder's × on a rule
-  row and on a Goal chip. It is a 40px square, the height of the selects
-  beside it, with a 1px `--color-border-strong` edge and the standard focus
-  ring. On a Goal chip it is round and forms the pill's right end: the chip
-  keeps only its 12px left padding, so it stays compact. On a coarse pointer
-  it is 44px wide as well as tall. It shows only the ×, so it always carries
-  an `aria-label` and a matching `title` naming what it removes ("Remove
-  rule", "Remove <Goal title>").
-- **Card (`.card`):** retired as a page container by the flat frame, and kept
-  until each page moves. It sits quietly on the canvas: `--color-surface`
-  (white on the white canvas in light, a step lighter than the canvas in
-  dark), a 1px `--color-border` hairline, `--radius-lg` (10px), 24px padding,
-  and no shadow in either theme. On hover a
-  clickable card's border becomes `--color-border-strong` over `--dur-base`,
-  and nothing else changes: it doesn't move. That is darker in light and
-  lighter in dark, so either way the edge stands further out from the card.
-  A card nested inside a section takes an `h3` (card title) for its own
-  heading; `h2` is for page sections. The one exception is a page's primary
-  section when it is a card (§ System: Cards are earned): it keeps the
-  section-level `h2`, as Home's Needs you does.
-  Where a card earns its place is § System: Cards are earned. The Goal page
-  predates that rule: there a card is for something a person acts on or
-  reads as a unit of status, such as the Check-in, each Metric and
-  Milestones, and reference blocks are not cards. On the Goal page these are Action Items, Highlights,
-  Comments, History and the sidebar's blocks.
-- **Canvas block (`.ruled`):** a reference block sits on the canvas with no
-  surface, border or shadow. A 1px `--color-border` rule sits above it with
-  20px of padding below the rule. The first block in a column has no rule,
-  because nothing sits above it. A canvas block in the main column takes an
-  `h2`. **Sidebar exception:** a canvas block in the sidebar keeps the `h3`
-  size, so the narrow column reads as one quiet list rather than a stack of
-  sections. At 900px and below, the sidebar stacks under the main column, and
-  its first block takes the rule too. The Goal's Why it matters is part of the page
-  head (below). It sits on the canvas with no rule.
-- **Goal page head (`.gp-head`):** read top to bottom, it is the title (H1),
-  then the Why it matters, then one metadata line. The warning banners (Ownerless,
-  Check-in overdue, Path to Green overdue, Incomplete) stay above it, and the
-  actions sit top right.
-  - **Why it matters lead (`.gp-lead`):** larger body text, 18 / 1.55 in
-    `--color-ink`, at most 720px wide. No "Why it matters" heading shows; a visually
-    hidden one (`.sr-only`) labels it for assistive technology, and a small
-    "What goes here?" help button under it opens the definition in place.
-  - **Metadata line (`.gp-meta`):** the Health badge leads, then plain
-    `--color-ink-muted` text separated by `·`: Lifecycle, Dated or Ongoing,
-    Owner (the usual person control), the delivery date with any slipped dates
-    struck through when Dated, the Check-in cadence, and Top-level when it
-    applies. Only Health is a badge; Dated, Ongoing and Top-level are help
-    buttons (see Help on terms). The line wraps on narrow screens.
-    Dimension values and Fields stay in the sidebar, never the head.
-  - **Help on terms:** a glossary term a reader may meet cold carries a
-    `disclose help` button that opens a one-line definition in place
-    (`.explain`), with the same text as the button's `title` so it is still
-    reachable without script. Why it matters has one under the lead; Top-level, Dated
-    and Ongoing are the word in the metadata line itself; Delegates and
-    Dimension values have one under their sidebar headings; and the Report
-    builder's Also include and Leave out have one after each legend. Ownerless
-    badges on the Goals list, the Goal page's link lists and the Follow-ups table
-    carry the definition as a `title` only, because a button in every row
-    would be too heavy.
-  - **Header actions (`.gp-actions`):** top right, for whoever may check in
-    (the Owner or a Delegate), a primary **Check in** link to the Goal's
-    Check-in page and a quiet **No change** (`.btn.quiet`). Beside them sits
-    the action menu. Anyone else sees only the menu.
-  - **Action menu (`.gp-more`):** a secondary button reading "More ▾", named
-    and titled "More actions". It is a `<details>`, so it opens without
-    script, and its panel (`.gp-menu`) is a card anchored right under the
-    button. It lists actions, never forms: each item is a plain link, and each
-    person sees only the actions they may take. When there would be none, the
-    menu is left out. For whoever may check in, the menu also offers, after
-    the other items, the Lifecycle changes the Goal allows: **Put on hold…**,
-    **Mark done…** and **Cancel…** on an Active Goal, **Cancel…** alone on an
-    On Hold one, none otherwise. Unlike the other items, these lead to the
+  can't be reached). It renders through `layout`, with no header strip: its
+  28px `h1`, its sentence and its way back sit in a column up to 760px wide,
+  16px apart. The column starts at the content column's left edge, except
+  Not found, which is centred, as is every signed-out page's content.
+- **Not found page (`notFoundPage` in `notfound.templ`):** like a refused
+  Undo, a missing page shows a page, not bare text. A page you open that
+  doesn't exist (an unknown URL, asked with any method, or a Goal, Report,
+  publication or other thing that doesn't exist or has been removed) answers
+  404 with a "Not found" Message page inside the normal chrome, the sidebar's
+  counts included. It is centred, 64px down, its text centred and 12px apart:
+  one plain sentence, "There's nothing here. It may have been removed, or the
+  link may be wrong.", and a way back, **Back to Home** when signed in,
+  **Sign in** when not. `s.notFound` writes it; a handler that 404s calls it
+  rather than `http.NotFound`. An action (a form's POST) refused as "not
+  found" answers as before, with its area's plain-text error, and a known
+  address asked with a method it doesn't take still answers 405.
+
+### Shared components
+
+- **Sections:** no page container has a fill, border or padding box. A page
+  section is an `h2` (13/1.4, 600, `--color-ink`) over its rows, each ruled
+  off by a 1px `--color-border` hairline, with space between sections doing
+  the grouping. Each page styles its own sections
+  (`.hm-section` on Home, `.gp-section` on the Goal page, `.ad-section` on
+  Admin, and so on); `app.css` has no shared section class.
+- **List rows:** the Goal list (`.gl-list`) is the model, and Home,
+  Follow-ups and the Reports list follow it.
+  - **Rows:** 40px on the Goal list, 44px elsewhere, separated by
+    `--color-border` hairlines, with `--color-row-hover` under the pointer on
+    the Goal list, Follow-ups and the Reports list. A list page's rows run
+    edge to edge with 28px sides (16px at 900px and below).
+  - **Column labels:** a 32px row of muted 12px, 500 labels at the top, over a
+    hairline, with no fill.
+  - **Groups:** a 36px `--color-group` header row with the group's shape, its
+    name in 13px, 600 `--color-ink` and its count in muted tabular figures
+    ("Red 4").
+  - **Phone:** at 600px and below the column labels hide and each row stacks
+    between its hairlines, the Goal or name first and the rest wrapping under
+    it.
+- **Health:** shown three ways, each keeping its shape (a square for Red, a
+  triangle for Yellow, a circle for Green), so colour is never the only
+  signal.
+  - **The shape alone (`.gl-mark`, `goalHealthMark`):** in the Goal list's
+    rows and group headers, 11px (Yellow's triangle 12 × 11px) in
+    `--health-*-mark`. In a row it is `role="img"` with an `aria-label`
+    naming the Health ("Red", "No Health"). A Goal with no Health shows a
+    hollow 1.5px `--color-ink-muted` ring.
+  - **The badge (`.badge` with `.g` / `.y` / `.r`):** a `--health-*-bg` fill
+    with `--health-*-ink` text (see § Deviations 3), 22px tall with 8px
+    sides, `--radius-sm` corners and 13px, 600 type on one line, its 8px
+    shape (`.dot`) before the word. It is how Health shows everywhere else:
+    Follow-ups, the Goal page, the Check-in page and the Reports.
+  - **The pill:** in Home's rows, the badge takes `--radius-full` and 12px,
+    500 type.
+- **Other badges:** the neutral badge (`.lc`), for a Lifecycle and the like,
+  is `--color-surface-alt` with `--color-ink-2` and a 1px `--color-border`
+  edge. Ownerless (`.ol`) is `--color-surface` with `--color-ink` in a 1px
+  dashed `--color-ink-muted` edge.
+- **Signal chips:** a signal about a Goal (Check-in overdue, Path to Green
+  overdue, Milestone overdue, Ownerless, Incomplete, a Lifecycle) beside its
+  title in a list.
+  - **On the Goal list (`.gl-marks`):** a 22px `--radius-full` pill in 12px,
+    500 type on `--color-chip-bg` with `--color-chip-ink`. Check-in overdue,
+    Path to Green overdue and Milestone overdue keep their dashed
+    `--checkin-overdue-edge`, and Ownerless its dashed `--color-ink-muted`
+    edge, so each still reads as a warning, not a tag.
+  - **On Home:** the same pill. A Lifecycle badge and a tag take
+    `--color-chip-bg` with `--color-chip-ink` and no visible edge, and
+    Check-in overdue keeps its own grey fill.
+  - **On Follow-ups and the Reports:** a signal is the badge-shaped
+    Check-in overdue chip (`.badge.st`) or an outlined tag (Follow-ups'
+    `.rk-tag`), not a pill.
+- **Check-in overdue chip (`.badge.st`):** marks a Check-in overdue Goal
+  wherever its Health shows, with its age. It is a warning about freshness,
+  never a tag, so it can't share a tag's look: a `--checkin-overdue-bg` grey
+  fill, `--checkin-overdue-ink` text and a 1px dashed `--checkin-overdue-edge`
+  border, 22px tall at a Health badge's `--radius-sm`. On the Goal list it is
+  a signal chip, keeping only the dashed edge (§ Signal chips).
+  - **Wording:** "Check-in overdue · 9 days" on the Goal list. On Follow-ups
+    it adds the cadence, naming it as the New goal form's segments do or
+    "every 3 days": "Check-in overdue · 42 days, checks in weekly".
+  - **The same style** marks Path to Green overdue ("Path to Green overdue" on
+    the Goal list, "Path to Green 12 days overdue" on Follow-ups), Milestone
+    overdue on a Green Goal past a Milestone's date ("Milestone overdue" on
+    the Goal list, "Milestone 3 days overdue" on Follow-ups) and, on
+    Follow-ups only, "Action Item 3 days overdue".
+
+  The banner on a Check-in overdue Goal's page is in § Goal page banners, and
+  the ratios in § Deviations 9.
+- **Tags (`.tag`):** a Dimension value. A `--radius-full` outline with no
+  fill: a 1px solid `--color-border-strong` edge and 13px `--color-ink` text.
+  A retired value's tag takes a dashed edge instead, struck through and muted.
+  A tag is 22px and 12px on the Goal list. In Home's rows it is a chip
+  (§ Signal chips).
+- **Buttons (`.btn`):** 40px tall, or 32px small (`.btn.sm`), with 16px sides
+  (12px small), `--radius-md` and 14px, 600 type (13px small) on one line.
+  Home's row actions and its New goal are 30px. Each colour change runs over
+  `--dur-fast`, and active is `scale(0.98)`. A disabled button is at half
+  opacity, with a not-allowed cursor.
+  - **Primary (`.btn.primary`):**
+    - Resting: a `--color-primary-strong` fill and edge, with
+      `--color-ink-inverse` text.
+    - Hover: the fill and edge change to `--btn-primary-hover`, and nothing
+      else does: no lift, no shadow.
+      - Light: the fill darkens to Teal 800 (`#115E59`), and white text on it
+        is 7.58:1. Light `--color-primary-hover` is only 3.74:1 under white
+        text, so it can't be the fill.
+      - Dark: the fill lightens to `--color-primary-hover` (`#2DD4BF`),
+        because dark themes show elevation by lightness.
+        `--color-ink-inverse` text on it is 7.77:1.
+  - **Secondary (`.btn`):** a `--color-surface` fill, a 1px `--color-border`
+    edge and `--color-ink` text. On hover, the fill becomes
+    `--color-surface-hover` and the edge `--color-primary`.
+  - **Quiet (`.btn.quiet`):** no fill or edge, with `--color-primary-strong`
+    text. On hover it takes a `--color-primary-subtle` fill.
+  - **Danger (`.btn.danger`):** a secondary button with `--color-danger-ink`
+    text.
+- **A person's Name (`.person`, `person` in `layout.templ`):** plain text in
+  the surrounding ink, with no underline, so it never reads as a link. It is
+  a button whose tooltip is the person's email. On hover and keyboard focus it
+  takes a faint `--color-primary-subtle` tint, and focus keeps the focus ring.
+  Clicking, tapping or activating it from the keyboard shows the person's
+  email beside it, muted at 13px, and doing it again hides it (CONTEXT.md:
+  Name). `personPlain`, inside another control, shows the email on hover only,
+  and the Print view's "Name (email)" has no control.
+- **Avatars (`.avatar`):** a circle with a person's initials (`initials` in
+  `layout.templ`), hidden from assistive technology, beside their Name, which
+  stays the control that shows their email. It is 24px on the sidebar's
+  person button and 22px in Home's My org rows, both `--color-primary-strong`
+  with `--color-ink-inverse` initials, and 22px on the Goal list's Owner
+  column (`.gl-avatar`), `--color-chip-bg` with 10px, 600 `--color-chip-ink`
+  initials. Every person's avatar is the same colour.
+- **Segmented controls:** a few choices in one track. There are three looks:
+  - **A tinted track:** the Goal list's List / Table switch (`.gl-seg`, two
+    links) and the New goal form's Check-in cadence (`.gf-segctl`, four
+    radios) sit on a `--color-chip-bg` track with `--radius-md`, their
+    segments 13px, 500 `--color-ink-2`. The current segment is
+    `--color-canvas` with `--color-ink` text; the cadence's also takes a 1px
+    `--color-border-strong` edge and 600 weight.
+  - **An outlined track:** the Report builder's mode (`.rb-segments`) and a
+    draft's section picker sit in a 1px `--color-border-strong` edge with
+    `--radius-md`. The chosen segment is filled with `--color-ink`, its text in
+    `--color-surface`.
+
+  Each page's section below gives its sizes. The radios hide only with
+  `:has()`; without it each choice shows its native radio and still chooses.
+- **Inputs:** text, email, password, date, number and search inputs and
+  selects take a `--color-surface` fill, a 1px `--color-border-strong` edge,
+  `--radius-md`, 40px height with 16px sides, and `--color-ink` text, with
+  `--color-ink-muted` placeholders. Textareas are at least 88px tall with
+  12px × 16px padding, and resize vertically.
+  - **Focus:** the edge becomes `--color-focus` and the field takes the same
+    ring as everything else, `2px solid var(--color-focus)`, offset 1px
+    (2px elsewhere). The ring shows on mouse focus too and never transitions.
+    See Deviations.
+  - **A refused field** (`aria-invalid="true"`) takes a `--color-danger-ink`
+    edge.
+  - **Checkboxes and radios** take `--color-primary-strong` as their accent.
+  - **Field labels (`.field`):** 13px, 600 `--color-ink`, 8px above the field.
+    A hint (`.hint`) is 13px `--color-ink-muted`.
+- **Tables:** cells have 12px × 16px padding and a 1px `--color-border`
+  between rows, and the head row is muted 12px, 500 labels (`th`). The base
+  `th` rule fills it with `--color-surface-alt`, and every table in the app
+  overrides that to no fill. A wide table scrolls inside `.table-scroll`.
+- **Nav counts (`.count`):** a count after a nav item's label, at the item's
+  right edge, in 12px tabular figures, shown only above zero. Two styles, so
+  the one that needs the person stands out:
+  - **Home's count (`.count.needs-you`)** counts what needs the person, so it
+    is an 18px filled `--radius-full` pill, at least 20px wide:
+    `--color-ink` with 600-weight `--color-canvas` numbers, dark on light and
+    light on dark. It also shows on the phone strip.
+  - **Every other count (`.count`)**, such as Follow-ups, is 500-weight
+    `--color-ink-muted` figures with no pill.
+
+  The ratios are in § Deviations 2.
+- **Help on terms:** a glossary term a reader may meet cold carries a
+  `disclose help` button with a dotted muted underline that opens a one-line
+  definition in place (`.explain`, muted 13px), with the same text as the
+  button's `title`, so it is still reachable without script. Why it matters
+  has one under the Goal page's lead; Dated, Ongoing and Top-level are the
+  word itself in the Goal page's rail; Delegates and Dimension values have one
+  in the rail; and the Report builder's Also include and Leave out have one
+  after each legend. Ownerless badges on the Goal list, the Goal page's link
+  lists and the Follow-ups list carry the definition as a `title` only,
+  because a button in every row would be too heavy.
+- **Sizes and touch targets:** buttons, inputs and selects are 40px tall, and
+  `.btn.sm` 32px. A `<summary>` is at least 44px unless its page sets its
+  own height. On a coarse pointer (`@media (pointer:coarse)`), buttons (small
+  ones included), text, email, date, number, search and password inputs,
+  selects, the sidebar's nav items, My org's people, the person's button and
+  the Theme choices get a 44px `min-height`, so every one of those is at
+  least 44px and a button beside an input still shares its height. A small
+  button keeps its smaller type and padding. Textareas, checkboxes and
+  radios are left alone.
+- **Phone width:** at 900px and below the sidebar becomes the top strip and
+  the side padding drops to 16px. At 600px and below nothing scrolls
+  sideways, and no control is clipped. A list's rows stack as plain rows on
+  hairlines, the Goal or name first: the Goal list, Follow-ups, the Reports
+  list and a Report's On track. The Goal list's Table layout, a wide data
+  table and the Check-in page's add bar buttons may scroll inside their own
+  container. Filter bars and field-plus-button forms wrap.
+
+### Pages
+
+- **Home (`homePage` in `home.templ`):** one column on the page's one
+  surface, in the default content column, read top to bottom: the header
+  strip, the page title, then **Needs you**, **My org** and **Your Yellow or
+  Red goals** as plain sections.
+  - **Header strip (`homePageHeader`):** "Home", with **New goal**
+    (`.btn.primary`, 30px tall, 13px) at its right, leading to `/goals/new`.
+    It carries no count.
+  - **Page title (`.hm-head`):** three lines 8px apart: **Your week** (28/1.2,
+    600, an `h1`), today's date in the company's timezone in muted 13px
+    ("Wednesday, Oct 21"), then the Your goals line.
+  - **Your goals line (`.hm-summary`):** muted 13px, wrapping. It reads "Your
+    goals:", the Health distribution bar, then "1 Green · 0 Yellow · 0 Red ·
+    Goals you own or help with →", counting the Active Goals the person Owns
+    by their latest Check-in's Health, so a Check-in overdue one counts under
+    its last Health. A Goal with no Health yet isn't counted. **Goals you own
+    or help with →** opens the Goal list on Mine (`/goals?org=mine`): the
+    Goals the person Owns or is a Delegate on. For someone who is a Delegate
+    on any Goal, the line ends "· Goals delegated to you N →", leading to the
+    Delegate page. The line carries no count of what needs the person: the
+    Needs you heading does.
+  - **Sections (`.hm-section`):** 32px apart. Each is an `h2` at 13/1.4, 600
+    with its count beside it in muted 500 tabular figures (`.hm-count`, left
+    out at zero), and its rows start 8px under it.
+  - **Rows (`.hm-list`):** at least 44px tall, each with a 1px
+    `--color-border` hairline above it and one under the last. A pill or chip
+    leads (§ Health, § Signal chips), then the title as a 14px, 500 link, then
+    a muted 13px meta line (`.hm-meta`) on the same line while it fits and
+    under it when it doesn't. The actions sit at the right, 8px apart, as
+    30px buttons, and wrap under the row on a narrow column. Rows take no
+    hover fill, save My org's.
+  - **A dated pill (`.badge.as-of`, Home's own rule):** a Check-in overdue
+    Goal's Health is its last Check-in's, so its pill is muted: a
+    `--color-canvas` fill, `--color-ink-muted` text and shape, and a 1px
+    `--color-border-strong` edge, keeping the Health's word and shape. The
+    "last check-in" or "as of" beside it dates it.
+  - **Your Yellow or Red goals:** the last section: the Active Goals the
+    person Owns that are Red, then Yellow, each its Health pill (dated when
+    Check-in overdue, with a muted "as of 9 days ago" after the title) and
+    its title linking to the Goal. Its rows have no actions. With none, the
+    section is left out.
+  - **No script needed:** every action is a link or a plain form post, and
+    Close is a `<details>`.
+- **Home's Needs you list (in `homePage`):** the first section, always
+  shown, holding everything waiting on the person, its heading counting the
+  rows ("Needs you 3"). The heading's count and the sidebar's Home count are
+  the same number. With nothing waiting, the heading has no count and sits
+  over one muted line, "You're all caught up." Its rows come in up to four
+  groups, each a muted 12px, 500 `h3` (`.hm-group-head`) over its rows,
+  16px below what comes before it; a group with nothing in it is left out.
+  - **Check-ins due:** the Active Goals the person Owns or is a Delegate on
+    whose Check-in is due before next week's reminder, the reminder email's
+    rule, most days past cadence first. Each row is the Health pill (dated
+    when Check-in overdue, or a "No Health yet" chip), the title linking to
+    the Goal, then the meta: "last check-in 14 days ago" ("no check-in since
+    activation 9 days ago" before the first), "every 7 days", each wrapping
+    whole, the Check-in overdue chip when it applies, and a "for [Owner]" chip
+    on a Goal they are a Delegate on. A secondary **No change**, shown when the
+    Goal has a Check-in to repeat and a No change wouldn't be refused, and a
+    primary **Check in** sit at the right. A Goal they are a Delegate on
+    appears only here.
+  - **Asks for help:** the open Asks for help addressed to the person (see
+    CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
+    Each row has the Goal's Health pill, its title linking to the Comments on
+    its Goal page (`#comments`), where the answer is written, then a muted
+    "from [Owner]". It has no action of its own: the row stays until the Owner
+    unticks the ask in a later Check-in or the Goal is no longer Yellow or Red
+    and Active, however it is answered.
+  - **Action Items:** the open Action Items the person owns, from every
+    Report, soonest due first, so an overdue one leads. Each row has an
+    "Action Item" chip, the item's text linking to the Action Items on the
+    Goal page of the Goal it is about, or on its publication when it is about
+    the whole Report, a red **Overdue** pill (`badge r`) when it is past due,
+    then a muted "Weekly ops · Reduce outages · due Nov 7, 2026". Its action is
+    **Close** (§ Close and Reassign), which returns to Home. Home carries its
+    own copy of the `.rp-inline-form` rules.
+  - **Requests:** link requests and Handoffs waiting on the person, and Parent
+    suggestions on Goals they Own, oldest first, each led by a chip naming its
+    kind. **Reject** (**Decline** for a Parent suggestion) is a quiet button
+    and **Accept** a secondary one. Reject and Decline send at once and return
+    to Home, which offers Undo in the toast. Where accepting needs choices, as
+    a Handoff of a Goal with Delegates does, the button reads **Review** and
+    leads to the Pending handoffs page, where those choices are made.
+
+  Goals the person is a Delegate on aren't listed again elsewhere: the Your
+  goals line has one link to the Delegate page with their number, shown only
+  above zero.
+- **Home's My org section (`homeOrgSection` in `home.templ`):** shown only to
+  someone with anyone under them by Manager, so never before a directory sync
+  (ADR 0008). It sits directly under Needs you, headed **My org** with the
+  number of people it lists, and counts what is in trouble in the person's
+  Org, leaving out the Goals they Own themselves, which Your goals covers. A
+  Goal is in the Org by its Owner, never its Delegates, and an Ownerless Goal
+  stays where its Departed Owner was. It lists people and counts, never
+  Goals:
+  - **Total line:** across everyone under the person, a plain body line in
+    `--color-ink-2`, one count per signal with anything in it, in the order
+    Red · Path to Green overdue · Check-in overdue · Yellow ("2 Red · 1 Path
+    to Green overdue · 3 Check-in overdue · 1 Yellow"). It is text, not
+    pills, so the totals stand apart from the per-person counts beneath. A
+    Goal counts under every signal it has, so the counts can add up to more
+    than the Goals behind them.
+  - **Rows (`.hm-org-row`):** one per person directly under the viewer whose
+    Org has anything flagged. The whole row is one link, at least 44px, to
+    their Org on Goals (`/goals?org=<their ID>`): their initials in a 22px
+    avatar, their Name in 14px, 500 `--color-ink` (`personPlain`, email on
+    hover), a "departed" chip beside a Departed one, then their Org's counts
+    in the total line's order. Each reads as a count and a name ("1 Red"), so
+    it reads without colour: Red and Yellow as Health pills, Path to Green
+    overdue and Check-in overdue as Check-in overdue chips. On hover the row
+    takes `--color-row-hover`. The most Red come first, then the most Path to
+    Green overdue, the most Check-in overdue and the most Yellow, then by
+    Name. Someone further down counts in the row of the person directly under
+    the viewer they're under, so the rows add up to the total.
+  - **All clear:** the people directly under the viewer with nothing flagged
+    share one muted line after the rows, "2 others all clear" ("1 other all
+    clear"), left out when there are none. With nothing flagged anywhere, the
+    section shows only one muted "Everyone in My org is all clear." line.
+  - **Links:** the section ends with one line, **My org on Goals →** ·
+    **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages include the
+    person's own Goals.
+
+  The section adds nothing to Needs you or the sidebar's Home count.
+- **Health distribution bar (`.hm-bar`, `healthBar` in `home.templ`):** on
+  Home's Your goals line, a 96px × 8px `--radius-full` bar of the Goals the
+  line counts, one equal unit per Goal, Green then Yellow then Red, each at
+  least 2px wide. Units fill with the Health's `--health-*-mark`, which keeps
+  3:1 on the canvas in both themes (§ Deviations 10), and a 4px gap shows
+  where one Health's run gives way to the next. It counts Goals and never
+  aggregates Metrics (ADR 0003). With none to draw the bar is left out. The
+  counts beside it on the line are its labels, so it reads without colour,
+  and its `role="img"` and `aria-label` ("2 Green, 0 Yellow, 1 Red") say the
+  same to a screen reader.
+- **Goal list (`goalsPage` in `goals.templ`):** one surface under the header
+  strip. The page drops its width cap and padding, so the filter bar and the
+  list run edge to edge.
+  - **Header strip (`goalsHeader`):** **Goals** with a muted count of the
+    Goals listed, naming an Org when scoped to one ("24 in My org", "3 in
+    Priya Raman's org"). At its right sit the List / Table switch and
+    **New goal** (`.btn.primary.sm`). The switch (`.gl-seg`, a
+    `<nav aria-label="Layout">`) is a 32px track (§ Segmented controls) whose
+    links keep every filter, the current one `aria-current="page"`. At 600px
+    and below the strip wraps.
+  - **Filter bar (`goalFilters`, `.gl-filters`):** one GET form on the canvas,
+    with 12px × 28px padding and 8px gaps, over a 1px `--color-border`
+    hairline.
+    - **Chips:** 28px tall with 8px sides, `--radius-md`, a 1px
+      `--color-border-strong` edge on `--color-canvas`, 13px, 500
+      `--color-ink-2`. A chip holding a select draws its own chevron. In
+      order: **Scope** (see Scope), **Health** (Any Health, Red, Yellow,
+      Green, No Health), **Lifecycle** (Any Lifecycle, then Proposed through
+      Cancelled), **Incomplete** (a checkbox chip), **+ Filter** (a dashed
+      edge, only when there are Dimensions) and **Group by** (Health, or a
+      Dimension, in the List layout when there are Dimensions).
+    - **Set chips:** a set chip takes `--color-primary-subtle` with
+      `--color-ink` text and reads its key before its value in
+      `--color-ink-muted` ("Health: Red"). An unset Health or Lifecycle chip
+      reads "Any Health" or "Any Lifecycle", with no key.
+    - **More filters:** + Filter opens a fieldset per Dimension on a line of
+      its own below the chips, in a 1px `--color-border` edge with
+      `--radius-md`, ticking values. Filtering ORs within a Dimension and ANDs
+      across Dimensions. It starts open when a value is ticked, and + Filter
+      takes the set fill while it is open or anything in it is ticked.
+    - **Clear and Search:** **Clear**, a quiet small link to a bare `/goals`,
+      follows the chips when the bar differs from it. A 28px search field,
+      "Search title or Owner", 160–240px wide, sits at the row's right.
+    - **Under htmx** the filters apply themselves on a change, on Enter, or
+      400ms after typing stops in the search. The form swaps in only the list
+      (`#goal-list`), takes the header's count and switch out of band, and
+      pushes the address, so it keeps its focus and an open More filters.
+      `hx-history="false"` makes Back reload the earlier address afresh.
+      **Without script** an **Apply** button follows the chips, and the form
+      is an ordinary GET.
+  - **List layout (`goalListLayout`, `.gl-list`):** a `<table>` styled as
+    list rows (§ List rows), under a label row reading Goal · Owner · Due ·
+    Last check-in (the Health column's label visually hidden).
+    - **Groups:** Health groups by default (Red, Yellow, Green, No Health),
+      each left out when empty, problems first within each: Red, then
+      Ownerless, then Check-in, Path to Green or Milestone overdue, then
+      Yellow, Green and no Health, by title within each. Grouped by a
+      Dimension, each value is a group, with "Unassigned" for Goals with no
+      value, and the header carries no shape.
+    - **A row (`goalListRow`):** its Health shape; the title, a 14px, 500
+      `--color-ink` link cut short with an ellipsis; its signal chips
+      (Lifecycle for a Goal with no Health, Ownerless with its definition as
+      a `title`, Check-in overdue · 9 days, Path to Green overdue, Milestone
+      overdue, Incomplete); its Dimension values as tags, a Retired one with a
+      muted "(retired)"; the Owner with an avatar and the usual Name control;
+      Due in 13px tabular `--color-ink-2`, any slipped dates struck through
+      before it, or a muted "—" for an Ongoing Goal; and Last check-in in 13px
+      muted tabular figures ("today", "9 days ago", or "—"). The chips and
+      tags wrap under the title when the row is narrow.
+    - **Empty:** one muted line in place of the rows: "No Goals yet.", "No
+      Goals match." under a filter, or "No Goals in My org." or "No Goals in
+      Mine." on a scope, with **See everyone's →** on the default scope (see
+      Scope).
+  - **Table layout (`goalTableLayout`, `?layout=table`):** the same Goals, not
+    grouped, with no totals row (ADR 0005).
+    - **Above the table:** a **Columns** disclosure (`.gl-columns`) with a
+      tick for every column but Title and an **Apply**, remembered in this
+      browser by the `goal_table_hidden` cookie, then quiet small **Download
+      CSV** (the filtered Goals in the import format) and **Edit values**.
+    - **Columns:** Title, Owner, Health (the badge), Lifecycle, Delivery date
+      and Last check-in, then one per offered Dimension and Field. Each label
+      is a link that sorts by it, marked ↑ or ↓ and by `aria-sort`. Unsorted,
+      the rows keep the list's problems-first order.
+    - **Look:** 40px rows in 14px with `--color-row-hover`, no wrapping except
+      a Long text Field's, which wraps from 240px, and the list's label row.
+      The table scrolls sideways inside its own container.
+    - **Edit values (`?edit=1`):** the table becomes one plain form with a
+      muted hint, **Save** (primary) and **Cancel** (quiet). Its inputs are the
+      Goal page's, in the Dimension and Field cells of the Goals the person
+      Owns or is a Delegate on, and of any Goal for an Admin. A refused save
+      saves nothing: an alert reads "Nothing was saved." and why, and each
+      refused cell is marked invalid, with its reason under it in 13px
+      `--color-danger-ink`.
+  - **At 600px and below:** the search takes a full line under the chips, the
+    label row hides, and each row stacks on its hairline: the Goal (title
+    wrapping, chips under it) with its Health shape in the 40px gutter at its
+    left, then the Owner, "Due …" and "Last check-in …", each date led by a
+    muted label. Dimension tags are hidden, and group headers become
+    full-width strips. The Table layout doesn't stack; it scrolls.
+  - **On a coarse pointer** the chips, + Filter, the search and the switch are
+    at least 44px tall.
+- **Scope (Goals and Follow-ups, `pageScopeSelect` in `scope.templ`):** the
+  one select scoping the Goal list and the Follow-ups page, labelled "Scope"
+  and submitted as `?org=`: **Everyone** (`all`), **Mine** (`mine`, the Goals
+  the person Owns or is a Delegate on), **My org** for someone with anyone
+  under them, then each other person whose Org holds Goals under **Other
+  orgs** (their ID), by Name with their email so people with the same Name can
+  be told apart. On the Goal list it is a chip (`pageScopeChip`), the same
+  select behind a "Scope:" key, always on the set chip's
+  `--color-primary-subtle`. On Follow-ups it is a plain select.
+  - **The default scope:** an address naming no scope, or one that is
+    malformed or names no one, opens on the person's default: My org for
+    someone with anyone under them, Mine for everyone else, Admins included.
+    The select shows it chosen, and the count lines and empty states read as
+    for that scope chosen. A bare `/goals`, `/goals/download` or `/follow-ups`
+    therefore means "my default", and links meant to land there stay bare
+    (the Goals breadcrumb, Back to Goals, the refused Nudge page's Back, and
+    the Goal list's Clear).
+  - **Everyone is explicit:** `?org=all`. The Goal list's **See everyone's →**
+    and Follow-ups' **Show everything** link to it, and a page on Everyone
+    keeps it in every link that keeps the page's filters. A chosen scope is
+    never overridden.
+  - **An empty default:** the Goal list says "No Goals in My org." or "No
+    Goals in Mine." with a **See everyone's →** link to the same view with
+    `?org=all`. Follow-ups keeps its own empty line, whose Show everything is
+    the way out.
+  - **Needs an Admin is company-wide:** an Admin's job there is the company's,
+    so the Needs an Admin group counts, and chips, every Ownerless and
+    halted-parent Goal in the company under the page's Dimension values,
+    while the other groups count the page's own rows. Its block keeps the
+    page's scope in its link like every other block, so Show all and the
+    other blocks come back to it. `/follow-ups?group=admin` always lists the
+    company's rows whatever the scope, as its block counts them, heading "N
+    Goals waiting on an Admin, most urgent first." or saying "Nothing needs
+    an Admin." with no Show everything. An Admin whose own scope has nothing
+    flagged still sees the blocks after the empty line while the company has
+    a Goal that Needs an Admin.
+- **Follow-ups (`followUpsPage` in `followups.templ`):** one full-bleed
+  surface, its parts between hairlines, with 28px sides (16px at 900px and
+  below).
+  - **Header strip (`followUpsHeader`):** **Follow-ups** and, while any Goal is
+    shown, a muted line with the count in `--color-ink`: "12 Goals to review in
+    My org, most urgent first." At its right sits **What each signal means**, a
+    small button that opens, by native `popover` with no script, a panel
+    listing every signal by name and meaning. The strip wraps rather than
+    overflow.
+  - **Filters (`.rk-filters`):** a bar of plain 32px, 13px selects: the Scope,
+    then one per offered Dimension ("Team: any", a Retired value marked
+    "(retired)"). Under htmx a change swaps in only `#follow-ups-body`, takes
+    the header out of band and pushes the address. Without script an
+    **Apply** button shows.
+  - **Groups:** a `<nav>` of five plain blocks in one row, split by vertical
+    hairlines: **Not Green**, **Waiting on a Check-in**, **Action Items
+    overdue**, **Placement and dates** and **Needs an Admin**. A block shows
+    its name (500, `--color-ink`), its count of Goals (24px, 600, tabular),
+    then a chip per signal flagging any, with its count ("Check-in overdue ·
+    3"). A block with Goals links to the page narrowed to it, keeping the
+    scope and values, and takes `--color-row-hover` on hover. The current
+    block takes the same fill, a 2px `--color-primary-strong` rule along its
+    foot and `aria-current="page"`, and a **Show all** link follows the
+    blocks. A block with none is muted, says so ("No Goal is Red or
+    Yellow."), and links nowhere. At 1151px and below the blocks go two to a
+    row, the fifth spanning both.
+  - **The list:** column labels Health · Goal · Owner, and a last column,
+    "Next step", named for assistive technology only. Rows are 44px, with the
+    Goal column taking the slack, so the Owner and the Fix sit at the right.
+    - **Health:** its badge, with the Run off Green after it in muted small
+      text ("· 5 wks"). No Health is a neutral badge reading "—".
+    - **Goal:** its title (500, `--color-ink`), then its chips: the Check-in
+      overdue chip for Check-in overdue · 42 days, checks in weekly, Path to
+      Green 12 days overdue, Milestone 3 days overdue and Action Item 3 days
+      overdue; the Ownerless badge; and an outlined `.rk-tag` (1px
+      `--color-border-strong`, `--radius-sm`, 13px `--color-ink`) for Asks for
+      help ("of [Name]" or "· no one above the Owner"), Unlinked, Schedule
+      conflict ("· due Nov 7, 22 days after its parent [parent]"), and Parent
+      On Hold or Parent Cancelled. A Not Green row whose back-to-Green date
+      slipped adds a `.rk-tag` reading "Back to Green Oct 3 ~~Sep 12~~ (3)".
+      Red and Yellow take no chip, since the badge says so.
+    - **Chip popovers:** each chip's words are a button with a dotted
+      underline that opens, with no script, a popover naming the signal and
+      what it means: up to 360px, on `--color-surface` in a 1px
+      `--color-border-strong` edge, `--radius-md` and `--shadow-pop`, never
+      wider than the window. Above 600px, where the browser supports anchor
+      positioning, it opens under its chip.
+    - **Owner:** their Name, or "You".
+    - **Fix:** one small button for the first that applies: **Reassign** (an
+      Admin, on an Ownerless Goal), **Check in** (primary, on the person's
+      own or Delegated overdue Goal), **Nudge** (a form post back to this
+      page; once a Goal is nudged today, a disabled "Nudged today by
+      [Name]"), **Link to a parent**, a Schedule conflict's **Check in** with
+      its dates open, **Open parent**, **Suggest a parent**, **See Action
+      Items** or **Open Goal**.
+  - **Order:** most urgent first: Active Goals, then Ownerless, then by Health
+    (Red, Yellow, none, Green), then the longest Path to Green, Milestone and
+    Action Item overdue, then the furthest past its Check-in cadence, then the
+    most kinds of signal, then by title.
+  - **Empty:** one muted line replaces the groups and the list, and the
+    header holds no count: "No Goals need attention.", or naming the scope,
+    values and group, with **Show everything** (`?org=all`) when filtered.
+  - **At 600px and below** the labels hide, and each row stacks on its
+    hairline: the Goal first, then Health and Owner on one line, then the Fix.
+    The meanings panel puts each name over its meaning.
+- **Goal page (`goalPage` in `goals.templ`):** a header strip, any banners,
+  then a document column with a properties rail beside it. The page drops its
+  width cap and padding. The column is up to 860px, centred in the space left
+  of the rail. The rail is 300px at the right, behind a 1px `--color-border`
+  left edge that runs the page's full height. At 900px and below the rail
+  stacks under the column, with a hairline above it in place of its left
+  edge.
+- **Goal page header strip (`goalPageHeader`):** the 48px page header, with
+  no `h1` (§ Page header).
+  - **Breadcrumb:** "Goals › <first Goal it contributes to> › <its title>",
+    the parent only when there is one. Goals and the parent are muted links
+    that go to `--color-ink` on hover; the current title is `--color-ink` at
+    500 and `aria-current="page"`. Each title is cut short with an ellipsis.
+  - **Header actions (`.gp-actions`):** at the right, 8px apart. For whoever
+    may check in (the Owner or a Delegate) on an Active or On Hold Goal, a
+    primary **Check in** (`.btn.primary.sm`) to the Goal's Check-in page. On
+    an Active Goal with a Check-in to repeat, where No change isn't refused, a
+    quiet **No change** (`.btn.quiet.sm`) beside it, posting with htmx, or as
+    a plain form post without script. The action menu comes last. At 600px
+    and below the strip wraps, so the actions can drop under the breadcrumb.
+  - **Action menu (`.gp-more`):** a secondary small button reading "More ▾",
+    named and titled "More actions". It is a `<details>`, so it opens without
+    script. Its panel (`.gp-menu`) floats 4px under the button, anchored right,
+    240px wide and no wider than the screen less 32px, on `--color-surface`
+    with a 1px `--color-border` edge, `--radius-lg`, 8px padding and
+    `--shadow-pop`. It lists actions, never forms: each item is a plain link,
+    36px tall (44px on a coarse pointer), in `--color-ink` at 500, with a
+    `--color-primary-subtle` fill on hover. Each person sees only the actions
+    they may take: Edit title and Why it matters, Hand off, Add a delegate,
+    Link to a parent Goal, Suggest a parent, Add a child Goal, Edit Dimension
+    values, Edit Fields, Mark or Unmark Top-level, Mark owner departed…, Mark
+    returned… and Reassign. Add a child Goal is open to anyone, so every
+    viewer sees the menu. For whoever may check in, the Lifecycle changes the
+    Goal allows come last: **Put on hold…**, **Mark done…** and **Cancel…**
+    on an Active Goal, **Cancel…** alone on an On Hold one. These lead to the
     Check-in page with that change picked and its section open
     (`/goals/{id}/checkin?lifecycle=<Lifecycle>`), for a Lifecycle change is
-    made in a Check-in.
+    made in a Check-in. Suggest a parent leads to its own form, and Add a
+    child Goal to the New goal form with this Goal picked as the parent
+    (`/goals/new?parent=<id>`). Every other item opens its form in place.
+- **Goal page banners (`.gp-banners`):** under the header strip and across
+  the full width, above the column and the rail. In order: Ownerless,
+  Check-in overdue, Path to Green overdue, the graph signals (Unlinked,
+  Schedule conflict, Parent On Hold or Cancelled), then Incomplete. Each is a
+  strip with no box: a `--color-group` fill, 8px × 28px padding (16px sides at
+  900px and below), 13/1.5 `--color-ink`, its bold name first, then what it
+  means. A 1px edge along its foot ends each strip: dashed
+  `--checkin-overdue-edge` for Check-in overdue and Path to Green overdue
+  (`.alert.st`), so freshness keeps its warning edge; dashed
+  `--color-ink-muted` for Ownerless; a `--color-border` hairline for the rest.
+  For whoever may check in, the Check-in overdue strip ends, at the right,
+  with a 600-weight **Check in now** link to the Goal's Check-in page; anyone
+  else sees no link. The Path to Green overdue strip has no link, because
+  CONTEXT.md surfaces both the same way. Strips stack with no gap. The ratios
+  are in § Deviations 9.
+- **Goal page head (`.gp-head`):** it opens the document column: the title as
+  the page's `h1` (28/1.2, 600, -0.02em), the Why it matters lead, then any
+  note the Lifecycle came with ("Outcome: …" for a Done Goal, "Reason: …" for
+  an On Hold or Cancelled one) in muted text, 12px apart. The Goal's
+  properties are in the rail, never the head.
+  - **Why it matters lead (`.gp-lead`):** 16/1.6 in `--color-ink-2`, as wide as
+    the column. No "Why it matters" heading shows; a visually hidden one
+    (`.sr-only`) labels it for assistive technology, and a small "What goes
+    here?" help button under it opens the definition in place.
+- **Goal page sections (`.gp-section`):** the document column's parts, 40px
+  apart (32px at 900px and below), each a plain section on the canvas. Its
+  `h2` sits in a 32px row with a 1px `--color-border` hairline at its foot,
+  with any open-in-place link at the row's right, and its content follows
+  under it. A section's rows are each ruled off by a hairline. In order:
+  - **Define this Goal**, for the Owner of a Proposed Goal;
+  - **Latest status** (§ Status cells);
+  - **Metrics (`.gp-metric`):** one row per Metric, on a grid: its name (14,
+    500) over a muted "100 → 500 per week by Jun 30"; its sparkline, 160px wide
+    (§ Deviations 6); and the current value in tabular figures (20, 600) with
+    its unit muted, or a muted "—". Under the row sit a muted "Readings (n)"
+    disclosure listing each reading against its target and, for the Owner, an
+    **Edit Metric** disclosure. At 600px and below the sparkline drops to its
+    own line.
+  - **Milestones:** a muted "3 slips · 1 added or removed since Active" line,
+    then a table with no fill: muted 12px Status, Date and Milestone labels and
+    hairline rows. Status is the Milestone's mark badge or blank; Date is in
+    tabular figures, a slipped date shown as § Status cells shows it. A Removed
+    Milestone is struck through, with its reason under it. The table scrolls
+    inside its own container on a phone.
+  - **Highlights**, as "**Miss**: <Note>" rows, when there are any;
+  - **Draft Highlights**, for the Owner and Delegates (§ Check-in form's
+    optional sections: On the Goal page);
+  - **Action Items:** the open ones about the Goal, when there are any: text ·
+    Owner · "due Nov 7, 2026", a red **Overdue** badge when it is, and "from"
+    its Report. Their owner gets **Close** (§ Close and Reassign).
+  - **Comments (`#comments`):** threads oldest first. Each comment shows its
+    author by Name, a muted timestamp and the body, with replies indented 24px
+    and a **Reply** disclosure. After the threads comes the form to start one,
+    open to everyone signed in.
+  - **History** (§ History timeline).
+
+  Metrics, Milestones and Comments show a muted "No … yet." line when empty.
+- **Properties rail (`.gp-rail`, `goalRail`):** an `<aside>` named
+  "Properties", in 13px, with 20px padding. Its groups are 16px apart, each
+  after the first under a 1px `--color-border` hairline.
+  - **Rows (`.gp-prop`):** a grid of a 96px label, the value and an optional
+    link, at least 32px tall. The label is 12.5px, 500, `--color-ink-muted`,
+    sentence case; the value is `--color-ink`. In order:
+    - **Health:** the Health badge, or a muted "No Health";
+    - **Lifecycle**;
+    - **Kind:** Dated or Ongoing, as a help button, or "Not yet Dated or
+      Ongoing";
+    - **Owner:** the person control at 500;
+    - **Delegates** and **Contributors:** each Name on its own line beside the
+      label, "departed" on a Departed Delegate, or a muted "No Delegates
+      yet." or "No Contributors yet.", with a **Manage** link at the row's
+      right and, under Delegates, "What is a Delegate?";
+    - **Cadence:** "every 7 days";
+    - **Delivers**, on a Dated Goal: every date it slipped from struck
+      through, then the current date in bold;
+    - **Level**, on a Top-level Goal: Top-level, as a help button.
+  - **Groups:** each headed by a 12/1.5, 600 `h3` in `--color-ink`, with its
+    link at the right:
+    - **Dimensions:** with "What are Dimension values?" under its heading, then
+      one row per Dimension, its values as tags (a retired one with a muted
+      "(retired)") or a muted "unassigned", ending with "All Dimensions →". A
+      Retired Dimension shows only when the Goal carries a value in it.
+    - **Fields:** each Field's name in `.label` over its value, or a muted "not
+      set", ending with "All Fields →".
+    - **Contributes to**, with its Suggested parents under it, and
+      **Contributed to by:** each linked Goal is its title as a link in
+      `--color-ink` at 500, then its Health badge (its Lifecycle badge when it
+      has no Health), Ownerless when it is, and a quiet **Remove** at the
+      right for the Owner of either Goal. A muted "Owner <Name>" ends the
+      entry. Removing posts at once, and the page that follows offers Undo
+      (§ Toast).
 - **Forms that open in place (`.gp-open`):** a Goal page action's form opens
   in the part of the page it concerns, never in a modal, side panel or the
-  menu. A menu item or sidebar link leads to `/goals/{id}?open=<form>`, which
-  is the Goal page with that one form open and its first control focused. The
-  form sits under a `.label` heading with a quiet **Cancel** link back to the
-  plain page. A refused submit comes back as the same page with the same form
-  open, the reason in an alert at its top and what was typed still in it. It
-  is all links and plain form posts, so it works without script.
-  - **Where each opens:** Edit title and Why it matters, for the Owner or an Admin,
-    and Top-level open in the head, under the metadata line. Edit title and Why it
-    matters holds the title and the Why it matters as they stand, with a Save.
-    Hand off, Reassign, Mark owner departed and Mark returned open in People,
-    under the Owner. Delegates and Contributors forms open in their groups.
-    Link to a parent Goal opens under Contributes to, and the Dimension and
-    Field forms in their blocks. Without script, the Draft Highlight form
-    opens in the Draft Highlights block, from its **+ Log a highlight** link
-    beside the heading, and each pending one has a **Delete**; with script
-    the block is the Highlight editor instead (see Highlights under the
-    Check-in form). A few menu items don't open in place but lead to a page of their
-    own: Add a child Goal to the New goal form with this Goal picked as the
-    parent (`/goals/new?parent=<id>`), Suggest a parent to its form, and the
-    Lifecycle changes to the Check-in page with the change picked.
-  - **Sidebar links (`.gp-group-head`):** a sidebar group whose form opens in
-    place has a small link beside its heading, shown only to those who may use
-    it and hidden while its form is open: **Manage** for Delegates and for
-    Contributors, **Edit** for Dimensions and for Fields, **+ Add** for
-    Contributes to. Each link's accessible name says what it acts on ("Edit
-    Fields"). The sidebar blocks stay separate canvas blocks under rules.
-- **Status cells (`.gp-cells`):** the Goal page's Latest status card opens with
-  a row of cells, each a `.label` over its value: "Owner's Health" (a Health
-  badge, with the Run off Green beside it in muted small text while the Goal
-  is Yellow or Red: "Red · 5 wks"), "Rolled-up Health" (a Health badge, with the
-  Check-in overdue children count beside it) and "Back to Green by" (a date,
-  which shows a slipped date as a Milestone's does, counted within the current
-  Run off Green: "Oct 3 ~~Sep 12~~ (3)"). A cell shows only when it has
-  something to say: no Rolled-up cell without Active children and no Back to
-  Green cell without a Path to Green. The cells wrap, 32px apart. The status
-  text, the Path to Green and the "why this differs" explanation follow below.
-  An open Ask for help sits directly under the Path to Green: a bold "Asks for
-  help", then "of [Name]", or "· no one above the Owner", then an **Answer**
-  link to the Goal's Comments.
-  A Goal with no Health shows its message in place of the cells.
+  menu. A menu item or a heading's link leads to `/goals/{id}?open=<form>`,
+  which is the Goal page with that one form open and its first control
+  focused. The form sits under a `.label` heading naming it, with a quiet
+  small **Cancel** link back to the plain page. A refused submit comes back as
+  the same page with the same form open, the reason in an alert at its top
+  and what was typed still in it. It is all links and plain form posts, so it
+  works without script.
+  - **Where each opens:** Edit title and Why it matters (the Owner or an
+    Admin; the title and the Why it matters as they stand, with a **Save**)
+    and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
+    departed and Mark returned in the rail under the Owner row. Delegates and
+    Contributors in their rows: the current people with **Remove**, and an
+    email input to add one. Link to a parent Goal under Contributes to, and
+    the Dimension and Field forms in their groups. Add a Milestone under the
+    Milestones table (a name, a date and **Add Milestone**, for the Owner or a
+    Delegate until the Goal is Done or Cancelled). Without script, the Draft
+    Highlight form in its section.
+  - **Heading links (`.gp-group-head`):** a section or rail group whose form
+    opens in place has a small link at the right of its heading, shown only to
+    those who may use it and hidden while its form is open: **Manage** for
+    Delegates and for Contributors, **Edit** for Dimensions and for Fields,
+    **+ Add** for Contributes to and for Milestones, and **+ Log a highlight**
+    for Draft Highlights. Each link's accessible name says what it acts on
+    ("Edit Fields").
+- **Status cells (`.gp-cells`):** the Latest status section opens with a row
+  of cells, each a `.label` over its value, wrapping 12px × 32px apart:
+  "Owner's Health" (a Health badge, with the Run off Green beside it in muted
+  small text while the Goal is Yellow or Red: "Red · 5 wks"), "Rolled-up
+  Health" (a Health badge, titled "Lowest Health among Active children", with
+  "· 3 of 12 overdue" when any child is Check-in overdue) and "Back to Green
+  by" (a date, which shows a slipped date as a Milestone's does, counted
+  within the current Run off Green: "Oct 3 ~~Sep 12~~ (3)"). A cell shows only
+  when it has something to say: no Rolled-up cell without Active children and
+  no Back to Green cell without a Path to Green. The status text follows, then
+  "**Path to Green:** <plan> — back to Green by Oct 3", any open Ask for help
+  (a bold "Asks for help", then "of [Name]" or "· no one above the Owner",
+  then an **Answer** link to the Goal's Comments), "**Why this differs from
+  the Rolled-up Health:** …", and a muted byline: who wrote it by Name, "for"
+  the Owner when a Delegate did, and its date. A Goal with no Health shows its
+  message in place of the cells: "A Done Goal has no Health." over its last
+  status, "A Proposed Goal has no Health until it is Active.", or "No
+  Check-ins yet.".
 - **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
-  History is one canvas block, open on load with no outer disclosure. It is
-  a single list, newest first, of every Check-in, Why it matters revision, title
-  change, ownership change (a Handoff with its outcome, or an Admin Reassign), change to a
-  Dimension value or Field, change to one of its "contributes to" links,
-  Parent suggestion, Nudge, Milestone added outside a Check-in, and Comment
-  or reply about the Goal, made on the Goal itself or on a Report.
+  last section (`#history`), open on load with no outer disclosure. It is a
+  single list, newest first, of every Check-in, Why it matters revision,
+  title change, ownership change (a Handoff with its outcome, or an Admin
+  Reassign), change to a Dimension value or Field, change to one of its
+  "contributes to" links, Parent suggestion, Nudge, Milestone added outside a
+  Check-in, Action Item about it raised, reassigned or closed, and Comment or
+  reply about the Goal, made on the Goal itself or on a Report.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the company's
     timezone. Each week is headed by a `.label` "Week of Sep 28", with the
     year added when it isn't this year. Each entry's time is a timestamp in
     that timezone too ("Jan 8, 15:04"; see Dates and times).
   - **The rule and markers (`.tl-list`, `.tl-mark`):** the week's entries hang
-    off a 1px `--color-border` rule, each with a 12px marker on the rule.
+    16px apart off a 1px `--color-border` rule, each with a 12px marker on the
+    rule, on a `--color-canvas` ground so the rule doesn't run through it.
     A Check-in's marker is its Health's dot, in the Health's ink and shape:
     ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
     Health beside it. Every other kind has a neutral `--color-ink-muted`
-    marker with its own shape: a hollow ring for Why it matters and for a title
-    change, a hollow diamond for
-    an ownership change, a bar for a value change, a hollow arch (round on
-    top, square below) for a link change, a dashed ring for a Parent
-    suggestion, a dashed square for a Nudge, a double ring for a Milestone
-    added outside a Check-in, a hollow tab (square on the left, round on the
-    right) for an Action Item raised, reassigned or closed, a hollow
-    speech-drop (round but for its bottom-left corner) for a Comment or
-    reply, and a hollow square for a Check-in with no Health, such as one
+    marker with its own shape: a hollow ring for Why it matters and for a
+    title change, a hollow diamond for an ownership change, a bar for a value
+    change, a hollow arch (round on top, square below) for a link change, a
+    dashed ring for a Parent suggestion, a dashed square for a Nudge, a double
+    ring for a Milestone added outside a Check-in, a hollow tab (square on the
+    left, round on the right) for an Action Item raised, reassigned or closed,
+    a hollow speech-drop (round but for its bottom-left corner) for a Comment
+    or reply, and a hollow square for a Check-in with no Health, such as one
     that put the Goal On Hold. Every entry also opens with its kind as a bold
-    text label (Check-in,
-    Why it matters, Title, Handoff, Reassign, Value, Link, Parent suggestion, Nudge,
-    Milestone, Action Item raised, Action Item reassigned, Action Item
-    closed, Comment for a thread's first Comment, Reply for a reply), so the
-    marker is never the only signal.
+    text label (Check-in, Why it matters, Title, Handoff, Reassign, Value,
+    Link, Parent suggestion, Nudge, Milestone, Action Item raised, Action Item
+    reassigned, Action Item closed, Comment for a thread's first Comment,
+    Reply for a reply), its time muted beside it, so the marker is never the
+    only signal.
   - **A title entry** reads "*old* → *new*", then who changed it, by Name.
   - **A Check-in entry** shows its Health badge and status, then any
     Lifecycle change, Path to Green, an "Asks for help" line when it marked
-    its Path to Green as asking, and the Date Slips it recorded (the
-    delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
-    wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
-    readings and its explanation of a Health that differs from the Rolled-up
-    Health sit in a small "Readings and explanation" disclosure on the entry.
+    its Path to Green as asking, the Date Slips it recorded (the delivery
+    date, the Back to Green date or a Milestone, ~~old~~ new, and the reason),
+    the Milestones it added, marked Done or Removed, and the Draft Highlights
+    it discarded. Last comes who wrote it, by Name, "for" the Owner when a
+    Delegate wrote it. Its Metric readings and its explanation of a Health that
+    differs from the Rolled-up Health sit in a small "Readings and
+    explanation" disclosure on the entry.
   - **A folded "No change" entry (`historyFolded`):** a Check-in that
     repeats the entry just before it — another Check-in with the same Health,
     status, Path to Green, target date, ask for help and explanation, so
@@ -789,13 +1212,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     one's time. A small disclosure on it lists each folded Check-in's time and
     who wrote it, "for" the Owner when a Delegate did. Any other entry between
     two Check-ins keeps them apart, so folding follows the filter: two
-    identical Check-ins with a Why it matters revision between them show in full
-    under All and fold under Check-ins. Chips still count every Check-in.
+    identical Check-ins with a Why it matters revision between them show in
+    full under All and fold under Check-ins. Chips still count every Check-in.
   - **A link entry** is on both Goals' timelines, phrased for the Goal it's
     on, with the other Goal's title as a link: "Requested to contribute to
     *Reduce outages*" on the child is "*Migrate displays* asked to contribute
     to this" on the parent. An Undo reads "Undid:" before the change it
     undid. Who made the change follows, by Name.
+  - **An Action Item entry** shows the item's text: raised, "for [Name] · due
+    Nov 7 · from <Report>"; reassigned, "[Name] → [Name]"; closed, its closing
+    note. Who did it follows, by Name.
   - **A Comment entry** shows the Comment, then a muted line saying who wrote
     it, by Name. One made on a Report adds " · in" and the Report's name,
     linking to the Goal's block in that publication.
@@ -828,439 +1254,621 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     when there are any: "Last 11 weeks: 7 Green, 1 Yellow, 2 with no Check-in, 1
     not yet due." The strip shows for any Goal that has been Active, and it
     changes nothing: not Check-in overdue, not Health.
-  - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
-    list, wrapping on narrow screens: All, Check-ins, Date Slips, Why it matters,
-    Title, Ownership, Links, Values, Action Items, Comments. Each carries its
-    count.
-    Check-ins counts and lists the Check-ins, the Nudges asking for one, and
-    the Milestones added outside a Check-in; Date Slips the Check-ins that
-    carry one; Links the link changes and Parent suggestions; and Action Items
-    each Action Item about the Goal raised, reassigned and closed; and Comments
-    every Comment and reply about the Goal. A chip is a plain link to
-    `/goals/{id}?history=<filter>#history`, so the page reloads with the
-    filter in the address and the History block in view. The current chip is
-    `aria-current="page"`, with a `--color-primary-light` fill and a
-    `--color-primary` edge, and the rest sit on `--color-surface`. Chips are
-    32px tall, and 44px on a coarse pointer.
+  - **Filter chips (`.tl-chips`):** a row of chips above the list, 8px apart
+    and wrapping on narrow screens: All, Check-ins, Date Slips, Why it
+    matters, Title, Ownership, Links, Values, Action Items, Comments. Each
+    carries its count in muted tabular figures. Check-ins counts and lists the
+    Check-ins, the Nudges asking for one, and the Milestones added outside a
+    Check-in; Date Slips the Check-ins that carry one; Links the link changes
+    and Parent suggestions; Action Items each Action Item about the Goal
+    raised, reassigned and closed; and Comments every Comment and reply about
+    the Goal. A chip is a plain link to `/goals/{id}?history=<filter>#history`,
+    so the page reloads with the filter in the address and History in view. A
+    chip is 32px tall (44px on a coarse pointer) with `--radius-full`, a 1px
+    `--color-border` edge on `--color-surface`, and 13px, 500
+    `--color-ink-2` text, taking `--color-primary-subtle` on hover. The
+    current chip is `aria-current="page"`, with a `--color-primary-light`
+    fill, a `--color-primary` edge and 600-weight `--color-ink` text.
   - **Paging:** the latest 5 entries show, a folded run counting as one.
     When there are more, a quiet **Show earlier** link (`?shown=25`) reloads
-    the page with 20 more under the same filter. Chips and paging are links,
-    so History works without script.
-- **Check-in page (`checkinPage` in `checkins.templ`):** one form read top
-  to bottom under headings, its sections set apart by whitespace, not boxes.
-  - **Header (`.checkin-head`):** under the breadcrumb, the H1 "Check in" and
-    a muted line, "Week of Oct 19 · checks in every 7 days · last check-in
+    the page with 20 more under the same filter. With nothing under a filter,
+    a muted line says so ("No Date Slips."). Chips and paging are links, so
+    History works without script.
+- **Check-in page (`checkinPage` in `checkins.templ`):** one form read top to
+  bottom, its sections plain and divided by hairlines, with no panel or
+  box. The form is a column up to 720px, with a rail of context beside it
+  (§ Check-in page's column), the two centred together within 1048px.
+  - **Header:** the page header reads "<Goal title> › Check in", the title
+    linking back to the Goal, with no actions. Under it a muted line
+    (`.checkin-head`): "Week of Oct 19 · checks in every 7 days · last check-in
     Oct 5" (the week named by its Monday in the company's timezone, as
     History's weeks are; "every day" for a daily Goal; the last Check-in only
-    when there is one). At the header's right, bottom-aligned and wrapping
-    under the title on a narrow screen, sits No change: a muted "Nothing
-    changed since Oct 5?" beside a secondary **No change** button, or the
-    reason it is refused in its place.
+    when there is one). At the line's right, bottom-aligned and wrapping under
+    it on a narrow screen, sits No change, for an Active Goal with a Check-in
+    to repeat: a muted "Nothing changed since Oct 5?" beside a secondary **No
+    change** button, or the reason it is refused in its place.
   - **Add to this check-in (`.checkin-add-bar`, `checkinAddBar`):** with
-    script, directly under the header and above the form (and the column
-    beside it), spanning the page's width: a white panel (`--color-surface`,
-    1px `--color-border`, `--radius-lg`, 12px 16px padding), a labelled group
-    (`role="group"`, not a toolbar). In a row, 8px apart and wrapping: the
-    label "Add to this check-in" (13px, 600, `--color-ink-muted`);
-    **+ Insight**, **+ Accomplishment** and **+ Miss**, filled in
-    `--color-primary-subtle` with `--color-primary-strong` text; a 1px by
-    24px `--color-border` divider; then **Move a date or Milestone** and
-    **Pause, finish or cancel** ("Resume or cancel" for an On Hold Goal),
-    outlined (no fill, `--color-border` edge, `--color-ink` text). All are
-    `btn sm` with `--radius-full` corners and one label at every width. The
-    Highlight buttons stand for the Highlights section's own: each scrolls to
-    it and opens its editor there, and they wait while an editor is open.
-    The other two each show their section, scroll to it and move focus to
-    its heading; once their section shows, on load or by a press, they are
-    used: `--color-surface-alt` fill and `--color-ink-muted` text, still
-    pressable to go back to it. A Highlight button is never used, as a
-    Check-in may carry several. At 600px and below the label sits above the
-    buttons, which keep to one line that scrolls sideways inside the bar, the
-    divider hidden. Without script the bar doesn't show.
-  - **Sections:** "How is it going?" (the three Health choices at full width,
-    56px tall with `--radius-lg`; then "What changed since the last
-    check-in?"; then the Rolled-up Health panel), "Path to Green" (shown while
-    Yellow or Red is picked) and "Metrics" (when the Goal has any). Each is
-    headed by an `<h2>` in the display face, 22px and 700, 20px at 600px and
-    below, with no step number, and a muted 14px note on its baseline:
-    "Required while Yellow or Red", with " · 3 wks off Green" while the Goal
-    is in a Run off Green, or "Record each Metric's current value". Sections
-    sit 40px apart, wider than the usual 20–32px because the form is long;
-    fields within one sit 16px apart. Field labels are 14px and 600, hints
-    14px in `--color-ink-muted`.
-  - **Rolled-up Health panel (`.checkin-rollup`):** the page's one white
-    panel (`--color-surface`, 1px `--color-border`, `--radius-lg`, 16px
-    padding, no shadow): a muted "Rolled-up Health:", the Health badge and its
-    muted count line ("1 of 5 Red · 1 Yellow"), then "Explain the difference
-    from Rolled-up Health", asked whenever there is a Rolled-up Health.
+    script, for an Active or On Hold Goal, directly under the header line and
+    spanning the form and the rail. It is not a panel: a row ended by a 1px
+    `--color-border` hairline, a labelled group (`role="group"`, not a
+    toolbar). In a row, 8px apart and wrapping: the label "Add to this
+    check-in" (13px, 500, `--color-ink-muted`); **+ Insight**,
+    **+ Accomplishment** and **+ Miss**, filled in `--color-primary-subtle`
+    with `--color-primary-strong` text; a 1px × 24px `--color-border`
+    divider; then **Move a date or Milestone** and **Pause, finish or cancel**
+    ("Resume or cancel" for an On Hold Goal), outlined (no fill,
+    `--color-border` edge, `--color-ink` text). All are `btn sm` with
+    `--radius-full` corners and one label at every width. The Highlight
+    buttons stand for the Highlights section's own: each scrolls to it and
+    opens its editor there, and they wait while an editor is open. The other
+    two each show their section, scroll to it and move focus to its heading;
+    once their section shows, on load or by a press, they are used:
+    `--color-surface-alt` fill and `--color-ink-muted` text, still pressable
+    to go back to it. A Highlight button is never used, as a Check-in may
+    carry several. At 600px and below the label sits above the buttons, which
+    keep to one line that scrolls sideways inside the bar, the divider hidden.
+    Without script the bar doesn't show.
+  - **Sections:** "How is it going?", "Path to Green" (shown while Yellow or
+    Red is picked, by CSS alone, or while it holds an error) and "Metrics"
+    (when the Goal has any). Each is headed by an `<h2>` at the section-heading
+    size (13/1.4, 600), with no step number, and a muted 13px note on its
+    baseline: "Required while Yellow or Red", with " · 3 wks off Green" while
+    the Goal is in a Run off Green, or "Record each Metric's current value".
+    Sections sit 24px apart, each after the first opening with a 1px
+    `--color-border` hairline and 24px above its heading; the heading sits
+    16px above the fields, and fields sit 16px apart. Field labels are 13px,
+    600 `--color-ink`, hints 13px in `--color-ink-muted`. A field that starts
+    empty shows what the last Check-in said as ghost text.
+  - **How is it going?:** the three Health choices (`.health-toggle`) share
+    the full width, 12px apart, each 44px tall with `--radius-md` (their look
+    is in § Deviations 6). Then "What changed since the last check-in?", then
+    the Rolled-up Health block.
+  - **Rolled-up Health (`.checkin-rollup`):** when the Goal has one. Not a
+    panel: a 1px `--color-border` hairline, then a muted "Rolled-up Health:",
+    the Health badge and its muted count line ("1 of 5 Red · 1 Yellow"), then
+    "Explain the difference from Rolled-up Health", asked whenever there is a
+    Rolled-up Health.
   - **Path to Green:** Plan; Back to Green by, with "Last time: Oct 3" and "A
-    later date needs a reason." beside the date on one wrapping row; then the
-    checkbox, "**Ask for help** · goes to <Name>".
-  - **Metrics (`.checkin-metric`):** each Metric is a row between 1px
-    `--color-border` rules, shared by neighbours, 16px above and below. On
-    the left, its name in 600 over a muted "per week · 100 → 500 by Jun 30 ·
-    last 135.5" and, once it has a reading, a 6px progress bar from baseline
-    toward target in `--color-primary-strong`. On the right, a 120px reading
-    input with right-aligned numbers in tabular figures.
-  - **Optional sections** follow, as below (Check-in form's optional
-    sections), then the submit bar: with script, 40px apart like the rest,
-    each a plain headed section; without, folded panels 12px apart.
-  - **Submit bar (`.checkin-submit-bar`):** the form's last child, sticky at
-    the bottom of the window (`position: sticky; bottom: 0`) while the form
-    runs past it, and in its own place at the form's end once scrolled
-    there, so it never covers the last field. It is as wide as the form
-    column, not the window. Flat, like a card: `--color-surface` under a 1px
-    `--color-border` top rule, no shadow, 12px 16px padding. The page's
+    later date needs a reason." beside the date on one wrapping row; "Reason
+    for moving it later", shown only while the date is later than last time's;
+    then the checkbox, "**Ask for help** · goes to <Name>".
+  - **Metrics (`.checkin-metric`):** each Metric is a row with 16px above and
+    below and a 1px `--color-border` hairline between neighbours. On the left,
+    its name in 600 over a muted 13px "per week · 100 → 500 by Jun 30 · last
+    135.5" and, once it has a reading, a 6px `--radius-full` progress bar up to
+    240px wide from baseline toward target, `--color-primary-strong` on a
+    `--color-border` track. On the right, a 120px reading input with
+    right-aligned numbers in tabular figures.
+  - **Optional sections** follow under a hairline (§ Check-in form's optional
+    sections).
+  - **Errors and Off target:** an error about the whole Check-in shows at the
+    form's top as an `.alert.r`, one about a field under that field. When a
+    Green is submitted while a Metric is off target, an `.alert.y` notice at
+    the form's top says so with a **See below** link to a warning after the
+    optional sections (`.checkin-off-target`, `role="alert"`, on
+    `--health-y-bg` inside a 1px `--color-border` edge and `--radius-md`),
+    which lists each Metric's reading and target and offers a secondary
+    **Confirm Green**.
+  - **Submit bar (`.checkin-submit-bar`):** the form's last child, and the
+    page's one floating surface: `--color-surface` inside a 1px
+    `--color-border` edge, `--radius-lg` and `--shadow-pop`, with 12px × 16px
+    padding. While the form runs past the window it sticks 16px above its
+    bottom (`position: sticky; bottom: 16px`), and once scrolled there it
+    sits in its own place at the form's end, so it never covers the last
+    field. It is as wide as the form column, not the window. The page's
     `scroll-padding-bottom` keeps a field focused by Tab or an error clear of
     it. On the left, a summary of what the Check-in will record, in 14px
-    `--color-ink-2`, its parts joined by " · " and wrapping whole: the
-    Health badge picked (left out when the Lifecycle picked takes the Goal
-    out of Active), "Path to Green" while Yellow or Red has a Plan, "2
-    Metrics" read, "1 Highlight" written or kept, "dates changed", and the
-    Lifecycle change ("→ Done"). Script fills it and keeps it up to date;
-    without script the bar holds only the buttons. On the right, a quiet
-    **Cancel** back to the Goal and **Submit check-in**, primary and 44px
-    tall. At 600px and below Cancel hides (the breadcrumb goes back to the
-    Goal), the summary drops to 13px and Submit check-in grows to 48px.
-- **Home (`homePage` in `home.templ`):** one column, read top to bottom: the
-  page head, then **Needs you**, its one card, then My org and Your Yellow
-  or Red goals, plain sections on the canvas (§ System: Cards are earned).
-  All three are page sections headed by an `h2`, Needs you's on its card, so
-  the outline reads Your week (H1), then an `h2` per section, then Needs
-  you's `h4` group labels. Home sets these `h2`s at the H3 card-title size
-  (19px, 600), so the headings stay no louder than the rows under them. A
-  plain section is its `h2` over a compact list (`.hm-section`), its first
-  row ruled off from the heading by a hairline as each row is from the next,
-  so the context sections stay quieter than the card.
-  - **Page head:** **Your week** (H1), and under it the Your goals line
-    (`.hm-summary`), with **New goal** on the right. The line reads "Your
-    goals:", the Health distribution bar, then plain muted text, "1 Green ·
-    0 Yellow · 0 Red · Goals you own or help with →", counting the Goals the
-    person Owns, a Check-in overdue one under its last Health. **Goals you own
-    or help with →** opens the Goals list filtered to Mine (`/goals?org=mine`):
-    the Goals the person Owns or is a Delegate on. For someone who is a Delegate
-    on any Goal, the line ends "· Goals delegated to you N →", leading to the
-    Delegate page. The head carries no count of what needs the person: the
-    Needs you heading does.
-  - **Your Yellow or Red goals:** a plain section after My org listing the Goals
-    the person Owns that are Red, then Yellow, each its Health badge, muted
-    and dated "as of 9 days ago" when Check-in overdue, then its title. With
-    none, the section is left out.
-- **Home's Needs you list (in `homePage`):** the page's one card, holding
-  everything waiting on the person, titled with how many things that is
-  ("Needs you · 2", plain "Needs you" with nothing waiting), in four
-  subgroups, each a `.label` heading over ruled rows (`.hm-list`):
-  - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
-    first. Each row leads with the Goal's title, linking to the Goal, over
-    one muted status line (`.hm-status`): the Health badge, "last check-in
-    14 days ago" ("no check-in since activation 9 days ago" before the
-    first), "every 7 days", the Check-in overdue mark when it applies and, for a
-    Goal they are a Delegate on, a "for [Owner]" tag. The age is said once, and
-    the age and the cadence each wrap whole. A secondary **No change** and a
-    primary **Check in** sit on the right. A Check-in overdue Goal's Health is
-    its last Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule:
-    card fill, muted ink, a 1px `--color-border` edge), keeping the Health's
-    name and dot shape; the "last check-in" beside it dates it. A Goal that
-    isn't Check-in overdue, or has no Health yet, keeps its full-colour badge. A
-    Goal they are a Delegate on appears only here.
-  - **Asks for help:** the open Asks for help addressed to the person (see
-    CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
-    Each row has the Goal's Health badge, then its title linking to the
-    Comments on its Goal page (`#comments`), where the answer is written,
-    then a muted line "from [Owner]". It has no action of its own: the row
-    stays until the Owner unticks the ask in a later Check-in or the Goal is
-    no longer Yellow or Red and Active, however it is answered.
-  - **Action Items:** the open Action Items the person owns, from every
-    Report, soonest due first, so an overdue one leads. Each row has a
-    `badge lc` reading "Action Item", the item's text linking to the Action
-    Items on the Goal page of the Goal it is about, or on its publication
-    when it is about the whole Report, then a muted line naming its Report,
-    its Goal, if any, and its due date. An overdue one carries a red
-    **Overdue** badge (`badge r`). Its action is the Report page's **Close**:
-    a small button opening a closing note, which closes the item and returns
-    to Home. Home carries its own copy of the `.rp-inline-form` rules for it.
-  - **Requests:** link requests and Handoffs waiting on the person, oldest
-    first. **Reject** is a quiet text button (`.btn.quiet`) and **Accept** a
-    secondary, outlined one (`.btn`). Reject sends at once and returns to
-    Home, which offers Undo in the toast. Where accepting needs choices, as a
-    Handoff of a Goal with Delegates does, the outlined button reads
-    **Review** and leads to the Pending handoffs page, where those choices
-    are made.
-
-  A subgroup with nothing in it is left out, and with all four empty the card
-  shows one muted "You're all caught up." line. The heading's count and the
-  nav's Home count both count every row. Goals the person is a Delegate
-  on aren't listed again elsewhere: the Your goals line has one link to the
-  Delegate page with their number, shown only above zero.
-- **Home's My org section (`homeOrgCard` in `home.templ`):** shown only to
-  someone with anyone under them by Manager, so never before a directory sync
-  (ADR 0008). It sits directly under Needs you, a plain section titled **My
-  org**, and counts what is in trouble in the person's Org, leaving out the
-  Goals they Own themselves, which Your goals covers. A Goal is in the Org by
-  its Owner, never its Delegates, and an Ownerless Goal stays where its
-  Departed Owner was. It lists people and counts, never Goals:
-  - **Total line:** across everyone under the person, plain text, one count
-    per signal with anything in it, in the order Red · Path to Green overdue
-    · Check-in overdue · Yellow, separated by `·` ("2 Red · 1 Path to Green
-    overdue · 3 Check-in overdue · 1 Yellow"). It is text, not badges, so the
-    totals stand apart from the per-person badges beneath. A Goal counts under
-    every signal it has, so the counts can add up to more than the Goals behind
-    them.
-  - **Rows (`.hm-list.hm-compact`):** one per person directly under the
-    viewer whose Org has anything flagged: the person's name, a link to their
-    Org on Goals (`/goals?org=<their ID>`, the name through `personPlain`,
-    email on hover), a `badge lc` "departed" beside a Departed one, then
-    their Org's badges in the same order. Each reads as a count and a name
-    ("1 Red"), so it reads without colour. Red and Yellow take their
-    Health's badge; Path to Green overdue and Check-in overdue take the Check-in
-    overdue mark's `badge st`, as on Follow-ups. The most Red come first, then the
-    most Path to Green overdue, the most Check-in overdue and the most Yellow,
-    then by Name. Someone further down counts in the row of the person directly
-    under the viewer they're under, so the rows add up to the total.
-  - **All clear:** the people directly under the viewer with nothing flagged
-    share one muted line after the rows, "2 others all clear" ("1 other all
-    clear"), left out when there are none. With nothing flagged anywhere,
-    the section shows only one muted "Everyone in My org is all clear." line.
-  - **Links:** the section ends with one line, **My org on Goals →** ·
-    **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages include the
-    person's own Goals.
-
-  The section adds nothing to Needs you or the nav's Home count.
-- **Scope (Goals and Follow-ups, `pageScopeSelect` in `scope.templ`):** the one
-  select scoping the Goal list and the Follow-ups page, submitted as `?org=`:
-  **Everyone** (`all`), **Mine** (`mine`, the Goals the person Owns or is a
-  Delegate on), **My org** for someone with anyone under them, then each other
-  person's Org under **Other orgs** (their ID).
-  - **The default scope:** an address naming no scope, or one that is
-    malformed or names no one, opens on the person's default: My org for
-    someone with anyone under them, Mine for everyone else, Admins included.
-    The select shows it chosen, and the count lines and empty states read as
-    for that scope chosen. A bare `/goals`, `/goals/download` or `/follow-ups`
-    therefore means "my default", and links meant to land there stay bare
-    (the Goals breadcrumb, Back to Goals, the Nudge page's Back to Follow-ups).
-  - **Everyone is explicit:** `?org=all`. Goals' **Clear** and Follow-ups' **Show
-    everything** link to it, and a page on Everyone keeps it in every link
-    that keeps the page's filters. A chosen scope is never overridden.
-  - **An empty default:** the Goal list says "No Goals in My org." or "No
-    Goals in Mine." with a **See everyone's →** link to the same view with
-    `?org=all`. Follow-ups keeps its own empty line, whose Show everything is the
-    way out.
-  - **Needs an Admin is company-wide:** an Admin's job there is the company's,
-    so the Needs an Admin card counts, and chips, every Ownerless and
-    halted-parent Goal in the company under the page's Dimension values,
-    while the other cards count the page's own rows. Its card keeps the
-    page's scope in its link like every other card, so Show all and the other
-    cards come back to it. `/follow-ups?group=admin` always lists the company's
-    rows whatever the scope, as its card counts them, heading "N Goals need an
-    Admin across the company." or saying "Nothing needs an Admin." with no
-    Show everything. An Admin whose own scope has nothing flagged still sees
-    the cards after the empty line while the company has a Goal that Needs an
-    Admin.
-- **Health distribution bar (`.hm-bar`):** on Home's Your goals line, a 96px
-  × 8px `--radius-full` bar of the person's own Active Goals by Health, one
-  equal unit per Goal, Green then Yellow then Red. Units fill with the
-  Health's `--health-*-ink`, which keeps 3:1 on the canvas in both themes,
-  and a 4px gap shows where one Health's run gives way to the next. It counts
-  Goals and never aggregates Metrics (ADR 0003). Goals with no Health yet
-  aren't drawn, and with none to draw the bar is left out. The counts beside
-  it on the line are its labels, so it reads without colour, and its
-  `aria-label` ("2 Green, 0 Yellow, 1 Red") says the same to a screen reader.
-- **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
-  12px × 16px padding. On focus, the border becomes `--color-focus` and the
-  field takes the same ring as everything else, `2px solid var(--color-focus)`,
-  offset 1px. The ring shows on mouse focus too and never transitions. See
-  Deviations.
-- **Choice cards (`.gf-segment`):** the New goal form's Kind cards, Dated
-  and Ongoing, side by side (stacked at phone width), with neither chosen at
-  first. Each card draws its own radio dot. An unchosen card is an outline: a
-  2px `--color-border-strong` edge, no fill, and an empty dot with a 2px
-  `--color-border-strong` ring. The chosen card has a 2px `--color-primary`
-  edge, a `--color-primary-subtle` fill and a filled `--color-primary` dot. The
-  edge is 2px either way, so the card keeps its size. The Dated card holds the
-  Delivery date, shown once Dated is chosen, its white input on the card's
-  fill. Keyboard focus takes the usual ring. All of this needs `:has()`. A
-  browser without it shows the native radio and the date, and the radio still
-  chooses.
-- **Segmented control (`.gf-segctl`):** the New goal form's Check-in cadence,
-  Weekly | Every 2 weeks | Monthly | Custom, one radio each. A 1px
-  `--color-border-strong` edge and `--radius-md` go round the whole control,
-  and 1px `--color-border` lines divide the segments. The chosen segment fills
-  with `--color-ink`, its text `--color-ink-inverse` in 600 weight. The focused
-  segment takes the usual ring. The native radio hides only with `:has()`. At
-  phone width the control becomes a 2×2 grid the width of the form.
-- **New goal page (`goalFormPage`):** no outer card. The form's column is
-  sections on the canvas, 48px apart: the Title and Why it matters with no heading
-  (a muted "New goal · Proposed until it's activated" line holds the `<h1>`,
-  and the Title is a 34px display-face input on a 2px `--color-primary-strong`
-  underline), then **Delivery** and **How you'll know** as 22px `<h2>`s, then
-  **More detail**, an 18px `<h2>` over a 1px `--color-border` rule. More
-  detail's Contributes to and Where it fits are `<details>` rows, one 48px line
-  each: the name, a muted "· " and what it holds, and **Set** or **Change** at
-  the right. A row opens by itself when it holds a refused input or, for Where
-  it fits, a required value not set. The sticky Ready to activate card beside
-  it shows each item's mark only, ✓ in a `--health-g-ink` circle or ○ as an
-  empty `--color-border-strong` ring, its done or to do for screen readers
-  alone. The Finish defining page is the same page.
-  - **How you'll know (the Milestone and Metric editor):** with script, it
-    starts as two quiet small buttons, **+ Milestone** and **+ Metric**, the
-    Highlight editor's add buttons, and no blank rows. Each opens one inline
-    editor below the items, in the Highlight editor's look
-    (`itemEditorStyles`: the bordered box, its 15px heading, the Save and
-    Cancel row and the item row): "New Milestone" asks for Name and Date, the
-    Name two-thirds of the row; "New Metric" for Name, Unit, Baseline, Target,
-    Target date, and Direction only while the target equals the baseline, two
-    to a row. **Save** (`.btn.primary.sm`) stays disabled until the server
-    would take what's typed, Enter in a field presses it, and **Cancel**
-    (`.btn.sm`) drops a new editor or puts back the item it edits. While an
-    editor is open the add buttons and every Edit wait, and the Ready to
-    activate card's How you'll know item reads "Save the Milestone you
-    started" (or Metric), to do, linked to the editor. Save makes an item: its
-    name, then a muted line in body type, not mono, with a Milestone's date or
-    a Metric's "baseline → target unit by date", and quiet small **Edit**
-    (reopening the editor in place, "Edit Milestone") and **Remove**. The
-    "Milestones" and "Metrics" `<h3>`s are `.label` caps, shown only once
-    their section has an item; a Finish defining Goal's own Milestones and
-    Metrics stay a read-only list above. Saving records nothing: the items are
-    sent with the form, and an editor still open is sent as if saved. A
-    refused submit brings a refused row back as an open editor showing why.
-    **Without script,** How you'll know is rows as before: a blank Milestone
-    row and a blank Metric row, or those typed.
-- **Check-in page's column (`.checkin-context`):** every Goal's Check-in
-  page has a column of context for checking in, three sections in order,
-  separated by 1px `--color-border` rules with 20px above and below, and no
-  boxes:
-  - **Last time (`.checkin-context-last`):** a `.label` heading "Last time ·
-    Oct 5", the latest Check-in's Health badge and a muted "back to Green by
-    Nov 2" when it had a Path to Green, then its Status in full, 14px in
-    `--color-ink-muted`. Left out before the Goal's first Check-in.
+    `--color-ink-2`, its parts joined by " · " and wrapping whole: the Health
+    badge picked (left out when the Lifecycle picked takes the Goal out of
+    Active), "Path to Green" while Yellow or Red has a Plan, "2 Metrics" read,
+    "1 Highlight" written or kept, "dates changed", and the Lifecycle change
+    ("→ Done"). Script fills it and keeps it up to date; without script the bar
+    holds only the buttons. On the right, a quiet **Cancel** back to the Goal
+    and **Submit check-in**, primary and 44px tall. At 600px and below Cancel
+    hides (the page header goes back to the Goal), the summary drops to 13px
+    and Submit check-in grows to 48px.
+  - **A Done or Cancelled Goal** gets the header line and the rail, and in
+    place of the add bar and the form, "A Done Goal takes no Check-ins."
+  - **A Check-in that can't be reached (`checkinUnavailablePage`):** a Message
+    page instead, with **Back to Home**: "Goal not found" (404), "Can't check
+    in" (403: only the Goal's Owner or a Delegate may), or "Check-in failed"
+    (500).
+- **Check-in page's column (`.checkin-context`):** a rail of context for
+  checking in, behind a 1px `--color-border` left edge with 24px inside it,
+  in 13px text and with no boxes. It has three sections in order, 20px apart,
+  each after the first under a 1px `--color-border` hairline, each headed by
+  a muted 12px, 500 `h3` (`.checkin-rail-head`), sentence case:
+  - **Last time (`.checkin-context-last`):** "Last time · Oct 5", the latest
+    Check-in's Health badge and a muted "back to Green by Nov 2" when it had a
+    Path to Green, then its Status in full in `--color-ink-2`. Left out before
+    the Goal's first Check-in.
   - **Contributed to by (`.checkin-context-children`):** with children only,
     the Goal page's "Contributed to by" list read-only (no Remove), so the
     Owner sees which children set the Rolled-up Health.
-  - **Dates (`.checkin-context-dates`):** a `.label` heading "Dates" and a
-    14px line, "Delivers Jul 2 · 2 planned Milestones, next Beta Apr 2", or
-    "Ongoing · no Milestones" (`checkinContextDates`). It strikes no slipped
-    date and marks no overdue Milestone; the form's dates section does.
+  - **Dates (`.checkin-context-dates`):** "Dates" over one line, "Delivers
+    Jul 2 · 2 planned Milestones, next Beta Apr 2", or "Ongoing · no
+    Milestones" (`checkinContextDates`). It strikes no slipped date and marks
+    no overdue Milestone; the form's dates section does.
 
-  Above 900px the column is 240–320px on the right of the form, 32px away,
-  under the breadcrumb, header and add bar, and sticky (`top: 24px`), scrolling within
-  itself when it is taller than the window. At 900px and below it sits above
-  the form, after the header and add bar, and doesn't stick. At 600px and below it drops
-  Last time and Dates, which the form's ghost text already covers, so only
-  Contributed to by stays, and a Goal with no children shows no column.
+  Above 900px the rail is 240–280px wide, on the right of the form and 48px
+  from it, under the header line and the add bar, and sticky (`top: 24px`),
+  scrolling within itself when it is taller than the window. At 900px and
+  below it sits above the form, after the header line and the add bar, loses
+  its left edge, ends in a hairline, and doesn't stick. At 600px and below it
+  drops Last time and Dates, which the form's ghost text already covers, so
+  only Contributed to by stays, and a Goal with no children shows no rail.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.
   - **With script** (`checkinSectionsScript`, which marks the page
     `.checkin-js`), no summary and no ▸/▾ shows. The Highlights section always
     shows. The dates and Milestones section and the Lifecycle section show
-    only while their `<details>` is open, as a plain section with no panel,
-    under their own heading in the form's section-heading look (22px, display
-    face, 700): "Dates and Milestones" and "Lifecycle". The add bar's buttons
-    open them. The server's rules still open them on load, and their bar
-    button shows as used: an error in the section, something typed in it, an
-    overdue Milestone, `?open=dates` (a Schedule conflict's Fix on Follow-ups), and
-    a Lifecycle picked by `?lifecycle=` (the Goal page's menu). A shown
-    section never hides again; its fields are sent whether it shows or not.
-    The script runs again on the form a refused submit swaps back, so the bar
-    marks used whatever then shows.
+    only while their `<details>` is open, as a plain section under its own
+    `<h2>` at the form's section-heading size: "Dates and Milestones" and
+    "Lifecycle". The add bar's buttons open them. The server's rules still
+    open them on load, and their bar button shows as used: an error in the
+    section, something typed in it, an overdue Milestone, `?open=dates` (a
+    Schedule conflict's Fix on Follow-ups), and a Lifecycle picked by
+    `?lifecycle=` (the Goal page's menu). A shown section never hides again;
+    its fields are sent whether it shows or not. The script runs again on the
+    form a refused submit swaps back, so the bar marks used whatever then
+    shows.
+  - **Dates and Milestones:** for a Dated Goal, Delivery date and its reason;
+    then the Planned Milestones as a grid under muted Milestone, Date and
+    Status labels (each its name in 600, its date, and Planned, Done or
+    Removed, with a reason for a date change and for Removed), then any being
+    added and one blank row, "Add a Milestone".
+  - **Lifecycle:** radios in a wrapping row (Keep Active, Put On Hold, Mark
+    Done and Cancel; Resume and Cancel for an On Hold Goal), then the Reason
+    and, for any Goal not On Hold, the Outcome. With script, a Check-in that
+    Cancels the Goal asks to confirm before it is sent.
   - **Highlights (the Highlight editor, `highlighteditor.templ`):** with
-    script, the Highlights section isn't folded. It is a 22px `<h2>`
-    "Highlights" with a muted "A Report author can pull each one in" on its
-    baseline, then three quiet small buttons, **+ Insight**,
-    **+ Accomplishment** and **+ Miss** (`highlightAddButtons`), then the
-    Highlights so far. An add button opens one inline editor above them,
-    headed "New Miss" (or Insight, or Accomplishment), asking only for the
-    Note, with **Save** (`.btn.sm`) and **Cancel** (`.btn.quiet.sm`). Save
-    stays disabled until the Note is filled, and while an editor is open the
-    add buttons and every Edit wait. Save makes it an item: a bordered row
-    with the kind in bold and the full Note, as the Goal page lists
-    Highlights ("**Miss**: …"), and quiet small **Edit** and **Remove**.
-    Edit reopens the editor in place with a Kind select, so a wrong button
-    can be corrected, and Cancel puts the item back as it was. Draft
-    Highlights come in as items already saved, under a muted "Draft · logged
-    by <Name>" line. Removing one discards it with the Check-in. A Draft
-    logged with no Kind comes in as an open editor with the Kind select and
-    Remove, not Cancel. Saving records nothing: the Highlights are sent with
-    the Check-in, and an editor still open with a Note is sent as if saved.
-  - **Without script,** the page has no add bar and no section headings,
-    and each section is a folded panel opened by its summary ("Change dates
-    or milestones · …", "Pause, finish, or cancel this goal · …"). The
-    Highlights section is as before: a folded
-    `<details>`, "Flag a highlight (optional)", with a numbered row of Kind
-    and Note per Highlight, a Keep box on each Draft's row, and **Add
-    another**, which posts the form back for one more row. The script
-    upgrades that markup in place, so the server renders the same form either
-    way.
-  - **On the Goal page,** the Draft Highlights block uses the same editor.
-    With script, **+ Log a highlight** beside the heading is a quiet small
-    button that opens the editor at the top of the list, headed "New Draft
-    Highlight", with the Kind select (optional here: a Draft Highlight may
-    have no Kind) and the Note. **Save**, enabled once the Note is filled,
-    logs it at once with htmx and the block comes back from the server with
-    it listed, with no page load; **Cancel** closes the editor. Each pending
-    one gains a quiet small **Edit**, which opens it in the editor in place
-    ("Edit Draft Highlight"), its Save posting the edit and its Cancel
-    putting the row back, and its **Delete** reads **Remove** and deletes it
-    at once, with no confirmation. A refused Save comes back with the editor
-    open, the reason under the Note and what was typed kept. One editor is
-    open at a time. Without script the block is as before: the link opening
-    the log form in place, and **Delete** on each row.
-- **Sizes and touch targets:** buttons and text, email, date, number and search
-  inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
-  (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every
-  touch target is at least 44px and a button beside an input still shares its
-  height. A small button keeps its smaller type and padding. Textareas,
-  checkboxes and radios are left alone.
-- **Phone width (600px and below):** nothing scrolls sideways, and no control
-  is clipped. The Goal list's Table layout, a wide data table and the
-  Check-in page's add bar buttons may scroll inside their own container. List tables stack each row as a card, the Goal
-  or name first (Follow-ups, the Reports list, On track, the Goal list). The Goal
-  list's phone rows show the Goal, then Health and Owner, then Due and Last
-  check-in (each led by a small muted label), with Dimension tags hidden. A
-  card head's badges drop under its title. Filter bars and field-plus-button
-  forms wrap.
-- **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
-  divided by `--color-border`. Selected rows use `--color-primary-light`.
-- **Tags (`.tag`):** `--radius-full`, outlined with no fill: a 1px solid
-  `--color-border-strong` edge and `--color-ink` text. A retired Dimension
-  value's tag takes a dashed edge instead, struck through and muted.
-- **Check-in overdue chip (`.badge.st`):** marks a Check-in overdue Goal
-  wherever its Health shows (the Goal list, Home, a Report), with its age
-  ("Check-in overdue · 9 days" on the Goal list; on Follow-ups, with its cadence too:
-  "Check-in overdue · 42 days, checks in weekly", naming the cadence as the New
-  goal form's segments do, or "every 3 days"). It is a warning about freshness,
-  never a tag, so it can't share a tag's look: a `--checkin-overdue-bg` grey
-  fill, `--checkin-overdue-ink` text and a 1px dashed `--checkin-overdue-edge`
-  border, at a Health badge's `--radius-sm`. The Goal list's "Path to Green
-  overdue" chip takes the same style, as does Follow-ups' ("Path to Green 12 days
-  overdue"). So does the "Milestone overdue" chip on a Green Goal past a
-  Milestone's date: "Milestone overdue" on the Goal list, "Milestone 3 days
-  overdue" on Follow-ups.
-- **Check-in overdue banner (`.alert.st`):** at the top of a Check-in overdue
-  Goal's page, a `--color-surface` banner in a 1px dashed
-  `--checkin-overdue-edge` border, with `--color-ink` text: **Check-in
-  overdue**, then how long it has gone without a Check-in against its cadence.
-  For whoever may check in (the Owner or a Delegate) it ends, at the right, with
-  a **Check in now** link to the Goal's Check-in page. Anyone else sees no link.
-  The "Path to Green overdue" banner beside it takes the same style with no
-  link, because CONTEXT.md surfaces both the same way.
-
-  The ratios are in § Deviations 9.
-- **Nav counts (`.count`):** a count after a nav item's label, at the item's
-  right edge, shown only above zero. Two styles, so the one that needs the
-  person stands out:
-  - **Home's count (`.count.needs-you`)** counts what needs the person, so it
-    is a filled `--radius-full` pill: `--color-ink` with `--color-canvas`
-    numbers, dark on light and light on dark.
-  - **Every other count (`.count`)**, such as Follow-ups, is muted
-    `--color-ink-muted` tabular figures with no pill.
-
-  The ratios are in § Deviations 2.
-- **Health badges (`.g` / `.y` / `.r`):** `--health-*-bg` fill with
-  `--health-*-ink` text; see Deviations. They keep their dot
-  shapes (circle, triangle, square) so color is never the only signal. A list
-  that shows the shape alone draws it in `--health-*-mark` (§ Direction:
-  Components in the frame).
+    script, the Highlights section isn't folded. It is an `<h2>` "Highlights"
+    with a muted "A Report author can pull each one in" on its baseline, then
+    three quiet small buttons, **+ Insight**, **+ Accomplishment** and
+    **+ Miss** (`highlightAddButtons`), then the Highlights so far. An add
+    button opens one inline editor (`.ie-editor`) at the top of the list: not
+    a box, but a 2px `--color-border-strong` rule down its left with 16px
+    inside it, headed "New Miss" (or Insight, or Accomplishment) in 13px, 600
+    `--color-ink`, asking only for the Note, with **Save** (`.btn.sm`) and
+    **Cancel** (`.btn.quiet.sm`). Save stays disabled until the Note is
+    filled, and while an editor is open the add buttons and every Edit wait.
+    Save makes it an item (`.ie-item`): a row under a hairline with the kind
+    in bold and the full Note, as the Goal page lists Highlights ("**Miss**:
+    …"), and quiet small **Edit** and **Remove**. Edit reopens the editor in
+    place with a Kind select, so a wrong button can be corrected, and Cancel
+    puts the item back as it was. Draft Highlights come in as items already
+    saved, under a muted "Draft · logged by <Name>" line. Removing one
+    discards it with the Check-in. A Draft logged with no Kind comes in as an
+    open editor with the Kind select and Remove, not Cancel. Saving records
+    nothing: the Highlights are sent with the Check-in, and an editor still
+    open with a Note is sent as if saved.
+  - **Without script,** the page has no add bar and no section headings, and
+    each optional section is a folded `<details>` row between hairlines,
+    opened by its 44px summary in 600 with a muted ▸ (▾ when open) at its
+    right: "Flag a highlight (optional)", "Change dates or milestones · …" and
+    "Pause, finish, or cancel this goal · …". The Highlights section has a
+    numbered row of Kind and Note per Highlight, a Keep box on each Draft's
+    row, and **Add another**, which posts the form back for one more row. The
+    script upgrades that markup in place, so the server renders the same form
+    either way.
+  - **On the Goal page,** the Draft Highlights section uses the same editor.
+    It shows to the Owner and Delegates while the Goal takes Check-ins or
+    still has Draft Highlights pending. Each pending one is a ruled row: its
+    kind in bold ("No kind" when it has none) and its Note, a muted "<Name> ·
+    Nov 7, 15:04", and **Delete** at the right. With script, **+ Log a
+    highlight** beside the heading is a quiet small button that opens the
+    editor at the top of the list, headed "New Draft Highlight", with the Kind
+    select (optional here: a Draft Highlight may have no Kind) and the Note.
+    **Save**, enabled once the Note is filled, logs it at once with htmx and
+    the section comes back from the server with it listed, with no page load;
+    **Cancel** closes the editor. Each pending one gains a quiet small
+    **Edit**, which opens it in the editor in place ("Edit Draft Highlight"),
+    its Save posting the edit and its Cancel putting the row back, and its
+    **Delete** reads **Remove** and deletes it at once, with no confirmation.
+    A refused Save comes back with the editor open, the reason under the Note
+    and what was typed kept. One editor is open at a time. Without script the
+    heading's link opens the log form in place (`?open=draft-highlight`), and
+    each row keeps **Delete**.
+- **New goal page (`goalFormPage` in `goalform.templ`):** one form read top
+  to bottom. The Finish defining page is the same page.
+  - **Header strip (`goalFormHeader`):** **New goal**, or on Finish defining
+    the Goal's title, linking back to it, › **Finish defining**. It holds no
+    actions: the submit buttons are in Ready to activate.
+  - **Layout:** a column up to 720px (`.gf-main`), with Ready to activate as
+    a 240px rail 40px to its right, the pair centred in the content. Its
+    sections are plain, each after the first under a 1px `--color-border`
+    hairline with 24px above and below it. Section headings are `<h2>`s at
+    13/1.4, 600, with no step number. Fields sit 16px apart, labels 13px, 600
+    `--color-ink`, hints 13px `--color-ink-muted`.
+  - **The Title and Why it matters** open the column with no heading of their
+    own, under a muted 13px "Proposed until it's activated". The Title is a
+    heading-style input at the page title's size (28/1.2, 600, -0.02em), on the
+    canvas with no box, only a 1px `--color-border-strong` underline
+    (`--color-danger-ink` when refused). It reads "Name the outcome" when
+    empty and takes the focus on load. Why it matters follows, a textarea.
+  - **Delivery:** the Kind tiles under a "Kind" legend, then the Check-in
+    cadence, 24px apart.
+  - **How you'll know:** its `<h2>`, with a muted note at the right of the
+    line saying what activation needs ("At least one Milestone or Metric to
+    activate", or "At least one Metric to activate" once Ongoing is chosen),
+    then the Milestone and Metric editor (below).
+  - **More detail:** its `<h2>` with a muted "optional, and editable later"
+    beside it. **Contributes to** and **Where it fits** are `<details>` rows,
+    48px each with a hairline between them: the name in 600 `--color-ink`, a
+    muted "· " and what it holds ("· none", "· not set", or the names), and
+    **Set** or **Change** at the right in 600 `--color-primary-strong`. A row
+    opens by itself when it holds a refused input or, for Where it fits, a
+    required value not set. Where it fits shows only when there are
+    Dimensions or Fields. Contributes to is a search, with a chip for each
+    Goal picked (its Health badge, its title and ×); without script it is a
+    multiple select, with a Remove box on each chip.
+  - **Ready to activate (`goalFormReady`, `.gf-ready`):** a rail, not a raised
+    surface, behind a 1px `--color-border` left edge with 24px inside it, and
+    sticky (`top: 24px`), so it stays in view as the form scrolls. Top to
+    bottom, 12px apart: its `<h2>`; "3 of 6 done" in muted small text; a 6px
+    `--radius-full` bar, `--color-ink-muted` on a `--color-chip-bg` track; the
+    checklist, each item's label linking to the field that meets it and its
+    mark ✓ in an 18px `--health-g-ink` circle or ○ as an empty 2px
+    `--color-border-strong` ring, its done or to do for screen readers alone;
+    the buttons, stacked and as wide as the rail, **Create and activate**
+    (primary) over **Save as Proposed** (Enter in a field saves as Proposed);
+    a muted line on what saving needs; and a small **Cancel** link. With
+    script, the form posts to the checklist on load and as it is typed, and
+    the rail is swapped for the answer, Create and activate staying disabled
+    until every item is done. Without script the rail shows the checklist as
+    the page rendered it, and the server decides.
+  - **A refused submit** comes back as the same page, with what was typed. A
+    summary leads the column (`.alert.r`): **The Goal wasn't created.** (**The
+    Goal wasn't saved.** on Finish defining), over each problem, linked to its
+    input. Each refused input takes a `--color-danger-ink` edge, with the
+    reason under it in 13px `--color-danger-ink`.
+  - **Finish defining** (`/goals/<id>/define`): the Title is the Goal's and
+    read-only, and Why it matters takes the focus. The Goal's own Milestones
+    and Metrics are a read-only list at the top of How you'll know, and
+    Contributes to lists the Goals already asked, a Pending one "waiting on
+    <Owner>".
+  - **At 960px and below** the rail follows the column as its last section,
+    under a hairline, and doesn't stick. At 600px and below the Kind tiles
+    stack, the cadence is a 2×2 grid, and an editor's fields go one to a row.
+  - **How you'll know (the Milestone and Metric editor):** with script
+    (`goalFormRowsScript`), it starts as two quiet small buttons,
+    **+ Milestone** and **+ Metric**, and no blank rows. Each opens one inline
+    editor below the items, in the Highlight editor's look
+    (`itemEditorStyles`: a 2px `--color-border-strong` rule at its left, a
+    13px, 600 heading, the fields, and the Save and Cancel row): "New
+    Milestone" asks for Name and Date, the Name two-thirds of the row; "New
+    Metric" for Name, Unit, Baseline, Target, Target date, and Direction only
+    while the target equals the baseline, two to a row. **Save**
+    (`.btn.primary.sm`) stays disabled until the server would take what's
+    typed, Enter in a field presses it, and **Cancel** (`.btn.sm`) drops a new
+    editor or puts back the item it edits. While an editor is open the add
+    buttons and every Edit wait, and Ready to activate's How you'll know item
+    reads "Save the Milestone you started" (or Metric), to do, linked to the
+    editor. Save makes an item under a hairline: its name in bold, then a
+    muted line with a Milestone's date or a Metric's "baseline → target unit
+    by date", and quiet small **Edit** (reopening the editor in place, "Edit
+    Milestone") and **Remove**. The "Milestones" and "Metrics" `<h3>`s are
+    `.label`s, shown only once their section has an item. Saving records
+    nothing: the items are sent with the form, and an editor still open is
+    sent as if saved. A refused submit brings a refused row back as an open
+    editor showing why. **Without script,** How you'll know is rows of fields:
+    a blank Milestone row and a blank Metric row, or those typed.
+- **Kind tiles (`.gf-tile`, `.gf-segment`):** the New goal form's Kind,
+  **Dated** and **Ongoing**, two tiles side by side, 12px apart (stacked at
+  600px and below), with neither chosen at first. Each shows its Kind in bold
+  over a muted 13px line saying what it means, beside a radio dot the tile
+  draws. An unchosen tile is an outline: a 2px `--color-border-strong` edge at
+  `--radius-md`, no fill, and an empty 16px dot in a 2px
+  `--color-border-strong` ring. The chosen tile has a 2px `--color-primary`
+  edge, a `--color-primary-subtle` fill and a `--color-primary` dot. The edge
+  is 2px either way, so the tile keeps its size. The Dated tile holds the
+  Delivery date, shown once Dated is chosen, its input on the tile's fill.
+  Keyboard focus rings the whole tile. All of this needs `:has()`; a browser
+  without it shows the native radio and the date, and the radio still
+  chooses.
+- **Check-in cadence (`.gf-segctl`):** the New goal form's Weekly | Every 2
+  weeks | Monthly | Custom, one radio each, Weekly chosen at first: a 30px
+  tinted track with 4px inside it (§ Segmented controls), its segments at
+  `--radius-sm`, 36px on a coarse pointer. The focused segment takes the usual
+  ring. Custom shows a "Days between Check-ins" number input under the
+  control. At 600px and below the control becomes a 2×2 grid the width of the
+  form.
+- **Reports list (`reportsPage` in `reports.templ`):** a full-bleed list
+  page: it drops its width cap and side padding (`.rp-index`), and every
+  heading, row and cell keeps a 28px gutter (16px at 900px and below).
+  - **Header strip:** **Reports**, with no count, and **New report**
+    (`.btn.primary.sm`) at its right, leading to the Report builder.
+  - **Order, 32px apart:** a muted lead line, then **Open Action Items** when
+    there are any, then **Report Definitions**, each an `h2` with its rows 8px
+    under it. With no Report Definitions, a muted "No reports yet." takes the
+    list's place.
+  - **Open Action Items (`.rp-chase`):** two groups, **Yours** and **My org**,
+    either left out when empty, each soonest due first. A group opens with a
+    32px `--color-group` header row (`.rp-group`): its name in 12px, 500
+    `--color-ink-2`, then its count in muted tabular figures. Each row is at
+    least 44px under a hairline, with `--color-row-hover` under the pointer,
+    and reads: an "Action Item" `badge lc`, the item's text as a 500
+    `--color-ink` link (to the Goal page's Action Items, or the publication's
+    when it is about the whole Report), a red **Overdue** badge when it is
+    past due, then a muted "Report · Goal · due Nov 7, 2026" and the Owner's
+    Name. A row has no actions: closing and reassigning stay on the
+    publication, the draft and Home.
+  - **Report Definitions (`.rp-table`):** a table with no fill under a muted
+    label row: Report, Goals, Last published, Draft, and an unlabelled
+    Download column. Rows are 44px between hairlines, with
+    `--color-row-hover` under the pointer, and don't wrap; the table scrolls
+    in its own container when it is too wide. Never published come first,
+    then those with the most changes, then the rest by when they were last
+    published, oldest first.
+    - **Report:** the name links to the draft, in 500 `--color-ink`, with its
+      scope in small muted text beside it, sharing one ellipsis.
+    - **Goals:** the count, then a 120px × 8px Health bar (`.rp-bar`) drawn as
+      Home's is (§ Health distribution bar), when any Goal has a Health.
+    - **Last published:** the date with its year ("Nov 7, 2026") and a small
+      muted "by <Name>", or a muted "Never".
+    - **Draft**, right-aligned: a muted "Not published" or "0 changes", or
+      "3 changes" as a Yellow pill (`.rp-changes-hot`: `--health-y-bg`,
+      `--health-y-ink`, 600, `--radius-full`).
+    - **Download:** the Download menu for the last publication, once there is
+      one.
+  - **At 600px and below** the label row hides and each Report stacks as a
+    ruled block: the name, then the scope, then each cell on its own line,
+    empty ones left out.
+- **Download menu (`downloadMenu`, `.rp-download-menu`):** a secondary small
+  **Download** button that opens a native popover, without script and from
+  the keyboard too, closing on Escape or a click elsewhere. Where the browser
+  supports anchor positioning it hangs 4px under the button, lined up with
+  its right edge; elsewhere it opens centred in the window. It floats on
+  `--color-surface` in a 1px `--color-border` edge with `--radius-lg`,
+  `--shadow-pop` and 8px padding, at least 200px wide. Its links are 36px
+  (44px on a coarse pointer), 500 `--color-ink`, taking
+  `--color-surface-hover` under the pointer: **Markdown (.md)**, then **PDF
+  (.pdf)** when the app has a PDF renderer, or **PDF (print from browser)**,
+  leading to the Print view, when it hasn't. It sits on each published
+  Report's row of the Reports list and at the right of a publication's
+  header.
+- **A Report's draft page (`reportDraftPage` in `reports.templ`):** a header
+  strip over two panes: the author composes on the left beside a preview of
+  exactly what readers will see.
+  - **Header (`.rp-draft-head`):** the page's strip, but sticky (`top: 0`, on
+    `--color-canvas`), so the save status and Publish… stay in reach, and
+    wrapping. Left to right: "Reports › <name>", the name the strip's `h1`,
+    with a muted "Draft"; the save status (`.rp-save`), small and muted, which
+    reads "Saving…" while an autosave runs, then "Saved", or "Not saved"; the
+    baseline chip; then **History (N)**, **Edit definition** (a secondary
+    small button, for those who may edit the Report Definition) and
+    **Publish…** (`.btn.primary.sm`). At 600px and below it stops sticking
+    and stacks into three rows.
+  - **Baseline chip (`.rp-chip`):** a `<details>` whose summary is a 32px
+    `--radius-full` pill in a 1px `--color-border-strong` edge, "Changes since
+    **<baseline>** ▾". Its panel (`.rp-pop`), anchored left, is
+    `--color-surface` in a 1px `--color-border` edge with `--radius-lg` and no
+    shadow, its rows between hairlines: **Last publication** (once there is
+    one), **30 days ago**, and **Pick a date…**, which opens a GET form with a
+    "Changes since" date and a secondary **Apply**. Each choice is a link or a
+    GET, so the baseline lives in the URL (`?baseline=`).
+  - **History (N):** a `--color-primary-strong`, 600 summary, not a button,
+    whose panel, like the chip's and anchored right, lists the publications
+    newest first: each one's timestamp, with its year, linking to it, over a
+    small muted "by <Name>", or "Not published yet."
+  - **Publish…:** a `<details>` whose panel (`.rp-publish`), anchored right,
+    up to 560px wide with 24px padding, floats on a shadow of its own. It
+    reads "Publish <name>?", then a muted summary that autosave keeps current
+    ("12 Goals · 3 exceptions · 4 Highlights · changes since <baseline>.
+    Readers can comment on the frozen copy."), then a quiet **Cancel** and a
+    primary **Publish**. At 600px and below it spans the window less 16px each
+    side.
+  - **Panes (`.rp-panes`):** a 380px compose pane, then a 1px `--color-border`
+    rule with 24px each side, then the preview pane. At 900px and below they
+    stack, compose first, with a hairline between them.
+  - **Compose pane:** **Introduction** (the Report Definition's, or a muted
+    "No introduction."), then **Narrative**:
+    - **Highlights since <baseline>**, with a small muted "2 of 5 in" at its
+      right. Each Highlight is a hairline row: a checkbox and its Note, then a
+      small muted Owner's Name · Goal link · kind. Ticking it shows, in place of
+      the kind, a section picker, Insight | Accomplishment | Miss: an outlined
+      segmented control (§ Segmented controls) in 13px. With no Highlights, the
+      form says "No Highlights since <date>."
+    - **Your notes per section:** Insights, Accomplishments and Misses, each a
+      `<details>` between hairlines whose 44px summary is the section's name in
+      500 `--color-ink`, with "+ Add note" in `--color-primary-strong` at its
+      right while the section has no note. Inside, each note is its own
+      textarea, then a quiet **Add another**.
+    - **Saving:** with htmx, the form autosaves on change and 400ms after
+      typing stops, and swaps in the preview, the save status, the Highlights
+      count and Publish…'s summary, never its own fields. Without script a
+      secondary **Save narrative** shows.
+  - **Preview pane:** first the Goals panel (`.rp-goals`), for the author:
+    "N Goals in this report" as its `h2`, the selection in small muted text and
+    a quiet small **Edit definition**, then each Goal in two columns (one at
+    900px and below): its Health's dot in the Health's ink, its title linking
+    to its place in the preview, and a small muted "attention" or "added" at
+    the right. The first six show, the rest behind **Show all N**. Then the
+    preview (`#draft-preview`): a `.label` "Preview: exactly what readers will
+    see", then the Report as a publication shows it, its Open Action Items
+    keeping Close and Reassign, each coming back to the draft.
+- **A publication (`publicationPage` in `reports.templ`):** a published
+  Report, frozen, in a reading column.
+  - **Header strip:** the breadcrumb "Reports › <Report Definition> › Nov 7,
+    2026", the Report Definition linking to the draft and the date the current
+    page in 500 `--color-ink`, with the Download menu at the right.
+  - **Reading column (`.rp-read`):** up to 880px, centred, its parts 24px
+    apart: the Report's name (an `h1`, 28px), two muted lines ("Published Nov
+    7, 2026, 15:04 by <Name> · changes since the previous publication, …" and
+    "Selection: …"), the Report's content, then Action Items raised here.
+  - **The Report's content (`reportContent`), shared with the draft's
+    preview:**
+    - **Health tiles (`.rp-tiles`):** four tiles between hairlines, split by
+      1px rules: Red, Yellow and Green as Health badges, and Check-in overdue
+      as its chip, each count at the tile's right in 20px `--color-ink`
+      tabular figures. At 900px and below they form a 2 × 2 grid.
+    - **Movement line:** "**Since the previous publication:** 2 turned Red ·
+      1 back to Green", or "No movement since …".
+    - **Open Action Items:** as rows (`.rp-rows`), at least 44px between
+      hairlines: "text · <Owner> (was <Name>'s) · due Nov 7, 2026 · about
+      <Goal>", **[Closed since]** on one closed since, then Close and Reassign.
+    - **Introduction and narrative (`.rp-narrative`):** the introduction as
+      body text, then the narrative in 15/1.7 `--color-ink`: Insights,
+      Accomplishments and Misses, each a 13px, 600 heading over the author's
+      notes and the picked Highlights as a bulleted list, each credited in
+      muted 13px " — <Owner>, <Goal>". A section with neither is left out.
+    - **Exceptions N:** each an entry (`.rp-block`) between hairlines. Its
+      head is its title (16px, linking to the Goal) over a small muted "Owner ·
+      Lifecycle · due Nov 7, 2026", slipped dates struck through, and at the
+      right its Health badge with "· 2 wks" and "· was Green" small and muted,
+      then its badges (Check-in overdue as the chip, Ownerless in Red, New Date
+      in Yellow, the rest as `badge lc`), which drop under the title at 600px
+      and below. Under it sit "**Changed:** …", "**Contributes to:** …" and the
+      Report Definition's Fields, then the status box (`.rp-tint`:
+      `--color-sidebar`, `--radius-md`, 12px × 16px padding) with **Why it
+      matters**, **Status**, **Path to Green** with its back-to-Green date, and
+      any **Asks for help**. A Path to Green past its date marks the line with
+      a Red **Overdue** badge and tints the box `--health-r-bg`. Milestones and
+      Metrics, each a `.label` over a list, and the Rolled-up Health line
+      follow.
+    - **On track:** a table with no fill (Health, Goal, Owner, Due) in its own
+      scrolling container; at 600px and below each row becomes a ruled grid,
+      the Goal first.
+    - **Goals that entered or left this report:** a Goal, Change, Why table,
+      when there are any.
+  - **Discussion (`goalDiscussion`, `.rp-discussion`):** a footer under each
+    exception and each On track row, behind a hairline: "N comments" (a
+    `--color-primary-strong` disclosure of the threads) or a muted "No
+    comments", then a secondary small **Comment** that opens its form. Each
+    thread hangs off a 1px left rule, replies indented 24px behind their own
+    **Reply**. The Report's author also gets **Make action item** on each
+    comment. It is all `<details>` and form posts, so it works without script.
+  - **Action Items raised here:** every Action Item raised on this
+    publication, as rows: an open one with Close and Reassign, a closed one
+    "**[Closed Nov 9, 2026]** — <note>", or "None yet." The Report's author
+    also gets a secondary small **Add Action Item**, opening an inline form
+    of Action Item, Owner (email), Due and About.
+- **Close and Reassign (`closeActionItemForm`, `reassignActionItemForm`,
+  `.rp-inline-form`):** an open Action Item's owner gets **Close**, and those
+  who may hand it on **Reassign**. Each is a `<details>` whose summary is a
+  secondary small button inline beside the item. Opened, it takes the row's
+  full width and shows its form: labelled fields that wrap 8px apart, each
+  label a 13px, 600 caption over its input, aligned on the inputs' bottom
+  edge. Close asks for a "Closing note" and Reassign a "New owner" email,
+  each with a primary small submit, and the form comes back to the page it
+  was on. Home and the Goal page carry their own copy of the
+  `.rp-inline-form` rules.
+- **Report builder (`reportBuilderPage` in `reportbuilder.templ`):** one
+  centred column up to 720px of plain sections, 24px apart.
+  - **Header strip:** the breadcrumb only, "Reports › New" or "Reports ›
+    <Report Definition> › Edit", with no actions.
+  - **Order:** the title, "New report" or the edit title, as the column's
+    28px `h1`; when a save is refused, an alert (`.rb-problems`, a 1px
+    `--color-danger-ink` edge, `--radius-md`, "**The report wasn't saved.**"
+    and the reasons in `--color-danger-ink`); **Name** and **Introduction**;
+    **What's in this report**, an outlined segmented control (§ Segmented
+    controls), Goals matching rules | Goals I pick, which with `:has()` shows
+    only its own section; **Rules**, under a hairline: each rule a wrapping
+    row (`.rb-rule`) of What the rule tests, Operator, Values and its ×, then
+    a quiet small **+ Add rule**, then **Also include** and **Leave out**,
+    each a Goal picker; or **Goals I pick**, one Goal picker; **+ Fields to
+    show**, a quiet small disclosure when there are Fields; **Matches**
+    (`.rb-rail`); and **Save report**, primary, with a secondary **Show
+    matches** beside it without script.
+  - **Goal picker (`reportGoalPicker`):** a legend (with a help button for Also
+    include and Leave out), then the picked Goals as chips (`.rb-chip`):
+    `--radius-full` pills in a 1px `--color-border` edge, each its title and
+    its round ×. With script, a full-width search lists matches as buttons,
+    each a title and a muted Owner; picking one adds its chip and refreshes
+    Matches. Without script, a multiple select of every Goal not yet picked,
+    and a "Remove" checkbox on each chip in place of its ×.
+  - **Matches:** an `h2` "Matches 12 Goals" over 40px rows between hairlines,
+    each a Goal's Health badge (or its Lifecycle as a `badge lc`), its title
+    in 500 `--color-ink`, and a muted "added" for a Goal only Also include
+    brings in. The first 10 show, then a muted "+ 2 more · 1 left out". With
+    htmx it refreshes as the inputs change, and it is `aria-live="polite"`.
+- **Icon remove button (`.btn.rb-remove`):** the Report builder's × on a rule
+  row and on a Goal chip. It is a 40px square, the height of the selects
+  beside it, with a 1px `--color-border-strong` edge, the secondary button's
+  hover and the standard focus ring. On a rule row it submits the form
+  without the row, so it works without script. On a Goal chip it is round and
+  forms the pill's right end: the chip keeps only its 12px left padding, so it
+  stays compact. On a coarse pointer it is 44px wide as well as tall. It
+  shows only the ×, so it always carries an `aria-label` and a matching
+  `title` naming what it removes ("Remove rule", "Remove <Goal title>").
+- **Admin page (`adminPage` in `admin.templ`):** for an Admin only. "Admin"
+  is the header strip's title, with no actions, and every part is a plain
+  section, 32px apart (24px at 900px and below):
+  - **Intro:** a muted "The tools only an Admin uses."
+  - **Tools (`.ad-tools`):** four link rows, **Dimensions**, **Fields**,
+    **Import goals** and **Definition log**, each at least 44px between
+    hairlines: its name (14px, 500, `--color-ink`) in a 200px column and a
+    muted line saying what it is for beside it. On hover the name turns
+    `--color-primary-strong` and is underlined. At 600px and below the line
+    drops under the name.
+  - **Sections (`.ad-section`):** each an `h2` over a muted sentence saying
+    what it is for, then its rows. A table in a section has no fill: muted
+    12px labels over a hairline, and hairline rows. A row's action is a small
+    secondary button at its right. In order:
+    1. **Directory sync**, only when the app has one: its status ("Last synced
+       Nov 7, 15:04. Read 42 people.") and **Sync now**, which with script
+       reads "Syncing…" while the sync runs.
+    2. **Set-password links**, only with password sign-in: an Email field and
+       **Issue link** on one row, up to 560px wide. A link just issued shows
+       once, in a full-width read-only input, with a muted line saying it works
+       once and expires in 72 hours.
+    3. **Admins:** every Admin by Name, each with **Remove Admin…** (a muted
+       "you" on the viewer's own row), then an Email field and **Make Admin**.
+    4. **Ownerless Goals:** Goal, Former Owner and its Lifecycle as a
+       `badge lc`, or a muted "No Goals are waiting for reassignment."
+    5. **Departed people:** each by Name, with **Mark returned…**, or a muted
+       "No departed people."
+  - **Confirming:** Remove Admin… and Mark returned… ask to confirm with
+    script, and post at once without it. A refusal shows under its form in
+    `--color-danger-ink`. At 600px and below a field-plus-button form wraps.
+- **Dimensions page (`dimensionsPage` in `dimensions.templ`):** anyone signed
+  in can read it, and only an Admin sees its controls. "Dimensions" is the
+  header strip's title, over a muted intro line.
+  - **Define a Dimension:** for an Admin, a primary button that is a
+    `<details>` summary, so it works without script, opening the form under it
+    as a plain section up to 560px wide: Name, Values ("comma-separated"),
+    "Each Goal takes" (one value or several) and "Its list is" (Fixed or
+    Extendable), then **Create Dimension**.
+  - **The list (`.dm-list`):** one row per Dimension between hairlines: its
+    Name as an `h3`, a muted "retired" after it once Retired, a muted small
+    rules line ("Each Goal takes one value · Fixed list · Required"), then its
+    values as tags, a Retired value's struck through and muted in a dashed
+    edge. With no Dimensions, a muted "No Dimensions yet."
+  - **Edit (`.dm-edit`):** for an Admin, a small secondary **Edit**
+    `<details>` at the end of each row, opening the switches (one button each,
+    naming the change it makes), a row per value (**↑** and **↓**, a rename
+    input with **Rename**, a danger **Retire**, and **Merge** into another
+    value; a Retired value shows **Restore** instead, which is not an Undo:
+    it takes no token and works at any time), **Sort alphabetically**, a "New
+    value" input with **Add value**, and **Retire this Dimension** or
+    **Restore this Dimension**.
+  - **Confirming and Undo:** retiring a value happens at once, and the page
+    that follows offers Undo in the toast. Merge and Retire this Dimension ask
+    to confirm with script.
+  - **A refused switch to one value (`.dm-refusal`):** "<Dimension> still takes
+    several values" as an `h2`, with a list linking each Goal that carries
+    several, behind a 2px `--color-danger-ink` rule down its left, announced as
+    an alert.
+- **Fields page (`fieldsPage` in `fields.templ`):** laid out as Dimensions
+  is. "Fields" is the header strip's title, over a muted intro line. For an
+  Admin, **Define a Field** opens a form of Name, "It holds" (a number, a
+  short text, a long text or a date; "this can't change later") and Unit,
+  then **Create Field**. The list (`.fd-list`) has a row per Field between
+  hairlines: its Name as an `h3` ("retired" once Retired), a muted type line
+  ("Number in $ · Required"), and for an Admin **Make it required** (or
+  optional) and **Retire this Field** (or **Restore this Field**). With no
+  Fields, a muted "No Fields yet."
+- **Import Goals page (`importsPage` in `imports.templ`):** "Import Goals" is
+  the header strip's title, over a muted line naming the column format's
+  document. Anyone but an Admin sees only "Only an Admin may import Goals."
+  An Admin sees the form (`.im-form`), a plain section up to 560px wide: a
+  refused upload's reason as an alert, the Spreadsheet file input (CSV or
+  XLSX), **Dry run** (primary) and **Commit** (secondary), and three muted
+  hints. After a run, the report (`.im-report`): a summary alert, then a table
+  of Row, Goal and Errors laid out as Admin's, each row's errors a list in
+  `--color-danger-ink` or a muted "None", scrolling inside its own container
+  at phone width.
 
 ## Motion
 
@@ -1385,7 +1993,7 @@ given):
 3. **Goal Health.** The source's success teal (`#2DD4BF`) is almost the same
    as the primary colour, so a Green Health badge would read as a button.
    Health badges therefore keep their own hues, as a pill's fill and ink and
-   as the shape a list shows alone (§ Direction: Tokens):
+   as the shape a list shows alone (§ Tokens):
    - Green: `#E5F3EA` / `#1C6435`, shape `#2E7D4F`
    - Yellow: `#FFF3D1` / `#7A4F00`, shape `#B27B00`
    - Red: `#FDECEC` / `#A61B1B`, shape `#C62828`
@@ -1393,14 +2001,19 @@ given):
    In dark mode, the same hues sit on 20%-alpha fills with light text
    (`--health-*` in the dark block), and the shapes go bright. The
    `--color-success`/`warning`/`error` tokens are for alerts and form
-   validation, not for Health. A pill's text reaches 4.5:1 on its fill, and
-   the shapes' ratios are in § Deviations 10:
+   validation, not for Health. A badge's text reaches 4.5:1 on its fill, and
+   the shapes' ratios are in § Deviations 10. A dark fill is 20% alpha, so it
+   is measured as it lands: over the canvas, a hovered row and a raised
+   surface (the Check-in submit bar's summary).
 
    | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |
    | Light | Red ink `#A61B1B` | Red fill `#FDECEC` | 6.58 |
    | Light | Yellow ink `#7A4F00` | Yellow fill `#FFF3D1` | 6.45 |
    | Light | Green ink `#1C6435` | Green fill `#E5F3EA` | 6.27 |
+   | Dark | Red ink `--health-r-ink` `#F8A39B` | Red fill over canvas `#3C1A1C` / over row hover `#452326` / over surface `#411F21` | 7.89 / 7.04 / 7.42 |
+   | Dark | Yellow ink `--health-y-ink` `#F5D06B` | Yellow fill over canvas `#3B3110` / over row hover `#44391A` / over surface `#403515` | 8.65 / 7.65 / 8.12 |
+   | Dark | Green ink `--health-g-ink` `#8EDDAF` | Green fill over canvas `#132D21` / over row hover `#1C362B` / over surface `#183226` | 9.20 / 8.13 / 8.61 |
 4. **Danger text.** `--color-error` (`#EF4444`) reaches only 3.76:1 on white,
    too low for 13–15px text. Destructive buttons and inline errors use
    `--color-danger-ink` (`#9A231B`, the Red Health ink before the flat frame)
@@ -1415,29 +2028,32 @@ given):
 
    The source also rings a focused input in a 25%-alpha halo of the primary,
    which reaches only 1.36:1 on white. Inputs take the solid ring instead, and
-   the halo token is dropped.
+   the halo token is retired.
 
 6. **Input borders and other non-text marks.** The source's input border
    (`#D5D2BD`) reaches 1.52:1 on white, and the dark preview's scale step 2
    (`#0A5C53`) reaches 1.87:1 on the dark surface. WCAG asks 3:1 of the edge
    that identifies a control. `--color-border-strong` is `#8A8D93` in light
    mode (3.33:1 on the canvas, 3.08:1 on a hovered row, its lowest) and
-   `#6B6F77` in dark mode (3.34:1 on a hovered card, its lowest). The current
+   `#6B6F77` in dark mode (3.34:1 on `--color-surface-hover`, a hovered
+   button, its lowest). The current
    choice's `--color-primary-light` fill holds text only, so no edge is
    measured on it. Two more marks follow the same rule:
    - A Metric's sparkline, the one data accent allowed teal (§ System), strokes
      in `--color-primary-strong`, not `--color-primary`, which reaches only
      2.49:1 on white. The Check-in page's Metric progress bar fills in the
      same token.
-   - On the Check-in form, an unselected Health choice is an outline (surface
-     fill, `--color-border-strong` edge, Health ink) and the selected one is
-     the filled Health badge with an edge in its ink. Nothing is dimmed.
+   - On the Check-in form, an unselected Health choice is an outline: a
+     `--color-surface` fill, a 2px `--color-border-strong` edge, and the word
+     and shape in the Health's ink. The selected one is the filled Health
+     badge (`--health-*-bg`) with a 2px edge in its ink, so a choice keeps its
+     size either way. Nothing is dimmed.
 
 7. **Neutral canvas.** The source's light canvas is a pale yellow
    (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory
    tint. Beside it, Yellow Health's fill lost its hue, and white cards looked
    cut out of the page (UX Review). The canvas went a neutral off-white, and
-   the flat frame then made it white (§ Direction: One surface), with neutral
+   the flat frame then made it white (§ System: One surface), with neutral
    steps off it for the sidebar, a hovered row and a group header. The dark
    theme's teal canvas and cards went neutral near-black with it.
 
@@ -1449,7 +2065,7 @@ given):
    | `--color-border` | `#E8E6D5` | `#EDEDEF` |
 
    Each light-theme text colour reaches 4.5:1, and each control edge 3:1, on
-   the canvas and every card surface beside it (the frame's own surfaces are
+   the canvas and the raised surfaces beside it (the frame's own surfaces are
    in § Deviations 10):
 
    | Mark | Canvas | Surface | Surface hover | Surface alt |
@@ -1464,45 +2080,49 @@ given):
 
    `--color-surface-alt` takes the sidebar's grey: the warmer `#F2F2EE` it had
    would hold the new input edge at only 2.96:1.
-8. **Flat cards.** The source lifts every card off the canvas on a large
-   teal-tinted shadow (`--shadow-card`, deepening to `--shadow-card-hover` on
-   hover), so nothing read as nearer than anything else (UX Review). Cards are
-   flat instead: a 1px `--color-border` edge and no shadow, in both themes. In
-   dark, the card's `--color-surface` against the darker `--color-canvas`
-   sets it apart. A clickable card's hover changes its border colour alone
-   (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
-   the person's menu, the signed-out Theme menu, the phone Menu's sheet, the
-   Goal page's More menu and the toast. The two card shadow tokens are gone.
+8. **Flat cards, then no cards.** The source lifts every card off the canvas
+   on a large teal-tinted shadow (`--shadow-card`, deepening to
+   `--shadow-card-hover` on hover; both tokens retired), so nothing read as
+   nearer than anything else (UX Review). Cards went flat first, a 1px
+   `--color-border` edge and no shadow in both themes, and the flat frame then
+   retired them as page containers (§ System: One surface). Only what floats
+   keeps the source's `--shadow-pop`: the person's menu, the signed-out Theme
+   menu, the phone Menu's sheet, the Goal page's More menu, Follow-ups'
+   popovers, the Download menu, the Check-in page's submit bar and the toast.
+   In dark, a floating `--color-surface` against the darker `--color-canvas`
+   sets it apart too.
 9. **Check-in overdue, apart from tags.** Check-in overdue chips and banners,
    tags and nav counts all shared the pale teal `--color-primary-light` fill, so
    "Check-in overdue" read like a label such as "Platform" (UX Review). Check-in
-   overdue is now a grey chip in a dashed edge, its banners a surface in the
-   same edge, and tags an outline with no fill (§ Components). The UX Review
+   overdue is now a grey chip in a dashed edge, its banners carry the same
+   edge, and tags are an outline with no fill (§ Components). The UX Review
    gave the light edge as `#8C939C`, which reached only 2.87:1 on the
    off-white canvas the banners then sat on. The edge is one step darker in
    the same hue, `#888F97`, which reaches 3:1 there and on every surface since.
 
    Chip and banner text reaches 4.5:1 on its fill, and the dashed edge 3:1 on
-   the surfaces around it. A chip sits on a card, plain or as a hovered row. A
-   banner sits on the canvas with a surface inside.
+   what it sits on. A chip sits on the canvas, plain or as a hovered row (on
+   the Goal list it takes the signal chip's fill, in § Deviations 10). The
+   Goal page's banner is a `--color-group` strip with the dashed edge along
+   its foot (§ Components: Goal page banners).
 
    | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |
    | Light | Chip text `#3B4048` | chip fill `#E9EAEC` | 8.67 |
-   | Light | Chip edge `#888F97` | surface `#FFFFFF` / surface hover `#F6F6F7` | 3.27 / 3.03 |
-   | Light | Banner text `--color-ink` `#1B1D22` | surface `#FFFFFF` | 16.86 |
-   | Light | Banner link `--color-primary-strong` `#0F766E` | surface `#FFFFFF` | 5.47 |
-   | Light | Banner edge `#888F97` | canvas `#FFFFFF` / surface `#FFFFFF` | 3.27 / 3.27 |
-   | Light | Tag text `--color-ink` `#1B1D22` | canvas / surface / surface hover | 16.86 / 16.86 / 15.61 |
-   | Light | Tag edge `--color-border-strong` `#8A8D93` | canvas / surface | 3.33 / 3.33 |
+   | Light | Chip edge `#888F97` | canvas / row hover | 3.27 / 3.03 |
+   | Light | Banner text `--color-ink` `#1B1D22` | group | 16.16 |
+   | Light | Banner link `--color-primary-strong` `#0F766E` | group | 5.25 |
+   | Light | Banner edge `#888F97` | group | 3.13 |
+   | Light | Tag text `--color-ink` `#1B1D22` | canvas / row hover | 16.86 / 15.61 |
+   | Light | Tag edge `--color-border-strong` `#8A8D93` | canvas / row hover | 3.33 / 3.08 |
    | Dark | Chip text `#E8E8E8` | chip fill `#3B4048` | 8.51 |
-   | Dark | Chip edge `#8C939C` | surface `#151618` / surface hover `#1C1D20` | 5.84 / 5.43 |
-   | Dark | Banner text `--color-ink` `#EDEEF0` | surface `#151618` | 15.60 |
-   | Dark | Banner link `--color-primary-strong` `#14B8A6` | surface `#151618` | 7.27 |
-   | Dark | Banner edge `#8C939C` | canvas `#0F1012` / surface `#151618` | 6.14 / 5.84 |
-   | Dark | Tag text `--color-ink` `#EDEEF0` | canvas / surface / surface hover | 16.40 / 15.60 / 14.52 |
-   | Dark | Tag edge `--color-border-strong` `#6B6F77` | canvas / surface | 3.78 / 3.59 |
-10. **The flat frame's surfaces.** § Direction's tokens add the sidebar, a
+   | Dark | Chip edge `#8C939C` | canvas / row hover | 6.14 / 5.55 |
+   | Dark | Banner text `--color-ink` `#EDEEF0` | group | 15.29 |
+   | Dark | Banner link `--color-primary-strong` `#14B8A6` | group | 7.13 |
+   | Dark | Banner edge `#8C939C` | group | 5.72 |
+   | Dark | Tag text `--color-ink` `#EDEEF0` | canvas / row hover | 16.40 / 14.83 |
+   | Dark | Tag edge `--color-border-strong` `#6B6F77` | canvas / row hover | 3.78 / 3.42 |
+10. **The flat frame's surfaces.** The flat frame adds the sidebar, a
     hovered row and a group header beside the white canvas. Every text ink
     reaches 4.5:1 on each, and every input edge, focus ring and Health shape
     3:1, in both themes. The lowest are the light muted ink on a hovered row
@@ -1545,9 +2165,10 @@ Places where the app follows the source on purpose, though a design audit has
 flagged them. They aren't deviations, and later audits shouldn't raise them
 again.
 
-1. **White card surface.** The 2026-10-01 audit called the light theme's
+1. **White surface.** The 2026-10-01 audit called the light theme's
    `--color-surface` (`#FFFFFF`) flat beside the canvas, then ivory. It stays
-   white, and the flat frame made the canvas white too.
+   white, and the flat frame made the canvas white too, so what floats is set
+   off by its edge and shadow, not its fill.
    The light-theme contrast ratios in § Deviations are quoted against it, and
    two of them have little room to lose: the input border at 3.33:1 and the
    focus ring at 3.74:1, against WCAG's 3:1. Tinting the surface would mean
