@@ -39,8 +39,8 @@ type Freshness struct {
 	// in the Goal's Owner's Timezone (see Service.GoalTimezone). The Health
 	// stays the Owner's (CONTEXT.md: Milestone). OverdueMilestone and
 	// OverdueMilestoneDate are that Milestone's name and date, the
-	// earliest-dated when several are overdue. Only Service.Freshness and
-	// Service.FreshnessSignals set these three.
+	// earliest-dated when several are overdue. Only Service.Freshness,
+	// Service.FreshnessByGoal and Service.FreshnessSignals set these three.
 	MilestoneOverdue     bool
 	OverdueMilestone     string
 	OverdueMilestoneDate time.Time
@@ -87,23 +87,53 @@ func (s *Service) Freshness(ctx context.Context, goalID int64) (Freshness, error
 	if err != nil {
 		return Freshness{}, err
 	}
-	latest, ok, err := s.LatestCheckin(ctx, goalID)
+	byGoal, err := s.FreshnessByGoal(ctx, []Goal{g})
 	if err != nil {
 		return Freshness{}, err
 	}
-	var last lastCheckin
-	if ok {
-		last = lastCheckin{at: latest.CreatedAt, health: latest.Health, pathTargetDate: latest.PathTargetDate}
+	return byGoal[g.ID], nil
+}
+
+// FreshnessByGoal reads the freshness signals of each of goals, as Freshness
+// reads one Goal's, keyed by Goal ID. It runs the same few queries however many
+// Goals there are, so a page listing Goals can afford it.
+func (s *Service) FreshnessByGoal(ctx context.Context, goals []Goal) (map[int64]Freshness, error) {
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
 	}
-	f := s.judgeFreshness(g, last)
-	if greenWhileActive(g, last.health) {
-		milestones, err := s.queries.ListMilestones(ctx, goalID)
-		if err != nil {
-			return Freshness{}, fmt.Errorf("list milestones: %w", err)
+	latest, err := s.LatestCheckinsByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	last := make(map[int64]lastCheckin, len(goals))
+	var green []int64
+	for _, g := range goals {
+		if c, ok := latest[g.ID]; ok {
+			last[g.ID] = lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 		}
-		s.markMilestoneOverdue(&f, g, last.health, milestones)
+		if greenWhileActive(g, last[g.ID].health) {
+			green = append(green, g.ID)
+		}
 	}
-	return f, nil
+	// Only a Green, Active Goal can be Milestone overdue, so only theirs are read.
+	milestones := map[int64][]db.Milestone{}
+	if len(green) > 0 {
+		rows, err := s.queries.ListMilestonesForGoals(ctx, green)
+		if err != nil {
+			return nil, fmt.Errorf("list milestones: %w", err)
+		}
+		for _, m := range rows {
+			milestones[m.GoalID] = append(milestones[m.GoalID], m)
+		}
+	}
+	out := make(map[int64]Freshness, len(goals))
+	for _, g := range goals {
+		f := s.judgeFreshness(g, last[g.ID])
+		s.markMilestoneOverdue(&f, g, last[g.ID].health, milestones[g.ID])
+		out[g.ID] = f
+	}
+	return out, nil
 }
 
 // greenWhileActive reports whether g is Active with a latest Check-in of the

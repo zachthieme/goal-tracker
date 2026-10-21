@@ -405,19 +405,12 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	goals = domain.FilterGoals(goals, byDimension)
 	filter := readGoalFilter(r.URL.Query())
 
-	rows := make([]goalRow, 0, len(goals))
-	for _, gv := range goals {
-		if !org.keeps(gv.Goal) {
-			continue
-		}
-		row, err := s.loadGoalRow(ctx, gv)
-		if err != nil {
-			return goalsListData{}, err
-		}
-		if filter.keeps(row) {
-			rows = append(rows, row)
-		}
+	goals = slices.DeleteFunc(goals, func(gv domain.GoalWithValues) bool { return !org.keeps(gv.Goal) })
+	rows, err := s.loadGoalRows(ctx, goals)
+	if err != nil {
+		return goalsListData{}, err
 	}
+	rows = slices.DeleteFunc(rows, func(row goalRow) bool { return !filter.keeps(row) })
 	sortGoalRows(rows)
 
 	view := goalsListData{
@@ -671,33 +664,45 @@ func (c pageOrgScope) Name() string {
 	return c.Of.Label() + "'s org"
 }
 
-// loadGoalRow reads what gv's row shows beyond the Goal itself. It costs a few
-// queries per Goal, which the list can afford for now.
-func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goalRow, error) {
-	row := goalRow{GoalWithValues: gv}
-	latest, ok, err := s.svc.LatestCheckin(ctx, gv.Goal.ID)
+// loadGoalRows reads what each of goals' rows shows beyond the Goal itself,
+// in the same few queries however many Goals there are, keeping their order.
+func (s *Server) loadGoalRows(ctx context.Context, goals []domain.GoalWithValues) ([]goalRow, error) {
+	ids := make([]int64, 0, len(goals))
+	plain := make([]domain.Goal, 0, len(goals))
+	for _, gv := range goals {
+		ids = append(ids, gv.Goal.ID)
+		plain = append(plain, gv.Goal)
+	}
+	latest, err := s.svc.LatestCheckinsByGoal(ctx, ids)
 	if err != nil {
-		return goalRow{}, fmt.Errorf("load latest check-in: %w", err)
+		return nil, fmt.Errorf("load latest check-ins: %w", err)
 	}
-	if ok {
-		row.Latest = &latest
-	}
-	if row.Freshness, err = s.svc.Freshness(ctx, gv.Goal.ID); err != nil {
-		return goalRow{}, fmt.Errorf("read freshness: %w", err)
-	}
-	if row.Incomplete, err = s.svc.Incomplete(ctx, gv.Goal); err != nil {
-		return goalRow{}, fmt.Errorf("read incomplete: %w", err)
-	}
-	slips, err := s.svc.ListDateSlips(ctx, gv.Goal.ID)
+	freshness, err := s.svc.FreshnessByGoal(ctx, plain)
 	if err != nil {
-		return goalRow{}, fmt.Errorf("load date slips: %w", err)
+		return nil, fmt.Errorf("read freshness: %w", err)
 	}
-	for _, slip := range slips {
-		if slip.OnDeliveryDate() {
-			row.PriorDates = append(row.PriorDates, slip.OldDate)
+	incomplete, err := s.svc.IncompleteByGoal(ctx, plain)
+	if err != nil {
+		return nil, fmt.Errorf("read incomplete: %w", err)
+	}
+	slips, err := s.svc.DateSlipsByGoal(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("load date slips: %w", err)
+	}
+	rows := make([]goalRow, 0, len(goals))
+	for _, gv := range goals {
+		row := goalRow{GoalWithValues: gv, Freshness: freshness[gv.Goal.ID], Incomplete: incomplete[gv.Goal.ID]}
+		if c, ok := latest[gv.Goal.ID]; ok {
+			row.Latest = &c
 		}
+		for _, slip := range slips[gv.Goal.ID] {
+			if slip.OnDeliveryDate() {
+				row.PriorDates = append(row.PriorDates, slip.OldDate)
+			}
+		}
+		rows = append(rows, row)
 	}
-	return row, nil
+	return rows, nil
 }
 
 // groupGoalRows buckets rows under dim's values the way

@@ -27,6 +27,15 @@ JOIN fields ON fields.id = goal_field_values.field_id
 WHERE goal_field_values.goal_id = ?
 ORDER BY fields.name, fields.id;
 
+-- name: ListGoalFieldValuesForGoals :many
+-- The values each given Goal has, each with its Field, as ListGoalFieldValues
+-- reads one Goal's.
+SELECT goal_field_values.goal_id, goal_field_values.value, sqlc.embed(fields)
+FROM goal_field_values
+JOIN fields ON fields.id = goal_field_values.field_id
+WHERE goal_field_values.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY goal_field_values.goal_id, fields.name, fields.id;
+
 -- name: SetFieldRetired :one
 -- Retire a Field (1) or restore it (0); nothing about it is deleted.
 UPDATE fields SET retired = ? WHERE id = ?

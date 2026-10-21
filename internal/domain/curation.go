@@ -177,12 +177,16 @@ func (s *Service) definitionHighlights(ctx context.Context, def ReportDefinition
 	if err != nil {
 		return nil, err
 	}
-	out := map[int64]bool{}
+	goals := make([]Goal, 0, len(selected))
 	for _, sg := range selected {
-		hs, err := s.ListHighlightsByGoal(ctx, sg.Goal.ID)
-		if err != nil {
-			return nil, err
-		}
+		goals = append(goals, sg.Goal)
+	}
+	byGoal, err := s.highlightsByGoal(ctx, goalIDsOf(goals))
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]bool{}
+	for _, hs := range byGoal {
 		for _, hl := range hs {
 			out[hl.ID] = true
 		}
@@ -190,20 +194,16 @@ func (s *Service) definitionHighlights(ctx context.Context, def ReportDefinition
 	return out, nil
 }
 
-// scopedHighlights returns the Goal's Highlights written since the baseline,
-// newest first.
-func (s *Service) scopedHighlights(ctx context.Context, g Goal, since func(time.Time) bool) ([]NarrativeHighlight, error) {
-	hs, err := s.ListHighlightsByGoal(ctx, g.ID)
-	if err != nil {
-		return nil, err
-	}
+// scopedHighlights are those of hs, the Goal g's Highlights, written since the
+// baseline, in hs's order: newest first.
+func scopedHighlights(g Goal, hs []Highlight, since func(time.Time) bool) []NarrativeHighlight {
 	var out []NarrativeHighlight
 	for _, hl := range hs {
 		if since(hl.CreatedAt) {
 			out = append(out, NarrativeHighlight{Highlight: hl, GoalID: g.ID, GoalTitle: g.Title})
 		}
 	}
-	return out, nil
+	return out
 }
 
 // draftNarrative marks each of the Report's in-scope Highlights with the

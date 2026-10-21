@@ -685,22 +685,49 @@ func (s *Service) createCheckin(ctx context.Context, p db.CreateCheckinParams) (
 // LatestCheckin returns a Goal's most recent Check-in, which carries its current
 // Health, status, and Path to Green. ok is false when the Goal has none yet.
 func (s *Service) LatestCheckin(ctx context.Context, goalID int64) (Checkin, bool, error) {
-	row, err := s.queries.GetLatestCheckin(ctx, goalID)
+	latest, err := s.LatestCheckinsByGoal(ctx, []int64{goalID})
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Checkin{}, false, nil
-		}
-		return Checkin{}, false, fmt.Errorf("get latest checkin: %w", err)
+		return Checkin{}, false, err
 	}
-	author, err := s.queries.GetAccount(ctx, row.AuthorID)
+	c, ok := latest[goalID]
+	return c, ok, nil
+}
+
+// LatestCheckinsByGoal returns the most recent Check-in of each of goalIDs, as
+// LatestCheckin reads one, keyed by Goal ID; a Goal with none has no entry. It
+// runs one query however many Goals there are, so a page listing Goals can
+// afford it, and none for no Goals.
+func (s *Service) LatestCheckinsByGoal(ctx context.Context, goalIDs []int64) (map[int64]Checkin, error) {
+	if len(goalIDs) == 0 {
+		return map[int64]Checkin{}, nil
+	}
+	rows, err := s.queries.ListLatestCheckinsForGoals(ctx, goalIDs)
 	if err != nil {
-		return Checkin{}, false, fmt.Errorf("look up author: %w", err)
+		return nil, fmt.Errorf("list latest checkins: %w", err)
 	}
-	owner, err := s.queries.GetAccount(ctx, row.OwnerID)
+	out := make(map[int64]Checkin, len(rows))
+	for _, r := range rows {
+		out[r.Checkin.GoalID] = checkinFromRow(r.Checkin, r.Account, r.Account_2)
+	}
+	return out, nil
+}
+
+// DateSlipsByGoal returns the Date Slips of each of goalIDs, earliest first, as
+// ListDateSlips reads one Goal's, keyed by Goal ID; a Goal with none has no
+// entry. It runs one query however many Goals there are, and none for no Goals.
+func (s *Service) DateSlipsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]DateSlip, error) {
+	if len(goalIDs) == 0 {
+		return map[int64][]DateSlip{}, nil
+	}
+	rows, err := s.queries.ListDateSlipsForGoals(ctx, goalIDs)
 	if err != nil {
-		return Checkin{}, false, fmt.Errorf("look up owner: %w", err)
+		return nil, fmt.Errorf("list date slips: %w", err)
 	}
-	return checkinFromRow(row, author, owner), true, nil
+	out := make(map[int64][]DateSlip)
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], dateSlipFromRow(r))
+	}
+	return out, nil
 }
 
 // ListCheckins returns a Goal's Check-in history, newest first, each with its

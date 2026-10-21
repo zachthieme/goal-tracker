@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const clearGoalFieldValue = `-- name: ClearGoalFieldValue :exec
@@ -135,6 +136,65 @@ func (q *Queries) ListGoalFieldValues(ctx context.Context, goalID int64) ([]List
 	for rows.Next() {
 		var i ListGoalFieldValuesRow
 		if err := rows.Scan(
+			&i.Value,
+			&i.Field.ID,
+			&i.Field.Name,
+			&i.Field.Type,
+			&i.Field.Unit,
+			&i.Field.Retired,
+			&i.Field.CreatedAt,
+			&i.Field.Required,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGoalFieldValuesForGoals = `-- name: ListGoalFieldValuesForGoals :many
+SELECT goal_field_values.goal_id, goal_field_values.value, fields.id, fields.name, fields.type, fields.unit, fields.retired, fields.created_at, fields.required
+FROM goal_field_values
+JOIN fields ON fields.id = goal_field_values.field_id
+WHERE goal_field_values.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY goal_field_values.goal_id, fields.name, fields.id
+`
+
+type ListGoalFieldValuesForGoalsRow struct {
+	GoalID int64
+	Value  string
+	Field  Field
+}
+
+// The values each given Goal has, each with its Field, as ListGoalFieldValues
+// reads one Goal's.
+func (q *Queries) ListGoalFieldValuesForGoals(ctx context.Context, goalIds []int64) ([]ListGoalFieldValuesForGoalsRow, error) {
+	query := listGoalFieldValuesForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalFieldValuesForGoalsRow
+	for rows.Next() {
+		var i ListGoalFieldValuesForGoalsRow
+		if err := rows.Scan(
+			&i.GoalID,
 			&i.Value,
 			&i.Field.ID,
 			&i.Field.Name,

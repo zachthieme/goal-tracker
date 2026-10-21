@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const countLaterRejectedLinkRequests = `-- name: CountLaterRejectedLinkRequests :one
@@ -306,6 +307,78 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 	return items, nil
 }
 
+const listChildGoalsForGoals = `-- name: ListChildGoalsForGoals :many
+SELECT links.parent_id, goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
+FROM links
+JOIN goals ON goals.id = links.child_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.parent_id IN (/*SLICE:parent_ids*/?) AND links.status = 'accepted'
+ORDER BY links.parent_id, goals.created_at DESC, goals.id DESC
+`
+
+type ListChildGoalsForGoalsRow struct {
+	ParentID int64
+	Goal     Goal
+	Account  Account
+}
+
+// The Goals that contribute to each given Goal (its accepted children), each
+// Goal's as ListChildGoals reads them.
+func (q *Queries) ListChildGoalsForGoals(ctx context.Context, parentIds []int64) ([]ListChildGoalsForGoalsRow, error) {
+	query := listChildGoalsForGoals
+	var queryParams []interface{}
+	if len(parentIds) > 0 {
+		for _, v := range parentIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:parent_ids*/?", strings.Repeat(",?", len(parentIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:parent_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListChildGoalsForGoalsRow
+	for rows.Next() {
+		var i ListChildGoalsForGoalsRow
+		if err := rows.Scan(
+			&i.ParentID,
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.WhyItMatters,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinkRemovalTimes = `-- name: ListLinkRemovalTimes :many
 SELECT removed_at FROM link_removals WHERE child_id = ? AND parent_id = ?
 `
@@ -367,6 +440,78 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 		var i ListParentGoalsRow
 		if err := rows.Scan(
 			&i.LinkID,
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.WhyItMatters,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listParentGoalsForGoals = `-- name: ListParentGoalsForGoals :many
+SELECT links.child_id, goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
+FROM links
+JOIN goals ON goals.id = links.parent_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.child_id IN (/*SLICE:child_ids*/?) AND links.status = 'accepted'
+ORDER BY links.child_id, goals.created_at DESC, goals.id DESC
+`
+
+type ListParentGoalsForGoalsRow struct {
+	ChildID int64
+	Goal    Goal
+	Account Account
+}
+
+// The Goals each given Goal contributes to (its accepted parents), each
+// Goal's as ListParentGoals reads them.
+func (q *Queries) ListParentGoalsForGoals(ctx context.Context, childIds []int64) ([]ListParentGoalsForGoalsRow, error) {
+	query := listParentGoalsForGoals
+	var queryParams []interface{}
+	if len(childIds) > 0 {
+		for _, v := range childIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:child_ids*/?", strings.Repeat(",?", len(childIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:child_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListParentGoalsForGoalsRow
+	for rows.Next() {
+		var i ListParentGoalsForGoalsRow
+		if err := rows.Scan(
+			&i.ChildID,
 			&i.Goal.ID,
 			&i.Goal.Title,
 			&i.Goal.WhyItMatters,

@@ -784,6 +784,41 @@ func (s *Service) ChildrenOf(ctx context.Context, goalID int64) ([]Goal, error) 
 	return goals, nil
 }
 
+// parentsByGoal returns the accepted parents of each of goalIDs, as ParentsOf
+// reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
+func (s *Service) parentsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Goal, error) {
+	out := map[int64][]Goal{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListParentGoalsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list parent goals: %w", err)
+	}
+	for _, r := range rows {
+		out[r.ChildID] = append(out[r.ChildID], goalFromRow(r.Goal, r.Account))
+	}
+	return out, nil
+}
+
+// childrenByGoal returns the accepted children of each of goalIDs, as
+// ChildrenOf reads one Goal's, keyed by Goal ID, in one query. No Goals reads
+// nothing.
+func (s *Service) childrenByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Goal, error) {
+	out := map[int64][]Goal{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListChildGoalsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list child goals: %w", err)
+	}
+	for _, r := range rows {
+		out[r.ParentID] = append(out[r.ParentID], goalFromRow(r.Goal, r.Account))
+	}
+	return out, nil
+}
+
 // getPendingLink loads a link that must exist and still be pending.
 func (s *Service) getPendingLink(ctx context.Context, linkID int64) (db.Link, error) {
 	row, err := s.queries.GetLink(ctx, linkID)

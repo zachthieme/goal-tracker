@@ -84,19 +84,27 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 	if err != nil {
 		return RolledUpHealth{}, err
 	}
+	latest, err := s.LatestCheckinsByGoal(ctx, activeGoalIDs(children))
+	if err != nil {
+		return RolledUpHealth{}, err
+	}
+	return s.rollUp(children, latest), nil
+}
+
+// rollUp is the Rolled-up Health of a Goal with the given children, as
+// RolledUpHealth reads it, given latest, which holds at least its Active
+// children's latest Check-ins by Goal ID.
+func (s *Service) rollUp(children []Goal, latest map[int64]Checkin) RolledUpHealth {
 	var out RolledUpHealth
 	for _, child := range children {
 		if child.Lifecycle != LifecycleActive {
 			continue
 		}
-		latest, ok, err := s.LatestCheckin(ctx, child.ID)
-		if err != nil {
-			return RolledUpHealth{}, err
-		}
+		c, ok := latest[child.ID]
 		out.ActiveChildren++
 		var last lastCheckin
 		if ok {
-			last.at = latest.CreatedAt
+			last.at = c.CreatedAt
 		}
 		if s.judgeFreshness(child, last).CheckinOverdue {
 			out.CheckinOverdueChildren++
@@ -104,15 +112,26 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 		if !ok {
 			continue
 		}
-		switch latest.Health {
+		switch c.Health {
 		case HealthRed:
 			out.RedChildren++
 		case HealthYellow:
 			out.YellowChildren++
 		}
-		if !out.Present || healthRank(latest.Health) > healthRank(out.Health) {
-			out.Health, out.Present = latest.Health, true
+		if !out.Present || healthRank(c.Health) > healthRank(out.Health) {
+			out.Health, out.Present = c.Health, true
 		}
 	}
-	return out, nil
+	return out
+}
+
+// activeGoalIDs are the IDs of the Active Goals among goals, in order.
+func activeGoalIDs(goals []Goal) []int64 {
+	var ids []int64
+	for _, g := range goals {
+		if g.Lifecycle == LifecycleActive {
+			ids = append(ids, g.ID)
+		}
+	}
+	return ids
 }

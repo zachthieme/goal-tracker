@@ -592,6 +592,23 @@ func (s *Service) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 	return out, nil
 }
 
+// milestonesByGoal returns each of goalIDs' Milestones, as ListMilestones
+// reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
+func (s *Service) milestonesByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Milestone, error) {
+	out := map[int64][]Milestone{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListMilestonesForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list milestones: %w", err)
+	}
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], milestoneFromRow(r))
+	}
+	return out, nil
+}
+
 func milestoneChangeFromRow(r db.ListMilestoneChangesByGoalRow) MilestoneChange {
 	addedDate, _ := time.Parse(dateFormat, r.AddedDate)
 	createdAt, _ := time.Parse(timeFormat, r.MilestoneChange.CreatedAt)

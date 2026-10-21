@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 )
@@ -182,45 +183,69 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
 		return Report{}, err
 	}
-	var exceptions []reportException
+	// Every read below is of all the selected Goals, or all the exceptions,
+	// at once, so drafting runs the same queries however many Goals (#411).
+	goals := make([]Goal, 0, len(selected))
 	for _, sg := range selected {
-		if sg.Fields, err = s.reportFields(ctx, def, sg.Goal.ID); err != nil {
-			return Report{}, err
-		}
-		h, err := s.goalHistory(ctx, sg.Goal)
-		if err != nil {
-			return Report{}, err
-		}
-		hs, err := s.scopedHighlights(ctx, sg.Goal, since)
-		if err != nil {
-			return Report{}, err
-		}
-		r.Highlights = append(r.Highlights, hs...)
+		goals = append(goals, sg.Goal)
+	}
+	histories, err := s.goalHistories(ctx, goals)
+	if err != nil {
+		return Report{}, err
+	}
+	fields, err := s.reportFieldsByGoal(ctx, def, goals)
+	if err != nil {
+		return Report{}, err
+	}
+	highlights, err := s.highlightsByGoal(ctx, goalIDsOf(goals))
+	if err != nil {
+		return Report{}, err
+	}
+	type exceptionGoal struct {
+		h      goalHistory
+		fresh  Freshness
+		fields []FieldValue
+	}
+	var pending []exceptionGoal
+	for _, sg := range selected {
+		sg.Fields = fields[sg.Goal.ID]
+		h := histories[sg.Goal.ID]
+		r.Highlights = append(r.Highlights, scopedHighlights(sg.Goal, highlights[sg.Goal.ID], since)...)
 		fresh := s.judgeFreshness(sg.Goal, h.last())
 		if !h.exception(since, fresh) {
 			r.Lines = append(r.Lines, sg)
 			continue
 		}
-		b, err := s.reportBlock(ctx, h, since, fresh)
+		pending = append(pending, exceptionGoal{h: h, fresh: fresh, fields: sg.Fields})
+	}
+	exceptionIDs := make([]int64, 0, len(pending))
+	for _, p := range pending {
+		exceptionIDs = append(exceptionIDs, p.h.goal.ID)
+	}
+	reads, err := s.readBlocks(ctx, exceptionIDs)
+	if err != nil {
+		return Report{}, err
+	}
+	var exceptions []reportException
+	for _, p := range pending {
+		b, err := s.reportBlock(p.h, since, p.fresh, reads)
 		if err != nil {
 			return Report{}, err
 		}
-		b.Fields = sg.Fields
-		b.Changes = h.reportChanges(b, since, r.Baseline, fresh)
+		b.Fields = p.fields
+		b.Changes = p.h.reportChanges(b, since, r.Baseline, p.fresh)
 		exceptions = append(exceptions, reportException{
 			block:          b,
-			pathOverdue:    fresh.PathToGreenOverdue,
-			slipped:        h.deliveryMoveDays(since) > 0,
-			movedLifecycle: h.movedLifecycle(b, since),
+			pathOverdue:    p.fresh.PathToGreenOverdue,
+			slipped:        p.h.deliveryMoveDays(since) > 0,
+			movedLifecycle: p.h.movedLifecycle(b, since),
 		})
 	}
 	sortReportExceptions(exceptions)
 	for _, x := range exceptions {
 		r.Exceptions = append(r.Exceptions, x.block)
 	}
-	if err := s.linkReportBlocks(ctx, &r); err != nil {
-		return Report{}, err
-	}
+	linkReportBlocks(&r, reads)
 	if err := s.draftNarrative(ctx, &r); err != nil {
 		return Report{}, err
 	}
@@ -279,25 +304,36 @@ func (s *Service) since(r Report) func(time.Time) bool {
 	return func(t time.Time) bool { return !orgDate(t, s.loc).Before(date) }
 }
 
-// reportFields is a Goal's values in the Fields def chose, by Field name. A
-// chosen Field the Goal has no value in is left out, not shown blank; one
-// retired since it was chosen still shows, as Retired values stay readable
-// (CONTEXT.md: Retired).
-func (s *Service) reportFields(ctx context.Context, def ReportDefinition, goalID int64) ([]FieldValue, error) {
+// reportFieldsByGoal are each of goals' values in the Fields def chose, by
+// Field name, keyed by Goal ID. A chosen Field a Goal has no value in is left
+// out, not shown blank; one retired since it was chosen still shows, as
+// Retired values stay readable (CONTEXT.md: Retired).
+func (s *Service) reportFieldsByGoal(ctx context.Context, def ReportDefinition, goals []Goal) (map[int64][]FieldValue, error) {
 	if len(def.FieldIDs) == 0 {
-		return nil, nil
+		return map[int64][]FieldValue{}, nil
 	}
-	values, err := s.GoalFields(ctx, goalID)
+	values, err := s.fieldValuesByGoal(ctx, goalIDsOf(goals))
 	if err != nil {
 		return nil, err
 	}
-	var out []FieldValue
-	for _, v := range values {
-		if slices.Contains(def.FieldIDs, v.Field.ID) {
-			out = append(out, v)
+	out := make(map[int64][]FieldValue, len(values))
+	for id, vs := range values {
+		for _, v := range vs {
+			if slices.Contains(def.FieldIDs, v.Field.ID) {
+				out[id] = append(out[id], v)
+			}
 		}
 	}
 	return out, nil
+}
+
+// goalIDsOf are the IDs of goals, in order.
+func goalIDsOf(goals []Goal) []int64 {
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
+	}
+	return ids
 }
 
 // goalHistory is what a Report reads about one Goal to judge it against the
@@ -308,16 +344,23 @@ type goalHistory struct {
 	slips    []DateSlip
 }
 
-func (s *Service) goalHistory(ctx context.Context, g Goal) (goalHistory, error) {
-	checkins, err := s.ListCheckins(ctx, g.ID)
+// goalHistories reads the history of each of goals, keyed by Goal ID, in the
+// same two queries however many Goals there are.
+func (s *Service) goalHistories(ctx context.Context, goals []Goal) (map[int64]goalHistory, error) {
+	ids := goalIDsOf(goals)
+	checkins, err := s.checkinsByGoal(ctx, ids)
 	if err != nil {
-		return goalHistory{}, err
+		return nil, err
 	}
-	slips, err := s.ListDateSlips(ctx, g.ID)
+	slips, err := s.DateSlipsByGoal(ctx, ids)
 	if err != nil {
-		return goalHistory{}, err
+		return nil, err
 	}
-	return goalHistory{goal: g, checkins: checkins, slips: slips}, nil
+	out := make(map[int64]goalHistory, len(goals))
+	for _, g := range goals {
+		out[g.ID] = goalHistory{goal: g, checkins: checkins[g.ID], slips: slips[g.ID]}
+	}
+	return out, nil
 }
 
 // latest is the Goal's latest Check-in, the zero Checkin when it has none.
@@ -402,8 +445,70 @@ func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []strin
 	return out
 }
 
-// reportBlock builds the full MBR block for an exception Goal.
-func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(time.Time) bool, fresh Freshness) (ReportBlock, error) {
+// blockReads are what exception blocks show beyond their Goals' histories,
+// read for every block of a draft at once by readBlocks, each keyed by Goal
+// ID unless it says otherwise.
+type blockReads struct {
+	milestones map[int64][]Milestone
+	metrics    map[int64][]Metric
+	// readings are the Metrics' readings, earliest first, by Metric ID.
+	readings map[int64][]MetricReading
+	parents  map[int64][]Goal
+	children map[int64][]Goal
+	// childLatest are the latest Check-ins of the blocks' Active children.
+	childLatest map[int64]Checkin
+	// account looks up an Account for an Ask's addressee, reading each once.
+	account func(id int64) (Account, bool, error)
+}
+
+// readBlocks reads what the exception blocks of goalIDs show beyond their
+// histories, in the same few queries however many there are, but for an Ask's
+// addressee, read one Manager at a time and each once.
+func (s *Service) readBlocks(ctx context.Context, goalIDs []int64) (blockReads, error) {
+	var reads blockReads
+	var err error
+	if reads.milestones, err = s.milestonesByGoal(ctx, goalIDs); err != nil {
+		return blockReads{}, err
+	}
+	if reads.metrics, err = s.metricsByGoal(ctx, goalIDs); err != nil {
+		return blockReads{}, err
+	}
+	if reads.readings, err = s.metricReadingsByMetric(ctx, goalIDs); err != nil {
+		return blockReads{}, err
+	}
+	if reads.parents, err = s.parentsByGoal(ctx, goalIDs); err != nil {
+		return blockReads{}, err
+	}
+	if reads.children, err = s.childrenByGoal(ctx, goalIDs); err != nil {
+		return blockReads{}, err
+	}
+	var children []Goal
+	for _, cs := range reads.children {
+		children = append(children, cs...)
+	}
+	if reads.childLatest, err = s.LatestCheckinsByGoal(ctx, dedupeIDs(activeGoalIDs(children))); err != nil {
+		return blockReads{}, err
+	}
+	accounts := map[int64]Account{}
+	reads.account = func(id int64) (Account, bool, error) {
+		if a, ok := accounts[id]; ok {
+			return a, true, nil
+		}
+		a, err := s.Account(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			return Account{}, false, nil
+		} else if err != nil {
+			return Account{}, false, err
+		}
+		accounts[id] = a
+		return a, true, nil
+	}
+	return reads, nil
+}
+
+// reportBlock builds the full MBR block for an exception Goal from what
+// readBlocks read of it.
+func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, fresh Freshness, reads blockReads) (ReportBlock, error) {
 	latest := h.latest()
 	b := ReportBlock{
 		Goal:             h.goal,
@@ -422,39 +527,25 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 	b.PriorPathTargetDates = BackToGreenPriorDates(h.slips, s.runOffGreen(h.goal, h.checkins))
 	if b.AsksForHelp {
 		var err error
-		if b.AskAddressee, err = s.AskAddressee(ctx, h.goal.Owner); err != nil {
+		if b.AskAddressee, err = askAddressee(h.goal.Owner, reads.account); err != nil {
 			return ReportBlock{}, err
 		}
 	}
-	milestones, err := s.ListMilestones(ctx, h.goal.ID)
-	if err != nil {
-		return ReportBlock{}, err
-	}
-	for _, m := range milestones {
+	for _, m := range reads.milestones[h.goal.ID] {
 		b.Milestones = append(b.Milestones, ReportMilestone{
 			Milestone:  m,
 			New:        since(m.CreatedAt),
 			PriorDates: h.priorDates(m.ID),
 		})
 	}
-	metrics, err := s.ListMetrics(ctx, h.goal.ID)
-	if err != nil {
-		return ReportBlock{}, err
-	}
-	for _, m := range metrics {
-		readings, err := s.ListMetricReadings(ctx, m.ID)
-		if err != nil {
-			return ReportBlock{}, err
-		}
+	for _, m := range reads.metrics[h.goal.ID] {
 		rm := ReportMetric{Metric: m}
-		if len(readings) > 0 {
+		if readings := reads.readings[m.ID]; len(readings) > 0 {
 			rm.Current, rm.Read = readings[len(readings)-1].Value, true
 		}
 		b.Metrics = append(b.Metrics, rm)
 	}
-	if b.RolledUp, err = s.RolledUpHealth(ctx, h.goal.ID); err != nil {
-		return ReportBlock{}, err
-	}
+	b.RolledUp = s.rollUp(reads.children[h.goal.ID], reads.childLatest)
 	return b, nil
 }
 

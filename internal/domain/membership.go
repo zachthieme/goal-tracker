@@ -63,39 +63,45 @@ func (s *Service) membershipChanges(ctx context.Context, r Report, since func(ti
 		}
 		out = append(out, MembershipChange{Goal: g, Direction: MembershipAdded, Reason: reason})
 	}
+	var leftIDs []int64
 	for _, was := range pub.Report.goals() {
-		if r.covers(was.ID) {
-			continue
+		if !r.covers(was.ID) {
+			leftIDs = append(leftIDs, was.ID)
 		}
-		g, err := s.loadGoal(ctx, was.ID)
-		if err != nil {
-			return nil, err
+	}
+	left, err := s.goalsByID(ctx, leftIDs)
+	if err != nil {
+		return nil, err
+	}
+	var ended []int64
+	for _, g := range left {
+		if hasEnded(g) {
+			ended = append(ended, g.ID)
 		}
-		reason, err := s.leftReason(ctx, def, g, since)
-		if err != nil {
-			return nil, err
-		}
+	}
+	checkins, err := s.checkinsByGoal(ctx, ended)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range left {
+		reason := leftReason(def, g, finishedBeforeGiven(g, checkins[g.ID], since))
 		out = append(out, MembershipChange{Goal: g, Direction: MembershipLeft, Reason: reason})
 	}
 	return out, nil
 }
 
 // leftReason is why g, no longer selected by def, left its Report: the first
-// that holds of finishing before the baseline, being left out or unpicked by
-// hand, or else no longer meeting the rules.
-func (s *Service) leftReason(ctx context.Context, def ReportDefinition, g Goal, since func(time.Time) bool) (string, error) {
-	finished, err := s.finishedBefore(ctx, g, since)
-	if err != nil {
-		return "", err
-	}
+// that holds of finishing before the baseline (finished), being left out or
+// unpicked by hand, or else no longer meeting the rules.
+func leftReason(def ReportDefinition, g Goal, finished bool) string {
 	switch {
 	case finished:
-		return MembershipFinishedBeforeBaseline, nil
+		return MembershipFinishedBeforeBaseline
 	case slices.Contains(def.Exclude, g.ID),
 		def.Mode == ReportModePicked && !slices.Contains(def.Picked, g.ID):
-		return MembershipRemovedByHand, nil
+		return MembershipRemovedByHand
 	default:
-		return MembershipNoLongerMatches, nil
+		return MembershipNoLongerMatches
 	}
 }
 

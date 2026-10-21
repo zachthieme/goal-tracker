@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const activateGoal = `-- name: ActivateGoal :exec
@@ -464,6 +465,98 @@ func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListCon
 	return items, nil
 }
 
+const listDimensionsCarriedByGoals = `-- name: ListDimensionsCarriedByGoals :many
+SELECT DISTINCT goal_dimension_values.goal_id, dimension_values.dimension_id
+FROM goal_dimension_values
+JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+WHERE goal_dimension_values.goal_id IN (/*SLICE:goal_ids*/?)
+`
+
+type ListDimensionsCarriedByGoalsRow struct {
+	GoalID      int64
+	DimensionID int64
+}
+
+// The Dimensions each given Goal has a value in, Retired values included, for
+// judging which required ones it lacks (CONTEXT.md: Incomplete).
+func (q *Queries) ListDimensionsCarriedByGoals(ctx context.Context, goalIds []int64) ([]ListDimensionsCarriedByGoalsRow, error) {
+	query := listDimensionsCarriedByGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDimensionsCarriedByGoalsRow
+	for rows.Next() {
+		var i ListDimensionsCarriedByGoalsRow
+		if err := rows.Scan(&i.GoalID, &i.DimensionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFieldsSetOnGoals = `-- name: ListFieldsSetOnGoals :many
+SELECT goal_id, field_id FROM goal_field_values
+WHERE goal_id IN (/*SLICE:goal_ids*/?)
+`
+
+type ListFieldsSetOnGoalsRow struct {
+	GoalID  int64
+	FieldID int64
+}
+
+// The Fields each given Goal has a value in, Retired ones included, for judging
+// which required ones it lacks (CONTEXT.md: Incomplete).
+func (q *Queries) ListFieldsSetOnGoals(ctx context.Context, goalIds []int64) ([]ListFieldsSetOnGoalsRow, error) {
+	query := listFieldsSetOnGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFieldsSetOnGoalsRow
+	for rows.Next() {
+		var i ListFieldsSetOnGoalsRow
+		if err := rows.Scan(&i.GoalID, &i.FieldID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGoalTitleRevisions = `-- name: ListGoalTitleRevisions :many
 SELECT goal_title_revisions.id, goal_title_revisions.goal_id, goal_title_revisions.old_title, goal_title_revisions.new_title, goal_title_revisions.author_id, goal_title_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM goal_title_revisions
@@ -572,12 +665,128 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 	return items, nil
 }
 
+const listGoalsByID = `-- name: ListGoalsByID :many
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.id IN (/*SLICE:goal_ids*/?)
+`
+
+type ListGoalsByIDRow struct {
+	Goal    Goal
+	Account Account
+}
+
+// The given Goals, each with its Owner, as GetGoal reads one. A Goal that
+// doesn't exist has no row.
+func (q *Queries) ListGoalsByID(ctx context.Context, goalIds []int64) ([]ListGoalsByIDRow, error) {
+	query := listGoalsByID
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalsByIDRow
+	for rows.Next() {
+		var i ListGoalsByIDRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.WhyItMatters,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMetrics = `-- name: ListMetrics :many
 SELECT id, goal_id, name, unit, direction, baseline, target, target_date, created_at FROM metrics WHERE goal_id = ? ORDER BY target_date, id
 `
 
 func (q *Queries) ListMetrics(ctx context.Context, goalID int64) ([]Metric, error) {
 	rows, err := q.db.QueryContext(ctx, listMetrics, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Metric
+	for rows.Next() {
+		var i Metric
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.Unit,
+			&i.Direction,
+			&i.Baseline,
+			&i.Target,
+			&i.TargetDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMetricsForGoals = `-- name: ListMetricsForGoals :many
+SELECT id, goal_id, name, unit, direction, baseline, target, target_date, created_at FROM metrics WHERE goal_id IN (/*SLICE:goal_ids*/?) ORDER BY goal_id, target_date, id
+`
+
+// The given Goals' Metrics, each Goal's as ListMetrics reads them.
+func (q *Queries) ListMetricsForGoals(ctx context.Context, goalIds []int64) ([]Metric, error) {
+	query := listMetricsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
