@@ -42,6 +42,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Goal's page moves into the flat frame, with no cards. The header strip holds the breadcrumb (Goals › its first parent › its title), with **Check in**, **No change** and **More** at the right for whoever may use them. The Ownerless, Check-in overdue, Path to Green overdue, graph-signal and Incomplete banners run as quiet full-width strips above the title (#393).
 - [user] The Goal page's document column, up to 860px, opens on the title at 28px and Why it matters as a lead paragraph. Then come Latest status, Metrics, Milestones, Highlights, Draft Highlights, Action Items, Comments and History, each a heading over hairline-ruled rows. Highlights now come before Draft Highlights and Action Items. Each Metric is one row: its name, its sparkline and its current value in tabular figures. Milestones are rows of mark, date and name (#393).
 - [user] The Goal page's properties rail, 300px behind a hairline, lists Health, Lifecycle, Kind, Owner, Delegates, Contributors, cadence, delivery date and Top-level as label and value rows. Dimension values follow as rows too, then Fields, Contributes to and Contributed to by. Health on a Goal without one reads "No Health". The rail's Manage, Edit and + Add links still open their forms in place. At 900px and below the rail stacks under the column (#393).
+- [user] Follow-ups' Scope and Dimension filters are now the Goal list's filter chips: "Scope: Mine", and "Team: any" or "Team: Platform" filled while set, in the same chip row (#406).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -67,6 +68,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Code quality:**
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
 - [internal] The layout gains a page-header slot (`framedLayout` with `pageHeader`) for pages to fill as they move to the frame. The `--nav-*` and `--font-display`/`--font-mono` tokens and the Plus Jakarta Sans and JetBrains Mono font files are gone (#390).
+- [internal] The filter chip's rules move from the Goal list's own styles to `app.css`, unchanged, so every page that draws a chip loads them (#406).
 
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
