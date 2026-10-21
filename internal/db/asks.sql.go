@@ -10,7 +10,7 @@ import (
 )
 
 const getOpenAskForHelp = `-- name: GetOpenAskForHelp :one
-SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject, latest.health, latest.path_to_green
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 JOIN checkins latest ON latest.id = (
@@ -57,6 +57,7 @@ func (q *Queries) GetOpenAskForHelp(ctx context.Context, goalID int64) (GetOpenA
 		&i.Account.Name,
 		&i.Account.ManagerID,
 		&i.Account.Timezone,
+		&i.Account.OidcSubject,
 		&i.Health,
 		&i.PathToGreen,
 	)
@@ -64,7 +65,7 @@ func (q *Queries) GetOpenAskForHelp(ctx context.Context, goalID int64) (GetOpenA
 }
 
 const listAskWalkAccounts = `-- name: ListAskWalkAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts ORDER BY id
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts ORDER BY id
 `
 
 // Every Account, for walking each ask's Owner up their reporting line in
@@ -87,6 +88,7 @@ func (q *Queries) ListAskWalkAccounts(ctx context.Context) ([]Account, error) {
 			&i.Name,
 			&i.ManagerID,
 			&i.Timezone,
+			&i.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -102,7 +104,7 @@ func (q *Queries) ListAskWalkAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listOpenAsksForHelp = `-- name: ListOpenAsksForHelp :many
-SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject, latest.health, latest.path_to_green
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 JOIN checkins latest ON latest.id = (
@@ -158,6 +160,7 @@ func (q *Queries) ListOpenAsksForHelp(ctx context.Context) ([]ListOpenAsksForHel
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 			&i.Health,
 			&i.PathToGreen,
 		); err != nil {

@@ -10,7 +10,7 @@ import (
 )
 
 const listActiveGoalsWithLatestCheckin = `-- name: ListActiveGoalsWithLatestCheckin :many
-SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone,
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject,
        CAST(COALESCE(latest.created_at, '') AS TEXT)       AS checkin_created_at,
        CAST(COALESCE(latest.health, '') AS TEXT)           AS checkin_health,
        CAST(COALESCE(latest.path_target_date, '') AS TEXT) AS checkin_path_target_date
@@ -67,6 +67,7 @@ func (q *Queries) ListActiveGoalsWithLatestCheckin(ctx context.Context) ([]ListA
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 			&i.CheckinCreatedAt,
 			&i.CheckinHealth,
 			&i.CheckinPathTargetDate,

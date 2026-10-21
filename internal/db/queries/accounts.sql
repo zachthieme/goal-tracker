@@ -37,3 +37,11 @@ UPDATE accounts SET is_admin = ? WHERE id = ?;
 
 -- name: SetAccountTimezone :exec
 UPDATE accounts SET timezone = ? WHERE id = ?;
+
+-- name: GetAccountByOIDCSubject :one
+SELECT * FROM accounts WHERE oidc_subject = ? LIMIT 1;
+
+-- name: LinkAccountOIDCSubject :execrows
+-- Links an Account to its OIDC subject only while it has none, so a link,
+-- once made, is never overwritten; zero rows means it already had one.
+UPDATE accounts SET oidc_subject = ? WHERE id = ? AND oidc_subject IS NULL;

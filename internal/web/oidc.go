@@ -117,7 +117,9 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 
 // handleOIDCCallback finishes a sign-in: it checks the provider's answer
 // against the flow cookie, verifies the ID token, and signs the person in by
-// their verified email, taking their Name from the token when it carries one.
+// the provider's subject for them, or by their verified email on their first
+// sign-in (domain.Service.SignInWithOIDC), taking their Name from the token
+// when it carries one.
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: flowCookie, Path: "/auth/", MaxAge: -1, HttpOnly: true, Secure: s.secureCookies, SameSite: http.SameSiteLaxMode})
 	claims, err := s.verifyCallback(r)
@@ -131,9 +133,17 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc, err := s.svc.SignIn(r.Context(), claims.Email)
+	acc, err := s.svc.SignInWithOIDC(r.Context(), claims.Subject, claims.Email)
 	if errors.Is(err, domain.ErrDeparted) {
 		render(w, r, http.StatusForbidden, orgSignInPage(departedSentence(claims.Email)))
+		return
+	}
+	var conflict *domain.OIDCSubjectConflictError
+	if errors.As(err, &conflict) {
+		// The subject stays out of the log; the Account ID is enough to
+		// find the link.
+		s.log.Warn("organization sign-in refused: email names an Account linked to another subject", "account_id", conflict.AccountID)
+		render(w, r, http.StatusForbidden, orgSignInPage("You can't be signed in as "+claims.Email+": that email belongs to an Account linked to someone else. Ask an Admin."))
 		return
 	}
 	if err != nil {
@@ -184,6 +194,9 @@ func (s *Server) providerSignOutURL(r *http.Request) string {
 
 // identityClaims are the ID token claims sign-in reads.
 type identityClaims struct {
+	// Subject is who the provider says the person is; unlike their email, it
+	// is never given to anyone else.
+	Subject       string `json:"sub"`
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
@@ -238,6 +251,9 @@ func (s *Server) verifyCallback(r *http.Request) (identityClaims, error) {
 		return identityClaims{}, fmt.Errorf("read ID token claims: %w", err)
 	}
 	claims.raw = raw
+	if claims.Subject == "" {
+		return identityClaims{}, errors.New("ID token has no subject")
+	}
 	if claims.Email == "" {
 		return identityClaims{}, signInFailure{
 			sentence: "Your organization didn't share your email, so you can't be signed in. Ask an Admin to check the sign-in setup.",

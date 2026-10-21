@@ -483,7 +483,7 @@ func (q *Queries) ListReportDefinitions(ctx context.Context) ([]ReportDefinition
 }
 
 const listReportDelegates = `-- name: ListReportDelegates :many
-SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM report_delegates
 JOIN accounts ON accounts.id = report_delegates.account_id
 WHERE report_delegates.report_definition_id = ?
@@ -514,6 +514,7 @@ func (q *Queries) ListReportDelegates(ctx context.Context, reportDefinitionID in
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}

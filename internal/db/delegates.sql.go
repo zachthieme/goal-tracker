@@ -56,7 +56,7 @@ func (q *Queries) GetDelegate(ctx context.Context, arg GetDelegateParams) (Deleg
 }
 
 const listDelegatedGoals = `-- name: ListDelegatedGoals :many
-SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM delegates
 JOIN goals ON goals.id = delegates.goal_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -100,6 +100,7 @@ func (q *Queries) ListDelegatedGoals(ctx context.Context, accountID int64) ([]Li
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
@@ -115,7 +116,7 @@ func (q *Queries) ListDelegatedGoals(ctx context.Context, accountID int64) ([]Li
 }
 
 const listDelegates = `-- name: ListDelegates :many
-SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM delegates
 JOIN accounts ON accounts.id = delegates.account_id
 WHERE delegates.goal_id = ?
@@ -146,6 +147,7 @@ func (q *Queries) ListDelegates(ctx context.Context, goalID int64) ([]ListDelega
 			&i.Account.Name,
 			&i.Account.ManagerID,
 			&i.Account.Timezone,
+			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}
