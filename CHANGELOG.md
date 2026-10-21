@@ -44,6 +44,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page's properties rail, 300px behind a hairline, lists Health, Lifecycle, Kind, Owner, Delegates, Contributors, cadence, delivery date and Top-level as label and value rows. Dimension values follow as rows too, then Fields, Contributes to and Contributed to by. Health on a Goal without one reads "No Health". The rail's Manage, Edit and + Add links still open their forms in place. At 900px and below the rail stacks under the column (#393).
 - [user] Follow-ups' Scope and Dimension filters are now the Goal list's filter chips: "Scope: Mine", and "Team: any" or "Team: Platform" filled while set, in the same chip row (#406).
 - [user] On Goals, grouped by Health, the No Health group moves to the top when one of its Goals is Ownerless, Check-in overdue or Milestone overdue, so a Goal nobody has checked in on lists above Red, not below every Green Goal (#405).
+- [user] The Definition log, Delegated to me, Pending links, Pending handoffs and Suggest a parent move into the flat frame: each names itself in the header strip and shows its content as a plain section, a heading over hairline rows, with no card. On Delegated to me each Goal is a row, its Health, title, Owner and last Check-in beside a small Check in, rather than a card in a grid (#403).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -73,12 +74,14 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
 - [internal] The layout gains a page-header slot (`framedLayout` with `pageHeader`) for pages to fill as they move to the frame. The `--nav-*` and `--font-display`/`--font-mono` tokens and the Plus Jakarta Sans and JetBrains Mono font files are gone (#390).
 - [internal] The filter chip's rules move from the Goal list's own styles to `app.css`, unchanged, so every page that draws a chip loads them (#406).
+- [internal] `.card`, its rules and `.page-head` are gone from `app.css`, as no page draws one. Code and test comments citing DESIGN.md's retired § Direction now name the section that holds each rule, and "top bar" wording says sidebar (#403).
 
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
 - [internal] DESIGN.md's Tokens, Type scale, Sidebar, Page header, Theme menu and Nav counts describe the frame as built, and § Deviations 10 tabulates the new surfaces' contrast, which `scripts/contrast.py` now checks along with the Health shapes (#390).
 - [internal] DESIGN.md's Print variant describes colour that degrades to black and white, lists the print colour tokens, and tables each badge's contrast on its tint and on paper, which `scripts/contrast.py` checks (#389).
 - [internal] DESIGN.md describes the flat frame as built. § Direction is folded into § System, and the "superseded" and "until its page moves" markers are gone. § Components is rewritten from the templates and `app.css`: the frame, the shared components, and every framed page (Home, the Goal list, Follow-ups, the Goal page, the Check-in page, New goal, the Reports list, a draft, a publication, the Report builder, Admin, Dimensions, Fields, Import Goals). § Deviations 9's banner ratios now measure the Goal page's `--color-group` strip, and § Deviations 3 gains the dark Health badges' ratios; `scripts/contrast.py` checks both (#398).
+- [internal] DESIGN.md describes the Definition log, Delegated to me, Pending links, Pending handoffs and Suggest a parent as built, and drops its note that five pages hadn't moved to the flat frame (#403).
 
 ### Collected changes — October 20, 2026
 
