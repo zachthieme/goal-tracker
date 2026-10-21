@@ -88,7 +88,8 @@ levels up can follow it without knowing her org.
    what moved since the last review, including Goals that entered or left.
 4. She composes the narrative: ticks the Highlights worth pulling into
    Insights, Accomplishments and Misses, each credited to its Goal's Owner, and
-   adds notes of her own. It autosaves and the preview follows.
+   adds notes of her own. The preview follows as she types, and she presses
+   **Save narrative** when it reads right.
 5. She presses **Publish…** and confirms. The publication is a frozen
    snapshot. She shares it from the tool, as Markdown, or printed to PDF.
 6. A reader has a question about one Red Goal and comments on its block. The

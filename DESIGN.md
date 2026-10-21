@@ -1656,7 +1656,9 @@ and so on).
     `--color-canvas`), so the save status and Publish… stay in reach, and
     wrapping. Left to right: "Reports › <name>", the name the strip's `h1`,
     with a muted "Draft"; the save status (`.rp-save`), small and muted, which
-    reads "Saving…" while an autosave runs, then "Saved", or "Not saved"; the
+    reads "Saving…" while **Save narrative** saves, then "Saved"; "Unsaved
+    changes" once the Narrative form differs from what was saved; or "Not
+    saved" and why, when a save or preview is refused or fails; the
     baseline chip; then **History (N)**, **Edit definition** (a secondary
     small button) and **Publish…** (`.btn.primary.sm`), both only for those
     who may manage the Report Definition: its creator, a Report Delegate or
@@ -1676,11 +1678,14 @@ and so on).
     small muted "by <Name>", or "Not published yet."
   - **Publish…:** a `<details>` whose panel (`.rp-publish`), anchored right,
     up to 560px wide with 24px padding, floats on a shadow of its own. It
-    reads "Publish <name>?", then a muted summary that autosave keeps current
-    ("12 Goals · 3 exceptions · 4 Highlights · changes since <baseline>.
-    Readers can comment on the frozen copy."), then a quiet **Cancel** and a
-    primary **Publish**. At 600px and below it spans the window less 16px each
-    side.
+    reads "Publish <name>?", then a muted summary of what is saved, which
+    each save keeps current ("12 Goals · 3 exceptions · 4 Highlights ·
+    changes since <baseline>. Readers can comment on the frozen copy."), then
+    a quiet **Cancel** and a primary **Publish**. While the Narrative has
+    unsaved changes it refuses: under the summary it says "**Save the
+    narrative first.**" and Publish is disabled. Without script there's no
+    unsaved state to track, and Publish works as ever. At 600px and below it
+    spans the window less 16px each side.
   - **Panes (`.rp-panes`):** a 380px compose pane, then a 1px `--color-border`
     rule with 24px each side, then the preview pane. At 900px and below they
     stack, compose first, with a hairline between them.
@@ -1700,10 +1705,16 @@ and so on).
       500 `--color-ink`, with "+ Add note" in `--color-primary-strong` at its
       right while the section has no note. Inside, each note is its own
       textarea, then a quiet **Add another**.
-    - **Saving:** with htmx, the form autosaves on change and 400ms after
-      typing stops, and swaps in the preview, the save status, the Highlights
-      count and Publish…'s summary, never its own fields. Without script a
-      secondary **Save narrative** shows.
+    - **Saving:** only a secondary **Save narrative**, under the notes, saves,
+      so the Report log records only what the author meant to change. With
+      htmx it swaps in the preview, the save status, the Highlights count,
+      Publish…'s summary and the Report log, never the form's own fields;
+      without script it's a plain submit. Meanwhile the preview follows the
+      form unsaved: on change and 400ms after typing stops, the form posts
+      for a preview of the narrative as it stands, which saves nothing, and
+      the save status says whether it differs from what was saved. **Add
+      another** saves nothing either. Leaving or reloading the page with
+      unsaved changes asks the browser's "Leave site?" question.
   - **Delegates (`reportDelegates`, `.rp-delegates`):** 24px under the
     narrative, a "Delegates" `h2` over the Report Delegates as hairline rows,
     each its person, a `badge lc` "departed" on a Departed one, and for the

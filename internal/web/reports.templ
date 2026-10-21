@@ -208,7 +208,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(panel)
-				@draftPreview(r, asOf, d, false)
+				@draftPreview(r, asOf, d)
 			</div>
 		</div>
 		if m.Manage {
@@ -380,17 +380,9 @@ templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
-// Autosaving the narrative swaps it in place; Add another swaps it in out of
-// band (oob).
-templ draftPreview(r domain.Report, asOf time.Time, d discussion, oob bool) {
-	<section
-		id="draft-preview"
-		data-testid="report-draft"
-		class="rp-body"
-		if oob {
-			hx-swap-oob="true"
-		}
-	>
+// Saving or previewing the narrative swaps it in place.
+templ draftPreview(r domain.Report, asOf time.Time, d discussion) {
+	<section id="draft-preview" data-testid="report-draft" class="rp-body">
 		<p class="label">Preview: exactly what readers will see</p>
 		@reportContent(r, asOf, d)
 	</section>
@@ -431,7 +423,7 @@ templ saveStatus(text string, oob bool) {
 // count (there is none to swap when there are no Highlights). Publish…'s
 // summary says what is saved, so it stays.
 templ narrativePreviewed(r domain.Report, asOf time.Time, d discussion, status string) {
-	@draftPreview(r, asOf, d, false)
+	@draftPreview(r, asOf, d)
 	@saveStatus(status, true)
 	if len(r.Highlights) > 0 {
 		@curationCount(pickedHighlights(r), len(r.Highlights), true)
@@ -443,7 +435,7 @@ templ narrativePreviewed(r domain.Report, asOf time.Time, d discussion, status s
 // Highlights count (there is none to swap when there are no Highlights),
 // Publish…'s summary and the Report log, log, in the company's timezone, loc.
 templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip, log []domain.ReportLogEntry, loc *time.Location) {
-	@draftPreview(r, asOf, d, false)
+	@draftPreview(r, asOf, d)
 	@saveStatus(narrativeSavedStatus, true)
 	if len(r.Highlights) > 0 {
 		@curationCount(pickedHighlights(r), len(r.Highlights), true)
@@ -518,7 +510,7 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 }
 
 // publishSummaryText is Publish…'s summary of what the publication will
-// freeze. An autosave's answer swaps it in out of band.
+// freeze. Saving the narrative over htmx swaps it in out of band.
 templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
 	<p
 		data-testid="publish-summary"
@@ -1001,8 +993,8 @@ templ narrativeCuration(f narrativeForm) {
 }
 
 // curationCount is how many (picked) of the Highlights the compose form offers
-// (offered) are picked into the narrative. An autosave's answer swaps it in out
-// of band.
+// (offered) are picked into the narrative. A save's or a preview's answer
+// swaps it in out of band.
 templ curationCount(picked, offered int, oob bool) {
 	<span
 		data-testid="curation-count"
