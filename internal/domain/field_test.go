@@ -90,7 +90,7 @@ func TestOwnerAndDelegateSetAndClearFields(t *testing.T) {
 	ctx := context.Background()
 	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(pat, dee, goal.ID)
-	if err := h.Service.AddContributor(ctx, goal.ID, cal.ID); err != nil {
+	if err := h.Service.AddContributor(ctx, goal.Owner.ID, goal.ID, cal.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
 	set := map[domain.Field]string{

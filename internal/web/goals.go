@@ -1684,7 +1684,7 @@ func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, cu
 		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	err := s.svc.AddContributorByEmail(r.Context(), id, r.FormValue("email"))
+	err := s.svc.AddContributorByEmail(r.Context(), current.ID, id, r.FormValue("email"))
 	s.writeFormResult(w, r, id, current, formContributors, err)
 }
 

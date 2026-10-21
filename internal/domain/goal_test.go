@@ -257,7 +257,7 @@ func TestAddContributorListsThem(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	dana := h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
 	list, err := h.Service.ListContributors(context.Background(), g.ID)
@@ -277,10 +277,10 @@ func TestAddContributorRejectsDuplicate(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	dana := h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); err != nil {
 		t.Fatalf("AddContributor: %v", err)
 	}
-	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); !errors.Is(err, domain.ErrValidation) {
+	if err := h.Service.AddContributor(context.Background(), g.Owner.ID, g.ID, dana.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation on duplicate", err)
 	}
 }
@@ -415,7 +415,7 @@ func TestAddContributorByEmailResolvesTheAccount(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "why")
 	h.SignIn("dana@example.com")
 
-	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "dana@example.com"); err != nil {
+	if err := h.Service.AddContributorByEmail(context.Background(), g.Owner.ID, g.ID, "dana@example.com"); err != nil {
 		t.Fatalf("AddContributorByEmail: %v", err)
 	}
 	list, err := h.Service.ListContributors(context.Background(), g.ID)
@@ -434,7 +434,7 @@ func TestAddContributorByEmailRejectsUnknownEmail(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
+	if err := h.Service.AddContributorByEmail(context.Background(), g.Owner.ID, g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation for an unknown email", err)
 	}
 }
@@ -521,6 +521,37 @@ func TestActivateGoalAdmitsOnlyTheOwner(t *testing.T) {
 		t.Errorf("Lifecycle after refusals = %q, want Proposed", got.Lifecycle)
 	}
 	if _, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}
+
+// Only a Goal's Owner may list a Contributor on it, by Account or by email:
+// anyone else, a Delegate and an Admin included, is refused and no
+// Contributor is listed.
+func TestAddContributorAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	dana := h.SignIn("dana@example.com")
+	ctx := context.Background()
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if err := h.Service.AddContributor(ctx, actor.ID, g.ID, dana.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by Account: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if err := h.Service.AddContributorByEmail(ctx, actor.ID, g.ID, "dana@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by email: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if err := h.Service.AddContributorByEmail(ctx, actor.ID, g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by an unknown email: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if list, _ := h.Service.ListContributors(ctx, g.ID); len(list) != 0 {
+		t.Errorf("Contributors after refusals = %+v, want none", list)
+	}
+	if err := h.Service.AddContributorByEmail(ctx, owner.ID, g.ID, "dana@example.com"); err != nil {
 		t.Errorf("Owner: %v", err)
 	}
 }

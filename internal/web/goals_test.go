@@ -3306,7 +3306,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(context.Background(), goal.ID, "cory@example.com"); err != nil {
+	if err := h.Service.AddContributorByEmail(context.Background(), goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
 		t.Fatalf("AddContributorByEmail: %v", err)
 	}
 	ts := newServer(t, h)

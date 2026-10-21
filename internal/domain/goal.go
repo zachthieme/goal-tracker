@@ -467,13 +467,17 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 
 // AddContributor lists an Account on the Goal as a Contributor: named for
 // information only, with no update duty (CONTEXT.md: Contributor). Adding the
-// same Account twice is rejected.
-func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) error {
+// same Account twice is rejected. Only the Goal's Owner may add one
+// (ErrNotAuthorized).
+func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {
 	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: goal does not exist", ErrValidation)
 		}
 		return fmt.Errorf("look up goal: %w", err)
+	}
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return err
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -503,8 +507,11 @@ func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) e
 // AddContributorByEmail lists the Account with the given email as a Contributor
 // on the Goal. It is the web-facing convenience over AddContributor, since the
 // tool identifies people by email (CONTEXT.md: development sign-in by email). An
-// email with no account is rejected.
-func (s *Service) AddContributorByEmail(ctx context.Context, goalID int64, email string) error {
+// email with no account is rejected, as is anyone but the Goal's Owner.
+func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int64, email string) error {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return err
+	}
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -512,7 +519,7 @@ func (s *Service) AddContributorByEmail(ctx context.Context, goalID int64, email
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
-	return s.AddContributor(ctx, goalID, acc.ID)
+	return s.AddContributor(ctx, actorID, goalID, acc.ID)
 }
 
 // ListContributors returns the Accounts listed as Contributors on the Goal,
