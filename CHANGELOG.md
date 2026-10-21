@@ -78,6 +78,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The space between an Ask for help's Addressee and "Answer" on the Goal page is now written explicitly, not produced by a comment line in the template. The rendered page is unchanged (#373).
 
 **Documentation:**
+- [internal] DESIGN.md adopts the flat frame (§ Direction): one white surface with hairlines in place of cards, a left sidebar in place of the teal top bar, Inter only, Health as the page's strongest colour, and new light and dark tokens checked for contrast. The sections after it describe the app as built until each page moves over.
 - [internal] CONTEXT.md renames three terms that read negative by default: So What becomes **Why it matters**, Stale becomes **Check-in overdue**, and Unaligned becomes **Unlinked**, each keeping its old name on its Avoid list. The Risks page is now called **Follow-ups** there. The code and pages follow in their own issues (#380).
 - [internal] DESIGN.md records where a card earns its place: forms, tables and a page's single primary task list; every other section is a plain section on the canvas. Home follows it, and other pages come in line later (#377).
 - [internal] DESIGN.md, README, `docs/scenarios.md`, `e2e/README.md`, the e2e specs and the pitch deck's scripts say Check-in overdue for Stale (#382).

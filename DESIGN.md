@@ -4,6 +4,11 @@ The design system for Goal Tracker's web UI, with a light and a dark theme.
 Pages follow this file. If you need to change the system, edit this file
 deliberately; don't override it on one page.
 
+**The system is moving to the flat frame** (§ Direction, adopted 2026-10-20).
+Where § Direction and a later section disagree, § Direction is the target. The
+sections after it describe the app as built, and each is rewritten to match as
+its page moves over.
+
 ## Provenance
 
 - **Source:** "d3kn Warm Teal" by D3KN-prog,
@@ -23,6 +28,228 @@ deliberately; don't override it on one page.
 - The source's Arabic faces (Tajawal, Cairo) are dropped because this app is
   English-only.
 
+## Direction: the flat frame
+
+Adopted 2026-10-20 from the maintainer's mockups of Home, the Goal list and the
+Goal page, which were modelled on Linear. The aim is to get rid of the "everything in a card"
+look: a grey canvas under white bordered boxes. A page becomes one surface, and
+type, space and hairlines carry the hierarchy.
+
+### Principles
+
+- **One surface.** The page is a single plain background, white in light. No
+  section sits in a box. Sections are a heading over rows separated by 1px
+  hairlines, with space between sections doing the grouping.
+- **Surfaces are for what floats.** A raised surface (fill, border, shadow) is
+  kept for menus, popovers, dialogs, the toast and the Check-in page's sticky
+  submit bar. A raised surface then means "this is on top". `.card` is
+  retired as a page container. A form is a plain section, and its fields have
+  their own edges.
+- **Type leads.** Each page has one confident title and real section headings.
+  The `.label` caps style is retired for headings.
+- **Health is the colour.** Red, Yellow and Green, as their shape and pill, are
+  the page's strongest colour. Teal stays the accent for what a person acts
+  on: primary buttons, links, focus, and the logo mark.
+- **Tight, aligned density.** It is built for long lists: 40–44px rows, 13–14px
+  text, a 4px grid, and numbers in tabular figures so columns line up.
+
+### The frame
+
+- **Sidebar (replaces the top bar).**
+  - **Size and surface:** a 240px column on the left of every signed-in page,
+    in `--color-sidebar` with a 1px `--color-border` right edge.
+  - **Order, top to bottom:**
+    1. The app's name, with a small teal mark. It links to Home.
+    2. A **Search** field. It submits a GET to the Goal list's search
+       (`/goals?q=`). It shows no keyboard-shortcut hint: the app has no
+       shortcut.
+    3. The nav: **Home · Goals · Follow-ups · Reports**, and **Admin** for an
+       Admin. Each has a 16px stroke icon and its label, and the count sits at
+       the right edge in muted tabular figures. Home's count keeps its emphasis
+       (§ Nav counts) as a filled pill.
+    4. **My org.** For someone with people under them, their direct reports by
+       Name, each linking to that person's org on Goals. It isn't shown to
+       anyone without reports.
+    5. At the foot, the signed-in person's Name with their initials. It opens a
+       menu holding **Theme** (System, Light, Dark) and **Sign out**.
+  - **Nav items:** 32px tall with a 6px radius, `--color-ink-2` at rest. Hover
+    and the current item take `--color-sidebar-hover` and `--color-sidebar-on`
+    fills with `--color-ink` text. The current item is marked
+    `aria-current="page"`, and the rule that marks Goals current on a Goal's
+    pages stays.
+- **Page header.**
+  - **Layout:** a 48px strip across the top of the content, with a 1px
+    `--color-border` under it. It holds the page's title, or a breadcrumb on a
+    page under another ("Goals › <Goal title>"), with a muted count where the
+    page has one ("24 in My org").
+  - **Actions:** the page's actions sit at its right, with the primary one as
+    a filled button (New goal, Check in). It isn't sticky.
+- **Content.** Pages are fluid within the content column:
+  - a list fills it edge to edge, with 28px side padding;
+  - a reading page centres a column up to 880px;
+  - the Goal page uses a document column with a 300px properties rail beside it
+    (§ Page shapes).
+- **Phone (900px and below).** The sidebar collapses into a 48px top strip:
+  - the app's name on the left, then **Menu**, a `<details>` disclosure that
+    opens the nav, counts, My org and the person's menu as a sheet;
+  - Home's count also shows on the strip, so it isn't hidden in the menu.
+
+  Nothing scrolls sideways. A wide list scrolls inside its own container.
+
+### Tokens
+
+These replace the matching tokens in § Tokens when the frame lands. Light:
+
+```css
+--color-canvas:        #FFFFFF; /* the page */
+--color-sidebar:       #F7F7F8;
+--color-sidebar-hover: #EEEEF0;
+--color-sidebar-on:    #E8E8EB; /* the current nav item */
+--color-row-hover:     #F6F6F7; /* a list row under the pointer */
+--color-group:         #FAFAFB; /* a list's group header row */
+--color-border:        #EDEDEF; /* hairlines */
+--color-border-strong: #8A8D93; /* inputs and chip edges: 3:1 on every surface above */
+--color-ink:           #1B1D22;
+--color-ink-2:         #33363C;
+--color-ink-muted:     #5F636B;
+--color-chip-bg:       #F1F1F3; --color-chip-ink: #4A4D54; /* signals and tags */
+--health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
+--health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
+--health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
+--radius-md: 6px;      /* buttons, inputs, chips, nav items */
+--radius-lg: 10px;     /* menus, dialogs, the toast */
+```
+
+Dark (chosen):
+
+```css
+--color-canvas:        #0F1012;
+--color-sidebar:       #151618;
+--color-sidebar-hover: #1C1D20;
+--color-sidebar-on:    #222327;
+--color-row-hover:     #1A1B1E;
+--color-group:         #17181B;
+--color-border:        #26282C;
+--color-border-strong: #6B6F77;
+--color-ink:           #EDEEF0;
+--color-ink-2:         #C9CBD0;
+--color-ink-muted:     #9A9EA6;
+--health-r-mark: #F07171; --health-y-mark: #E0B23A; --health-g-mark: #4CC38A;
+/* Health pill fills and inks keep the dark 20%-alpha fills in § Tokens */
+```
+
+These stay as they are:
+- the teal `--color-primary-*` tokens, `--color-focus` and `--color-danger-ink`;
+- the Check-in overdue tokens;
+- `--shadow-pop`, now used by every floating surface.
+
+The `--nav-*` tokens go with the top bar. Measured on canvas, sidebar, row hover
+and group header, every text ink is at least 4.5:1, and every input edge,
+focus ring and Health mark at least 3:1, in both themes. The lowest pairs are:
+
+- light muted ink: 5.58;
+- light input edge: 3.08;
+- the Yellow mark: 3.40;
+- dark input edge: 3.42.
+
+When the tokens land, the frame's change adds its ratio table to
+§ Deviations so `scripts/contrast.py` checks it.
+
+### Type
+
+- **One face: Inter**, for headings and text alike. Plus Jakarta Sans and
+  JetBrains Mono are retired.
+- **Sizes and weights:**
+  - page title: 28/1.2, 600, -0.02em;
+  - section heading: 13/1.4, 600 (an `h2`);
+  - row title: 14, 500;
+  - body: 14/1.5;
+  - meta: 12.5–13 in `--color-ink-muted`;
+  - small label: 12, 500, sentence case, never uppercase.
+- **Numbers:** dates, counts and Metric values use
+  `font-variant-numeric: tabular-nums`, not a monospace face.
+- **Exception:** the Print variant keeps its own serif.
+
+### Components in the frame
+
+- **List rows.** These replace tables-in-cards for the Goal list, Follow-ups,
+  the Reports list and the like.
+  - **Rows:** 40–44px tall, full-bleed, separated by `--color-border`, with
+    `--color-row-hover` under the pointer.
+  - **Columns** sit on a CSS grid: a Health mark, the title (500 weight, an
+    ellipsis when long), signal chips, then the Owner with initials, then the
+    tabular dates.
+  - **Column labels:** a muted 12px row at the top, not a filled table head.
+  - **Groups:** a `--color-group` header row with the group's shape, name and
+    count, for example "Red 4".
+  - **Phone:** at phone width a row stacks: title first, meta under it.
+- **Health.**
+  - **In a list:** the 11px shape alone in `--health-*-mark`, with an
+    `aria-label` naming the Health.
+  - **Elsewhere:** a pill on `--health-*-bg` with `--health-*-ink`, holding the
+    shape and the word. Examples are "Red · 9 wks", Home's rows and the Goal
+    page's properties.
+  - **Shapes stay:** square for Red, triangle for Yellow, circle for Green, so
+    colour is never the only signal.
+- **Signal chips.**
+  - **What they cover:** Check-in overdue, Path to Green overdue, Milestone
+    overdue, Schedule conflict, the back-to-Green date, and the like.
+  - **Look:** a 22px pill on `--color-chip-bg` with `--color-chip-ink`. Check-in
+    overdue keeps its dashed edge, so it still reads as a warning, not a tag.
+- **Filter bar.**
+  - **Filters:** a row of 28px chip buttons with a 1px `--color-border-strong`
+    edge: Scope, Health, Lifecycle, Incomplete, "+ Filter" for More filters,
+    and Group by.
+  - **Set filters:** a set chip reads its value ("Scope: My org") on
+    `--color-primary-subtle`.
+  - **Search and Clear:** search sits at the row's right, and Clear follows the
+    chips when anything is set.
+  - **Kept as is:** what the filters do and their no-script behaviour.
+- **Buttons.**
+  - **Size:** 30px tall with a 6px radius. A coarse pointer still gets 44px.
+  - **Primary:** a teal fill.
+  - **Secondary:** a white fill and a 1px `#DEDEE2` edge.
+  - **Quiet:** text only.
+- **Avatars.** A person's Name may carry a 22px circle with their initials, in
+  a colour fixed for that person. The Name stays the control that shows their
+  email (CONTEXT.md: Name).
+- **Segmented control.** Two or three choices in one 30px track, as on the Goal
+  list's List / Table switch: a `--color-chip-bg` track with a white current
+  segment.
+
+### Page shapes
+
+- **Home:**
+  - Your week as the page title, with the date and the Your goals line under
+    it;
+  - then Needs you, My org and Your Yellow or Red goals as sections of rows;
+  - no card, Needs you included: its rows lead the page, and each row's actions
+    sit at its right.
+- **The Goal list:** a full-bleed grouped list under the filter bar, with
+  Health groups by default.
+- **The Goal page:**
+  - **Document column:** the title, Why it matters as a lead paragraph, then
+    Latest status, Metrics, Milestones, Highlights, Action Items, Comments and
+    History as sections. The column is up to 860px.
+  - **Properties rail:** at its right, behind a 1px left edge, a list of label
+    and value rows. It holds Health, Lifecycle, Owner, Delegates, cadence,
+    delivery, level and Dimensions, then Contributes to and Contributed to by
+    as lists, each Goal with its Health shape.
+  - **Phone:** the rail stacks under the column.
+- **Follow-ups:**
+  - its group summaries become a row of plain counts with their chips, not
+    cards;
+  - its flagged Goals become a list in the shape above.
+- **Forms** (New goal, Check-in, Report builder): a single centred column of
+  plain sections, with no outer card. The Check-in's sticky submit bar stays a
+  floating surface.
+
+### Rollout
+
+The change lands as one frame-and-tokens change, then one change per page,
+each rewriting its section below to match. Until a page moves, it keeps its
+current look inside the new frame.
+
 ## System
 
 - **Mood:** warm, editorial and calm. A neutral off-white canvas, neutral ink,
@@ -34,7 +261,8 @@ deliberately; don't override it on one page.
   in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
-- **Cards are earned:** a card is for a form, a table, or a page's single
+- **Cards are earned** (superseded by § Direction: One surface, and kept
+  here until each page moves): a card is for a form, a table, or a page's single
   primary task list, the one thing the page is there for a person to do now.
   Every other section is a plain section on the canvas: a heading over rows
   separated by 1px `--color-border` hairlines, with no surface, border or
