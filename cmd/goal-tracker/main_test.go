@@ -1041,3 +1041,51 @@ func TestStoppingFinishesTheRequestInFlight(t *testing.T) {
 		t.Fatal("run didn't return within 10s of its last request finishing")
 	}
 }
+
+// A request still in flight when the shutdown's grace runs out is cut off,
+// and serve says so.
+func TestARequestOutlastingTheGraceIsCutOff(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	began, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	s := newHTTPServer(ln.Addr().String(), http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(began)
+		<-release
+	}))
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, s, ln, 50*time.Millisecond) }()
+
+	cut := make(chan error, 1)
+	go func() {
+		resp, err := http.Get("http://" + ln.Addr().String())
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+		cut <- err
+	}()
+	<-began
+	stop()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("serve, with a request outlasting the grace: %v, want the deadline exceeded", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve didn't return within 10s of a 50ms grace")
+	}
+	select {
+	case err := <-cut:
+		if err == nil {
+			t.Error("the request outlasting the grace got a response")
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("the request outlasting the grace is still open 10s on")
+	}
+}
