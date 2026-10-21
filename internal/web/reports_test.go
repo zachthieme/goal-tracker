@@ -1356,6 +1356,109 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	}
 }
 
+// The print page draws each Health badge in its Health's colour, a tint and
+// an ink of its own for Red, Yellow, Green and No Health yet, and asks the
+// browser to keep that colour when it prints, so a PDF carries it (#389).
+func TestPrintPageColoursHealthBadgesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	style := between(t, printed, "<style>", "</style>")
+
+	if rule := printPageRule(t, style, ".badge"); !strings.Contains(rule, "-webkit-print-color-adjust: exact;") || !strings.Contains(rule, " print-color-adjust: exact;") {
+		t.Errorf("print page's badges don't keep their colour in print: .badge { %s }", rule)
+	}
+	seen := map[string]string{}
+	for health, class := range map[string]string{"Red": ".r", "Yellow": ".y", "Green": ".g", "No Health": ".lc"} {
+		rule := printPageRule(t, style, class)
+		bg, ink := printPageColour(t, style, rule, "background"), printPageColour(t, style, rule, "color")
+		if bg == ink {
+			t.Errorf("%s badge's ink is its tint, %s: %s { %s }", health, bg, class, rule)
+		}
+		for _, c := range []string{bg, ink} {
+			if other, ok := seen[c]; ok {
+				t.Errorf("%s badge shares %s with %s: %s { %s }", health, c, other, class, rule)
+			}
+			seen[c] = health
+		}
+	}
+}
+
+// The print page keeps the screen's other marks of trouble in colour too: a
+// Check-in overdue badge in its grey with a dashed edge, and the status box of
+// a Path to Green past its date in Red's tint, kept when printed (#389).
+func TestPrintPageColoursOverdueMarksOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	goal := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	style := between(t, printed, "<style>", "</style>")
+
+	red := printPageColour(t, style, printPageRule(t, style, ".r"), "background")
+	overdue := printPageRule(t, style, ".st")
+	if bg, ink := printPageColour(t, style, overdue, "background"), printPageColour(t, style, overdue, "color"); bg == ink || bg == red {
+		t.Errorf("Check-in overdue badge is not its own grey: .st { %s }", overdue)
+	}
+	if !strings.Contains(overdue, "border: 0.5pt dashed var(") {
+		t.Errorf("Check-in overdue badge has no dashed edge: .st { %s }", overdue)
+	}
+	box := printPageRule(t, style, ".rp-tint.overdue")
+	if bg := printPageColour(t, style, box, "background"); bg != red {
+		t.Errorf("overdue status box is %s, not Red's tint %s: .rp-tint.overdue { %s }", bg, red, box)
+	}
+	if !strings.Contains(box, "-webkit-print-color-adjust: exact;") || !strings.Contains(box, " print-color-adjust: exact;") {
+		t.Errorf("overdue status box doesn't keep its tint in print: .rp-tint.overdue { %s }", box)
+	}
+}
+
+// printPageRule is the declarations of the print page's style rule for
+// selector alone, failing the test when it has none.
+func printPageRule(t *testing.T, style, selector string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(selector) + `\s*\{([^}]*)\}`).FindStringSubmatch(style)
+	if m == nil {
+		t.Fatalf("print page has no %s rule; style:\n%s", selector, style)
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// printPageColour is the hex colour a print page rule gives property, through
+// the var() token it names, failing the test when it gives none.
+func printPageColour(t *testing.T, style, rule, property string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?:^|[;\s])` + property + `:\s*([^;]+);`).FindStringSubmatch(rule)
+	if m == nil {
+		t.Fatalf("print page rule sets no %s: %s", property, rule)
+	}
+	value := strings.TrimSpace(m[1])
+	if v := regexp.MustCompile(`^var\((--[\w-]+)\)$`).FindStringSubmatch(value); v != nil {
+		token := regexp.MustCompile(regexp.QuoteMeta(v[1]) + `:\s*([^;]+);`).FindStringSubmatch(printPageRule(t, style, ":root"))
+		if token == nil {
+			t.Fatalf("print page's :root declares no %s", v[1])
+		}
+		value = strings.TrimSpace(token[1])
+	}
+	if !regexp.MustCompile(`^#[0-9A-Fa-f]{3,6}$`).MatchString(value) {
+		t.Fatalf("print page rule's %s is not a colour: %s", property, rule)
+	}
+	return strings.ToUpper(value)
+}
+
 // The draft sets the compose panel beside the preview. At phone width the two
 // panes stack into one column, compose first, and each pane shrinks to the
 // viewport rather than to its widest content — the On track table scrolls

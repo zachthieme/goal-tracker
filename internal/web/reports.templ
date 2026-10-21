@@ -430,8 +430,8 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 			<style>
 				/* Goal Tracker · design-system: DESIGN.md § Print variant */
 				/* The serif the print page reads in, served by the app from
-				 * static/fonts/. Print sits outside DESIGN.md on purpose: it is
-				 * set for black-and-white paper, not the screen. */
+				 * static/fonts/. Print sits outside the screen system on purpose:
+				 * it is set for paper, in colour that degrades to black and white. */
 				@font-face {
 					font-family: "Source Serif 4";
 					font-style: normal;
@@ -469,6 +469,14 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 					--print-ink: #000;
 					--print-ink-2: #444;
 					--print-rule: #999;
+					/* Health's tint and ink, the screen's light values: each ink
+					 * reads at 6.27:1 or more on its tint and 7.13:1 on bare paper */
+					--print-health-r-bg: #FDECEC; --print-health-r-ink: #A61B1B;
+					--print-health-y-bg: #FFF3D1; --print-health-y-ink: #7A4F00;
+					--print-health-g-bg: #E5F3EA; --print-health-g-ink: #1C6435;
+					--print-health-none-bg: #F7F7F8; --print-health-none-ink: #33363C;
+					/* Check-in overdue's grey chip, its dashed edge 3.27:1 on paper */
+					--print-overdue-bg: #E9EAEC; --print-overdue-ink: #3B4048; --print-overdue-edge: #888F97;
 				}
 				@page { margin: 18mm 16mm; }
 				body { font-family: var(--print-font); color: var(--print-ink); font-size: 11pt; line-height: 1.45; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
@@ -483,12 +491,19 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				h2 + article { border-top: none; }
 				.rp-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
 				.rp-card-head p { margin: 0.1rem 0 0; }
+				.rp-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 0.3rem; }
 				table { border-collapse: collapse; width: 100%; font-size: 10pt; }
 				th, td { text-align: left; vertical-align: top; padding: 0.3rem 0.75rem 0.3rem 0; border-bottom: 0.5pt solid var(--print-rule); }
 				th { font-weight: 600; font-variant: small-caps; letter-spacing: 0.05em; border-bottom: 1pt solid var(--print-ink); }
 				tr { break-inside: avoid; }
 				.dot { display: none; }
-				.badge { font-weight: 600; white-space: nowrap; }
+				.badge { font-weight: 600; white-space: nowrap; padding: 0 0.3em; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+				.r { background: var(--print-health-r-bg); color: var(--print-health-r-ink); }
+				.y { background: var(--print-health-y-bg); color: var(--print-health-y-ink); }
+				.g { background: var(--print-health-g-bg); color: var(--print-health-g-ink); }
+				.lc { background: var(--print-health-none-bg); color: var(--print-health-none-ink); }
+				.st { background: var(--print-overdue-bg); color: var(--print-overdue-ink); border: 0.5pt dashed var(--print-overdue-edge); }
+				.rp-tint.overdue { background: var(--print-health-r-bg); padding: 0.2rem 0.5rem; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 				.shape { margin-right: 0.25em; }
 				.muted { color: var(--print-ink-2); }
 				.small { font-size: 9.5pt; }
@@ -1131,8 +1146,9 @@ templ healthBadge(testID, health string) {
 }
 
 // healthMark marks a Health on a badge: the design system's coloured dot on
-// screen, and on the print page, which hides the dot, a shape that survives
-// black-and-white printing — ■ Red, ▲ Yellow, ● Green.
+// screen, and on the print page, which hides the dot, a shape beside the
+// badge's colour that survives black-and-white printing — ■ Red, ▲ Yellow,
+// ● Green.
 templ healthMark(health string) {
 	<span class="dot"></span>
 	if shape := healthShape(health); shape != "" {

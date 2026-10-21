@@ -1273,9 +1273,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 
 The Report Print view (`publicationPrintPage` in `internal/web/reports.templ`)
 is a document for paper and PDF, so it doesn't use the screen system. It is
-black and white, set in a serif, and declares its own tokens in its own style
-block. It doesn't load `app.css`, and it ignores the Theme menu's choice: it
-stays black on white whatever is chosen.
+set in a serif and declares its own tokens in its own style block. Its text is
+black on white, and its marks of Health and trouble keep the screen's colours,
+so a colour printer or a PDF shows Red, Yellow and Green as the app does. The
+colour degrades to black and white: every coloured mark also carries a shape or
+a word, so a black-and-white printer loses nothing. It doesn't load `app.css`,
+so it copies the values it needs, and it ignores the Theme menu's choice: the
+page stays light whatever is chosen.
 
 ```css
 :root {
@@ -1283,8 +1287,29 @@ stays black on white whatever is chosen.
   --print-ink:   #000; /* text and heavy rules; true black prints cleanest */
   --print-ink-2: #444; /* bylines, meta lines, small-caps labels */
   --print-rule:  #999; /* hairlines between Goals and table rows */
+  /* Health's tint and ink: the screen's light --health-* and .lc values */
+  --print-health-r-bg: #FDECEC; --print-health-r-ink: #A61B1B;
+  --print-health-y-bg: #FFF3D1; --print-health-y-ink: #7A4F00;
+  --print-health-g-bg: #E5F3EA; --print-health-g-ink: #1C6435;
+  --print-health-none-bg: #F7F7F8; --print-health-none-ink: #33363C;
+  /* Check-in overdue's grey chip: the screen's light --checkin-overdue-* */
+  --print-overdue-bg: #E9EAEC; --print-overdue-ink: #3B4048; --print-overdue-edge: #888F97;
 }
 ```
+
+Each coloured badge's ink on its tint, and on bare paper in case a browser
+drops the tint anyway (`scripts/contrast.py` checks these against the hex
+given):
+
+| Mark | On | Ratio |
+| --- | --- | --- |
+| Red ink `--print-health-r-ink` `#A61B1B` | Red tint `#FDECEC` / paper `#FFFFFF` | 6.58 / 7.52 |
+| Yellow ink `--print-health-y-ink` `#7A4F00` | Yellow tint `#FFF3D1` / paper `#FFFFFF` | 6.45 / 7.13 |
+| Green ink `--print-health-g-ink` `#1C6435` | Green tint `#E5F3EA` / paper `#FFFFFF` | 6.27 / 7.18 |
+| No Health ink `--print-health-none-ink` `#33363C` | No Health tint `#F7F7F8` / paper `#FFFFFF` | 11.31 / 12.11 |
+| Check-in overdue ink `--print-overdue-ink` `#3B4048` | its tint `#E9EAEC` / paper `#FFFFFF` | 8.67 / 10.43 |
+| Check-in overdue edge `--print-overdue-edge` `#888F97` | paper `#FFFFFF` | 3.27 |
+| Body ink `--print-ink` `#000000` | Red tint `#FDECEC` (overdue status box) | 18.39 |
 
 | Role | Size / line-height | Weight |
 | --- | --- | --- |
@@ -1298,8 +1323,18 @@ stays black on white whatever is chosen.
 - Sizes are in points and spacing in rem, because the page is measured in
   paper units. The 4px grid doesn't apply.
 - Page margins are 18mm top and bottom and 16mm at the sides.
-- A Goal's Health sits to the right of its title. Health shows its shape (■ Red,
-  ▲ Yellow, ● Green) and its name, never colour.
+- A Goal's Health sits to the right of its title. Health shows as a badge in
+  its tint and ink, with its shape (■ Red, ▲ Yellow, ● Green) and its name, so
+  it reads without the colour. The screen's dot is hidden: the shape does its
+  work.
+- The badges the screen colours keep their colour: Health, a Milestone's Red or
+  Yellow mark, Ownerless, New Date and a Path to Green's Overdue in the Health
+  colour they take on screen, and Check-in overdue in its grey chip with a
+  dashed edge. A Path to Green past its date tints its status box Red, as on
+  screen. Body text stays black.
+- Coloured badges and the overdue status box set `print-color-adjust: exact`
+  (and `-webkit-print-color-adjust: exact`), so browsers keep their tints when
+  printing and in PDF instead of dropping background colour.
 - A Goal block and a table row never split across pages.
 - The app serves Source Serif 4 itself, from `internal/web/static/fonts/`, by
   `@font-face` rules in the print page's own `<style>`: a variable font,
