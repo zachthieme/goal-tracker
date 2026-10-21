@@ -148,3 +148,8 @@ func (s *Service) Now() time.Time {
 func (s *Service) Timezone() *time.Location {
 	return s.loc
 }
+
+// Ping checks the database answers within ctx, for a health check.
+func (s *Service) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}

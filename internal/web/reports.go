@@ -656,7 +656,7 @@ func (s *Server) handleDownloadPDF(w http.ResponseWriter, r *http.Request, _ dom
 		if r.Context().Err() != nil {
 			return // the reader went away
 		}
-		s.log.WarnContext(r.Context(), "PDF renders all busy", "method", r.Method, "path", r.URL.Path)
+		s.requestLog(r).WarnContext(r.Context(), "PDF renders all busy", "method", r.Method, "path", r.URL.Path)
 		http.Error(w, "Too many PDFs are being made right now. Try again in a minute.", http.StatusServiceUnavailable)
 		return
 	}

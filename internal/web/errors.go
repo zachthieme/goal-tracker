@@ -19,8 +19,8 @@ func (s *Server) serverError(w http.ResponseWriter, r *http.Request, msg string,
 // context, isn't a server fault, so it's logged at Debug without its cause.
 func (s *Server) logServerError(r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
-		s.log.DebugContext(r.Context(), "request abandoned", "method", r.Method, "path", r.URL.Path)
+		s.requestLog(r).DebugContext(r.Context(), "request abandoned", "method", r.Method, "path", r.URL.Path)
 		return
 	}
-	s.log.ErrorContext(r.Context(), "server error", "method", r.Method, "path", r.URL.Path, "err", err)
+	s.requestLog(r).ErrorContext(r.Context(), "server error", "method", r.Method, "path", r.URL.Path, "err", err)
 }

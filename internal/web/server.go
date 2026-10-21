@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -135,12 +136,25 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 	return s
 }
 
-// ServeHTTP makes Server an http.Handler. It refuses, with a 403, a request
-// other than GET, HEAD or OPTIONS that a browser says came from another
-// origin, so a page elsewhere can't act as whoever is signed in, and, with a
-// 413, one whose body is over its cap (see requestBodyCap). Every response
-// carries securityHeaders.
+// ServeHTTP makes Server an http.Handler. Each request is logged under an ID,
+// echoed in the response's X-Request-ID, that every record logged while
+// handling it carries, and gets one access line once it is answered. It
+// refuses, with a 403, a request other than GET, HEAD or OPTIONS that a
+// browser says came from another origin, so a page elsewhere can't act as
+// whoever is signed in, and, with a 413, one whose body is over its cap (see
+// requestBodyCap). Every response carries securityHeaders.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	id := requestIDFor(r)
+	w.Header().Set(requestIDHeader, id)
+	l := s.log.With("request_id", id)
+	aw := &accessWriter{ResponseWriter: w}
+	s.serveChecked(aw, r.WithContext(withRequestLogger(r.Context(), l)))
+	aw.logAccess(r.Context(), l, r.Method, start)
+}
+
+// serveChecked serves r once it passes the checks ServeHTTP describes.
+func (s *Server) serveChecked(w *accessWriter, r *http.Request) {
 	for name, value := range securityHeaders {
 		w.Header().Set(name, value)
 	}
@@ -149,7 +163,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		bodyTooLarge(w)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	// The connection's own writer, so a body read past the cap closes the
+	// connection after the response.
+	r.Body = http.MaxBytesReader(w.ResponseWriter, r.Body, limit)
 	if r.ContentLength < 0 {
 		// Sent in chunks, with no length up front: read it now, so a body over
 		// the cap is refused here rather than failing whatever reads it.
@@ -200,10 +216,13 @@ var securityHeaders = map[string]string{
 
 // serveRoutes hands r to the route it matches. It records the browser's chosen
 // theme in the request context, so every page the request renders is pinned to
-// it, and the Server's logger, so a page that fails to draw is logged there.
+// it, and the route's pattern for the request's access line.
 func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 	r = withTheme(r)
-	s.mux.ServeHTTP(w, r.WithContext(withRequestLogger(r.Context(), s.log)))
+	s.mux.ServeHTTP(w, r)
+	if aw, ok := w.(*accessWriter); ok {
+		aw.route = r.Pattern
+	}
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
@@ -271,8 +290,9 @@ func render(w http.ResponseWriter, r *http.Request, status int, c templ.Componen
 
 type loggerKey struct{}
 
-// withRequestLogger records l in ctx, so render can log a page that fails to
-// draw to the Server's logger.
+// withRequestLogger records l, the request's logger, in ctx, so whatever is
+// logged while handling the request, such as a page that fails to draw, goes
+// to the Server's logger carrying the request's ID.
 func withRequestLogger(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
 }
@@ -283,4 +303,13 @@ func requestLogger(ctx context.Context) *slog.Logger {
 		return l
 	}
 	return slog.Default()
+}
+
+// requestLog is r's logger, carrying its request ID, or the Server's own for a
+// request that didn't come through ServeHTTP.
+func (s *Server) requestLog(r *http.Request) *slog.Logger {
+	if l, ok := r.Context().Value(loggerKey{}).(*slog.Logger); ok {
+		return l
+	}
+	return s.log
 }
