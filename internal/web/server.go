@@ -4,8 +4,11 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -134,13 +137,53 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 
 // ServeHTTP makes Server an http.Handler. It refuses, with a 403, a request
 // other than GET, HEAD or OPTIONS that a browser says came from another
-// origin, so a page elsewhere can't act as whoever is signed in. Every
-// response carries securityHeaders.
+// origin, so a page elsewhere can't act as whoever is signed in, and, with a
+// 413, one whose body is over its cap (see requestBodyCap). Every response
+// carries securityHeaders.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for name, value := range securityHeaders {
 		w.Header().Set(name, value)
 	}
+	limit := requestBodyCap(r)
+	if r.ContentLength > limit {
+		bodyTooLarge(w)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	if r.ContentLength < 0 {
+		// Sent in chunks, with no length up front: read it now, so a body over
+		// the cap is refused here rather than failing whatever reads it.
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				bodyTooLarge(w)
+			} else {
+				http.Error(w, "Could not read the request.", http.StatusBadRequest)
+			}
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+	}
 	s.app.ServeHTTP(w, r)
+}
+
+// bodyTooLarge refuses a request whose body is over its cap.
+func bodyTooLarge(w http.ResponseWriter) {
+	http.Error(w, "That is more than the app accepts at once.", http.StatusRequestEntityTooLarge)
+}
+
+// maxRequestBytes caps a request's body, so a huge one can't tie up a
+// connection or fill memory. Only an import's upload may be larger.
+const maxRequestBytes = 1 << 20 // 1 MiB
+
+// requestBodyCap is the most r's body may carry: maxImportRequestBytes for an
+// import's upload, maxRequestBytes for anything else.
+func requestBodyCap(r *http.Request) int64 {
+	if r.Method == http.MethodPost && r.URL.Path == "/imports" {
+		return maxImportRequestBytes
+	}
+	return maxRequestBytes
 }
 
 // securityHeaders are set on every response before its handler runs, so a

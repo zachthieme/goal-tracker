@@ -14,6 +14,10 @@ import (
 // exhaust memory.
 const maxImportBytes = 5 << 20 // 5 MiB
 
+// maxImportRequestBytes caps an import's whole request body: the spreadsheet,
+// plus room for the multipart form's boundaries, part headers and action.
+const maxImportRequestBytes = maxImportBytes + 64<<10
+
 // handleImportForm shows the spreadsheet-import page. Anyone signed in can see
 // it, but only an Admin gets the upload form (ticket #22: an Admin runs the
 // import).
