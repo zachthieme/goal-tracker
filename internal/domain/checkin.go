@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -448,6 +449,23 @@ func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []Met
 	return missed, nil
 }
 
+// offTargetByLatestReading is offTargetMetricsOf with no reading entered, for
+// g's metrics, judged by their latest readings in readings, keyed by Metric ID.
+func (s *Service) offTargetByLatestReading(g Goal, metrics []Metric, readings map[int64][]MetricReading) []OffTargetMetric {
+	today := s.goalToday(g)
+	var missed []OffTargetMetric
+	for _, m := range metrics {
+		recorded := readings[m.ID]
+		if len(recorded) == 0 {
+			continue
+		}
+		if reading := recorded[len(recorded)-1].Value; m.OffTarget(reading, today) {
+			missed = append(missed, OffTargetMetric{Metric: m, Reading: reading})
+		}
+	}
+	return missed
+}
+
 // validateReadings checks that each reading names a Metric on goalID; a reading
 // for a Metric that does not exist or belongs to another Goal is rejected.
 func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
@@ -542,7 +560,7 @@ func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.G
 		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
 	}
 	if goal.Goal.Lifecycle != LifecycleActive {
-		return db.GetGoalRow{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+		return db.GetGoalRow{}, errNotActiveForNoChange
 	}
 	return goal, nil
 }
@@ -555,45 +573,156 @@ func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string
 	prev, err := s.queries.GetLatestCheckin(ctx, g.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return db.Checkin{}, "", fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
+			return db.Checkin{}, "", errNoCheckinToRepeat
 		}
 		return db.Checkin{}, "", fmt.Errorf("look up previous checkin: %w", err)
 	}
-	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
-	// roll-up has since changed so the repeated Health would differ from it and
-	// the previous Check-in carried no explanation, refuse it so the Owner uses
-	// the full form to explain (ADR-0003).
-	explanation, err := s.resolveRollupExplanation(ctx, g.ID, prev.Health, prev.Explanation)
-	if err != nil {
-		return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to explain", err)
+	facts := noChangeFacts{health: prev.Health, explanation: prev.Explanation}
+	if facts.rollup, err = s.RolledUpHealth(ctx, g.ID); err != nil {
+		return db.Checkin{}, "", err
 	}
-	// Nor can it repeat any Health once a Milestone has gone overdue, as of
-	// today in the Goal's timezone: the missed date needs a response.
 	milestones, err := s.queries.ListMilestones(ctx, g.ID)
 	if err != nil {
 		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
 	}
-	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
-		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
+	for _, m := range milestones {
+		facts.milestones = append(facts.milestones, milestoneFromRow(m))
+	}
+	if facts.freshness, err = s.Freshness(ctx, g.ID); err != nil {
+		return db.Checkin{}, "", err
+	}
+	if prev.Health == HealthGreen {
+		if facts.offTarget, err = s.offTargetMetricsOf(ctx, g, nil); err != nil {
+			return db.Checkin{}, "", err
+		}
+	}
+	explanation, err := s.judgeNoChange(g, facts)
+	if err != nil {
+		return db.Checkin{}, "", err
+	}
+	return prev, explanation, nil
+}
+
+// NoChangeRefusalsByGoal reports, for each of goals, why a No change on it
+// would be refused, as NoChangeRefusal reports for one Goal, keyed by Goal ID;
+// a Goal on which one would be recorded has no entry. It runs the same few
+// queries however many Goals there are, so a page listing Goals can afford it.
+func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map[int64]error, error) {
+	out := map[int64]error{}
+	if len(goals) == 0 {
+		return out, nil
+	}
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
+	}
+	children, err := s.childrenByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	// One read holds the Goals' latest Check-ins and their Active children's,
+	// which their Rolled-up Health is judged from.
+	withChildren := slices.Clone(ids)
+	for _, id := range ids {
+		withChildren = append(withChildren, activeGoalIDs(children[id])...)
+	}
+	latest, err := s.LatestCheckinsByGoal(ctx, withChildren)
+	if err != nil {
+		return nil, err
+	}
+	milestones, err := s.milestonesByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	freshness, err := s.FreshnessByGoal(ctx, goals)
+	if err != nil {
+		return nil, err
+	}
+	metrics, err := s.metricsByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	readings, err := s.metricReadingsByMetric(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range goals {
+		if g.Lifecycle != LifecycleActive {
+			out[g.ID] = errNotActiveForNoChange
+			continue
+		}
+		prev, ok := latest[g.ID]
+		if !ok {
+			out[g.ID] = errNoCheckinToRepeat
+			continue
+		}
+		facts := noChangeFacts{
+			health:      prev.Health,
+			explanation: prev.Explanation,
+			rollup:      s.rollUp(children[g.ID], latest),
+			milestones:  milestones[g.ID],
+			freshness:   freshness[g.ID],
+		}
+		if prev.Health == HealthGreen {
+			facts.offTarget = s.offTargetByLatestReading(g, metrics[g.ID], readings)
+		}
+		if _, err := s.judgeNoChange(g, facts); err != nil {
+			out[g.ID] = err
+		}
+	}
+	return out, nil
+}
+
+// errNotActiveForNoChange and errNoCheckinToRepeat refuse a No change on a
+// Goal that isn't Active, and on one with no previous Check-in to repeat.
+var (
+	errNotActiveForNoChange = fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+	errNoCheckinToRepeat    = fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
+)
+
+// noChangeFacts is what judging a No change on a Goal reads of it: its
+// previous Check-in's Health and explanation, its Rolled-up Health, its
+// Milestones soonest first, its freshness, and, when the previous Check-in is
+// Green, its Metrics off target with no reading entered.
+type noChangeFacts struct {
+	health, explanation string
+	rollup              RolledUpHealth
+	milestones          []Milestone
+	freshness           Freshness
+	offTarget           []OffTargetMetric
+}
+
+// judgeNoChange refuses a No change on g, an Active Goal with a previous
+// Check-in, from facts, or returns the explanation to record with it.
+func (s *Service) judgeNoChange(g Goal, facts noChangeFacts) (string, error) {
+	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
+	// roll-up has since changed so the repeated Health would differ from it and
+	// the previous Check-in carried no explanation, refuse it so the Owner uses
+	// the full form to explain (ADR-0003).
+	explanation, err := rollupExplanation(facts.rollup, facts.health, facts.explanation)
+	if err != nil {
+		return "", fmt.Errorf("%w — submit a Check-in to explain", err)
+	}
+	// Nor can it repeat any Health once a Milestone has gone overdue, as of
+	// today in the Goal's timezone: the missed date needs a response.
+	today := s.goalToday(g).Format(dateFormat)
+	for _, m := range facts.milestones {
+		if m.Status == MilestonePlanned && m.TargetDate.Format(dateFormat) < today {
+			return "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: m})
+		}
 	}
 	// Nor once the back-to-Green date has passed, as of today in the Goal's
 	// timezone, whatever the Health: the Owner must submit a Check-in with a
 	// new date and reason, or update the Health (CONTEXT.md: Check-in).
-	fresh, err := s.Freshness(ctx, g.ID)
-	if err != nil {
-		return db.Checkin{}, "", err
-	}
-	if fresh.PathToGreenOverdue {
-		return db.Checkin{}, "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health", ErrValidation)
+	if facts.freshness.PathToGreenOverdue {
+		return "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health", ErrValidation)
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.
-	if prev.Health == HealthGreen {
-		if err := s.rejectGreenWhileOffTarget(ctx, g, nil); err != nil {
-			return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to confirm or update it", err)
-		}
+	if facts.health == HealthGreen && len(facts.offTarget) > 0 {
+		return "", fmt.Errorf("%w — submit a Check-in to confirm or update it", &GreenOffTargetError{Metrics: facts.offTarget})
 	}
-	return prev, explanation, nil
+	return explanation, nil
 }
 
 // authorizeCheckinAuthor allows a Check-in to be written only by the Goal's
@@ -634,6 +763,12 @@ func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, he
 	if err != nil {
 		return "", err
 	}
+	return rollupExplanation(rollup, health, explanation)
+}
+
+// rollupExplanation is resolveRollupExplanation's rule for a Goal whose
+// Rolled-up Health is rollup.
+func rollupExplanation(rollup RolledUpHealth, health, explanation string) (string, error) {
 	if rollup.Present && rollup.Health != health {
 		if explanation == "" {
 			return "", inputError(CheckinInputExplanation, "this Health differs from the Rolled-up Health (%s); explain why", rollup.Health)

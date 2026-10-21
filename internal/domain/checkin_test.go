@@ -617,6 +617,105 @@ func assertOverdueNoChangeRefusal(t *testing.T, err error) {
 	}
 }
 
+// NoChangeRefusalsByGoal refuses a No change on each Goal exactly as
+// NoChangeRefusal refuses it on that Goal alone (#449).
+func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	early := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+
+	allowed := h.ActiveGoal(sam, "Allowed", "It matters.")
+	h.Checkin(sam, allowed.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	noCheckin := h.ActiveGoal(sam, "No Check-in", "It matters.")
+	onHold := h.OnHoldGoal(sam, "On Hold", "It matters.", "Waiting on the vendor.")
+	milestoneOverdue := h.ActiveGoal(sam, "Milestone overdue", "It matters.")
+	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+		GoalID: milestoneOverdue.ID, Name: "Pilot", TargetDate: early,
+	}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	h.Checkin(sam, milestoneOverdue.ID, domain.HealthGreen, "Pilot lined up.", "", time.Time{})
+	pathOverdue := h.ActiveGoal(sam, "Path overdue", "It matters.")
+	h.Checkin(sam, pathOverdue.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", early)
+	// A parent checked in Green before its child turned Red now differs from
+	// its Rolled-up Health with no explanation to repeat.
+	unexplained := h.ActiveGoal(sam, "Unexplained", "It matters.")
+	h.Checkin(sam, unexplained.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	redChild := h.ActiveChildOf(sam, unexplained, "Red child", "It helps.")
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	// One checked in Green over its Red child with an explanation repeats it.
+	explained := h.ActiveGoal(sam, "Explained", "It matters.")
+	otherRedChild := h.ActiveChildOf(sam, explained, "Other red child", "It helps.")
+	h.Checkin(sam, otherRedChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:      explained.ID,
+		AuthorID:    sam.ID,
+		Health:      domain.HealthGreen,
+		Status:      "Fine overall.",
+		Explanation: "The Red child is a stretch item.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin with an explanation: %v", err)
+	}
+	offTarget, _ := offTargetMetricGoal(t, h, sam) // moves the clock to Feb 2
+
+	wantRefused := map[int64]bool{
+		allowed.ID:          false,
+		noCheckin.ID:        true,
+		onHold.ID:           true,
+		milestoneOverdue.ID: true,
+		pathOverdue.ID:      true,
+		unexplained.ID:      true,
+		redChild.ID:         false,
+		explained.ID:        false,
+		otherRedChild.ID:    false,
+		offTarget.ID:        true,
+	}
+	all, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	var goals []domain.Goal
+	for _, g := range all {
+		if _, ok := wantRefused[g.ID]; ok {
+			goals = append(goals, g)
+		}
+	}
+	got, err := h.Service.NoChangeRefusalsByGoal(ctx, goals)
+	if err != nil {
+		t.Fatalf("NoChangeRefusalsByGoal: %v", err)
+	}
+	for _, g := range goals {
+		want := h.Service.NoChangeRefusal(ctx, g.ID)
+		if (want != nil) != wantRefused[g.ID] {
+			t.Fatalf("%s: NoChangeRefusal = %v, want refused %v", g.Title, want, wantRefused[g.ID])
+		}
+		if want != nil && !errors.Is(want, domain.ErrValidation) {
+			t.Fatalf("%s: NoChangeRefusal = %v, want ErrValidation", g.Title, want)
+		}
+		switch refusal, ok := got[g.ID]; {
+		case want == nil && ok:
+			t.Errorf("%s: NoChangeRefusalsByGoal refused it (%v); NoChangeRefusal allows it", g.Title, refusal)
+		case want != nil && !ok:
+			t.Errorf("%s: NoChangeRefusalsByGoal allows it; NoChangeRefusal refused it (%v)", g.Title, want)
+		case want != nil && refusal.Error() != want.Error():
+			t.Errorf("%s: NoChangeRefusalsByGoal refused it with %q, want %q", g.Title, refusal, want)
+		}
+		if refusal := got[g.ID]; refusal != nil && !errors.Is(refusal, domain.ErrValidation) {
+			t.Errorf("%s: NoChangeRefusalsByGoal refusal %v isn't ErrValidation", g.Title, refusal)
+		}
+	}
+	var milestone *domain.MilestoneOverdueError
+	if !errors.As(got[milestoneOverdue.ID], &milestone) || milestone.Milestone.Name != "Pilot" {
+		t.Errorf("Milestone overdue refusal = %v, want a *MilestoneOverdueError for Pilot", got[milestoneOverdue.ID])
+	}
+	var green *domain.GreenOffTargetError
+	if !errors.As(got[offTarget.ID], &green) {
+		t.Errorf("off-target refusal = %v, want a *GreenOffTargetError", got[offTarget.ID])
+	}
+}
+
 // A Milestone added in the Check-in with a date already past is overdue at once,
 // so the same Check-in can't be Green.
 func TestGreenRejectedWhenAddedMilestoneIsAlreadyPast(t *testing.T) {
