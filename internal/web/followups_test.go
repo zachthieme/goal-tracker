@@ -430,8 +430,9 @@ func TestFollowUpsPageListsGoalsUnderHaltedParents(t *testing.T) {
 	}
 }
 
-// The Follow-ups page lists a Goal flagged by two signals once, in one table
-// inside a card that scrolls sideways on a narrow screen: one row with both
+// The Follow-ups page lists a Goal flagged by two signals once, in one
+// full-bleed table with no card, scrolling sideways inside itself should it
+// outgrow a narrow screen: one row with both
 // chips, a neutral dash for no Health, and one Fix: Check in for its Owner,
 // though it is Unlinked too.
 func TestFollowUpsPageListsEachFlaggedGoalOnce(t *testing.T) {
@@ -448,8 +449,11 @@ func TestFollowUpsPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if n := strings.Count(page, `<table id="follow-ups-table"`); n != 1 {
 		t.Fatalf("page has %d Follow-ups tables, want 1", n)
 	}
-	if !strings.Contains(page, `<div class="card"><table id="follow-ups-table"`) {
-		t.Errorf("the Follow-ups table doesn't sit straight inside a card")
+	if !strings.Contains(page, `<div class="rk-list"><table id="follow-ups-table"`) {
+		t.Errorf("the Follow-ups table doesn't sit straight inside its .rk-list")
+	}
+	if rule := cssRule(t, page, ".rk-list"); !strings.Contains(rule, "overflow-x:auto") {
+		t.Errorf(".rk-list{%s} doesn't scroll sideways inside itself", rule)
 	}
 	if want := `<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Next step"></th></tr>`; !strings.Contains(page, want) {
 		t.Errorf("the Follow-ups table's head isn't Health, Goal, Owner and a Next step column:\n%s", page)
@@ -505,7 +509,8 @@ func TestFollowUpsPageWithNothingFlaggedSaysSo(t *testing.T) {
 }
 
 // A group card holding no Goals while another holds some is muted, links
-// nowhere, and says why it is empty.
+// nowhere, and says why it is empty. It takes no dashed edge: the groups are
+// plain blocks, not cards.
 func TestFollowUpsPageMutesAGroupWithNoGoals(t *testing.T) {
 	t.Parallel()
 
@@ -524,8 +529,8 @@ func TestFollowUpsPageMutesAGroupWithNoGoals(t *testing.T) {
 	if !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "Nothing needs an Admin.") || strings.Contains(card, "href") {
 		t.Errorf("the empty admin card isn't muted, saying nothing needs an Admin, and linking nowhere: %s", card)
 	}
-	if !strings.Contains(page, ".rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}") {
-		t.Errorf("an empty card doesn't take a dashed edge and muted text")
+	if rule := cssRule(t, page, ".rk-zero"); !strings.Contains(rule, "color:var(--color-ink-muted)") || strings.Contains(rule, "border") {
+		t.Errorf("an empty group .rk-zero{%s} doesn't read muted with no edge", rule)
 	}
 }
 
@@ -574,7 +579,7 @@ func TestFollowUpsPageDefinesEachSignalBesideItsCount(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	head := between(t, page, `<div class="rk-head">`, "</div>")
+	head := between(t, page, `<div id="follow-ups-head"`, "<main")
 	if !strings.Contains(head, `data-testid="follow-ups-attention"`) {
 		t.Fatalf("the page's head has no count line:\n%s", head)
 	}
@@ -1583,8 +1588,9 @@ func TestFollowUpsPageGroupsWithinScope(t *testing.T) {
 }
 
 // The scope form applies itself under htmx as the Goal list's filter bar does:
-// a change GETs the page and swaps in only #follow-ups-body, which holds the header
-// count, the cards and the table but not the form, and pushes the address,
+// a change GETs the page and swaps in only #follow-ups-body, which holds the
+// groups and the list but not the form, and the header strip holding the count
+// out of band beside it, and pushes the address,
 // while the page opts out of htmx's history snapshot so Back loads the earlier
 // address afresh. The form carries the page's group and its Scope, Mine here
 // as ?org=mine, so a value chosen while filtered keeps both, and without
@@ -1610,16 +1616,17 @@ func TestFollowUpsScopeFormAppliesItself(t *testing.T) {
 
 	form := tagAround(t, page, `data-testid="follow-ups-filters"`)
 	for name, want := range map[string]string{
-		"method":      "get",
-		"action":      "/follow-ups",
-		"hx-get":      "/follow-ups",
-		"hx-trigger":  "submit, change",
-		"hx-target":   "#follow-ups-body",
-		"hx-select":   "#follow-ups-body",
-		"hx-swap":     "outerHTML",
-		"hx-push-url": "true",
-		"hx-sync":     "this:replace",
-		"hx-history":  "false",
+		"method":        "get",
+		"action":        "/follow-ups",
+		"hx-get":        "/follow-ups",
+		"hx-trigger":    "submit, change",
+		"hx-target":     "#follow-ups-body",
+		"hx-select":     "#follow-ups-body",
+		"hx-select-oob": "#follow-ups-head",
+		"hx-swap":       "outerHTML",
+		"hx-push-url":   "true",
+		"hx-sync":       "this:replace",
+		"hx-history":    "false",
 	} {
 		if got := html.UnescapeString(attr(form, name)); got != want {
 			t.Errorf("scope form %s = %q, want %q", name, got, want)
@@ -1629,8 +1636,11 @@ func TestFollowUpsScopeFormAppliesItself(t *testing.T) {
 	if noscript := between(t, filters, "<noscript>", "</noscript>"); !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) || strings.Count(filters, "Apply") != 1 {
 		t.Errorf("the scope form's Apply isn't only in <noscript>:\n%s", filters)
 	}
+	if head := between(t, page, `<div id="follow-ups-head"`, "<main"); !strings.Contains(head, `data-testid="follow-ups-attention"`) {
+		t.Errorf("#follow-ups-head lacks the count:\n%s", head)
+	}
 	body := between(t, page, `<div id="follow-ups-body"`, "</main>")
-	for _, in := range []string{`data-testid="follow-ups-attention"`, `data-testid="follow-ups-groups"`, `data-testid="follow-ups-table"`} {
+	for _, in := range []string{`data-testid="follow-ups-groups"`, `data-testid="follow-ups-table"`} {
 		if !strings.Contains(body, in) {
 			t.Errorf("#follow-ups-body lacks %s", in)
 		}
@@ -2481,8 +2491,9 @@ func TestFollowUpsPageGroupsOverdueActionItems(t *testing.T) {
 	}
 }
 
-// The Follow-ups page's five group cards sit five across at the page's full width,
-// two across where the page is narrower, and stack below 900px.
+// The Follow-ups page's five group cards sit five across at the page's full
+// width, and two per row where the page is narrower, a phone's included: no
+// rule stacks them one per row.
 func TestFollowUpsGroupCardsFitFiveAcross(t *testing.T) {
 	t.Parallel()
 
@@ -2501,14 +2512,20 @@ func TestFollowUpsGroupCardsFitFiveAcross(t *testing.T) {
 	for query, want := range map[string]string{
 		"":                          "grid-template-columns:repeat(5,minmax(0,1fr))",
 		"@media (max-width:1151px)": "grid-template-columns:repeat(2,minmax(0,1fr))",
-		"@media (max-width:900px)":  "grid-template-columns:minmax(0,1fr)",
 	} {
 		block := css
 		if query != "" {
 			block = mediaBlock(t, css, query)
 		}
-		if rule, _ := ruleFor(block, ".rk-cards"); !strings.Contains(rule, want) {
-			t.Errorf("%q .rk-cards{%s} lacks %s", query, rule, want)
+		if rule, _ := ruleFor(block, ".rk-groups"); !strings.Contains(rule, want) {
+			t.Errorf("%q .rk-groups{%s} lacks %s", query, rule, want)
+		}
+	}
+	for _, query := range []string{"@media (max-width:900px)", "@media (max-width:600px)"} {
+		for _, block := range mediaBlocks(css, query) {
+			if rule, ok := ruleFor(block, ".rk-groups"); ok {
+				t.Errorf("%q restyles .rk-groups{%s}, so a phone doesn't keep two per row", query, rule)
+			}
 		}
 	}
 }
@@ -3122,5 +3139,33 @@ func TestFollowUpsSignalPopoversFitAPhoneOverHTTP(t *testing.T) {
 	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
 	if rule, _ := ruleFor(phone, ".rk-defs dl"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr)") {
 		t.Errorf("at 600px .rk-defs dl{%s} keeps its names beside their meanings", rule)
+	}
+}
+
+// The Follow-ups page sits in the flat frame with no card: its group summaries
+// are plain blocks and its flagged Goals a full-bleed list, so no element on
+// it, a muted empty group's included, takes a card class.
+func TestFollowUpsPageHoldsNoCard(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue and Unlinked
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+
+	pageElement(t, page, "a", "follow-ups-group-owner")
+	pageElement(t, page, "div", "follow-ups-group-admin")
+	if rows := followUpRows(page); len(rows) != 1 {
+		t.Fatalf("the list has %d rows, want 1, so this test checks too little", len(rows))
+	}
+	for _, m := range regexp.MustCompile(`\sclass="([^"]*)"`).FindAllStringSubmatch(page, -1) {
+		for _, class := range strings.Fields(m[1]) {
+			if strings.Contains(class, "card") {
+				t.Errorf("the page has an element with the card class %q: class=%q", class, m[1])
+			}
+		}
 	}
 }
