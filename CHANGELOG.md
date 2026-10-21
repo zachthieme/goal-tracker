@@ -99,6 +99,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] Migration `0057_report_log` adds the append-only `report_log` table. Every change to a Report Definition writes its entries in the change's own transaction, so a change that can't be logged doesn't commit. Changes made before the migration aren't in the log (#435).
 
 **Testing:**
+- [internal] The Goal table's and Home's query-count tests use the counting server as #451 left it, three return values and a log of statements rather than a counter; #448 and #449 wrote them against the old one, and the merged wave didn't compile (#451).
 - [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
 - [internal] Scenario 02's Report builder check accepts an author near the end of its value list when the list is scrolled to its end with the author in full view; Inter's shorter rows (#390) left it 2px off the top row there (#314, #390).
 - [internal] A domain test pairs #375's "raised by someone in my Org" case with one whose Report Definition someone in the Org created while outsiders published, raised and own its Action Item: that item is in neither of the viewer's groups. The test also shows that someone in the Org who neither created the Definition nor published the publication can't raise an item on it, so no item is relevant only for its raiser (#387).

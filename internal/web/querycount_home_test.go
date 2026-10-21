@@ -34,13 +34,13 @@ func TestHomeAndFollowUpsQueriesDontGrowWithGoals(t *testing.T) {
 	countFor := func(n int) []int64 {
 		h := testsupport.New(t, queryCountAdmin)
 		seedQueryCountFixture(t, h, n)
-		ts, queries := newQueryCountingServer(t, h)
+		ts, _, queries := newQueryCountingServer(t, h)
 		counts := make([]int64, len(pages))
 		for i, p := range pages {
 			client := signInClient(t, ts.URL, p.email)
-			queries.Store(0)
+			queries.take()
 			getBody(t, client, ts.URL+p.path)
-			counts[i] = queries.Swap(0)
+			counts[i] = int64(len(queries.take()))
 		}
 		return counts
 	}

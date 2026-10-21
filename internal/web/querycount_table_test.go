@@ -15,14 +15,14 @@ func TestGoalTableQueriesDontGrowWithGoals(t *testing.T) {
 	countFor := func(n int) tableCounts {
 		h := testsupport.New(t, queryCountAdmin)
 		seedQueryCountFixture(t, h, n)
-		ts, queries := newQueryCountingServer(t, h)
+		ts, _, queries := newQueryCountingServer(t, h)
 		client := signInClient(t, ts.URL, queryCountAdmin)
 		var c tableCounts
-		queries.Store(0)
+		queries.take()
 		getBody(t, client, ts.URL+"/goals?org=all&layout=table")
-		c.view = queries.Swap(0)
+		c.view = int64(len(queries.take()))
 		getBody(t, client, ts.URL+"/goals?org=all&layout=table&edit=1")
-		c.edit = queries.Swap(0)
+		c.edit = int64(len(queries.take()))
 		return c
 	}
 	ten, fifty := countFor(10), countFor(50)
