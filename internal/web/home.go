@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -226,21 +225,22 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	return v, nil
 }
 
-// refusedNoChanges asks, for each due Goal with a Check-in to repeat, whether
-// a No change on it would be refused, and marks those that would by Goal ID.
+// refusedNoChanges asks, for the due Goals with a Check-in to repeat, whether
+// a No change on each would be refused, and marks those that would by Goal ID.
 func (s *Server) refusedNoChanges(ctx context.Context, due []domain.PersonalGoal) (map[int64]bool, error) {
-	refused := map[int64]bool{}
+	var goals []domain.Goal
 	for _, g := range due {
-		if !g.CheckedIn {
-			continue
+		if g.CheckedIn {
+			goals = append(goals, g.Goal)
 		}
-		err := s.svc.NoChangeRefusal(ctx, g.Goal.ID)
-		switch {
-		case errors.Is(err, domain.ErrValidation):
-			refused[g.Goal.ID] = true
-		case err != nil:
-			return nil, fmt.Errorf("check no change on goal %d: %w", g.Goal.ID, err)
-		}
+	}
+	refusals, err := s.svc.NoChangeRefusalsByGoal(ctx, goals)
+	if err != nil {
+		return nil, fmt.Errorf("check no change on due goals: %w", err)
+	}
+	refused := make(map[int64]bool, len(refusals))
+	for id := range refusals {
+		refused[id] = true
 	}
 	return refused, nil
 }
