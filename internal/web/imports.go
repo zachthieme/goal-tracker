@@ -42,9 +42,15 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	defer func() { _ = file.Close() }()
-	data, err := io.ReadAll(io.LimitReader(file, maxImportBytes))
+	// One byte past the cap, so a file over it is refused rather than cut short
+	// and imported.
+	data, err := io.ReadAll(io.LimitReader(file, maxImportBytes+1))
 	if err != nil {
 		s.serverError(w, r, "could not read the upload", err)
+		return
+	}
+	if len(data) > maxImportBytes {
+		bodyTooLarge(w)
 		return
 	}
 
