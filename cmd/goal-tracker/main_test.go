@@ -930,8 +930,8 @@ func TestTheHTTPServerTimesOutSlowConnections(t *testing.T) {
 type listenAddrs chan string
 
 func (l listenAddrs) Enabled(context.Context, slog.Level) bool { return true }
-func (l listenAddrs) WithAttrs([]slog.Attr) slog.Handler      { return l }
-func (l listenAddrs) WithGroup(string) slog.Handler           { return l }
+func (l listenAddrs) WithAttrs([]slog.Attr) slog.Handler       { return l }
+func (l listenAddrs) WithGroup(string) slog.Handler            { return l }
 
 func (l listenAddrs) Handle(_ context.Context, r slog.Record) error {
 	if r.Message != "goal-tracker listening" {
