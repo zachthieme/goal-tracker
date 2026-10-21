@@ -100,14 +100,16 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 	if isReportDelegate(delegates, accountID) {
 		return fmt.Errorf("%w: %s is already a Report Delegate", ErrValidation, acc.Email)
 	}
-	if err := s.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
-		ReportDefinitionID: defID,
-		AccountID:          accountID,
-		CreatedAt:          s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("add report delegate: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
+			ReportDefinitionID: defID,
+			AccountID:          accountID,
+			CreatedAt:          s.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("add report delegate: %w", err)
+		}
+		return tx.recordReportLog(ctx, defID, actorID, ReportLogDelegate, "Report Delegate added: "+accountFromRow(acc).Label())
+	})
 }
 
 // AddReportDelegateByEmail authorizes the Account with the given email as a
@@ -126,18 +128,29 @@ func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID i
 
 // RemoveReportDelegate revokes accountID's authorization on the Report
 // Definition defID. Only its creator or an Admin may (ErrNotAuthorized).
-// Removing someone who is not a Report Delegate is a no-op.
+// Removing someone who is not a Report Delegate is a no-op. The Report log
+// records each one added or removed (CONTEXT.md: Report log).
 func (s *Service) RemoveReportDelegate(ctx context.Context, actorID, defID, accountID int64) error {
 	if _, err := s.reportDelegatesDefinition(ctx, actorID, defID); err != nil {
 		return err
 	}
-	if err := s.queries.RemoveReportDelegate(ctx, db.RemoveReportDelegateParams{
-		ReportDefinitionID: defID,
-		AccountID:          accountID,
-	}); err != nil {
-		return fmt.Errorf("remove report delegate: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		removed, err := tx.queries.RemoveReportDelegate(ctx, db.RemoveReportDelegateParams{
+			ReportDefinitionID: defID,
+			AccountID:          accountID,
+		})
+		if err != nil {
+			return fmt.Errorf("remove report delegate: %w", err)
+		}
+		if removed == 0 {
+			return nil
+		}
+		acc, err := tx.Account(ctx, accountID)
+		if err != nil {
+			return err
+		}
+		return tx.recordReportLog(ctx, defID, actorID, ReportLogDelegate, "Report Delegate removed: "+acc.Label())
+	})
 }
 
 // ListReportDelegates returns the Report Definition defID's Report Delegates,

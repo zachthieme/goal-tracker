@@ -186,8 +186,8 @@ templ reportHealthBar(h domain.HealthCounts) {
 // overdue as of asOf, today.
 // The compose form shows form, and the save status says status. Only a reader
 // m lets manage the Report gets Edit definition, the compose form and
-// Publish…; everyone gets its Delegates.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, form narrativeForm, status string) {
+// Publish…; everyone gets its Delegates and its Report log, log.
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, log []domain.ReportLogEntry, form narrativeForm, status string) {
 	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, m, status)) {
 		@reportStyles()
 		<div data-testid="draft-panes" class="rp-panes">
@@ -204,6 +204,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					@narrativeCuration(form)
 				}
 				@reportDelegates(m)
+				@reportLog(log, loc)
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(panel)
@@ -282,6 +283,45 @@ templ reportDelegates(m reportManagement) {
 			</form>
 		}
 	</section>
+}
+
+// reportLogShown is how many of a Report log's entries its section shows
+// before Show all.
+const reportLogShown = 20
+
+// reportLog is the compose pane's Report log: every change to the Report
+// Definition, newest first, each with who made it and when in the company's
+// timezone (loc), the newest reportLogShown up front and the rest behind Show
+// all. Anyone who can open the Report reads it; nobody can change it
+// (CONTEXT.md: Report log).
+templ reportLog(log []domain.ReportLogEntry, loc *time.Location) {
+	<section data-testid="report-log" class="rp-log">
+		<h2>Report log</h2>
+		@reportLogList(log[:min(len(log), reportLogShown)], loc)
+		if len(log) > reportLogShown {
+			<details data-testid="report-log-more">
+				<summary>{ fmt.Sprintf("Show all %d", len(log)) }</summary>
+				@reportLogList(log[reportLogShown:], loc)
+			</details>
+		}
+	</section>
+}
+
+// reportLogList lists Report log entries, each what changed, then who made
+// the change and when.
+templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
+	<ol class="rp-list">
+		for _, e := range entries {
+			<li data-testid="report-log-entry">
+				<span>{ e.Detail }</span>
+				<span class="small muted">
+					{ "— " }
+					@person(e.Actor)
+					{ " at " + showTimeYear(e.CreatedAt, loc) }
+				</span>
+			</li>
+		}
+	</ol>
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
@@ -1596,6 +1636,7 @@ templ reportStyles() {
 		.rp-panes>*{min-width:0}
 		.rp-compose{padding-right:24px;border-right:1px solid var(--color-border)}
 		.rp-delegates{margin-top:24px}
+		.rp-log{margin-top:24px}
 		.rp-delegate{display:flex;align-items:center;justify-content:space-between;gap:8px}
 		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 		.rp-delegate-add input{flex:1 1 200px}

@@ -678,7 +678,7 @@ func (q *Queries) RemoveMergedRuleValueWhereTargetListed(ctx context.Context, ar
 	return err
 }
 
-const removeReportDelegate = `-- name: RemoveReportDelegate :exec
+const removeReportDelegate = `-- name: RemoveReportDelegate :execrows
 DELETE FROM report_delegates
 WHERE report_definition_id = ? AND account_id = ?
 `
@@ -688,9 +688,14 @@ type RemoveReportDelegateParams struct {
 	AccountID          int64
 }
 
-func (q *Queries) RemoveReportDelegate(ctx context.Context, arg RemoveReportDelegateParams) error {
-	_, err := q.db.ExecContext(ctx, removeReportDelegate, arg.ReportDefinitionID, arg.AccountID)
-	return err
+// Revoke a Report Delegate, saying how many were removed: none when the
+// Account wasn't one.
+func (q *Queries) RemoveReportDelegate(ctx context.Context, arg RemoveReportDelegateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeReportDelegate, arg.ReportDefinitionID, arg.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateReportDefinition = `-- name: UpdateReportDefinition :exec

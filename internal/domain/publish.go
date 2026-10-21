@@ -52,7 +52,8 @@ type PreviousPublication struct {
 // publication — and freezes the result, its curated narrative included, and
 // how it selects in plain words. The next publication's narrative then starts
 // empty. Only the Definition's creator, a Report Delegate or an Admin may
-// publish it (ErrNotAuthorized); actorID records who did.
+// publish it (ErrNotAuthorized); actorID records who did, in the publication
+// and in the Report log.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
@@ -86,6 +87,9 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 			Snapshot:           string(frozen),
 		}); err != nil {
 			return fmt.Errorf("create publication: %w", err)
+		}
+		if err := tx.recordReportLog(ctx, def.ID, actorID, ReportLogPublished, "Published"); err != nil {
+			return err
 		}
 		// The narrative is frozen now; the next publication's starts empty.
 		return tx.clearNarrative(ctx, def.ID)
