@@ -506,3 +506,33 @@ func TestTheSessionCookieLastsWhatRemainsOf30Days(t *testing.T) {
 		t.Errorf("on day 6: session cookie Max-Age %d, want %d", reissued.MaxAge, want)
 	}
 }
+
+// Signing out ends every session the Account has on the server, not just this
+// browser's cookie: a cookie captured before sign-out, from this browser or
+// another, no longer signs sam in.
+func TestSigningOutEndsEverySessionOnTheServer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	here := sessionCookieOf(t, ts.URL, "sam@example.com")
+	elsewhere := sessionCookieOf(t, ts.URL, "sam@example.com")
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, ts.URL+"/signout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(here)
+	resp, err := noRedirects(http.DefaultClient).Do(req)
+	if err != nil {
+		t.Fatalf("POST /signout: %v", err)
+	}
+	_ = readBody(t, resp)
+
+	if !signedOut(t, ts.URL, here) {
+		t.Error("the signed-out browser's cookie, replayed, still signs sam in")
+	}
+	if !signedOut(t, ts.URL, elsewhere) {
+		t.Error("another browser's cookie from before sign-out still signs sam in")
+	}
+}

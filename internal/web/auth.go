@@ -150,10 +150,18 @@ func departedSentence(emailAddr string) string {
 	return emailAddr + " has been marked departed and can't sign in. Ask an Admin if this is a mistake."
 }
 
-// handleSignOut ends the session. With the org's provider on, it also sends
-// the browser to the provider to end its session there, so the next sign-in
-// asks who the person is.
+// handleSignOut ends every session the signed-in Account has, on this browser
+// and any other, so a copy of the cookie stops working too, then clears the
+// cookie. With the org's provider on, it also sends the browser to the
+// provider to end its session there, so the next sign-in asks who the person
+// is.
 func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
+	if acc := s.currentAccount(r); acc != nil {
+		if err := s.svc.EndSessions(r.Context(), acc.ID); err != nil {
+			s.serverError(w, r, "sign-out failed", err)
+			return
+		}
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    "",
