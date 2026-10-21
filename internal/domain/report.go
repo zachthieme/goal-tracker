@@ -141,6 +141,9 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 			return fmt.Errorf("create report definition: %w", err)
 		}
 		id = row.ID
+		if err := tx.recordReportLog(ctx, id, actorID, ReportLogCreated, "Created"); err != nil {
+			return err
+		}
 		return tx.saveReportSelection(ctx, id, in)
 	}); err != nil {
 		return ReportDefinition{}, err
@@ -167,6 +170,15 @@ func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64,
 		return ReportDefinition{}, err
 	}
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		edits, err := tx.reportDefinitionEdits(ctx, def, in)
+		if err != nil {
+			return err
+		}
+		for _, edit := range edits {
+			if err := tx.recordReportLog(ctx, id, actorID, ReportLogEdited, edit); err != nil {
+				return err
+			}
+		}
 		if err := tx.queries.UpdateReportDefinition(ctx, db.UpdateReportDefinitionParams{
 			Name:         in.Name,
 			Introduction: strings.TrimSpace(in.Introduction),

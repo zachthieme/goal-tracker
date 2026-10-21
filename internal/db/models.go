@@ -387,6 +387,15 @@ type ReportDelegate struct {
 	CreatedAt          string
 }
 
+type ReportLog struct {
+	ID                 int64
+	ReportDefinitionID int64
+	ActorID            int64
+	Kind               string
+	Detail             string
+	CreatedAt          string
+}
+
 type ReportPublication struct {
 	ID                 int64
 	ReportDefinitionID int64
