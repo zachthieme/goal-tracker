@@ -3300,18 +3300,15 @@ func hasClass(openTag, class string) bool {
 }
 
 // The Goal page's document column reads Latest status, Metrics, Milestones,
-// Highlights, Draft Highlights, Comments and History, in that order, each a
-// section opening with its h2; the rail's groups open with an h3 (DESIGN.md §
-// Direction: Page shapes).
+// Highlights, Draft Highlights, Action Items, Comments and History, in that
+// order, each a section opening with its h2; the rail's groups open with an h3
+// (DESIGN.md § Direction: Page shapes).
 func TestGoalPageSectionHeadings(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	page := goalPageWithEverySection(t, h, ts)
 
 	main := between(t, page, `data-testid="goal-main"`, `data-testid="goal-sidebar"`)
 	at := 0
@@ -3321,6 +3318,7 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 		{"section", "goal-milestones", "<h2>Milestones</h2>"},
 		{"section", "goal-highlights", "<h2>Highlights</h2>"},
 		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
+		{"section", "goal-action-items", "<h2>Action Items</h2>"},
 		{"section", "goal-comments", "<h2>Comments</h2>"},
 		{"div", "goal-history", "<h2>History</h2>"},
 	} {
@@ -3345,6 +3343,17 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 	}
 }
 
+// goalPageWithEverySection is the Owner's view of an Active Goal whose page
+// shows every section its document column can: a Check-in with a Highlight,
+// and an open Action Item raised on a Report covering it.
+func goalPageWithEverySection(t *testing.T, h *testsupport.Harness, ts *httptest.Server) string {
+	t.Helper()
+	f := newGoalActionItemFixture(h)
+	h.CheckinWithHighlights(f.author, f.goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+	f.raise(f.mbrPub, f.sam, "Explain the slip.", 5, f.goal.ID)
+	return getBody(t, signInClient(t, ts.URL, f.author.Email), goalPageURL(ts.URL, f.goal))
+}
+
 // assertOpensWith checks the tag element carrying testID opens with heading,
 // beside the link a group whose form opens in place puts by it.
 func assertOpensWith(t *testing.T, page, tag, testID, heading string) {
@@ -3364,11 +3373,8 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	page := goalPageWithEverySection(t, h, ts)
 
 	for _, tc := range []struct{ tag, testID string }{
 		{"section", "goal-checkins"},
@@ -3376,6 +3382,7 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 		{"section", "goal-milestones"},
 		{"section", "goal-highlights"},
 		{"section", "goal-draft-highlights"},
+		{"section", "goal-action-items"},
 		{"section", "goal-comments"},
 		{"div", "goal-history"},
 	} {
