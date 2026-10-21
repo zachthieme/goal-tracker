@@ -43,6 +43,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page's document column, up to 860px, opens on the title at 28px and Why it matters as a lead paragraph. Then come Latest status, Metrics, Milestones, Highlights, Draft Highlights, Action Items, Comments and History, each a heading over hairline-ruled rows. Highlights now come before Draft Highlights and Action Items. Each Metric is one row: its name, its sparkline and its current value in tabular figures. Milestones are rows of mark, date and name (#393).
 - [user] The Goal page's properties rail, 300px behind a hairline, lists Health, Lifecycle, Kind, Owner, Delegates, Contributors, cadence, delivery date and Top-level as label and value rows. Dimension values follow as rows too, then Fields, Contributes to and Contributed to by. Health on a Goal without one reads "No Health". The rail's Manage, Edit and + Add links still open their forms in place. At 900px and below the rail stacks under the column (#393).
 - [user] Follow-ups' Scope and Dimension filters are now the Goal list's filter chips: "Scope: Mine", and "Team: any" or "Team: Platform" filled while set, in the same chip row (#406).
+- [user] On Goals, grouped by Health, the No Health group moves to the top when one of its Goals is Ownerless, Check-in overdue or Milestone overdue, so a Goal nobody has checked in on lists above Red, not below every Green Goal (#405).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -64,6 +65,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] A new e2e spec, `e2e/download-menu.spec.ts`, opens the Download menu on a Report's row and on a publication. At 390px it checks the popover lies inside the window and nothing on the page passes the window's edge. Without script it checks the menu still opens and both items are links (#407).
 - [internal] `expectFitsAPhone` (`e2e/phone-width.spec.ts`) checks that no visible element on the page passes the window's edge, not only the links, buttons, inputs and selects in main. html's `overflow-x:clip` cuts such an element off rather than letting the page scroll to it, so its scroll width couldn't tell. What a listed scroller holds is still left out (#407).
 - [internal] `scripts/shots.mjs` fails a shot when a visible element lies past the window's edge, as it does on an unexpected status, still saving its PNG and printing its facts. An element inside a box that only clips it now counts too: only a box that scrolls sideways on its own excuses what it holds (#407).
+- [internal] The finding-trouble e2e scenario again requires its Check-in overdue Goal to sort above every unmarked Green row, with no conditional escape (#405).
 
 **Code quality:**
 - [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
