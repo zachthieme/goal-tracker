@@ -15,12 +15,17 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 21, 2026
 
+**Breaking changes:**
+- [ops] **Sessions**: the session cookie now carries when the person signed in and when they were last seen, so existing sessions are signed out once and everyone signs in again (#414).
+
 **New features:**
 - [user] Every signed-in page sits in a new frame: a sidebar on the left replaces the teal top bar. It holds the app's name (linking Home), a Search that asks the Goal list, the nav with icons and counts, My org (the people directly under you, each linking to their org on Goals, shown only to someone with people under them), and your Name and initials at the foot, opening a menu with Theme and Sign out (#390).
 - [user] At 900px and below the sidebar becomes a 48px strip with the app's name, Home's count and a Menu that opens the rest as a sheet, without script (#390).
 - [user] Each published Report's row on Reports, and a publication's page, has a **Download** menu: **Markdown (.md)** or **PDF (.pdf)**, for the Report's latest publication on the list. It replaces the publication page's Markdown and Print / PDF buttons (#388).
 - [user] A PDF download is a real PDF file, the publication's print page rendered by a headless Chromium, at `/reports/{id}/publications/{pub}/pdf`. Without Chromium, the menu's item reads **PDF (print from browser)** and opens the print page, and the `/pdf` link redirects there (#388).
 - [ops] `GOAL_TRACKER_CHROME` names the Chromium that renders PDF downloads; unset, the app looks on `PATH` for `chromium`, `chromium-browser`, `google-chrome` or `google-chrome-stable`. Startup logs which it uses or that PDF downloads fall back to the print page, and stops when `GOAL_TRACKER_CHROME` isn't there or can't run. At most two PDFs render at once, each within 30 seconds (#388).
+- [user] A Report has **Report Delegates**. Its creator or an Admin adds them by email in the new Delegates section of the Report's draft page, and removes them there; everyone who opens the Report sees who they are. A Report Delegate may change the Report, curate its narrative and publish it, as its creator may, and may hand its open Action Items to a new owner, but can't add or remove Report Delegates (#434).
+- [ops] Migration 0054 adds the `report_delegates` table; it runs on startup with the others (#434).
 
 **Improvements:**
 - [user] The Reports page's Open Action Items is a plain section on the canvas rather than a second card, so the Reports table is the page's one card (#386).
@@ -45,6 +50,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Follow-ups' Scope and Dimension filters are now the Goal list's filter chips: "Scope: Mine", and "Team: any" or "Team: Platform" filled while set, in the same chip row (#406).
 - [user] On Goals, grouped by Health, the No Health group moves to the top when one of its Goals is Ownerless, Check-in overdue or Milestone overdue, so a Goal nobody has checked in on lists above Red, not below every Green Goal (#405).
 - [user] The Definition log, Delegated to me, Pending links, Pending handoffs and Suggest a parent move into the flat frame: each names itself in the header strip and shows its content as a plain section, a heading over hairline rows, with no card. On Delegated to me each Goal is a row, its Health, title, Owner and last Check-in beside a small Check in, rather than a card in a grid (#403).
+- [user] Only a Report's creator, its Report Delegates and Admins may change it, curate its narrative or publish it. Anyone else signed in still creates Reports and reads every Report's draft and publications, but no longer sees Edit definition, the narrative form or Publish…, and their posts to them are refused (403). Before, anyone signed in could curate and publish any Report (#434).
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
@@ -55,6 +61,16 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On a touch screen, the Goal page's Manage, Edit and + Add links are 44px tall (#404).
 - [user] In the light theme, the chosen option on New goal's Kind tiles, Check-in cadence and Where it fits values, and on the Goal list's List / Table switch, now shows a dark teal edge that meets WCAG's 3:1 contrast for controls; the Kind tile's radio dot takes the same colour (#401).
 - [user] In the light theme, the filter chips above a Goal's History now have an edge that meets WCAG's 3:1 contrast for controls, and the current chip a dark teal one, the same edge every chosen option takes (#402).
+- [ops] The database's foreign keys are now enforced on every connection, so a write that would leave a row pointing at a missing Goal, Account, Check-in or other parent fails instead of orphaning it (#409).
+- [ops] Startup refuses a database that already holds a row breaking a foreign key: migrations run with foreign keys off, then `PRAGMA foreign_key_check` runs, and if it finds rows the app and `cmd/seed` stop with an error naming each one's table, rowid and missing parent table (the first 20, plus a count of the rest) (#409).
+- [user] Creating a Goal now saves the Goal and the first entry of its Definition log together, so a failure part-way no longer leaves a Goal with no Why it matters history (#421).
+- [ops] With a Chromium to render PDF downloads, startup checks `TMPDIR`: it logs a `WARN` when `TMPDIR` is too long for a render's own directory (over 47 bytes), so a render killed for time may leave `org.chromium.Chromium.*` in it, and stops with an error naming `TMPDIR` when it's too long for Chromium to render at all (over 62 bytes). `docs/install.md` says `TMPDIR` must be short; `/tmp` and the Docker image's are (#432).
+
+**Security:**
+- [user] A session now ends 30 days after sign-in, or after 7 days without a request, however it is used; a request at least a day after the last re-issues the cookie to keep it from idling out (#414).
+- [user] Signing out now ends every session you have on the server, on this browser and any other, so a copy of the session cookie taken earlier no longer signs anyone in (#414).
+- [user] The app refuses, with a 403, a form post or other change another site's page sends on a signed-in person's behalf, and no other site can show its pages in a frame to trick a click onto one of its buttons; every response now also sends `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` (#415).
+- [user] The Goal table's **Download CSV** no longer writes a cell that a spreadsheet would run as a formula. A Goal title, Field value or other cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is written behind a `'`, so `=1+1` downloads as `'=1+1` and `-5` as `'-5`. The import drops that `'` again, so importing an unchanged download still changes nothing; any other leading `'` is kept (#424).
 
 **Infrastructure:**
 - [ops] A `Dockerfile` builds the app into a Debian image with Chromium for PDF downloads and `sqlite3` for backups. It runs as a non-root user on port 8080, with the database in the `/data` volume. `docs/install.md` says how to run it and back it up (#418).
@@ -76,6 +92,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `expectFitsAPhone` (`e2e/phone-width.spec.ts`) checks that no visible element on the page passes the window's edge, not only the links, buttons, inputs and selects in main. html's `overflow-x:clip` cuts such an element off rather than letting the page scroll to it, so its scroll width couldn't tell. What a listed scroller holds is still left out (#407).
 - [internal] `scripts/shots.mjs` fails a shot when a visible element lies past the window's edge, as it does on an unexpected status, still saving its PNG and printing its facts. An element inside a box that only clips it now counts too: only a box that scrolls sideways on its own excuses what it holds (#407).
 - [internal] The finding-trouble e2e scenario again requires its Check-in overdue Goal to sort above every unmarked Green row, with no conditional escape (#405).
+- [internal] Test harness databases enforce foreign keys as the app's do. Five migration-upgrade tests now arrange the parents their rows point at, and the 0042 upgrade test no longer arranges a Milestone change whose Check-in is missing, since Migrate refuses a database holding one (#409).
+- [internal] `internal/web` tests can read a page through parser-based helpers built on `golang.org/x/net/html` (`findByTestID`, `textOf`, `formField`, `linkTo`, `buttonNamed`, `checkedRadio`, `precedes`), which find what a person sees and can do, not markup. `pageElement`, `elementTexts` and `scopeChoices` now parse rather than match strings. `checkins_test.go` uses only these helpers, so renaming a class or wrapping a section in a `<div>` on the Check-in page breaks none of its tests. Its style-rule and class assertions moved, unchanged, to a new `styles_test.go` (#423).
+- [internal] Follow-ups' filter chip test now checks the Team select reads "Team: any" when unset and has Platform selected on `?value=<Platform>`, and a new e2e test opens the Download menu with Enter, tabs to its first item and closes it with Escape, focus back on Download, on a publication and a Report row (#433).
 
 **Code quality:**
 - [internal] Two stale comments now match the code: the Health grouping's No Health group (#405) and the Scope chip's styles (#406). `scripts/__pycache__` is untracked and ignored (#401).
