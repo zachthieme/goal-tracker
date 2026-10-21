@@ -19,7 +19,7 @@ import (
 // checked in on, and a Check in link to the Check-in page, so they can update it
 // without sharing the Owner's login (CONTEXT.md: Delegate). It sits in the flat
 // frame: its title in the page header, and the Goals a plain section of
-// hairline rows (DESIGN.md § Shared components: Sections).
+// hairline rows (DESIGN.md § Components: Sections).
 func delegatePage(current *domain.Account, goals []delegatedGoal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

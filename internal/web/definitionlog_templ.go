@@ -19,7 +19,7 @@ import (
 // when. A form narrows it to one Dimension or Field. It is read-only for
 // everyone; values set on Goals are in each Goal's Value history instead. It
 // sits in the flat frame: its title in the page header, and the changes a
-// plain section of hairline rows (DESIGN.md § Shared components: Sections).
+// plain section of hairline rows (DESIGN.md § Components: Sections).
 func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

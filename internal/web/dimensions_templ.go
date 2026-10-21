@@ -31,7 +31,7 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // set, names the Goals that kept a Dimension from switching to one value;
 // toast, when set, offers Undo for the value just retired. It sits in the flat
 // frame: its title in the page header, and the rest plain sections (DESIGN.md
-// § Direction).
+// § Dimensions page).
 func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

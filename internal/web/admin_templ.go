@@ -21,7 +21,7 @@ import (
 // Ownerless), then the Departed people an Admin can mark returned (CONTEXT.md:
 // Departed). It sits in the flat frame: its title in the page header, and
 // every part a plain section of rows, its forms included (DESIGN.md §
-// Direction).
+// Admin page).
 func adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

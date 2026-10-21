@@ -515,7 +515,7 @@ func assertTermHelp(t *testing.T, page, within, label, text string) string {
 var cardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
 
 // assertInFlatFrame checks page sits in the flat frame (DESIGN.md § Page
-// header, § Shared components: Sections): its header strip's h1 is title,
+// header, § Components: Sections): its header strip's h1 is title,
 // and nothing on it is a card.
 func assertInFlatFrame(t *testing.T, page, title string) {
 	t.Helper()

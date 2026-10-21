@@ -536,7 +536,7 @@ func (v followUpsView) Flagged(scope pageOrgScope) int {
 }
 
 // countDefaultFollowUps counts the Goals flagged in acc's default scope, as many
-// as the rows a bare /follow-ups lists, for the top bar.
+// as the rows a bare /follow-ups lists, for the sidebar's Follow-ups count.
 func (s *Server) countDefaultFollowUps(ctx context.Context, acc domain.Account) (int, error) {
 	v, err := s.loadFollowUps(ctx)
 	if err != nil {
@@ -797,7 +797,7 @@ type followUpSignal struct {
 }
 
 // followUpRows merges v's lists into one row per flagged Goal. Unlike loadFollowUps,
-// which every signed-in page runs for the top bar's count, it reads each
+// which every signed-in page runs for the sidebar's count, it reads each
 // flagged Goal's latest Check-in, so only the Follow-ups page calls it.
 func (s *Server) followUpRows(ctx context.Context, v followUpsView) ([]followUpGoalRow, error) {
 	var rows []followUpGoalRow

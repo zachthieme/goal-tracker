@@ -145,11 +145,11 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 	return resp
 }
 
-// The Import page sits in the flat frame (DESIGN.md § Direction), its title in
-// the page header and nothing on it a card. Its form is a plain section whose
-// primary button is Dry run, beside Commit. The report opens with its summary
-// as an alert — red when rows have errors — then a table of the rows with
-// their errors.
+// The Import page sits in the flat frame (DESIGN.md § Import Goals page), its
+// title in the page header and nothing on it a card. Its form is a plain
+// section whose primary button is Dry run, beside Commit. The report opens with
+// its summary as an alert — red when rows have errors — then a table of the
+// rows with their errors.
 func TestImportReportIsAnAlertThenATable(t *testing.T) {
 	t.Parallel()
 

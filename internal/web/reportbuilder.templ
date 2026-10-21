@@ -13,7 +13,7 @@ import (
 // other Goal (ADR 0007). A saved one's id goes with the form, so the rail
 // reads against its baseline. Under its breadcrumb strip it is one centred
 // column of plain sections: the title, the inputs, the Matches rail, and Save
-// report last (DESIGN.md § Direction: Page shapes).
+// report last (DESIGN.md § Report builder).
 templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 	@framedLayout(v.title(), current, reportBuilderHeader(v)) {
 		@reportStyles()

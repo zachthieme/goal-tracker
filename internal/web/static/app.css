@@ -293,7 +293,7 @@ details>summary::-webkit-details-marker{display:none}
 @media (max-width:900px){.grid-main-aside{grid-template-columns:1fr}.page{padding:20px 16px 48px;gap:24px}}
 /* Filter chips: a filter bar's controls, a key and a select or checkbox in
    one 28px chip, set chips filled. The Goal list and Follow-ups share them
-   (DESIGN.md § Direction: Filter bar). */
+   (DESIGN.md § Goal list: Filter bar). */
 .filter-chip{position:relative;display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-canvas);color:var(--color-ink-2);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;box-sizing:border-box;cursor:pointer}
 .filter-chip:has(select){padding-right:24px}
 .filter-chip:has(select)::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-75%) rotate(45deg);pointer-events:none}

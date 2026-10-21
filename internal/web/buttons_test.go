@@ -127,9 +127,10 @@ func borderColour(t *testing.T, theme map[string]string, border string) string {
 	return resolve(t, theme, m[1])
 }
 
-// Cards are flat: only the menus and popovers, and the Check-in's sticky
-// submit bar, float over the page, and they float by --shadow-pop, so an open
-// menu reads as nearer than any card (#88, DESIGN.md § Direction).
+// Cards are flat: only the menus and popovers, and the Check-in's sticky submit
+// bar, float over the page, and they float by --shadow-pop, so an open menu
+// reads as nearer than any card (#88, DESIGN.md § System: Surfaces are for what
+// floats).
 func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 	t.Parallel()
 

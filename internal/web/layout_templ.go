@@ -33,8 +33,8 @@ func onSection(ctx context.Context, href string) bool {
 
 type needsYouKey struct{}
 
-// withNeedsYou records how many things need the signed-in person, so the top
-// bar's Home item can count them without every page passing it along.
+// withNeedsYou records how many things need the signed-in person, so the
+// sidebar's Home item can count them without every page passing it along.
 func withNeedsYou(ctx context.Context, n int) context.Context {
 	return context.WithValue(ctx, needsYouKey{}, n)
 }
@@ -158,7 +158,7 @@ func layout(title string, current *domain.Account) templ.Component {
 
 // framedLayout is the shared page chrome. A signed-in page sits in the flat
 // frame: the sidebar, then the content column, which opens with header, the
-// page's 48px header strip, when it has one (DESIGN.md § Direction: The
+// page's 48px header strip, when it has one (DESIGN.md § System: The
 // frame). A signed-out page has no sidebar and centres its content.
 func framedLayout(title string, current *domain.Account, header templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -334,7 +334,7 @@ type pageHead struct {
 
 // pageHeader is a page's 48px header strip, for framedLayout's header: the
 // title or breadcrumb and count at the left, and the page's actions, its
-// children, at the right (DESIGN.md § Direction: Page header).
+// children, at the right (DESIGN.md § Page header).
 func pageHeader(h pageHead) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -476,7 +476,7 @@ func brand() templ.Component {
 
 // sidebar is the signed-in page's left column: the app's name, Search, the
 // nav with its counts, My org for someone with people under them, and the
-// person's menu at its foot (DESIGN.md § Direction: The frame). At phone width
+// person's menu at its foot (DESIGN.md § Sidebar). At phone width
 // it is a 48px strip whose Menu opens the rest as a sheet; the sheet is
 // .sb-body, shown by the Menu <details> beside it, so it needs no script.
 func sidebar(current domain.Account) templ.Component {

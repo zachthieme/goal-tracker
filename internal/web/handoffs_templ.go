@@ -20,7 +20,7 @@ import (
 // effect only once accepted (CONTEXT.md: Handoff). toast, when set, offers Undo
 // for the Handoff just rejected. It sits in the flat frame: its title in the
 // page header, and the Handoffs a plain section of hairline rows (DESIGN.md §
-// Shared components: Sections).
+// Components: Sections).
 func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

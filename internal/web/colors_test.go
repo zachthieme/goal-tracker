@@ -11,8 +11,8 @@ import (
 
 // The light theme takes the flat frame's tokens (DESIGN.md § Tokens): one white
 // canvas, a grey sidebar with its hover and current fills, and neutral inks
-// and hairlines, so teal marks only what a person can act on. The top bar's
-// --nav-* tokens are gone with it, in every theme.
+// and hairlines, so teal marks only what a person can act on. The --nav-*
+// tokens of the teal nav bar the sidebar replaced are gone, in every theme.
 func TestLightTokensAreTheFlatFrames(t *testing.T) {
 	t.Parallel()
 

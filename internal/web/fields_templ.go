@@ -26,7 +26,7 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 // restore it and neither the Required mark nor its control, which come back
 // with the setting it had once it is restored (CONTEXT.md: Retired). It sits in
 // the flat frame: its title in the page header, and the rest plain sections
-// (DESIGN.md § Direction).
+// (DESIGN.md § Fields page).
 func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

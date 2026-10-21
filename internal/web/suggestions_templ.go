@@ -19,7 +19,7 @@ import (
 // (CONTEXT.md: Parent suggestion). A refused submit comes back with the
 // reason above the form and the form as it was sent. It sits in the flat
 // frame: its title in the page header, and the form a plain section
-// (DESIGN.md § Shared components: Sections).
+// (DESIGN.md § Components: Sections).
 func suggestParentPage(current *domain.Account, v suggestParentView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

@@ -4607,7 +4607,7 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 		t.Errorf("the section is not headed Open Action Items:\n%s", page[section:table])
 	}
 	// Open Action Items and the Reports table are plain sections on the
-	// canvas, neither a card (DESIGN.md § Direction).
+	// canvas, neither a card (DESIGN.md § System: One surface).
 	if tag := openTag(page[section:]); hasClass(tag, "card") {
 		t.Errorf("Open Action Items is a card: %s", tag)
 	}
@@ -4692,8 +4692,9 @@ func TestReportsPageWithoutActionItemsToChaseHasNoSection(t *testing.T) {
 }
 
 // The Reports pages sit in the flat frame: no part of the Reports list, a
-// draft, a publication or the builder is a card, its floating menus
-// included, which take a raised surface of their own (DESIGN.md § Direction).
+// draft, a publication or the builder is a card, its floating menus included,
+// which take a raised surface of their own (DESIGN.md § System: Surfaces are
+// for what floats).
 func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
 	t.Parallel()
 

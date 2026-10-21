@@ -145,7 +145,7 @@ func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
 }
 
 // The Not found page is plain text centred on the canvas with its link home,
-// no card around it, signed in or not (DESIGN.md § Direction).
+// no card around it, signed in or not (DESIGN.md § Not found page).
 func TestNotFoundPageIsPlainCentredText(t *testing.T) {
 	t.Parallel()
 

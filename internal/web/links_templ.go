@@ -18,7 +18,7 @@ import (
 // decision as the Owner of each request's parent Goal, a row each with accept
 // and reject actions. toast, when set, offers Undo for the request just
 // rejected. It sits in the flat frame: its title in the page header, and the
-// requests a plain section of hairline rows (DESIGN.md § Shared components:
+// requests a plain section of hairline rows (DESIGN.md § Components:
 // Sections).
 func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {

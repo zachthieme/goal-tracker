@@ -417,7 +417,7 @@ func TestNewOIDCNamesAnIssuerItCantDiscover(t *testing.T) {
 	}
 }
 
-// signOut posts the top bar's Sign out as client and returns where the app
+// signOut posts the sidebar's Sign out as client and returns where the app
 // sends the browser.
 func signOut(t *testing.T, client *http.Client, appURL string) *url.URL {
 	t.Helper()

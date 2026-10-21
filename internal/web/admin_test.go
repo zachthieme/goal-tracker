@@ -53,7 +53,7 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 	}
 }
 
-// The Admin page sits in the flat frame (DESIGN.md § Direction): its title in
+// The Admin page sits in the flat frame (DESIGN.md § Admin page): its title in
 // the page header, and its tools, its lists and its forms as plain sections of
 // rows, none of them a card.
 func TestAdminPageIsInTheFlatFrame(t *testing.T) {

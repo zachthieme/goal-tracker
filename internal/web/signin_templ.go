@@ -213,8 +213,8 @@ func orgSignInPage(failure string) templ.Component {
 }
 
 // signInColumn is a signed-out page's single centred column on the canvas,
-// the app's mark above its content and no card around it (DESIGN.md §
-// Direction). Sign-in and Set password share it.
+// the app's mark above its content and no card around it. Sign-in and Set
+// password share it (DESIGN.md § Sign-in and Set password).
 func signInColumn() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

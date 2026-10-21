@@ -1202,7 +1202,7 @@ func goalListRow(row goalRow, dates displayDates) templ.Component {
 
 // goalHealthMark is a list row's Health: its shape alone — square for Red,
 // triangle for Yellow, circle for Green, an empty ring for none — named by an
-// aria-label, so colour is never the only signal (DESIGN.md § Direction:
+// aria-label, so colour is never the only signal (DESIGN.md § Components:
 // Health).
 func goalHealthMark(health string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -2755,7 +2755,7 @@ func goalLinkIf(link bool, g domain.Goal) templ.Component {
 }
 
 // goalsStyles are the Goal list's own rules on top of app.css, in the flat
-// frame (DESIGN.md § Direction):
+// frame (DESIGN.md § Goal list):
 //   - the page drops its padding and width cap, so the filter bar and the
 //     list run edge to edge with 28px sides;
 //   - the header strip's List / Table switch is a segmented control;
@@ -2800,15 +2800,15 @@ func goalsStyles() templ.Component {
 	})
 }
 
-// goalPage shows a single Goal in the flat frame (DESIGN.md § Direction: Page
-// shapes). Its header strip is the breadcrumb, with Check in and the More menu
-// at its right. Under it, any warning banners run as quiet full-width strips,
-// then a document column — the title, Why it matters as a lead paragraph, then
-// Latest status, Metrics, Milestones, Highlights, Draft Highlights, Action
-// Items, Comments and History as sections — beside a properties rail of its
-// Health, Lifecycle, people, cadence, delivery, level, Dimension values and
-// Fields, then what it contributes to and what contributes to it. Nothing on
-// it is a card; at 900px and below the rail stacks under the column.
+// goalPage shows a single Goal in the flat frame (DESIGN.md § Goal page). Its
+// header strip is the breadcrumb, with Check in and the More menu at its right.
+// Under it, any warning banners run as quiet full-width strips, then a document
+// column — the title, Why it matters as a lead paragraph, then Latest status,
+// Metrics, Milestones, Highlights, Draft Highlights, Action Items, Comments and
+// History as sections — beside a properties rail of its Health, Lifecycle,
+// people, cadence, delivery, level, Dimension values and Fields, then what it
+// contributes to and what contributes to it. Nothing on it is a card; at 900px
+// and below the rail stacks under the column.
 func goalPage(current *domain.Account, v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -3068,7 +3068,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 // goalPageHeader is the Goal page's header strip: the breadcrumb — Goals, the
 // first Goal it contributes to when it has one, then its own title — with, at
 // its right, Check in and No change for whoever may check in, and the More
-// menu (DESIGN.md § Direction: Page header). The title's own <h1> heads the
+// menu (DESIGN.md § Goal page header strip). The title's own <h1> heads the
 // document column, so the strip has none.
 func goalPageHeader(v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -3632,10 +3632,10 @@ func goalRail(current *domain.Account, v goalView) templ.Component {
 }
 
 // goalProperties are the rail's label and value rows, in the order DESIGN.md §
-// Direction gives them: Health as its pill, Lifecycle, Kind, then the people —
-// the Owner, with the forms about them opened in place under them, the
-// Delegates and the Contributors — then the cadence, the delivery date with
-// its slips struck, and Top-level for a Goal that is one.
+// Properties rail gives them: Health as its pill, Lifecycle, Kind, then the
+// people — the Owner, with the forms about them opened in place under them, the
+// Delegates and the Contributors — then the cadence, the delivery date with its
+// slips struck, and Top-level for a Goal that is one.
 func goalProperties(v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

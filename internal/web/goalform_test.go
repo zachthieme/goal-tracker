@@ -2283,8 +2283,9 @@ func headingTexts(page, tag string) []string {
 }
 
 // assertFlatFormFrame fails unless page sits in the flat frame as a form
-// (DESIGN.md § Direction: Forms): its page header's <h1> reads title under
-// parent, when there is one, and no element on it carries the card class.
+// (DESIGN.md § Page header, § Components: Sections): its page header's <h1>
+// reads title under parent, when there is one, and no element on it carries the
+// card class.
 func assertFlatFormFrame(t *testing.T, page, parent, title string) {
 	t.Helper()
 	strip := between(t, page, `<div class="page-header">`, `<main class="page">`)
@@ -2439,13 +2440,12 @@ func TestNewGoalPageDatedTileHoldsTheDeliveryDate(t *testing.T) {
 	}
 }
 
-// The Check-in cadence is one segmented control in § Direction's look: a
-// --color-chip-bg track holding the segments, the chosen one on the canvas
-// with a control edge and in bold, so the choice reads by more than a fill.
-// The native radio hides, and the focus ring shows on the focused segment,
-// only with :has. At phone widths
-// the Kind tiles stack and the control becomes a 2×2 grid the width of the
-// form.
+// The Check-in cadence is one segmented control in § Segmented controls' tinted
+// look: a --color-chip-bg track holding the segments, the chosen one on the
+// canvas with a control edge and in bold, so the choice reads by more than a
+// fill. The native radio hides, and the focus ring shows on the focused
+// segment, only with :has. At phone widths the Kind tiles stack and the control
+// becomes a 2×2 grid the width of the form.
 func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
 	t.Parallel()
 

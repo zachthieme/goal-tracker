@@ -44,7 +44,7 @@ type homeView struct {
 	Due []domain.PersonalGoal
 	// NoChangeRefused marks, by Goal ID, the due Goals with a Check-in on which
 	// a No change would be refused, so their row offers only Check in. Only
-	// Home's own handler fills it, not the top bar's count.
+	// Home's own handler fills it, not the sidebar's count.
 	NoChangeRefused map[int64]bool
 	// Asks are the open Asks for help addressed to the person, Red first,
 	// then Yellow, then by Goal title (CONTEXT.md: Ask for help).

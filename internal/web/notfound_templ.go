@@ -13,7 +13,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // notFoundPage says, inside the normal page, that there is nothing at the
 // address asked for, with a link back to Home, or to sign in when no one is
 // signed in (notFound). It is plain text centred on the canvas, with no card
-// (DESIGN.md § Direction).
+// (DESIGN.md § Not found page).
 func notFoundPage(current *domain.Account) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

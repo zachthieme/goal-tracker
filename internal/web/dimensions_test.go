@@ -153,9 +153,9 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	}
 }
 
-// The Dimensions page sits in the flat frame (DESIGN.md § Direction): its title
-// in the page header, and its Dimensions, the new Dimension form and a refused
-// switch to one value as plain sections, none of them a card.
+// The Dimensions page sits in the flat frame (DESIGN.md § Dimensions page): its
+// title in the page header, and its Dimensions, the new Dimension form and a
+// refused switch to one value as plain sections, none of them a card.
 func TestDimensionsPageIsInTheFlatFrame(t *testing.T) {
 	t.Parallel()
 

@@ -57,8 +57,8 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 	}
 }
 
-// The Fields page sits in the flat frame (DESIGN.md § Direction): its title in
-// the page header, and its Fields and the new Field form as plain sections,
+// The Fields page sits in the flat frame (DESIGN.md § Fields page): its title
+// in the page header, and its Fields and the new Field form as plain sections,
 // none of them a card.
 func TestFieldsPageIsInTheFlatFrame(t *testing.T) {
 	t.Parallel()
