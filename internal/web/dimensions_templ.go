@@ -20,16 +20,18 @@ const confirmRetireDimension = "Retire this Dimension? Goals that have its value
 // confirmMerge is what Merge asks before merging a Dimension value away.
 const confirmMerge = "Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone."
 
-// dimensionsPage lists every Dimension as a card of its values, whether a Goal
+// dimensionsPage lists every Dimension as a row of its values, whether a Goal
 // takes one of them or several, whether its list is Fixed or Extendable, and
 // whether it is required, and — for an Admin — the controls to define a Dimension and, behind each
-// card's Edit toggle, to switch between one value and several and between a
+// row's Edit toggle, to switch between one value and several and between a
 // Fixed and an Extendable list, and to add, rename, and retire values
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
 // Retired Dimension stays listed, flagged retired, without the Required mark
 // or its control (CONTEXT.md: Retired). refusal, when
 // set, names the Goals that kept a Dimension from switching to one value;
-// toast, when set, offers Undo for the value just retired.
+// toast, when set, offers Undo for the value just retired. It sits in the flat
+// frame: its title in the page header, and the rest plain sections (DESIGN.md
+// § Direction).
 func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -68,7 +70,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Dimensions</h1><p class=\"muted\">The Dimensions Goals are tagged with, and their values.</p></div></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <p class=\"muted\">The Dimensions Goals are tagged with, and their values.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -91,14 +93,14 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				return templ_7745c5c3_Err
 			}
 			if admin {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"card dm-card dm-new\" method=\"post\" action=\"/dimensions\"><h3>Define a Dimension</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><fieldset class=\"dm-selection\"><legend>Each Goal takes</legend> <label><input type=\"radio\" name=\"selection\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"dm-new dm-form\" method=\"post\" action=\"/dimensions\"><h2>Define a Dimension</h2><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><fieldset class=\"dm-selection\"><legend>Each Goal takes</legend> <label><input type=\"radio\" name=\"selection\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.SelectionOne)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 54, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 51, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 				if templ_7745c5c3_Err != nil {
@@ -111,7 +113,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.SelectionSeveral)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 55, Col: 81}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 52, Col: 81}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 				if templ_7745c5c3_Err != nil {
@@ -124,7 +126,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ListFixed)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 59, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 56, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -137,7 +139,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ListExtendable)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 60, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 57, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -153,20 +155,20 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				return templ_7745c5c3_Err
 			}
 			if len(dims) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<li data-testid=\"no-dimensions\" class=\"card dm-card muted\">No Dimensions yet.</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<li data-testid=\"no-dimensions\" class=\"dm-item muted\">No Dimensions yet.</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, d := range dims {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<li data-testid=\"dimension\" class=\"card dm-card\"><h3>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<li data-testid=\"dimension\" class=\"dm-item\"><h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 75, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 72, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -189,7 +191,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(selectionLabel(d))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 81, Col: 81}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 78, Col: 81}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -202,7 +204,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 82, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 79, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -215,7 +217,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(listLabel(d))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 83, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 80, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -229,7 +231,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 					var templ_7745c5c3_Var11 string
 					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 85, Col: 15}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 82, Col: 15}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 					if templ_7745c5c3_Err != nil {
@@ -265,7 +267,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *d
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Dimensions", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Dimensions", current, pageHeader(pageHead{Title: "Dimensions"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -296,27 +298,27 @@ func selectionRefusal(refusal *domain.SeveralValuesError) templ.Component {
 			templ_7745c5c3_Var12 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<section data-testid=\"selection-refusal\" class=\"card dm-card\" role=\"alert\"><h3>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<section data-testid=\"selection-refusal\" class=\"dm-refusal\" role=\"alert\"><h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(refusal.Dimension)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 103, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 100, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, " still takes several values</h3><p>These Goals carry more than one ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, " still takes several values</h2><p>These Goals carry more than one ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(refusal.Dimension)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 104, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 101, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -334,7 +336,7 @@ func selectionRefusal(refusal *domain.SeveralValuesError) templ.Component {
 			var templ_7745c5c3_Var15 templ.SafeURL
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 107, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 104, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -347,7 +349,7 @@ func selectionRefusal(refusal *domain.SeveralValuesError) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 107, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 104, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -406,7 +408,7 @@ func dimensionValues(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(v.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 120, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 117, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -424,7 +426,7 @@ func dimensionValues(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(v.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 123, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 120, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {
@@ -448,7 +450,7 @@ func dimensionValues(d domain.Dimension) templ.Component {
 	})
 }
 
-// dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
+// dimensionEdit is an Admin's Edit toggle on a Dimension's row: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
 // list, a switch between required and optional (CONTEXT.md: Incomplete) —
 // unless it is Retired, where required means nothing — then
@@ -488,7 +490,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 		var templ_7745c5c3_Var21 templ.SafeURL
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/selection", d.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 145, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 142, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -506,7 +508,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.SelectionOne)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 147, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 144, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -524,7 +526,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.SelectionSeveral)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 150, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 147, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 			if templ_7745c5c3_Err != nil {
@@ -542,7 +544,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 		var templ_7745c5c3_Var24 templ.SafeURL
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/list", d.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 154, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 151, Col: 101}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
@@ -560,7 +562,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ListFixed)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 156, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 153, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
@@ -578,7 +580,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ListExtendable)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 159, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 156, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
@@ -601,7 +603,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var27 templ.SafeURL
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/required", d.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 164, Col: 106}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 161, Col: 106}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -652,7 +654,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(v.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 180, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 177, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -665,7 +667,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var29 templ.SafeURL
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimension-values/%d/restore", v.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 181, Col: 99}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 178, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -683,7 +685,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var30 templ.SafeURL
 				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 185, Col: 113}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 182, Col: 113}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 				if templ_7745c5c3_Err != nil {
@@ -696,7 +698,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var31 string
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 186, Col: 54}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 183, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 				if templ_7745c5c3_Err != nil {
@@ -709,7 +711,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue("Rename " + v.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 186, Col: 89}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 183, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 				if templ_7745c5c3_Err != nil {
@@ -722,7 +724,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var33 templ.SafeURL
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 189, Col: 98}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 186, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -751,7 +753,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 		var templ_7745c5c3_Var34 templ.SafeURL
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/sort", d.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 199, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 196, Col: 101}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -764,7 +766,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 		var templ_7745c5c3_Var35 templ.SafeURL
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 202, Col: 103}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 199, Col: 103}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
@@ -782,7 +784,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var36 templ.SafeURL
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/restore", d.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 207, Col: 105}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 204, Col: 105}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -804,7 +806,7 @@ func dimensionEdit(d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var37 templ.SafeURL
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimensions/%d/retire", d.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 211, Col: 104}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 208, Col: 104}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -862,7 +864,7 @@ func moveValue(v domain.DimensionValue, direction, arrow string) templ.Component
 		var templ_7745c5c3_Var40 templ.SafeURL
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimension-values/%d/move", v.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 221, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 218, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 		if templ_7745c5c3_Err != nil {
@@ -875,7 +877,7 @@ func moveValue(v domain.DimensionValue, direction, arrow string) templ.Component
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(direction)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 222, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 219, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -888,7 +890,7 @@ func moveValue(v domain.DimensionValue, direction, arrow string) templ.Component
 		var templ_7745c5c3_Var42 string
 		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue("Move " + v.Value + " " + direction)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 223, Col: 87}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 220, Col: 87}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 		if templ_7745c5c3_Err != nil {
@@ -901,7 +903,7 @@ func moveValue(v domain.DimensionValue, direction, arrow string) templ.Component
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(arrow)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 223, Col: 97}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 220, Col: 97}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 		if templ_7745c5c3_Err != nil {
@@ -949,7 +951,7 @@ func mergeValue(d domain.Dimension, v domain.DimensionValue) templ.Component {
 		var templ_7745c5c3_Var45 templ.SafeURL
 		templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/dimension-values/%d/merge", v.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 230, Col: 107}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 227, Col: 107}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 		if templ_7745c5c3_Err != nil {
@@ -971,7 +973,7 @@ func mergeValue(d domain.Dimension, v domain.DimensionValue) templ.Component {
 		var templ_7745c5c3_Var47 string
 		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue("Merge " + v.Value + " into")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 231, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 228, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 		if templ_7745c5c3_Err != nil {
@@ -990,7 +992,7 @@ func mergeValue(d domain.Dimension, v domain.DimensionValue) templ.Component {
 				var templ_7745c5c3_Var48 string
 				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", other.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 234, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 231, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
 				if templ_7745c5c3_Err != nil {
@@ -1003,7 +1005,7 @@ func mergeValue(d domain.Dimension, v domain.DimensionValue) templ.Component {
 				var templ_7745c5c3_Var49 string
 				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(other.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 234, Col: 64}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/dimensions.templ`, Line: 231, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 				if templ_7745c5c3_Err != nil {
@@ -1045,7 +1047,7 @@ func dimensionsStyles() templ.Component {
 			templ_7745c5c3_Var50 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<style>\n\t\t.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}\n\t\t.dm-list{display:flex;flex-direction:column;gap:16px}\n\t\t.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}\n\t\t.dm-new{margin-top:12px}\n\t\t.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n\t\t.dm-values li{display:inline-flex;align-items:center;gap:8px}\n\t\tdel.tag{border-style:dashed}\n\t\t.dm-edit summary{align-self:flex-start;width:max-content}\n\t\t.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}\n\t\t.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}\n\t\t.dm-rows form{margin:0}\n\t\t.dm-row{display:flex;gap:8px;align-items:center;margin:0}\n\t\t.dm-selection{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}\n\t\t.dm-selection legend{padding:0;margin-bottom:4px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<style>\n\t\t.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}\n\t\t.dm-list{display:flex;flex-direction:column;border-top:1px solid var(--color-border)}\n\t\t.dm-item{padding:16px 0;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}\n\t\t.dm-new{margin-top:12px}\n\t\t.dm-form{max-width:560px;display:flex;flex-direction:column;gap:16px}\n\t\t.dm-refusal{display:flex;flex-direction:column;gap:8px;padding-left:16px;border-left:2px solid var(--color-danger-ink)}\n\t\t.dm-refusal ul{margin:0;padding-left:20px}\n\t\t.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n\t\t.dm-values li{display:inline-flex;align-items:center;gap:8px}\n\t\tdel.tag{border-style:dashed}\n\t\t.dm-edit summary{align-self:flex-start;width:max-content}\n\t\t.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}\n\t\t.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}\n\t\t.dm-rows form{margin:0}\n\t\t.dm-row{display:flex;gap:8px;align-items:center;margin:0}\n\t\t.dm-selection{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}\n\t\t.dm-selection legend{padding:0;margin-bottom:4px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

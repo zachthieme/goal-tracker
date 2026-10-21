@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -232,6 +233,37 @@ func TestFiftyFailuresFromOneIPHoldItsSignInsFor15Minutes(t *testing.T) {
 
 	h.Clock.Advance(15 * time.Minute)
 	passwordSignInCookie(t, ts.URL, "sam@example.com", samsPassword)
+}
+
+// Password sign-in, the set-password form and a used link's notice are each a
+// single centred column on the canvas, the app's mark above it, and none of
+// them a card (DESIGN.md § Direction).
+func TestSignedOutPasswordPagesAreAColumnUnderTheMark(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newPasswordServer(t, h)
+	token := passwordLinkToken(t, h, "sam@example.com")
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+	for _, tc := range []struct{ name, path, tag, testID string }{
+		{"password sign-in", "/signin", "form", "signin-card"},
+		{"set-password form", "/set-password?token=" + url.QueryEscape(token), "form", "set-password-card"},
+		{"set-password notice", "/set-password?token=not-a-token", "div", "set-password-card"},
+	} {
+		resp, err := http.Get(ts.URL + tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := readBody(t, resp)
+		pageElement(t, page, tc.tag, tc.testID)
+		if above := between(t, page, "<main", `data-testid="`+tc.testID+`"`); !strings.Contains(above, `class="brand-mark si-mark"`) {
+			t.Errorf("the %s page has no app's mark above its column:\n%s", tc.name, above)
+		}
+		if c := card.FindString(page); c != "" {
+			t.Errorf("the %s page has a card, %s:\n%s", tc.name, c, page)
+		}
+	}
 }
 
 // A set-password link that's unknown, expired, or used opens a page saying so,

@@ -9,29 +9,26 @@ import (
 // confirmRetireField is what Retire asks before retiring a Field.
 const confirmRetireField = "Retire this Field? Goals that have a value in it keep showing it, but it is no longer offered for entry."
 
-// fieldsPage lists every Field as a card saying what it holds, and — for an
+// fieldsPage lists every Field as a row saying what it holds, and — for an
 // Admin — the form to define one: a name, one of the four types, and a number
 // Field's optional unit (CONTEXT.md: Admin defines Fields; Field). A Field's
 // type can't change once it is defined. An Admin marks a Field required, or
-// optional again, from its card (CONTEXT.md: Incomplete), and retires it
+// optional again, from its row (CONTEXT.md: Incomplete), and retires it
 // there; a Retired Field stays listed, flagged retired, with a button to
 // restore it and neither the Required mark nor its control, which come back
-// with the setting it had once it is restored (CONTEXT.md: Retired).
+// with the setting it had once it is restored (CONTEXT.md: Retired). It sits in
+// the flat frame: its title in the page header, and the rest plain sections
+// (DESIGN.md § Direction).
 templ fieldsPage(current *domain.Account, fields []domain.Field) {
 	{{ admin := current != nil && current.IsAdmin }}
-	@layout("Fields", current) {
+	@framedLayout("Fields", current, pageHeader(pageHead{Title: "Fields"})) {
 		@fieldsStyles()
-		<header class="page-head">
-			<div>
-				<h1>Fields</h1>
-				<p class="muted">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p>
-			</div>
-		</header>
+		<p class="muted">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p>
 		if admin {
 			<details>
 				<summary class="btn primary">Define a Field</summary>
-				<form data-testid="create-field" class="card fd-card fd-new" method="post" action="/fields">
-					<h3>Define a Field</h3>
+				<form data-testid="create-field" class="fd-new" method="post" action="/fields">
+					<h2>Define a Field</h2>
 					<label class="field">
 						<span>Name</span>
 						<input type="text" name="name" required/>
@@ -55,10 +52,10 @@ templ fieldsPage(current *domain.Account, fields []domain.Field) {
 		}
 		<ul data-testid="fields" class="fd-list">
 			if len(fields) == 0 {
-				<li data-testid="no-fields" class="card fd-card muted">No Fields yet.</li>
+				<li data-testid="no-fields" class="fd-item muted">No Fields yet.</li>
 			}
 			for _, f := range fields {
-				<li data-testid="field" class="card fd-card">
+				<li data-testid="field" class="fd-item">
 					<h3>
 						{ f.Name }
 						if f.Retired {
@@ -103,10 +100,10 @@ templ fieldsPage(current *domain.Account, fields []domain.Field) {
 // fieldsStyles are the Fields page's own rules on top of app.css.
 templ fieldsStyles() {
 	<style>
-		.fd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:16px}
-		.fd-card{padding:20px;display:flex;flex-direction:column;gap:12px}
-		.fd-new{margin-top:12px}
-		.fd-card form{margin:0}
+		.fd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--color-border)}
+		.fd-item{padding:16px 0;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
+		.fd-new{margin-top:12px;max-width:560px;display:flex;flex-direction:column;gap:16px}
+		.fd-item form{margin:0}
 		.fd-types{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}
 		.fd-types legend{padding:0;margin-bottom:4px}
 	</style>

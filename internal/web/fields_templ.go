@@ -17,14 +17,16 @@ import (
 // confirmRetireField is what Retire asks before retiring a Field.
 const confirmRetireField = "Retire this Field? Goals that have a value in it keep showing it, but it is no longer offered for entry."
 
-// fieldsPage lists every Field as a card saying what it holds, and — for an
+// fieldsPage lists every Field as a row saying what it holds, and — for an
 // Admin — the form to define one: a name, one of the four types, and a number
 // Field's optional unit (CONTEXT.md: Admin defines Fields; Field). A Field's
 // type can't change once it is defined. An Admin marks a Field required, or
-// optional again, from its card (CONTEXT.md: Incomplete), and retires it
+// optional again, from its row (CONTEXT.md: Incomplete), and retires it
 // there; a Retired Field stays listed, flagged retired, with a button to
 // restore it and neither the Required mark nor its control, which come back
-// with the setting it had once it is restored (CONTEXT.md: Retired).
+// with the setting it had once it is restored (CONTEXT.md: Retired). It sits in
+// the flat frame: its title in the page header, and the rest plain sections
+// (DESIGN.md § Direction).
 func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -63,19 +65,19 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Fields</h1><p class=\"muted\">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p></div></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <p class=\"muted\">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if admin {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details><summary class=\"btn primary\">Define a Field</summary><form data-testid=\"create-field\" class=\"card fd-card fd-new\" method=\"post\" action=\"/fields\"><h3>Define a Field</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label><fieldset class=\"fd-types\"><legend>It holds <span class=\"hint\">— this can't change later</span></legend> <label><input type=\"radio\" name=\"type\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details><summary class=\"btn primary\">Define a Field</summary><form data-testid=\"create-field\" class=\"fd-new\" method=\"post\" action=\"/fields\"><h2>Define a Field</h2><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label><fieldset class=\"fd-types\"><legend>It holds <span class=\"hint\">— this can't change later</span></legend> <label><input type=\"radio\" name=\"type\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.FieldNumber)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 41, Col: 71}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 38, Col: 71}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 				if templ_7745c5c3_Err != nil {
@@ -88,7 +90,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.FieldShortText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 42, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 39, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 				if templ_7745c5c3_Err != nil {
@@ -101,7 +103,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.FieldLongText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 43, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 40, Col: 73}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -114,7 +116,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.FieldDate)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 44, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 41, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -130,20 +132,20 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 				return templ_7745c5c3_Err
 			}
 			if len(fields) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<li data-testid=\"no-fields\" class=\"card fd-card muted\">No Fields yet.</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<li data-testid=\"no-fields\" class=\"fd-item muted\">No Fields yet.</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, f := range fields {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<li data-testid=\"field\" class=\"card fd-card\"><h3>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<li data-testid=\"field\" class=\"fd-item\"><h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 63, Col: 14}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 60, Col: 14}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -166,7 +168,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fieldTypeLabel(f))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 69, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 66, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -180,7 +182,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 71, Col: 15}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 68, Col: 15}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -204,7 +206,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 						var templ_7745c5c3_Var10 templ.SafeURL
 						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/fields/%d/required", f.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 77, Col: 91}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 74, Col: 91}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 						if templ_7745c5c3_Err != nil {
@@ -242,7 +244,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 						var templ_7745c5c3_Var11 templ.SafeURL
 						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/fields/%d/restore", f.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 88, Col: 90}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 85, Col: 90}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 						if templ_7745c5c3_Err != nil {
@@ -264,7 +266,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 						var templ_7745c5c3_Var12 templ.SafeURL
 						templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/fields/%d/retire", f.ID)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 92, Col: 89}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 89, Col: 89}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 						if templ_7745c5c3_Err != nil {
@@ -296,7 +298,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Fields", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Fields", current, pageHeader(pageHead{Title: "Fields"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -326,7 +328,7 @@ func fieldsStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.fd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:16px}\n\t\t.fd-card{padding:20px;display:flex;flex-direction:column;gap:12px}\n\t\t.fd-new{margin-top:12px}\n\t\t.fd-card form{margin:0}\n\t\t.fd-types{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}\n\t\t.fd-types legend{padding:0;margin-bottom:4px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.fd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--color-border)}\n\t\t.fd-item{padding:16px 0;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}\n\t\t.fd-new{margin-top:12px;max-width:560px;display:flex;flex-direction:column;gap:16px}\n\t\t.fd-item form{margin:0}\n\t\t.fd-types{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}\n\t\t.fd-types legend{padding:0;margin-bottom:4px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -383,7 +385,7 @@ func goalFields(v goalView) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 132, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 129, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -446,7 +448,7 @@ func goalFields(v goalView) templ.Component {
 					var templ_7745c5c3_Var18 templ.SafeURL
 					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/fields", v.Goal.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 150, Col: 90}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 147, Col: 90}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 					if templ_7745c5c3_Err != nil {
@@ -459,7 +461,7 @@ func goalFields(v goalView) templ.Component {
 					var templ_7745c5c3_Var19 string
 					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", f.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 151, Col: 73}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 148, Col: 73}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 					if templ_7745c5c3_Err != nil {
@@ -472,7 +474,7 @@ func goalFields(v goalView) templ.Component {
 					var templ_7745c5c3_Var20 string
 					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 153, Col: 20}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 150, Col: 20}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 					if templ_7745c5c3_Err != nil {
@@ -547,7 +549,7 @@ func fieldInput(f domain.Field, value string, focus bool) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 177, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 174, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -585,7 +587,7 @@ func fieldInput(f domain.Field, value string, focus bool) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 179, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 176, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -603,7 +605,7 @@ func fieldInput(f domain.Field, value string, focus bool) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 181, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 178, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 			if templ_7745c5c3_Err != nil {
@@ -631,7 +633,7 @@ func fieldInput(f domain.Field, value string, focus bool) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 183, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 180, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
@@ -689,7 +691,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 193, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 190, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -702,7 +704,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(f.Unit)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 193, Col: 83}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 190, Col: 83}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -720,7 +722,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 195, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 192, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -738,7 +740,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(dates.dateText(value))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 197, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 194, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -757,7 +759,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 				var templ_7745c5c3_Var31 templ.SafeURL
 				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(value))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 200, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 197, Col: 61}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
@@ -770,7 +772,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 200, Col: 97}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 197, Col: 97}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -788,7 +790,7 @@ func fieldValueView(f domain.Field, value string, dates displayDates) templ.Comp
 				var templ_7745c5c3_Var33 string
 				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 202, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/fields.templ`, Line: 199, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {

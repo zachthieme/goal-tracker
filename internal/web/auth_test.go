@@ -9,6 +9,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -77,10 +78,11 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 	}
 }
 
-// The sign-in page is a single narrow card: the "Sign in" heading, the
+// The sign-in page is a single centred column on the canvas, the app's mark
+// above it and no card (DESIGN.md § Direction): the "Sign in" heading, the
 // development sign-in note, and the email field with its button. The top bar
-// already shows the brand, so the card doesn't repeat it.
-func TestSignInPageIsACentredCard(t *testing.T) {
+// already shows the brand, so the column doesn't repeat its name.
+func TestSignInPageIsACentredColumn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -90,22 +92,25 @@ func TestSignInPageIsACentredCard(t *testing.T) {
 
 	at := strings.Index(page, `<form data-testid="signin-card"`)
 	if at < 0 {
-		t.Fatalf("the sign-in page has no card:\n%s", page)
+		t.Fatalf("the sign-in page has no sign-in form:\n%s", page)
 	}
 	card := page[at : at+strings.Index(page[at:], "</form>")]
-	if !strings.Contains(openTag(card), `class="card`) {
-		t.Errorf("the sign-in form isn't a card: %s", openTag(card))
+	if c := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`).FindString(page); c != "" {
+		t.Errorf("the sign-in page has a card, %s:\n%s", c, page)
+	}
+	if above := between(t, page, "<main", `<form data-testid="signin-card"`); !strings.Contains(above, `class="brand-mark si-mark"`) {
+		t.Errorf("the sign-in column has no app's mark above it:\n%s", above)
 	}
 	body := strings.TrimSpace(card[len(openTag(card))+1:])
 	if !strings.HasPrefix(body, "<h1>Sign in</h1>") {
-		t.Errorf("the sign-in card doesn't start with the Sign in heading:\n%s", card)
+		t.Errorf("the sign-in form doesn't start with the Sign in heading:\n%s", card)
 	}
 	if strings.Contains(card, "Goal Tracker") {
-		t.Errorf("the sign-in card repeats the brand:\n%s", card)
+		t.Errorf("the sign-in form repeats the brand:\n%s", card)
 	}
 	for _, want := range []string{"Development sign-in", `type="email" name="email"`, `<button type="submit" class="btn primary`} {
 		if !strings.Contains(card, want) {
-			t.Errorf("the sign-in card lacks %s:\n%s", want, card)
+			t.Errorf("the sign-in form lacks %s:\n%s", want, card)
 		}
 	}
 }

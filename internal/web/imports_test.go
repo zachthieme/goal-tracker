@@ -6,6 +6,7 @@ import (
 	"html"
 	"mime/multipart"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -144,9 +145,11 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 	return resp
 }
 
-// The import form is a card whose primary button is Dry run, beside Commit. The
-// report opens with its summary as an alert — red when rows have errors — then
-// a table of the rows with their errors.
+// The Import page sits in the flat frame (DESIGN.md § Direction), its title in
+// the page header and nothing on it a card. Its form is a plain section whose
+// primary button is Dry run, beside Commit. The report opens with its summary
+// as an alert — red when rows have errors — then a table of the rows with
+// their errors.
 func TestImportReportIsAnAlertThenATable(t *testing.T) {
 	t.Parallel()
 
@@ -158,15 +161,23 @@ Fine,owner@example.com,It matters.,Ongoing,
 	ts := newServer(t, h)
 	admin := signInClient(t, ts.URL, "admin@example.com")
 
-	form := pageElement(t, getBody(t, admin, ts.URL+"/imports"), "form", "import-form")
-	if !strings.Contains(openTag(form), `class="card`) {
-		t.Errorf("the import form isn't a card: %s", openTag(form))
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+	page := getBody(t, admin, ts.URL+"/imports")
+	if header := between(t, page, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>Import Goals") {
+		t.Errorf("the Import page's header doesn't hold its title:\n%s", header)
 	}
+	if c := card.FindString(page); c != "" {
+		t.Errorf("the Import page has a card, %s:\n%s", c, page)
+	}
+	form := pageElement(t, page, "form", "import-form")
 	if !strings.Contains(form, `class="btn primary" name="action" value="dry-run"`) || !strings.Contains(form, `value="commit">Commit</button>`) {
 		t.Errorf("the form lacks a primary Dry run and a Commit:\n%s", form)
 	}
 
 	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", badCSV, "dry-run")
+	if c := card.FindString(body); c != "" {
+		t.Errorf("the Import page's report has a card, %s:\n%s", c, body)
+	}
 	report := between(t, body, `data-testid="import-report"`, "")
 	summary := pageElement(t, report, "p", "import-summary")
 	if !strings.Contains(openTag(summary), `class="alert r"`) {

@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -97,9 +98,9 @@ func TestNonAdminCannotManageDimensions(t *testing.T) {
 	}
 }
 
-// Each Dimension is a card with its values as tags, a retired one struck
+// Each Dimension is a row with its values as tags, a retired one struck
 // through. An Admin's rename, retire, and add-value controls sit behind the
-// card's Edit toggle, and Retire retires a value at once, with no confirmation
+// row's Edit toggle, and Retire retires a value at once, with no confirmation
 // (#56); a non-Admin gets no toggle.
 func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	t.Parallel()
@@ -114,9 +115,6 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/dimensions")
 	card := between(t, page, `<li data-testid="dimension"`, "")
-	if !strings.Contains(openTag(card), `class="card`) {
-		t.Errorf("the Dimension isn't a card: %s", openTag(card))
-	}
 	if !strings.Contains(card, `class="tag">Growth<`) {
 		t.Errorf("the value Growth isn't a tag:\n%s", card)
 	}
@@ -152,6 +150,41 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/dimensions")
 	if _, main, _ := strings.Cut(page, "<main"); strings.Contains(main, "<details") {
 		t.Errorf("a non-Admin gets the Edit toggle:\n%s", page)
+	}
+}
+
+// The Dimensions page sits in the flat frame (DESIGN.md § Direction): its title
+// in the page header, and its Dimensions, the new Dimension form and a refused
+// switch to one value as plain sections, none of them a card.
+func TestDimensionsPageIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+	empty := getBody(t, client, ts.URL+"/dimensions")
+	if header := between(t, empty, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>Dimensions") {
+		t.Errorf("the Dimensions page's header doesn't hold its title:\n%s", header)
+	}
+	if c := card.FindString(empty); c != "" {
+		t.Errorf("the Dimensions page with none yet has a card, %s:\n%s", c, empty)
+	}
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, teams.Values[0])
+	h.AssignGoalValue(goal, teams.Values[1])
+	if page := getBody(t, client, ts.URL+"/dimensions"); card.MatchString(page) {
+		t.Errorf("the Dimensions page has a card, %s:\n%s", card.FindString(page), page)
+	}
+	refused := readBody(t, postForm(t, client, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, teams.ID), url.Values{"selection": {"one"}}))
+	pageElement(t, refused, "section", "selection-refusal")
+	if c := card.FindString(refused); c != "" {
+		t.Errorf("the refused switch's page has a card, %s:\n%s", c, refused)
 	}
 }
 

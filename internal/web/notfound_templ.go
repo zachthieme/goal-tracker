@@ -12,7 +12,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // notFoundPage says, inside the normal page, that there is nothing at the
 // address asked for, with a link back to Home, or to sign in when no one is
-// signed in (notFound).
+// signed in (notFound). It is plain text centred on the canvas, with no card
+// (DESIGN.md § Direction).
 func notFoundPage(current *domain.Account) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -46,7 +47,7 @@ func notFoundPage(current *domain.Account) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"message-page\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<style>\n\t\t\t.nf-message{align-self:center;margin:64px auto 0;text-align:center;gap:12px}\n\t\t</style> <div class=\"message-page nf-message\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -14,12 +14,14 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// adminPage gathers the Admin tools: a card per tool, then the directory sync
+// adminPage gathers the Admin tools: a row per tool, then the directory sync
 // when the app has one (nil, it shows nothing), then set-password links with
 // password sign-in (nil, it shows nothing), then the Admins, then the
 // Ownerless Goals waiting for an Admin to reassign them (CONTEXT.md:
 // Ownerless), then the Departed people an Admin can mark returned (CONTEXT.md:
-// Departed).
+// Departed). It sits in the flat frame: its title in the page header, and
+// every part a plain section of rows, its forms included (DESIGN.md §
+// Direction).
 func adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -57,7 +59,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Admin</h1><p class=\"muted\">The tools only an Admin uses.</p></div></header><nav class=\"ad-tools\" aria-label=\"Admin tools\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <p class=\"muted\">The tools only an Admin uses.</p><nav class=\"ad-tools\" aria-label=\"Admin tools\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -105,7 +107,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <section data-testid=\"admin-ownerless\" class=\"ad-section\"><div><h2>Ownerless Goals</h2><p class=\"muted\">Goals whose Owner has left the company, waiting for an Admin to reassign them on the Goal's page.</p></div><div class=\"card\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <section data-testid=\"admin-ownerless\" class=\"ad-section\"><div><h2>Ownerless Goals</h2><p class=\"muted\">Goals whose Owner has left the company, waiting for an Admin to reassign them on the Goal's page.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -115,7 +117,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<table><thead><tr><th>Goal</th><th>Former Owner</th><th>Lifecycle</th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"table-scroll\"><table><thead><tr><th>Goal</th><th>Former Owner</th><th>Lifecycle</th></tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -127,7 +129,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					var templ_7745c5c3_Var3 templ.SafeURL
 					templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 53, Col: 68}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 50, Col: 68}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 					if templ_7745c5c3_Err != nil {
@@ -140,7 +142,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 53, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 50, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -161,7 +163,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(g.Lifecycle)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 57, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 54, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -172,12 +174,12 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</tbody></table>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</tbody></table></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></section><section data-testid=\"admin-departed\" class=\"ad-section\"><div><h2>Departed people</h2><p class=\"muted\">People who have left the company. Mark someone returned to let them sign in and act again.</p></div><div class=\"card\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</section><section data-testid=\"admin-departed\" class=\"ad-section\"><div><h2>Departed people</h2><p class=\"muted\">People who have left the company. Mark someone returned to let them sign in and act again.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -187,7 +189,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<table><thead><tr><th>Person</th><th><span class=\"sr-only\">Action</span></th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div class=\"table-scroll\"><table><thead><tr><th>Person</th><th><span class=\"sr-only\">Action</span></th></tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -215,7 +217,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 					var templ_7745c5c3_Var6 templ.SafeURL
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/accounts/%d/return", a.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 85, Col: 94}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 82, Col: 94}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {
@@ -235,18 +237,18 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</tbody></table>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</tbody></table></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Admin", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Admin", current, pageHeader(pageHead{Title: "Admin"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -286,7 +288,7 @@ func adminAdmins(viewerID int64, v adminsSectionView) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<section data-testid=\"admin-admins\" id=\"admin-admins\" class=\"ad-section\"><div><h2>Admins</h2><p class=\"muted\">Admins define Dimensions and Fields, reassign Ownerless Goals and use this page.</p></div><div class=\"card ad-links\"><table><thead><tr><th>Person</th><th><span class=\"sr-only\">Action</span></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<section data-testid=\"admin-admins\" id=\"admin-admins\" class=\"ad-section\"><div><h2>Admins</h2><p class=\"muted\">Admins define Dimensions and Fields, reassign Ownerless Goals and use this page.</p></div><div class=\"ad-links\"><table><thead><tr><th>Person</th><th><span class=\"sr-only\">Action</span></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -320,7 +322,7 @@ func adminAdmins(viewerID int64, v adminsSectionView) templ.Component {
 				var templ_7745c5c3_Var9 templ.SafeURL
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/admins/%d/remove", a.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 131, Col: 97}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 128, Col: 97}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -352,7 +354,7 @@ func adminAdmins(viewerID int64, v adminsSectionView) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 143, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 140, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
@@ -370,7 +372,7 @@ func adminAdmins(viewerID int64, v adminsSectionView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(v.Refusal)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 148, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 145, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -412,7 +414,7 @@ func adminDirectorySync(v directorySyncView) templ.Component {
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<section data-testid=\"admin-directory-sync\" class=\"ad-section\"><div><h2>Directory sync</h2><p class=\"muted\">People and their Managers come from the company's directory, synced at startup and then hourly.</p></div><div class=\"card ad-sync\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<section data-testid=\"admin-directory-sync\" class=\"ad-section\"><div><h2>Directory sync</h2><p class=\"muted\">People and their Managers come from the company's directory, synced at startup and then hourly.</p></div><div class=\"ad-sync\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -429,7 +431,7 @@ func adminDirectorySync(v directorySyncView) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(v.At)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 166, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 163, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -442,7 +444,7 @@ func adminDirectorySync(v directorySyncView) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(v.Err)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 166, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 163, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -460,7 +462,7 @@ func adminDirectorySync(v directorySyncView) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Last synced %s. Read %s.", v.At, directorySyncPeople(v.People)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 168, Col: 127}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 165, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -515,14 +517,14 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 			templ_7745c5c3_Var18 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<section data-testid=\"admin-password-links\" class=\"ad-section\"><div><h2>Set-password links</h2><p class=\"muted\">A person sets or resets their password through a link only an Admin can issue. Issuing one for an email with no account creates the account.</p></div><div class=\"card ad-links\"><form class=\"ad-link-form\" method=\"post\" action=\"/admin/password-links\"><label class=\"field\"><span>Email</span> <input type=\"email\" name=\"email\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<section data-testid=\"admin-password-links\" class=\"ad-section\"><div><h2>Set-password links</h2><p class=\"muted\">A person sets or resets their password through a link only an Admin can issue. Issuing one for an email with no account creates the account.</p></div><div class=\"ad-links\"><form class=\"ad-link-form\" method=\"post\" action=\"/admin/password-links\"><label class=\"field\"><span>Email</span> <input type=\"email\" name=\"email\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 189, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 186, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
@@ -540,7 +542,7 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(v.Refusal)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 194, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 191, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -559,7 +561,7 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(v.Email)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 198, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 195, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -572,7 +574,7 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(v.Expires)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 198, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 195, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -585,7 +587,7 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Link)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 199, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 196, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 			if templ_7745c5c3_Err != nil {
@@ -604,7 +606,7 @@ func adminPasswordLinks(v passwordLinksView) templ.Component {
 	})
 }
 
-// adminTool is a card linking to one Admin tool, saying what it's for.
+// adminTool is a row linking to one Admin tool, saying what it's for.
 func adminTool(testID, href, label, blurb string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -633,20 +635,20 @@ func adminTool(testID, href, label, blurb string) templ.Component {
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(testID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 209, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 206, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" class=\"card ad-tool\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" class=\"ad-tool\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 templ.SafeURL
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 209, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 206, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -659,7 +661,7 @@ func adminTool(testID, href, label, blurb string) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 210, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 207, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -672,7 +674,7 @@ func adminTool(testID, href, label, blurb string) templ.Component {
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(blurb)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 211, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/admin.templ`, Line: 208, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
@@ -708,7 +710,7 @@ func adminStyles() templ.Component {
 			templ_7745c5c3_Var29 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<style>\n\t\t.ad-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}\n\t\t.ad-tool{padding:24px;display:flex;flex-direction:column;gap:8px}\n\t\t.ad-section{display:flex;flex-direction:column;gap:12px}\n\t\t.ad-action{text-align:right}\n\t\t.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px}\n\t\t.ad-links{display:flex;flex-direction:column;gap:12px}\n\t\t.ad-link-form{display:flex;align-items:flex-end;gap:12px}\n\t\t.ad-link-form .field{flex:1}\n\t\t.ad-link{display:flex;flex-direction:column;gap:8px}\n\t\t.ad-link p{margin:0}\n\t\t.ad-link-url{width:100%;font-variant-numeric:tabular-nums}\n\t\t.ad-error{color:var(--color-danger-ink);margin:0}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}\n\t\t@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}\n\t\t@media (max-width:600px){.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<style>\n\t\t.ad-tools{display:flex;flex-direction:column;border-top:1px solid var(--color-border)}\n\t\t.ad-tool{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:16px;min-height:44px;padding:12px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;color:var(--color-ink-2)}\n\t\t.ad-tool:hover{text-decoration:none;color:var(--color-ink-2)}\n\t\t.ad-tool h3{font-weight:500}\n\t\t.ad-tool:hover h3{color:var(--color-primary-strong);text-decoration:underline}\n\t\t.ad-section{display:flex;flex-direction:column;gap:12px}\n\t\t.ad-section table{border-top:1px solid var(--color-border)}\n\t\t.ad-section th{background:none;padding:8px 12px}\n\t\t.ad-section td{padding:12px}\n\t\t.ad-section th:first-child,.ad-section td:first-child{padding-left:0}\n\t\t.ad-section th:last-child,.ad-section td:last-child{padding-right:0}\n\t\t.ad-section tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.ad-action{text-align:right}\n\t\t.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}\n\t\t.ad-links{display:flex;flex-direction:column;gap:16px}\n\t\t.ad-link-form{display:flex;align-items:flex-end;gap:12px;max-width:560px}\n\t\t.ad-link-form .field{flex:1}\n\t\t.ad-link{display:flex;flex-direction:column;gap:8px}\n\t\t.ad-link p{margin:0}\n\t\t.ad-link-url{width:100%;font-variant-numeric:tabular-nums}\n\t\t.ad-error{color:var(--color-danger-ink);margin:0}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}\n\t\t@media (max-width:600px){.ad-tool{grid-template-columns:1fr;gap:4px}.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

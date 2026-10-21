@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,10 +24,10 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
 
-	card := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-fields")
-	for _, want := range []string{`href="/fields"`, `class="card`, "Fields"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("Admin page's Fields card lacks %s: %s", want, card)
+	row := pageElement(t, getBody(t, boss, ts.URL+"/admin"), "a", "admin-fields")
+	for _, want := range []string{`href="/fields"`, "Fields"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("Admin page's Fields link lacks %s: %s", want, row)
 		}
 	}
 
@@ -53,6 +54,35 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 		if !strings.Contains(list, want) {
 			t.Errorf("Fields list lacks %q:\n%s", want, list)
 		}
+	}
+}
+
+// The Fields page sits in the flat frame (DESIGN.md § Direction): its title in
+// the page header, and its Fields and the new Field form as plain sections,
+// none of them a card.
+func TestFieldsPageIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+	empty := getBody(t, client, ts.URL+"/fields")
+	if header := between(t, empty, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>Fields") {
+		t.Errorf("the Fields page's header doesn't hold its title:\n%s", header)
+	}
+	pageElement(t, empty, "li", "no-fields")
+	if c := card.FindString(empty); c != "" {
+		t.Errorf("the Fields page with none yet has a card, %s:\n%s", c, empty)
+	}
+
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	page := getBody(t, client, ts.URL+"/fields")
+	pageElement(t, page, "li", "field")
+	if c := card.FindString(page); c != "" {
+		t.Errorf("the Fields page has a card, %s:\n%s", c, page)
 	}
 }
 
