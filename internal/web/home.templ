@@ -208,24 +208,25 @@ templ homeOrgCounts(c domain.SignalCounts) {
 	}
 }
 
-// dueRow is one Goal to check in on: its title, then a status line of its
-// Health, muted when Check-in overdue, how long since its last Check-in and how
-// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal
-// it is. When noChange says one would be recorded, the one-click No change sits
-// beside the Check in link to the Goal's Check-in page.
+// dueRow is one Goal to check in on: its Health pill, muted when Check-in
+// overdue, then its title, then a meta line of how long since its last
+// Check-in and how often one is due, its Check-in overdue mark and, for a
+// Delegate, whose Goal it is. When noChange says one would be recorded, the
+// one-click No change sits beside the Check in link to the Goal's Check-in
+// page at the row's right.
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
+			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
+				<span class="dot"></span>
+				if g.Health == "" {
+					No Health yet
+				} else {
+					{ g.Health }
+				}
+			</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-			<p data-testid="home-due-status" class="hm-status muted small">
-				<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
-					<span class="dot"></span>
-					if g.Health == "" {
-						No Health yet
-					} else {
-						{ g.Health }
-					}
-				</span>
+			<p data-testid="home-due-status" class="hm-meta">
 				<span class="hm-phrase">{ homeDueAge(g) }</span>
 				{ "·" }
 				<span class="hm-phrase">{ homeDueCadence(g.Freshness) }</span>
@@ -259,7 +260,7 @@ templ askRow(a domain.AskForHelp) {
 		<div class="hm-what">
 			<span class={ "badge", healthClass(a.Health) }><span class="dot"></span>{ a.Health }</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d#comments", a.Goal.ID)) }>{ a.Goal.Title }</a>
-			<p class="muted small">
+			<p class="hm-meta">
 				{ "from " }
 				@person(a.Goal.Owner)
 			</p>
@@ -279,7 +280,7 @@ templ actionItemRow(l domain.ActionItemListing) {
 			if l.Overdue {
 				<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>
 			}
-			<span class="muted">{ homeActionItemPlace(l) }</span>
+			<span class="hm-meta">{ homeActionItemPlace(l) }</span>
 		</div>
 		<div class="hm-actions">
 			@closeActionItemForm(l.Item, "/home")
@@ -379,44 +380,46 @@ templ healthBar(v homeView) {
 	</div>
 }
 
-// homeStyles are Home's own rules on top of app.css: the page head stacks the
-// title over the Your goals line, the Needs you card and each plain section
-// stack their title over a list of ruled rows, each title an h2 kept at the
-// card title's size, a plain section's first row ruled off from its title too,
-// and a row puts what it's about on the left and its actions on the right,
-// wrapping the actions underneath when the column is narrow.
+// homeStyles are Home's own rules on top of app.css (DESIGN.md § Direction).
+// The page title stacks Your week over the date and the Your goals line. Each
+// section stacks its h2, 13px at 600 with its count muted, over hairline-ruled
+// rows at least 44px tall. A row puts what it's about on the left, led by a
+// Health pill or a chip, the title, then a muted meta line, and its 30px
+// actions on the right, wrapping underneath when the column is narrow.
 templ homeStyles() {
 	<style>
-		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
-		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted)}
+		.hm-head{display:flex;flex-direction:column;gap:6px;min-width:0}
+		.hm-date{color:var(--color-ink-muted);font-size:13px}
+		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
-		.hm-section{display:flex;flex-direction:column;gap:12px;min-width:0}
-		.hm-section>h2{display:flex;align-items:baseline;gap:8px;margin:0;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}
+		.hm-section{display:flex;flex-direction:column;gap:8px;min-width:0}
+		.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}
 		.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
-		.hm-section>.hm-list>li:first-child{border-top:1px solid var(--color-border);padding-top:8px}
+		.hm-group{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+		.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
-		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 0;border-top:1px solid var(--color-border)}
-		.hm-list>li:first-child{border-top:none;padding-top:0}
-		.hm-list>li:last-child{padding-bottom:0}
-		.hm-compact>li{gap:4px 8px;padding:8px 0}
+		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:6px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
+		.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
-		.hm-what>p{flex-basis:100%}
-		.hm-status .badge,.hm-status .tag{margin-right:4px}
+		.hm-what>a,.hm-compact a{font-size:14px;font-weight:500}
+		.hm-what>p:not(.hm-meta){flex-basis:100%}
+		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 6px;color:var(--color-ink-muted);font-size:13px}
 		.hm-phrase{white-space:nowrap}
-		.hm-what>a,.hm-compact a{font-weight:500}
+		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:6px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
+		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
+		.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
+		.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}
+		.hm-btn{height:30px;padding:0 12px;font-size:13px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}
 		.hm-bar>span{flex:1 1 0;min-width:2px}
-		.hm-bar>.g{background:var(--health-g-ink)}
-		.hm-bar>.y{background:var(--health-y-ink)}
-		.hm-bar>.r{background:var(--health-r-ink)}
+		.hm-bar>.g{background:var(--health-g-mark)}
+		.hm-bar>.y{background:var(--health-y-mark)}
+		.hm-bar>.r{background:var(--health-r-mark)}
 		.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}
-		.hm-group{display:flex;flex-direction:column;gap:8px}
-		.hm-group-head{margin:0;font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
-		.badge.as-of{padding:0 8px;background:var(--color-surface);color:var(--color-ink-muted);border:1px solid var(--color-border)}
 	</style>
 }

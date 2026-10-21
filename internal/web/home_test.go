@@ -216,10 +216,11 @@ func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 	}
 }
 
-// A row in Check-ins due leads with the Goal's title, then one status line: its
-// Health, how long since its last Check-in, its cadence and, when it applies,
-// its Check-in overdue mark. The age is said once (#377).
-func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
+// A row in Check-ins due leads with the Goal's Health pill, then its title,
+// then one muted meta line: how long since its last Check-in, its cadence and,
+// when it applies, its Check-in overdue mark. The age is said once, and No
+// change and Check in sit at the row's right as 30px buttons (#377, #391).
+func TestHomeDueRowLeadsWithItsHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -230,15 +231,32 @@ func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
 	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	h.Clock.Advance(16 * day)
 
-	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), checkinOverdue)
-	if title, health := strings.Index(row, navTo(checkinOverdue.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
-		t.Errorf("row doesn't lead with the Goal's title:\n%s", row)
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	row := homeRow(t, pageElement(t, page, "ul", "home-due"), checkinOverdue)
+	health, title, status, actions := strings.Index(row, `data-testid="home-due-health"`), strings.Index(row, navTo(checkinOverdue.ID)), strings.Index(row, `data-testid="home-due-status"`), strings.Index(row, `class="hm-actions"`)
+	if health < 0 || title < health || status < title || actions < status {
+		t.Errorf("row doesn't read Health, title, meta line, then actions:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Check-in overdue" {
-		t.Errorf("row's status line = %q, want its Health, age, cadence and Check-in overdue mark:\n%s", got, row)
+	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Yellow\s*</span>`).MatchString(row) {
+		t.Errorf("row's Health pill doesn't read Yellow with its shape:\n%s", row)
+	}
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 16 days ago · every 14 days Check-in overdue" {
+		t.Errorf("row's meta line = %q, want its age, cadence and Check-in overdue mark:\n%s", got, row)
+	}
+	if !hasClass(tagAround(t, row, `data-testid="home-due-status"`), "hm-meta") {
+		t.Errorf("row's meta line isn't Home's muted meta:\n%s", row)
 	}
 	if n := strings.Count(row, "16 days ago"); n != 1 {
 		t.Errorf("row says the Goal's age %d times, want once:\n%s", n, row)
+	}
+	if decls := cssRule(t, page, ".hm-meta"); !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf("a Home row's meta line isn't muted: %s", decls)
+	}
+	if decls := cssRule(t, page, ".hm-actions .btn"); !strings.Contains(decls, "height:30px") {
+		t.Errorf("a Home row's actions aren't 30px buttons: %s", decls)
+	}
+	if decls := cssRule(t, page, ".hm-list>li"); !strings.Contains(decls, "min-height:44px") || !strings.Contains(decls, "border-top:1px solid var(--color-border)") {
+		t.Errorf("a Home row isn't a 44px row under a hairline: %s", decls)
 	}
 }
 
@@ -265,7 +283,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, dueSoon)
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 8 days ago · every 14 days" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 8 days ago · every 14 days" {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
 	if strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
@@ -305,7 +323,7 @@ func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
 		t.Errorf("Check-in overdue Goal's Health badge does not read just Green:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Check-in overdue" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Check-in overdue Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}
 	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
@@ -337,7 +355,7 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
 		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Check-in overdue" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "no check-in since activation 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
 	}
 }
