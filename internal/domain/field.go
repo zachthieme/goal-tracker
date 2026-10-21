@@ -240,6 +240,23 @@ func (s *Service) GoalFields(ctx context.Context, goalID int64) ([]FieldValue, e
 	return out, nil
 }
 
+// fieldValuesByGoal returns each of goalIDs' values in Fields, as GoalFields
+// reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
+func (s *Service) fieldValuesByGoal(ctx context.Context, goalIDs []int64) (map[int64][]FieldValue, error) {
+	out := map[int64][]FieldValue{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListGoalFieldValuesForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list goal field values: %w", err)
+	}
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], FieldValue{Field: fieldFromRow(r.Field), Value: r.Value})
+	}
+	return out, nil
+}
+
 // Check refuses a value that doesn't parse as the Field's type, naming the
 // Field, so the spreadsheet import reports it the way the Goal page does.
 func (f Field) Check(value string) error {

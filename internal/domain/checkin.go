@@ -696,8 +696,11 @@ func (s *Service) LatestCheckin(ctx context.Context, goalID int64) (Checkin, boo
 // LatestCheckinsByGoal returns the most recent Check-in of each of goalIDs, as
 // LatestCheckin reads one, keyed by Goal ID; a Goal with none has no entry. It
 // runs one query however many Goals there are, so a page listing Goals can
-// afford it.
+// afford it, and none for no Goals.
 func (s *Service) LatestCheckinsByGoal(ctx context.Context, goalIDs []int64) (map[int64]Checkin, error) {
+	if len(goalIDs) == 0 {
+		return map[int64]Checkin{}, nil
+	}
 	rows, err := s.queries.ListLatestCheckinsForGoals(ctx, goalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("list latest checkins: %w", err)
@@ -711,8 +714,11 @@ func (s *Service) LatestCheckinsByGoal(ctx context.Context, goalIDs []int64) (ma
 
 // DateSlipsByGoal returns the Date Slips of each of goalIDs, earliest first, as
 // ListDateSlips reads one Goal's, keyed by Goal ID; a Goal with none has no
-// entry. It runs one query however many Goals there are.
+// entry. It runs one query however many Goals there are, and none for no Goals.
 func (s *Service) DateSlipsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]DateSlip, error) {
+	if len(goalIDs) == 0 {
+		return map[int64][]DateSlip{}, nil
+	}
 	rows, err := s.queries.ListDateSlipsForGoals(ctx, goalIDs)
 	if err != nil {
 		return nil, fmt.Errorf("list date slips: %w", err)

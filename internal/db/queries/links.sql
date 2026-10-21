@@ -25,6 +25,16 @@ JOIN accounts ON accounts.id = goals.owner_id
 WHERE links.child_id = @child_id AND links.status = 'accepted'
 ORDER BY goals.created_at DESC, goals.id DESC;
 
+-- name: ListParentGoalsForGoals :many
+-- The Goals each given Goal contributes to (its accepted parents), each
+-- Goal's as ListParentGoals reads them.
+SELECT links.child_id, sqlc.embed(goals), sqlc.embed(accounts)
+FROM links
+JOIN goals ON goals.id = links.parent_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.child_id IN (sqlc.slice(child_ids)) AND links.status = 'accepted'
+ORDER BY links.child_id, goals.created_at DESC, goals.id DESC;
+
 -- name: ListPendingParentLinks :many
 -- The Goals a Goal has asked to contribute to and is waiting on (its Pending
 -- parents), each with the id of its request.
@@ -44,6 +54,16 @@ JOIN goals ON goals.id = links.child_id
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE links.parent_id = @parent_id AND links.status = 'accepted'
 ORDER BY goals.created_at DESC, goals.id DESC;
+
+-- name: ListChildGoalsForGoals :many
+-- The Goals that contribute to each given Goal (its accepted children), each
+-- Goal's as ListChildGoals reads them.
+SELECT links.parent_id, sqlc.embed(goals), sqlc.embed(accounts)
+FROM links
+JOIN goals ON goals.id = links.child_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.parent_id IN (sqlc.slice(parent_ids)) AND links.status = 'accepted'
+ORDER BY links.parent_id, goals.created_at DESC, goals.id DESC;
 
 -- name: ListPendingLinksForOwner :many
 -- Pending requests awaiting a decision from the Owner of the parent Goal, with

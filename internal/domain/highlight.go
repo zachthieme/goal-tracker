@@ -106,6 +106,23 @@ func (s *Service) ListHighlightsByGoal(ctx context.Context, goalID int64) ([]Hig
 	return out, nil
 }
 
+// highlightsByGoal returns each of goalIDs' Highlights, as ListHighlightsByGoal
+// reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
+func (s *Service) highlightsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Highlight, error) {
+	out := map[int64][]Highlight{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListHighlightsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list highlights by goal: %w", err)
+	}
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], highlightFromRow(r.Highlight, r.Account))
+	}
+	return out, nil
+}
+
 // ListHighlightsByGoalInRange returns a Goal's Highlights whose Check-in falls
 // within [from, to] inclusive, newest Check-in first and each Check-in's in
 // the order entered. Report curation queries Highlights by Goal and by time

@@ -172,6 +172,23 @@ func (s *Service) ListMetrics(ctx context.Context, goalID int64) ([]Metric, erro
 	return out, nil
 }
 
+// metricsByGoal returns each of goalIDs' Metrics, as ListMetrics reads one
+// Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
+func (s *Service) metricsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Metric, error) {
+	out := map[int64][]Metric{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListMetricsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list metrics: %w", err)
+	}
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], metricFromRow(r))
+	}
+	return out, nil
+}
+
 func validateMetric(name, unit, direction string, targetDate time.Time) error {
 	if name == "" {
 		return fmt.Errorf("%w: a Metric needs a name", ErrValidation)
@@ -216,6 +233,24 @@ func (s *Service) ListMetricReadings(ctx context.Context, metricID int64) ([]Met
 	out := make([]MetricReading, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, metricReadingFromRow(r))
+	}
+	return out, nil
+}
+
+// metricReadingsByMetric returns the readings of every Metric on goalIDs, as
+// ListMetricReadings reads one Metric's, keyed by Metric ID, in one query. No
+// Goals reads nothing.
+func (s *Service) metricReadingsByMetric(ctx context.Context, goalIDs []int64) (map[int64][]MetricReading, error) {
+	out := map[int64][]MetricReading{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListMetricReadingsForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list metric readings: %w", err)
+	}
+	for _, r := range rows {
+		out[r.MetricReading.MetricID] = append(out[r.MetricReading.MetricID], metricReadingFromRow(r.MetricReading))
 	}
 	return out, nil
 }

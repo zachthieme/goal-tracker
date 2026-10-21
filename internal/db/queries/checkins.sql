@@ -58,6 +58,15 @@ RETURNING *;
 -- A Metric's readings over time, earliest first, for its trend against target.
 SELECT * FROM metric_readings WHERE metric_id = ? ORDER BY created_at, id;
 
+-- name: ListMetricReadingsForGoals :many
+-- The readings of every Metric on the given Goals, each Metric's earliest
+-- first, as ListMetricReadings reads one Metric's.
+SELECT sqlc.embed(metric_readings)
+FROM metric_readings
+JOIN metrics ON metrics.id = metric_readings.metric_id
+WHERE metrics.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY metric_readings.metric_id, metric_readings.created_at, metric_readings.id;
+
 -- name: CreateHighlight :one
 -- Record one of a Check-in's Highlights (CONTEXT.md: Highlight). A Check-in may
 -- carry several; they are inserted in the order entered.
@@ -75,6 +84,15 @@ JOIN checkins ON checkins.id = highlights.checkin_id
 JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = @goal_id
 ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id;
+
+-- name: ListHighlightsForGoals :many
+-- The given Goals' Highlights, each Goal's as ListHighlightsByGoal reads them.
+SELECT checkins.goal_id, sqlc.embed(highlights), sqlc.embed(owner)
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY checkins.goal_id, checkins.created_at DESC, checkins.id DESC, highlights.id;
 
 -- name: ListHighlightsByGoalInRange :many
 -- A Goal's Highlights whose Check-in falls within [from, to] inclusive, newest

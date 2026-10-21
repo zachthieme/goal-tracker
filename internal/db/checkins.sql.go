@@ -638,6 +638,71 @@ func (q *Queries) ListHighlightsByGoalInRange(ctx context.Context, arg ListHighl
 	return items, nil
 }
 
+const listHighlightsForGoals = `-- name: ListHighlightsForGoals :many
+SELECT checkins.goal_id, highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone, owner.oidc_subject
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY checkins.goal_id, checkins.created_at DESC, checkins.id DESC, highlights.id
+`
+
+type ListHighlightsForGoalsRow struct {
+	GoalID    int64
+	Highlight Highlight
+	Account   Account
+}
+
+// The given Goals' Highlights, each Goal's as ListHighlightsByGoal reads them.
+func (q *Queries) ListHighlightsForGoals(ctx context.Context, goalIds []int64) ([]ListHighlightsForGoalsRow, error) {
+	query := listHighlightsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListHighlightsForGoalsRow
+	for rows.Next() {
+		var i ListHighlightsForGoalsRow
+		if err := rows.Scan(
+			&i.GoalID,
+			&i.Highlight.ID,
+			&i.Highlight.CheckinID,
+			&i.Highlight.Kind,
+			&i.Highlight.Note,
+			&i.Highlight.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLatestCheckinsForGoals = `-- name: ListLatestCheckinsForGoals :many
 SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, checkins.asks_for_help, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, author.oidc_subject, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone, owner.oidc_subject
 FROM checkins
@@ -748,6 +813,59 @@ func (q *Queries) ListMetricReadings(ctx context.Context, metricID int64) ([]Met
 			&i.MetricID,
 			&i.Value,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMetricReadingsForGoals = `-- name: ListMetricReadingsForGoals :many
+SELECT metric_readings.id, metric_readings.checkin_id, metric_readings.metric_id, metric_readings.value, metric_readings.created_at
+FROM metric_readings
+JOIN metrics ON metrics.id = metric_readings.metric_id
+WHERE metrics.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY metric_readings.metric_id, metric_readings.created_at, metric_readings.id
+`
+
+type ListMetricReadingsForGoalsRow struct {
+	MetricReading MetricReading
+}
+
+// The readings of every Metric on the given Goals, each Metric's earliest
+// first, as ListMetricReadings reads one Metric's.
+func (q *Queries) ListMetricReadingsForGoals(ctx context.Context, goalIds []int64) ([]ListMetricReadingsForGoalsRow, error) {
+	query := listMetricReadingsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMetricReadingsForGoalsRow
+	for rows.Next() {
+		var i ListMetricReadingsForGoalsRow
+		if err := rows.Scan(
+			&i.MetricReading.ID,
+			&i.MetricReading.CheckinID,
+			&i.MetricReading.MetricID,
+			&i.MetricReading.Value,
+			&i.MetricReading.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

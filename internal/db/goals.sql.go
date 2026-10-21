@@ -770,6 +770,54 @@ func (q *Queries) ListMetrics(ctx context.Context, goalID int64) ([]Metric, erro
 	return items, nil
 }
 
+const listMetricsForGoals = `-- name: ListMetricsForGoals :many
+SELECT id, goal_id, name, unit, direction, baseline, target, target_date, created_at FROM metrics WHERE goal_id IN (/*SLICE:goal_ids*/?) ORDER BY goal_id, target_date, id
+`
+
+// The given Goals' Metrics, each Goal's as ListMetrics reads them.
+func (q *Queries) ListMetricsForGoals(ctx context.Context, goalIds []int64) ([]Metric, error) {
+	query := listMetricsForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Metric
+	for rows.Next() {
+		var i Metric
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.Unit,
+			&i.Direction,
+			&i.Baseline,
+			&i.Target,
+			&i.TargetDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMilestones = `-- name: ListMilestones :many
 SELECT id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active FROM milestones WHERE goal_id = ? ORDER BY target_date, id
 `

@@ -79,6 +79,10 @@ RETURNING *;
 -- name: ListMetrics :many
 SELECT * FROM metrics WHERE goal_id = ? ORDER BY target_date, id;
 
+-- name: ListMetricsForGoals :many
+-- The given Goals' Metrics, each Goal's as ListMetrics reads them.
+SELECT * FROM metrics WHERE goal_id IN (sqlc.slice(goal_ids)) ORDER BY goal_id, target_date, id;
+
 -- name: AddContributor :one
 INSERT INTO contributors (goal_id, account_id, created_at)
 VALUES (?, ?, ?)
