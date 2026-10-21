@@ -192,9 +192,9 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	}
 
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	meta := pageElement(t, page, "p", "goal-meta")
+	meta := between(t, page, `data-testid="goal-meta"`, `data-testid="goal-dimensions"`)
 	if delivery := pageElement(t, meta, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
-		t.Errorf("metadata line does not show the delivery date struck through; element:\n%s", delivery)
+		t.Errorf("the rail does not show the delivery date struck through; element:\n%s", delivery)
 	}
 	if slips := between(t, historyBlock(t, page), `data-testid="entry-slips"`, "</ul>"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
 		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason:\n%s", slips)

@@ -91,7 +91,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"goal-draft-highlights\" id=\"draft-highlights\" class=\"gp-block ruled\" data-highlight-editor data-kind-optional data-hl-noun=\"Draft Highlight\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"goal-draft-highlights\" id=\"draft-highlights\" class=\"gp-block gp-section\" data-highlight-editor data-kind-optional data-hl-noun=\"Draft Highlight\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -160,7 +160,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 				return templ_7745c5c3_Err
 			}
 			if len(v.DraftHighlights) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<ul class=\"gp-list\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<ul class=\"gp-list gp-rows\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

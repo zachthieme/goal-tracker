@@ -350,7 +350,7 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 
 	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
 	defined := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
-	if listed := elementTexts(defined, "li", "goal-dimension"); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
+	if listed := elementTexts(defined, "div", "goal-dimension"); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
 		t.Fatalf("Dimensions section doesn't list Quarter:\n%s", defined)
 	}
 	if !strings.Contains(defined, `href="/dimensions"`) {
@@ -1681,21 +1681,25 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	}
 }
 
-// The Goal page opens on its title, then its Why it matters as a lead paragraph, then
-// one metadata line a reader takes in at a glance: the Health badge, then plain
-// Lifecycle, Kind, Owner, the delivery date with its slips struck (wrapping
-// between dates, never mid-date: #180), the cadence and Top-level. Dimension values stay in the sidebar, out of the head. Check
-// in and No change sit top right for whoever may check in.
-func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
+// The Goal page's document column opens on its title, then its Why it matters
+// as a lead paragraph. Its properties sit in the rail as label and value rows,
+// in DESIGN.md § Direction's order: Health as its pill, Lifecycle, Kind, Owner,
+// Delegates, the cadence, the delivery date with its slips struck (wrapping
+// between dates, never mid-date: #180), Top-level as the level, then the
+// Dimension values. The header strip holds the breadcrumb, with Check in and
+// No change at its right for whoever may check in.
+func TestGoalPageRailHoldsTheGoalsProperties(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
 	growth := h.CreateDimension(ada, "Pillar", "Growth").Values[0]
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AssignGoalValue(goal, growth)
 	h.MarkTopLevel(ada, goal)
+	h.AddDelegate(sam, kim, goal.ID)
 	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
 		GoalID:             goal.ID,
 		AuthorID:           sam.ID,
@@ -1714,60 +1718,95 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	head := pageElement(t, page, "header", "goal-head")
 	title := strings.Index(head, `data-testid="goal-title"`)
 	whyItMatters := strings.Index(head, `data-testid="goal-why-it-matters"`)
-	metaAt := strings.Index(head, `data-testid="goal-meta"`)
-	if title < 0 || whyItMatters < title || metaAt < whyItMatters {
-		t.Errorf("head should read title, Why it matters, metadata line in that order; at %d, %d, %d", title, whyItMatters, metaAt)
+	if title < 0 || whyItMatters < title {
+		t.Errorf("the column should open on the title, then Why it matters; at %d, %d", title, whyItMatters)
 	}
 	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
-		t.Errorf("header title: %s", title)
+		t.Errorf("title: %s", title)
 	}
 	if lead := pageElement(t, head, "p", "goal-why-it-matters"); !strings.Contains(lead, "Outages cost trust.") {
-		t.Errorf("header Why it matters: %s", lead)
+		t.Errorf("Why it matters: %s", lead)
 	}
-	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
-	if !strings.HasPrefix(meta, `<p data-testid="goal-meta" class="gp-meta"><span class="badge y"><span class="dot"></span>Yellow</span>`) {
-		t.Errorf("metadata line should lead with the Health badge: %s", meta)
+	if rule := cssRule(t, page, ".gp-head h1"); !strings.Contains(rule, "font-size:28px") {
+		t.Errorf("the title is not 28px: %s", rule)
 	}
+	if rule := cssRule(t, page, ".gp-lead"); !strings.Contains(rule, "font-size:16px") {
+		t.Errorf("Why it matters is not a 16px lead: %s", rule)
+	}
+
+	rail := between(t, page, `data-testid="goal-sidebar"`, "</aside>")
+	if strings.Contains(head, "Growth") || !strings.Contains(rail, "Growth") {
+		t.Errorf("the Dimension value isn't in the rail, out of the column's head")
+	}
+	labels := regexp.MustCompile(`<dt>([^<]*)</dt>`).FindAllStringSubmatch(rail, -1)
+	var got []string
+	for _, l := range labels {
+		got = append(got, l[1])
+	}
+	if want := []string{"Health", "Lifecycle", "Kind", "Owner", "Cadence", "Delivers", "Level", "Pillar"}; !slices.Equal(got, want) {
+		t.Errorf("the rail's property rows read %q, want %q", got, want)
+	}
+	props := strings.Join(strings.Fields(rail), " ")
 	for _, want := range []string{
-		`<span data-testid="goal-lifecycle">Active</span>`,
+		`<dt>Health</dt><dd><span class="badge y"><span class="dot"></span>Yellow</span></dd>`,
+		`<dt>Lifecycle</dt><dd><span data-testid="goal-lifecycle">Active</span></dd>`,
 		`<span data-testid="goal-kind"><button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span>`,
-		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
-		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span>`,
-		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
-		`data-testid="goal-top-level"`,
+		`<dt>Owner</dt><dd><strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
+		`<dt>Cadence</dt><dd><span data-testid="goal-cadence">every 7 days</span></dd>`,
+		`<dt>Delivers</dt><dd><span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span></dd>`,
+		`<dt>Level</dt><dd><button type="button" class="disclose help" data-testid="goal-top-level"`,
+		`<dt>Pillar</dt><dd><span class="tag" data-testid="goal-dimension-value">Growth</span>`,
 	} {
-		if !strings.Contains(meta, want) {
-			t.Errorf("metadata line lacks %s: %s", want, meta)
+		if !strings.Contains(props, want) {
+			t.Errorf("the rail lacks %s:\n%s", want, props)
 		}
+	}
+	owner, delegates, cadence := strings.Index(rail, `data-testid="goal-owner"`), strings.Index(rail, `data-testid="goal-delegates"`), strings.Index(rail, `data-testid="goal-cadence"`)
+	if owner < 0 || delegates < owner || cadence < delegates {
+		t.Errorf("the rail should read Owner, Delegates, cadence in that order; at %d, %d, %d", owner, delegates, cadence)
+	}
+	if !strings.Contains(pageElement(t, rail, "ul", "delegate-list"), shownAs("kim@example.com", "kim")) {
+		t.Errorf("the rail's Delegates row lacks kim")
 	}
 	if rule := cssRule(t, page, ".gp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
 		t.Errorf("the delivery date can break mid-date: .gp-dates>*{%s}", rule)
 	}
-	if strings.Count(meta, `class="badge`) != 1 {
-		t.Errorf("only Health is a badge on the metadata line; the rest is plain text: %s", meta)
+	if rule := cssRule(t, page, ".gp-rail"); !strings.Contains(rule, "border-left:1px solid var(--color-border)") {
+		t.Errorf("the rail has no 1px left edge: %s", rule)
 	}
-	if strings.Contains(head, "Growth") {
-		t.Errorf("the head shows a Dimension value; those stay in the sidebar: %s", head)
+	if rule := cssRule(t, page, ".gp-body"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr) 300px") {
+		t.Errorf("the rail is not 300px beside the column: %s", rule)
 	}
-	if !strings.Contains(pageElement(t, page, "section", "goal-dimensions"), "Growth") {
-		t.Errorf("the sidebar lost the Goal's Dimension value")
+	if rule := cssRule(t, page, ".gp-doc"); !strings.Contains(rule, "max-width:860px") {
+		t.Errorf("the document column is not up to 860px: %s", rule)
 	}
-	actions := between(t, head, `data-testid="goal-actions"`, `data-testid="goal-more"`)
-	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary"`) {
-		t.Errorf("header has no primary Check in link: %s", actions)
+	if phone := strings.Join(mediaBlocks(page, "@media (max-width:900px)"), "\n"); !strings.Contains(phone, ".gp-body{grid-template-columns:minmax(0,1fr)}") {
+		t.Errorf("at 900px and below the rail doesn't stack under the column: %s", phone)
+	}
+
+	strip := pageElement(t, page, "div", "goal-page-header")
+	if !strings.Contains(strip, `data-testid="goal-breadcrumb"`) {
+		t.Errorf("the header strip has no breadcrumb: %s", strip)
+	}
+	actions := between(t, page, `data-testid="goal-actions"`, `data-testid="goal-more"`)
+	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary sm"`) {
+		t.Errorf("header strip has no primary Check in link: %s", actions)
 	}
 	if !strings.Contains(actions, `data-testid="no-change-checkin"`) {
-		t.Errorf("header has no No change button: %s", actions)
+		t.Errorf("header strip has no No change button: %s", actions)
+	}
+	if strings.Index(page, `data-testid="goal-actions"`) > strings.Index(page, `data-testid="goal-main"`) {
+		t.Errorf("Check in is not in the header strip above the column")
 	}
 	if strings.Count(page, `data-testid="checkin-link"`) != 1 {
-		t.Errorf("the Check in link should appear once, in the header")
+		t.Errorf("the Check in link should appear once, in the header strip")
 	}
 }
 
 // A Goal that has no Health, no delivery date and isn't Top-level says only
-// what it has on its metadata line: no Health badge, no Delivers, and no
-// Top-level.
-func TestGoalPageMetaLineShowsOnlyWhatTheGoalHas(t *testing.T) {
+// what it has in its rail: Health reads No Health, and there is no Delivers
+// or Level row.
+func TestGoalPageRailShowsOnlyWhatTheGoalHas(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -1776,28 +1815,30 @@ func TestGoalPageMetaLineShowsOnlyWhatTheGoalHas(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	meta := strings.Join(strings.Fields(pageElement(t, pageElement(t, page, "header", "goal-head"), "p", "goal-meta")), " ")
+	meta := strings.Join(strings.Fields(between(t, page, `data-testid="goal-meta"`, `data-testid="goal-dimensions"`)), " ")
 	for _, want := range []string{
+		`<dt>Health</dt><dd><span class="muted">No Health</span></dd>`,
 		`<span data-testid="goal-lifecycle">Proposed</span>`,
 		`<span data-testid="goal-kind">Not yet Dated or Ongoing</span>`,
 		`data-testid="goal-owner"`,
 		`data-testid="goal-cadence"`,
 	} {
 		if !strings.Contains(meta, want) {
-			t.Errorf("metadata line lacks %s: %s", want, meta)
+			t.Errorf("the rail lacks %s: %s", want, meta)
 		}
 	}
-	for _, absent := range []string{`class="badge`, "Delivers", `data-testid="goal-delivery-date"`, "Top-level"} {
+	for _, absent := range []string{`class="badge`, "Delivers", `data-testid="goal-delivery-date"`, "Top-level", "<dt>Level</dt>"} {
 		if strings.Contains(meta, absent) {
-			t.Errorf("metadata line shows %s for a Proposed, undated, non-Top-level Goal: %s", absent, meta)
+			t.Errorf("the rail shows %s for a Proposed, undated, non-Top-level Goal: %s", absent, meta)
 		}
 	}
 }
 
-// At phone width the Goal page header wraps its actions onto their own line
-// rather than squeezing the title and meta into a column a few letters wide:
-// the summary claims a real width before the row's leftover space is shared,
-// so it no longer fits beside Check in, No change and More (#42).
+// At phone width the Goal page's header strip wraps its actions onto their own
+// line rather than squeezing the breadcrumb to nothing, and the breadcrumb's
+// titles end in an ellipsis rather than widening the page. Wrapped, the
+// actions stay flush right: the More menu opens leftward from its button's
+// right edge, and a left-aligned button would push it off-screen (#42).
 func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1807,12 +1848,15 @@ func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	pageElement(t, page, "header", "goal-head")
-	if rule := cssRule(t, page, ".gp-summary"); !strings.Contains(rule, "flex:1 1 320px") {
-		t.Errorf("header summary has no flex-basis, so it shrinks beside the actions instead of wrapping them; rule: %s", rule)
+	if !hasClass(openTag(pageElement(t, page, "div", "goal-page-header")), "gp-ph") {
+		t.Fatalf("the header strip lacks gp-ph")
 	}
-	// Wrapped, the actions stay flush right: the More menu opens leftward from
-	// its button's right edge, and a left-aligned button would push it off-screen.
+	if phone := strings.Join(mediaBlocks(page, "@media (max-width:600px)"), "\n"); !strings.Contains(phone, ".gp-ph{flex-wrap:wrap") {
+		t.Errorf("the header strip doesn't wrap its actions at phone width: %s", phone)
+	}
+	if rule := cssRule(t, page, ".gp-crumb"); !strings.Contains(rule, "text-overflow:ellipsis") {
+		t.Errorf("a long title in the breadcrumb doesn't end in an ellipsis: %s", rule)
+	}
 	if rule := cssRule(t, page, ".gp-actions"); !strings.Contains(rule, "margin-left:auto") {
 		t.Errorf("header actions fall to the left when wrapped, so the More menu opens off the left edge; rule: %s", rule)
 	}
@@ -2273,7 +2317,7 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	crumbs := strings.Join(strings.Fields(pageElement(t, page, "nav", "goal-breadcrumb")), " ")
-	for _, want := range []string{`<a href="/goals">Goals</a>`, navTo(parent.ID) + `>Grow revenue</a>`, `<span aria-current="page">Reduce outages</span>`} {
+	for _, want := range []string{`href="/goals">Goals</a>`, navTo(parent.ID) + `>Grow revenue</a>`, `aria-current="page">Reduce outages</span>`} {
 		if !strings.Contains(crumbs, want) {
 			t.Errorf("breadcrumb lacks %s: %s", want, crumbs)
 		}
@@ -2307,10 +2351,11 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 	}
 }
 
-// Each Metric is a card: its current value large, "baseline → target by date",
-// and a sparkline of its readings with a dashed target line, labelled for a
-// screen reader with the trend. The Owner edits it in a collapsed section.
-func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
+// Each Metric is a row: its name over "baseline → target by date", then a
+// sparkline of its readings with a dashed target line, labelled for a screen
+// reader with the trend, then its current value in tabular figures. The Owner
+// edits it in a collapsed section.
+func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -2344,8 +2389,14 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL)
 	card := between(t, page, `data-testid="goal-metric"`, `data-testid="goal-milestones"`)
-	if !strings.Contains(openTag(card), "card") {
-		t.Errorf("the Metric is not a card: %s", openTag(card))
+	if !hasClass(openTag(card), "gp-metric") {
+		t.Errorf("the Metric is not a row: %s", openTag(card))
+	}
+	if name, spark, current := strings.Index(card, "p95 latency</h3>"), strings.Index(card, "<svg"), strings.Index(card, `data-testid="metric-current"`); name < 0 || spark < name || current < spark {
+		t.Errorf("the Metric row should read name, sparkline, current value in that order; at %d, %d, %d", name, spark, current)
+	}
+	if rule := cssRule(t, getBody(t, http.DefaultClient, ts.URL+"/static/app.css"), "\n.num"); !strings.Contains(rule, "font-variant-numeric:tabular-nums") {
+		t.Errorf("the current value isn't in tabular figures: .num{%s}", rule)
 	}
 	if current := between(t, card, `data-testid="metric-current"`, "</"); !strings.Contains(current, ">800") {
 		t.Errorf("current value is not the latest reading: %s", current)
@@ -2416,9 +2467,9 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 	}
 }
 
-// The Latest status card leads the main column with the latest Check-in's
-// Health, status and Path to Green, and who wrote it and when.
-func TestGoalPageLatestStatusCard(t *testing.T) {
+// The Latest status section leads the document column with the latest
+// Check-in's Health, status and Path to Green, and who wrote it and when.
+func TestGoalPageLatestStatusSection(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -2429,10 +2480,10 @@ func TestGoalPageLatestStatusCard(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	status := pageElement(t, page, "section", "goal-checkins")
-	if !strings.Contains(openTag(status), "card") {
-		t.Errorf("Latest status is not a card: %s", openTag(status))
+	if hasClass(openTag(status), "card") {
+		t.Errorf("Latest status is a card: %s", openTag(status))
 	}
-	for _, want := range []string{"Latest status", "Wobbling.", "Add a second on-call.", "sam@example.com", "Jan 2"} {
+	for _, want := range []string{"<h2>Latest status</h2>", "Wobbling.", "Add a second on-call.", "sam@example.com", "Jan 2"} {
 		if !strings.Contains(status, want) {
 			t.Errorf("Latest status lacks %q:\n%s", want, status)
 		}
@@ -3188,61 +3239,54 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	}
 }
 
-// On the Goal page only what a person acts on or reads as a unit of status is
-// a raised card: the Check-in, each Metric and Milestones. Why it matters, Highlights,
-// History and the sidebar's blocks sit on the canvas (DESIGN.md § Components:
-// Card).
-func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
+// The Goal page is one flat surface in every Lifecycle: nothing on it is a
+// card, the Proposed Goal's Define this Goal and the More menu included, with
+// a Metric, a Milestone, a Highlight, a Draft Highlight and a parent on show
+// (DESIGN.md § Direction: the flat frame).
+func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
-		GoalID: goal.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
-		Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
-	}); err != nil {
-		t.Fatalf("AddMetric: %v", err)
+	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	withMetric := func(g domain.Goal) domain.Goal {
+		t.Helper()
+		if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
+			GoalID: g.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
+			Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
+		}); err != nil {
+			t.Fatalf("AddMetric: %v", err)
+		}
+		return g
 	}
-	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
-	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+	proposed := withMetric(h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything."))
+	active := withMetric(h.ActiveChildOf(sam, parent, "Reduce outages", "Outages cost trust."))
+	h.CheckinWithHighlights(sam, active.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+	h.LogDraftHighlight(sam, active.ID, domain.HighlightAccomplishment, "Paged nobody all week.")
+	onHold := h.OnHoldGoal(sam, "Rewrite the pager", "The pager is old.", "Waiting on budget.")
+	done := h.ActiveGoal(sam, "Ship the status page", "Customers ask.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	cancelled := h.ActiveGoal(sam, "Move to the new region", "Latency.")
+	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, tc := range []struct {
-		tag, testID string
-		card        bool
-	}{
-		{"section", "goal-checkins", true},
-		{"div", "goal-metric", true},
-		{"section", "goal-milestones", true},
-		{"article", "goal", false},
-		{"section", "goal-draft-highlights", false},
-		{"section", "goal-highlights", false},
-		{"div", "goal-history", false},
-		{"section", "goal-parents", false},
-		{"section", "goal-children", false},
-		{"div", "goal-people", false},
-		{"section", "goal-dimensions", false},
+	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+	for lifecycle, g := range map[string]domain.Goal{
+		domain.LifecycleProposed:  proposed,
+		domain.LifecycleActive:    active,
+		domain.LifecycleOnHold:    onHold,
+		domain.LifecycleDone:      done,
+		domain.LifecycleCancelled: cancelled,
 	} {
-		if got := inCard(t, page, tc.tag, tc.testID); got != tc.card {
-			t.Errorf("%s is a card = %v, want %v", tc.testID, got, tc.card)
+		page := getBody(t, client, goalPageURL(ts.URL, g))
+		if !strings.Contains(page, `data-testid="goal-lifecycle">`+lifecycle+"<") {
+			t.Errorf("%s: the page doesn't show its Lifecycle", lifecycle)
+		}
+		if c := card.FindString(page); c != "" {
+			t.Errorf("a %s Goal's page has a card, %s", lifecycle, c)
 		}
 	}
-}
-
-// inCard reports whether the element with testID is a card or is wrapped
-// directly in one.
-func inCard(t *testing.T, page, tag, testID string) bool {
-	t.Helper()
-	el := openTag(pageElement(t, page, tag, testID))
-	if hasClass(el, "card") {
-		return true
-	}
-	before, _, _ := strings.Cut(page, el)
-	before = strings.TrimRight(before, " \t\n")
-	wrapper := before[strings.LastIndex(before, "<"):]
-	return !strings.HasPrefix(wrapper, "</") && hasClass(wrapper, "card")
 }
 
 // hasClass reports whether an open tag's class attribute holds class.
@@ -3255,10 +3299,11 @@ func hasClass(openTag, class string) bool {
 	return slices.Contains(strings.Fields(list), class)
 }
 
-// Draft Highlights, Highlights and History are page sections on the canvas, so
-// they take an h2; the sidebar's canvas blocks keep the h3 size (DESIGN.md §
-// Components: Card).
-func TestGoalPageCanvasBlockHeadings(t *testing.T) {
+// The Goal page's document column reads Latest status, Metrics, Milestones,
+// Highlights, Draft Highlights, Comments and History, in that order, each a
+// section opening with its h2; the rail's groups open with an h3 (DESIGN.md §
+// Direction: Page shapes).
+func TestGoalPageSectionHeadings(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3268,28 +3313,54 @@ func TestGoalPageCanvasBlockHeadings(t *testing.T) {
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
+	main := between(t, page, `data-testid="goal-main"`, `data-testid="goal-sidebar"`)
+	at := 0
 	for _, tc := range []struct{ tag, testID, heading string }{
-		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
+		{"section", "goal-checkins", "<h2>Latest status</h2>"},
+		{"section", "goal-metrics", "<h2>Metrics</h2>"},
+		{"section", "goal-milestones", "<h2>Milestones</h2>"},
 		{"section", "goal-highlights", "<h2>Highlights</h2>"},
+		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
 		{"section", "goal-comments", "<h2>Comments</h2>"},
 		{"div", "goal-history", "<h2>History</h2>"},
-		{"section", "goal-parents", "<h3>Contributes to</h3>"},
-		{"section", "goal-children", "<h3>Contributed to by</h3>"},
-		{"div", "goal-people", "<h3>People</h3>"},
-		{"section", "goal-dimensions", "<h3>Dimensions</h3>"},
 	} {
-		block := pageElement(t, page, tc.tag, tc.testID)
-		// A group whose form opens in place heads it beside its heading.
-		first := strings.TrimPrefix(strings.TrimSpace(block[len(openTag(block))+1:]), `<div class="gp-group-head">`)
-		if !strings.HasPrefix(first, tc.heading) {
-			t.Errorf("%s does not open with %s: %.80s", tc.testID, tc.heading, first)
+		if i := strings.Index(main, `data-testid="`+tc.testID+`"`); i < at {
+			t.Errorf("%s is not in the document column after the section before it", tc.testID)
+		} else {
+			at = i
 		}
+		assertOpensWith(t, page, tc.tag, tc.testID, tc.heading)
+	}
+	sidebar := between(t, page, `data-testid="goal-sidebar"`, "</aside>")
+	for _, tc := range []struct{ testID, heading string }{
+		{"goal-dimensions", "<h3>Dimensions</h3>"},
+		{"goal-field-block", "<h3>Fields</h3>"},
+		{"goal-parents", "<h3>Contributes to</h3>"},
+		{"goal-children", "<h3>Contributed to by</h3>"},
+	} {
+		if !strings.Contains(sidebar, `data-testid="`+tc.testID+`"`) {
+			t.Errorf("%s is not in the rail", tc.testID)
+		}
+		assertOpensWith(t, page, "section", tc.testID, tc.heading)
 	}
 }
 
-// A --color-border rule separates the Goal page's canvas blocks from the block
-// above them.
-func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
+// assertOpensWith checks the tag element carrying testID opens with heading,
+// beside the link a group whose form opens in place puts by it.
+func assertOpensWith(t *testing.T, page, tag, testID, heading string) {
+	t.Helper()
+	block := pageElement(t, page, tag, testID)
+	first := strings.TrimPrefix(strings.TrimSpace(block[len(openTag(block))+1:]), `<div class="gp-group-head">`)
+	if !strings.HasPrefix(first, heading) {
+		t.Errorf("%s does not open with %s: %.80s", testID, heading, first)
+	}
+}
+
+// Each section of the Goal page's document column is a 13/600 heading over a
+// --color-border hairline, with its rows ruled by hairlines too, and none sits
+// in a box or under a rule of its own: the space between sections groups them
+// (DESIGN.md § Direction: Principles).
+func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3300,22 +3371,30 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
 	for _, tc := range []struct{ tag, testID string }{
-		{"section", "goal-draft-highlights"},
+		{"section", "goal-checkins"},
+		{"section", "goal-metrics"},
+		{"section", "goal-milestones"},
 		{"section", "goal-highlights"},
+		{"section", "goal-draft-highlights"},
 		{"section", "goal-comments"},
 		{"div", "goal-history"},
-		{"section", "goal-children"},
-		{"div", "goal-people"},
-		{"section", "goal-dimensions"},
 	} {
-		if block := openTag(pageElement(t, page, tc.tag, tc.testID)); !hasClass(block, "ruled") {
-			t.Errorf("%s does not sit under a rule: %s", tc.testID, block)
+		block := openTag(pageElement(t, page, tc.tag, tc.testID))
+		if !hasClass(block, "gp-section") || hasClass(block, "ruled") || hasClass(block, "card") {
+			t.Errorf("%s is not a plain section: %s", tc.testID, block)
 		}
 	}
-
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if rule := cssRule(t, css, "\n.ruled"); !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
-		t.Errorf(".ruled draws no --color-border rule: %s", rule)
+	if rule := cssRule(t, page, ".gp-section>h2,.gp-section>.gp-group-head"); !strings.Contains(rule, "border-bottom:1px solid var(--color-border)") {
+		t.Errorf("a section's heading sits over no hairline: %s", rule)
+	}
+	if rule := cssRule(t, page, ".gp-doc h2"); !strings.Contains(rule, "font-size:13px") || !strings.Contains(rule, "font-weight:600") {
+		t.Errorf("a section's heading is not 13/600: %s", rule)
+	}
+	if rule := cssRule(t, page, ".gp-rows>li"); !strings.Contains(rule, "border-bottom:1px solid var(--color-border)") {
+		t.Errorf("a section's rows are not ruled by hairlines: %s", rule)
+	}
+	if !hasClass(between(t, pageElement(t, page, "section", "goal-highlights"), "<ul", ">"), "gp-rows") {
+		t.Errorf("the Highlights are not rows")
 	}
 }
 
@@ -3350,7 +3429,7 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
 	}
-	for _, listed := range elementTexts(shown, "li", "goal-dimension") {
+	for _, listed := range elementTexts(shown, "div", "goal-dimension") {
 		if strings.Contains(listed, "Quarter") {
 			t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
 		}
@@ -5249,11 +5328,11 @@ func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testi
 	}
 }
 
-// actionMenu returns the Goal page header's action menu: from its <details> to
-// the end of the header, where it sits last.
+// actionMenu returns the Goal page header strip's action menu: from its
+// <details> to the end of the strip's actions, where it sits last.
 func actionMenu(t *testing.T, page string) string {
 	t.Helper()
-	return between(t, pageElement(t, page, "header", "goal-head"), `data-testid="goal-more"`, "")
+	return between(t, between(t, page, `data-testid="goal-actions"`, `data-testid="goal-main"`), `data-testid="goal-more"`, "")
 }
 
 // An Owner's header offers Check in as the primary action, No change as a quiet
@@ -5549,7 +5628,7 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 	}
 	const (
 		head       = `data-testid="goal-head"`
-		actions    = `data-testid="goal-actions"`
+		latest     = `data-testid="goal-checkins"`
 		parents    = `data-testid="goal-parents"`
 		children   = `data-testid="goal-children"`
 		people     = `data-testid="goal-people"`
@@ -5564,15 +5643,15 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		action      string
 		start, next string
 	}{
-		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, actions},
+		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, latest},
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
 		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
-		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, "</aside>"},
-		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, actions},
+		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, parents},
+		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, latest},
 		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
-		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, actions},
+		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, latest},
 		{"ada", "Mark owner departed…", goal, "depart", fmt.Sprintf("/accounts/%d/depart", sam.ID), people, dimensions},
 		{"ada", "Reassign", orphan, "reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID), people, dimensions},
 		{"ada", "Mark returned…", orphan, "return", fmt.Sprintf("/accounts/%d/return", kim.ID), people, dimensions},
@@ -5627,7 +5706,7 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 		{"goal-delegates", `<h3 class="label">Delegates</h3>`, "Manage", "delegates", "/delegates", `data-testid="goal-contributors"`},
 		{"goal-contributors", `<h3 class="label">Contributors</h3>`, "Manage", "contributors", "/contributors", `data-testid="goal-dimensions"`},
 		{"goal-dimensions", "<h3>Dimensions</h3>", "Edit", "dimensions", "/dimensions", `data-testid="goal-field-block"`},
-		{"goal-field-block", "<h3>Fields</h3>", "Edit", "fields", "/fields", "</aside>"},
+		{"goal-field-block", "<h3>Fields</h3>", "Edit", "fields", "/fields", `data-testid="goal-parents"`},
 	} {
 		head := between(t, plain, `data-testid="`+tc.group+`"`, "</div>")
 		if !strings.Contains(head, tc.heading) {
