@@ -26,6 +26,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] `GOAL_TRACKER_CHROME` names the Chromium that renders PDF downloads; unset, the app looks on `PATH` for `chromium`, `chromium-browser`, `google-chrome` or `google-chrome-stable`. Startup logs which it uses or that PDF downloads fall back to the print page, and stops when `GOAL_TRACKER_CHROME` isn't there or can't run. At most two PDFs render at once, each within 30 seconds (#388).
 - [user] A Report has **Report Delegates**. Its creator or an Admin adds them by email in the new Delegates section of the Report's draft page, and removes them there; everyone who opens the Report sees who they are. A Report Delegate may change the Report, curate its narrative and publish it, as its creator may, and may hand its open Action Items to a new owner, but can't add or remove Report Delegates (#434).
 - [ops] Migration 0054 adds the `report_delegates` table; it runs on startup with the others (#434).
+- [ops] `GET /healthz` answers `200` `ok`, signed out, while the database answers within a second, and `503` when it doesn't, for a load balancer or orchestrator to probe (#417).
+- [ops] Every request gets one `INFO` access line once it's answered, with its `method`, `route` (the pattern it matched, such as `GET /goals/{id}`, or `unmatched`), `status`, `bytes`, `duration_ms` and `request_id`. Every record logged while handling the request carries the same `request_id`, which the response returns in `X-Request-ID`. An incoming `X-Request-ID` of 1 to 64 of `[A-Za-z0-9_-]` is reused; any other is replaced (#417).
+- [user] A Report's draft page has a **Report log**: every change to its Report Definition, newest first, with who made it and when in the company's timezone. It records the Definition's creation, each edit to its title, introduction, how it selects, its rules, its picked Goals, its Also include and Leave out, and the Fields it shows (each before → after in words, such as "Title: EU MBR → EU monthly review" or "Rule added: Owner is in the org of Priya"), each Report Delegate added or removed, each change to the next publication's narrative (Highlights picked, moved or dropped, and which sections' notes changed), and each publication. Anyone who can open the Report reads it. The newest 20 entries show, and the rest are behind Show all. Saving an unchanged Definition or narrative logs nothing (#435).
 
 **Improvements:**
 - [user] The Reports page's Open Action Items is a plain section on the canvas rather than a second card, so the Reports table is the page's one card (#386).
@@ -55,6 +58,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Report's draft, its Goals panel and its publication read their Goals in a fixed number of queries, where they used to run about twenty-five per Goal (around 1,300 for 50 Goals) (#411).
 - [ops] On SIGINT or SIGTERM, as a deploy or restart sends, the app stops taking connections, gives the requests in flight up to 30 seconds to finish, stops the weekly emails and the directory sync, and closes the database, instead of dying mid-request. Startup logs the address it actually listens on (#416).
 - [ops] The HTTP server times out a request that takes over a minute to arrive, a response not sent within 90 seconds of the request's headers (time enough for a PDF download's wait and render), and a connection idle for two minutes (#416).
+- [ops] The database now runs in SQLite's WAL mode with `synchronous=NORMAL`, so a page that only reads no longer waits behind a write, and the app holds at most 8 database connections. While the app runs, `goal-tracker.db-wal` and `goal-tracker.db-shm` sit beside `goal-tracker.db` and are part of its live state: back up with `sqlite3 … ".backup …"` (or `VACUUM INTO`), never `cp` of the main file, and on restore delete any `-wal` and `-shm` files beside the restored database. `docs/install.md` § Backups has the steps (#410).
+- [user] Goal pages and the lists of a person's link requests and parent suggestions no longer read whole tables as they grow: the foreign-key columns queries filter or join on are now indexed, starting with a Goal's Owner (#427).
 
 **Bug fixes:**
 - [internal] The Report log's actor column is indexed, like every other actor column; the Report log (#435) and the foreign-key index check (#427) merged in the same wave and left `main` failing `make test` (#435).
@@ -91,6 +96,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] A `Dockerfile` builds the app into a Debian image with Chromium for PDF downloads and `sqlite3` for backups. It runs as a non-root user on port 8080, with the database in the `/data` volume. `docs/install.md` says how to run it and back it up (#418).
 - [ops] Building takes Go 1.27.1 or newer: `go.mod` moves from 1.26 to 1.27.1, matching the campaign image (#418).
 - [internal] A GitHub Actions workflow runs `make check` on every push to `main` and every pull request, and builds the image. `make lint` pins golangci-lint v2.13.2: it uses one on `PATH` at that version, else builds it with `go run` (#418).
+- [ops] Migration `0057_report_log` adds the append-only `report_log` table. Every change to a Report Definition writes its entries in the change's own transaction, so a change that can't be logged doesn't commit. Changes made before the migration aren't in the log (#435).
 
 **Testing:**
 - [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
@@ -111,6 +117,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `internal/web` tests can read a page through parser-based helpers built on `golang.org/x/net/html` (`findByTestID`, `textOf`, `formField`, `linkTo`, `buttonNamed`, `checkedRadio`, `precedes`), which find what a person sees and can do, not markup. `pageElement`, `elementTexts` and `scopeChoices` now parse rather than match strings. `checkins_test.go` uses only these helpers, so renaming a class or wrapping a section in a `<div>` on the Check-in page breaks none of its tests. Its style-rule and class assertions moved, unchanged, to a new `styles_test.go` (#423).
 - [internal] Follow-ups' filter chip test now checks the Team select reads "Team: any" when unset and has Platform selected on `?value=<Platform>`, and a new e2e test opens the Download menu with Enter, tabs to its first item and closes it with Escape, focus back on Download, on a publication and a Report row (#433).
 - [internal] The test harness's Service sends queued email as each command commits, so tests still assert through `email.Recorder`. `h.DeliverEmail()` drains email queued through another Service. `h.WriteLockHeld()` lets a test's sender prove that no email goes out while a transaction is open (#412).
+- [internal] Test harness databases run in WAL mode too, as the app's do (#410).
+- [internal] A test fails when a foreign-key column leads no index and isn't allow-listed with a reason, and another fails when a hot query's plan scans `goals`, `checkins`, `metrics`, `comments`, `links` or `action_items` (#427).
 
 **Code quality:**
 - [internal] Two stale comments now match the code: the Health grouping's No Health group (#405) and the Scope chip's styles (#406). `scripts/__pycache__` is untracked and ignored (#401).
@@ -119,6 +127,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The filter chip's rules move from the Goal list's own styles to `app.css`, unchanged, so every page that draws a chip loads them (#406).
 - [internal] `.card`, its rules and `.page-head` are gone from `app.css`, as no page draws one. Code and test comments citing DESIGN.md's retired § Direction now name the section that holds each rule, and "top bar" wording says sidebar (#403).
 - [internal] Check-in refusals now come back as `domain.InputError`s naming the form input they are about. The Check-in form picks the field to highlight from that, not from the message text, so rewording a message no longer breaks the highlight (#419).
+- [internal] Split `internal/web/goals.go` into `goallist.go` (the Goal list, filters, grouping, org scope and list URLs), `goalpage.go` (the Goal page view, sparkline and activation checklist) and `goaltable.go` (the table, its edit mode and save), leaving command handlers and form helpers in `goals.go`; code moved unchanged (#422).
 
 **Documentation:**
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
