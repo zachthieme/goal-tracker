@@ -847,13 +847,14 @@ func TestALongTMPDIRStartsWithAWarning(t *testing.T) {
 const trustedProxiesVar = "GOAL_TRACKER_TRUSTED_PROXIES"
 
 // GOAL_TRACKER_TRUSTED_PROXIES is a comma-separated list of CIDRs and bare
-// IPs, a bare IP being the one address and an IPv4-mapped IPv6 one its IPv4
-// address, with blank entries and the space around each ignored.
+// IPs, a bare IP being the one address, an IPv4-mapped IPv6 one its IPv4
+// address and an IPv4-mapped CIDR its IPv4 range, with blank entries and the
+// space around each ignored.
 //
 //nolint:paralleltest // sets the process environment, through devEnv
 func TestTrustedProxiesAreCIDRsOrBareIPs(t *testing.T) {
 	devEnv(t)
-	t.Setenv(trustedProxiesVar, " 10.0.0.0/8, 192.0.2.1 ,,fd00::/8,2001:db8::1,::ffff:198.51.100.2")
+	t.Setenv(trustedProxiesVar, " 10.0.0.0/8, 192.0.2.1 ,,fd00::/8,2001:db8::1,::ffff:198.51.100.2,::ffff:10.0.0.0/104")
 
 	cfg, err := loadConfig()
 	if err != nil {
@@ -865,6 +866,7 @@ func TestTrustedProxiesAreCIDRsOrBareIPs(t *testing.T) {
 		netip.MustParsePrefix("fd00::/8"),
 		netip.MustParsePrefix("2001:db8::1/128"),
 		netip.MustParsePrefix("198.51.100.2/32"),
+		netip.MustParsePrefix("10.0.0.0/8"),
 	}
 	if !slices.Equal(cfg.trustedProxies, want) {
 		t.Errorf("trusted proxies %v, want %v", cfg.trustedProxies, want)
@@ -886,12 +888,13 @@ func TestNoProxyIsTrustedByDefault(t *testing.T) {
 	}
 }
 
-// An entry in GOAL_TRACKER_TRUSTED_PROXIES that is neither a CIDR nor an IP
-// stops startup with an error naming the variable and the entry.
+// An entry in GOAL_TRACKER_TRUSTED_PROXIES that is neither a CIDR nor an IP,
+// or is an IPv4-mapped CIDR wider than /96 (it has no IPv4 range), stops
+// startup with an error naming the variable and the entry.
 //
 //nolint:paralleltest // sets the process environment, through devEnv
 func TestAnInvalidTrustedProxyStopsStartup(t *testing.T) {
-	for _, bad := range []string{"proxy.internal", "10.0.0.0/33", "10.0.0.300"} {
+	for _, bad := range []string{"proxy.internal", "10.0.0.0/33", "10.0.0.300", "::ffff:0.0.0.0/80"} {
 		t.Run(bad, func(t *testing.T) {
 			startupEnv(t)
 			t.Setenv(trustedProxiesVar, "10.0.0.0/8,"+bad)

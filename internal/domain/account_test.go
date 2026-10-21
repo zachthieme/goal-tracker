@@ -604,3 +604,34 @@ func TestRemoveAdminRefusesYourselfAndAnUnknownAccount(t *testing.T) {
 		t.Errorf("RemoveAdmin of an unknown account: err = %v, want ErrValidation", err)
 	}
 }
+
+// Two first OIDC sign-ins can race to link one new subject to different
+// Accounts. The one whose link loses on the unique subject is refused as a
+// subject conflict, not with a raw database error (#442).
+func TestSignInWithOIDCRefusesALinkThatLosesARace(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	// Between this sign-in's lookup of the subject and its link, the rival's
+	// sign-in links the subject first.
+	if _, err := h.DB.Exec(`CREATE TRIGGER rival_links_first BEFORE UPDATE OF oidc_subject ON accounts
+		WHEN OLD.email = 'sam@example.com'
+		BEGIN UPDATE accounts SET oidc_subject = NEW.oidc_subject WHERE email = 'kim@example.com'; END`); err != nil {
+		t.Fatalf("install racing trigger: %v", err)
+	}
+
+	acc, err := h.Service.SignInWithOIDC(ctx, "subject-1", "sam@example.com")
+	var conflict *domain.OIDCSubjectConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("SignInWithOIDC = %+v, %v; want an *OIDCSubjectConflictError", acc, err)
+	}
+	if acc.ID != 0 {
+		t.Errorf("SignInWithOIDC returned Account %d with the refusal, want none", acc.ID)
+	}
+	if conflict.AccountID != sam.ID {
+		t.Errorf("conflict names Account %d, want sam's %d", conflict.AccountID, sam.ID)
+	}
+}
