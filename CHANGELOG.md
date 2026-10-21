@@ -13,6 +13,26 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 21, 2026
+
+**Improvements:**
+- [user] The Reports page's Open Action Items is a plain section on the canvas rather than a second card, so the Reports table is the page's one card (#386).
+- [user] Home's Needs you, My org and Your Yellow or Red goals headings are section headings (`h2`) for screen readers and outlines, looking as before (#386).
+
+**Bug fixes:**
+- [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
+
+**Testing:**
+- [internal] A domain test pairs #375's "raised by someone in my Org" case with one whose Report Definition someone in the Org created while outsiders published, raised and own its Action Item: that item is in neither of the viewer's groups. The test also shows that someone in the Org who neither created the Definition nor published the publication can't raise an item on it, so no item is relevant only for its raiser (#387).
+- [internal] The Follow-ups page's tests check its popovers against the page's own list of signal definitions, exposed to them by `internal/web/followups_export_test.go`, rather than a hand-written copy. Each of the nine kinds of chip the table can show is checked for opening exactly its signal's name and meaning, including Path to Green overdue, Milestone overdue and Parent On Hold or Cancelled, and the test fails if a signal with a chip goes unchecked (#387).
+- [internal] `e2e/phone-width.spec.ts` checks Home at 390px on the `due` template, with a Check-in due in Needs you showing its No change and Check in: nothing inside main clips or scrolls sideways and every control is on screen. `e2e/README.md` lists Home among the pages the spec covers (#387).
+
+**Code quality:**
+- [internal] The Follow-ups page names each signal in one place, `followUpDefinitions`, keyed by the signal's kind: the group cards' chips take their names from it, and `followUpsView.Types()`, which spelled the names out a second time, is gone. Nothing the page shows changes (#387).
+
+**Documentation:**
+- [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
+
 ### Collected changes — October 20, 2026
 
 **Breaking changes:**
