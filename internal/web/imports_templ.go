@@ -347,7 +347,7 @@ func importsStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.im-form{display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-report table{border-top:1px solid var(--color-border)}\n\t\t.im-report th{background:none;padding:8px 12px}\n\t\t.im-report td{padding:10px 12px}\n\t\t.im-report th:first-child,.im-report td:first-child{padding-left:0}\n\t\t.im-report tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.im-errors{margin:0;padding-left:20px;color:var(--color-danger-ink)}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t.im-form{display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-report table{border-top:1px solid var(--color-border)}\n\t\t.im-report th{background:none;padding:8px 12px}\n\t\t.im-report td{padding:12px}\n\t\t.im-report th:first-child,.im-report td:first-child{padding-left:0}\n\t\t.im-report tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.im-errors{margin:0;padding-left:20px;color:var(--color-danger-ink)}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

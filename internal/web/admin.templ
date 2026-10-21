@@ -213,14 +213,14 @@ templ adminTool(testID, href, label, blurb string) {
 templ adminStyles() {
 	<style>
 		.ad-tools{display:flex;flex-direction:column;border-top:1px solid var(--color-border)}
-		.ad-tool{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:16px;min-height:44px;padding:10px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;color:var(--color-ink-2)}
+		.ad-tool{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:center;gap:16px;min-height:44px;padding:12px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;color:var(--color-ink-2)}
 		.ad-tool:hover{text-decoration:none;color:var(--color-ink-2)}
 		.ad-tool h3{font-weight:500}
 		.ad-tool:hover h3{color:var(--color-primary-strong);text-decoration:underline}
 		.ad-section{display:flex;flex-direction:column;gap:12px}
 		.ad-section table{border-top:1px solid var(--color-border)}
 		.ad-section th{background:none;padding:8px 12px}
-		.ad-section td{padding:10px 12px}
+		.ad-section td{padding:12px}
 		.ad-section th:first-child,.ad-section td:first-child{padding-left:0}
 		.ad-section th:last-child,.ad-section td:last-child{padding-right:0}
 		.ad-section tr:last-child td{border-bottom:1px solid var(--color-border)}
@@ -234,6 +234,6 @@ templ adminStyles() {
 		.ad-link-url{width:100%;font-variant-numeric:tabular-nums}
 		.ad-error{color:var(--color-danger-ink);margin:0}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-		@media (max-width:600px){.ad-tool{grid-template-columns:1fr;gap:2px}.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}
+		@media (max-width:600px){.ad-tool{grid-template-columns:1fr;gap:4px}.ad-link-form{flex-wrap:wrap}.ad-link-form .field{flex:1 1 100%;min-width:0}}
 	</style>
 }
