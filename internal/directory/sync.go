@@ -45,20 +45,27 @@ func NewSync(svc *domain.Service, dir domain.Directory, logger *slog.Logger) *Sy
 // people in it, and so is each timezone the directory gives that isn't an IANA
 // name, naming the person and the value.
 func (s *Sync) Run(ctx context.Context) Outcome {
+	return s.RunWith(ctx, s.log)
+}
+
+// RunWith is Run logging to logger instead of the one NewSync was given, so a
+// run on demand, like an Admin's Sync now, logs as part of the request it
+// serves. It takes its turn with every other run.
+func (s *Sync) RunWith(ctx context.Context, logger *slog.Logger) Outcome {
 	s.running.Lock()
 	defer s.running.Unlock()
 
 	res, err := s.svc.SyncDirectory(ctx, s.dir)
 	out := Outcome{At: s.svc.Now(), People: res.People, Err: err}
 	if err != nil {
-		s.log.Error("directory sync failed; Accounts and Managers are as they were, and the next sync tries again", "err", err)
+		logger.Error("directory sync failed; Accounts and Managers are as they were, and the next sync tries again", "err", err)
 	} else {
-		s.log.Info("directory sync read the company's people", "people", res.People)
+		logger.Info("directory sync read the company's people", "people", res.People)
 		for _, cycle := range res.Cycles {
-			s.log.Warn("the directory's Managers form a cycle; each Org in it stops where it began", "people", cycleNames(cycle))
+			logger.Warn("the directory's Managers form a cycle; each Org in it stops where it began", "people", cycleNames(cycle))
 		}
 		for _, tz := range res.InvalidTimezones {
-			s.log.Warn("the directory gives a timezone that isn't an IANA name; the person uses the company's", "email", tz.Email, "timezone", tz.Value)
+			logger.Warn("the directory gives a timezone that isn't an IANA name; the person uses the company's", "email", tz.Email, "timezone", tz.Value)
 		}
 	}
 

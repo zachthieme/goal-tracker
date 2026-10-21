@@ -241,8 +241,8 @@ func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	// The sync is all-or-nothing, so it runs to the end even if the Admin
-	// leaves the page.
-	s.directorySync.Run(context.WithoutCancel(r.Context()))
+	// leaves the page. It logs with the request's ID.
+	s.directorySync.RunWith(context.WithoutCancel(r.Context()), requestLogger(r.Context()))
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 

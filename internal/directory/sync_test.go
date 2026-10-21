@@ -1,8 +1,10 @@
 package directory_test
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -112,5 +114,29 @@ func TestRunEverySyncsAgainEachInterval(t *testing.T) {
 	}
 	if got := dir.reads.Load(); got != stopped {
 		t.Errorf("the directory was read %d times after RunEvery returned", got-stopped)
+	}
+}
+
+// Run logs to the logger NewSync was given; RunWith logs to the one it is
+// given, and nothing of that run reaches NewSync's.
+func TestRunWithLogsToTheLoggerItIsGiven(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	var own, given bytes.Buffer
+	s := directory.NewSync(h.Service, &countingDirectory{}, slog.New(slog.NewTextHandler(&own, nil)))
+
+	s.Run(t.Context())
+	if !strings.Contains(own.String(), "people=1") {
+		t.Errorf("Run logged %q to NewSync's logger, want the people count", own.String())
+	}
+
+	own.Reset()
+	s.RunWith(t.Context(), slog.New(slog.NewTextHandler(&given, nil)))
+	if !strings.Contains(given.String(), "people=1") {
+		t.Errorf("RunWith logged %q to the logger it was given, want the people count", given.String())
+	}
+	if own.Len() != 0 {
+		t.Errorf("RunWith logged %q to NewSync's logger, want nothing", own.String())
 	}
 }
