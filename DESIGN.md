@@ -843,7 +843,10 @@ and so on).
     - **Groups:** Health groups by default (Red, Yellow, Green, No Health),
       each left out when empty, problems first within each: Red, then
       Ownerless, then Check-in, Path to Green or Milestone overdue, then
-      Yellow, Green and no Health, by title within each. Grouped by a
+      Yellow, Green and no Health, by title within each. When a Goal with
+      no Health is Ownerless, Check-in overdue or Milestone overdue, the
+      whole No Health group leads instead (No Health, Red, Yellow, Green),
+      that Goal first in it, so it is as loud as a Red one. Grouped by a
       Dimension, each value is a group, with "Unassigned" for Goals with no
       value, and the header carries no shape.
     - **A row (`goalListRow`):** its Health shape; the title, a 14px, 500
