@@ -63,6 +63,14 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 	if err != nil {
 		return ReportSummary{}, err
 	}
+	return s.SummarizeReport(ctx, r)
+}
+
+// SummarizeReport summarises the Report r already drafted, as ReportSummary
+// does its definition's draft, against r's baseline, so a page holding a draft
+// needn't draft it again.
+func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary, error) {
+	def := r.Definition
 	sum := ReportSummary{Definition: def}
 	for _, sg := range r.selected() {
 		sum.Goals++
@@ -89,9 +97,11 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 		}
 		sum.Changes = &changes
 	}
-	if sum.Scope, err = s.reportScope(ctx, def); err != nil {
+	scope, err := s.reportScope(ctx, def)
+	if err != nil {
 		return ReportSummary{}, err
 	}
+	sum.Scope = scope
 	return sum, nil
 }
 

@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -221,14 +221,14 @@ func TestGoalListAndReportQueriesDontGrowWithGoals(t *testing.T) {
 	countFor := func(n int) counts {
 		h := testsupport.New(t, queryCountAdmin)
 		fx := seedQueryCountFixture(t, h, n)
-		ts, queries := newQueryCountingServer(t, h)
+		ts, _, queries := newQueryCountingServer(t, h)
 		client := signInClient(t, ts.URL, queryCountAdmin)
 		var c counts
-		queries.Store(0)
+		queries.take()
 		getBody(t, client, ts.URL+"/goals?org=all")
-		c.list = queries.Swap(0)
+		c.list = int64(len(queries.take()))
 		getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, fx.report.ID))
-		c.report = queries.Swap(0)
+		c.report = int64(len(queries.take()))
 		return c
 	}
 	ten, fifty := countFor(10), countFor(50)
@@ -241,14 +241,14 @@ func TestGoalListAndReportQueriesDontGrowWithGoals(t *testing.T) {
 }
 
 // newQueryCountingServer serves h's database through a Service whose every
-// statement is counted, returning the server and the count.
-func newQueryCountingServer(t *testing.T, h *testsupport.Harness) (*httptest.Server, *atomic.Int64) {
+// statement is logged, returning the server, the Service and the log.
+func newQueryCountingServer(t *testing.T, h *testsupport.Harness) (*httptest.Server, *domain.Service, *queryLog) {
 	t.Helper()
 	var path string
 	if err := h.DB.QueryRow("SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&path); err != nil {
 		t.Fatalf("read the database's path: %v", err)
 	}
-	queries := new(atomic.Int64)
+	queries := new(queryLog)
 	sqlDB := sql.OpenDB(countingConnector{
 		dsn:     "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate",
 		driver:  h.DB.Driver(),
@@ -258,14 +258,35 @@ func newQueryCountingServer(t *testing.T, h *testsupport.Harness) (*httptest.Ser
 	svc := domain.NewService(sqlDB, h.Clock, h.Email, []string{queryCountAdmin})
 	ts := httptest.NewServer(web.NewServer(svc))
 	t.Cleanup(ts.Close)
-	return ts, queries
+	return ts, svc, queries
 }
 
-// countingConnector opens connections that count each statement they run.
+// queryLog is the text of every statement a countingConn prepared, in order.
+type queryLog struct {
+	mu         sync.Mutex
+	statements []string
+}
+
+func (l *queryLog) add(query string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.statements = append(l.statements, query)
+}
+
+// take returns the statements logged since the last take, and clears them.
+func (l *queryLog) take() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := l.statements
+	l.statements = nil
+	return out
+}
+
+// countingConnector opens connections that log each statement they run.
 type countingConnector struct {
 	dsn     string
 	driver  driver.Driver
-	queries *atomic.Int64
+	queries *queryLog
 }
 
 func (c countingConnector) Connect(context.Context) (driver.Conn, error) {
@@ -279,10 +300,10 @@ func (c countingConnector) Connect(context.Context) (driver.Conn, error) {
 func (c countingConnector) Driver() driver.Driver { return c.driver }
 
 // countingConn hides its driver's direct query and exec, so database/sql
-// prepares every statement, and counts each one prepared.
+// prepares every statement, and logs each one prepared.
 type countingConn struct {
 	driver.Conn
-	queries *atomic.Int64
+	queries *queryLog
 }
 
 func (c countingConn) Prepare(query string) (driver.Stmt, error) {
@@ -290,7 +311,7 @@ func (c countingConn) Prepare(query string) (driver.Stmt, error) {
 }
 
 func (c countingConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	c.queries.Add(1)
+	c.queries.add(query)
 	if p, ok := c.Conn.(driver.ConnPrepareContext); ok {
 		return p.PrepareContext(ctx, query)
 	}
@@ -328,13 +349,53 @@ func TestGoalListQueriesDontGrowWithOwnersAtTheSameOrgDepth(t *testing.T) {
 			h.SetManager(owner, manager)
 			h.ActiveGoal(owner, fmt.Sprintf("Goal %02d", i), "It matters.")
 		}
-		ts, queries := newQueryCountingServer(t, h)
+		ts, _, queries := newQueryCountingServer(t, h)
 		client := signInClient(t, ts.URL, queryCountAdmin)
-		queries.Store(0)
+		queries.take()
 		getBody(t, client, ts.URL+"/goals?org=all")
-		return queries.Load()
+		return int64(len(queries.take()))
 	}
 	if three, thirty := countFor(3), countFor(30); three != thirty {
 		t.Errorf("the Goal list ran %d queries for 3 Owners and %d for 30 at the same org depth; want the same", three, thirty)
 	}
+}
+
+// A Report's draft page builds its draft once: it runs each statement
+// DraftReport runs, but not all of them twice over, as it did when its Goals
+// panel drafted the Report again for its scope (#451).
+func TestReportDraftPageBuildsItsDraftOnce(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, queryCountAdmin)
+	fx := seedQueryCountFixture(t, h, 10)
+	ts, svc, queries := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, queryCountAdmin)
+	queries.take()
+	getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, fx.report.ID))
+	page := countStatements(queries.take())
+	if _, err := svc.DraftReport(context.Background(), fx.report, time.Time{}); err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	draft := countStatements(queries.take())
+
+	twice := true
+	for query, n := range draft {
+		if page[query] < n {
+			t.Fatalf("the draft page ran %q %d times, fewer than DraftReport's %d; it doesn't build the draft", query, page[query], n)
+		}
+		if page[query] < 2*n {
+			twice = false
+		}
+	}
+	if twice {
+		t.Errorf("the draft page ran every statement DraftReport runs at least twice as often; want the draft built once")
+	}
+}
+
+// countStatements is how many times each of statements was run.
+func countStatements(statements []string) map[string]int {
+	out := map[string]int{}
+	for _, s := range statements {
+		out[s]++
+	}
+	return out
 }
