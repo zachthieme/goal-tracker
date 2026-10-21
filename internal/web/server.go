@@ -135,15 +135,17 @@ func (s *Server) currentAccount(r *http.Request) *domain.Account {
 }
 
 // requireAuth wraps a handler so it runs only for a signed-in Account, which it
-// passes along, with what the sidebar shows in the request context.
+// passes along, with what the sidebar shows in the request context. It slides
+// the session's idle limit on (see slideSession).
 func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		acc := s.currentAccount(r)
-		if acc == nil {
+		sess, acc, ok := s.openSession(r)
+		if !ok {
 			http.Redirect(w, r, "/signin", http.StatusSeeOther)
 			return
 		}
-		h(w, s.withSidebar(r, *acc), *acc)
+		s.slideSession(w, sess)
+		h(w, s.withSidebar(r, acc), acc)
 	}
 }
 

@@ -420,3 +420,31 @@ func TestASessionIdleForAWeekIsSignedOut(t *testing.T) {
 		t.Error("a session idle for 8 days still signs sam in")
 	}
 }
+
+// A request slides the idle limit: with a request 6 days after sign-in, the
+// session still signs sam in 12 days after it, past 7 days from sign-in.
+func TestARequestKeepsASessionFromIdling(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	for _, day := range []int{6, 12} {
+		h.Clock.Advance(6 * 24 * time.Hour)
+		if clientSignedOut(t, client, ts.URL) {
+			t.Fatalf("day %d, with a request every 6 days: sam is signed out", day)
+		}
+	}
+}
+
+// clientSignedOut reports whether client's GET /home is sent to sign-in.
+func clientSignedOut(t *testing.T, client *http.Client, baseURL string) bool {
+	t.Helper()
+	resp, err := client.Get(baseURL + "/home")
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
+}

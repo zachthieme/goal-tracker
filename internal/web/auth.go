@@ -65,8 +65,13 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
-// sessionIdleLimit is how long a session lasts without a request.
-const sessionIdleLimit = 7 * 24 * time.Hour
+const (
+	// sessionIdleLimit is how long a session lasts without a request.
+	sessionIdleLimit = 7 * 24 * time.Hour
+	// sessionSlideAfter is how stale a session's last-seen time gets before a
+	// request re-issues its cookie, so not every request sets one.
+	sessionSlideAfter = 24 * time.Hour
+)
 
 // startSession signs acc in on this browser: a signed session cookie carrying
 // their current session generation, so EndSessions ends it, and the time they
@@ -91,6 +96,18 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, sess session) {
 		Secure:   s.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// slideSession re-issues sess's cookie with the last-seen time now, so the
+// idle limit counts from this request, once its last-seen time is more than
+// sessionSlideAfter old. The sign-in time stays.
+func (s *Server) slideSession(w http.ResponseWriter, sess session) {
+	now := s.svc.Now()
+	if now.Sub(sess.lastSeen) <= sessionSlideAfter {
+		return
+	}
+	sess.lastSeen = now
+	s.setSessionCookie(w, sess)
 }
 
 // openSession is the session r's cookie carries and the Account it signs in,
