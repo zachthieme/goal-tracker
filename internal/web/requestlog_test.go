@@ -65,8 +65,9 @@ func TestEachRequestGetsOneAccessLine(t *testing.T) {
 }
 
 // A request refused before it reaches a route, like a post another site's page
-// sends, still gets its access line, its route logged as unmatched.
-func TestARequestThatMatchesNoRouteIsLoggedAsUnmatched(t *testing.T) {
+// sends, still gets its access line, logged under the route it was aimed at, so
+// an operator can find the refusals on a route by filtering on it.
+func TestACrossSiteRefusalIsLoggedUnderItsRoute(t *testing.T) {
 	t.Parallel()
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
@@ -78,8 +79,43 @@ func TestARequestThatMatchesNoRouteIsLoggedAsUnmatched(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("logged %d access lines, want 1:\n%s", len(lines), buf)
 	}
-	if line := lines[0]; line["route"] != "unmatched" || line["status"] != float64(http.StatusForbidden) || line["method"] != http.MethodPost {
-		t.Errorf("access line %v, want POST unmatched answered 403", line)
+	if line := lines[0]; line["route"] != "POST /goals" || line["status"] != float64(http.StatusForbidden) || line["method"] != http.MethodPost {
+		t.Errorf("access line %v, want POST /goals answered 403", line)
+	}
+}
+
+// A body over the cap is refused before routing too, and logged under the
+// route it was aimed at.
+func TestAnOversizeRefusalIsLoggedUnderItsRoute(t *testing.T) {
+	t.Parallel()
+
+	srv, buf := requestLogServer(t, testsupport.New(t))
+	r := httptest.NewRequest(http.MethodPost, "/goals", strings.NewReader("title="+strings.Repeat("x", 1<<20)))
+	srv.ServeHTTP(httptest.NewRecorder(), r)
+
+	lines := accessLines(t, buf)
+	if len(lines) != 1 {
+		t.Fatalf("logged %d access lines, want 1:\n%s", len(lines), buf)
+	}
+	if line := lines[0]; line["route"] != "POST /goals" || line["status"] != float64(http.StatusRequestEntityTooLarge) {
+		t.Errorf("access line %v, want POST /goals answered 413", line)
+	}
+}
+
+// A path no route serves is answered by the catch-all, and logged under it
+// with its 404.
+func TestAnUnknownPathIsLoggedUnderTheCatchAll(t *testing.T) {
+	t.Parallel()
+
+	srv, buf := requestLogServer(t, testsupport.New(t))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/no-such-page", nil))
+
+	lines := accessLines(t, buf)
+	if len(lines) != 1 {
+		t.Fatalf("logged %d access lines, want 1:\n%s", len(lines), buf)
+	}
+	if line := lines[0]; line["route"] != "GET /" || line["status"] != float64(http.StatusNotFound) {
+		t.Errorf("access line %v, want GET / answered 404", line)
 	}
 }
 
