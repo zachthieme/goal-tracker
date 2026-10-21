@@ -34,6 +34,7 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 		s.serverError(w, r, "could not list goals", err)
 		return
 	}
+	view.SwapClearOOB = r.Header.Get("HX-Request") == "true"
 	render(w, r, http.StatusOK, goalsPage(&current, view))
 }
 
@@ -110,6 +111,9 @@ type goalsListData struct {
 	Table *goalTable
 	// Dates is the clock the list shows its dates against.
 	Dates displayDates
+	// SwapClearOOB marks Clear's slot to be swapped out of band, for an htmx
+	// filter change that swaps in only the list (#385).
+	SwapClearOOB bool
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
