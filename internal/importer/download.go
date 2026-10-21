@@ -31,7 +31,9 @@ const entrySeparator = "; "
 // refused, would split on import, so the download is refused naming the value,
 // and nothing is written (#101). Every cell but an ID that a spreadsheet would
 // run as a formula is written behind a ' (see quoteFormula), which the import
-// drops again (#424).
+// drops again (#424). Every Goal's values, Fields, Milestones, Metrics and
+// parents are read up front, in as many queries for many Goals as for one
+// (#450).
 func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Goal) error {
 	dims, err := im.svc.ListDimensions(ctx)
 	if err != nil {
@@ -50,23 +52,32 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 	for _, f := range fields {
 		header = append(header, f.Name)
 	}
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
+	}
+	columns, err := readGoalColumns(ctx, im.svc, ids)
+	if err != nil {
+		return err
+	}
+	values, err := im.svc.GoalValuesByGoal(ctx)
+	if err != nil {
+		return err
+	}
+	fieldValues, err := im.svc.GoalFieldsByGoal(ctx, ids)
+	if err != nil {
+		return err
+	}
 	records := [][]string{header}
 	for _, g := range goals {
-		cells, err := goalCells(ctx, im.svc, g)
-		if err != nil {
-			return err
-		}
+		cells := goalCells(g, columns)
 		record := []string{strconv.FormatInt(g.ID, 10)}
 		for _, col := range goalColumns {
 			record = append(record, cells[col])
 		}
-		values, err := im.svc.GoalValues(ctx, g.ID)
-		if err != nil {
-			return err
-		}
 		for _, d := range dims {
 			var names []string
-			for _, v := range values {
+			for _, v := range values[g.ID] {
 				if v.DimensionID != d.ID {
 					continue
 				}
@@ -78,13 +89,9 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 			}
 			record = append(record, strings.Join(names, entrySeparator))
 		}
-		fieldValues, err := im.svc.GoalFields(ctx, g.ID)
-		if err != nil {
-			return err
-		}
 		for _, f := range fields {
 			var value string
-			for _, fv := range fieldValues {
+			for _, fv := range fieldValues[g.ID] {
 				if fv.Field.ID == f.ID {
 					value = fv.Value
 				}
@@ -104,10 +111,36 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 	return nil
 }
 
+// goalColumnReads is what the import format's own columns hold of each of some
+// Goals beyond the Goal itself, keyed by Goal ID: its Milestones, its Metrics
+// and the Goals it contributes to.
+type goalColumnReads struct {
+	milestones map[int64][]domain.Milestone
+	metrics    map[int64][]domain.Metric
+	parents    map[int64][]domain.Goal
+}
+
+// readGoalColumns reads what the import format's own columns hold of goalIDs,
+// in as many queries for many Goals as for one (#450).
+func readGoalColumns(ctx context.Context, svc *domain.Service, goalIDs []int64) (goalColumnReads, error) {
+	var reads goalColumnReads
+	var err error
+	if reads.milestones, err = svc.MilestonesByGoal(ctx, goalIDs); err != nil {
+		return goalColumnReads{}, err
+	}
+	if reads.metrics, err = svc.MetricsByGoal(ctx, goalIDs); err != nil {
+		return goalColumnReads{}, err
+	}
+	if reads.parents, err = svc.ParentsByGoal(ctx, goalIDs); err != nil {
+		return goalColumnReads{}, err
+	}
+	return reads, nil
+}
+
 // goalCells is g's cell in each of the import format's own columns, by column
 // name, written as the import reads them: its Milestones not removed, its
-// Metrics, and the titles of the Goals it contributes to.
-func goalCells(ctx context.Context, svc *domain.Service, g domain.Goal) (map[string]string, error) {
+// Metrics, and the titles of the Goals it contributes to, from reads.
+func goalCells(g domain.Goal, reads goalColumnReads) map[string]string {
 	cells := map[string]string{
 		"Title":          g.Title,
 		"Owner":          g.Owner.Email,
@@ -117,38 +150,26 @@ func goalCells(ctx context.Context, svc *domain.Service, g domain.Goal) (map[str
 	if !g.DeliveryDate.IsZero() {
 		cells["Delivery Date"] = g.DeliveryDate.Format(dateFormat)
 	}
-	milestones, err := svc.ListMilestones(ctx, g.ID)
-	if err != nil {
-		return nil, err
-	}
 	var entries []string
-	for _, m := range milestones {
+	for _, m := range reads.milestones[g.ID] {
 		if m.Status != domain.MilestoneRemoved {
 			entries = append(entries, m.Name+" @ "+m.TargetDate.Format(dateFormat))
 		}
 	}
 	cells["Milestones"] = strings.Join(entries, entrySeparator)
-	metrics, err := svc.ListMetrics(ctx, g.ID)
-	if err != nil {
-		return nil, err
-	}
 	entries = nil
-	for _, m := range metrics {
+	for _, m := range reads.metrics[g.ID] {
 		entries = append(entries, strings.Join([]string{
 			m.Name, m.Unit, m.Direction, formatNumber(m.Baseline), formatNumber(m.Target), m.TargetDate.Format(dateFormat),
 		}, " | "))
 	}
 	cells["Metrics"] = strings.Join(entries, entrySeparator)
-	parents, err := svc.ParentsOf(ctx, g.ID)
-	if err != nil {
-		return nil, err
-	}
 	entries = nil
-	for _, p := range parents {
+	for _, p := range reads.parents[g.ID] {
 		entries = append(entries, p.Title)
 	}
 	cells["Parents"] = strings.Join(entries, entrySeparator)
-	return cells, nil
+	return cells
 }
 
 func formatNumber(f float64) string {

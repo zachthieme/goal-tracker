@@ -172,6 +172,13 @@ func (s *Service) ListMetrics(ctx context.Context, goalID int64) ([]Metric, erro
 	return out, nil
 }
 
+// MetricsByGoal returns each of goalIDs' Metrics, keyed by Goal ID, as
+// ListMetrics returns one Goal's, in one query, so a page or file listing many
+// Goals reads them all at once. A Goal with no Metrics has no entry.
+func (s *Service) MetricsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Metric, error) {
+	return s.metricsByGoal(ctx, goalIDs)
+}
+
 // metricsByGoal returns each of goalIDs' Metrics, as ListMetrics reads one
 // Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
 func (s *Service) metricsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Metric, error) {

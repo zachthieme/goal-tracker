@@ -784,6 +784,13 @@ func (s *Service) ChildrenOf(ctx context.Context, goalID int64) ([]Goal, error) 
 	return goals, nil
 }
 
+// ParentsByGoal returns the Goals each of goalIDs contributes to, keyed by Goal
+// ID, as ParentsOf returns one Goal's, in one query, so a page or file listing
+// many Goals reads them all at once. A Goal with no parents has no entry.
+func (s *Service) ParentsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Goal, error) {
+	return s.parentsByGoal(ctx, goalIDs)
+}
+
 // parentsByGoal returns the accepted parents of each of goalIDs, as ParentsOf
 // reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
 func (s *Service) parentsByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Goal, error) {

@@ -592,6 +592,13 @@ func (s *Service) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 	return out, nil
 }
 
+// MilestonesByGoal returns each of goalIDs' Milestones, keyed by Goal ID, as
+// ListMilestones returns one Goal's, in one query, so a page or file listing
+// many Goals reads them all at once. A Goal with no Milestones has no entry.
+func (s *Service) MilestonesByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Milestone, error) {
+	return s.milestonesByGoal(ctx, goalIDs)
+}
+
 // milestonesByGoal returns each of goalIDs' Milestones, as ListMilestones
 // reads one Goal's, keyed by Goal ID, in one query. No Goals reads nothing.
 func (s *Service) milestonesByGoal(ctx context.Context, goalIDs []int64) (map[int64][]Milestone, error) {
