@@ -1083,6 +1083,7 @@ templ goalPageStyles() {
 		.gp-milestones th{height:32px;padding:0 16px 0 0;background:none;color:var(--color-ink-muted);font-size:12px;font-weight:500}
 		.gp-milestones td{padding:8px 16px 8px 0;border-bottom:1px solid var(--color-border);vertical-align:baseline}
 		.gp-milestones tr:last-child td{border-bottom:1px solid var(--color-border)}
+		.gp-milestones th:nth-child(-n+2){width:1%;white-space:nowrap}
 		.gp-metric{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(96px,auto);align-items:center;gap:4px 24px;padding:12px 0;border-bottom:1px solid var(--color-border)}
 		.gp-metric>details{grid-column:1/-1}
 		.gp-metric>details>summary{min-height:32px;justify-content:flex-start}
@@ -1133,10 +1134,10 @@ templ goalPageStyles() {
 		.gp-prop>dd{grid-column:2/-1;margin:0;min-width:0;line-height:24px;color:var(--color-ink)}
 		.gp-prop>.gp-group-head{display:contents}
 		.gp-prop>.gp-group-head>a{grid-column:3;grid-row:1}
-		.gp-prop>:not(dt):not(dd):not(.gp-group-head):not(.gp-open){grid-column:2/-1;min-width:0}
+		.gp-prop>:not(dt):not(dd):not(.gp-group-head):not(.gp-open){grid-column:2;min-width:0}
 		.gp-prop>.gp-open{grid-column:1/-1}
 		.gp-prop .gp-list{line-height:24px}
-		.gp-prop .help.explain{font-size:12px}
+		.gp-prop .help.explain{justify-self:start;font-size:12px}
 		.gp-props>.explain,.gp-people>.gp-open{margin:4px 0 8px}
 		.gp-prop dd .badge{line-height:20px}
 		.gp-prop strong{font-weight:500}
