@@ -38,6 +38,10 @@ Read these first; some may decide whether the install goes ahead now.
   SQLite, no cgo), so you can build elsewhere and copy it over.
 - Optional but recommended: the `sqlite3` command-line tool on the host, for
   backups.
+- Optional: Chromium or Google Chrome on the host (`apt install chromium`, or
+  `dnf install chromium`), for Reports to download as PDF files. Without it,
+  a Report's PDF download opens its print page, which the reader prints to PDF
+  from the browser.
 
 ## 1. Build the binary
 
@@ -126,6 +130,10 @@ GOAL_TRACKER_DIRECTORY_FILE=/etc/goal-tracker/people.csv
 GOAL_TRACKER_REMINDER_DAY=Monday
 GOAL_TRACKER_REMINDER_TIME=09:00
 
+# The Chromium that renders Reports' PDF downloads. Unset, the app looks on PATH
+# for chromium, chromium-browser, google-chrome and google-chrome-stable.
+# GOAL_TRACKER_CHROME=/usr/bin/chromium
+
 # With GOAL_TRACKER_SIGNIN=oidc, also:
 # GOAL_TRACKER_OIDC_ISSUER=https://login.example.com/
 # GOAL_TRACKER_OIDC_CLIENT_ID=
@@ -135,8 +143,20 @@ GOAL_TRACKER_REMINDER_TIME=09:00
 Startup checks this and stops with a message naming the problem: an unset or
 unknown sign-in method, a missing or short session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
-`GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included). Never set
+`GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), or a
+`GOAL_TRACKER_CHROME` that isn't there or can't run. Never set
 `GOAL_TRACKER_START_AT`; it's for tests.
+
+### PDF downloads
+
+A published Report downloads as Markdown or PDF. With a Chromium, named by
+`GOAL_TRACKER_CHROME` or found on `PATH`, the app renders the Report's print
+page to a PDF file itself: Chromium loads the page from the app's own listen
+address, so it must be able to reach `GOAL_TRACKER_ADDR` from the host. At most
+two render at once, each within 30 seconds; a download that can't start in
+time gets a "try again" page, and a render that fails logs an `ERROR`. Without
+a Chromium, the PDF choice opens the print page instead, for the reader to
+print to PDF from the browser, and startup logs that it falls back.
 
 ## 5. The CSV file
 
@@ -213,6 +233,7 @@ A healthy start logs, among others:
 ```
 level=INFO msg="syncing people and their Managers from the directory file, now and hourly" file=/etc/goal-tracker/people.csv
 level=INFO msg="directory sync read the company's people" people=412
+level=INFO msg="rendering PDF downloads with Chromium" chrome=/usr/bin/chromium
 level=INFO msg="goal-tracker listening" addr=127.0.0.1:8080 db=/var/lib/goal-tracker/goal-tracker.db timezone=America/New_York weekly_emails="Monday 09:00"
 ```
 
@@ -334,6 +355,8 @@ passwords, their passwords still work.
 | OIDC: startup fails discovering the issuer | The issuer URL is wrong, or the host can't reach the provider. |
 | OIDC: the provider says the redirect URI doesn't match | `GOAL_TRACKER_BASE_URL` + `/auth/callback` must match what's registered exactly. |
 | Signed out on every request, over https | `GOAL_TRACKER_BASE_URL` is `https`, so cookies are `Secure`; the browser must reach the app over https too. |
+| A Report's PDF download opens its print page, not a file | No Chromium was found: startup logs `PDF downloads fall back to the print page`. Install one, or set `GOAL_TRACKER_CHROME`. |
+| `GOAL_TRACKER_CHROME: … can't run` | The path is wrong, or the file isn't executable by the service's user. |
 | Nobody has a Manager | The sync failed (Admin page, and `ERROR` in the log), or `GOAL_TRACKER_DIRECTORY_FILE` is unset. |
 | Someone who should be an Admin isn't | They were created before being listed in `GOAL_TRACKER_ADMINS`. An Admin can make them one on the Admin page; see [above](#making-someone-an-admin-later). |
 | Emails never arrive | Expected in this release: they're logged, not sent. |

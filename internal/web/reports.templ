@@ -42,11 +42,11 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 			<div class="card rp-table">
 				<table data-testid="report-table">
 					<thead>
-						<tr><th>Report</th><th>Goals</th><th>Last published</th><th class="rp-draft">Draft</th></tr>
+						<tr><th>Report</th><th>Goals</th><th>Last published</th><th class="rp-draft">Draft</th><th class="rp-download-cell"><span class="sr-only">Download</span></th></tr>
 					</thead>
 					<tbody>
 						for _, sum := range data.Reports {
-							@reportRow(sum, data.Loc)
+							@reportRow(sum, data.Loc, data.PDFFile)
 						}
 					</tbody>
 				</table>
@@ -87,9 +87,10 @@ templ reportsActionItemRow(l domain.ActionItemListing) {
 
 // reportRow is one Report Definition in the status table: its name over its
 // scope, its Goal count over a bar of their Health, its last publication's
-// date in the company's timezone (loc) over its publisher, or Never, and its
-// draft's changes since, or Not published.
-templ reportRow(sum domain.ReportSummary, loc *time.Location) {
+// date in the company's timezone (loc) over its publisher, or Never, its
+// draft's changes since, or Not published, and a Download menu for its last
+// publication, a PDF file when pdfFile.
+templ reportRow(sum domain.ReportSummary, loc *time.Location, pdfFile bool) {
 	<tr data-testid="report-row">
 		<td class="rp-name">
 			<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", sum.Definition.ID)) }>{ sum.Definition.Name }</a>
@@ -120,7 +121,31 @@ templ reportRow(sum domain.ReportSummary, loc *time.Location) {
 				<span data-testid="report-draft" class="muted">{ plural(*sum.Changes, "change") }</span>
 			}
 		</td>
+		<td class="rp-download-cell">
+			if p := sum.LastPublication; p != nil {
+				@downloadMenu(*p, pdfFile)
+			}
+		</td>
 	</tr>
+}
+
+// downloadMenu is a Download button opening a menu of the ways to take
+// publication p away: Markdown, and a PDF file when pdfFile, or else its print
+// page, to print to PDF from the browser. The menu is a native popover, so it
+// opens without script, from the keyboard too, and closes on Escape or a click
+// elsewhere; where the browser can anchor it, it hangs from the button.
+templ downloadMenu(p domain.Publication, pdfFile bool) {
+	<div data-testid="download-menu" class="rp-download">
+		<button type="button" class="btn sm" popovertarget={ fmt.Sprintf("download-%d", p.ID) }>Download</button>
+		<div id={ fmt.Sprintf("download-%d", p.ID) } class="rp-download-menu" popover>
+			<a data-testid="download-markdown" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Markdown (.md)</a>
+			if pdfFile {
+				<a data-testid="download-pdf" href={ templ.SafeURL(publicationPath(p) + "/pdf") }>PDF (.pdf)</a>
+			} else {
+				<a data-testid="download-pdf" href={ templ.SafeURL(publicationPath(p) + "/print") }>PDF (print from browser)</a>
+			}
+		</div>
+	</div>
 }
 
 // reportHealthBar draws a Report's Goals by Health as one segmented bar, a
@@ -388,11 +413,11 @@ templ reportGoalList(goals []reportGoal) {
 
 // publicationPage shows a published Report exactly as it was frozen: who
 // published it and when, what it read its changes against, and how it
-// selected its Goals as it read then. It links the
-// ways to read it outside the tool: Markdown, and a page to print to PDF.
+// selected its Goals as it read then. Its Download menu takes it away as
+// Markdown or a PDF (a PDF file when pdfFile, else the page to print to PDF).
 // Readers discuss it in place: comments on each Goal's block, and the Action
 // Items raised on it (ticket #19).
-templ publicationPage(current *domain.Account, p domain.Publication, d discussion) {
+templ publicationPage(current *domain.Account, p domain.Publication, d discussion, pdfFile bool) {
 	@layout(p.Report.Definition.Name, current) {
 		@reportStyles()
 		<div class="rp-read">
@@ -405,9 +430,8 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 					@publishedLine(p, d.Loc)
 					@publicationSelection(p)
 				</div>
-				<div class="rp-actions" data-testid="report-export">
-					<a data-testid="export-markdown" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Markdown</a>
-					<a data-testid="export-print" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print / PDF</a>
+				<div data-testid="report-export" class="rp-actions">
+					@downloadMenu(p, pdfFile)
 				</div>
 			</header>
 			@reportContent(p.Report, p.PublishedAt, d)
@@ -1400,6 +1424,12 @@ templ reportStyles() {
 		.rp-name>a{display:block;font-weight:600;color:var(--color-ink)}
 		.rp-name>span,.rp-table td>.small{display:block}
 		.rp-draft{text-align:right}
+		.rp-download-cell{width:1%;text-align:right}
+		.rp-download-menu{flex-direction:column;gap:4px;min-width:200px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);color:var(--color-ink);box-shadow:var(--shadow-pop);box-sizing:border-box}
+		.rp-download-menu:popover-open{display:flex}
+		@supports (position-area:bottom){.rp-download-menu{inset:auto;margin:4px 0;position-area:bottom span-left;position-try-fallbacks:flip-block,flip-inline}}
+		.rp-download-menu>a{display:flex;align-items:center;min-height:36px;padding:0 12px;border-radius:var(--radius-md);color:var(--color-ink);font-weight:500;white-space:nowrap}
+		.rp-download-menu>a:hover{background:var(--color-surface-hover);text-decoration:none}
 		.rp-date{white-space:nowrap}
 		.rp-dates>*{white-space:nowrap}
 		.rp-changes-hot{display:inline-block;padding:4px 12px;border-radius:var(--radius-full);background:var(--health-y-bg);color:var(--health-y-ink);font-weight:600;white-space:nowrap}
@@ -1426,7 +1456,7 @@ templ reportStyles() {
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
 		.rp-menu.rp-chip>summary{box-sizing:border-box;min-height:40px;justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400;padding:0 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
-		@media (pointer:coarse){.rp-menu.rp-chip>summary{min-height:44px}}
+		@media (pointer:coarse){.rp-menu.rp-chip>summary{min-height:44px}.rp-download-menu>a{min-height:44px}}
 		.rp-menu.rp-chip>ul{left:0;right:auto}
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
@@ -1450,7 +1480,7 @@ templ reportStyles() {
 		.rp-goals details>ul{margin-top:8px}
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
-		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-track tbody tr:last-child{border-bottom:none}.rp-track td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
+		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-track tbody tr:last-child{border-bottom:none}.rp-track td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }

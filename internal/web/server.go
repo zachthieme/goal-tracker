@@ -37,6 +37,10 @@ type Server struct {
 	// directorySync, when set, syncs people and their Managers from the org's
 	// directory; the Admin page shows it (see WithDirectorySync).
 	directorySync *directory.Sync
+	// pdf, when set, renders a publication's print page to a PDF file to
+	// download (see WithPDFRenderer); without it, a PDF download is the print
+	// page, printed from the browser.
+	pdf *pdfDownloads
 }
 
 // Option configures a Server as NewServer builds it.
@@ -74,6 +78,26 @@ func WithSecureCookies(secure bool) Option {
 func WithPasswordSignIn() Option {
 	return func(s *Server) {
 		s.passwordFailures = newPasswordFailuresByIP()
+	}
+}
+
+// PDFRenderer renders a page to a PDF: its HTML, whose assets, such as
+// /static/fonts/, resolve against baseURL, in; the PDF's bytes out.
+type PDFRenderer interface {
+	Render(ctx context.Context, html []byte, baseURL string) ([]byte, error)
+}
+
+// WithPDFRenderer has a publication download as a PDF file, its print page
+// rendered by r, at most pdfRendersAtOnce at a time, each within
+// pdfRenderTimeout. Without it, or with a nil r, a PDF download is the print
+// page, for the reader to print from the browser.
+func WithPDFRenderer(r PDFRenderer) Option {
+	return func(s *Server) {
+		if r == nil {
+			s.pdf = nil
+			return
+		}
+		s.pdf = &pdfDownloads{renderer: r, slots: make(chan struct{}, pdfRendersAtOnce), timeout: pdfRenderTimeout}
 	}
 }
 

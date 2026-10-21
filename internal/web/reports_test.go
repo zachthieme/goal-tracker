@@ -1,9 +1,12 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -256,8 +259,8 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
 
 	page := getBody(t, client, ts.URL+pubPath)
-	if link := pageElement(t, page, "a", "export-markdown"); !strings.Contains(link, pubPath+"/markdown") {
-		t.Errorf("publication page does not link its Markdown export; link:\n%s", link)
+	if link := pageElement(t, page, "a", "download-markdown"); !strings.Contains(link, pubPath+"/markdown") {
+		t.Errorf("publication page's Download menu does not link its Markdown export; link:\n%s", link)
 	}
 
 	resp, err := client.Get(ts.URL + pubPath + "/markdown")
@@ -298,7 +301,8 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 }
 
 // A published Report has a print-friendly page to print to PDF from the
-// browser: the snapshot's content without the app's navigation.
+// browser: the snapshot's content without the app's navigation. Without a PDF
+// renderer, the Download menu's PDF item is this page.
 func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -316,8 +320,8 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
 
 	page := getBody(t, client, ts.URL+pubPath)
-	if link := pageElement(t, page, "a", "export-print"); !strings.Contains(link, pubPath+"/print") {
-		t.Errorf("publication page does not link its print page; link:\n%s", link)
+	if link := pageElement(t, page, "a", "download-pdf"); !strings.Contains(link, pubPath+"/print") {
+		t.Errorf("publication page's Download menu does not link its print page; link:\n%s", link)
 	}
 
 	printed := getBody(t, client, ts.URL+pubPath+"/print")
@@ -346,6 +350,276 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("print page under another definition: status %d, want 404", resp.StatusCode)
+	}
+}
+
+// pdfDownloadFake is a PDF renderer that records what it was asked to render
+// and answers with pdf, or with err when set.
+type pdfDownloadFake struct {
+	pdf     []byte
+	err     error
+	html    string
+	baseURL string
+}
+
+func (f *pdfDownloadFake) Render(_ context.Context, html []byte, baseURL string) ([]byte, error) {
+	f.html, f.baseURL = string(html), baseURL
+	return f.pdf, f.err
+}
+
+// pdfDownloadFixture is a published Report to download, with a second
+// Definition its publication isn't under.
+type pdfDownloadFixture struct {
+	h       *testsupport.Harness
+	def     domain.ReportDefinition
+	other   domain.ReportDefinition
+	pub     domain.Publication
+	pubPath string
+}
+
+func newPDFDownloadFixture(t *testing.T) pdfDownloadFixture {
+	t.Helper()
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	return pdfDownloadFixture{
+		h: h, def: def, other: other, pub: pub,
+		pubPath: "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10),
+	}
+}
+
+// With a renderer, a publication downloads as a PDF: its print page, rendered,
+// as an attachment named for the Report and the publication. The renderer gets
+// the print page's HTML and the app's own address, for its fonts to load from.
+func TestAPublicationDownloadsAsAPDFOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	fake := &pdfDownloadFake{pdf: []byte("%PDF-1.4 the rendered report")}
+	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(fake)))
+	t.Cleanup(ts.Close)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pdf download: status %d, body:\n%s", resp.StatusCode, body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("Content-Type %q, want application/pdf", ct)
+	}
+	want := fmt.Sprintf(`attachment; filename="report-%d-publication-%d.pdf"`, f.def.ID, f.pub.ID)
+	if cd := resp.Header.Get("Content-Disposition"); cd != want {
+		t.Errorf("Content-Disposition %q, want %q", cd, want)
+	}
+	if body != "%PDF-1.4 the rendered report" {
+		t.Errorf("body %q, want the renderer's bytes", body)
+	}
+
+	printed := getBody(t, client, ts.URL+f.pubPath+"/print")
+	if fake.html != printed {
+		t.Errorf("renderer got HTML other than the print page's:\n%s", fake.html)
+	}
+	if fake.baseURL != ts.URL {
+		t.Errorf("renderer's base URL %q, want the app's own address %q", fake.baseURL, ts.URL)
+	}
+}
+
+// Without a renderer, a PDF download is the print page, printed from the
+// browser: the /pdf link an earlier page carried still works.
+func TestWithoutARendererAPDFDownloadIsThePrintPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	ts := newServer(t, f.h)
+	client := noRedirects(signInClient(t, ts.URL, "boss@example.com"))
+
+	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("pdf download without a renderer: status %d, want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != f.pubPath+"/print" {
+		t.Errorf("redirected to %q, want the print page %q", loc, f.pubPath+"/print")
+	}
+}
+
+// A publication downloads as a PDF only under its own Definition, and only for
+// someone signed in, as its print page shows.
+func TestAPDFDownloadIsFoundOnlyUnderItsOwnDefinitionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	fake := &pdfDownloadFake{pdf: []byte("%PDF-1.4")}
+	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(fake)))
+	t.Cleanup(ts.Close)
+
+	wrong := ts.URL + "/reports/" + strconv.FormatInt(f.other.ID, 10) + "/publications/" + strconv.FormatInt(f.pub.ID, 10) + "/pdf"
+	resp, err := signInClient(t, ts.URL, "boss@example.com").Get(wrong)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("pdf download under another definition: status %d, want 404", resp.StatusCode)
+	}
+
+	resp, err = noRedirects(&http.Client{}).Get(ts.URL + f.pubPath + "/pdf")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/signin" {
+		t.Errorf("pdf download signed out: status %d to %q, want 303 to /signin", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if fake.html != "" {
+		t.Error("the renderer ran for a download that was refused")
+	}
+}
+
+// A render that fails gets the server-error page and an ERROR in the log
+// naming the cause, never a broken PDF.
+func TestAFailedPDFRenderIsAServerErrorOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	var buf bytes.Buffer
+	fake := &pdfDownloadFake{pdf: []byte("%PDF-1.4 half"), err: errors.New("chromium crashed")}
+	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(fake), web.WithLogger(slog.New(slog.NewJSONHandler(&buf, nil)))))
+	t.Cleanup(ts.Close)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("failed render: status %d, want 500", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "pdf") || strings.Contains(resp.Header.Get("Content-Disposition"), "attachment") {
+		t.Errorf("failed render is served as a download: Content-Type %q, Content-Disposition %q", ct, resp.Header.Get("Content-Disposition"))
+	}
+	if strings.Contains(body, "%PDF") {
+		t.Errorf("failed render serves the renderer's bytes: %q", body)
+	}
+	var logged bool
+	for _, rec := range logRecords(t, &buf) {
+		cause, _ := rec["err"].(string)
+		if rec["level"] == "ERROR" && rec["path"] == f.pubPath+"/pdf" && strings.Contains(cause, "chromium crashed") {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Errorf("no ERROR naming the render's cause for %s/pdf; log:\n%s", f.pubPath, buf.String())
+	}
+}
+
+// reportRowNamed returns the Reports page's status-table row for the Report
+// named name, up to its closing tag.
+func reportRowNamed(t *testing.T, page, name string) string {
+	t.Helper()
+	for _, row := range strings.Split(page, `<tr data-testid="report-row"`)[1:] {
+		row, _, _ = strings.Cut(row, "</tr>")
+		if strings.Contains(row, ">"+name+"</a>") {
+			return row
+		}
+	}
+	t.Fatalf("Reports page has no row for %q:\n%s", name, page)
+	return ""
+}
+
+// downloadItem returns the href and text of the Download menu's item carrying
+// testID, failing the test when there's none.
+func downloadItem(t *testing.T, menu, testID string) (href, text string) {
+	t.Helper()
+	item := pageElement(t, menu, "a", testID)
+	return attr(openTag(item), "href"), strings.TrimSpace(item[strings.Index(item, ">")+1:])
+}
+
+// Each published Report's row on the Reports page has a Download menu for its
+// latest publication: Markdown, or a PDF file with a renderer. A Report never
+// published has nothing to download.
+func TestAPublishedReportsRowDownloadsItsLatestPublicationOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	f.h.Clock.Advance(24 * time.Hour)
+	latest := f.h.PublishReport(f.h.SignIn("boss@example.com"), f.def)
+	latestPath := "/reports/" + strconv.FormatInt(f.def.ID, 10) + "/publications/" + strconv.FormatInt(latest.ID, 10)
+	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(&pdfDownloadFake{})))
+	t.Cleanup(ts.Close)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+
+	row := reportRowNamed(t, page, "EU MBR")
+	menu := between(t, row, `data-testid="download-menu"`, "")
+	if !strings.Contains(menu, ">Download</button>") {
+		t.Errorf("the row's menu isn't opened by a Download button:\n%s", menu)
+	}
+	for testID, want := range map[string][2]string{
+		"download-markdown": {latestPath + "/markdown", "Markdown (.md)"},
+		"download-pdf":      {latestPath + "/pdf", "PDF (.pdf)"},
+	} {
+		if href, text := downloadItem(t, menu, testID); href != want[0] || text != want[1] {
+			t.Errorf("%s links %q reading %q, want %q reading %q", testID, href, text, want[0], want[1])
+		}
+	}
+	if never := reportRowNamed(t, page, "WBR"); strings.Contains(never, `data-testid="download-menu"`) {
+		t.Errorf("a never-published Report's row has a Download menu:\n%s", never)
+	}
+}
+
+// A publication's page downloads through the same Download menu, in place of
+// the Markdown and Print / PDF buttons it had.
+func TestThePublicationPageHasTheDownloadMenuOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(&pdfDownloadFake{})))
+	t.Cleanup(ts.Close)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+f.pubPath)
+
+	menu := between(t, pageElement(t, page, "div", "report-export"), `data-testid="download-menu"`, "")
+	if href, _ := downloadItem(t, menu, "download-markdown"); href != f.pubPath+"/markdown" {
+		t.Errorf("Markdown item links %q, want %q", href, f.pubPath+"/markdown")
+	}
+	if href, _ := downloadItem(t, menu, "download-pdf"); href != f.pubPath+"/pdf" {
+		t.Errorf("PDF item links %q, want %q", href, f.pubPath+"/pdf")
+	}
+	for _, gone := range []string{`data-testid="export-markdown"`, `data-testid="export-print"`, "Print / PDF"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("publication page still carries the old %s", gone)
+		}
+	}
+}
+
+// Without a renderer, the menu's PDF item is the print page, and says the
+// reader prints it from the browser, on the Reports page and the publication's.
+func TestWithoutARendererThePDFItemIsThePrintPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	ts := newServer(t, f.h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, path := range []string{"/reports", f.pubPath} {
+		menu := between(t, getBody(t, client, ts.URL+path), `data-testid="download-menu"`, "")
+		if href, text := downloadItem(t, menu, "download-pdf"); href != f.pubPath+"/print" || text != "PDF (print from browser)" {
+			t.Errorf("%s: PDF item links %q reading %q, want %q reading %q", path, href, text, f.pubPath+"/print", "PDF (print from browser)")
+		}
 	}
 }
 
