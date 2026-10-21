@@ -30,8 +30,7 @@ Goal list and the Goal page, which were modelled on Linear. A page is one
 surface, and type, space and hairlines carry the hierarchy.
 
 - **One surface.** The page is a single plain background, `--color-canvas`:
-  white in light, near-black in dark. No section sits in a box (five pages
-  not yet moved still do; § Components: Sections). A section is
+  white in light, near-black in dark. No section sits in a box. A section is
   a heading over rows separated by 1px `--color-border` hairlines, and space
   between sections does the grouping. A form is a plain section too, and its
   fields have their own edges (§ Components: Sections).
@@ -367,9 +366,7 @@ and so on).
     (§ A Report's draft page).
   - **How a page gets one:** it renders through `framedLayout` with a header.
     A page rendered through `layout` has no strip and keeps its own head in
-    its content: the Message pages, and Delegated to me, Pending links,
-    Pending handoffs, Suggest a parent, the Definition log, Graph signals and
-    Freshness signals.
+    its content: the Message pages, Graph signals and Freshness signals.
 - **Signed-out pages (`.signed-out`):** sign-in, set password, and Not found
   while signed out, have no sidebar. A 56px bar (`.signed-out-bar`), with no
   edge or fill, holds the app's name at the left and a quiet small **Theme**
@@ -480,11 +477,7 @@ and so on).
   off by a 1px `--color-border` hairline, with space between sections doing
   the grouping. Each page styles its own sections
   (`.hm-section` on Home, `.gp-section` on the Goal page, `.ad-section` on
-  Admin, and so on); `app.css` has no shared section class. Five pages
-  rendered through `layout` haven't moved yet and still hold their content
-  in a `.card` (a `--color-surface` box with a 1px `--color-border` edge,
-  `app.css`): the Definition log, Delegated to me, Pending links, Pending
-  handoffs and Suggest a parent (#403 moves them and retires `.card`).
+  Admin, and so on); `app.css` has no shared section class, and no card.
 - **List rows:** the Goal list (`.gl-list`) is the model, and Home,
   Follow-ups and the Reports list follow it.
   - **Rows:** 40px on the Goal list, 44px elsewhere, separated by
@@ -1882,6 +1875,60 @@ and so on).
   of Row, Goal and Errors laid out as Admin's, each row's errors a list in
   `--color-danger-ink` or a muted "None", scrolling inside its own container
   at phone width.
+- **Definition log (`definitionLogPage` in `definitionlog.templ`):** anyone
+  signed in reads it, and Admin's tools link to it. "Definition log" is the
+  header strip's title, with no actions, over a muted intro line: "Every
+  change to the Dimensions and Fields, newest first", or "Every change to
+  <name>" when narrowed to one.
+  - **Narrowing (`.dl-scope`):** a GET form, so it needs no script: "Show
+    changes to", a select of All Dimensions and Fields then each Dimension
+    and each Field, and a small secondary **Show**.
+  - **Changes (`.dl-section`):** an `h2`, "Changes", over hairline rows
+    (`.dl-list`), newest first. A row is the change in words, then a muted
+    small "— <Name> at <date and time>". With none, a muted "No changes
+    logged yet."
+- **Delegated to me (`delegatePage` in `delegates.templ`):** the Delegate
+  page, linked from Home's Your goals line. "Delegated to me" is the header
+  strip's title, with no actions.
+  - **The section (`.dg-section`):** an `h2`, "Goals delegated to me", over a
+    muted "Goals whose Owner has authorized you to write Check-ins on their
+    behalf.", then a row per Goal (`.dg-list`). With none, a muted "No Goals
+    have been delegated to you yet." instead of the rows.
+  - **A row (`.dg-row`):** at least 44px between hairlines. Its Health badge
+    for an Active Goal with a Health, or its Lifecycle as a `badge lc`, in a
+    96px column; then the Goal's title as an `h3` link, over a muted small
+    "Owner <Name> · Last check-in 3 days ago by <Name>" ("· No Check-ins
+    yet." before the first); then, at the right, a small primary **Check in**
+    on an Active or On Hold Goal, or a muted "A Proposed Goal takes no
+    Check-ins." naming any other Lifecycle. The row wraps on a narrow screen.
+- **Pending links and Pending handoffs (`pendingLinksPage` in `links.templ`,
+  `pendingHandoffsPage` in `handoffs.templ`):** the requests waiting on the
+  person's decision, laid out alike (`pendingStyles`). The page's name is the
+  header strip's title, with no actions, and its one section (`.pd-section`)
+  is an `h2` over a muted sentence, then a row per request (`.pd-list`).
+  - **A row (`.pd-row`):** at least 44px between hairlines, what is asked at
+    the left and its decision at the right, wrapping under it on a narrow
+    screen. **Accept** is a small primary button and **Reject** a small
+    danger one, which sends at once; the page that follows offers Undo in the
+    toast. With nothing pending, one muted row says so.
+  - **Pending links:** "Link requests", "Goals asking to contribute to yours.
+    Accept one to link it into the graph." A row reads "<Goal> (Owner <Name>)
+    wants to contribute to <Goal>", any note under it indented 12px from a
+    1px `--color-border` rule (`.pd-note`). "No pending requests."
+  - **Pending handoffs:** "Handoffs to you", "Goals someone wants to hand to
+    you. Nothing changes hands until you accept." A row reads "<Goal> —
+    <Name> wants to hand this Goal to you". When the Goal has Delegates who
+    aren't Departed, Accept sits under "Delegates to keep", a box for each,
+    checked. "No pending handoffs."
+- **Suggest a parent (`suggestParentPage` in `suggestions.templ`):** the form
+  by which someone other than the Owner suggests a parent for a Goal, from
+  the Goal page's More menu or a Follow-ups Fix. "Suggest a parent" is the
+  header strip's title, with no actions. One plain section (`.sg-section`),
+  up to 560px wide: an `h2`, "Parent suggestion", over a muted "For <Goal>,
+  owned by <Name>, who decides whether to link it."; a refusal's reason as an
+  alert; **Parent Goal**, a select of the Goals it could contribute to;
+  **Note (optional)**; then a primary **Suggest** and a quiet **Cancel** back
+  to the Goal page. A refused submit comes back as sent.
 
 ## Motion
 
@@ -2098,7 +2145,7 @@ given):
    `--shadow-card-hover` on hover; both tokens retired), so nothing read as
    nearer than anything else (UX Review). Cards went flat first, a 1px
    `--color-border` edge and no shadow in both themes, and the flat frame then
-   retired them as page containers (§ System: One surface). Only what floats
+   retired them, `.card` and all (§ System: One surface). Only what floats
    keeps the source's `--shadow-pop`: the person's menu, the signed-out Theme
    menu, the phone Menu's sheet, the Goal page's More menu, Follow-ups'
    popovers, the Download menu, the Check-in page's submit bar and the toast.
