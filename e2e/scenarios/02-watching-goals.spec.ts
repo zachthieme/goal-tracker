@@ -206,23 +206,27 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       const values = page.getByTestId("report-rule").first().getByTestId("rule-values");
       const checked = values.locator("option:checked");
       await expect(checked).toHaveAttribute("value", `org=${me.id}`);
-      // It worked if: the selected author is scrolled to the list's top row.
-      // Left unscrolled, it can sit wholly inside the list on its bottom edge.
-      // The script scrolls again once web fonts load, so poll.
+      // It worked if: the selected author is scrolled to the list's top row,
+      // or, near the list's end, the list is scrolled as far as it goes with
+      // the author wholly in view. Left unscrolled, it can sit wholly inside
+      // the list on its bottom edge. The script scrolls again once web fonts
+      // load, so poll.
       await expect
         .poll(
           async () =>
-            Math.abs(
-              await values.evaluate(
-                (list: HTMLSelectElement) =>
-                  list.selectedOptions[0].getBoundingClientRect().top -
-                  list.getBoundingClientRect().top -
-                  list.clientTop,
-              ),
-            ),
-          { message: `at ${width}px the author is the list's top row` },
+            await values.evaluate((list: HTMLSelectElement) => {
+              const option = list.selectedOptions[0].getBoundingClientRect();
+              const box = list.getBoundingClientRect();
+              const atTop = Math.abs(option.top - box.top - list.clientTop) <= 1;
+              const atEnd = list.scrollTop >= list.scrollHeight - list.clientHeight - 1;
+              const inView =
+                option.top >= box.top + list.clientTop - 1 &&
+                option.bottom <= box.top + list.clientTop + list.clientHeight + 1;
+              return atTop || (atEnd && inView);
+            }),
+          { message: `at ${width}px the author is the list's top row, or in view at its end` },
         )
-        .toBeLessThanOrEqual(1);
+        .toBe(true);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
   });
