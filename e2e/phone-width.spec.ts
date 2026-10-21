@@ -14,11 +14,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 // expectFitsAPhone asserts that no element inside main hides content behind
-// its own sideways scroll or clip, and that every visible link, button, input
-// and select inside main lies within the window. scrollers are the test ids of
-// containers DESIGN.md § Phone width lets scroll sideways inside themselves,
-// such as the Check-in page's add bar's buttons (#365); they and what they
-// hold are left out.
+// its own sideways scroll or clip, and that every visible element on the page
+// lies within the window. html's overflow-x:clip cuts off what passes the
+// window's edge rather than letting the page scroll to it, so the page's
+// scrollWidth can't tell; each element's box can. scrollers are the test ids
+// of containers DESIGN.md § Phone width lets scroll sideways inside
+// themselves, such as the Check-in page's add bar's buttons (#365); what they
+// hold is left out, and a scroller itself must still fit.
 async function expectFitsAPhone(page: Page, scrollers: string[] = []): Promise<void> {
   const clipped = await page.evaluate(
     (scrollers) =>
@@ -42,9 +44,9 @@ async function expectFitsAPhone(page: Page, scrollers: string[] = []): Promise<v
 
   const outside = await page.evaluate(
     ({ width, scrollers }) => {
-      return [...document.querySelectorAll("main a, main button, main input, main select")]
+      return [...document.body.querySelectorAll("*")]
         .filter((e) => {
-          if (scrollers.some((id) => e.closest(`[data-testid="${id}"]`))) return false;
+          if (scrollers.some((id) => e.parentElement?.closest(`[data-testid="${id}"]`))) return false;
           // checkVisibility is false inside a closed details, whose content
           // still has a box.
           if (!e.checkVisibility({ visibilityProperty: true })) return false;
@@ -53,12 +55,13 @@ async function expectFitsAPhone(page: Page, scrollers: string[] = []): Promise<v
         })
         .map((e) => {
           const r = e.getBoundingClientRect();
-          return `${e.tagName.toLowerCase()} "${(e.textContent || (e as HTMLInputElement).name || "").trim()}" (${Math.round(r.left)}–${Math.round(r.right)}px)`;
+          const text = (e.textContent || (e as HTMLInputElement).name || "").trim().slice(0, 40);
+          return `${e.tagName.toLowerCase()}${(e as HTMLElement).dataset.testid ? `[${(e as HTMLElement).dataset.testid}]` : ""} "${text}" (${Math.round(r.left)}–${Math.round(r.right)}px)`;
         });
     },
     { width: phone.width, scrollers },
   );
-  expect(outside, `controls in main past the ${phone.width}px window`).toEqual([]);
+  expect(outside, `elements past the ${phone.width}px window`).toEqual([]);
 }
 
 // buildRuleReport saves a Report Definition named name with the rule Team is
