@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 func TestAppClockIsTheRealClockWhenStartAtIsUnset(t *testing.T) {
@@ -892,5 +894,28 @@ func TestTrustedProxiesAreLogged(t *testing.T) {
 	}
 	if !logged {
 		t.Errorf("startup with trusted proxies logs no line naming X-Forwarded-For and them:\n%s", log.String())
+	}
+}
+
+// The HTTP server bounds how long a request may take to arrive, to be
+// answered, and to sit idle, so a slow or stalled client can't hold a
+// connection open. A PDF download, which may wait for a render slot and then
+// render, still has time to be answered.
+func TestTheHTTPServerTimesOutSlowConnections(t *testing.T) {
+	t.Parallel()
+
+	s := newHTTPServer(":0", http.NotFoundHandler())
+	for name, d := range map[string]time.Duration{
+		"ReadHeaderTimeout": s.ReadHeaderTimeout,
+		"ReadTimeout":       s.ReadTimeout,
+		"WriteTimeout":      s.WriteTimeout,
+		"IdleTimeout":       s.IdleTimeout,
+	} {
+		if d <= 0 {
+			t.Errorf("%s is %v, want it set", name, d)
+		}
+	}
+	if s.WriteTimeout <= web.PDFRenderTimeout {
+		t.Errorf("WriteTimeout %v doesn't outlast a PDF download's %v wait and render", s.WriteTimeout, web.PDFRenderTimeout)
 	}
 }

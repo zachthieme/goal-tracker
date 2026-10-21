@@ -110,7 +110,7 @@ type PDFRenderer interface {
 
 // WithPDFRenderer has a publication download as a PDF file, its print page
 // rendered by r, at most pdfRendersAtOnce at a time, each within
-// pdfRenderTimeout. Without it, or with a nil r, a PDF download is the print
+// PDFRenderTimeout. Without it, or with a nil r, a PDF download is the print
 // page, for the reader to print from the browser.
 func WithPDFRenderer(r PDFRenderer) Option {
 	return func(s *Server) {
@@ -118,7 +118,7 @@ func WithPDFRenderer(r PDFRenderer) Option {
 			s.pdf = nil
 			return
 		}
-		s.pdf = &pdfDownloads{renderer: r, slots: make(chan struct{}, pdfRendersAtOnce), timeout: pdfRenderTimeout}
+		s.pdf = &pdfDownloads{renderer: r, slots: make(chan struct{}, pdfRendersAtOnce), timeout: PDFRenderTimeout}
 	}
 }
 

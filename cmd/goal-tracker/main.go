@@ -151,17 +151,40 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
 	go scheduler.Run(context.Background(), time.Minute, logger)
 
-	httpServer := &http.Server{
-		Addr:              cfg.addr,
-		Handler:           srv,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	httpServer := newHTTPServer(cfg.addr, srv)
 	logger.Info("goal-tracker listening", "addr", cfg.addr, "db", cfg.dbPath, "timezone", loc.String(),
 		"weekly_emails", fmt.Sprintf("%s %02d:%02d", weekly.Day, weekly.Hour, weekly.Minute))
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("serve: %w", err)
 	}
 	return nil
+}
+
+// How long the HTTP server gives a request to arrive, headers and then
+// whole, and to be answered, and how long it keeps an idle connection open.
+const (
+	readHeaderTimeout = 10 * time.Second
+	// readTimeout is time enough for an import's upload, up to 5 MiB, on a
+	// slow connection.
+	readTimeout = time.Minute
+	// writeTimeout runs from when the request's headers arrive. It is generous
+	// so a PDF download, which may wait for a render slot and then render,
+	// within web.PDFRenderTimeout together, still has time to be sent.
+	writeTimeout = web.PDFRenderTimeout + time.Minute
+	idleTimeout  = 2 * time.Minute
+)
+
+// newHTTPServer is the HTTP server for handler at addr, with timeouts that
+// keep a slow or stalled client from holding a connection open.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+	}
 }
 
 // startDirectorySync syncs from dir now and hourly, and gives the web app the

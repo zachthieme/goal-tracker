@@ -602,10 +602,11 @@ func (s *Server) handleExportMarkdown(w http.ResponseWriter, r *http.Request, _ 
 }
 
 // How many PDFs render at once, and how long a download waits for its turn
-// and its render together before it gives up.
+// and its render together before it gives up. The HTTP server's write timeout
+// has to outlast PDFRenderTimeout, so it is exported.
 const (
 	pdfRendersAtOnce = 2
-	pdfRenderTimeout = 30 * time.Second
+	PDFRenderTimeout = 30 * time.Second
 )
 
 // pdfDownloads renders publications to PDF files: through renderer, at most
