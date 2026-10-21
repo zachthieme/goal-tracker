@@ -121,17 +121,27 @@ func (s *Service) AlsoIncludedOnly(ctx context.Context, r Report) (map[int64]boo
 	if err != nil {
 		return nil, err
 	}
-	out := map[int64]bool{}
+	var subjects []ruleSubject
+	var decidedByHistory []int64
 	for _, sg := range r.selected() {
 		if !slices.Contains(def.Include, sg.Goal.ID) {
 			continue
 		}
-		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID], orgs: orgs}, s.since(r))
-		if err != nil {
-			return nil, err
+		subject := ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID], orgs: orgs}
+		subjects = append(subjects, subject)
+		if lifecycleHistoryDecides(def.Rules, subject) {
+			decidedByHistory = append(decidedByHistory, sg.Goal.ID)
 		}
-		if !meets {
-			out[sg.Goal.ID] = true
+	}
+	checkins, err := s.checkinsByGoal(ctx, decidedByHistory)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]bool{}
+	for _, subject := range subjects {
+		h := goalHistory{goal: subject.Goal, checkins: checkins[subject.Goal.ID]}
+		if !meetsRulesGiven(def.Rules, subject, h, s.since(r)) {
+			out[subject.Goal.ID] = true
 		}
 	}
 	return out, nil
@@ -143,18 +153,23 @@ func (s *Service) AlsoIncludedOnly(ctx context.Context, r Report) (map[int64]boo
 // once. A standing condition, such as staying Red, is no change.
 func (s *Service) changedGoals(ctx context.Context, r Report) (int, error) {
 	since := s.since(r)
+	selected := r.selected()
+	goals := make([]Goal, 0, len(selected))
+	for _, sg := range selected {
+		goals = append(goals, sg.Goal)
+	}
+	histories, err := s.goalHistories(ctx, goals)
+	if err != nil {
+		return 0, err
+	}
+	milestones, err := s.milestonesByGoal(ctx, goalIDsOf(goals))
+	if err != nil {
+		return 0, err
+	}
 	changed := map[int64]bool{}
-	for _, sg := range r.selected() {
-		h, err := s.goalHistory(ctx, sg.Goal)
-		if err != nil {
-			return 0, err
-		}
-		milestones, err := s.ListMilestones(ctx, sg.Goal.ID)
-		if err != nil {
-			return 0, err
-		}
-		if h.changed(since) || slices.ContainsFunc(milestones, func(m Milestone) bool { return since(m.CreatedAt) }) {
-			changed[sg.Goal.ID] = true
+	for _, g := range goals {
+		if histories[g.ID].changed(since) || slices.ContainsFunc(milestones[g.ID], func(m Milestone) bool { return since(m.CreatedAt) }) {
+			changed[g.ID] = true
 		}
 	}
 	for _, c := range r.MembershipChanges {
