@@ -63,7 +63,7 @@ type RaiseActionItemInput struct {
 // needs an owner who has not left the company and a due date; a comment it is
 // turned from must be on the same publication, and a Goal it names must be one
 // the publication covers. The owner is emailed it unless they raised it
-// themselves; an Action Item whose email can't be sent is not kept.
+// themselves, once it is kept (see queueEmail).
 func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseActionItemInput) (ActionItem, error) {
 	pub, err := s.GetPublication(ctx, in.PublicationID)
 	if err != nil {
@@ -140,7 +140,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 	return item, err
 }
 
-// emailActionItemOwner emails the Action Item to its owner: intro, saying who
+// emailActionItemOwner queues an email of the Action Item to its owner: intro, saying who
 // gave it to them, then what it is, its Report and Goal, its due date, and a
 // link to it.
 func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, intro string) error {
@@ -156,8 +156,8 @@ func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, int
 	fmt.Fprintf(&b, "Due: %s\n\n", item.DueDate.Format(dateFormat))
 	fmt.Fprintf(&b, "%s/reports/%d/publications/%d#action-items\n", s.baseURL, item.DefinitionID, item.PublicationID)
 	subject := "Action Item: " + strings.Join(strings.Fields(item.Text), " ")
-	if err := s.email.Send(ctx, email.Message{To: item.Owner.Email, Subject: subject, Body: b.String()}); err != nil {
-		return fmt.Errorf("send action item email: %w", err)
+	if err := s.queueEmail(ctx, email.Message{To: item.Owner.Email, Subject: subject, Body: b.String()}); err != nil {
+		return fmt.Errorf("queue action item email: %w", err)
 	}
 	return nil
 }
@@ -244,8 +244,8 @@ type ActionItemReassignment struct {
 // ReassignActionItem hands the open Action Item itemID to newOwnerID and
 // records the reassignment. Only those CanReassignActionItem allows may do
 // it, and the new owner must not have left the company or already own it.
-// The new owner is emailed it unless they reassigned it to themselves; a
-// reassignment whose email can't be sent is not kept.
+// The new owner is emailed it unless they reassigned it to themselves, once
+// the reassignment is kept (see queueEmail).
 func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOwnerID int64) (ActionItem, error) {
 	item, err := s.reassignableActionItem(ctx, actorID, itemID)
 	if err != nil {

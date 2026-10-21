@@ -144,6 +144,18 @@ type DraftHighlight struct {
 	DiscardedCheckinID *int64
 }
 
+type EmailOutbox struct {
+	ID            int64
+	Recipient     string
+	Subject       string
+	Body          string
+	CreatedAt     string
+	Attempts      int64
+	NextAttemptAt string
+	SentAt        *string
+	LastError     string
+}
+
 type Field struct {
 	ID        int64
 	Name      string

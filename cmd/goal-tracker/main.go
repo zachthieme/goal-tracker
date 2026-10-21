@@ -53,8 +53,8 @@ func main() {
 const passwordLinkCommand = "password-link"
 
 // run serves the app, configured from the environment, until ctx is done. It
-// then shuts down (see serve), stops the weekly emails and the directory sync,
-// and closes the database. With args password-link <email>, it instead issues
+// then shuts down (see serve), stops the email outbox, the weekly emails and
+// the directory sync, and closes the database. With args password-link <email>, it instead issues
 // a set-password link for the email, creating the Account if there is none,
 // writes it to stdout, and returns. Any other args are ignored.
 func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writer) error {
@@ -95,8 +95,9 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() { _ = sqlDB.Close() }()
-	// The weekly emails and the directory sync run until ctx is done, or run
-	// returns, and the database closes only once they have stopped.
+	// The email outbox, the weekly emails and the directory sync run until ctx
+	// is done, or run returns, and the database closes only once they have
+	// stopped.
 	ctx, stopBackground := context.WithCancel(ctx)
 	var background sync.WaitGroup
 	defer func() {
@@ -109,7 +110,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	}
 
 	sender := email.LogSender{Logger: logger}
-	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
+	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL), domain.WithEmailOutboxLogger(logger))
 	if linkFor != "" {
 		token, _, err := svc.IssuePasswordLink(ctx, linkFor)
 		if err != nil {
@@ -164,6 +165,10 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	webOpts = append(webOpts, pdfOpt)
 	srv := web.NewServer(svc, webOpts...)
 
+	// The email commands queue, such as comment alerts, is sent once each
+	// command commits, and retried while it fails.
+	background.Go(func() { svc.RunEmailOutbox(ctx, emailOutboxInterval) })
+
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
 	background.Go(func() { scheduler.Run(ctx, time.Minute, logger) })
@@ -180,6 +185,10 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	logger.Info("goal-tracker stopped serving: every request in flight finished")
 	return nil
 }
+
+// emailOutboxInterval is how often the email outbox looks for email due to be
+// tried again; email a command queues is sent as soon as it commits.
+const emailOutboxInterval = 15 * time.Second
 
 // shutdownTimeout is how long, asked to stop, the app gives the requests in
 // flight to finish.

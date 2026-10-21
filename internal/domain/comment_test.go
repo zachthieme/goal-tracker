@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
@@ -143,9 +144,9 @@ type failingSender struct{}
 
 func (failingSender) Send(context.Context, email.Message) error { return errors.New("mail is down") }
 
-// A comment whose alert can't be sent is not kept, so posting it again doesn't
-// leave it twice in the thread.
-func TestCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
+// A comment whose alert can't be sent is kept, as is a reply, and their
+// alerts go out once mail is back (ticket #412).
+func TestCommentIsKeptWhenItsAlertFails(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -155,24 +156,37 @@ func TestCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(reader, def)
-	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil)
+	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil, domain.WithEmailDeliveredOnCommit())
 
-	if _, err := down.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why?"); err == nil {
-		t.Fatal("AddComment succeeded though its alert could not be sent")
-	}
-	question, err := h.Service.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why?")
+	question, err := down.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why?")
 	if err != nil {
-		t.Fatalf("AddComment: %v", err)
+		t.Fatalf("AddComment: %v, want it kept though its alert could not be sent", err)
 	}
-	if _, err := down.ReplyToComment(ctx, owner.ID, question.ID, "Because."); err == nil {
-		t.Fatal("ReplyToComment succeeded though its alert could not be sent")
+	if _, err := down.ReplyToComment(ctx, owner.ID, question.ID, "Because."); err != nil {
+		t.Fatalf("ReplyToComment: %v, want it kept though its alert could not be sent", err)
 	}
 	threads, err := h.Service.ListThreads(ctx, pub.ID)
 	if err != nil {
 		t.Fatalf("ListThreads: %v", err)
 	}
-	if len(threads) != 1 || len(threads[0].Replies) != 0 {
-		t.Errorf("threads %+v, want only the comment whose alert was sent", threads)
+	if len(threads) != 1 || len(threads[0].Replies) != 1 {
+		t.Errorf("threads %+v, want the comment and its reply", threads)
+	}
+
+	h.Clock.Advance(time.Minute)
+	h.DeliverEmail()
+	assertSentTo(t, h.Email.Sent(), "owner@example.com", "reader@example.com")
+}
+
+// assertSentTo fails the test unless sent went to want, in order.
+func assertSentTo(t *testing.T, sent []email.Message, want ...string) {
+	t.Helper()
+	var to []string
+	for _, m := range sent {
+		to = append(to, m.To)
+	}
+	if !slices.Equal(to, want) {
+		t.Errorf("sent to %v, want %v", to, want)
 	}
 }
 
@@ -385,9 +399,9 @@ func TestGoalThreadsAndReportThreadsAreApartButGoalCommentsListsBoth(t *testing.
 	}
 }
 
-// A comment on the Goal whose alert can't be sent is not kept, nor is a reply
-// to one.
-func TestGoalCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
+// A comment on the Goal whose alert can't be sent is kept, as is a reply to
+// one, and their alerts go out once mail is back (ticket #412).
+func TestGoalCommentIsKeptWhenItsAlertFails(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -395,23 +409,24 @@ func TestGoalCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil)
+	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil, domain.WithEmailDeliveredOnCommit())
 
-	if _, err := down.AddGoalComment(ctx, reader.ID, g.ID, "Why?"); err == nil {
-		t.Fatal("AddGoalComment succeeded though its alert could not be sent")
-	}
-	question, err := h.Service.AddGoalComment(ctx, reader.ID, g.ID, "Why?")
+	question, err := down.AddGoalComment(ctx, reader.ID, g.ID, "Why?")
 	if err != nil {
-		t.Fatalf("AddGoalComment: %v", err)
+		t.Fatalf("AddGoalComment: %v, want it kept though its alert could not be sent", err)
 	}
-	if _, err := down.ReplyToComment(ctx, owner.ID, question.ID, "Because."); err == nil {
-		t.Fatal("ReplyToComment succeeded though its alert could not be sent")
+	if _, err := down.ReplyToComment(ctx, owner.ID, question.ID, "Because."); err != nil {
+		t.Fatalf("ReplyToComment: %v, want it kept though its alert could not be sent", err)
 	}
 	threads, err := h.Service.GoalThreads(ctx, g.ID)
 	if err != nil {
 		t.Fatalf("GoalThreads: %v", err)
 	}
-	if len(threads) != 1 || len(threads[0].Replies) != 0 {
-		t.Errorf("threads %+v, want only the comment whose alert was sent", threads)
+	if len(threads) != 1 || len(threads[0].Replies) != 1 {
+		t.Errorf("threads %+v, want the comment and its reply", threads)
 	}
+
+	h.Clock.Advance(time.Minute)
+	h.DeliverEmail()
+	assertSentTo(t, h.Email.Sent(), "owner@example.com", "reader@example.com")
 }
