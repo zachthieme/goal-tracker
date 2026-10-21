@@ -1762,8 +1762,8 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 // The List / Table switch shows its chosen segment by a canvas fill and a
 // strong primary edge, 3:1 on the chip track in light (WCAG 1.4.11), since the
 // fill alone is 1.13:1 (DESIGN.md § Segmented controls). Every segment
-// reserves the edge as a transparent border, a pixel of its padding, so
-// choosing one shifts nothing and no segment grows, on touch either.
+// reserves the edge as a transparent border, as the cadence's do, so choosing
+// one shifts nothing, and its touch height counts the border.
 func TestGoalListLayoutSwitchEdgesTheChosenSegment(t *testing.T) {
 	t.Parallel()
 
@@ -1774,7 +1774,7 @@ func TestGoalListLayoutSwitchEdgesTheChosenSegment(t *testing.T) {
 
 	style := between(t, getBody(t, client, ts.URL+"/goals"), ".gl-seg{", "</style>")
 	for sel, want := range map[string][]string{
-		".gl-seg a":                    {"box-sizing:border-box", "padding:0 11px", "border:1px solid transparent"},
+		".gl-seg a":                    {"box-sizing:border-box", "border:1px solid transparent"},
 		".gl-seg a[aria-current=page]": {"background:var(--color-canvas)", "border-color:var(--color-primary-strong)", "color:var(--color-ink)"},
 	} {
 		rule, ok := ruleFor(style, sel)
