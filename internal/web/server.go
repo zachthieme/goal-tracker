@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"log/slog"
 	"net/http"
+	"net/netip"
 
 	"github.com/a-h/templ"
 
@@ -37,6 +38,9 @@ type Server struct {
 	// through an Admin's set-password link, and counts each client IP's failed
 	// tries; the development email form is off (see WithPasswordSignIn).
 	passwordFailures *passwordFailuresByIP
+	// trustedProxies are the reverse proxies whose X-Forwarded-For names the
+	// client a password sign-in is throttled by (see WithTrustedProxies).
+	trustedProxies []netip.Prefix
 	// directorySync, when set, syncs people and their Managers from the org's
 	// directory; the Admin page shows it (see WithDirectorySync).
 	directorySync *directory.Sync
@@ -81,6 +85,17 @@ func WithSecureCookies(secure bool) Option {
 func WithPasswordSignIn() Option {
 	return func(s *Server) {
 		s.passwordFailures = newPasswordFailuresByIP()
+	}
+}
+
+// WithTrustedProxies has the password sign-in throttle count a request that
+// arrives from one of proxies against the client its X-Forwarded-For names:
+// the right-most address there that isn't one of proxies. Without it, or with
+// none, X-Forwarded-For is ignored, and every request counts against the
+// address it arrived from.
+func WithTrustedProxies(proxies []netip.Prefix) Option {
+	return func(s *Server) {
+		s.trustedProxies = proxies
 	}
 }
 

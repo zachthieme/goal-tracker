@@ -5,6 +5,8 @@ import (
 	"html"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // samsPassword is a password long enough to be accepted.
@@ -233,6 +236,133 @@ func TestFiftyFailuresFromOneIPHoldItsSignInsFor15Minutes(t *testing.T) {
 
 	h.Clock.Advance(15 * time.Minute)
 	passwordSignInCookie(t, ts.URL, "sam@example.com", samsPassword)
+}
+
+// postPasswordSignInFrom posts the password sign-in form to srv as a request
+// arriving from remoteAddr, carrying an X-Forwarded-For header for each of xff,
+// and returns the response's status.
+func postPasswordSignInFrom(t *testing.T, srv http.Handler, remoteAddr, emailAddr, password string, xff ...string) int {
+	t.Helper()
+	form := url.Values{"email": {emailAddr}, "password": {password}}
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signin", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.RemoteAddr = remoteAddr
+	for _, v := range xff {
+		r.Header.Add("X-Forwarded-For", v)
+	}
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+	return w.Code
+}
+
+// failFiftyPasswordSignInsFrom fails 50 password sign-ins to srv from
+// remoteAddr, each carrying the X-Forwarded-For headers xff, enough to hold the
+// client they're counted against.
+func failFiftyPasswordSignInsFrom(t *testing.T, srv http.Handler, remoteAddr string, xff ...string) {
+	t.Helper()
+	for i := range 50 {
+		// Each from an unknown email, so no Account's own lockout is involved.
+		if status := postPasswordSignInFrom(t, srv, remoteAddr, fmt.Sprintf("nobody%d@example.com", i), samsPassword, xff...); status != http.StatusUnauthorized {
+			t.Fatalf("failure %d: status %d, want 401", i+1, status)
+		}
+	}
+}
+
+// Behind a trusted reverse proxy, each client is throttled by its own address
+// in X-Forwarded-For: 50 failures from one hold its sign-ins and not those of
+// another client behind the same proxy.
+func TestClientsBehindATrustedProxyAreThrottledSeparately(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service, web.WithPasswordSignIn(), web.WithTrustedProxies([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}))
+	givePassword(t, h, "sam@example.com", samsPassword)
+	failFiftyPasswordSignInsFrom(t, srv, "10.0.0.2:40000", "203.0.113.7")
+
+	if status := postPasswordSignInFrom(t, srv, "10.0.0.2:40001", "sam@example.com", samsPassword, "203.0.113.7"); status != http.StatusUnauthorized {
+		t.Errorf("the failing client's right password: status %d, want 401", status)
+	}
+	if status := postPasswordSignInFrom(t, srv, "10.0.0.2:40002", "sam@example.com", samsPassword, "198.51.100.9"); status != http.StatusSeeOther {
+		t.Errorf("another client behind the proxy: status %d, want 303", status)
+	}
+}
+
+// A request that doesn't come from a trusted proxy is throttled by the address
+// it came from, whatever X-Forwarded-For it carries: a client can't forge one
+// to escape its hold.
+func TestAForgedForwardedForFromAnUntrustedAddressIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service, web.WithPasswordSignIn(), web.WithTrustedProxies([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}))
+	givePassword(t, h, "sam@example.com", samsPassword)
+	failFiftyPasswordSignInsFrom(t, srv, "192.0.2.4:40000", "203.0.113.7")
+
+	if status := postPasswordSignInFrom(t, srv, "192.0.2.4:40001", "sam@example.com", samsPassword, "198.51.100.9"); status != http.StatusUnauthorized {
+		t.Errorf("the held address's right password with a new X-Forwarded-For: status %d, want 401", status)
+	}
+	if status := postPasswordSignInFrom(t, srv, "10.0.0.2:40000", "sam@example.com", samsPassword, "203.0.113.7"); status != http.StatusSeeOther {
+		t.Errorf("the address it forged, through the trusted proxy: status %d, want 303", status)
+	}
+}
+
+// Without trusted proxies, X-Forwarded-For is ignored from every address: the
+// sign-ins are throttled by the address they came from.
+func TestWithoutTrustedProxiesForwardedForIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	for name, opts := range map[string][]web.Option{
+		"unset": {web.WithPasswordSignIn()},
+		"empty": {web.WithPasswordSignIn(), web.WithTrustedProxies(nil)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			srv := web.NewServer(h.Service, opts...)
+			givePassword(t, h, "sam@example.com", samsPassword)
+			failFiftyPasswordSignInsFrom(t, srv, "10.0.0.2:40000", "203.0.113.7")
+
+			if status := postPasswordSignInFrom(t, srv, "10.0.0.2:40001", "sam@example.com", samsPassword, "198.51.100.9"); status != http.StatusUnauthorized {
+				t.Errorf("the held address's right password with a new X-Forwarded-For: status %d, want 401", status)
+			}
+		})
+	}
+}
+
+// Through trusted proxies, the client is the right-most address in
+// X-Forwarded-For that isn't one of them, so addresses a client writes to the
+// left of it don't change whom it counts against; with no such address, or an
+// entry that isn't an address in the way, it's the proxy that sent it.
+func TestTheClientIsTheRightMostUntrustedForwardedForAddress(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name string
+		// failXFF are the X-Forwarded-For headers 50 failures carry; heldXFF
+		// those of a sign-in that must then be held, as from the same client.
+		failXFF, heldXFF []string
+	}{
+		{"behind two trusted proxies", []string{"203.0.113.7, 10.1.1.1"}, []string{"203.0.113.7,10.9.9.9"}},
+		{"with addresses the client wrote", []string{"1.1.1.1, 203.0.113.7"}, []string{"2.2.2.2, 203.0.113.7"}},
+		{"split over two headers", []string{"1.1.1.1", "203.0.113.7"}, []string{"203.0.113.7"}},
+		{"with only trusted proxies", []string{"10.1.1.1"}, []string{"10.9.9.9"}},
+		{"with no header", nil, nil},
+		{"with an entry that isn't an address", []string{"203.0.113.7, unknown"}, []string{"198.51.100.9, unknown"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			srv := web.NewServer(h.Service, web.WithPasswordSignIn(), web.WithTrustedProxies([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}))
+			givePassword(t, h, "sam@example.com", samsPassword)
+			failFiftyPasswordSignInsFrom(t, srv, "10.0.0.2:40000", c.failXFF...)
+
+			if status := postPasswordSignInFrom(t, srv, "10.0.0.2:40001", "sam@example.com", samsPassword, c.heldXFF...); status != http.StatusUnauthorized {
+				t.Errorf("X-Forwarded-For %q after 50 failures with %q: status %d, want 401", c.heldXFF, c.failXFF, status)
+			}
+		})
+	}
 }
 
 // Password sign-in, the set-password form and a used link's notice are each a

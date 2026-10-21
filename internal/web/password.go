@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -25,7 +27,7 @@ const passwordLinkGone = "This link has expired or was already used. Ask an Admi
 // the right password is told they've departed.
 func (s *Server) handlePasswordSignIn(w http.ResponseWriter, r *http.Request) {
 	emailAddr := r.FormValue("email")
-	ip := clientIP(r)
+	ip := s.clientIP(r)
 	if s.passwordFailures.blocked(ip, s.svc.Now()) {
 		render(w, r, http.StatusUnauthorized, passwordSignInPage(passwordSignInFailed, emailAddr))
 		return
@@ -126,14 +128,49 @@ func keepPasswordLinkPrivate(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store")
 }
 
-// clientIP is the address r came from: the host of its RemoteAddr. It doesn't
-// read X-Forwarded-For, which a client can write; behind a reverse proxy, it's
-// the proxy's address.
-func clientIP(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+// clientIP is the client a password sign-in is throttled by. It's the host of
+// r's RemoteAddr, unless that is a trusted proxy (see WithTrustedProxies): then
+// it's the right-most address in X-Forwarded-For that isn't a trusted proxy,
+// the last one a proxy we trust saw. A client can write the rest of the
+// header, so it's never read past that address, nor at all from a request
+// that didn't come through a trusted proxy. With the header missing, an entry
+// that isn't an address before the client's, or nothing but trusted proxies
+// in it, it's RemoteAddr's host.
+func (s *Server) clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if !s.trustedProxy(host) {
 		return host
 	}
-	return r.RemoteAddr
+	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
+	for _, hop := range slices.Backward(hops) {
+		addr, err := netip.ParseAddr(strings.TrimSpace(hop))
+		if err != nil {
+			return host
+		}
+		if !s.trustedProxy(addr.String()) {
+			return addr.Unmap().String()
+		}
+	}
+	return host
+}
+
+// trustedProxy reports whether host is an address within one of the trusted
+// proxies' ranges.
+func (s *Server) trustedProxy(host string) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range s.trustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // The per-IP limit on password sign-ins: after passwordFailuresPerIP failed
