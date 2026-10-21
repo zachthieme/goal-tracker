@@ -89,6 +89,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] An import file just over 5 MiB is refused with 413 Request Entity Too Large and imports nothing, instead of being cut short at 5 MiB and imported without a word (#440).
 - [user] A Field or Dimension value that starts with an apostrophe and then a formula character, such as `'=x`, now downloads behind a second apostrophe, so re-importing the download keeps the value as it was instead of quietly dropping its apostrophe (#443).
 - [ops] A `TMPDIR` too long for Chromium now stops startup before the database is opened or migrated, OIDC discovery runs, or the directory sync starts, as a missing Chromium does; before, a refused start could still begin a directory sync (#446).
+- [ops] A `GOAL_TRACKER_TRUSTED_PROXIES` range written in IPv4-mapped form (`::ffff:10.0.0.0/104`) now matches its IPv4 range (`10.0.0.0/8`), so clients behind such a proxy no longer share its sign-in throttle; one wider than `/96` stops startup naming the variable and the entry (#442).
+- [user] Two first OIDC sign-ins racing to link the same subject to different Accounts no longer give the loser a server error; it gets the existing "linked to another subject" refusal (#442).
+- [user] A Report draft's Narrative saves only when you press **Save narrative**, now shown to everyone, so the Report log records one entry per save rather than one per pause in typing, and the Report log on the page shows the new entry at once. The preview still follows the form as you type, without saving; the save status reads "Unsaved changes" until you save, **Add another** adds a box without saving, Publish… says "Save the narrative first." with Publish disabled while there are unsaved changes, and leaving or reloading the page with unsaved changes asks the browser's "Leave site?" (#444).
+- [internal] The live preview posts to a new `POST /reports/{id}/narrative/preview`, backed by `PreviewNarrative`, which shares `CurateNarrative`'s checks and drafts the Report with the posted narrative, saving nothing (#444).
 
 **Security:**
 - [user] A session now ends 30 days after sign-in, or after 7 days without a request, however it is used; a request at least a day after the last re-issues the cookie to keep it from idling out (#414).
@@ -155,6 +159,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] CONTEXT.md defines Report Delegate and Report log: only a Report Definition's creator, its Report Delegates and Admins may change, curate or publish it, and every change is logged (#428).
 - [internal] ADR 0009 records staying on SQLite: the October review's storage gaps are closed on SQLite, and the ADR names what would trigger a move to Postgres (#430).
 - [internal] `docs/install.md` lists `GOAL_TRACKER_TRUSTED_PROXIES` with the other settings and says when to set it, and its nginx example now appends `X-Forwarded-For`; the README's lockout note points to it (#425).
+- [ops] `docs/install.md` notes that a session lasts 30 days from sign-in and ends after 7 days without a signed-in page; signed-out pages (`/`, the sign-in page, a 404) don't keep it from idling (#442).
 
 ### Collected changes — October 20, 2026
 
