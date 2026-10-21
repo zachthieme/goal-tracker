@@ -310,7 +310,7 @@ templ reportLog(log []domain.ReportLogEntry, loc *time.Location) {
 // reportLogList lists Report log entries, each what changed, then who made
 // the change and when.
 templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
-	<ol class="rp-list rp-log-list">
+	<ol class="rp-list">
 		for _, e := range entries {
 			<li data-testid="report-log-entry">
 				<span>{ e.Detail }</span>
