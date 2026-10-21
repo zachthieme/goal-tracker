@@ -51,3 +51,18 @@ func TestHarnessDatabaseEnforcesForeignKeys(t *testing.T) {
 		t.Fatalf("insert Contributor for missing Goal: err = %v, want a foreign-key error", err)
 	}
 }
+
+// A harness database runs in WAL mode as the app's does, so a test reading
+// while a write is open sees what the app would.
+func TestHarnessDatabaseRunsInWALMode(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t)
+
+	var mode string
+	if err := h.DB.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if mode != "wal" {
+		t.Errorf("journal_mode = %q, want wal", mode)
+	}
+}

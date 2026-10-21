@@ -87,10 +87,11 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 // db.Open, a statement that meets another connection's lock waits for it,
 // transactions take the write lock at BEGIN, so a test running two requests at
 // once sees them queue as they would in the app rather than fail with
-// SQLITE_BUSY, and foreign keys are enforced, so a test that would orphan a row
-// fails as the app would.
+// SQLITE_BUSY, foreign keys are enforced, so a test that would orphan a row
+// fails as the app would, and the database runs in WAL mode, so a read runs
+// alongside an open write as it does in the app.
 func dsn(path string) string {
-	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_txlock=immediate"
 }
 
 // The migrated database every Harness copies, built on first use, or the error
@@ -123,7 +124,10 @@ func buildTemplate() ([]byte, error) {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	// Closed before reading, so the file is complete.
+	// Closed before reading, so the file is complete: closing the last
+	// connection checkpoints the WAL into the database file and deletes the
+	// -wal and -shm files beside it. The copy keeps WAL mode, which SQLite
+	// records in the file itself.
 	if err := sqlDB.Close(); err != nil {
 		return nil, fmt.Errorf("close: %w", err)
 	}

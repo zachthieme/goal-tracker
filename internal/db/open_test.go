@@ -1,11 +1,13 @@
 package db_test
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
@@ -25,6 +27,49 @@ func TestOpenSetsBusyTimeout(t *testing.T) {
 	}
 	if ms != 5000 {
 		t.Errorf("busy_timeout = %d ms, want 5000", ms)
+	}
+}
+
+// The database runs in WAL mode, so a read doesn't wait behind a write, and
+// with synchronous NORMAL, which WAL keeps safe from corruption on power loss.
+func TestOpenRunsInWALMode(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	var mode string
+	if err := sqlDB.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if mode != "wal" {
+		t.Errorf("journal_mode = %q, want wal", mode)
+	}
+	var sync int
+	if err := sqlDB.QueryRow(`PRAGMA synchronous`).Scan(&sync); err != nil {
+		t.Fatalf("read synchronous: %v", err)
+	}
+	if sync != 1 {
+		t.Errorf("synchronous = %d, want 1 (NORMAL)", sync)
+	}
+}
+
+// The pool is capped: past the one writer and the readers WAL lets alongside
+// it, more connections would only queue on the write lock.
+func TestOpenCapsThePoolAtEightConnections(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	if got := sqlDB.Stats().MaxOpenConnections; got != 8 {
+		t.Errorf("MaxOpenConnections = %d, want 8", got)
 	}
 }
 
@@ -127,4 +172,53 @@ func TestOpenQueuesTransactionsThatReadThenWrite(t *testing.T) {
 		}
 		return tx.Commit()
 	})
+}
+
+// A read doesn't wait behind a long-running write. The write is bigger than
+// SQLite's page cache, so it spills to the database file mid-transaction:
+// without WAL that takes the exclusive lock, and every reader waits out the
+// busy timeout behind it.
+func TestOpenLetsAReadRunWhileAWriteIsHeld(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := openTally(t)
+	ctx := context.Background()
+	if _, err := sqlDB.Exec(`INSERT INTO tally (n) VALUES (1)`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	writer, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("writer connection: %v", err)
+	}
+	defer func() { _ = writer.Close() }()
+	reader, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("reader connection: %v", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	tx, err := writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin write: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`CREATE TABLE bulk (b BLOB NOT NULL)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := tx.Exec(`WITH RECURSIVE mb(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM mb WHERE i < 4) INSERT INTO bulk (b) SELECT zeroblob(1 << 20) FROM mb`); err != nil {
+		t.Fatalf("write past the page cache: %v", err)
+	}
+
+	start := time.Now()
+	var count int
+	if err := reader.QueryRowContext(ctx, `SELECT count(*) FROM tally`).Scan(&count); err != nil {
+		t.Fatalf("read while the write is held: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Errorf("read took %v while a write was held, want under 100ms", elapsed)
+	}
+	if count != 1 {
+		t.Errorf("read %d rows, want the 1 committed before the write", count)
+	}
 }

@@ -98,8 +98,9 @@ sudo install -d -m 0750 -o root -g goal-tracker /etc/goal-tracker
 | `/var/lib/goal-tracker/goal-tracker.db` | The database. **This is the only data to back up.** |
 
 The database's directory must exist and be writable by the service user:
-SQLite writes a journal file next to the database during each change. The app
-creates the database and runs its migrations on first start.
+the database runs in WAL mode, and SQLite keeps `goal-tracker.db-wal` and
+`goal-tracker.db-shm` files next to it while the app runs. The app creates the
+database and runs its migrations on first start.
 
 ## 3. Choose how people sign in
 
@@ -357,21 +358,29 @@ with the right number of people. Goals can be loaded in bulk with the
 
 ### Backups
 
-The database file is the whole state. Back it up while the app runs with
-SQLite's online backup, which copies a consistent snapshot:
+The database is the whole state. It runs in WAL mode, so while the app runs,
+`goal-tracker.db-wal` and `goal-tracker.db-shm` sit beside `goal-tracker.db`
+and are part of its live state: recent changes are in the `-wal` file until
+SQLite folds them into the main file. Back it up while the app runs with
+SQLite's online backup, which copies a consistent snapshot of all three into
+one file:
 
 ```sh
 sqlite3 /var/lib/goal-tracker/goal-tracker.db ".backup /var/backups/goal-tracker/$(date +%F).db"
 ```
 
-Don't copy the file with `cp` while the app is running; you can catch it
+`sqlite3 /var/lib/goal-tracker/goal-tracker.db "VACUUM INTO '/var/backups/goal-tracker/$(date +%F).db'"`
+works too, and writes a compacted copy.
+
+Don't copy `goal-tracker.db` with `cp`: the main file alone is missing
+whatever is still in the `-wal` file, and while the app runs you can catch it
 mid-change. Run the backup nightly from cron or a systemd timer and keep
 copies off the host. To check a backup:
 `sqlite3 <backup> "pragma integrity_check"` prints `ok`.
 
 To restore: stop the service, replace `goal-tracker.db` with the backup (owned
-by `goal-tracker`), delete any `goal-tracker.db-journal` beside it, and start
-the service.
+by `goal-tracker`), delete any `goal-tracker.db-wal` and `goal-tracker.db-shm`
+beside it, and start the service.
 
 ### Upgrading
 
