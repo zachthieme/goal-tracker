@@ -126,7 +126,7 @@ func TestMarkGoalDatedSetsKindAndDeliveryDate(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
 	date := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
-	got, err := h.Service.MarkGoalDated(context.Background(), g.ID, date)
+	got, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, date)
 	if err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestMarkGoalDatedRequiresADate(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Time{}); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, time.Time{}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }
@@ -158,10 +158,10 @@ func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
 
 	// Mark Dated first, then Ongoing, to prove the delivery date is cleared.
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	got, err := h.Service.MarkGoalOngoing(context.Background(), g.ID)
+	got, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID)
 	if err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
@@ -463,5 +463,35 @@ func TestRequireGoalOwnerAdmitsOnlyTheOwner(t *testing.T) {
 	}
 	if err := h.Service.RequireGoalOwner(ctx, owner.ID, 999); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing Goal: err = %v, want ErrNotFound", err)
+	}
+}
+
+// Only a Goal's Owner may mark it Dated or Ongoing: anyone else, a Delegate
+// and an Admin included, is refused and its Kind stays as it was.
+func TestMarkGoalKindAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+	due := testsupport.Epoch.AddDate(0, 6, 0)
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.MarkGoalDated(ctx, actor.ID, g.ID, due); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s marking it Dated: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.MarkGoalOngoing(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s marking it Ongoing: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Kind != "" {
+		t.Errorf("Kind after refusals = %q, want none", got.Kind)
+	}
+	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, due); err != nil {
+		t.Errorf("Owner marking it Dated: %v", err)
+	}
+	if _, err := h.Service.MarkGoalOngoing(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner marking it Ongoing: %v", err)
 	}
 }

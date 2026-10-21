@@ -14,7 +14,7 @@ func (h *Harness) ActiveGoal(owner domain.Account, title, whyItMatters string) d
 	h.T.Helper()
 	ctx := context.Background()
 	g := h.CreateGoal(owner, title, whyItMatters)
-	if _, err := h.Service.MarkGoalDated(ctx, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
 	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{

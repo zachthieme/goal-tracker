@@ -16,7 +16,7 @@ import (
 func readyGoal(t *testing.T, h *testsupport.Harness, owner domain.Account, title string) domain.Goal {
 	t.Helper()
 	g := h.CreateGoal(owner, title, "It matters.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	addMilestone(t, h, g.ID)

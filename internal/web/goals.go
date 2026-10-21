@@ -1603,7 +1603,7 @@ func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, "invalid delivery date", http.StatusUnprocessableEntity)
 		return
 	}
-	_, err = s.svc.MarkGoalDated(r.Context(), id, date)
+	_, err = s.svc.MarkGoalDated(r.Context(), current.ID, id, date)
 	s.writeCommandResult(w, r, id, err)
 }
 
@@ -1616,7 +1616,7 @@ func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, c
 		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	_, err := s.svc.MarkGoalOngoing(r.Context(), id)
+	_, err := s.svc.MarkGoalOngoing(r.Context(), current.ID, id)
 	s.writeCommandResult(w, r, id, err)
 }
 

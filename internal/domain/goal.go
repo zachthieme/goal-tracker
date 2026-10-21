@@ -171,6 +171,7 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 	if err != nil {
 		return Goal{}, err
 	}
+	s.recordImportedGoal(row.ID)
 
 	return goalFromRow(row, owner), nil
 }
@@ -419,8 +420,12 @@ func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) e
 
 // MarkGoalDated marks the Goal as Dated with the given delivery date, against
 // which its Health will be judged (CONTEXT.md: Dated Goal). A Dated Goal needs a
-// delivery date, so a zero date is rejected.
-func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate time.Time) (Goal, error) {
+// delivery date, so a zero date is rejected. Only the Goal's Owner may mark it
+// (ErrNotAuthorized).
+func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deliveryDate time.Time) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if deliveryDate.IsZero() {
 		return Goal{}, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation)
 	}
@@ -522,7 +527,11 @@ func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account
 
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its
 // Health is judged against its Metrics instead (CONTEXT.md: Ongoing Goal).
-func (s *Service) MarkGoalOngoing(ctx context.Context, goalID int64) (Goal, error) {
+// Only the Goal's Owner may mark it (ErrNotAuthorized).
+func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
 		return Goal{}, err
 	}

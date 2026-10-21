@@ -261,9 +261,9 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 	var err error
 	switch {
 	case in.Kind == GoalDated && (current.Kind != GoalDated || !current.DeliveryDate.Equal(in.DeliveryDate)):
-		_, err = s.MarkGoalDated(ctx, goalID, in.DeliveryDate)
+		_, err = s.MarkGoalDated(ctx, in.OwnerID, goalID, in.DeliveryDate)
 	case in.Kind == GoalOngoing && current.Kind != GoalOngoing:
-		_, err = s.MarkGoalOngoing(ctx, goalID)
+		_, err = s.MarkGoalOngoing(ctx, in.OwnerID, goalID)
 	}
 	if err != nil {
 		return Goal{}, err
@@ -325,9 +325,9 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 	}
 	switch in.Kind {
 	case GoalDated:
-		_, err = s.MarkGoalDated(ctx, g.ID, in.DeliveryDate)
+		_, err = s.MarkGoalDated(ctx, in.OwnerID, g.ID, in.DeliveryDate)
 	case GoalOngoing:
-		_, err = s.MarkGoalOngoing(ctx, g.ID)
+		_, err = s.MarkGoalOngoing(ctx, in.OwnerID, g.ID)
 	}
 	if err != nil {
 		return Goal{}, err

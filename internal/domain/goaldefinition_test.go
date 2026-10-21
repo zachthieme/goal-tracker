@@ -607,7 +607,7 @@ func TestDefineGoalChangesKindAddsAMilestoneAndSwapsAValueInOneCall(t *testing.T
 	ctx := context.Background()
 	area := s.h.CreateSeveralValuesDimension(s.admin, "Area", "Billing", "Search", "Mobile")
 	g := s.h.CreateGoal(s.owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := s.h.Service.MarkGoalOngoing(ctx, g.ID); err != nil {
+	if _, err := s.h.Service.MarkGoalOngoing(ctx, g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	s.h.AssignGoalValue(g, area.Values[0])

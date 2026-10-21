@@ -1635,7 +1635,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	ana := h.SignInNamed("ana@example.com", "Ana Torres")
 	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
 	ctx := context.Background()
-	if _, err := h.Service.MarkGoalDated(ctx, g.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	if _, err := h.Service.SetCadence(ctx, g.Owner.ID, g.ID, 14); err != nil {
@@ -1747,7 +1747,7 @@ func TestDefineGoalFormSavesEveryChangeInOneSubmit(t *testing.T) {
 	fits := arrangeWhereItFits(h)
 	sam := h.SignIn("sam@example.com")
 	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	g.Kind = domain.GoalOngoing

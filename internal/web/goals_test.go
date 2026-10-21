@@ -746,7 +746,7 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 		t.Fatalf("SubmitCheckin: %v", err)
 	}
 	ongoing := h.CreateGoal(sam, "Keep the lights on", "It matters.")
-	if _, err := h.Service.MarkGoalOngoing(t.Context(), ongoing.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(t.Context(), ongoing.Owner.ID, ongoing.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	h.Clock.Advance(3 * day)
@@ -2476,7 +2476,7 @@ func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	h.SignIn("mel@example.com")
 	ctx := t.Context()
 	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
-	if _, err := h.Service.MarkGoalDated(ctx, goal.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, goal.Owner.ID, goal.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	metric, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
@@ -3011,7 +3011,7 @@ func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
 	disclosureScript(t, page)
 
 	o := h.CreateGoal(ada, "Keep the lights on", "Customers expect it.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), o.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), o.Owner.ID, o.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	page = getBody(t, client, goalPageURL(ts.URL, o))
@@ -4768,7 +4768,7 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
 	h.SetFieldRequired(boss, budget, true)
 	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), goal.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), goal.Owner.ID, goal.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
@@ -6072,7 +6072,7 @@ func ownerOnlyGoal(t *testing.T, h *testsupport.Harness, owner domain.Account) (
 	t.Helper()
 	ctx := context.Background()
 	g := h.CreateGoal(owner, "Cut checkout latency", "Shoppers abandon slow carts.")
-	if _, err := h.Service.MarkGoalDated(ctx, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	m, err := h.Service.AddMetric(ctx, domain.AddMetricInput{

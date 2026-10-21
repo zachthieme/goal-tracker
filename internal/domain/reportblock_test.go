@@ -174,7 +174,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 			name: "activated",
 			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
 				g := h.CreateGoal(boss, "Activated", "why")
-				if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+				if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 					h.T.Fatalf("MarkGoalOngoing: %v", err)
 				}
 				if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{

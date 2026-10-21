@@ -50,7 +50,7 @@ func TestActivateDatedGoalWithAMilestone(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	addMilestone(t, h, g.ID)
@@ -70,7 +70,7 @@ func TestActivateDatedGoalWithAMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 	addMetric(t, h, g.ID)
@@ -90,7 +90,7 @@ func TestActivateOngoingGoalWithAMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 	addMetric(t, h, g.ID)
@@ -126,7 +126,7 @@ func TestActivateRejectsDatedGoalWithNoMilestoneOrMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
-	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, futureDate); err != nil {
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.Owner.ID, g.ID, futureDate); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
 
@@ -145,7 +145,7 @@ func TestActivateRejectsOngoingGoalWithNoMetric(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
-	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.Owner.ID, g.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
 

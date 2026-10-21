@@ -39,6 +39,9 @@ type Service struct {
 	// inTx says the Service is bound to a transaction WithinTx opened, so a
 	// nested WithinTx joins it rather than opening another.
 	inTx bool
+	// goalImport is the Admin's spreadsheet import the Service runs commands
+	// for, or nil (see ForImportBy).
+	goalImport *goalImport
 }
 
 // Option configures a Service at construction.
@@ -98,15 +101,16 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	txSvc := &Service{
-		db:      s.db,
-		queries: s.queries.WithTx(sqlTx),
-		clock:   s.clock,
-		email:   s.email,
-		admins:  s.admins,
-		loc:     s.loc,
-		baseURL: s.baseURL,
-		hashes:  s.hashes,
-		inTx:    true,
+		db:         s.db,
+		queries:    s.queries.WithTx(sqlTx),
+		clock:      s.clock,
+		email:      s.email,
+		admins:     s.admins,
+		loc:        s.loc,
+		baseURL:    s.baseURL,
+		hashes:     s.hashes,
+		inTx:       true,
+		goalImport: s.goalImport,
 	}
 	if err := fn(txSvc); err != nil {
 		_ = sqlTx.Rollback()

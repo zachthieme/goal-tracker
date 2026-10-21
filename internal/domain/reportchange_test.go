@@ -354,7 +354,7 @@ func activeGoalDue(h *testsupport.Harness, owner domain.Account, title string, d
 	h.T.Helper()
 	ctx := context.Background()
 	g := h.CreateGoal(owner, title, title+" matters.")
-	if _, err := h.Service.MarkGoalDated(ctx, g.ID, due); err != nil {
+	if _, err := h.Service.MarkGoalDated(ctx, g.Owner.ID, g.ID, due); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
 	addDatedMilestone(h, g, "Beta", due.AddDate(0, -1, 0))
