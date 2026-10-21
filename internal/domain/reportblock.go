@@ -171,6 +171,13 @@ const defaultBaselineDays = 30
 // takes the default: the Definition's previous publication, so the next one
 // marks what changed since it, or 30 days before today when there is none.
 func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baseline time.Time) (Report, error) {
+	return s.draftReport(ctx, def, baseline, func(r *Report) error { return s.draftNarrative(ctx, r) })
+}
+
+// draftReport drafts the Report for def against baseline, as DraftReport
+// does, its narrative built by narrate once its in-scope Highlights are known:
+// the saved narrative for a draft, or the author's unsaved one for a preview.
+func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baseline time.Time, narrate func(*Report) error) (Report, error) {
 	r := Report{Definition: def}
 	since, err := s.readAgainst(ctx, &r, baseline)
 	if err != nil {
@@ -246,7 +253,7 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		r.Exceptions = append(r.Exceptions, x.block)
 	}
 	linkReportBlocks(&r, reads)
-	if err := s.draftNarrative(ctx, &r); err != nil {
+	if err := narrate(&r); err != nil {
 		return Report{}, err
 	}
 	if r.MembershipChanges, err = s.membershipChanges(ctx, r, since); err != nil {
