@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 
-import { captureParams, formatReport, normalise, playwrightChrome, statusProblem, wrapAction } from "./shots.mjs";
+import { captureParams, formatReport, normalise, overflowProblem, playwrightChrome, statusProblem, wrapAction } from "./shots.mjs";
 
 test("a shot's status must be an integer", () => {
   assert.throws(() => normalise({ path: "/goals", status: "404" }, 0), /shot 1: status must be an integer/);
@@ -39,6 +39,12 @@ test("a shot with a status fails when the page gives another", () => {
 test("a status that couldn't be read never fails a shot", () => {
   assert.equal(statusProblem({ path: "/goals" }, null), null);
   assert.equal(statusProblem({ path: "/goals", status: 200 }, null), null);
+});
+
+test("a shot fails on what lies past the window", () => {
+  assert.equal(overflowProblem({ past: [], width: 390 }), null);
+  assert.equal(overflowProblem({ past: ["div#wide (0–600px)"], width: 390 }), "an element lies past the 390px window");
+  assert.equal(overflowProblem({ past: ["a", "b"], width: 390 }), "2 elements lie past the 390px window");
 });
 
 test("an action that runs as a script is left as it is", () => {
@@ -221,9 +227,10 @@ function firstPixel(png) {
   return [...rows.subarray(1, 4)];
 }
 
-test("a window shot after a scroll shows what the window scrolled to", async (t) => {
-  // White for the first 1200px, red below it.
-  const page = `<!doctype html><body style="margin:0"><div style="height:1200px;background:#fff"></div><div style="height:1200px;background:#f00"></div>`;
+// shootPage serves page and runs shots.mjs on it with shot, returning the
+// run's exit code and output and the directory its PNGs went to, or null,
+// having skipped the test, when there's no Chromium on the machine.
+async function shootPage(t, page, shot) {
   const server = createServer((_, res) => res.end(page)).listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   const out = mkdtempSync(join(tmpdir(), "shots-test-"));
@@ -232,13 +239,54 @@ test("a window shot after a scroll shows what the window scrolled to", async (t)
     rmSync(out, { recursive: true, force: true });
   });
 
-  const shot = JSON.stringify({ path: "/", full: false, name: "scrolled", action: "scrollTo(0, 1600)" });
   const base = `http://127.0.0.1:${server.address().port}`;
   const script = new URL("shots.mjs", import.meta.url).pathname;
   const run = await new Promise((done) =>
-    execFile(process.execPath, [script, base, shot, "--out", out], (err, stdout, stderr) => done({ code: err?.code ?? 0, stdout, stderr })),
+    execFile(process.execPath, [script, base, JSON.stringify(shot), "--out", out], (err, stdout, stderr) =>
+      done({ code: err?.code ?? 0, stdout, stderr, out }),
+    ),
   );
-  if (/no Chromium found/.test(run.stderr)) return t.skip("no Chromium on this machine");
+  if (/no Chromium found/.test(run.stderr)) {
+    t.skip("no Chromium on this machine");
+    return null;
+  }
+  return run;
+}
+
+test("a window shot after a scroll shows what the window scrolled to", async (t) => {
+  // White for the first 1200px, red below it.
+  const page = `<!doctype html><body style="margin:0"><div style="height:1200px;background:#fff"></div><div style="height:1200px;background:#f00"></div>`;
+  const run = await shootPage(t, page, { path: "/", full: false, name: "scrolled", action: "scrollTo(0, 1600)" });
+  if (!run) return;
   assert.equal(run.code, 0, run.stdout + run.stderr);
-  assert.deepEqual(firstPixel(readFileSync(join(out, "scrolled.png"))), [255, 0, 0]);
+  assert.deepEqual(firstPixel(readFileSync(join(run.out, "scrolled.png"))), [255, 0, 0]);
+});
+
+// clippedPage is a page holding inner whose html and body clip sideways
+// overflow, as app.css's do, so it never scrolls sideways.
+const clippedPage = (inner) =>
+  `<!doctype html><html style="overflow-x:clip"><body style="margin:0;overflow-x:clip">${inner}</body></html>`;
+
+test("a shot fails on an element past the window that html's clip cuts off", async (t) => {
+  const run = await shootPage(t, clippedPage(`<div id="wide" style="width:600px;height:20px"></div>`), { path: "/", width: 390 });
+  if (!run) return;
+  assert.equal(run.code, 1, run.stdout + run.stderr);
+  assert.match(run.stdout, /overflow: past the 390px window: div#wide \(0–600px\)/);
+  assert.match(run.stdout, /FAILED: .*past the 390px window/);
+});
+
+test("a shot fails on an element past the window inside a box that clips it", async (t) => {
+  const page = clippedPage(`<div style="overflow:hidden"><p id="cut" style="width:600px;margin:0">Cut off</p></div>`);
+  const run = await shootPage(t, page, { path: "/", width: 390 });
+  if (!run) return;
+  assert.equal(run.code, 1, run.stdout + run.stderr);
+  assert.match(run.stdout, /overflow: past the 390px window: p#cut \(0–600px\)/);
+});
+
+test("an element past the window inside a box that scrolls sideways doesn't fail a shot", async (t) => {
+  const page = clippedPage(`<div style="overflow-x:auto"><table id="wide" style="width:600px"><tr><td>Wide</td></tr></table></div>`);
+  const run = await shootPage(t, page, { path: "/", width: 390 });
+  if (!run) return;
+  assert.equal(run.code, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /overflow: none/);
 });

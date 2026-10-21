@@ -34,7 +34,9 @@
 // under $PLAYWRIGHT_BROWSERS_PATH or ~/.cache/ms-playwright, else the macOS
 // app bundles. Exits 1 if any shot failed to load, sign in or run its action,
 // or ended on an HTTP status other than its status (without one, on 400 or
-// more; a status that can't be read never fails). Exits 2 if the arguments or
+// more; a status that can't be read never fails), or if a visible element lay
+// past the window's edge, outside a box that scrolls sideways on its own: the
+// page clips sideways overflow, so it's cut off. Exits 2 if the arguments or
 // a shot are invalid. node --test scripts/*.test.mjs tests the
 // parts that don't need a browser, and takes a shot where Chromium is found.
 
@@ -128,6 +130,14 @@ export function statusProblem(shot, status) {
   if (status == null) return null;
   if (shot.status === undefined) return status >= 400 ? `the page gave HTTP ${status}` : null;
   return status === shot.status ? null : `the page gave HTTP ${status}, not the expected ${shot.status}`;
+}
+
+// overflowProblem is why what lies past the window fails the shot, or null if
+// nothing does.
+export function overflowProblem(facts) {
+  const n = facts.past.length;
+  if (!n) return null;
+  return `${n === 1 ? "an element lies" : `${n} elements lie`} past the ${facts.width}px window`;
 }
 
 function fail(message) {
@@ -302,8 +312,9 @@ function facts() {
   const root = document.documentElement;
   const vw = root.clientWidth;
   // An element past the window's edges, unless an ancestor inside the window
-  // scrolls or clips it (a table's scroller, an ellipsis). Only the outermost
-  // of a run is listed.
+  // scrolls sideways on its own (a table's scroller). One an ancestor clips is
+  // listed, as html's overflow-x:clip in app.css cuts it off rather than let
+  // the page scroll to it. Only the outermost of a run is listed.
   const past = [];
   for (const el of document.body.querySelectorAll("*")) {
     const r = el.getBoundingClientRect();
@@ -311,7 +322,7 @@ function facts() {
     if (!visible(el) || past.some((p) => p.contains(el))) continue;
     let contained = false;
     for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-      if (getComputedStyle(p).overflowX === "visible") continue;
+      if (!["auto", "scroll"].includes(getComputedStyle(p).overflowX)) continue;
       const pr = p.getBoundingClientRect();
       if (pr.right <= vw + 0.5 && pr.left >= -0.5) {
         contained = true;
@@ -474,10 +485,10 @@ async function main() {
       try {
         const result = await shoot(cdp, base, out, shot);
         console.log(formatReport(shot, result));
-        const problem = statusProblem(shot, result.facts.status);
-        if (problem) {
+        const problems = [statusProblem(shot, result.facts.status), overflowProblem(result.facts)].filter(Boolean);
+        if (problems.length) {
           failed++;
-          console.log(`${shot.name}: FAILED: ${problem}\n`);
+          console.log(`${shot.name}: FAILED: ${problems.join("; ")}\n`);
         }
       } catch (err) {
         failed++;

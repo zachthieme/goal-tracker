@@ -91,21 +91,32 @@ with `status` fails if it's anything else. The page's htmx requests don't
 count, and a status the script couldn't read, printed as `?`, never fails a
 shot. A page with no title prints its title as `(none)`.
 
+The script also checks each visible element's box against the window. Any
+that passes the window's left or right edge is listed under `overflow` and
+fails the shot. `app.css` clips the page's sideways overflow
+(`html{overflow-x:clip}`), so such an element is cut off rather than reached
+by scrolling, and the page's scroll width can't show it. An element inside a
+box that scrolls sideways on its own (`overflow-x: auto` or `scroll`), such
+as a table's scroller, isn't listed while that box fits. One inside a box
+that only clips it is listed, since it's cut off too.
+
 The list can be inline JSON, a file, or `-` for stdin. PNGs go to
 `$TMPDIR/goal-tracker-shots` unless you pass `--out <dir>`. The script exits 1
 if any shot fails to load, sign in, run its action, or end on the status it
-expects. A shot that fails on its status still saves its PNG and prints its
-facts. The script exits 2 if the arguments or a shot's fields are invalid.
+expects, or if anything lies past the window. A shot that fails on its
+status or its overflow still saves its PNG and prints its facts. The script exits 2 if the arguments or a shot's fields are invalid.
 Where the OS gives Chromium no sandbox, as in some containers, it says so and
 runs Chromium without one.
 
 `node --test scripts/*.test.mjs` (or `make test-scripts`, which also runs
 `contrast.py`'s self-test) runs the tests of the parts that don't need
 a browser: checking the shots, including the examples above, wrapping
-actions, the status check, the part of the page captured, and the printed
-facts. Where Chromium is found, it also takes a `"full": false` shot after an
-action scrolls a page, and checks the shot shows where the window scrolled to;
-without Chromium that test is skipped.
+actions, the status and overflow checks, the part of the page captured, and
+the printed facts. Where Chromium is found, it also takes a `"full": false`
+shot after an action scrolls a page, and checks the shot shows where the
+window scrolled to. It also checks that a shot fails on an element the
+page's clip or a clipping box cuts off, and not on one inside a box that
+scrolls sideways. Without Chromium those tests are skipped.
 
 ## `contrast.py`: WCAG contrast of the colour tokens
 
