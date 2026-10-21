@@ -60,6 +60,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] The HTTP server times out a request that takes over a minute to arrive, a response not sent within 90 seconds of the request's headers (time enough for a PDF download's wait and render), and a connection idle for two minutes (#416).
 - [ops] The database now runs in SQLite's WAL mode with `synchronous=NORMAL`, so a page that only reads no longer waits behind a write, and the app holds at most 8 database connections. While the app runs, `goal-tracker.db-wal` and `goal-tracker.db-shm` sit beside `goal-tracker.db` and are part of its live state: back up with `sqlite3 … ".backup …"` (or `VACUUM INTO`), never `cp` of the main file, and on restore delete any `-wal` and `-shm` files beside the restored database. `docs/install.md` § Backups has the steps (#410).
 - [user] Goal pages and the lists of a person's link requests and parent suggestions no longer read whole tables as they grow: the foreign-key columns queries filter or join on are now indexed, starting with a Goal's Owner (#427).
+- [ops] A request refused before it reaches its route, with a `403` for coming from another site or a `413` for a body over the cap, logs the route it was aimed at, such as `route="POST /goals"`, instead of `unmatched`, so filtering the access log by route finds those refusals too. A path no route serves still logs its catch-all (`GET /` or `/`) with its `404` (#441).
+- [user] The Goal list's table layout, in edit mode too, reads its Goals' Field values in one database query, where it used to run one per Goal (around 96 queries for 50 Goals, now the same as for 10), so a large table loads faster (#448).
+- [user] Home and Follow-ups load in the same number of database queries however many Goals they show, where Home used to run about one more per Goal due a Check-in (80 for 50 Goals, against 44 for 10) and Follow-ups about three more per flagged Goal (177 for 50, against 69 for 10) (#449).
+- [user] The Goal list's Org picker reads the people above each Goal's Owner a level of the org at a time, so a large company's Goal list no longer slows with how many people own Goals (#451).
+- [user] A Report's draft page builds its draft once, not twice, so it opens faster (#451).
 
 **Bug fixes:**
 - [internal] The Report log's actor column is indexed, like every other actor column; the Report log (#435) and the foreign-key index check (#427) merged in the same wave and left `main` failing `make test` (#435).
@@ -79,6 +84,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On New goal, an unticked Where it fits option now has an edge you can see in light mode: 3:1 on the page instead of 1.17:1 (#431).
 - [user] A comment, a reply, or an Action Item raised or reassigned is kept even when its email can't be sent. The email is tried again, after waiting a minute, then twice as long after each failure. Until now a mail failure rejected the comment or Action Item after some people could already have been emailed about it (#412).
 - [ops] Comment alerts and Action Item emails are queued in a new `email_outbox` table in the same transaction as the change, and sent only after it commits. A slow mail server no longer holds the database's write lock. Each failed send is logged as a WARN. After 5 failures the email is no longer tried, and an ERROR names its `email_outbox_id`, recipient and subject (#412).
+- [ops] An Admin's Sync now logs the directory sync's lines (its failure, its people count, and its cycle and timezone warnings) with the request's `request_id`, like every other line logged while handling a request (#436).
+- [ops] `cmd/seed` (and `make seed`) opens the database through `db.Open`, as the app does, so it seeds with foreign keys enforced, in WAL mode and with the busy timeout; only the fsync on each commit is still skipped, for speed. A `-db` path holding `#` or `?` now seeds that file, where it used to seed one named by the part before it (#439).
+- [user] An import file just over 5 MiB is refused with 413 Request Entity Too Large and imports nothing, instead of being cut short at 5 MiB and imported without a word (#440).
+- [user] A Field or Dimension value that starts with an apostrophe and then a formula character, such as `'=x`, now downloads behind a second apostrophe, so re-importing the download keeps the value as it was instead of quietly dropping its apostrophe (#443).
+- [ops] A `TMPDIR` too long for Chromium now stops startup before the database is opened or migrated, OIDC discovery runs, or the directory sync starts, as a missing Chromium does; before, a refused start could still begin a directory sync (#446).
 
 **Security:**
 - [user] A session now ends 30 days after sign-in, or after 7 days without a request, however it is used; a request at least a day after the last re-issues the cookie to keep it from idling out (#414).
@@ -120,6 +130,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The test harness's Service sends queued email as each command commits, so tests still assert through `email.Recorder`. `h.DeliverEmail()` drains email queued through another Service. `h.WriteLockHeld()` lets a test's sender prove that no email goes out while a transaction is open (#412).
 - [internal] Test harness databases run in WAL mode too, as the app's do (#410).
 - [internal] A test fails when a foreign-key column leads no index and isn't allow-listed with a reason, and another fails when a hot query's plan scans `goals`, `checkins`, `metrics`, `comments`, `links` or `action_items` (#427).
+- [internal] The web tests' `attr`, `tagAround`, `openTag`, `openForm` and `scopeSelect` helpers read tags with the HTML tokenizer rather than regexps and string searches, so they hold whatever order a tag's attributes render in and past a `>` inside a quoted value; `between` stays string-based and is retired as its callers convert (#437).
+- [internal] A style test now guards the filter chip's on state, so the Follow-ups Team chip can no longer lose its tint when a Platform is picked without a test failing (#438).
+- [internal] A test fails when two migrations share a number, other than the two 0057s already applied (#439).
+- [internal] The `internal/web` tests no longer write an access line to stderr for every request they make, so `go test -v` output stays readable (#441).
+- [internal] The Follow-ups filter chip test and the Report Delegate HTTP tests now read pages through the parser helpers instead of matching markup, so reordering an attribute no longer breaks them (#447).
+- [internal] A test checks that `FreshnessByGoal`, `IncompleteByGoal`, `LatestCheckinsByGoal` and `DateSlipsByGoal` return, for every Goal in a varied fixture, what `Freshness`, `Incomplete`, `LatestCheckin` and `ListDateSlips` return for it (#451).
 
 **Code quality:**
 - [internal] Two stale comments now match the code: the Health grouping's No Health group (#405) and the Scope chip's styles (#406). `scripts/__pycache__` is untracked and ignored (#401).
