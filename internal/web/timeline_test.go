@@ -245,6 +245,30 @@ func TestGoalHistoryChipsCountAndFilter(t *testing.T) {
 	}
 }
 
+// History's filter chips are controls, so their edges reach WCAG's 3:1 in
+// light (1.4.11): a resting chip's is --color-border-strong, as every chip
+// edge (3.33:1 on the canvas), and the current chip's --color-primary-strong,
+// as every chosen option's (5.47:1), since --color-border reaches only 1.17:1
+// and --color-primary 2.49:1 (DESIGN.md § History timeline, Deviations 6).
+func TestGoalHistoryChipsEdgesReachThreeToOne(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	goal := oneOfEachKind(t, h)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, goalPageURL(ts.URL, goal))
+	for sel, want := range map[string]string{
+		".tl-chip":               "border:1px solid var(--color-border-strong)",
+		".tl-chip[aria-current]": "border-color:var(--color-primary-strong)",
+	} {
+		if rule := cssRule(t, page, sel); !strings.Contains(rule, want) {
+			t.Errorf("%s declares %q, want %s", sel, rule, want)
+		}
+	}
+}
+
 // filterOf is the History filter an address asks for.
 func filterOf(href string) string {
 	u, err := url.Parse(href)

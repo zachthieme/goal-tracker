@@ -1280,10 +1280,12 @@ and so on).
     the Goal. A chip is a plain link to `/goals/{id}?history=<filter>#history`,
     so the page reloads with the filter in the address and History in view. A
     chip is 32px tall (44px on a coarse pointer) with `--radius-full`, a 1px
-    `--color-border` edge on `--color-surface`, and 13px, 500
+    `--color-border-strong` edge on `--color-surface`, and 13px, 500
     `--color-ink-2` text, taking `--color-primary-subtle` on hover. The
     current chip is `aria-current="page"`, with a `--color-primary-light`
-    fill, a `--color-primary` edge and 600-weight `--color-ink` text.
+    fill, a `--color-primary-strong` edge (§ Segmented controls: a chosen
+    option's edge) and 600-weight `--color-ink` text. Both edges reach 3:1
+    (§ Deviations 6).
   - **Paging:** the latest 5 entries show, a folded run counting as one.
     When there are more, a quiet **Show earlier** link (`?shown=25`) reloads
     the page with 20 more under the same filter. With nothing under a filter,
@@ -2130,6 +2132,19 @@ given):
      | --- | --- | --- | --- |
      | Light | Chosen edge `--color-primary-strong` `#0F766E` | canvas / primary subtle / chip bg | 5.47 / 5.25 / 4.85 |
      | Dark | Chosen edge `--color-primary-strong` `#14B8A6` | canvas / primary subtle / chip bg | 7.65 / 7.48 / 6.31 |
+   - History's filter chips (§ History timeline) are edged like the rest: a
+     resting chip in `--color-border-strong`, between its `--color-surface`
+     fill (or `--color-primary-subtle` on hover) and the canvas, and the
+     current chip in `--color-primary-strong`, between its
+     `--color-primary-light` fill and the canvas. `--color-border` (1.17:1)
+     and `--color-primary` (2.49:1) missed in light.
+
+     | Theme | Mark | On | Ratio |
+     | --- | --- | --- | --- |
+     | Light | Resting chip edge `--color-border-strong` `#8A8D93` | canvas / surface / primary subtle | 3.33 / 3.33 / 3.19 |
+     | Light | Current chip edge `--color-primary-strong` `#0F766E` | canvas / primary light | 5.47 / 4.86 |
+     | Dark | Resting chip edge `--color-border-strong` `#6B6F77` | canvas / surface / primary subtle | 3.78 / 3.59 / 3.69 |
+     | Dark | Current chip edge `--color-primary-strong` `#14B8A6` | canvas / primary light | 7.65 / 5.41 |
 
 7. **Neutral canvas.** The source's light canvas is a pale yellow
    (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory
