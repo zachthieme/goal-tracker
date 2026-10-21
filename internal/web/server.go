@@ -145,7 +145,7 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 // requestBodyCap). Every response carries securityHeaders.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	id := newRequestID()
+	id := requestIDFor(r)
 	w.Header().Set(requestIDHeader, id)
 	l := s.log.With("request_id", id)
 	aw := &accessWriter{ResponseWriter: w}

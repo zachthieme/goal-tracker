@@ -12,9 +12,30 @@ import (
 // every response echoes the one its request was logged under.
 const requestIDHeader = "X-Request-ID"
 
-// newRequestID is the ID a request is logged under.
-func newRequestID() string {
+// requestIDFor is the ID r is logged under: the one r's X-Request-ID carries
+// when it is 1 to 64 letters, digits, underscores and hyphens, so a proxy's ID
+// follows the request into the log; otherwise a new one, so a client can't
+// flood or forge the log through it.
+func requestIDFor(r *http.Request) string {
+	if id := r.Header.Get(requestIDHeader); validRequestID(id) {
+		return id
+	}
 	return rand.Text()
+}
+
+// validRequestID says whether id is 1 to 64 of [A-Za-z0-9_-].
+func validRequestID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, c := range []byte(id) {
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // accessWriter records what a request was answered with, for its access line.

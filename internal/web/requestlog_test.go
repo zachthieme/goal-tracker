@@ -117,3 +117,46 @@ func TestAnErrorLoggedInAHandlerCarriesItsRequestsID(t *testing.T) {
 		t.Errorf("access line %v, want request_id %q answered 500", lines[0], id)
 	}
 }
+
+// A proxy in front that already gave the request an ID, of 1 to 64 letters,
+// digits, underscores and hyphens, has it reused: echoed back and logged.
+func TestAValidIncomingRequestIDIsReused(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{"a", "req_42-AbC", strings.Repeat("z", 64)} {
+		srv, buf := requestLogServer(t, testsupport.New(t))
+		r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		r.Header.Set("X-Request-ID", id)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+
+		if got := w.Header().Get("X-Request-ID"); got != id {
+			t.Errorf("incoming ID %q: response X-Request-ID %q, want it echoed", id, got)
+		}
+		if lines := accessLines(t, buf); len(lines) != 1 || lines[0]["request_id"] != id {
+			t.Errorf("incoming ID %q: access lines %v, want one logged under it", id, lines)
+		}
+	}
+}
+
+// An incoming ID that could flood or forge the log, too long or carrying a
+// newline or other characters, is replaced with one the app makes.
+func TestAnInvalidIncomingRequestIDIsReplaced(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{strings.Repeat("z", 65), strings.Repeat("a", 200), "abc\ndef", "a b", "id;drop", "é"} {
+		srv, buf := requestLogServer(t, testsupport.New(t))
+		r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		r.Header.Set("X-Request-ID", id)
+		w := httptest.NewRecorder()
+		srv.ServeHTTP(w, r)
+
+		got := w.Header().Get("X-Request-ID")
+		if got == "" || got == id {
+			t.Errorf("incoming ID %q: response X-Request-ID %q, want a new one", id, got)
+		}
+		if lines := accessLines(t, buf); len(lines) != 1 || lines[0]["request_id"] != got {
+			t.Errorf("incoming ID %q: access lines %v, want one logged under %q", id, lines, got)
+		}
+	}
+}
