@@ -294,7 +294,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
 
     // Group: by the second Dimension, from Group by among the filter chips, one
     // group per value a listed Goal carries, plus Unassigned.
-    await more.getByLabel("Group by").selectOption({ label: tier.name });
+    await page.getByTestId("goal-filters").getByLabel("Group by").selectOption({ label: tier.name });
     await expect(page).toHaveURL(/[?&]group=\d+/);
     await expect(page.getByTestId("goal-group-label")).toHaveText([...tier.values, "Unassigned"]);
     for (const [i, goal] of tiered.entries()) {
