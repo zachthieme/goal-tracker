@@ -442,7 +442,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     const team = await followUpRows(page);
     const two = team.filter((r) => r.id === twoReasons.id);
     expect(two, `${twoReasons.title} is one row`).toHaveLength(1);
-    expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["schedule-conflicts", "checkin-overdue"]);
+    expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["checkin-overdue", "schedule-conflicts"]);
     expect(two[0].fixes, "and one Fix").toBe(1);
   });
 
@@ -595,7 +595,9 @@ function followUpRows(page: Page): Promise<FollowUpRow[]> {
           title: link?.textContent?.trim() ?? "",
           // innerText leaves out the hidden print-only shape.
           health: (tr.querySelector('[data-testid="follow-up-health"]') as HTMLElement | null)?.innerText.trim() ?? "",
-          kinds: [...tr.querySelectorAll('[data-testid="follow-up-signal"]')].map((c) => c.getAttribute("data-kind") ?? ""),
+          kinds: [...tr.querySelectorAll('[data-testid="follow-up-signal"]')].map(
+            (c) => c.getAttribute("data-kind") ?? "",
+          ),
           fixCells: fix.length,
           fixes: controls.length,
           fix: controls.map((c) => c.textContent?.trim()).join(" | "),
