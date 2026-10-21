@@ -643,9 +643,9 @@ templ goalsStyles() {
 	<style>
 		.page:has(>#goal-list){max-width:none;padding:0 0 64px;gap:0}
 		.gl-seg{display:inline-flex;height:32px;border:2px solid var(--color-chip-bg);border-radius:var(--radius-md);background:var(--color-chip-bg);box-sizing:border-box}
-		.gl-seg a{display:inline-flex;align-items:center;padding:0 12px;border-radius:4px;color:var(--color-ink-2);font-size:13px;font-weight:500}
+		.gl-seg a{display:inline-flex;align-items:center;box-sizing:border-box;padding:0 11px;border:1px solid transparent;border-radius:4px;color:var(--color-ink-2);font-size:13px;font-weight:500}
 		.gl-seg a:hover{color:var(--color-ink);text-decoration:none}
-		.gl-seg a[aria-current=page]{background:var(--color-canvas);color:var(--color-ink)}
+		.gl-seg a[aria-current=page]{background:var(--color-canvas);border-color:var(--color-primary-strong);color:var(--color-ink)}
 		.gl-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 28px;border-bottom:1px solid var(--color-border)}
 		.gl-bar,.gl-more,.gl-clear{display:contents}
 		.gl-more-toggle>summary{min-height:0;height:28px;gap:4px;padding:0 8px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);color:var(--color-ink-2);font-size:13px;font-weight:500;white-space:nowrap;box-sizing:border-box}

@@ -590,8 +590,10 @@ and so on).
     links) and the New goal form's Check-in cadence (`.gf-segctl`, four
     radios) sit on a `--color-chip-bg` track with `--radius-md`, their
     segments 13px, 500 `--color-ink-2`. The current segment is
-    `--color-canvas` with `--color-ink` text; the cadence's also takes a 1px
-    `--color-border-strong` edge and 600 weight.
+    `--color-canvas` with `--color-ink` text and a 1px
+    `--color-primary-strong` edge, which every segment reserves as a
+    transparent border, so choosing one shifts nothing; the cadence's also
+    takes 600 weight. The fill alone is only 1.13:1 on the track.
   - **An outlined track:** the Report builder's mode (`.rb-segments`) and a
     draft's section picker sit in a 1px `--color-border-strong` edge with
     `--radius-md`. The chosen segment is filled with `--color-ink`, its text in
@@ -599,6 +601,13 @@ and so on).
 
   Each page's section below gives its sizes. The radios hide only with
   `:has()`; without it each choice shows its native radio and still chooses.
+
+  **A chosen option's edge is `--color-primary-strong`,** never
+  `--color-primary` or `--color-border-strong`: on a tinted track's current
+  segment, a Kind tile and its radio dot, and a Where it fits pick. It is the
+  edge that tells the chosen option apart, so it needs WCAG's 3:1, which
+  `--color-primary` (2.49:1 on the canvas) and `--color-border-strong` (2.95:1
+  on the track) miss in light (Deviations 6).
 - **Inputs:** text, email, password, date, number and search inputs and
   selects take a `--color-surface` fill, a 1px `--color-border-strong` edge,
   `--radius-md`, 40px height with 16px sides, and `--color-ink` text, with
@@ -1506,7 +1515,9 @@ and so on).
     **Set** or **Change** at the right in 600 `--color-primary-strong`. A row
     opens by itself when it holds a refused input or, for Where it fits, a
     required value not set. Where it fits shows only when there are
-    Dimensions or Fields. Contributes to is a search, with a chip for each
+    Dimensions or Fields. A Dimension taking several values offers a pill
+    checkbox for each (`.gf-pick`); a chosen one takes a
+    `--color-primary-subtle` fill and a 1px `--color-primary-strong` edge. Contributes to is a search, with a chip for each
     Goal picked (its Health badge, its title and ×); without script it is a
     multiple select, with a Remove box on each chip.
   - **Ready to activate (`goalFormReady`, `.gf-ready`):** a rail, not a raised
@@ -1566,13 +1577,14 @@ and so on).
   over a muted 13px line saying what it means, beside a radio dot the tile
   draws. An unchosen tile is an outline: a 2px `--color-border-strong` edge at
   `--radius-md`, no fill, and an empty 16px dot in a 2px
-  `--color-border-strong` ring. The chosen tile has a 2px `--color-primary`
-  edge, a `--color-primary-subtle` fill and a `--color-primary` dot. The edge
-  is 2px either way, so the tile keeps its size. The Dated tile holds the
-  Delivery date, shown once Dated is chosen, its input on the tile's fill.
-  Keyboard focus rings the whole tile. All of this needs `:has()`; a browser
-  without it shows the native radio and the date, and the radio still
-  chooses.
+  `--color-border-strong` ring. The chosen tile has a 2px
+  `--color-primary-strong` edge, a `--color-primary-subtle` fill and a
+  `--color-primary-strong` dot (§ Segmented controls: a chosen option's edge).
+  The edge is 2px either way, so the tile keeps its size. The Dated tile
+  holds the Delivery date, shown once Dated is chosen, its input on the
+  tile's fill. Keyboard focus rings the whole tile. All of this needs
+  `:has()`; a browser without it shows the native radio and the date, and the
+  radio still chooses.
 - **Check-in cadence (`.gf-segctl`):** the New goal form's Weekly | Every 2
   weeks | Monthly | Custom, one radio each, Weekly chosen at first: a 30px
   tinted track with 4px inside it (§ Segmented controls), its segments at
@@ -2108,6 +2120,16 @@ given):
      and shape in the Health's ink. The selected one is the filled Health
      badge (`--health-*-bg`) with a 2px edge in its ink, so a choice keeps its
      size either way. Nothing is dimmed.
+   - A chosen option's edge is `--color-primary-strong` (§ Segmented
+     controls): the current segment of a tinted track, a chosen Kind tile, its
+     radio dot and a chosen Where it fits pick. The edge sits between the
+     option's fill, `--color-canvas` or `--color-primary-subtle`, and what is
+     around it, the canvas or the `--color-chip-bg` track.
+
+     | Theme | Mark | On | Ratio |
+     | --- | --- | --- | --- |
+     | Light | Chosen edge `--color-primary-strong` `#0F766E` | canvas / primary subtle / chip bg | 5.47 / 5.25 / 4.85 |
+     | Dark | Chosen edge `--color-primary-strong` `#14B8A6` | canvas / primary subtle / chip bg | 7.65 / 7.48 / 6.31 |
 
 7. **Neutral canvas.** The source's light canvas is a pale yellow
    (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory

@@ -1759,6 +1759,39 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	}
 }
 
+// The List / Table switch shows its chosen segment by a canvas fill and a
+// strong primary edge, 3:1 on the chip track in light (WCAG 1.4.11), since the
+// fill alone is 1.13:1 (DESIGN.md § Segmented controls). Every segment
+// reserves the edge as a transparent border, a pixel of its padding, so
+// choosing one shifts nothing and no segment grows, on touch either.
+func TestGoalListLayoutSwitchEdgesTheChosenSegment(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	style := between(t, getBody(t, client, ts.URL+"/goals"), ".gl-seg{", "</style>")
+	for sel, want := range map[string][]string{
+		".gl-seg a":                    {"box-sizing:border-box", "padding:0 11px", "border:1px solid transparent"},
+		".gl-seg a[aria-current=page]": {"background:var(--color-canvas)", "border-color:var(--color-primary-strong)", "color:var(--color-ink)"},
+	} {
+		rule, ok := ruleFor(style, sel)
+		if !ok {
+			t.Errorf("the style block has no %s rule", sel)
+		}
+		for _, decl := range want {
+			if !strings.Contains(rule, decl) {
+				t.Errorf("%s declares %q, want %s", sel, rule, decl)
+			}
+		}
+	}
+	if rule, _ := ruleFor(style, ".gl-seg a[aria-current=page]"); strings.Contains(rule, "border:") || strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") {
+		t.Errorf("choosing a layout resizes its segment: %s", rule)
+	}
+}
+
 // The Goal page's document column opens on its title, then its Why it matters
 // as a lead paragraph. Its properties sit in the rail as label and value rows,
 // in DESIGN.md § Properties rail's order: Health as its pill, Lifecycle, Kind,

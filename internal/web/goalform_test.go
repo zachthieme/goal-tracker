@@ -2223,8 +2223,10 @@ func TestProposedGoalChecklistLinksNowhere(t *testing.T) {
 }
 
 // A Kind tile shows whether it's chosen: unchosen, an outline in the control
-// edge colour with an empty radio dot; chosen, a primary edge, a filled dot
-// and the subtle primary fill, which the Delivery date's white input sits on.
+// edge colour with an empty radio dot; chosen, a strong primary edge and filled
+// dot, both 3:1 in light (WCAG 1.4.11), and the subtle primary fill, which the
+// Delivery date's white input sits on. A chosen Where it fits value, a pick,
+// takes the same strong primary edge and fill.
 // The edge is 2px either way, so choosing doesn't resize the tile. All of it
 // waits on :has, so a browser without it keeps the native radio, which still
 // chooses.
@@ -2243,8 +2245,9 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	for sel, want := range map[string][]string{
 		".gf-tile":                               {"border:2px solid var(--color-border-strong)"},
 		".gf-segment::before":                    {"border:2px solid var(--color-border-strong)", "border-radius:50%"},
-		".gf-tile:has(input:checked)":            {"border-color:var(--color-primary)", "background:var(--color-primary-subtle)"},
-		".gf-segment:has(input:checked)::before": {"border-color:var(--color-primary)", "var(--color-primary)"},
+		".gf-tile:has(input:checked)":            {"border-color:var(--color-primary-strong)", "background:var(--color-primary-subtle)"},
+		".gf-segment:has(input:checked)::before": {"border-color:var(--color-primary-strong)", "radial-gradient(circle,var(--color-primary-strong)"},
+		".gf-pick:has(input:checked)":            {"border-color:var(--color-primary-strong)", "background:var(--color-primary-subtle)"},
 	} {
 		rule, ok := ruleFor(block, sel)
 		if !ok {
@@ -2442,8 +2445,8 @@ func TestNewGoalPageDatedTileHoldsTheDeliveryDate(t *testing.T) {
 
 // The Check-in cadence is one segmented control in § Segmented controls' tinted
 // look: a --color-chip-bg track holding the segments, the chosen one on the
-// canvas with a control edge and in bold, so the choice reads by more than a
-// fill. The native radio hides, and the focus ring shows on the focused
+// canvas with a strong primary edge, 3:1 on the track in light (WCAG 1.4.11),
+// and in bold, so the choice reads by more than a fill. The native radio hides, and the focus ring shows on the focused
 // segment, only with :has. At phone widths the Kind tiles stack and the control
 // becomes a 2×2 grid the width of the form.
 func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
@@ -2477,7 +2480,7 @@ func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
 	block := mediaBlock(t, style, supports)
 	for sel, want := range map[string][]string{
 		".gf-seg input":                    {"position:absolute", "opacity:0"},
-		".gf-seg:has(input:checked)":       {"background:var(--color-canvas)", "border-color:var(--color-border-strong)", "color:var(--color-ink)", "font-weight:600"},
+		".gf-seg:has(input:checked)":       {"background:var(--color-canvas)", "border-color:var(--color-primary-strong)", "color:var(--color-ink)", "font-weight:600"},
 		".gf-seg:has(input:focus-visible)": {"outline:2px solid var(--color-focus)"},
 	} {
 		rule, ok := ruleFor(block, sel)
