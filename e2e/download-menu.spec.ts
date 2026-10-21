@@ -2,7 +2,9 @@
 // publication's header, Download opens a popover holding a Markdown link and a
 // PDF link. At 390px the open popover lies inside the window and nothing on
 // the page passes the window's edge; without script it still opens, and both
-// items are links (#388, #407).
+// items are links. From the keyboard, Enter opens it, Tab reaches its first
+// item, and Escape closes it, putting focus back on Download (#388, #407,
+// #433).
 import type { Locator, Page } from "@playwright/test";
 
 import { admin, expect, signIn, test } from "./fixtures";
@@ -84,6 +86,39 @@ async function expectBothLinks(popover: Locator, publication: string): Promise<v
     new RegExp(`^${publication}/(pdf|print)$`),
   );
 }
+
+// expectKeyboardDownload drives menu's Download menu from the keyboard: Enter
+// on the focused button shows the menu, Tab moves to its first item, and
+// Escape hides it and puts focus back on the button. The menu is found by the
+// button's popovertarget, not by its popover attribute, so a menu that isn't
+// a popover fails here rather than going unfound.
+async function expectKeyboardDownload(page: Page, menu: Locator): Promise<void> {
+  const button = menu.getByRole("button", { name: "Download" });
+  const popover = menu.locator(`[id="${await button.getAttribute("popovertarget")}"]`);
+  await expect(popover, "the menu is hidden before Download is pressed").toBeHidden();
+
+  await button.focus();
+  await page.keyboard.press("Enter");
+  await expect(popover, "Enter on Download shows the menu").toBeVisible();
+
+  await page.keyboard.press("Tab");
+  await expect(popover.getByRole("link").first(), "Tab moves to the menu's first item").toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(popover, "Escape hides the menu").toBeHidden();
+  await expect(button, "Escape puts focus back on Download").toBeFocused();
+}
+
+test("Download's menu opens, is entered and closes from the keyboard on a publication and a Report row", async ({
+  page,
+}) => {
+  await signIn(page, admin);
+  await publishRuleReport(page, "Platform team");
+  await expectKeyboardDownload(page, page.getByTestId("report-export").getByTestId("download-menu"));
+
+  await page.goto("/reports");
+  await expectKeyboardDownload(page, reportRow(page, "Platform team").getByTestId("download-menu"));
+});
 
 test.describe("at 390px", () => {
   test.beforeEach(async ({ page }) => {
