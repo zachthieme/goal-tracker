@@ -467,6 +467,17 @@ var followUpDefinitions = []followUpDefinition{
 	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
 
+// followUpName is the name followUpDefinitions gives the signal kind, so a
+// chip that shows the signal's plain name reads it from the one list.
+func followUpName(kind string) string {
+	for _, d := range followUpDefinitions {
+		if d.Kind == kind {
+			return d.Name
+		}
+	}
+	return ""
+}
+
 // followUpDefinitionsIn are the definitions of the signals flagging rows, in the
 // page's order, each once: the popovers the chips' buttons open.
 func followUpDefinitionsIn(rows []followUpGoalRow) []followUpDefinition {

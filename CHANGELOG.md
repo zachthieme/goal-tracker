@@ -72,6 +72,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `scripts/shots.mjs` no longer reports how far the page scrolls sideways, which `app.css` clips so it was always 0; its overflow line comes from the elements past the window's edges alone. The Draft Highlight editor spec's header comment is rewrapped (#374).
 
 **Code quality:**
+- [internal] The Follow-ups table's Asks for help, Check-in overdue, Ownerless and Unlinked chips read their names from the signal definitions, like the group cards and popovers, so a signal is renamed in one place; a test renders each and fails if its label doesn't lead with its definition's name (#387).
 - [internal] The space between an Ask for help's Addressee and "Answer" on the Goal page is now written explicitly, not produced by a comment line in the template. The rendered page is unchanged (#373).
 
 **Documentation:**

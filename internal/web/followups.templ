@@ -218,22 +218,23 @@ templ followUpRow(current *domain.Account, today time.Time, here string, r follo
 // take no chip: the row's Health badge says so already. An Ask for help names
 // whom it asks, or says no one is above the Owner. Each chip's words are a
 // followUpTip opening what its signal means; a chip holding a person or a link
-// keeps them after its followUpTip, since a button can't hold them.
+// keeps them after its followUpTip, since a button can't hold them. A chip
+// that shows its signal's plain name reads it with followUpName.
 templ followUpChip(today time.Time, g domain.Goal, sig followUpSignal) {
 	switch sig.Kind {
 		case "red", "yellow":
 		case "asks-for-help":
 			<span data-testid="follow-up-signal" data-kind="asks-for-help" class="rk-tag">
 				if sig.Person != nil {
-					@followUpTip(sig.Kind, "Asks for help")
+					@followUpTip(sig.Kind, followUpName(sig.Kind))
 					{ "of " }@person(*sig.Person)
 				} else {
-					@followUpTip(sig.Kind, "Asks for help · no one above the Owner")
+					@followUpTip(sig.Kind, followUpName(sig.Kind)+" · no one above the Owner")
 				}
 			</span>
 		case "checkin-overdue":
 			<span data-testid="follow-up-signal" data-kind="checkin-overdue" class="badge st">
-				@followUpTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
+				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
 			</span>
 		case "path-overdue":
 			<span data-testid="follow-up-signal" data-kind="path-overdue" class="badge st">
@@ -249,11 +250,11 @@ templ followUpChip(today time.Time, g domain.Goal, sig followUpSignal) {
 			</span>
 		case "ownerless":
 			<span data-testid="follow-up-signal" data-kind="ownerless" class="badge ol">
-				@followUpTip(sig.Kind, "Ownerless")
+				@followUpTip(sig.Kind, followUpName(sig.Kind))
 			</span>
 		case "unlinked":
 			<span data-testid="follow-up-signal" data-kind="unlinked" class="rk-tag">
-				@followUpTip(sig.Kind, "Unlinked · no parent Goal, not Top-level")
+				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · no parent Goal, not Top-level")
 			</span>
 		case "schedule-conflicts":
 			<span data-testid="follow-up-signal" data-kind="schedule-conflicts" class="rk-tag">

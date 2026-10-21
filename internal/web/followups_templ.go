@@ -1064,7 +1064,8 @@ func followUpRow(current *domain.Account, today time.Time, here string, r follow
 // take no chip: the row's Health badge says so already. An Ask for help names
 // whom it asks, or says no one is above the Owner. Each chip's words are a
 // followUpTip opening what its signal means; a chip holding a person or a link
-// keeps them after its followUpTip, since a button can't hold them.
+// keeps them after its followUpTip, since a button can't hold them. A chip
+// that shows its signal's plain name reads it with followUpName.
 func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1094,7 +1095,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			if sig.Person != nil {
-				templ_7745c5c3_Err = followUpTip(sig.Kind, "Asks for help").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1105,7 +1106,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 				var templ_7745c5c3_Var50 string
 				templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("of ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 229, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 230, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 				if templ_7745c5c3_Err != nil {
@@ -1116,7 +1117,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = followUpTip(sig.Kind, "Asks for help · no one above the Owner").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)+" · no one above the Owner").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1130,7 +1131,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = followUpTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)+" · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1182,7 +1183,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = followUpTip(sig.Kind, "Ownerless").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1195,7 +1196,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = followUpTip(sig.Kind, "Unlinked · no parent Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)+" · no parent Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1215,7 +1216,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 261, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 262, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1241,7 +1242,7 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 266, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 267, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1291,7 +1292,7 @@ func followUpTip(kind, label string) templ.Component {
 		var templ_7745c5c3_Var54 string
 		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 276, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
 		if templ_7745c5c3_Err != nil {
@@ -1304,7 +1305,7 @@ func followUpTip(kind, label string) templ.Component {
 		var templ_7745c5c3_Var55 string
 		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 118}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 276, Col: 118}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 		if templ_7745c5c3_Err != nil {
@@ -1317,7 +1318,7 @@ func followUpTip(kind, label string) templ.Component {
 		var templ_7745c5c3_Var56 string
 		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 128}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 276, Col: 128}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 		if templ_7745c5c3_Err != nil {
