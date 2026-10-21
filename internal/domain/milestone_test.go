@@ -19,7 +19,7 @@ func TestAddMilestoneListsUnderTheGoal(t *testing.T) {
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
 	date := time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC)
-	m, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+	m, err := h.Service.AddMilestone(context.Background(), g.Owner.ID, domain.AddMilestoneInput{
 		GoalID:     g.ID,
 		Name:       "Beta cut",
 		TargetDate: date,
@@ -56,7 +56,7 @@ func TestAddMilestoneRequiresNameAndDate(t *testing.T) {
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := h.Service.AddMilestone(context.Background(), in); !errors.Is(err, domain.ErrValidation) {
+			if _, err := h.Service.AddMilestone(context.Background(), owner.ID, in); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("err = %v, want ErrValidation", err)
 			}
 		})
@@ -69,7 +69,7 @@ func TestEditMilestoneChangesNameAndDate(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
-	m, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+	m, err := h.Service.AddMilestone(context.Background(), g.Owner.ID, domain.AddMilestoneInput{
 		GoalID:     g.ID,
 		Name:       "Beta cut",
 		TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
@@ -79,7 +79,7 @@ func TestEditMilestoneChangesNameAndDate(t *testing.T) {
 	}
 
 	newDate := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
-	got, err := h.Service.EditMilestone(context.Background(), domain.EditMilestoneInput{
+	got, err := h.Service.EditMilestone(context.Background(), owner.ID, domain.EditMilestoneInput{
 		MilestoneID: m.ID,
 		Name:        "GA cut",
 		TargetDate:  newDate,
@@ -305,7 +305,7 @@ func replanned(t *testing.T, h *testsupport.Harness) (domain.Goal, domain.Submit
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	beta := onlyMilestone(t, h, goal.ID)
-	rollout, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+	rollout, err := h.Service.AddMilestone(context.Background(), goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
 	})
 	if err != nil {
@@ -384,7 +384,7 @@ func TestCheckinMilestoneChangesKeepTheNameAtTheTime(t *testing.T) {
 		t.Fatalf("ListMilestones: %v %v", ms, err)
 	}
 	for _, m := range ms {
-		if _, err := h.Service.EditMilestone(context.Background(), domain.EditMilestoneInput{
+		if _, err := h.Service.EditMilestone(context.Background(), goal.Owner.ID, domain.EditMilestoneInput{
 			MilestoneID: m.ID,
 			Name:        m.Name + " (renamed)",
 			TargetDate:  m.TargetDate,
@@ -784,5 +784,44 @@ func TestDefiningAGoalRecordsNoMilestoneChange(t *testing.T) {
 		if got := changesOutsideCheckins(t, h, g.ID); len(got) != 0 {
 			t.Errorf("%s's changes outside Check-ins = %+v, want none", g.Title, got)
 		}
+	}
+}
+
+// Only a Goal's Owner or a Delegate may add or edit its Milestones: a
+// stranger and an Admin are refused and the Milestones stay as they were.
+func TestMilestoneChangesAdmitOnlyTheOwnerOrADelegate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "why")
+	h.AddDelegate(sam, dana, g.ID)
+	ctx := context.Background()
+	date := time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC)
+	beta, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: date})
+	if err != nil {
+		t.Fatalf("the Owner adding: %v", err)
+	}
+
+	for name, actor := range map[string]domain.Account{
+		"a stranger": h.SignIn("pat@example.com"),
+		"an Admin":   h.SignIn("admin@example.com"),
+	} {
+		if _, err := h.Service.AddMilestone(ctx, actor.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "GA", TargetDate: date}); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s adding: err = %v, want ErrNotAuthorized", name, err)
+		}
+		if _, err := h.Service.EditMilestone(ctx, actor.ID, domain.EditMilestoneInput{MilestoneID: beta.ID, Name: "Preview", TargetDate: date}); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s editing: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if ms, _ := h.Service.ListMilestones(ctx, g.ID); len(ms) != 1 || ms[0].Name != "Beta" {
+		t.Errorf("Milestones after refusals = %+v, want just Beta, unedited", ms)
+	}
+	if _, err := h.Service.AddMilestone(ctx, dana.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "GA", TargetDate: date}); err != nil {
+		t.Errorf("a Delegate adding: %v", err)
+	}
+	if _, err := h.Service.EditMilestone(ctx, dana.ID, domain.EditMilestoneInput{MilestoneID: beta.ID, Name: "Preview", TargetDate: date}); err != nil {
+		t.Errorf("a Delegate editing: %v", err)
 	}
 }

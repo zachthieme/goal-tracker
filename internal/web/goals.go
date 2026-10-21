@@ -1719,7 +1719,7 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, "invalid milestone date", http.StatusUnprocessableEntity)
 		return
 	}
-	m, err := s.svc.EditMilestone(r.Context(), domain.EditMilestoneInput{
+	m, err := s.svc.EditMilestone(r.Context(), current.ID, domain.EditMilestoneInput{
 		MilestoneID: id,
 		Name:        r.FormValue("name"),
 		TargetDate:  date,

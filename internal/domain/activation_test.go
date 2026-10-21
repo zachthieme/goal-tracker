@@ -20,7 +20,7 @@ var futureDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
 func addMilestone(t *testing.T, h *testsupport.Harness, goalID int64) {
 	t.Helper()
-	if _, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(context.Background(), h.GoalOwnerID(goalID), domain.AddMilestoneInput{
 		GoalID:     goalID,
 		Name:       "Beta cut",
 		TargetDate: futureDate,

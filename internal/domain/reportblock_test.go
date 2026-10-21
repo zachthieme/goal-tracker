@@ -414,7 +414,7 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 // addDatedMilestone adds a Milestone to g, failing the test on error.
 func addDatedMilestone(h *testsupport.Harness, g domain.Goal, name string, date time.Time) domain.Milestone {
 	h.T.Helper()
-	m, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{GoalID: g.ID, Name: name, TargetDate: date})
+	m, err := h.Service.AddMilestone(context.Background(), g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: name, TargetDate: date})
 	if err != nil {
 		h.T.Fatalf("AddMilestone: %v", err)
 	}

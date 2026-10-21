@@ -232,12 +232,12 @@ func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
 	beta := onlyMilestone(t, h, goal.ID)
 	ctx := context.Background()
 
-	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 		MilestoneID: beta.ID, Name: "Beta", TargetDate: beta.TargetDate.AddDate(0, 0, 5),
 	}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("EditMilestone moving the date on an Active Goal: err = %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 		MilestoneID: beta.ID, Name: "Public beta", TargetDate: beta.TargetDate,
 	}); err != nil {
 		t.Errorf("EditMilestone renaming on an Active Goal: %v", err)

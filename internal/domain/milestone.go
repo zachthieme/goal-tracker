@@ -147,8 +147,10 @@ type AddMilestoneInput struct {
 	TargetDate time.Time
 }
 
-// AddMilestone adds a Milestone to a Goal. Name and target date are required.
-func (s *Service) AddMilestone(ctx context.Context, in AddMilestoneInput) (Milestone, error) {
+// AddMilestone adds a Milestone to a Goal as part of planning it, recording no
+// Milestone change. Name and target date are required. Only the Goal's Owner
+// or a Delegate may add one (ErrNotAuthorized), as for AddMilestoneAsAuthor.
+func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilestoneInput) (Milestone, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Milestone{}, fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
@@ -163,6 +165,9 @@ func (s *Service) AddMilestone(ctx context.Context, in AddMilestoneInput) (Miles
 		}
 		return Milestone{}, fmt.Errorf("look up goal: %w", err)
 	}
+	if err := s.authorizeMilestoneChange(ctx, goal.Goal, actorID); err != nil {
+		return Milestone{}, err
+	}
 	return s.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
 }
 
@@ -172,8 +177,12 @@ var errMilestonesOwnerOrDelegateOnly = fmt.Errorf("%w: only the Owner or a Deleg
 
 // authorizeMilestoneChange allows the Goal's Owner or a Delegate to change its
 // Milestones, by the rules for who may write its Check-ins: a Departed person
-// is refused whichever they are (CONTEXT.md: Delegate, Departed).
+// is refused whichever they are (CONTEXT.md: Delegate, Departed). The Admin
+// whose import created the Goal may too.
 func (s *Service) authorizeMilestoneChange(ctx context.Context, goal db.Goal, actorID int64) error {
+	if s.importedBy(actorID, goal.ID) {
+		return nil
+	}
 	err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.OwnerID, actorID)
 	if errors.Is(err, ErrNotAuthorized) {
 		return errMilestonesOwnerOrDelegateOnly
@@ -183,8 +192,8 @@ func (s *Service) authorizeMilestoneChange(ctx context.Context, goal db.Goal, ac
 
 // RequireMilestoneEditor allows actorID to change milestoneID only if they are
 // its Goal's Owner or a Delegate; anyone else is refused with
-// ErrNotAuthorized, and a missing Milestone is ErrNotFound. Callers check it
-// before EditMilestone, which trusts its caller.
+// ErrNotAuthorized, and a missing Milestone is ErrNotFound. EditMilestone
+// checks it for itself.
 func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestoneID int64) error {
 	m, err := s.queries.GetMilestone(ctx, milestoneID)
 	if err != nil {
@@ -282,8 +291,9 @@ type EditMilestoneInput struct {
 
 // EditMilestone changes a Milestone's name and date. Both are required. The
 // date can only change here while the Goal is Proposed; after that it moves in a
-// Check-in as a Date Slip.
-func (s *Service) EditMilestone(ctx context.Context, in EditMilestoneInput) (Milestone, error) {
+// Check-in as a Date Slip. Only its Goal's Owner or a Delegate may edit it
+// (ErrNotAuthorized; see RequireMilestoneEditor).
+func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMilestoneInput) (Milestone, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Milestone{}, fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
@@ -297,6 +307,9 @@ func (s *Service) EditMilestone(ctx context.Context, in EditMilestoneInput) (Mil
 			return Milestone{}, fmt.Errorf("%w: milestone %d", ErrNotFound, in.MilestoneID)
 		}
 		return Milestone{}, fmt.Errorf("look up milestone: %w", err)
+	}
+	if err := s.RequireMilestoneEditor(ctx, actorID, in.MilestoneID); err != nil {
+		return Milestone{}, err
 	}
 	// Once the Goal is past Proposed its Milestone dates move only in a
 	// Check-in, which records the Date Slip and its reason (CONTEXT.md: Date

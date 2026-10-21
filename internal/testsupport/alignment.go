@@ -38,7 +38,7 @@ func (h *Harness) ActiveGoalDue(owner domain.Account, title string, due time.Tim
 	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, due); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(ctx, owner.ID, domain.AddMilestoneInput{
 		GoalID:     g.ID,
 		Name:       "Kickoff",
 		TargetDate: h.Clock.Now().AddDate(0, 1, 0),

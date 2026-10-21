@@ -370,7 +370,7 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 // Goal, within the transaction the caller holds.
 func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in DefinedGoalInput) error {
 	for _, m := range in.Milestones {
-		if _, err := s.AddMilestone(ctx, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
+		if _, err := s.AddMilestone(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
 			return err
 		}
 	}

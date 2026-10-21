@@ -39,7 +39,7 @@ func (h *Harness) MilestoneMarksGoal(owner domain.Account) domain.Goal {
 		{GoalID: g.ID, Name: "Launch party", TargetDate: day(5, 20)},
 		{GoalID: g.ID, Name: "GA launch", TargetDate: day(6, 15)},
 	} {
-		if _, err := h.Service.AddMilestone(ctx, m); err != nil {
+		if _, err := h.Service.AddMilestone(ctx, owner.ID, m); err != nil {
 			h.T.Fatalf("AddMilestone %q: %v", m.Name, err)
 		}
 	}

@@ -2130,7 +2130,7 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 	h.SignIn("ada@example.com")
 	h.SignIn("pat@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestone(t.Context(), domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
 		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
@@ -2212,7 +2212,7 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	dana := h.SignIn("dana@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestone(t.Context(), domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestone(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
 		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)

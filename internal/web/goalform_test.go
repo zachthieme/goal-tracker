@@ -1641,7 +1641,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	if _, err := h.Service.SetCadence(ctx, g.Owner.ID, g.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
+	if _, err := h.Service.AddMilestone(ctx, g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
 	}
 	if _, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{GoalID: g.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300, TargetDate: testsupport.Epoch.AddDate(0, 6, 0)}); err != nil {
@@ -1881,7 +1881,7 @@ func TestDefineGoalFormCreateAndActivate(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
-	if _, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
+	if _, err := h.Service.AddMilestone(context.Background(), g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
 		t.Fatalf("AddMilestone: %v", err)
 	}
 	ts := newServer(t, h)

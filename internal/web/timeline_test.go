@@ -812,7 +812,7 @@ func replanCheckin(t *testing.T, h *testsupport.Harness, sam domain.Account, tit
 	if err != nil || len(ms) != 1 {
 		t.Fatalf("ListMilestones: %v %v", ms, err)
 	}
-	rollout, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+	rollout, err := h.Service.AddMilestone(ctx, goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
 	})
 	if err != nil {
@@ -893,7 +893,7 @@ func TestGoalHistoryCheckinKeepsMilestoneNamesThroughARename(t *testing.T) {
 	}
 	renames := map[string]string{"GA": "Launch", "Beta": "Preview", "Rollout to 50%": "Half rollout"}
 	for _, m := range ms {
-		if _, err := h.Service.EditMilestone(context.Background(), domain.EditMilestoneInput{
+		if _, err := h.Service.EditMilestone(context.Background(), sam.ID, domain.EditMilestoneInput{
 			MilestoneID: m.ID, Name: renames[m.Name], TargetDate: m.TargetDate,
 		}); err != nil {
 			t.Fatalf("EditMilestone %q: %v", m.Name, err)
@@ -931,7 +931,7 @@ func TestGoalHistoryCheckinKeepsItsMilestoneNameBesideADateSlipThroughARename(t 
 		t.Fatalf("ListMilestones: %v %v, want just Beta", ms, err)
 	}
 	beta := ms[0]
-	ga, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+	ga, err := h.Service.AddMilestone(ctx, goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate.AddDate(0, 0, -7),
 	})
 	if err != nil {
@@ -952,7 +952,7 @@ func TestGoalHistoryCheckinKeepsItsMilestoneNameBesideADateSlipThroughARename(t 
 		name string
 		date time.Time
 	}{{ga, "Launch", ga.TargetDate}, {beta, "Preview", moved}} {
-		if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+		if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 			MilestoneID: rename.m.ID, Name: rename.name, TargetDate: rename.date,
 		}); err != nil {
 			t.Fatalf("EditMilestone %q: %v", rename.m.Name, err)
@@ -1026,7 +1026,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 		t.Fatalf("ListMilestones: %v %v", ms, err)
 	}
 	beta := ms[0]
-	rollout, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+	rollout, err := h.Service.AddMilestone(ctx, goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
 	})
 	if err != nil {

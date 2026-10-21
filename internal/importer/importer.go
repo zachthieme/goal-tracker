@@ -651,7 +651,7 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	for _, m := range s.milestones {
-		if _, err := tx.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: m.name, TargetDate: m.date}); err != nil {
+		if _, err := tx.AddMilestone(ctx, adminID, domain.AddMilestoneInput{GoalID: g.ID, Name: m.name, TargetDate: m.date}); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
