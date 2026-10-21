@@ -141,10 +141,10 @@ templ homeYourGoals(v homeView) {
 }
 
 // homeOrgSection is the My org section, a plain section on the canvas: counts and
-// people, never Goals. The total line is plain text, set apart from the
-// badges counting each person's Org, and each person's name leads to their
-// Org on Goals; the section ends with links on to the whole Org's Goals and
-// Follow-ups for the detail.
+// people, never Goals. The total line is plain text, set apart from the pills
+// and chips counting each person's Org, and each person's row, their initials,
+// Name and counts, is one link to their Org on Goals; the section ends with
+// links on to the whole Org's Goals and Follow-ups for the detail.
 templ homeOrgSection(org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
 		<h2>
@@ -162,15 +162,16 @@ templ homeOrgSection(org homeOrg) {
 			<ul class="hm-list hm-compact">
 				for _, p := range org.Flagged {
 					<li data-testid="home-org-person">
-						<div class="hm-what">
-							<a data-testid="home-org-person-link" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
+						<a data-testid="home-org-person-link" class="hm-org-row" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
+							<span class="avatar hm-avatar" aria-hidden="true">{ initials(p.Person) }</span>
+							<span class="hm-org-name">
 								@personPlain(p.Person)
-							</a>
+							</span>
 							if p.Person.Departed {
 								<span data-testid="home-org-departed" class="badge lc">departed</span>
 							}
 							@homeOrgCounts(p.Counts)
-						</div>
+						</a>
 					</li>
 				}
 			</ul>
@@ -409,6 +410,15 @@ templ homeStyles() {
 		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:6px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
 		.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}
+		.hm-list>li:has(>.hm-org-row){padding:0}
+		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:6px 0;box-sizing:border-box;color:var(--color-ink)}
+		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
+		.hm-org-name{font-size:14px;font-weight:500}
+		.hm-org-row:hover .hm-org-name{text-decoration:underline}
+		.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}
+		.hm-org-row .badge.r::before,.hm-org-row .badge.y::before{content:"";flex:none;width:8px;height:8px;background:currentColor}
+		.hm-org-row .badge.r::before{border-radius:1px}
+		.hm-org-row .badge.y::before{width:10px;height:9px;clip-path:polygon(50% 0,100% 100%,0 100%)}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
 		.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}

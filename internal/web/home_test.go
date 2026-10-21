@@ -1234,9 +1234,10 @@ func orgPersonLink(t *testing.T, row string) string {
 	return pageElement(t, row, "a", "home-org-person-link")
 }
 
-// In My org each person's name is the link to their Org on Goals, so no row
-// repeats a "Their org on Goals" link, and the total line is plain text, set
-// apart from the rows' badges (#377).
+// In My org each person's row is one link to their Org on Goals: their
+// initials, their Name, then their counts, so no row repeats a "Their org on
+// Goals" link, and the total line is plain text, set apart from the rows'
+// pills and chips (#377, #391).
 func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	t.Parallel()
 
@@ -1249,13 +1250,26 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
 	}
-	for i, who := range []domain.Account{f.ana, f.ben} {
+	for i, want := range []struct {
+		who      domain.Account
+		initials string
+		reads    string
+	}{
+		{f.ana, "A", "A Ana 1 Red 1 Path to Green overdue 1 Check-in overdue 1 Yellow"},
+		{f.ben, "B", "B Ben 1 Red"},
+	} {
 		link := orgPersonLink(t, rows[i])
-		if href := attr(openTag(link), "href"); href != fmt.Sprintf("/goals?org=%d", who.ID) {
-			t.Errorf("%s's name links to %q, want their org on Goals", who.Name, href)
+		if href := attr(openTag(link), "href"); href != fmt.Sprintf("/goals?org=%d", want.who.ID) {
+			t.Errorf("%s's row links to %q, want their org on Goals", want.who.Name, href)
 		}
-		if got := elementTexts(rows[i], "a", "home-org-person-link"); len(got) != 1 || got[0] != who.Name {
-			t.Errorf("%s's link reads %q, want their name", who.Name, got)
+		if got := elementTexts(rows[i], "a", "home-org-person-link"); len(got) != 1 || got[0] != want.reads {
+			t.Errorf("%s's row link reads %q, want %q, their initials, Name and counts", want.who.Name, got, want.reads)
+		}
+		if !strings.Contains(link, `<span class="avatar hm-avatar" aria-hidden="true">`+want.initials+`</span>`) {
+			t.Errorf("%s's row doesn't lead with their initials:\n%s", want.who.Name, link)
+		}
+		if after := rows[i][strings.Index(rows[i], "</a>"):]; strings.Contains(after, "home-org-count") {
+			t.Errorf("%s's counts sit outside their row's link:\n%s", want.who.Name, rows[i])
 		}
 	}
 	if strings.Contains(card, "Their org on Goals") {
