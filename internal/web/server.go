@@ -150,6 +150,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l := s.log.With("request_id", id)
 	aw := &accessWriter{ResponseWriter: w}
 	s.serveChecked(aw, r.WithContext(withRequestLogger(r.Context(), l)))
+	if aw.route == "" {
+		// Refused before routing: logged under the route it was aimed at.
+		_, aw.route = s.mux.Handler(r)
+	}
 	aw.logAccess(r.Context(), l, r.Method, start)
 }
 
