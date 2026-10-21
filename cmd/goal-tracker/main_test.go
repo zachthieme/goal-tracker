@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -62,11 +63,11 @@ func TestAppClockRejectsAMalformedStartAt(t *testing.T) {
 // oidcVars are the variables that switch organization sign-in on.
 var oidcVars = []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
 
-// clearAuthEnv unsets the sign-in, directory and Chromium variables for the
-// test, so the host's own settings don't leak in.
+// clearAuthEnv unsets the sign-in, directory, Chromium and trusted proxy
+// variables for the test, so the host's own settings don't leak in.
 func clearAuthEnv(t *testing.T) {
 	t.Helper()
-	for _, v := range slices.Concat(oidcVars, directoryVars, []string{directoryFileVar, "GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL", "GOAL_TRACKER_CHROME"}) {
+	for _, v := range slices.Concat(oidcVars, directoryVars, []string{directoryFileVar, "GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL", "GOAL_TRACKER_CHROME", trustedProxiesVar}) {
 		t.Setenv(v, "")
 	}
 }
@@ -802,5 +803,94 @@ func TestALongTMPDIRStartsWithAWarning(t *testing.T) {
 	}
 	if !warned {
 		t.Errorf("startup under the %d-byte TMPDIR logs no warning naming it:\n%s", len(tmp), log.String())
+	}
+}
+
+// trustedProxiesVar names the reverse proxies whose X-Forwarded-For the
+// sign-in throttle reads.
+const trustedProxiesVar = "GOAL_TRACKER_TRUSTED_PROXIES"
+
+// GOAL_TRACKER_TRUSTED_PROXIES is a comma-separated list of CIDRs and bare
+// IPs, a bare IP being the one address and an IPv4-mapped IPv6 one its IPv4
+// address, with blank entries and the space around each ignored.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestTrustedProxiesAreCIDRsOrBareIPs(t *testing.T) {
+	devEnv(t)
+	t.Setenv(trustedProxiesVar, " 10.0.0.0/8, 192.0.2.1 ,,fd00::/8,2001:db8::1,::ffff:198.51.100.2")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("192.0.2.1/32"),
+		netip.MustParsePrefix("fd00::/8"),
+		netip.MustParsePrefix("2001:db8::1/128"),
+		netip.MustParsePrefix("198.51.100.2/32"),
+	}
+	if !slices.Equal(cfg.trustedProxies, want) {
+		t.Errorf("trusted proxies %v, want %v", cfg.trustedProxies, want)
+	}
+}
+
+// Without GOAL_TRACKER_TRUSTED_PROXIES, no proxy is trusted.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestNoProxyIsTrustedByDefault(t *testing.T) {
+	devEnv(t)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.trustedProxies) != 0 {
+		t.Errorf("trusted proxies %v, want none", cfg.trustedProxies)
+	}
+}
+
+// An entry in GOAL_TRACKER_TRUSTED_PROXIES that is neither a CIDR nor an IP
+// stops startup with an error naming the variable and the entry.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestAnInvalidTrustedProxyStopsStartup(t *testing.T) {
+	for _, bad := range []string{"proxy.internal", "10.0.0.0/33", "10.0.0.300"} {
+		t.Run(bad, func(t *testing.T) {
+			startupEnv(t)
+			t.Setenv(trustedProxiesVar, "10.0.0.0/8,"+bad)
+
+			err := run(discardLogger(), nil, io.Discard)
+			if err == nil {
+				t.Fatalf("goal-tracker started with %s=10.0.0.0/8,%s", trustedProxiesVar, bad)
+			}
+			for _, want := range []string{trustedProxiesVar, bad} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q doesn't name %s", err, want)
+				}
+			}
+		})
+	}
+}
+
+// With trusted proxies, startup logs that the sign-in throttle reads their
+// X-Forwarded-For, and which they are.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestTrustedProxiesAreLogged(t *testing.T) {
+	startupEnv(t)
+	t.Setenv(trustedProxiesVar, "10.0.0.0/8,192.0.2.1")
+
+	var log bytes.Buffer
+	err := run(slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
+	if err == nil || !strings.HasPrefix(err.Error(), "serve:") {
+		t.Fatalf("goal-tracker with trusted proxies: %v; want it to start serving", err)
+	}
+	logged := false
+	for line := range strings.Lines(log.String()) {
+		logged = logged || strings.Contains(line, "X-Forwarded-For") && strings.Contains(line, "10.0.0.0/8") && strings.Contains(line, "192.0.2.1/32")
+	}
+	if !logged {
+		t.Errorf("startup with trusted proxies logs no line naming X-Forwarded-For and them:\n%s", log.String())
 	}
 }

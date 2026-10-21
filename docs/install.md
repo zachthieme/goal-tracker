@@ -159,6 +159,11 @@ GOAL_TRACKER_REMINDER_TIME=09:00
 # for chromium, chromium-browser, google-chrome and google-chrome-stable.
 # GOAL_TRACKER_CHROME=/usr/bin/chromium
 
+# With GOAL_TRACKER_SIGNIN=password, the reverse proxies whose X-Forwarded-For
+# names the client, as comma-separated CIDRs or IPs: the address the app sees
+# the proxy connect from (see step 7). Unset, X-Forwarded-For is ignored.
+GOAL_TRACKER_TRUSTED_PROXIES=127.0.0.1
+
 # With GOAL_TRACKER_SIGNIN=oidc, also:
 # GOAL_TRACKER_OIDC_ISSUER=https://login.example.com/
 # GOAL_TRACKER_OIDC_CLIENT_ID=
@@ -169,8 +174,9 @@ Startup checks this and stops with a message naming the problem: an unset or
 unknown sign-in method, a missing or short session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
 `GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
-`GOAL_TRACKER_CHROME` that isn't there or can't run, or, with a Chromium, a
-`TMPDIR` too long for it (see § PDF downloads). Never set
+`GOAL_TRACKER_CHROME` that isn't there or can't run, a
+`GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP, or, with
+a Chromium, a `TMPDIR` too long for it (see § PDF downloads). Never set
 `GOAL_TRACKER_START_AT`; it's for tests.
 
 ### PDF downloads
@@ -304,15 +310,25 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
 ```
 
-With password sign-in, the app limits failed sign-ins per IP address and
-doesn't read `X-Forwarded-For`, so behind a proxy every sign-in counts against
-the proxy's address: 50 failures within 15 minutes, from anyone, hold
-everyone's sign-ins until the window passes. The per-account lockout (five
-wrong passwords, 15 minutes) is unaffected.
+With password sign-in, the app limits failed sign-ins per client IP address:
+50 failures within 15 minutes hold that address's sign-ins until the window
+passes. Behind a proxy, every request arrives from the proxy's address, so set
+`GOAL_TRACKER_TRUSTED_PROXIES` to it: `127.0.0.1` for a proxy on the same host,
+or, with Docker, the address the container sees it connect from (the bridge's
+gateway, usually `172.17.0.1`). A request from a trusted proxy then counts
+against the right-most address in its `X-Forwarded-For` that isn't a trusted
+proxy, which Caddy sets by default and the nginx line above appends. A request
+from any other address counts against that address, whatever it claims.
+Without the setting, `X-Forwarded-For` is ignored, and 50 failures from anyone
+hold everyone's sign-ins. Trust only proxies that set the header: a client
+reaching the app directly from a trusted address can name any client it likes.
+Startup logs the trusted proxies. The per-account lockout (five wrong
+passwords, 15 minutes) is unaffected.
 
 For a health check, `GET /signin` returns `200` while the app is up.
 

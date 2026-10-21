@@ -103,9 +103,12 @@ like.
   the right one; using a new set-password link lifts the lock at once. Apart
   from that, 50 failed sign-ins from one IP address within 15 minutes hold
   every sign-in from that address until the window passes. The address is the
-  connection's, never `X-Forwarded-For`, so **behind a reverse proxy the limit
-  counts the proxy's address**, and one person's mistakes count against
-  everyone behind it. The counts are kept in memory, so a restart clears them.
+  connection's, unless it is one of `GOAL_TRACKER_TRUSTED_PROXIES`: then it's
+  the client its `X-Forwarded-For` names (see
+  [docs/install.md § 7](docs/install.md#7-put-a-reverse-proxy-in-front)).
+  Without that setting, **behind a reverse proxy the limit counts the proxy's
+  address**, and one person's mistakes count against everyone behind it. The
+  counts are kept in memory, so a restart clears them.
   Each password hash takes 64 MiB, so at most one runs per CPU at once and a
   burst of sign-ins waits its turn rather than exhausting memory.
 
