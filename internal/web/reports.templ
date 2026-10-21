@@ -9,57 +9,65 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportsPage lists every saved Report Definition as a row of a status table —
+// reportsPage lists every saved Report Definition as a row of a status list —
 // its scope, its Goals and their Health, when it was last published and by
 // whom, and how much its draft has changed since — and links New report to the
-// builder (CONTEXT.md: Report Definition). Dates are the company's (loc). The
-// table is the page's one card; the Open Action Items above it are a plain
-// section on the canvas, each group's rows ruled off by hairlines.
+// builder (CONTEXT.md: Report Definition). Dates are the company's (loc). It
+// sits in the flat frame under a header strip holding New report: the Open
+// Action Items are a section of rows, and the definitions a full-bleed list
+// whose rows are ruled off by hairlines (DESIGN.md § Direction).
 templ reportsPage(current *domain.Account, data reportsListData) {
-	@layout("Reports", current) {
+	@framedLayout("Reports", current, reportsListHeader()) {
 		@reportStyles()
-		<header class="page-head">
-			<div>
-				<h1>Reports</h1>
-				<p data-testid="reports-description" class="muted">Recurring write-ups of a set of Goals. Publish a frozen copy for readers to comment on.</p>
-			</div>
-			<a data-testid="new-report" class="btn primary" href="/reports/new">New report</a>
-		</header>
-		if len(data.YourActionItems) + len(data.OrgActionItems) > 0 {
-			<section data-testid="reports-action-items" class="rp-chase">
-				<h2>Open Action Items</h2>
-				if len(data.YourActionItems) > 0 {
-					@reportsActionItemGroup("Yours", "reports-action-items-yours", data.YourActionItems)
-				}
-				if len(data.OrgActionItems) > 0 {
-					@reportsActionItemGroup("My org", "reports-action-items-org", data.OrgActionItems)
-				}
-			</section>
-		}
-		if len(data.Reports) == 0 {
-			<p data-testid="no-reports" class="muted">No reports yet.</p>
-		} else {
-			<div class="card rp-table">
-				<table data-testid="report-table">
-					<thead>
-						<tr><th>Report</th><th>Goals</th><th>Last published</th><th class="rp-draft">Draft</th><th class="rp-download-cell"><span class="sr-only">Download</span></th></tr>
-					</thead>
-					<tbody>
-						for _, sum := range data.Reports {
-							@reportRow(sum, data.Loc, data.PDFFile)
-						}
-					</tbody>
-				</table>
-			</div>
-		}
+		<div class="rp-index">
+			<p data-testid="reports-description" class="muted rp-index-lead">Recurring write-ups of a set of Goals. Publish a frozen copy for readers to comment on.</p>
+			if len(data.YourActionItems) + len(data.OrgActionItems) > 0 {
+				<section data-testid="reports-action-items" class="rp-chase">
+					<h2>Open Action Items</h2>
+					if len(data.YourActionItems) > 0 {
+						@reportsActionItemGroup("Yours", "reports-action-items-yours", data.YourActionItems)
+					}
+					if len(data.OrgActionItems) > 0 {
+						@reportsActionItemGroup("My org", "reports-action-items-org", data.OrgActionItems)
+					}
+				</section>
+			}
+			if len(data.Reports) == 0 {
+				<p data-testid="no-reports" class="muted rp-index-lead">No reports yet.</p>
+			} else {
+				<section class="rp-defs" aria-labelledby="rp-defs-head">
+					<h2 id="rp-defs-head">Report Definitions</h2>
+					<div class="rp-table">
+						<table data-testid="report-table">
+							<thead>
+								<tr><th>Report</th><th>Goals</th><th>Last published</th><th class="rp-draft">Draft</th><th class="rp-download-cell"><span class="sr-only">Download</span></th></tr>
+							</thead>
+							<tbody>
+								for _, sum := range data.Reports {
+									@reportRow(sum, data.Loc, data.PDFFile)
+								}
+							</tbody>
+						</table>
+					</div>
+				</section>
+			}
+		</div>
+	}
+}
+
+// reportsListHeader is the Reports list's header strip: its title, and New
+// report at the right as the page's primary action.
+templ reportsListHeader() {
+	@pageHeader(pageHead{Title: "Reports"}) {
+		<a data-testid="new-report" class="btn primary sm" href="/reports/new">New report</a>
 	}
 }
 
 // reportsActionItemGroup is one group of the Reports page's Open Action Items,
-// headed label, its list carrying testID.
+// a header row naming it with how many it holds, its list carrying testID.
 templ reportsActionItemGroup(label, testID string, items []domain.ActionItemListing) {
 	<div class="rp-chase-group">
-		<h4 class="label">{ label }</h4>
+		<h3 class="rp-group">{ label }<span class="rp-group-count">{ fmt.Sprint(len(items)) }</span></h3>
 		<ul data-testid={ testID } class="rp-chase-list">
 			for _, l := range items {
 				@reportsActionItemRow(l)
@@ -85,11 +93,11 @@ templ reportsActionItemRow(l domain.ActionItemListing) {
 	</li>
 }
 
-// reportRow is one Report Definition in the status table: its name over its
-// scope, its Goal count over a bar of their Health, its last publication's
-// date in the company's timezone (loc) over its publisher, or Never, its
-// draft's changes since, or Not published, and a Download menu for its last
-// publication, a PDF file when pdfFile.
+// reportRow is one Report Definition in the status list, on one line: its
+// name then its scope, its Goal count then a bar of their Health, its last
+// publication's date in the company's timezone (loc) then its publisher, or
+// Never, its draft's changes since, or Not published, and a Download menu for
+// its last publication, a PDF file when pdfFile.
 templ reportRow(sum domain.ReportSummary, loc *time.Location, pdfFile bool) {
 	<tr data-testid="report-row">
 		<td class="rp-name">
@@ -106,6 +114,7 @@ templ reportRow(sum domain.ReportSummary, loc *time.Location, pdfFile bool) {
 			if p := sum.LastPublication; p != nil {
 				<span data-testid="report-published">{ showDayOfYear(p.PublishedAt, loc) }</span>
 				<span class="small muted">
+					{ "by " }
 					@person(p.PublishedBy)
 				</span>
 			} else {
@@ -168,31 +177,17 @@ templ reportHealthBar(h domain.HealthCounts) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication. A header, sticky above a phone's width, carries the save status,
-// the baseline chip, the History of its publications (times in the company's
-// timezone, loc) and Publish; below it the
-// author composes the narrative on the left beside a preview of exactly what
-// readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
-// judged overdue as of asOf, today.
+// publication. Its header strip, sticky above a phone's width, carries the
+// breadcrumb, the save status, the baseline chip, the History of its
+// publications (times in the company's timezone, loc) and Publish at the
+// right; below it the author composes the narrative on the left beside a
+// preview of exactly what readers will see, the two plain panes split by a
+// hairline (CONTEXT.md: Report, Report Definition). Paths to Green are judged
+// overdue as of asOf, today.
 // The compose form shows form, and the save status says status.
 templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, form narrativeForm, status string) {
-	@layout(r.Definition.Name, current) {
+	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, status)) {
 		@reportStyles()
-		<header data-testid="draft-header" class="rp-draft-head">
-			<div class="rp-draft-title">
-				<div>
-					<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
-					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
-				</div>
-				@saveStatus(status, false)
-			</div>
-			@reportBaselineChip(r, chip)
-			<div class="rp-head-actions">
-				@reportHistory(pubs, loc)
-				@editDefinitionLink(panel.Edit, "btn")
-				@reportPublish(r, chip)
-			</div>
-		</header>
 		<div data-testid="draft-panes" class="rp-panes">
 			<aside data-testid="compose-panel" class="rp-body rp-compose">
 				<section data-testid="draft-introduction">
@@ -211,6 +206,30 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</div>
 		</div>
 	}
+}
+
+// reportDraftHeader is the draft's header strip: Reports › its name, marked a
+// Draft, and the save status at the left, then the baseline chip, and History,
+// Edit definition and Publish… at the right (DESIGN.md § Direction: Page
+// header).
+templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, status string) {
+	<header data-testid="draft-header" class="page-header rp-draft-head">
+		<div class="rp-draft-title">
+			<div class="ph-title">
+				<a class="ph-parent" href="/reports">Reports</a>
+				<span class="ph-sep" aria-hidden="true">›</span>
+				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+				<span class="ph-count">Draft</span>
+			</div>
+			@saveStatus(status, false)
+		</div>
+		@reportBaselineChip(r, chip)
+		<div class="rp-head-actions">
+			@reportHistory(pubs, loc)
+			@editDefinitionLink(panel.Edit, "btn sm")
+			@reportPublish(r, chip)
+		</div>
+	</header>
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
@@ -281,7 +300,7 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 			<span>Changes since <strong data-testid="baseline-label">{ chip.Label }</strong></span>
 			<span aria-hidden="true">▾</span>
 		</summary>
-		<ul class="card rp-list">
+		<ul class="rp-pop rp-list">
 			if chip.Published {
 				<li><a data-testid="baseline-last-publication" href={ templ.SafeURL(chip.Draft) }>Last publication</a></li>
 			}
@@ -309,8 +328,8 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 // publication, as the draft does.
 templ reportPublish(r domain.Report, chip baselineChip) {
 	<details data-testid="publish-confirm" class="rp-menu rp-confirm">
-		<summary class="btn primary">Publish…</summary>
-		<div class="card rp-publish">
+		<summary class="btn primary sm">Publish…</summary>
+		<div class="rp-pop rp-publish">
 			<div>
 				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
 				@publishSummaryText(r, chip, false)
@@ -344,7 +363,7 @@ templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
 templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 	<details data-testid="report-history" class="rp-menu">
 		<summary>{ fmt.Sprintf("History (%d)", len(pubs)) }</summary>
-		<ul class="card rp-list">
+		<ul class="rp-pop rp-list">
 			if len(pubs) == 0 {
 				<li data-testid="no-publications" class="muted">Not published yet.</li>
 			}
@@ -368,7 +387,7 @@ templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 // those only in by Also include marked added, the first few up front and the
 // rest behind Show all.
 templ reportGoalsPanel(panel goalsPanel) {
-	<section data-testid="report-goals" class="card rp-goals">
+	<section data-testid="report-goals" class="rp-goals">
 		<div class="rp-goals-head">
 			<h2 data-testid="report-goal-count">{ plural(len(panel.Goals), "Goal") + " in this report" }</h2>
 			<span data-testid="scope-summary" class="small muted">{ panel.Scope }</span>
@@ -416,28 +435,40 @@ templ reportGoalList(goals []reportGoal) {
 // selected its Goals as it read then. Its Download menu takes it away as
 // Markdown or a PDF (a PDF file when pdfFile, else the page to print to PDF).
 // Readers discuss it in place: comments on each Goal's block, and the Action
-// Items raised on it (ticket #19).
+// Items raised on it (ticket #19). Its header strip holds the breadcrumb and
+// Download at the right; the Report reads in a centred column below.
 templ publicationPage(current *domain.Account, p domain.Publication, d discussion, pdfFile bool) {
-	@layout(p.Report.Definition.Name, current) {
+	@framedLayout(p.Report.Definition.Name, current, publicationHeader(p, d.Loc, pdfFile)) {
 		@reportStyles()
 		<div class="rp-read">
 			<header class="rp-head">
-				<div>
-					<p class="small muted" data-testid="report-breadcrumb">
-						<a href="/reports">Reports</a>{ " / " }<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Report.Definition.Name }</a>
-					</p>
-					<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-					@publishedLine(p, d.Loc)
-					@publicationSelection(p)
-				</div>
-				<div data-testid="report-export" class="rp-actions">
-					@downloadMenu(p, pdfFile)
-				</div>
+				<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
+				@publishedLine(p, d.Loc)
+				@publicationSelection(p)
 			</header>
 			@reportContent(p.Report, p.PublishedAt, d)
 			@publicationActionItems(d)
 		</div>
 	}
+}
+
+// publicationHeader is a publication's header strip: Reports › its Report
+// Definition, linking to the draft, › the day it was published in the
+// company's timezone (loc), and its Download menu at the right (DESIGN.md §
+// Direction: Page header).
+templ publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) {
+	<div class="page-header">
+		<nav class="ph-title" data-testid="report-breadcrumb" aria-label="Breadcrumb">
+			<a class="ph-parent" href="/reports">Reports</a>
+			<span class="ph-sep" aria-hidden="true">›</span>
+			<a class="ph-parent rp-crumb" href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Report.Definition.Name }</a>
+			<span class="ph-sep" aria-hidden="true">›</span>
+			<span class="rp-crumb" aria-current="page">{ showDayOfYear(p.PublishedAt, loc) }</span>
+		</nav>
+		<div data-testid="report-export" class="ph-actions">
+			@downloadMenu(p, pdfFile)
+		</div>
+	</div>
 }
 
 // publicationPrintPage is a published Report on its own, without the app's
@@ -579,7 +610,7 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 templ healthSummary(r domain.Report) {
 	<section data-testid="health-summary" class="rp-tiles">
 		for _, t := range healthTiles(r) {
-			<div class="card rp-tile">
+			<div class="rp-tile">
 				<span class={ "badge", t.class }><span class="dot"></span>{ t.label }</span>
 				<span data-testid={ "health-count-" + t.key } class="num rp-count">{ fmt.Sprintf("%d", t.count) }</span>
 			</div>
@@ -643,7 +674,7 @@ templ publicationSelection(p domain.Publication) {
 
 // reportBody is a Report's content, drafted or published: its open Action
 // Items, the introduction, the narrative curated from Highlights, then the
-// exceptions, counted and most urgent first, each a card with
+// exceptions, counted and most urgent first, each an entry with
 // the full MBR block opening with what changed on it since the baseline, and
 // every other selected Goal on track, one table row with its Health, title,
 // Owner, and due date (CONTEXT.md: Report), and last the Goals that entered or
@@ -659,7 +690,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
 	if len(r.Exceptions) > 0 {
-		<section data-testid="needs-attention">
+		<section data-testid="needs-attention" class="rp-exceptions">
 			<h2>Exceptions{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(r.Exceptions)) }</span></h2>
 			for _, b := range r.Exceptions {
 				@reportBlock(b, asOf, d)
@@ -669,7 +700,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	if len(r.Lines) > 0 {
 		<section data-testid="on-track-section">
 			<h2>On track</h2>
-			<div class="card">
+			<div class="rp-scroll">
 				<table data-testid="on-track" class="rp-track">
 					<thead>
 						<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
@@ -718,7 +749,7 @@ templ membershipChanges(changes []domain.MembershipChange) {
 	if len(changes) > 0 {
 		<section data-testid="membership-changes">
 			<h2>Goals that entered or left this report</h2>
-			<div class="card">
+			<div class="rp-scroll">
 				<table>
 					<thead>
 						<tr><th>Goal</th><th>Change</th><th>Why</th></tr>
@@ -752,7 +783,7 @@ templ narrativeCuration(f narrativeForm) {
 		<form
 			data-testid="narrative-curation"
 			id="narrative-curation"
-			class="card rp-form rp-card"
+			class="rp-form"
 			method="post"
 			action={ templ.SafeURL(narrativeAction(f.Report, f.Chip)) }
 			hx-post={ narrativeAction(f.Report, f.Chip) }
@@ -816,7 +847,7 @@ var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-
 // posts the whole form to action and swaps the answer in for it, one more box
 // in this section; without JavaScript it is a plain submit.
 templ sectionText(section string, notes []string, action string) {
-	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ hasNotes(notes) || len(notes) > 1 }>
+	<details data-testid={ "section-text-" + section } class="rp-section-text" open?={ hasNotes(notes) || len(notes) > 1 }>
 		<summary data-testid="section-text-summary">
 			<span>{ sectionHeading(section) }</span>
 			if !hasNotes(notes) {
@@ -871,13 +902,13 @@ templ curationHighlight(c curationChoice) {
 	</li>
 }
 
-// reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
-// serif face under label headings: the author's notes, each its own paragraph,
-// and then the Highlights they
-// picked, each crediting the Goal's Owner. Sections with neither are left out.
+// reportNarrative is a Report's Insights, Accomplishments, and Misses as a
+// plain section, each under its own heading (a label on the print page): the
+// author's notes, each its own paragraph, and then the Highlights they picked,
+// each crediting the Goal's Owner. Sections with neither are left out.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
-		<section data-testid="report-narrative" class="card rp-narrative">
+		<section data-testid="report-narrative" class="rp-narrative">
 			for _, sec := range narrative {
 				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
 				for _, note := range sec.Notes {
@@ -908,7 +939,8 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 	</span>
 }
 
-// reportBlock is an exception Goal's full MBR block, as a card: title, Owner,
+// reportBlock is an exception Goal's full MBR block, an entry ruled off from
+// the next by a hairline: title, Owner,
 // Lifecycle, and due date with its history struck through; Health and badges
 // top right; under them, when it changed since the baseline, a line saying what
 // changed ("Changed: Turned Red · 1 Milestone slipped"), and under that the
@@ -931,7 +963,7 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // rather than in the status box. On a publication it ends with the Goal's
 // discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
-	<article data-testid="report-exception" class="card rp-card" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
+	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<div class="rp-card-head">
 			<div>
 				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
@@ -1358,24 +1390,34 @@ templ reportStyles() {
 	<style>
 		.shape{display:none}
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
-		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
-		.rp-head h1{margin:4px 0}
+		.rp-head{display:flex;flex-direction:column;gap:4px}
+		.rp-head h1{margin:0 0 4px}
 		.rp-actions{display:flex;gap:8px}
-		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-		.rp-tile{padding:16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-		.rp-count{font-size:24px}
+		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+		span.rp-crumb{color:var(--color-ink);font-weight:500}
+		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
+		.rp-tile{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-left:1px solid var(--color-border)}
+		.rp-tile:first-child{border-left:none;padding-left:0}
+		.rp-count{font-size:20px;color:var(--color-ink)}
 		.rp-body{display:flex;flex-direction:column;gap:24px}
 		.rp-body section{display:flex;flex-direction:column;gap:12px}
 		.rp-list{list-style:none;margin:0;padding:0}
-		.rp-list>li{padding:12px 24px;border-bottom:1px solid var(--color-border)}
+		.rp-list>li{padding:12px 0;border-bottom:1px solid var(--color-border)}
 		.rp-list>li:last-child{border-bottom:none}
-		.rp-narrative{font-size:16px;line-height:1.7;padding:24px;color:var(--color-ink)}
-		.rp-narrative .label{margin-top:12px}
+		.rp-rows{border-top:1px solid var(--color-border)}
+		.rp-rows>li{min-height:44px;padding:12px 0;box-sizing:border-box}
+		.rp-rows>li:last-child{border-bottom:1px solid var(--color-border)}
+		.rp-pop{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg)}
+		.rp-pop.rp-list>li{padding:12px 16px}
+		.rp-narrative{font-size:15px;line-height:1.7;color:var(--color-ink)}
+		.rp-narrative h3.label{margin-top:16px;font-size:13px;font-weight:600;line-height:1.4;color:var(--color-ink)}
 		.rp-narrative .label:first-child{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
-		.rp-section-text{padding:0 16px}
-		.rp-section-text[open]{padding-bottom:16px}
+		.rp-section-text{border-top:1px solid var(--color-border)}
+		.rp-section-text:last-of-type{border-bottom:1px solid var(--color-border)}
+		.rp-section-text[open]{padding-bottom:12px}
+		.rp-section-text>summary{color:var(--color-ink);font-weight:500}
 		.rp-add{color:var(--color-primary-strong);font-weight:500}
 		.rp-curation-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 		.rp-curation-head h3{font-size:15px;margin:0}
@@ -1394,23 +1436,35 @@ templ reportStyles() {
 			.rp-sections label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}
 			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
 		}
-		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
-		.rp-chase{display:flex;flex-direction:column;gap:16px}
-		.rp-chase h2{margin:0}
-		.rp-chase-group{display:flex;flex-direction:column;gap:8px}
-		.rp-chase-group>h4{margin:0}
+		.rp-block{display:flex;flex-direction:column;gap:12px;padding:20px 0;border-top:1px solid var(--color-border)}
+		.rp-block:last-child{border-bottom:1px solid var(--color-border)}
+		.page:has(>.rp-index){max-width:none;padding:24px 0 64px}
+		.rp-index{--rp-gutter:28px;display:flex;flex-direction:column;gap:32px}
+		.rp-index-lead,.rp-index h2{padding:0 var(--rp-gutter)}
+		.rp-chase,.rp-defs{display:flex;flex-direction:column;gap:8px}
+		.rp-chase-group{display:flex;flex-direction:column}
+		.rp-group{display:flex;align-items:center;gap:8px;min-height:32px;padding:0 var(--rp-gutter);background:var(--color-group);border-top:1px solid var(--color-border);font-size:12px;font-weight:500;color:var(--color-ink-2)}
+		.rp-group-count{color:var(--color-ink-muted);font-variant-numeric:tabular-nums}
 		.rp-chase-list{list-style:none;margin:0;padding:0}
-		.rp-chase-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:12px 0;border-top:1px solid var(--color-border)}
-		.rp-chase-list>li:last-child{padding-bottom:0}
-		.rp-chase-list>li>a{font-weight:500}
+		.rp-chase-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:44px;padding:4px var(--rp-gutter);border-top:1px solid var(--color-border);box-sizing:border-box}
+		.rp-chase-list>li:hover{background:var(--color-row-hover)}
+		.rp-chase-group:last-child>.rp-chase-list>li:last-child{border-bottom:1px solid var(--color-border)}
+		.rp-chase-list>li>a{font-weight:500;color:var(--color-ink)}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
-		.rp-card-head h3{font-size:19px}
+		.rp-card-head h3{font-size:16px;line-height:1.4}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:8px;align-items:center;white-space:nowrap}
 		.rp-tint{background:var(--color-surface-alt);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
-		.rp-card ul{margin:0;padding-left:20px}
-		.rp-card .rp-list{padding:0}
+		.rp-block ul{margin:0;padding-left:20px}
+		.rp-scroll{overflow-x:auto}
+		.rp-scroll th{background:none;padding:8px 12px}
+		.rp-scroll td{padding:12px}
+		.rp-scroll th:first-child,.rp-scroll td:first-child{padding-left:0}
+		.rp-scroll th:last-child,.rp-scroll td:last-child{padding-right:0}
+		.rp-scroll tbody tr:last-child>td{border-bottom:1px solid var(--color-border)}
+		.rp-track tr:has(+tr>.rp-track-talk)>td{border-bottom:none}
+		.rp-track td.rp-track-talk{padding-top:0}
 		.rp-discussion{border-top:1px solid var(--color-border);padding-top:8px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-start}
 		.rp-discussion>details{flex:1 1 auto}
 		.rp-discussion details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
@@ -1418,11 +1472,16 @@ templ reportStyles() {
 		.rp-reply{margin-left:24px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
-		.rp-table{overflow:hidden}
-		.rp-table td{vertical-align:top}
-		.rp-table tbody tr:last-child>td{border-bottom:none}
-		.rp-name>a{display:block;font-weight:600;color:var(--color-ink)}
-		.rp-name>span,.rp-table td>.small{display:block}
+		.rp-table{overflow-x:auto}
+		.rp-table th{background:none;padding:8px 16px;border-top:1px solid var(--color-border)}
+		.rp-table td{height:44px;padding:4px 16px;box-sizing:border-box;white-space:nowrap}
+		.rp-table th:first-child,.rp-table td:first-child{padding-left:var(--rp-gutter)}
+		.rp-table th:last-child,.rp-table td:last-child{padding-right:var(--rp-gutter)}
+		.rp-table tbody tr:hover>td{background:var(--color-row-hover)}
+		.rp-table tbody tr:last-child>td{border-bottom:1px solid var(--color-border)}
+		.rp-name{width:40%;max-width:0;overflow:hidden;text-overflow:ellipsis}
+		.rp-name>a{font-weight:500;color:var(--color-ink)}
+		.rp-name>span,.rp-table td>.small{margin-left:8px}
 		.rp-draft{text-align:right}
 		.rp-download-cell{width:1%;text-align:right}
 		.rp-download-menu{flex-direction:column;gap:4px;min-width:200px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-lg);background:var(--color-surface);color:var(--color-ink);box-shadow:var(--shadow-pop);box-sizing:border-box}
@@ -1433,11 +1492,11 @@ templ reportStyles() {
 		.rp-date{white-space:nowrap}
 		.rp-dates>*{white-space:nowrap}
 		.rp-changes-hot{display:inline-block;padding:4px 12px;border-radius:var(--radius-full);background:var(--health-y-bg);color:var(--health-y-ink);font-weight:600;white-space:nowrap}
-		.rp-bar{display:flex;width:176px;max-width:100%;height:12px;margin-top:4px;border-radius:var(--radius-full);overflow:hidden}
+		.rp-bar{display:inline-flex;vertical-align:middle;width:120px;max-width:100%;height:8px;margin-left:12px;border-radius:var(--radius-full);overflow:hidden}
 		.rp-bar>span{flex:1 1 0;min-width:2px}
-		.rp-bar>.g{background:var(--health-g-ink)}
-		.rp-bar>.y{background:var(--health-y-ink)}
-		.rp-bar>.r{background:var(--health-r-ink)}
+		.rp-bar>.g{background:var(--health-g-mark)}
+		.rp-bar>.y{background:var(--health-y-mark)}
+		.rp-bar>.r{background:var(--health-r-mark)}
 		.rp-bar>.g+.y,.rp-bar>.g+.r,.rp-bar>.y+.r{margin-left:4px}
 		.rp-form{display:flex;flex-direction:column;gap:16px}
 		.rp-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
@@ -1448,15 +1507,15 @@ templ reportStyles() {
 		.rp-fields dt::after{content:":"}
 		.rp-fields dd{margin:0}
 		.rp-field-long{white-space:pre-line}
-		.rp-publish{position:absolute;right:0;z-index:3;width:min(560px,calc(100vw - 32px));padding:24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap;box-shadow:0 12px 32px rgb(0 0 0 / 12%)}
+		.rp-publish{position:absolute;right:0;z-index:3;width:min(560px,calc(100vw - 32px));box-sizing:border-box;padding:24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap;box-shadow:0 12px 32px rgb(0 0 0 / 12%)}
 		.rp-publish>div:first-child{flex:1 1 280px}
 		.rp-publish h2{font-size:17px;margin:0 0 4px}
 		.rp-publish p{margin:0}
 		.rp-publish .rp-actions{align-items:center}
-		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
-		.rp-draft-head h1{margin:0}
-		.rp-menu.rp-chip>summary{box-sizing:border-box;min-height:40px;justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400;padding:0 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
-		@media (pointer:coarse){.rp-menu.rp-chip>summary{min-height:44px}.rp-download-menu>a{min-height:44px}}
+		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);padding:8px 28px;justify-content:flex-start;gap:8px 16px;flex-wrap:wrap}
+		.rp-draft-head .rp-menu>summary{min-height:32px}
+		.rp-menu.rp-chip>summary{box-sizing:border-box;min-height:32px;justify-content:flex-start;gap:4px;color:var(--color-ink);font-size:13px;font-weight:400;padding:0 12px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
+		@media (pointer:coarse){.rp-menu.rp-chip>summary{min-height:44px}.rp-draft-head .rp-menu>summary{min-height:44px}.rp-download-menu>a{min-height:44px}}
 		.rp-menu.rp-chip>ul{left:0;right:auto}
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
@@ -1469,18 +1528,19 @@ templ reportStyles() {
 		.rp-menu{position:relative}
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
-		.rp-goals{padding:16px 24px;display:flex;flex-direction:column;gap:12px}
+		.rp-goals{padding-bottom:24px;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
 		.rp-goals-head{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
-		.rp-goals-head h2{font-size:19px;margin:0}
 		.rp-goal-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px}
 		.rp-goal-list>li{display:flex;align-items:center;gap:8px;min-width:0}
 		.rp-goals .rp-goal-dot{background:none;border:none;display:inline-flex}
 		.rp-attention{margin-left:auto}
 		.rp-goals details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
 		.rp-goals details>ul{margin-top:8px}
-		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
+		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:0;align-items:stretch}
 		.rp-panes>*{min-width:0}
-		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-track tbody tr:last-child{border-bottom:none}.rp-track td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
-		@media (max-width:900px){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
+		.rp-compose{padding-right:24px;border-right:1px solid var(--color-border)}
+		.rp-compose+.rp-body{padding-left:24px}
+		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
+		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-compose{padding:0 0 24px;border-right:none;border-bottom:1px solid var(--color-border)}.rp-compose+.rp-body{padding:24px 0 0}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }

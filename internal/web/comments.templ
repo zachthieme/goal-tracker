@@ -15,7 +15,7 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 	if len(items) > 0 {
 		<section data-testid="report-action-items">
 			<h2>Open Action Items</h2>
-			<ul class="card rp-list">
+			<ul class="rp-list rp-rows">
 				for _, item := range items {
 					<li data-testid="open-action-item">
 						@actionItemSummary(item)
@@ -170,7 +170,7 @@ func plural(n int, noun string) string {
 templ publicationActionItems(d discussion) {
 	<section id="action-items" data-testid="publication-action-items">
 		<h2>Action Items raised here</h2>
-		<ul class="card rp-list">
+		<ul class="rp-list rp-rows">
 			if len(d.Raised) == 0 {
 				<li data-testid="no-action-items">None yet.</li>
 			}

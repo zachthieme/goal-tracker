@@ -1243,8 +1243,8 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	}
 }
 
-// The publication splits the selected Goals in two: exceptions as cards under
-// Exceptions, headed by how many there are, each with its Health badge and its
+// The publication splits the selected Goals in two: exceptions as entries
+// ruled off by hairlines, not cards, under Exceptions, headed by how many there are, each with its Health badge and its
 // Why it matters, Status, and Path to Green — marked Overdue once its target
 // date has passed — and the rest as a table of Health, Goal, Owner, and Due
 // under On track.
@@ -1271,8 +1271,11 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 		t.Errorf("Exceptions heading does not count its 1 exception: %s", heading)
 	}
 	card := pageElement(t, attention, "article", "report-exception")
-	if !strings.Contains(card, `class="card`) || !strings.Contains(card, `class="badge r"`) {
-		t.Errorf("exception is not a card with a Red badge; card:\n%s", card)
+	if tag := openTag(card); hasClass(tag, "card") || !hasClass(tag, "rp-block") || !strings.Contains(card, `class="badge r"`) {
+		t.Errorf("exception is not a hairline entry with a Red badge; card:\n%s", card)
+	}
+	if rule := cssRule(t, page, ".rp-block"); !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
+		t.Errorf("an exception isn't ruled off by a hairline: .rp-block{%s}", rule)
 	}
 	if status := pageElement(t, card, "div", "report-status-box"); !strings.Contains(status, "Hire counsel.") ||
 		!strings.Contains(status, `data-testid="path-overdue"`) {
@@ -1291,8 +1294,9 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 	}
 }
 
-// A publication's narrative reads in the serif face, each section under a
-// label heading and each Highlight credited "— owner, Goal".
+// A publication's narrative is a plain section, not a card, each section under
+// its heading (a label on the print page) and each Highlight credited "—
+// owner, Goal".
 func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1317,8 +1321,8 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
 	narrative := pageElement(t, page, "section", "report-narrative")
-	if !strings.Contains(narrative, `class="card rp-narrative"`) {
-		t.Errorf("narrative is not set in the serif face; narrative:\n%s", narrative)
+	if tag := openTag(narrative); hasClass(tag, "card") || !hasClass(tag, "rp-narrative") {
+		t.Errorf("narrative is not a plain section; narrative:\n%s", narrative)
 	}
 	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
 		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
@@ -1328,9 +1332,10 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	}
 }
 
-// The draft page keeps Publish in reach: a sticky header carries the name, the
-// baseline, the save status, the History of publications and Publish — the
-// primary button, saying what it does. Below it the author curates the
+// The draft page keeps Publish in reach: a sticky header strip carries the
+// breadcrumb to the name, the baseline, the save status, the History of
+// publications and Publish — the primary button at the right, saying what it
+// does. Below it the author curates the
 // narrative in the compose panel, then checks the preview beside it. The save
 // status sits in the name's block, so at phone width it can stay beside the
 // name (#172); above that the block lets its children into the header's row
@@ -1347,8 +1352,11 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
 	header := between(t, page, `<header data-testid="draft-header"`, "</header>")
+	if tag := openTag(header); !hasClass(tag, "page-header") {
+		t.Errorf("the draft's header isn't the page's header strip: %s", tag)
+	}
 	last := -1
-	for _, part := range []string{`data-testid="report-name"`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
+	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `data-testid="report-name"`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
 		at := strings.Index(header, part)
 		if at <= last {
 			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
@@ -1368,7 +1376,7 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", chip)
 	}
 	publish := pageElement(t, header, "details", "publish-confirm")
-	if !strings.Contains(publish, `<summary class="btn primary">Publish…</summary>`) || !strings.Contains(publish, "Readers can comment on the frozen copy.") {
+	if !strings.Contains(publish, `<summary class="btn primary sm">Publish…</summary>`) || !strings.Contains(publish, "Readers can comment on the frozen copy.") {
 		t.Errorf("Publish… is not the primary button with its summary; disclosure:\n%s", publish)
 	}
 	history := pageElement(t, header, "details", "report-history")
@@ -2082,18 +2090,17 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-form fieldset.rp-sections"); !strings.Contains(rule, "display:inline-flex") || !strings.Contains(rule, "flex-direction:row") {
 		t.Errorf("the section control is not an inline row: .rp-form fieldset.rp-sections{%s}", rule)
 	}
-	// .rp-card ul indents the exception cards' lists; the Highlight list sits
-	// in a card too and stays flush.
-	if rule := cssRule(t, page, ".rp-card .rp-list"); !strings.Contains(rule, "padding:0") {
-		t.Errorf("the Highlight list keeps the card's list indent: .rp-card .rp-list{%s}", rule)
+	// .rp-block ul indents the exception entries' lists; the Highlight list
+	// isn't in one and stays flush.
+	if rule := cssRule(t, page, ".rp-list"); !strings.Contains(rule, "padding:0") {
+		t.Errorf("the Highlight list is indented: .rp-list{%s}", rule)
 	}
-	// .rp-list>li pads every list item 24px a side; a Highlight lines up with
-	// the "Highlights since" heading above it instead (#180).
+	// A Highlight lines up with the "Highlights since" heading above it (#180).
 	if rule := cssRule(t, page, ".rp-list>li.rp-curate"); !strings.Contains(rule, "padding-left:0") || !strings.Contains(rule, "padding-right:0") {
 		t.Errorf("a Highlight is indented from its heading: .rp-list>li.rp-curate{%s}", rule)
 	}
-	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 24px") {
-		t.Errorf("other list items lost their padding: .rp-list>li{%s}", rule)
+	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 0") {
+		t.Errorf("list rows lost their padding: .rp-list>li{%s}", rule)
 	}
 	// .rp-body section stacks every section in the preview as a column; the
 	// Health tiles stay four across, two at 900px.
@@ -2108,10 +2115,11 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "border:1px solid") || !strings.Contains(rule, "border-radius:var(--radius-full)") {
 		t.Errorf("the baseline chip is not a bordered pill: .rp-menu.rp-chip>summary{%s}", rule)
 	}
-	// app.css's details>summary is 44px tall; the chip matches the 40px
-	// buttons beside it, its border inside that height (#180).
-	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "box-sizing:border-box") || !strings.Contains(rule, "min-height:40px") {
-		t.Errorf("the baseline chip is not 40px tall: .rp-menu.rp-chip>summary{%s}", rule)
+	// app.css's details>summary is 44px tall; the chip matches the 32px small
+	// buttons beside it in the header strip, its border inside that height
+	// (#180).
+	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "box-sizing:border-box") || !strings.Contains(rule, "min-height:32px") {
+		t.Errorf("the baseline chip is not 32px tall: .rp-menu.rp-chip>summary{%s}", rule)
 	}
 	// On a touch screen app.css raises those buttons to 44px; the chip
 	// follows them (#183).
@@ -3755,7 +3763,7 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 // when g has none.
 func reportBlockFor(t *testing.T, page string, g domain.Goal) string {
 	t.Helper()
-	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="card rp-card" id="goal-%d"`, g.ID))
+	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="rp-block" id="goal-%d"`, g.ID))
 	if start < 0 {
 		t.Fatalf("%s has no exception block", g.Title)
 	}
@@ -4083,7 +4091,7 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 // close.
 func linkedBlockOf(t *testing.T, page string, g domain.Goal) string {
 	t.Helper()
-	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="card rp-card" id="goal-%d">`, g.ID))
+	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="rp-block" id="goal-%d">`, g.ID))
 	if start < 0 {
 		t.Fatalf("page has no exception block for %q; body:\n%s", g.Title, page)
 	}
@@ -4598,13 +4606,13 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 	if !strings.Contains(page[section:table], "<h2>Open Action Items</h2>") {
 		t.Errorf("the section is not headed Open Action Items:\n%s", page[section:table])
 	}
-	// The Reports table is the page's one card; Open Action Items is a plain
-	// section on the canvas (DESIGN.md § System: Cards are earned, #386).
+	// Open Action Items and the Reports table are plain sections on the
+	// canvas, neither a card (DESIGN.md § Direction).
 	if tag := openTag(page[section:]); hasClass(tag, "card") {
 		t.Errorf("Open Action Items is a card: %s", tag)
 	}
-	if tag := openTag(page[strings.LastIndex(page[:table], "<div"):]); !hasClass(tag, "card") {
-		t.Errorf("the Reports table's container isn't a card: %s", tag)
+	if tag := openTag(page[strings.LastIndex(page[:table], "<div"):]); hasClass(tag, "card") {
+		t.Errorf("the Reports table's container is a card: %s", tag)
 	}
 	if strings.Contains(page, "Nobody's to chase.") {
 		t.Errorf("the page lists an item nobody in the viewer's Org is party to")
@@ -4615,7 +4623,8 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 	if len(yours) != 1 || len(org) != 1 {
 		t.Fatalf("Yours lists %d, My org %d; want one each:\n%s", len(yours), len(org), page[section:table])
 	}
-	for _, want := range []string{"<h4 class=\"label\">Yours</h4>", "<h4 class=\"label\">My org</h4>"} {
+	// Each group opens with a header row naming it and counting its items.
+	for _, want := range []string{`<h3 class="rp-group">Yours<span class="rp-group-count">1</span></h3>`, `<h3 class="rp-group">My org<span class="rp-group-count">1</span></h3>`} {
 		if !strings.Contains(page[section:table], want) {
 			t.Errorf("Open Action Items lacks the group heading %s", want)
 		}
@@ -4678,6 +4687,62 @@ func TestReportsPageWithoutActionItemsToChaseHasNoSection(t *testing.T) {
 	for _, absent := range []string{"reports-action-items", "Open Action Items", "Send the vendor plan."} {
 		if strings.Contains(page, absent) {
 			t.Errorf("a viewer with nothing to chase sees %q on the Reports page", absent)
+		}
+	}
+}
+
+// The Reports pages sit in the flat frame: no part of the Reports list, a
+// draft, a publication or the builder is a card, its floating menus
+// included, which take a raised surface of their own (DESIGN.md § Direction).
+func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.CheckinWithHighlight(boss, green.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil || len(draft.Highlights) != 1 {
+		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
+	}
+	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	pub := h.PublishReport(boss, def)
+	comment, err := h.Service.AddComment(context.Background(), boss.ID, pub.ID, red.ID, "Why did legal slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	if _, err := h.Service.RaiseActionItem(context.Background(), boss.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, CommentID: comment.ID, Text: "Chase legal", OwnerID: boss.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
+	for _, tc := range []struct{ page, path, shows string }{
+		{"the Reports list", "/reports", `data-testid="reports-action-item"`},
+		{"a draft", draftPath, `data-testid="open-action-item"`},
+		{"a publication", draftPath + "/publications/" + strconv.FormatInt(pub.ID, 10), `data-testid="comment-thread"`},
+		{"the new builder", "/reports/new", `data-testid="report-matches"`},
+		{"the edit builder", draftPath + "/edit", `data-testid="report-matches"`},
+	} {
+		page := getBody(t, client, ts.URL+tc.path)
+		if !strings.Contains(page, tc.shows) {
+			t.Fatalf("%s doesn't show what it should be checked with (%s):\n%s", tc.page, tc.shows, page)
+		}
+		for _, m := range regexp.MustCompile(`<[a-z]+[^>]* class="([^"]*)"`).FindAllStringSubmatch(page, -1) {
+			if slices.Contains(strings.Fields(m[1]), "card") {
+				t.Errorf("%s has a card: %s", tc.page, openTag(m[0]+">"))
+			}
 		}
 	}
 }
