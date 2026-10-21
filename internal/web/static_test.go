@@ -78,10 +78,6 @@ func TestFontsAreServedFromTheApp(t *testing.T) {
 	for _, name := range []string{
 		"inter-latin-wght-normal.woff2",
 		"inter-latin-ext-wght-normal.woff2",
-		"plus-jakarta-sans-latin-wght-normal.woff2",
-		"plus-jakarta-sans-latin-ext-wght-normal.woff2",
-		"jetbrains-mono-latin-500-normal.woff2",
-		"jetbrains-mono-latin-ext-500-normal.woff2",
 		"source-serif-4-latin-wght-normal.woff2",
 		"source-serif-4-latin-ext-wght-normal.woff2",
 		"source-serif-4-latin-wght-italic.woff2",
@@ -101,6 +97,31 @@ func TestFontsAreServedFromTheApp(t *testing.T) {
 		}
 		if !strings.HasPrefix(body, "wOF2") {
 			t.Errorf("%s is not a woff2 file", name)
+		}
+	}
+}
+
+// The flat frame sets everything in Inter, so the faces it retired, Plus
+// Jakarta Sans and JetBrains Mono, are no longer served.
+func TestRetiredFontsAreGone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	for _, name := range []string{
+		"plus-jakarta-sans-latin-wght-normal.woff2",
+		"plus-jakarta-sans-latin-ext-wght-normal.woff2",
+		"jetbrains-mono-latin-500-normal.woff2",
+		"jetbrains-mono-latin-ext-500-normal.woff2",
+	} {
+		resp, err := http.Get(ts.URL + "/static/fonts/" + name)
+		if err != nil {
+			t.Fatalf("GET %s: %v", name, err)
+		}
+		readBody(t, resp)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", name, resp.StatusCode)
 		}
 	}
 }
@@ -161,9 +182,9 @@ func TestPagesLoadNothingFromAnotherHost(t *testing.T) {
 	}
 }
 
-// The faces the pages name are the app's own: the stylesheet declares Inter,
-// Plus Jakarta Sans and JetBrains Mono, the Print view declares Source Serif
-// 4, and every font file they point at is served.
+// The faces the pages name are the app's own: the stylesheet declares Inter
+// alone, the Print view declares Source Serif 4, and every font file they
+// point at is served.
 func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
 	t.Parallel()
 
@@ -184,7 +205,7 @@ func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
 		text     string
 		families []string
 	}{
-		"app.css":        {css, []string{"Inter", "Plus Jakarta Sans", "JetBrains Mono"}},
+		"app.css":        {css, []string{"Inter"}},
 		"the Print view": {printed, []string{"Source Serif 4"}},
 	} {
 		declared := map[string]int{}
@@ -214,12 +235,15 @@ func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
 				t.Errorf("%s declares no %s face", where, f)
 			}
 		}
+		if len(declared) != len(want.families) {
+			t.Errorf("%s declares faces %v, want only %v", where, declared, want.families)
+		}
 	}
 }
 
-// Every page links the stylesheet and wears the dark top bar, which marks the
-// page you are on — and only that one — as current.
-func TestTopBarMarksTheCurrentPage(t *testing.T) {
+// Every page links the stylesheet and sits in the sidebar frame, whose nav
+// marks the page you are on — and only that one — as current.
+func TestSidebarMarksTheCurrentPage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -238,8 +262,8 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 		if !strings.Contains(page, `<link rel="stylesheet" href="/static/app.css`) {
 			t.Errorf("%s does not link the stylesheet; body:\n%s", tc.path, page)
 		}
-		if !strings.Contains(page, `<nav class="nav">`) {
-			t.Errorf("%s has no top bar; body:\n%s", tc.path, page)
+		if !strings.Contains(page, `<header class="sidebar">`) {
+			t.Errorf("%s has no sidebar; body:\n%s", tc.path, page)
 		}
 		if !strings.Contains(page, `<main class="page">`) {
 			t.Errorf("%s does not wrap its content in the page; body:\n%s", tc.path, page)
@@ -254,14 +278,14 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 				t.Errorf("on %s, %s is marked current: %s", tc.path, item, link)
 			}
 		}
-		if me := pageElement(t, page, "span", "current-user"); !strings.Contains(me, "sam@example.com") {
-			t.Errorf("%s top bar does not show who is signed in: %s", tc.path, me)
+		if me := pageElement(t, page, "p", "current-user"); !strings.Contains(me, "sam@example.com") {
+			t.Errorf("%s sidebar does not show who is signed in: %s", tc.path, me)
 		}
 	}
 }
 
 // A page below a nav item's section — a Report — still marks that item.
-func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
+func TestSidebarMarksTheSectionOfANestedPage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -290,7 +314,7 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 
 // Every page under Goals — a Goal's page, New goal, a Goal's Check-in page —
 // marks Goals current, and only Goals.
-func TestTopBarMarksGoalsOnPagesUnderIt(t *testing.T) {
+func TestSidebarMarksGoalsOnPagesUnderIt(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -354,8 +378,8 @@ func TestTouchTargetsAreAtLeast44px(t *testing.T) {
 	}
 }
 
-// On a narrow screen nothing scrolls sideways: not the top bar, which used to
-// scroll Sign out out of view, and not the page as a whole.
+// On a narrow screen nothing scrolls sideways: not the sidebar's strip, and
+// not the page as a whole.
 func TestNarrowScreensDoNotScrollSideways(t *testing.T) {
 	t.Parallel()
 
@@ -369,125 +393,95 @@ func TestNarrowScreensDoNotScrollSideways(t *testing.T) {
 		}
 	}
 	for _, block := range mediaBlocks(css, "@media (max-width:900px)") {
-		if decls, ok := ruleFor(block, ".nav"); ok && strings.Contains(decls, "overflow-x:auto") {
-			t.Errorf("on a narrow screen the top bar scrolls sideways: %s", decls)
+		if decls, ok := ruleFor(block, ".sidebar"); ok && strings.Contains(decls, "overflow-x:auto") {
+			t.Errorf("on a narrow screen the sidebar's strip scrolls sideways: %s", decls)
 		}
 	}
 }
 
-// On a narrow screen the top bar takes two rows: the brand, the person and
-// Sign out on the first, the nav items on a row of their own below. Each label
-// stays on one line. Above the breakpoint the bar is one 56px row.
-func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
+// At 900px and below the sidebar is a 48px strip: the app's name, Home's
+// count, and a Menu disclosure. The rest of the sidebar — Search, the nav, My
+// org and the person's menu — is hidden until Menu opens, and then shows as a
+// sheet under the strip, all without script. Above the breakpoint the sidebar
+// is a 240px column and Menu is hidden.
+func TestNarrowSidebarIsAStripWithAMenu(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	h.SignIn("sam@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Clock.Advance(10 * day)
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	start := strings.Index(page, `<div class="navitems">`)
-	if start < 0 {
-		t.Fatalf("the top bar does not group its nav items:\n%s", page)
+	bar := between(t, page, `<header class="sidebar">`, "</header>")
+	strip := between(t, bar, `class="brand"`, `<div class="sb-body">`)
+	if home := between(t, strip, `<a class="sb-strip-home"`, "</a>"); attr(home, "href") != "/home" || !strings.Contains(home, `<span class="count needs-you">1</span>`) {
+		t.Errorf("the strip doesn't carry Home's count to Home: %s", home)
 	}
-	items := page[start : start+strings.Index(page[start:], "</div>")]
-	for _, item := range []string{"nav-home", "nav-goals", "nav-follow-ups", "nav-reports"} {
-		if !strings.Contains(items, `data-testid="`+item+`"`) {
-			t.Errorf("%s is not in the nav items' row: %s", item, items)
+	if menu := between(t, strip, `<details class="sb-menu">`, "</details>"); !strings.Contains(menu, ">Menu</summary>") || strings.Contains(menu, "<script") {
+		t.Errorf("the strip has no Menu disclosure: %s", menu)
+	}
+	sheet := between(t, bar, `<div class="sb-body">`, "")
+	for _, item := range []string{`<form class="sb-search"`, `data-testid="nav-home"`, `data-testid="person-menu"`} {
+		if !strings.Contains(sheet, item) {
+			t.Errorf("Menu's sheet lacks %s: %s", item, sheet)
 		}
-	}
-	if strings.Contains(items, `class="me"`) {
-		t.Errorf("the person and Sign out share the nav items' row: %s", items)
 	}
 
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if decls := cssRule(t, css, "\n.nav"); !strings.Contains(decls, "height:56px") || strings.Contains(decls, "wrap") {
-		t.Errorf("above the breakpoint the top bar is no longer one 56px row: %s", decls)
+	if decls := cssRule(t, css, "\n.frame"); !strings.Contains(decls, "grid-template-columns:240px") {
+		t.Errorf("above the breakpoint the sidebar is not a 240px column: %s", decls)
 	}
-	if decls := cssRule(t, css, "\n.navitem"); !strings.Contains(decls, "white-space:nowrap") {
-		t.Errorf("a nav label can wrap to two lines: %s", decls)
+	if decls, ok := ruleFor(css, ".sb-strip-home"); !ok || !strings.Contains(decls, "display:none") {
+		t.Errorf("above the breakpoint the strip's Home count shows: %s", decls)
 	}
-	var narrow string
+	var narrow = map[string]string{}
 	for _, block := range mediaBlocks(css, "@media (max-width:900px)") {
-		if decls, ok := ruleFor(block, ".nav"); ok {
-			narrow += decls
-		}
-		if decls, ok := ruleFor(block, ".navitems"); ok {
-			narrow += decls
+		for _, sel := range []string{".sidebar", ".sb-menu", ".sb-body", ".sb-menu[open]~.sb-body"} {
+			if decls, ok := ruleFor(block, sel); ok {
+				narrow[sel] += decls
+			}
 		}
 	}
-	for _, want := range []string{"flex-wrap:wrap", "100%", "order:1"} {
-		if !strings.Contains(narrow, want) {
-			t.Errorf("on a narrow screen the nav items do not take a row of their own below (want %s): %s", want, narrow)
+	for sel, want := range map[string]string{
+		".sidebar":                "height:48px",
+		".sb-menu":                "display:block",
+		".sb-body":                "display:none",
+		".sb-menu[open]~.sb-body": "display:flex",
+	} {
+		if !strings.Contains(narrow[sel], want) {
+			t.Errorf("on a narrow screen %s lacks %s: %s", sel, want, narrow[sel])
 		}
 	}
 }
 
-// On a narrow screen an Admin's five nav items wrap onto another line rather
-// than overflow when they don't fit on one: the nav items' own row wraps, not
-// just the top bar around it.
-func TestNarrowNavItemsWrapRatherThanOverflow(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-
-	var items string
-	for _, block := range mediaBlocks(css, "@media (max-width:900px)") {
-		if decls, ok := ruleFor(block, ".navitems"); ok {
-			items += decls
-		}
-	}
-	if !strings.Contains(items, "flex-wrap:wrap") {
-		t.Errorf("on a narrow screen the nav items' row does not wrap: %s", items)
-	}
-}
-
-// On a narrow screen the top bar shows the person by Name alone: "Signed in
-// as" and "(Admin)" are hidden visually but stay on the page for screen readers,
-// and a long Name truncates rather than push Sign out off the row.
-func TestNarrowTopBarShowsThePersonByName(t *testing.T) {
+// The person's menu opens from their Name and initials at the sidebar's foot.
+// It says who is signed in, with "(Admin)" for an Admin, showing them by Name
+// with their email a click away; a long Name truncates in the sidebar.
+func TestPersonMenuShowsWhoIsSignedIn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
-	h.SignIn("ada@example.com")
+	h.SignInNamed("ada@example.com", "Ada Okafor")
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/home")
 
-	me := pageElement(t, page, "span", "current-user")
-	if !strings.Contains(openTag(me), `class="who"`) {
-		t.Errorf("the signed-in person is not marked for the narrow layout: %s", openTag(me))
+	menu := between(t, page, `<details data-testid="person-menu"`, "</details>")
+	summary := between(t, menu, "<summary", "</summary>")
+	if !strings.Contains(summary, `<span class="avatar" aria-hidden="true">AO</span>`) || !strings.Contains(summary, "Ada Okafor") {
+		t.Errorf("the person menu doesn't open from Ada's initials and Name: %s", summary)
 	}
-	for _, want := range []string{"Signed in as " + shownAs("ada@example.com", "ada"), "(Admin)"} {
-		if !strings.Contains(page, want) {
-			t.Errorf("the top bar lost %q:\n%s", want, me)
-		}
+	if me := pageElement(t, menu, "p", "current-user"); !strings.Contains(me, "Signed in as "+shownAs("ada@example.com", "Ada Okafor")+" (Admin)") {
+		t.Errorf("the person menu doesn't say who is signed in: %s", me)
 	}
 
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	var who, person, row string
-	for _, block := range mediaBlocks(css, "@media (max-width:900px)") {
-		if decls, ok := ruleFor(block, ".who"); ok {
-			who += decls
+	decls := cssRule(t, css, "\n.sb-person-name")
+	for _, want := range []string{"min-width:0", "text-overflow:ellipsis", "white-space:nowrap", "overflow:hidden"} {
+		if !strings.Contains(decls, want) {
+			t.Errorf("a long Name doesn't truncate in the sidebar (want %s): %s", want, decls)
 		}
-		if decls, ok := ruleFor(block, ".who .person"); ok {
-			person += decls
-		}
-		if decls, ok := ruleFor(block, ".me"); ok {
-			row += decls
-		}
-	}
-	if !strings.Contains(who, "font-size:0") || strings.Contains(who, "display:none") || strings.Contains(who, "visibility:hidden") {
-		t.Errorf("on a narrow screen the words around the Name are not hidden visually, or are hidden from screen readers: %s", who)
-	}
-	for _, want := range []string{"font-size:15px", "text-overflow:ellipsis", "white-space:nowrap", "overflow:hidden"} {
-		if !strings.Contains(person, want) {
-			t.Errorf("on a narrow screen the Name is not shown truncated (want %s): %s", want, person)
-		}
-	}
-	if !strings.Contains(row, "min-width:0") || !strings.Contains(who, "min-width:0") {
-		t.Errorf("on a narrow screen a long Name cannot shrink, so it pushes Sign out off the row: .me %s .who %s", row, who)
 	}
 }
 
@@ -531,11 +525,6 @@ func TestNamesDoNotLookLikeLinks(t *testing.T) {
 			if strings.Contains(decls, banned) {
 				t.Errorf("%s declares %s: %s", sel, banned, decls)
 			}
-		}
-	}
-	for _, sel := range []string{".me .person>.disclose:hover", ".me .person>.disclose:focus-visible"} {
-		if decls, ok := ruleFor(css, sel); !ok || !strings.Contains(decls, "background:var(--nav-hover)") {
-			t.Errorf("in the top bar %s does not take the nav's hover tint: %s", sel, decls)
 		}
 	}
 	if decls := cssRule(t, css, "\n.help"); decls != "border-bottom:1px dotted var(--color-ink-muted);cursor:help" {

@@ -1,8 +1,11 @@
 package domain
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 )
 
 // Org returns the people in personID's Org: the person first, then everyone
@@ -65,4 +68,24 @@ func (s *Service) AnyoneHasManager(ctx context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// DirectlyUnder returns the people whose Manager is personID, by Name: the
+// first level of their Org, without them. A person who manages only
+// themselves, as a directory can say, has no one directly under them.
+func (s *Service) DirectlyUnder(ctx context.Context, personID int64) ([]Account, error) {
+	under, err := s.queries.ListAccountsUnder(ctx, []*int64{&personID})
+	if err != nil {
+		return nil, fmt.Errorf("list org: %w", err)
+	}
+	var out []Account
+	for _, row := range under {
+		if row.ID != personID {
+			out = append(out, accountFromRow(row))
+		}
+	}
+	slices.SortFunc(out, func(a, b Account) int {
+		return cmp.Or(cmp.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label())), cmp.Compare(a.ID, b.ID))
+	})
+	return out, nil
 }

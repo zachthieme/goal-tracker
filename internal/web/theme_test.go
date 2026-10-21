@@ -191,17 +191,18 @@ func TestThemeChoiceOutlivesTheSession(t *testing.T) {
 	}
 }
 
-// themeMenu is the top bar's Theme disclosure on page.
+// themeMenu is the Theme choices on page: in the person's menu when signed
+// in, else in the Theme disclosure.
 func themeMenu(t *testing.T, page string) string {
 	t.Helper()
-	nav := page[strings.Index(page, `<nav class="nav">`):strings.Index(page, "</nav>")]
-	return pageElement(t, nav, "details", "theme-menu")
+	return pageElement(t, page, "form", "theme-menu")
 }
 
-// The top bar has a Theme menu, signed in or not, that opens and closes
-// without script (a <details>) beside Sign out. It lists System, Light and
-// Dark in words, marks the current choice, and each choice is a plain form
-// post that comes back to the page it was made on.
+// Every page offers the Theme choices: signed in, in the person's menu beside
+// Sign out; signed out, in a Theme disclosure of their own. Either opens and
+// closes without script (a <details>). They list System, Light and Dark in
+// words, mark the current choice, and each choice is a plain form post that
+// comes back to the page it was made on.
 func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
 	t.Parallel()
 
@@ -227,10 +228,10 @@ func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
 	} {
 		page := getWithTheme(t, tc.client, ts.URL+tc.path, tc.cookie)
 		menu := themeMenu(t, page)
-		if !strings.Contains(menu, ">Theme</summary>") {
+		if !strings.Contains(openTag(menu), `aria-label="Theme"`) {
 			t.Errorf("%s: the menu is not labelled Theme: %s", tc.name, menu)
 		}
-		if !strings.Contains(menu, `method="post" action="/theme"`) {
+		if attr(openTag(menu), "method") != "post" || attr(openTag(menu), "action") != "/theme" {
 			t.Errorf("%s: the menu does not post to /theme: %s", tc.name, menu)
 		}
 		if want := `name="return" value="` + tc.path + `"`; !strings.Contains(menu, want) {
@@ -251,9 +252,13 @@ func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
 	}
 
 	page := getBody(t, client, ts.URL+goalPath)
-	me := page[strings.Index(page, `<div class="me">`):strings.Index(page, "</nav>")]
+	me := between(t, page, `<details data-testid="person-menu"`, "</details>")
 	if !strings.Contains(me, `data-testid="theme-menu"`) || !strings.Contains(me, "Sign out") {
-		t.Errorf("the Theme menu is not beside Sign out: %s", me)
+		t.Errorf("the Theme choices are not beside Sign out in the person menu: %s", me)
+	}
+	signin := getBody(t, http.DefaultClient, ts.URL+"/signin")
+	if picker := between(t, signin, `<details data-testid="theme-picker"`, "</details>"); !strings.Contains(picker, ">Theme</summary>") || !strings.Contains(picker, `data-testid="theme-menu"`) {
+		t.Errorf("signed out, the Theme choices are not in a Theme disclosure: %s", picker)
 	}
 }
 
@@ -282,11 +287,12 @@ func TestPrintViewIgnoresTheTheme(t *testing.T) {
 	}
 }
 
-// The open Theme menu floats over the page, anchored under its button and no
-// wider than the screen, so neither opening it nor a narrow screen widens the
-// top bar. The current choice is marked to the eye, not only to a screen
-// reader.
-func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
+// Signed out, the open Theme menu floats over the page, anchored under its
+// button and no wider than the screen, so neither opening it nor a narrow
+// screen widens the page. Signed in, the person's menu floats over the page
+// above its button at the sidebar's foot. The current choice is marked to the
+// eye, not only to a screen reader.
+func TestThemeMenuFloatsWithoutWideningThePage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -296,10 +302,19 @@ func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
 	if decls := cssRule(t, css, "\n.theme"); !strings.Contains(decls, "position:relative") {
 		t.Errorf("the Theme menu does not anchor its panel: %s", decls)
 	}
-	decls := cssRule(t, css, "\n.theme-menu")
-	for _, want := range []string{"position:absolute", "right:0", "max-width:calc(100vw"} {
+	decls := cssRule(t, css, "\n.theme-float")
+	for _, want := range []string{"position:absolute", "right:0", "max-width:calc(100vw", "box-shadow:var(--shadow-pop)"} {
 		if !strings.Contains(decls, want) {
 			t.Errorf("the Theme menu's panel lacks %s: %s", want, decls)
+		}
+	}
+	if decls := cssRule(t, css, "\n.sb-person"); !strings.Contains(decls, "position:relative") {
+		t.Errorf("the person menu does not anchor its panel: %s", decls)
+	}
+	decls = cssRule(t, css, "\n.sb-person-menu")
+	for _, want := range []string{"position:absolute", "bottom:calc(100%", "box-shadow:var(--shadow-pop)"} {
+		if !strings.Contains(decls, want) {
+			t.Errorf("the person menu's panel lacks %s: %s", want, decls)
 		}
 	}
 	if decls := cssRule(t, css, `.theme-choice[aria-current="true"]`); decls == "" {

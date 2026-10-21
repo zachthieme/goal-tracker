@@ -143,15 +143,15 @@ func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
 	assertNotFoundPage(t, http.DefaultClient, ts.URL+"/no-such-page", "/signin")
 }
 
-// topBarCounts returns the top bar's Home and Follow-ups items on page.
-func topBarCounts(t *testing.T, page string) (home, followUps string) {
+// sidebarCounts returns the sidebar's Home and Follow-ups items on page.
+func sidebarCounts(t *testing.T, page string) (home, followUps string) {
 	t.Helper()
 	return pageElement(t, page, "a", "nav-home"), pageElement(t, page, "a", "nav-follow-ups")
 }
 
-// An unknown address's Not found page shows the top bar's counts, the same as
+// An unknown address's Not found page shows the sidebar's counts, the same as
 // a missing Goal's does for the same person (#127).
-func TestUnknownAddressShowsTopBarCounts(t *testing.T) {
+func TestUnknownAddressShowsSidebarCounts(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -161,18 +161,18 @@ func TestUnknownAddressShowsTopBarCounts(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	wantHome, wantFollowUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+	wantHome, wantFollowUps := sidebarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
 	if !strings.Contains(wantHome, "count") || !strings.Contains(wantFollowUps, "count") {
-		t.Fatalf("a missing Goal's top bar lacks the counts this test compares against: %s %s", wantHome, wantFollowUps)
+		t.Fatalf("a missing Goal's sidebar lacks the counts this test compares against: %s %s", wantHome, wantFollowUps)
 	}
-	home, followUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/no-such-page", "/home"))
+	home, followUps := sidebarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/no-such-page", "/home"))
 	if home != wantHome || followUps != wantFollowUps {
-		t.Errorf("unknown address's top bar = %s %s, want %s %s", home, followUps, wantHome, wantFollowUps)
+		t.Errorf("unknown address's sidebar = %s %s, want %s %s", home, followUps, wantHome, wantFollowUps)
 	}
 }
 
 // Asking an unknown address with any method, not just GET, gets the Not found
-// page: with the top bar's counts for someone signed in, and the way to sign in
+// page: with the sidebar's counts for someone signed in, and the way to sign in
 // for a visitor who isn't (#127).
 func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
 	t.Parallel()
@@ -183,12 +183,12 @@ func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
 	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unlinked
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	wantHome, wantFollowUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+	wantHome, wantFollowUps := sidebarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
-		home, followUps := topBarCounts(t, assertNotFoundPageFor(t, client, method, ts.URL+"/no-such-page", "/home"))
+		home, followUps := sidebarCounts(t, assertNotFoundPageFor(t, client, method, ts.URL+"/no-such-page", "/home"))
 		if home != wantHome || followUps != wantFollowUps {
-			t.Errorf("%s /no-such-page: top bar = %s %s, want %s %s", method, home, followUps, wantHome, wantFollowUps)
+			t.Errorf("%s /no-such-page: sidebar = %s %s, want %s %s", method, home, followUps, wantHome, wantFollowUps)
 		}
 		assertNotFoundPageFor(t, http.DefaultClient, method, ts.URL+"/no-such-page", "/signin")
 	}

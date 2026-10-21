@@ -396,7 +396,7 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// navHome is the top bar's Home item carrying count, or no count at 0.
+// navHome is the sidebar's Home item carrying count, or no count at 0.
 function navHome(count: number): RegExp {
   return count === 0 ? /^\s*Home\s*$/ : new RegExp(`^\\s*Home\\s*${count}\\s*$`);
 }
