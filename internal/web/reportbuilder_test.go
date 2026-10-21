@@ -1214,9 +1214,9 @@ func TestBuilderChipKeepsItsPaddingWithoutScriptOverHTTP(t *testing.T) {
 	}
 }
 
-// The builder's head is laid out like every other page's: one <div> inside
-// <header class="page-head">, its breadcrumb above its title, both at the
-// left, the last crumb the page itself (ticket #277).
+// The builder's header strip holds its breadcrumb, the last crumb the page
+// itself, and the page's centred column opens with its title (ticket #277,
+// DESIGN.md § Direction).
 func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1232,8 +1232,8 @@ func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
 		path, crumb, title string
 		links              []string
 	}{
-		{"/reports/new", "Reports / New", "New report", []string{`<a href="/reports">Reports</a>`}},
-		{draft + "/edit", "Reports / MBR / Edit", "Edit report", []string{`<a href="/reports">Reports</a>`, `<a href="` + draft + `">MBR</a>`}},
+		{"/reports/new", "Reports › New", "New report", []string{`<a class="ph-parent" href="/reports">Reports</a>`}},
+		{draft + "/edit", "Reports › MBR › Edit", "Edit report", []string{`<a class="ph-parent" href="/reports">Reports</a>`, `<a class="ph-parent rp-crumb" href="` + draft + `">MBR</a>`}},
 	} {
 		crumb, title := reportBuilderHead(t, getBody(t, client, ts.URL+tc.path))
 		if got := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(crumb, " "))), " "); got != tc.crumb {
@@ -1244,7 +1244,7 @@ func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
 				t.Errorf("%s: the breadcrumb lacks %s:\n%s", tc.path, link, crumb)
 			}
 		}
-		if last := tc.crumb[strings.LastIndex(tc.crumb, "/ ")+2:]; !strings.Contains(crumb, `<span aria-current="page">`+last+`</span>`) {
+		if last := tc.crumb[strings.LastIndex(tc.crumb, "› ")+len("› "):]; !strings.Contains(crumb, `<span class="rp-crumb" aria-current="page">`+last+`</span>`) {
 			t.Errorf("%s: the last crumb %q isn't marked the current page:\n%s", tc.path, last, crumb)
 		}
 		if title != tc.title {
@@ -1253,29 +1253,28 @@ func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
 	}
 }
 
-// reportBuilderHead checks the builder page's head is <header
-// class="page-head"> holding one <div> of a breadcrumb nav then an <h1>, and
-// returns the nav and the title.
+// reportBuilderHead checks the builder page's header strip, <header
+// class="page-header">, holds only a breadcrumb nav, and that the page's
+// column opens with an <h1>, and returns the nav and the title.
 func reportBuilderHead(t *testing.T, page string) (crumb, title string) {
 	t.Helper()
-	head := between(t, page, `<header class="page-head">`, `</header>`)
-	rest, ok := strings.CutPrefix(head, `<header class="page-head"><div>`)
-	if !ok || !strings.HasPrefix(rest, "<nav ") {
-		t.Fatalf("the head doesn't open with a <div> holding a <nav>:\n%s", head)
+	head := between(t, page, `<header class="page-header">`, `</header>`)
+	rest, ok := strings.CutPrefix(head, `<header class="page-header"><nav `)
+	if !ok {
+		t.Fatalf("the header strip doesn't open with a <nav>:\n%s", head)
 	}
-	crumb, rest, _ = strings.Cut(rest, "</nav>")
+	crumb, rest, _ = strings.Cut("<nav "+rest, "</nav>")
 	if !strings.Contains(openTag(crumb), `aria-label="Breadcrumb"`) {
-		t.Errorf("the head's nav isn't the breadcrumb: %s", openTag(crumb))
+		t.Errorf("the header strip's nav isn't the breadcrumb: %s", openTag(crumb))
 	}
-	title, ok = strings.CutPrefix(rest, "<h1>")
+	if rest != "" {
+		t.Errorf("the header strip holds more than the breadcrumb:\n%s", head)
+	}
+	title, ok = strings.CutPrefix(between(t, page, `<div class="rb-layout">`, "</h1>"), `<div class="rb-layout"><h1>`)
 	if !ok {
-		t.Fatalf("no <h1> follows the breadcrumb:\n%s", head)
+		t.Fatalf("the builder's column doesn't open with an <h1>:\n%s", page)
 	}
-	title, ok = strings.CutSuffix(title, "</h1></div>")
-	if !ok {
-		t.Fatalf("the head holds more than the breadcrumb and title in one <div>:\n%s", head)
-	}
-	return crumb, title
+	return crumb, strings.TrimSuffix(title, "</h1>")
 }
 
 // The edit page's breadcrumb names the definition as saved, not as typed, on
@@ -1291,7 +1290,7 @@ func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
-	crumb := `<a href="` + draft + `">MBR</a> / <span aria-current="page">Edit</span>`
+	crumb := `<a class="ph-parent rp-crumb" href="` + draft + `">MBR</a> <span class="ph-sep" aria-hidden="true">›</span> <span class="rp-crumb" aria-current="page">Edit</span>`
 
 	for _, tc := range []struct {
 		name, typed string

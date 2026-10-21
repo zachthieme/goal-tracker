@@ -11,28 +11,18 @@ import (
 // Report Definition): its name and introduction, and what's in it, the Goals
 // matching rules or the Goals the author picks, never those linked to some
 // other Goal (ADR 0007). A saved one's id goes with the form, so the rail
-// reads against its baseline.
+// reads against its baseline. Under its breadcrumb strip it is one centred
+// column of plain sections: the title, the inputs, the Matches rail, and Save
+// report last (DESIGN.md § Direction: Page shapes).
 templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
-	@layout(v.title(), current) {
+	@framedLayout(v.title(), current, reportBuilderHeader(v)) {
 		@reportStyles()
 		@reportBuilderStyles()
-		<header class="page-head">
-			<div>
-				<nav class="small muted" aria-label="Breadcrumb">
-					<a href="/reports">Reports</a>{ " / " }
-					if v.ID != 0 {
-						<a href={ templ.SafeURL(v.draft()) }>{ v.Saved }</a>{ " / " }<span aria-current="page">Edit</span>
-					} else {
-						<span aria-current="page">New</span>
-					}
-				</nav>
-				<h1>{ v.title() }</h1>
-			</div>
-		</header>
 		<div class="rb-layout">
+			<h1>{ v.title() }</h1>
 			<form
 				data-testid="report-builder"
-				class="card rb-form"
+				class="rb-form"
 				method="post"
 				action={ templ.SafeURL(v.action()) }
 			>
@@ -82,7 +72,7 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 						@reportBuilderError(v, domain.ReportInputMode)
 					</fieldset>
 					<section data-testid="report-rules" class="rb-rules">
-						<h2 class="label">Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
+						<h2>Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
 						for i, row := range v.rows() {
 							@reportRuleRowInputs(v, i, row)
 						}
@@ -127,6 +117,25 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 	}
 }
 
+// reportBuilderHeader is the builder's header strip: its breadcrumb, Reports ›
+// New, or Reports › the definition as saved › Edit, the last crumb the page
+// itself.
+templ reportBuilderHeader(v reportBuilderView) {
+	<header class="page-header">
+		<nav class="ph-title" aria-label="Breadcrumb">
+			<a class="ph-parent" href="/reports">Reports</a>
+			<span class="ph-sep" aria-hidden="true">›</span>
+			if v.ID != 0 {
+				<a class="ph-parent rp-crumb" href={ templ.SafeURL(v.draft()) }>{ v.Saved }</a>
+				<span class="ph-sep" aria-hidden="true">›</span>
+				<span class="rp-crumb" aria-current="page">Edit</span>
+			} else {
+				<span class="rp-crumb" aria-current="page">New</span>
+			}
+		</nav>
+	</header>
+}
+
 // reportMatchesID is the rail's id, which the builder's inputs swap as they
 // are typed.
 const reportMatchesID = "report-matches"
@@ -136,12 +145,12 @@ const reportMatchesID = "report-matches"
 // none yet, its Lifecycle, and "added" beside one only Also include selects.
 // Past the first railLength, it counts the rest and those left out.
 templ reportMatchesRail(m reportMatches) {
-	<aside data-testid="report-matches" id={ reportMatchesID } class="card rb-rail" aria-live="polite">
+	<aside data-testid="report-matches" id={ reportMatchesID } class="rb-rail" aria-live="polite">
 		if m.NeedsRule {
-			<h2 class="label">Matches</h2>
+			<h2>Matches</h2>
 			<p data-testid="matches-need-rule" class="muted">Add a rule to see matching Goals.</p>
 		} else {
-			<h2 data-testid="matches-count" class="label">{ "Matches " + plural(m.Count, "Goal") }</h2>
+			<h2 data-testid="matches-count">{ "Matches " + plural(m.Count, "Goal") }</h2>
 			<ul class="rb-match-list">
 				for _, g := range m.Shown {
 					<li data-testid="match">
@@ -382,21 +391,21 @@ templ reportGoalChip(list string, g domain.Goal) {
 }
 
 // reportBuilderStyles are the builder's own rules on top of app.css and the
-// Reports pages'.
+// Reports pages'. The page is one centred column: the form and its inputs
+// let their sections into it, so the Matches rail, outside the form, can sit
+// between the inputs and the form's Save report.
 templ reportBuilderStyles() {
 	<style>
-		.rb-layout{display:grid;grid-template-columns:minmax(0,760px) 320px;gap:24px;align-items:start}
-		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px}
+		.rb-layout{width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+		.rb-form{display:contents}
 		.rb-inputs{display:contents}
-		.rb-rail{position:sticky;top:24px;padding:24px;display:flex;flex-direction:column;gap:12px}
+		.rb-rules,.rb-picked,.rb-rail{border-top:1px solid var(--color-border);padding-top:24px}
+		.rb-rail{order:1;display:flex;flex-direction:column;gap:12px}
 		.rb-rail p{margin:0}
-		.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-		.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0}
-		.rb-match-title{flex:1;min-width:0}
-		@media (max-width:1140px){
-			.rb-layout{grid-template-columns:minmax(0,1fr)}
-			.rb-rail{position:static}
-		}
+		.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+		.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0;min-height:40px;padding:4px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box}
+		.rb-match-list>li:first-child{border-top:1px solid var(--color-border)}
+		.rb-match-title{flex:1;min-width:0;color:var(--color-ink);font-weight:500}
 		.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
 		.rb-form legend{font-weight:600;padding:0 0 8px}
 		.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}
@@ -423,7 +432,7 @@ templ reportBuilderStyles() {
 		.rb-problems p,.rb-problems ul{margin:0}
 		.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}
 		.rb-fields fieldset{margin-top:12px}
-		.rb-actions{display:flex;gap:8px;flex-wrap:wrap}
+		.rb-actions{order:2;display:flex;gap:8px;flex-wrap:wrap}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 		.rb-form:not(.rb-js) .rb-chip{padding:4px 12px}
 		.rb-form.rb-js .rb-no-js{display:none}
