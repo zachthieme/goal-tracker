@@ -57,6 +57,47 @@ func TestOpenRunsInWALMode(t *testing.T) {
 	}
 }
 
+// A bulk load skips the fsync on each commit and nothing else: foreign keys
+// are still enforced and the database still runs in WAL mode.
+func TestOpenForBulkLoadTurnsOnlySynchronousOff(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"), db.ForBulkLoad())
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	var sync int
+	if err := sqlDB.QueryRow(`PRAGMA synchronous`).Scan(&sync); err != nil {
+		t.Fatalf("read synchronous: %v", err)
+	}
+	if sync != 0 {
+		t.Errorf("synchronous = %d, want 0 (OFF)", sync)
+	}
+	var foreignKeys int
+	if err := sqlDB.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("read foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Errorf("foreign_keys = %d, want 1", foreignKeys)
+	}
+	var mode string
+	if err := sqlDB.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatalf("read journal_mode: %v", err)
+	}
+	if mode != "wal" {
+		t.Errorf("journal_mode = %q, want wal", mode)
+	}
+	var ms int
+	if err := sqlDB.QueryRow(`PRAGMA busy_timeout`).Scan(&ms); err != nil {
+		t.Fatalf("read busy_timeout: %v", err)
+	}
+	if ms != 5000 {
+		t.Errorf("busy_timeout = %d ms, want 5000", ms)
+	}
+}
+
 // The pool is capped: past the one writer and the readers WAL lets alongside
 // it, more connections would only queue on the write lock.
 func TestOpenCapsThePoolAtEightConnections(t *testing.T) {

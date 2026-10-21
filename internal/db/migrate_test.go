@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -973,5 +974,37 @@ func TestMigrateLeavesForeignKeysOnForTheConnectionItRanOn(t *testing.T) {
 	}
 	if on != 1 {
 		t.Errorf("PRAGMA foreign_keys = %d after Migrate, want 1", on)
+	}
+}
+
+// sharedMigrationNumbers are the migrations allowed to share a number. Both
+// 0057s were applied before anything stopped the repeat, and a migration's
+// version is its whole filename, so renaming either would run it again.
+var sharedMigrationNumbers = map[string][]string{
+	"0057": {"0057_fk_indexes.sql", "0057_report_log.sql"},
+}
+
+// Each migration takes a number of its own, so a new one can't quietly reuse
+// one a migration written alongside it already took.
+func TestMigrationsDoNotShareANumber(t *testing.T) {
+	t.Parallel()
+	entries, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	byNumber := map[string][]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		number, _, _ := strings.Cut(name, "_")
+		byNumber[number] = append(byNumber[number], name)
+	}
+	for number, names := range byNumber {
+		if len(names) < 2 || slices.Equal(names, sharedMigrationNumbers[number]) {
+			continue
+		}
+		t.Errorf("migrations %s share the number %s; give the newest the next free number", strings.Join(names, ", "), number)
 	}
 }

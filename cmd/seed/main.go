@@ -7,15 +7,12 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
-
-	_ "modernc.org/sqlite" // pure-Go SQLite driver (ADR 0004)
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -54,7 +51,7 @@ func run(logger *slog.Logger, args []string) error {
 
 	// Skipping the fsync on every commit makes seeding weeks of Check-ins take
 	// seconds instead of minutes; a seed that is cut short is simply rerun.
-	sqlDB, err := sql.Open("sqlite", "file:"+*dbPath+"?_pragma=synchronous(off)")
+	sqlDB, err := db.Open(*dbPath, db.ForBulkLoad())
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}

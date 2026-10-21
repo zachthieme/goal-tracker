@@ -26,11 +26,32 @@ import (
 // writer, but SQLite still takes one write at a time: past a handful of readers
 // and the writer, more connections only queue on the write lock and wait out
 // its busy timeout, where capped they wait for a free connection in the pool.
-func Open(path string) (*sql.DB, error) {
-	sqlDB, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate")
+//
+// Options adjust that for a caller other than the app, such as ForBulkLoad.
+func Open(path string, opts ...OpenOption) (*sql.DB, error) {
+	cfg := openConfig{synchronous: "NORMAL"}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	sqlDB, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous("+cfg.synchronous+")&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
 	sqlDB.SetMaxOpenConns(8)
 	return sqlDB, nil
+}
+
+// An OpenOption adjusts how Open sets up the database's connections.
+type OpenOption func(*openConfig)
+
+type openConfig struct {
+	synchronous string
+}
+
+// ForBulkLoad turns synchronous off, so a commit doesn't wait for its fsync.
+// It is for loading a lot of data that can simply be loaded again if the
+// machine goes down part-way, as a power loss can then corrupt the database.
+// Every other pragma stays as Open sets it, foreign keys included.
+func ForBulkLoad() OpenOption {
+	return func(cfg *openConfig) { cfg.synchronous = "OFF" }
 }
