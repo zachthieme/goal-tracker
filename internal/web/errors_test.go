@@ -29,8 +29,22 @@ func loggedServer(t *testing.T, h *testsupport.Harness) (*httptest.Server, *byte
 	return ts, &buf
 }
 
-// logRecords decodes the JSON records written to buf.
+// logRecords decodes the JSON records written to buf, leaving out the access
+// line every request gets (see accessLines), so they are what handling the
+// requests logged.
 func logRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, rec := range allLogRecords(t, buf) {
+		if rec["msg"] != "request" {
+			records = append(records, rec)
+		}
+	}
+	return records
+}
+
+// allLogRecords decodes every JSON record written to buf.
+func allLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
 	t.Helper()
 	var records []map[string]any
 	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
@@ -166,7 +180,7 @@ func TestARefusalIsNotLoggedAsAServerError(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want 403", resp.StatusCode)
 	}
-	if buf.Len() != 0 {
+	if records := logRecords(t, buf); len(records) != 0 {
 		t.Errorf("a 403 was logged:\n%s", buf)
 	}
 }

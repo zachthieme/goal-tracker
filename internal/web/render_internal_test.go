@@ -124,16 +124,15 @@ func TestRenderWithoutALoggerInTheRequestStillDraws(t *testing.T) {
 func TestServeHTTPCarriesTheServersLogger(t *testing.T) {
 	t.Parallel()
 
-	l := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	s := NewServer(nil, WithLogger(l))
-	var got *slog.Logger
+	var buf bytes.Buffer
+	s := NewServer(nil, WithLogger(slog.New(slog.NewJSONHandler(&buf, nil))))
 	s.mux.HandleFunc("GET /probe/logger", func(_ http.ResponseWriter, r *http.Request) {
-		got = requestLogger(r.Context())
+		requestLogger(r.Context()).Info("probe")
 	})
 
 	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/probe/logger", nil))
 
-	if got != l {
-		t.Errorf("request logger %p, want the Server's %p", got, l)
+	if !strings.Contains(buf.String(), `"msg":"probe"`) {
+		t.Errorf("the request logger's record isn't in the Server's log:\n%s", &buf)
 	}
 }

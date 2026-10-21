@@ -1,0 +1,72 @@
+package web
+
+import (
+	"context"
+	"crypto/rand"
+	"log/slog"
+	"net/http"
+	"time"
+)
+
+// requestIDHeader carries a request's ID: a proxy in front may send one, and
+// every response echoes the one its request was logged under.
+const requestIDHeader = "X-Request-ID"
+
+// newRequestID is the ID a request is logged under.
+func newRequestID() string {
+	return rand.Text()
+}
+
+// accessWriter records what a request was answered with, for its access line.
+type accessWriter struct {
+	http.ResponseWriter
+	// status is the status written, 0 until the handler writes one.
+	status int
+	// bytes counts the body bytes written.
+	bytes int64
+	// route is the pattern the request matched, empty when it matched none
+	// (see serveRoutes).
+	route string
+}
+
+func (a *accessWriter) WriteHeader(code int) {
+	if a.status == 0 && code >= http.StatusOK {
+		a.status = code
+	}
+	a.ResponseWriter.WriteHeader(code)
+}
+
+func (a *accessWriter) Write(p []byte) (int, error) {
+	if a.status == 0 {
+		a.status = http.StatusOK
+	}
+	n, err := a.ResponseWriter.Write(p)
+	a.bytes += int64(n)
+	return n, err
+}
+
+// Unwrap lets an http.ResponseController reach the connection's own writer.
+func (a *accessWriter) Unwrap() http.ResponseWriter {
+	return a.ResponseWriter
+}
+
+// logAccess writes the request's access line to l, the request's logger: its
+// method, the route it matched ("unmatched" for none), the status it was
+// answered with, the bytes sent, and how long it took since start.
+func (a *accessWriter) logAccess(ctx context.Context, l *slog.Logger, method string, start time.Time) {
+	route := a.route
+	if route == "" {
+		route = "unmatched"
+	}
+	status := a.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	l.LogAttrs(ctx, slog.LevelInfo, "request",
+		slog.String("method", method),
+		slog.String("route", route),
+		slog.Int("status", status),
+		slog.Int64("bytes", a.bytes),
+		slog.Float64("duration_ms", float64(time.Since(start))/float64(time.Millisecond)),
+	)
+}
