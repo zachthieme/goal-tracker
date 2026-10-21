@@ -3,4 +3,9 @@
 .vetinari.local/
 .git/
 bin/
-node_modules/
+**/node_modules/
+# Credentials anywhere in the tree (dev/authentik/.env).
+**/.env
+# Local databases (dev, seeded, scratch copies).
+*.db
+*.db-*

@@ -56,6 +56,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] In the light theme, the chosen option on New goal's Kind tiles, Check-in cadence and Where it fits values, and on the Goal list's List / Table switch, now shows a dark teal edge that meets WCAG's 3:1 contrast for controls; the Kind tile's radio dot takes the same colour (#401).
 - [user] In the light theme, the filter chips above a Goal's History now have an edge that meets WCAG's 3:1 contrast for controls, and the current chip a dark teal one, the same edge every chosen option takes (#402).
 
+**Infrastructure:**
+- [ops] A `Dockerfile` builds the app into a Debian image with Chromium for PDF downloads and `sqlite3` for backups. It runs as a non-root user on port 8080, with the database in the `/data` volume. `docs/install.md` says how to run it and back it up (#418).
+- [ops] Building takes Go 1.27.1 or newer: `go.mod` moves from 1.26 to 1.27.1, matching the campaign image (#418).
+- [internal] A GitHub Actions workflow runs `make check` on every push to `main` and every pull request, and builds the image. `make lint` pins golangci-lint v2.13.2: it uses one on `PATH` at that version, else builds it with `go run` (#418).
+
 **Testing:**
 - [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
 - [internal] Scenario 02's Report builder check accepts an author near the end of its value list when the list is scrolled to its end with the author in full view; Inter's shorter rows (#390) left it 2px off the top row there (#314, #390).

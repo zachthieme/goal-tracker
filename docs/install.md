@@ -34,7 +34,7 @@ Read these first; some may decide whether the install goes ahead now.
   each password sign-in briefly uses 64 MiB, one at a time per CPU.
 - A DNS name for the app, and a TLS certificate for it (the reverse proxy
   handles TLS; the app speaks plain HTTP on localhost).
-- To build: Go 1.26 or newer, on any machine. The binary is static (pure-Go
+- To build: Go 1.27.1 or newer, on any machine (or Docker; see below). The binary is static (pure-Go
   SQLite, no cgo), so you can build elsewhere and copy it over.
 - Optional but recommended: the `sqlite3` command-line tool on the host, for
   backups.
@@ -54,6 +54,31 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o goal-tracker ./cmd/g
 Use `GOARCH=arm64` for an arm64 host. The generated code is committed, so the
 build needs nothing but Go. The pages, styles, migrations and timezone data are
 all embedded: the binary is the whole app (about 28 MB).
+
+### Or build the Docker image
+
+The repo's `Dockerfile` builds the same binary into a Debian image with
+Chromium for PDF downloads. It runs as a non-root user, listens on 8080, and
+keeps the database in the `/data` volume (`GOAL_TRACKER_DB` is
+`/data/goal-tracker.db`):
+
+```sh
+docker build -t goal-tracker .
+docker run -d --name goal-tracker -p 127.0.0.1:8080:8080 \
+  -v goal-tracker-data:/data --env-file /etc/goal-tracker/env goal-tracker
+```
+
+The settings in step 4 go in the env file, without `GOAL_TRACKER_ADDR`,
+`GOAL_TRACKER_DB` or `GOAL_TRACKER_CHROME`, which the image sets. Steps 2 and 6
+(the host layout and systemd) don't apply; the reverse proxy in step 7 does.
+The image includes `sqlite3`, so the online backup in § Backups runs inside
+it, writing into the volume:
+
+```sh
+docker exec goal-tracker sqlite3 /data/goal-tracker.db ".backup /data/backup-$(date +%F).db"
+```
+
+Then copy the backup off the volume and off the host.
 
 ## 2. Lay out the host
 
