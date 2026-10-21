@@ -289,3 +289,60 @@ func executable(t *testing.T, dir, name string) string {
 	}
 	return path
 }
+
+// A TMPDIR such as /tmp has room for Chromium's socket in a render's own
+// directory: the check passes it without a word.
+//
+//nolint:paralleltest // sets TMPDIR
+func TestCheckTMPDIRPassesAShortOne(t *testing.T) {
+	t.Setenv("TMPDIR", "/tmp")
+
+	if warning, err := pdf.CheckTMPDIR(); warning != "" || err != nil {
+		t.Errorf("CheckTMPDIR() under /tmp = %q, %v; want neither", warning, err)
+	}
+}
+
+// A 58-byte TMPDIR has room for Chromium's socket in TMPDIR itself, not in a
+// render's own directory under it: the check warns that a render killed for
+// time may leave Chromium's files in TMPDIR, naming it and its length.
+//
+//nolint:paralleltest // sets TMPDIR
+func TestCheckTMPDIRWarnsOfALongOne(t *testing.T) {
+	tmp := "/" + strings.Repeat("t", 57)
+	t.Setenv("TMPDIR", tmp)
+
+	warning, err := pdf.CheckTMPDIR()
+	if err != nil {
+		t.Fatalf("CheckTMPDIR() under the 58-byte TMPDIR: %v; want only a warning", err)
+	}
+	for _, want := range []string{tmp, "58 bytes", "org.chromium.Chromium.*"} {
+		if !strings.Contains(warning, want) {
+			t.Errorf("warning %q doesn't name %s", warning, want)
+		}
+	}
+}
+
+// A TMPDIR too long for Chromium's socket even in TMPDIR itself, which with
+// the socket's 45 bytes under it can be at most 107, is an error naming it and
+// that limit: Chromium can't render under it at all.
+//
+//nolint:paralleltest // sets TMPDIR
+func TestCheckTMPDIRRefusesOneTooLongForChromium(t *testing.T) {
+	longest := "/" + strings.Repeat("t", 61)
+	t.Setenv("TMPDIR", longest)
+	if _, err := pdf.CheckTMPDIR(); err != nil {
+		t.Fatalf("CheckTMPDIR() under the 62-byte TMPDIR: %v; want only a warning", err)
+	}
+
+	tmp := longest + "t"
+	t.Setenv("TMPDIR", tmp)
+	warning, err := pdf.CheckTMPDIR()
+	if err == nil {
+		t.Fatalf("CheckTMPDIR() under the 63-byte TMPDIR = %q and no error", warning)
+	}
+	for _, want := range []string{tmp, "62 bytes"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q doesn't name %s", err, want)
+		}
+	}
+}

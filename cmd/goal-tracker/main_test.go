@@ -713,14 +713,16 @@ func TestAChromeOnPATHRendersPDFs(t *testing.T) {
 		t.Errorf("Chromium %q, want %s from PATH", cfg.chrome, chromium)
 	}
 	var log bytes.Buffer
-	pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil)))
+	if _, err := pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil))); err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(log.String(), chromium) {
 		t.Errorf("startup doesn't log the Chromium it renders PDFs with:\n%s", log.String())
 	}
 }
 
 // With no Chromium named or on PATH, startup logs that PDF downloads fall back
-// to the print page.
+// to the print page, and doesn't check TMPDIR, which only Chromium needs short.
 //
 //nolint:paralleltest // sets the process environment, through devEnv
 func TestWithoutChromePDFDownloadsFallBackToThePrintPage(t *testing.T) {
@@ -734,11 +736,71 @@ func TestWithoutChromePDFDownloadsFallBackToThePrintPage(t *testing.T) {
 	if cfg.chrome != "" {
 		t.Errorf("Chromium %q with none on PATH", cfg.chrome)
 	}
+	t.Setenv("TMPDIR", "/"+strings.Repeat("t", 62))
 	var log bytes.Buffer
-	pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil)))
+	if _, err := pdfDownloads(cfg.chrome, slog.New(slog.NewTextHandler(&log, nil))); err != nil {
+		t.Errorf("without a Chromium, startup under a TMPDIR too long for one: %v", err)
+	}
+	if strings.Contains(log.String(), "TMPDIR") {
+		t.Errorf("without a Chromium, startup warns of TMPDIR:\n%s", log.String())
+	}
 	for _, want := range []string{"GOAL_TRACKER_CHROME", "PDF downloads fall back to the print page"} {
 		if !strings.Contains(log.String(), want) {
 			t.Errorf("startup log doesn't say %q:\n%s", want, log.String())
 		}
+	}
+}
+
+// startupEnv is devEnv with a Chromium named, a database, and a listen
+// address that can't be listened on, so run returns as it would start
+// serving.
+func startupEnv(t *testing.T) {
+	t.Helper()
+	devEnv(t)
+	dir := t.TempDir()
+	chromium := filepath.Join(dir, "chromium")
+	if err := os.WriteFile(chromium, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOAL_TRACKER_CHROME", chromium)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(dir, "goal-tracker.db"))
+	t.Setenv("GOAL_TRACKER_ADDR", "127.0.0.1:-1")
+}
+
+// With a Chromium, a TMPDIR too long for Chromium's socket, under which every
+// render would abort, stops startup with an error naming it.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestATMPDIRTooLongForChromiumStopsStartup(t *testing.T) {
+	startupEnv(t)
+	tmp := "/" + strings.Repeat("t", 62)
+	t.Setenv("TMPDIR", tmp)
+
+	err := run(discardLogger(), nil, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "TMPDIR "+tmp) {
+		t.Errorf("goal-tracker under the %d-byte TMPDIR: %v; want startup stopped, naming the TMPDIR", len(tmp), err)
+	}
+}
+
+// With a Chromium, a TMPDIR long enough that a render killed for time may
+// leave Chromium's files in it starts, warning so.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestALongTMPDIRStartsWithAWarning(t *testing.T) {
+	startupEnv(t)
+	tmp := "/" + strings.Repeat("t", 57)
+	t.Setenv("TMPDIR", tmp)
+
+	var log bytes.Buffer
+	err := run(slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
+	if err == nil || !strings.HasPrefix(err.Error(), "serve:") {
+		t.Fatalf("goal-tracker under the %d-byte TMPDIR: %v; want it to start serving", len(tmp), err)
+	}
+	warned := false
+	for line := range strings.Lines(log.String()) {
+		warned = warned || strings.Contains(line, "level=WARN") && strings.Contains(line, tmp)
+	}
+	if !warned {
+		t.Errorf("startup under the %d-byte TMPDIR logs no warning naming it:\n%s", len(tmp), log.String())
 	}
 }
