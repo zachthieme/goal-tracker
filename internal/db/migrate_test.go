@@ -43,6 +43,22 @@ func migratedExcept(t *testing.T, version string) *sql.DB {
 	return sqlDB
 }
 
+// arrangeUpgradeAccountsAndGoals adds the Accounts (7 and 8) and Goals (1 and
+// 9, owned by 7) that an upgrade test's rows point at, so they break no
+// foreign key: Migrate refuses a database that holds an orphan.
+func arrangeUpgradeAccountsAndGoals(t *testing.T, sqlDB *sql.DB) {
+	t.Helper()
+	if _, err := sqlDB.Exec(`
+		INSERT INTO accounts (id, email, created_at) VALUES
+			(7, 'pat@example.com', '2026-01-02T00:00:00Z'),
+			(8, 'sam@example.com', '2026-01-02T00:00:00Z');
+		INSERT INTO goals (id, title, why_it_matters, owner_id, lifecycle, created_at) VALUES
+			(1, 'Reduce outages', 'why', 7, 'Active', '2026-01-02T00:00:00Z'),
+			(9, 'Expand to the EU', 'why', 7, 'Active', '2026-01-02T00:00:00Z')`); err != nil {
+		t.Fatalf("arrange Accounts and Goals: %v", err)
+	}
+}
+
 // An email stored before emails were matched whatever their case is folded
 // on upgrade, so it is found by the lookup (CONTEXT.md: Account).
 func TestMigrationLowercasesAndTrimsExistingEmails(t *testing.T) {
@@ -153,7 +169,14 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 			note       TEXT    NOT NULL,
 			created_at TEXT    NOT NULL
 		);
-		CREATE INDEX idx_highlights_checkin ON highlights (checkin_id);
+		CREATE INDEX idx_highlights_checkin ON highlights (checkin_id);`); err != nil {
+		t.Fatalf("undo 0031: %v", err)
+	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
+			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-02T00:00:00Z'),
+			(11, 1, 7, 7, 'Red', 'Missed.', '2026-01-09T00:00:00Z');
 		INSERT INTO highlights (id, checkin_id, kind, note, created_at) VALUES
 			(4, 10, 'Insight', 'Retries masked the root cause.', '2026-01-02T00:00:00Z'),
 			(7, 11, 'Miss', 'Missed the SLA.', '2026-01-09T00:00:00Z')`); err != nil {
@@ -211,7 +234,15 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 			body           TEXT    NOT NULL,
 			created_at     TEXT    NOT NULL
 		);
-		CREATE INDEX idx_comments_publication ON comments (publication_id);
+		CREATE INDEX idx_comments_publication ON comments (publication_id);`); err != nil {
+		t.Fatalf("undo 0049: %v", err)
+	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO report_definitions (id, name, introduction, created_by, created_at) VALUES
+			(1, 'MBR', '', 7, '2026-01-02T00:00:00Z');
+		INSERT INTO report_publications (id, report_definition_id, published_by, published_at, snapshot) VALUES
+			(2, 1, 7, '2026-01-08T00:00:00Z', '{}');
 		INSERT INTO comments (id, publication_id, goal_id, parent_id, author_id, body, created_at) VALUES
 			(4, 2, 9, 0, 7, 'Second vendor quote?', '2026-01-09T00:00:00Z'),
 			(6, 2, 9, 4, 8, 'Asked on Monday.', '2026-01-10T00:00:00Z')`); err != nil {
@@ -275,7 +306,11 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 	if _, err := sqlDB.Exec(`ALTER TABLE milestone_changes DROP COLUMN name`); err != nil {
 		t.Fatalf("undo 0035: %v", err)
 	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
 	if _, err := sqlDB.Exec(`
+		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
+			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-09T00:00:00Z'),
+			(11, 1, 7, 7, 'Yellow', 'Slipping.', '2026-01-16T00:00:00Z');
 		INSERT INTO milestones (id, goal_id, name, target_date, created_at) VALUES
 			(1, 1, 'Beta', '2026-03-16', '2026-01-02T00:00:00Z'),
 			(2, 1, 'GA', '2026-04-20', '2026-01-02T00:00:00Z');
@@ -325,7 +360,12 @@ func TestMigrationGivesExistingActionItemsTheirCommentsGoal(t *testing.T) {
 		ALTER TABLE action_items DROP COLUMN goal_id`); err != nil {
 		t.Fatalf("undo 0047: %v", err)
 	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
 	if _, err := sqlDB.Exec(`
+		INSERT INTO report_definitions (id, name, introduction, created_by, created_at) VALUES
+			(1, 'MBR', '', 7, '2026-01-02T00:00:00Z');
+		INSERT INTO report_publications (id, report_definition_id, published_by, published_at, snapshot) VALUES
+			(2, 1, 7, '2026-01-08T00:00:00Z', '{}');
 		INSERT INTO comments (id, publication_id, goal_id, parent_id, author_id, body, created_at) VALUES
 			(4, 2, 9, 0, 7, 'Second vendor quote?', '2026-01-09T00:00:00Z');
 		INSERT INTO action_items (id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at) VALUES
@@ -359,8 +399,7 @@ func TestMigrationGivesExistingActionItemsTheirCommentsGoal(t *testing.T) {
 
 // Milestone changes recorded before a Milestone could be added outside a
 // Check-in keep every column on upgrade and take their author from their
-// Check-in; a change whose Check-in is missing keeps no author. Afterwards a
-// change needs no Check-in.
+// Check-in. Afterwards a change needs no Check-in.
 func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 	t.Parallel()
 
@@ -378,15 +417,21 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 			created_at   TEXT    NOT NULL,
 			name         TEXT    NOT NULL DEFAULT ''
 		);
-		CREATE INDEX idx_milestone_changes_checkin ON milestone_changes (checkin_id);
+		CREATE INDEX idx_milestone_changes_checkin ON milestone_changes (checkin_id);`); err != nil {
+		t.Fatalf("undo 0042: %v", err)
+	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
+	if _, err := sqlDB.Exec(`
+		INSERT INTO milestones (id, goal_id, name, target_date, created_at) VALUES
+			(1, 1, 'Beta', '2026-03-16', '2026-01-02T00:00:00Z'),
+			(2, 1, 'GA', '2026-04-20', '2026-01-02T00:00:00Z');
 		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
 			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-09T00:00:00Z'),
 			(11, 1, 8, 7, 'Yellow', 'Slipping.', '2026-01-16T00:00:00Z');
 		INSERT INTO milestone_changes (id, checkin_id, milestone_id, kind, reason, created_at, name) VALUES
 			(3, 10, 2, 'Added', '', '2026-01-09T00:00:00Z', 'GA'),
 			(5, 11, 1, 'Done', '', '2026-01-16T00:00:00Z', 'Beta'),
-			(6, 11, 2, 'Removed', 'descoped', '2026-01-16T00:00:00Z', 'GA'),
-			(9, 99, 4, 'Done', '', '2026-01-23T00:00:00Z', 'Docs')`); err != nil {
+			(6, 11, 2, 'Removed', 'descoped', '2026-01-16T00:00:00Z', 'GA')`); err != nil {
 		t.Fatalf("arrange 0035 milestone changes: %v", err)
 	}
 
@@ -418,7 +463,6 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 		`3 10 2 Added "" 2026-01-09T00:00:00Z GA by 7`,
 		`5 11 1 Done "" 2026-01-16T00:00:00Z Beta by 8`,
 		`6 11 2 Removed "descoped" 2026-01-16T00:00:00Z GA by 8`,
-		`9 99 4 Done "" 2026-01-23T00:00:00Z Docs by none`,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("milestone changes = %v, want %v", got, want)
@@ -826,5 +870,108 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 	}
 	if indexes != 1 {
 		t.Error("why_it_matters_revisions has no goal_id index")
+	}
+}
+
+// openMigratedForFKCheck opens a database through db.Open, as the app does, and
+// migrates it.
+func openMigratedForFKCheck(t *testing.T) *sql.DB {
+	t.Helper()
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	return sqlDB
+}
+
+// insertOrphanedContributors adds n Contributors to a Goal that doesn't exist,
+// on one connection with foreign keys off, as a database written before they
+// were enforced could hold.
+func insertOrphanedContributors(t *testing.T, sqlDB *sql.DB, n int) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	stmts := []string{
+		`PRAGMA foreign_keys = OFF`,
+		`INSERT INTO accounts (id, email, created_at) VALUES (1, 'owner@example.com', '2026-01-02T15:04:05Z')`,
+	}
+	for i := range n {
+		stmts = append(stmts, fmt.Sprintf(`INSERT INTO contributors (goal_id, account_id, created_at) VALUES (%d, 1, '2026-01-02T15:04:05Z')`, 1000+i))
+	}
+	stmts = append(stmts, `PRAGMA foreign_keys = ON`)
+	for _, stmt := range stmts {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+}
+
+// A database that already holds a row breaking a foreign key won't migrate, so
+// the app refuses to start on it; the error names the row and its missing
+// parent.
+func TestMigrateRefusesADatabaseWithAnOrphanedRow(t *testing.T) {
+	t.Parallel()
+	sqlDB := openMigratedForFKCheck(t)
+	insertOrphanedContributors(t, sqlDB, 1)
+
+	err := db.Migrate(sqlDB)
+	if err == nil {
+		t.Fatal("Migrate succeeded on a database with an orphaned Contributor")
+	}
+	for _, want := range []string{"contributors", "rowid 1", "goals"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Migrate error %q doesn't name %q", err, want)
+		}
+	}
+}
+
+// A failed foreign-key check names the first 20 rows that break one and counts
+// the rest, so the error stays readable however many there are.
+func TestMigrateNamesAtMostTwentyOrphanedRows(t *testing.T) {
+	t.Parallel()
+	sqlDB := openMigratedForFKCheck(t)
+	insertOrphanedContributors(t, sqlDB, 25)
+
+	err := db.Migrate(sqlDB)
+	if err == nil {
+		t.Fatal("Migrate succeeded on a database with orphaned Contributors")
+	}
+	if got := strings.Count(err.Error(), "contributors rowid"); got != 20 {
+		t.Errorf("Migrate error names %d rows, want 20: %v", got, err)
+	}
+	if !strings.Contains(err.Error(), "and 5 more") {
+		t.Errorf("Migrate error %q doesn't count the 5 rows it leaves out", err)
+	}
+}
+
+// Migrate turns foreign keys off on the connection it migrates on, and back on
+// before the pool hands that connection out again.
+func TestMigrateLeavesForeignKeysOnForTheConnectionItRanOn(t *testing.T) {
+	t.Parallel()
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	// One connection, so the one Migrate ran on is the one read next.
+	sqlDB.SetMaxOpenConns(1)
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	var on int
+	if err := sqlDB.QueryRow(`PRAGMA foreign_keys`).Scan(&on); err != nil {
+		t.Fatalf("read foreign_keys: %v", err)
+	}
+	if on != 1 {
+		t.Errorf("PRAGMA foreign_keys = %d after Migrate, want 1", on)
 	}
 }

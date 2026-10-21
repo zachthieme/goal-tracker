@@ -78,12 +78,13 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 // The path is escaped because it's a URI: a test's temp directory can hold a
 // '#' (an unnamed subtest is "#00"), which would otherwise end the path and
 // open a new, empty database in place of the copy. Like the app's own
-// db.Open, a statement that meets another connection's lock waits for it, and
+// db.Open, a statement that meets another connection's lock waits for it,
 // transactions take the write lock at BEGIN, so a test running two requests at
 // once sees them queue as they would in the app rather than fail with
-// SQLITE_BUSY.
+// SQLITE_BUSY, and foreign keys are enforced, so a test that would orphan a row
+// fails as the app would.
 func dsn(path string) string {
-	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_txlock=immediate"
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate"
 }
 
 // The migrated database every Harness copies, built on first use, or the error
