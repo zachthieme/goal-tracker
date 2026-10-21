@@ -320,3 +320,52 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Newco
 		t.Errorf("adding Newco isn't attributed to Ada, who ran the import:\n%s", added)
 	}
 }
+
+// importFileOfSize is webImportCSV padded with blank lines, which the CSV
+// reader skips, to exactly size bytes, ending in a row for "Late goal".
+func importFileOfSize(t *testing.T, size int) string {
+	t.Helper()
+	const lateRow = "Late goal,boss@example.com,It matters.,Ongoing,,\n"
+	pad := size - len(webImportCSV) - len(lateRow)
+	if pad < 0 {
+		t.Fatalf("an import file of %d bytes can't hold the rows", size)
+	}
+	return webImportCSV + strings.Repeat("\n", pad) + lateRow
+}
+
+// A file one byte over the import's 5 MiB cap is refused as too large and
+// imports nothing, rather than being cut at the cap and imported (#440).
+func TestAnImportFileOneByteOverItsCapIsTooLargeOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", importFileOfSize(t, 5<<20+1), "commit")
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Errorf("POST /imports with a file of 5 MiB + 1 byte: status %d, want 413", resp.StatusCode)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("a file over the cap imported %d Goals, want 0", len(goals))
+	}
+}
+
+// A file of exactly the import's 5 MiB cap is read whole: a dry run reports
+// its last row.
+func TestAnImportFileOfExactlyItsCapIsReadOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	page := parsePage(t, postImport(t, admin, ts.URL+"/imports", "goals.csv", importFileOfSize(t, 5<<20), "dry-run"))
+	report := textOf(findByTestID(t, page, "import-report"))
+	for _, title := range []string{"Parent goal", "Child goal", "Late goal"} {
+		if !strings.Contains(report, title) {
+			t.Errorf("the dry run's report doesn't show %q:\n%s", title, report)
+		}
+	}
+}
