@@ -284,6 +284,19 @@ Logs are plain text (`time=… level=… msg=…`) on stderr, so journald keeps 
 Watch for `level=ERROR`. A `level=WARN` naming `GOAL_TRACKER_SIGNIN=dev` or
 `GOAL_TRACKER_START_AT` means the settings are wrong for production.
 
+Each request gets one access line once it's answered:
+
+```
+level=INFO msg=request request_id=3TQ5DBV7XLMAWLQQ4ZK5R2NB6E method=GET route="GET /goals/{id}" status=200 bytes=18342 duration_ms=12.4
+```
+
+`route` is the pattern the request matched, not its path, so IDs stay out of
+the log, and `unmatched` for a request refused before it reached one. Every
+record logged while handling a request, such as the `ERROR` for a 500, carries
+the same `request_id`, which the response also returns in `X-Request-ID`. A
+proxy that sends its own `X-Request-ID` of 1 to 64 letters, digits, `_` and
+`-` has it reused; any other is replaced.
+
 ## 7. Put a reverse proxy in front
 
 The proxy terminates TLS and forwards to `127.0.0.1:8080`. Nothing special is
@@ -331,7 +344,8 @@ reaching the app directly from a trusted address can name any client it likes.
 Startup logs the trusted proxies. The per-account lockout (five wrong
 passwords, 15 minutes) is unaffected.
 
-For a health check, `GET /signin` returns `200` while the app is up.
+For a health check, `GET /healthz` needs no sign-in. It returns `200` with
+`ok` while the database answers within a second, and `503` when it doesn't.
 
 ## 8. The first sign-in
 
