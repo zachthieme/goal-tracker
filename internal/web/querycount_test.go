@@ -27,28 +27,36 @@ type queryCountFixture struct {
 	report domain.ReportDefinition
 }
 
-// seedQueryCountFixture arranges n Goals over three Owners. Every tenth Goal is
-// of the same kind, so ten or more Goals hold every kind: Proposed; Active with
-// no Check-in; Green; Yellow and Red, each with a Path to Green, the Red one
-// with its delivery date slipped; Check-in overdue on a daily cadence; Green
-// with an overdue Milestone; On Hold; Done; and Cancelled. Some carry a Team or
-// a Budget, which an Admin then marks required, so some Active Goals are
-// Incomplete. The Report selects the Active and On Hold Goals by Lifecycle,
-// showing Budget, so the Done and Cancelled ones come in by changing
-// Lifecycle since its baseline.
+// seedQueryCountFixture arranges n Goals over three Owners, two of them under a
+// Manager. Every tenth Goal is of the same kind, so ten or more Goals hold
+// every kind: Proposed; Active with no Check-in; Green, with a Metric read and
+// a Highlight; Yellow with a Path to Green, every other one Asking for help;
+// Red with its delivery date slipped and a Yellow child contributing to it;
+// Check-in overdue on a daily cadence; Green with an overdue Milestone; On
+// Hold; Done; and Cancelled. Some carry a Team or a Budget, which an Admin then
+// marks required, so some Active Goals are Incomplete. The Report selects the
+// Active and On Hold Goals by Lifecycle, also includes the first Goal, and
+// shows Budget. It is published once everything is seeded, so the Done and
+// Cancelled Goals then leave it, and the Green ones with a Metric turn Yellow
+// after it with a Highlight.
 func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCountFixture {
 	t.Helper()
 	ctx := context.Background()
 	admin := h.SignInNamed(queryCountAdmin, "Ada Admin")
+	manager := h.SignInNamed("morgan@example.com", "Morgan Wu")
 	owners := []domain.Account{
 		admin,
 		h.SignInNamed("priya@example.com", "Priya Raman"),
 		h.SignInNamed("sam@example.com", "Sam Lee"),
 	}
+	h.SetManager(owners[1], manager)
+	h.SetManager(owners[2], manager)
 	team := h.CreateDimension(admin, "Team", "Platform", "Growth")
 	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "USD")
 
 	path := func(days int) time.Time { return h.Clock.Now().AddDate(0, 0, days) }
+	var first domain.Goal
+	var metered []domain.Goal
 	for i := range n {
 		owner := owners[i%len(owners)]
 		title := fmt.Sprintf("Goal %02d", i)
@@ -60,10 +68,31 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 			g = h.ActiveGoal(owner, title, "It matters.")
 		case 2:
 			g = h.ActiveGoal(owner, title, "It matters.")
-			h.Checkin(owner, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+			metric, err := h.Service.AddMetric(ctx, owner.ID, domain.AddMetricInput{
+				GoalID: g.ID, Name: "Signups", Unit: "people", Direction: domain.MetricUp,
+				Baseline: 10, Target: 100, TargetDate: path(60),
+			})
+			if err != nil {
+				t.Fatalf("AddMetric: %v", err)
+			}
+			if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+				GoalID:     g.ID,
+				AuthorID:   owner.ID,
+				Health:     domain.HealthGreen,
+				Status:     "On track.",
+				Readings:   []domain.MetricReadingInput{{MetricID: metric.ID, Value: float64(20 + i)}},
+				Highlights: []domain.HighlightInput{{Kind: domain.HighlightAccomplishment, Note: "Shipped the beta of " + title + "."}},
+			}); err != nil {
+				t.Fatalf("SubmitCheckin with a reading: %v", err)
+			}
+			metered = append(metered, g)
 		case 3:
 			g = h.ActiveGoal(owner, title, "It matters.")
-			h.Checkin(owner, g.ID, domain.HealthYellow, "A little behind.", "Add a reviewer.", path(14))
+			if i%20 == 3 {
+				h.AskForHelp(owner, g.ID, domain.HealthYellow, "A little behind.", "Add a reviewer.", path(14))
+			} else {
+				h.Checkin(owner, g.ID, domain.HealthYellow, "A little behind.", "Add a reviewer.", path(14))
+			}
 		case 4:
 			g = h.ActiveGoal(owner, title, "It matters.")
 			if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
@@ -78,6 +107,8 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 			}); err != nil {
 				t.Fatalf("SubmitCheckin slipping the delivery date: %v", err)
 			}
+			child := h.ActiveChildOf(owner, g, title+" child", "It helps.")
+			h.Checkin(owner, child.ID, domain.HealthYellow, "Waiting on the parent.", "Unblock the vendor.", path(10))
 		case 5:
 			g = h.ActiveGoal(owner, title, "It matters.")
 			if _, err := h.Service.SetCadence(ctx, owner.ID, g.ID, 1); err != nil {
@@ -101,6 +132,9 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 			g = h.ActiveGoal(owner, title, "It matters.")
 			h.EndGoalInCheckin(owner, g.ID, domain.LifecycleCancelled)
 		}
+		if i == 0 {
+			first = g
+		}
 		if i%3 == 0 {
 			h.AssignGoalValue(g, team.Values[i%2])
 		}
@@ -111,8 +145,6 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 	}
 	h.SetDimensionRequired(admin, team, true)
 	h.SetFieldRequired(admin, budget, true)
-	// Days on, the daily Goals are Check-in overdue and the Pilots overdue.
-	h.Clock.Advance(5 * 24 * time.Hour)
 
 	report := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{
 		Name: "Weekly",
@@ -122,8 +154,26 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 			Op:        domain.RuleIsAnyOf,
 			Values:    []string{domain.LifecycleActive, domain.LifecycleOnHold},
 		}},
+		Include:  []int64{first.ID},
 		FieldIDs: []int64{budget.ID},
 	})
+	h.Clock.Advance(24 * time.Hour)
+	h.PublishReport(admin, report)
+	// Days on, the daily Goals are Check-in overdue and the Pilots overdue.
+	h.Clock.Advance(4 * 24 * time.Hour)
+	for _, g := range metered {
+		if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID:         g.ID,
+			AuthorID:       g.Owner.ID,
+			Health:         domain.HealthYellow,
+			Status:         "Signups stalled.",
+			PathToGreen:    "Rerun the campaign.",
+			PathTargetDate: path(7),
+			Highlights:     []domain.HighlightInput{{Kind: domain.HighlightMiss, Note: "The campaign for " + g.Title + " underdelivered."}},
+		}); err != nil {
+			t.Fatalf("SubmitCheckin with a Highlight: %v", err)
+		}
+	}
 	return queryCountFixture{report: report}
 }
 
