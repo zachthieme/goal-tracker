@@ -42,6 +42,12 @@ type Service struct {
 	// goalImport is the Admin's spreadsheet import the Service runs commands
 	// for, or nil (see ForImportBy).
 	goalImport *goalImport
+	// outbox sends the email commands queue once their transactions commit.
+	outbox *emailOutbox
+	// queuedEmail, in a Service bound to a transaction, says whether the
+	// transaction has queued email, for the outbox to send once it commits;
+	// it is shared by every copy of the Service bound to it. Nil outside one.
+	queuedEmail *bool
 }
 
 // Option configures a Service at construction.
@@ -77,6 +83,7 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 		admins:  admins,
 		loc:     time.UTC,
 		hashes:  newHashLimiter(runtime.GOMAXPROCS(0)),
+		outbox:  &emailOutbox{wake: make(chan struct{}, 1)},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -101,16 +108,18 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	txSvc := &Service{
-		db:         s.db,
-		queries:    s.queries.WithTx(sqlTx),
-		clock:      s.clock,
-		email:      s.email,
-		admins:     s.admins,
-		loc:        s.loc,
-		baseURL:    s.baseURL,
-		hashes:     s.hashes,
-		inTx:       true,
-		goalImport: s.goalImport,
+		db:          s.db,
+		queries:     s.queries.WithTx(sqlTx),
+		clock:       s.clock,
+		email:       s.email,
+		admins:      s.admins,
+		loc:         s.loc,
+		baseURL:     s.baseURL,
+		hashes:      s.hashes,
+		inTx:        true,
+		goalImport:  s.goalImport,
+		outbox:      s.outbox,
+		queuedEmail: new(bool),
 	}
 	if err := fn(txSvc); err != nil {
 		_ = sqlTx.Rollback()
@@ -118,6 +127,9 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 	}
 	if err := sqlTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
+	}
+	if *txSvc.queuedEmail {
+		s.emailQueued(ctx)
 	}
 	return nil
 }

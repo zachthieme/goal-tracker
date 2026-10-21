@@ -18,7 +18,10 @@ type Message struct {
 	Body    string
 }
 
-// Sender delivers outbound email.
+// Sender delivers outbound email. The domain sends a command's email through
+// it only once the command's transaction has committed, from its email outbox,
+// so a Send may be as slow as the mail server is, and a failed one is tried
+// again.
 type Sender interface {
 	Send(ctx context.Context, msg Message) error
 }

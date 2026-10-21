@@ -782,6 +782,7 @@ func TestRaisingAnActionItemEmailsItsOwner(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RaiseActionItem: %v", err)
 	}
+	h.DeliverEmail()
 
 	sent := h.Email.Sent()[sentBefore:]
 	if len(sent) != 1 {
@@ -824,36 +825,39 @@ func TestRaisingAnActionItemForYourselfSendsNothing(t *testing.T) {
 }
 
 // An Action Item, or a reassignment, whose email to its owner can't be sent
-// isn't kept.
-func TestActionItemIsNotKeptWhenItsEmailFails(t *testing.T) {
+// is kept, and the email goes out once mail is back (ticket #412).
+func TestActionItemIsKeptWhenItsEmailFails(t *testing.T) {
 	t.Parallel()
 
 	w := newReassignWorld(t)
 	ctx := context.Background()
-	down := domain.NewService(w.h.DB, w.h.Clock, failingSender{}, nil)
+	down := domain.NewService(w.h.DB, w.h.Clock, failingSender{}, nil, domain.WithEmailDeliveredOnCommit())
+	sentBefore := len(w.h.Email.Sent())
 
-	if _, err := down.RaiseActionItem(ctx, w.creator.ID, domain.RaiseActionItemInput{
+	raised, err := down.RaiseActionItem(ctx, w.creator.ID, domain.RaiseActionItemInput{
 		PublicationID: w.pub.ID, Text: "Chase the vendor.", OwnerID: w.owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 7),
-	}); err == nil {
-		t.Fatal("RaiseActionItem succeeded though its email could not be sent")
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v, want it kept though its email could not be sent", err)
 	}
 	items, err := w.h.Service.PublicationActionItems(ctx, w.pub.ID)
 	if err != nil {
 		t.Fatalf("PublicationActionItems: %v", err)
 	}
-	if len(items) != 1 || items[0].ID != w.item.ID {
-		t.Errorf("publication's Action Items %+v, want only the one raised before mail went down", items)
+	if len(items) != 2 || items[1].ID != raised.ID {
+		t.Errorf("publication's Action Items %+v, want the one raised while mail was down too", items)
 	}
 
-	if _, err := down.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err == nil {
-		t.Fatal("ReassignActionItem succeeded though its email could not be sent")
+	if _, err := down.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err != nil {
+		t.Fatalf("ReassignActionItem: %v, want it kept though its email could not be sent", err)
 	}
-	if got, err := w.h.Service.GetActionItem(ctx, w.item.ID); err != nil || got.Owner.ID != w.owner.ID || got.ReassignedFrom != nil {
-		t.Errorf("item after the failed reassignment %+v (err %v), want it still the owner's", got, err)
+	if got, err := w.h.Service.GetActionItem(ctx, w.item.ID); err != nil || got.Owner.ID != w.other.ID {
+		t.Errorf("item after the reassignment %+v (err %v), want it the new owner's", got, err)
 	}
-	if history, err := w.h.Service.ActionItemReassignments(ctx, w.item.ID); err != nil || len(history) != 0 {
-		t.Errorf("reassignments %+v (err %v), want none", history, err)
-	}
+
+	w.h.Clock.Advance(time.Minute)
+	w.h.DeliverEmail()
+	assertSentTo(t, w.h.Email.Sent()[sentBefore:], "owner@example.com", "other@example.com")
 }
 
 // Reassigning an Action Item emails its new owner who handed it to them and
@@ -870,6 +874,7 @@ func TestReassigningAnActionItemEmailsItsNewOwner(t *testing.T) {
 	if _, err := svc.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err != nil {
 		t.Fatalf("ReassignActionItem: %v", err)
 	}
+	w.h.DeliverEmail()
 
 	sent := w.h.Email.Sent()[sentBefore:]
 	if len(sent) != 1 {

@@ -40,8 +40,8 @@ type Thread struct {
 // pubID, starting a thread. Anyone signed in may comment; actorID records who
 // did. The Goal must be one the publication covers, and the comment cannot be
 // blank. The Goal's current Owner — the one accountable for it now — is
-// emailed the comment unless they wrote it or have left the org. A comment
-// whose alert can't be sent is not kept.
+// emailed the comment unless they wrote it or have left the org, once it is
+// kept (see queueEmail); a mail server that is down only delays the alert.
 func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -68,8 +68,8 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 // AddGoalComment comments on the Goal goalID itself, with no Report, starting
 // a thread on the Goal's page. Anyone signed in may comment, in any Lifecycle;
 // actorID records who did. The comment cannot be blank. The Goal's current
-// Owner is emailed it unless they wrote it or have left the org. A comment
-// whose alert can't be sent is not kept.
+// Owner is emailed it unless they wrote it or have left the org, once it is
+// kept (see queueEmail).
 func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -96,8 +96,8 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 // reply answers in the same thread, on the Goal or on the Report the thread
 // is on. Anyone signed in may reply. The Goal's
 // current Owner and everyone else who has written in the thread are emailed
-// the reply, except its author and anyone who has left the org. A reply whose
-// alert can't be sent is not kept.
+// the reply, except its author and anyone who has left the org, once it is
+// kept (see queueEmail).
 func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -248,9 +248,9 @@ func (s *Service) createComment(ctx context.Context, actorID, pubID, goalID, thr
 	return commentFromRow(row, author), nil
 }
 
-// alert emails the new Comment c to the Goal's current Owner and to others
-// (everyone in its thread, for a reply), once each, skipping its author and
-// anyone who has left the org. pub is the published Report c was made on, or
+// alert queues an email of the new Comment c to the Goal's current Owner and
+// to others (everyone in its thread, for a reply), once each, skipping its
+// author and anyone who has left the org. pub is the published Report c was made on, or
 // nil for a Comment on the Goal itself.
 func (s *Service) alert(ctx context.Context, c Comment, pub *Publication, others []Account) error {
 	goal, err := s.queries.GetGoal(ctx, c.GoalID)
@@ -280,8 +280,8 @@ func (s *Service) alert(ctx context.Context, c Comment, pub *Publication, others
 			continue
 		}
 		sent[a.ID] = true
-		if err := s.email.Send(ctx, email.Message{To: a.Email, Subject: subject, Body: body}); err != nil {
-			return fmt.Errorf("send comment alert: %w", err)
+		if err := s.queueEmail(ctx, email.Message{To: a.Email, Subject: subject, Body: body}); err != nil {
+			return fmt.Errorf("queue comment alert: %w", err)
 		}
 	}
 	return nil

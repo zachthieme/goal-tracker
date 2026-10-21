@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,13 +29,17 @@ import (
 var Epoch = time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
 
 // Harness bundles a test's database, clock, email recorder, and the domain
-// Service wired over them.
+// Service wired over them. The Service sends the email a command queues as the
+// command's transaction commits, so a test asserts on h.Email as soon as the
+// command returns.
 type Harness struct {
 	T       *testing.T
 	DB      *sql.DB
 	Clock   *clock.Fixed
 	Email   *email.Recorder
 	Service *domain.Service
+	// path is the database's file, for WriteLockHeld's own connection.
+	path string
 }
 
 // New returns a Harness backed by an on-disk SQLite database of its own, a copy
@@ -65,7 +70,8 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 		DB:      sqlDB,
 		Clock:   clk,
 		Email:   rec,
-		Service: domain.NewService(sqlDB, clk, rec, adminEmails),
+		Service: domain.NewService(sqlDB, clk, rec, adminEmails, domain.WithEmailDeliveredOnCommit()),
+		path:    path,
 	}
 }
 
@@ -124,6 +130,17 @@ func buildTemplate() ([]byte, error) {
 	return os.ReadFile(path)
 }
 
+// DeliverEmail sends the email in the outbox that is due through the
+// harness's recorder, failing the test on error. The harness's own Service
+// sends what it queues as each command commits; call it after a command run
+// through another Service, which leaves its email queued.
+func (h *Harness) DeliverEmail() {
+	h.T.Helper()
+	if err := h.Service.DeliverEmail(context.Background()); err != nil {
+		h.T.Fatalf("DeliverEmail: %v", err)
+	}
+}
+
 // SignIn signs the email in through the domain service, failing the test on
 // error. It is a scenario builder: use it to arrange the Owner a Goal needs.
 func (h *Harness) SignIn(emailAddr string) domain.Account {
@@ -145,4 +162,26 @@ func (h *Harness) SignInNamed(emailAddr, name string) domain.Account {
 	}
 	acc.Name = name
 	return acc
+}
+
+// WriteLockHeld reports whether a transaction holds the database's write lock,
+// by trying to take it from a connection of its own that won't wait for it. A
+// test's email sender calls it to prove no email is sent while a transaction is
+// open.
+func (h *Harness) WriteLockHeld() bool {
+	h.T.Helper()
+	probe, err := sql.Open("sqlite", "file:"+(&url.URL{Path: h.path}).EscapedPath()+"?_pragma=busy_timeout(0)&_txlock=immediate")
+	if err != nil {
+		h.T.Fatalf("open the write-lock probe: %v", err)
+	}
+	defer func() { _ = probe.Close() }()
+	tx, err := probe.Begin()
+	if err != nil {
+		if strings.Contains(err.Error(), "SQLITE_BUSY") || strings.Contains(err.Error(), "database is locked") {
+			return true
+		}
+		h.T.Fatalf("take the write lock: %v", err)
+	}
+	_ = tx.Rollback()
+	return false
 }
