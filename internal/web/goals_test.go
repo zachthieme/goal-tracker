@@ -1650,6 +1650,32 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	}
 }
 
+// On a coarse pointer the Goal page's group heads' small links — Manage,
+// Edit, + Add — are 44px tall, as DESIGN.md's accessibility rule asks; on a
+// fine pointer they keep their size (#404).
+func TestGoalPageGroupHeadLinksAre44pxOnCoarsePointer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	head := between(t, page, `<div class="gp-group-head">`, "</div>")
+	if link := between(t, head, "<a ", ">"); attr(link, "class") != "small" {
+		t.Fatalf("the group head's link isn't its small link: %s", head)
+	}
+	coarse := strings.Join(mediaBlocks(page, "@media (pointer:coarse)"), "}")
+	if rule, ok := ruleFor(coarse, ".gp-group-head>a"); !ok || !strings.Contains(rule, "min-height:44px") {
+		t.Errorf("on a coarse pointer the group head's link isn't 44px tall: %q", rule)
+	}
+	if rule, ok := ruleFor(between(t, page, ".gp-group-head{", "@media"), ".gp-group-head>a"); ok && strings.Contains(rule, "min-height") {
+		t.Errorf("on a fine pointer the group head's link is made taller: %q", rule)
+	}
+}
+
 // Tab follows the filter bar as it is drawn (WCAG 2.4.3): the markup runs
 // Scope, Health, Lifecycle, Incomplete, More filters' summary, Group by, Apply
 // and Clear, then the search at the row's right, then the open panel's

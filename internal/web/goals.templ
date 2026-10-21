@@ -1024,7 +1024,8 @@ templ goalProperties(v goalView) {
 // under the header strip; the header strip's breadcrumb and actions with the
 // More menu; the column's title, lead and sections, each a 13/600 heading
 // over hairline-ruled rows; the Metric rows with their sparklines; and the
-// rail's label and value rows.
+// rail's label and value rows. On a coarse pointer the More menu's items and a
+// group head's small link (Manage, Edit, + Add) are 44px tall.
 templ goalPageStyles() {
 	<style>
 		.page:has(>.gp-frame){max-width:none;padding:0;gap:0}
@@ -1128,7 +1129,7 @@ templ goalPageStyles() {
 		.gp-prop dd .badge{line-height:20px}
 		.gp-prop strong{font-weight:500}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-		@media (pointer:coarse){.gp-menu li>a{min-height:44px}}
+		@media (pointer:coarse){.gp-menu li>a{min-height:44px}.gp-group-head>a{display:inline-flex;align-items:center;min-height:44px}}
 		@media (max-width:900px){.gp-body{grid-template-columns:minmax(0,1fr)}.gp-doc{max-width:none;padding:20px 16px 32px;gap:32px}.gp-rail{padding:20px 16px 48px;border-left:0;border-top:1px solid var(--color-border)}.gp-banners .alert{padding:8px 16px}}
 		@media (max-width:600px){.gp-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gp-metric{grid-template-columns:minmax(0,1fr) auto}.gp-metric>.gp-metric-spark{grid-column:1/-1;grid-row:2}}
 	</style>
