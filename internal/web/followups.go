@@ -844,27 +844,40 @@ func (s *Server) followUpRows(ctx context.Context, v followUpsView) ([]followUpG
 	for _, hp := range v.HaltedParents {
 		add(hp.Child, followUpSignal{Kind: "halted-parents", Related: &hp.Parent})
 	}
-	for i := range rows {
-		latest, ok, err := s.svc.LatestCheckin(ctx, rows[i].Goal.ID)
-		if err != nil {
-			return nil, fmt.Errorf("load flagged goal's check-in: %w", err)
-		}
-		if ok {
-			rows[i].Health = latest.Health
-		}
-		_, red := rows[i].signal("red")
-		_, yellow := rows[i].signal("yellow")
+	ids := make([]int64, 0, len(rows))
+	var notGreen []domain.Goal
+	var notGreenIDs []int64
+	for _, row := range rows {
+		ids = append(ids, row.Goal.ID)
+		_, red := row.signal("red")
+		_, yellow := row.signal("yellow")
 		if red || yellow {
-			if rows[i].RunOffGreen, err = s.svc.RunOffGreen(ctx, rows[i].Goal.ID); err != nil {
-				return nil, fmt.Errorf("read not green goal's run off green: %w", err)
-			}
-			slips, err := s.svc.ListDateSlips(ctx, rows[i].Goal.ID)
-			if err != nil {
-				return nil, fmt.Errorf("load not green goal's date slips: %w", err)
-			}
-			rows[i].PathTargetDate = latest.PathTargetDate
-			rows[i].PathPriorDates = domain.BackToGreenPriorDates(slips, rows[i].RunOffGreen)
+			notGreen = append(notGreen, row.Goal)
+			notGreenIDs = append(notGreenIDs, row.Goal.ID)
 		}
+	}
+	latest, err := s.svc.LatestCheckinsByGoal(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("load flagged goals' check-ins: %w", err)
+	}
+	runs, err := s.svc.RunOffGreenByGoal(ctx, notGreen)
+	if err != nil {
+		return nil, fmt.Errorf("read not green goals' run off green: %w", err)
+	}
+	slips, err := s.svc.DateSlipsByGoal(ctx, notGreenIDs)
+	if err != nil {
+		return nil, fmt.Errorf("load not green goals' date slips: %w", err)
+	}
+	for i := range rows {
+		id := rows[i].Goal.ID
+		rows[i].Health = latest[id].Health
+		run, ok := runs[id]
+		if !ok {
+			continue
+		}
+		rows[i].RunOffGreen = run
+		rows[i].PathTargetDate = latest[id].PathTargetDate
+		rows[i].PathPriorDates = domain.BackToGreenPriorDates(slips[id], run)
 	}
 	sortFollowUpRows(rows)
 	return rows, nil

@@ -61,6 +61,25 @@ func (s *Service) RunOffGreen(ctx context.Context, goalID int64) (RunOffGreen, e
 	return s.runOffGreen(g, checkins), nil
 }
 
+// RunOffGreenByGoal reads the Run off Green of each of goals, as RunOffGreen
+// reads one Goal's, keyed by Goal ID. It runs one query however many Goals
+// there are, so a page listing Goals can afford it, and none for no Goals.
+func (s *Service) RunOffGreenByGoal(ctx context.Context, goals []Goal) (map[int64]RunOffGreen, error) {
+	ids := make([]int64, 0, len(goals))
+	for _, g := range goals {
+		ids = append(ids, g.ID)
+	}
+	checkins, err := s.checkinsByGoal(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]RunOffGreen, len(goals))
+	for _, g := range goals {
+		out[g.ID] = s.runOffGreen(g, checkins[g.ID])
+	}
+	return out, nil
+}
+
 // runOffGreen is g's Run off Green read from its Check-ins, newest first. There
 // is a run only while g is Active and its latest Check-in is Yellow or Red. It
 // began at the first Yellow or Red Check-in after the latest Green one, or
