@@ -1290,7 +1290,7 @@ func TestNewGoalFormListsWhereItFitsProblemsInPageOrder(t *testing.T) {
 // activate button.
 func readyCard(t *testing.T, page string) (card, activate string) {
 	t.Helper()
-	card = pageElement(t, page, "aside", "goal-form-ready")
+	card = pageElement(t, page, "section", "goal-form-ready")
 	return card, tagAround(t, card, `name="activate"`)
 }
 
@@ -2282,10 +2282,38 @@ func headingTexts(page, tag string) []string {
 	return out
 }
 
-// The New goal page has no outer card: its column holds the Title and Why it
-// matters, then Delivery, How you'll know and More detail, each a section headed
-// by an <h2> with no step number, and the Ready to activate aside follows.
-// The <h1> is a muted line above the Title, which reads as a heading itself.
+// assertFlatFormFrame fails unless page sits in the flat frame as a form
+// (DESIGN.md § Direction: Forms): its page header's <h1> reads title under
+// parent, when there is one, and no element on it carries the card class.
+func assertFlatFormFrame(t *testing.T, page, parent, title string) {
+	t.Helper()
+	strip := between(t, page, `<div class="page-header">`, `<main class="page">`)
+	if h1s := headingTexts(strip, "h1"); len(h1s) != 1 || h1s[0] != title {
+		t.Errorf("the page header's <h1>s read %q, want %s:\n%s", h1s, title, strip)
+	}
+	crumb := ""
+	if m := regexp.MustCompile(`<a class="ph-parent"[^>]*>([^<]*)</a>`).FindStringSubmatch(strip); m != nil {
+		crumb = html.UnescapeString(m[1])
+	}
+	if crumb != parent {
+		t.Errorf("the page header's breadcrumb reads %q, want %q:\n%s", crumb, parent, strip)
+	}
+	if h1s := headingTexts(between(t, page, `<main class="page">`, "</main>"), "h1"); len(h1s) != 0 {
+		t.Errorf("the page repeats its title in its content: %q", h1s)
+	}
+	for _, m := range regexp.MustCompile(`class="([^"]*)"`).FindAllStringSubmatch(page, -1) {
+		if slices.Contains(strings.Fields(m[1]), "card") {
+			t.Errorf("an element on the page is a card: %s", m[0])
+		}
+	}
+}
+
+// The New goal page is a form in the flat frame: "New goal" heads it in the
+// page header, and it has no card. Its single column holds the Title and Why
+// it matters, then Delivery, How you'll know, More detail and Ready to
+// activate, each a plain section headed by an <h2> with no step number. A
+// muted line above the Title, which reads as a heading itself, says the Goal
+// is Proposed until it's activated.
 func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	t.Parallel()
 
@@ -2295,11 +2323,8 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals/new")
+	assertFlatFormFrame(t, page, "", "New goal")
 	form := pageElement(t, page, "form", "goal-form")
-	column := tagAround(t, form, "gf-main")
-	if slices.Contains(strings.Fields(attr(column, "class")), "card") {
-		t.Errorf("the form's column is a card: %s", column)
-	}
 	var order []int
 	for _, id := range []string{"goal-form-what", "goal-form-delivery", "goal-form-know", "goal-form-more", "goal-form-ready"} {
 		at := strings.Index(form, `data-testid="`+id+`"`)
@@ -2307,17 +2332,12 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 			t.Fatalf("the form has no %s:\n%s", id, form)
 		}
 		order = append(order, at)
-	}
-	if !slices.IsSorted(order) {
-		t.Errorf("the sections aren't What, Delivery, How you'll know, More detail, then Ready (at %v)", order)
-	}
-	for _, id := range []string{"goal-form-what", "goal-form-delivery", "goal-form-know", "goal-form-more"} {
 		if tag := tagAround(t, form, `data-testid="`+id+`"`); !strings.HasPrefix(tag, "<section") {
 			t.Errorf("%s isn't a <section>: %s", id, tag)
 		}
 	}
-	if tag := tagAround(t, form, `data-testid="goal-form-ready"`); !strings.HasPrefix(tag, "<aside") {
-		t.Errorf("Ready to activate isn't an <aside>: %s", tag)
+	if !slices.IsSorted(order) {
+		t.Errorf("the sections aren't What, Delivery, How you'll know, More detail, then Ready (at %v)", order)
 	}
 
 	h2s := headingTexts(form, "h2")
@@ -2334,11 +2354,8 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	}
 
 	what := pageElement(t, form, "section", "goal-form-what")
-	if h1s := headingTexts(what, "h1"); len(h1s) != 1 || h1s[0] != "New goal" {
-		t.Errorf("the <h1>s in the Title's section read %q, want New goal", h1s)
-	}
-	if line := between(t, what, "<h1", `name="title"`); !strings.Contains(html.UnescapeString(line), "· Proposed until it's activated") {
-		t.Errorf("the <h1> isn't followed by · Proposed until it's activated:\n%s", line)
+	if line := between(t, what, "<section", `name="title"`); !strings.Contains(html.UnescapeString(line), "Proposed until it's activated") {
+		t.Errorf("no line above the Title says it's Proposed until it's activated:\n%s", line)
 	}
 	title := tagAround(t, what, `name="title"`)
 	if attr(title, "placeholder") != "Name the outcome" {
@@ -2352,8 +2369,9 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	}
 }
 
-// Finish defining is the same page: its <h1> reads Finish defining, and its
-// Title stays the Goal's, read-only.
+// Finish defining is the same page: its page header reads Finish defining
+// under the Goal's title, linking back to it, with no card, and its Title
+// stays the Goal's, read-only.
 func TestDefineGoalPageIsHeadedFinishDefining(t *testing.T) {
 	t.Parallel()
 
@@ -2363,11 +2381,13 @@ func TestDefineGoalPageIsHeadedFinishDefining(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	form := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "form", "goal-form")
-	what := pageElement(t, form, "section", "goal-form-what")
-	if h1s := headingTexts(what, "h1"); len(h1s) != 1 || h1s[0] != "Finish defining" {
-		t.Errorf("the <h1>s read %q, want Finish defining", h1s)
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	assertFlatFormFrame(t, page, g.Title, "Finish defining")
+	if crumb := tagAround(t, page, `class="ph-parent"`); attr(crumb, "href") != fmt.Sprintf("/goals/%d", g.ID) {
+		t.Errorf("the breadcrumb doesn't link to the Goal: %s", crumb)
 	}
+	form := pageElement(t, page, "form", "goal-form")
+	what := pageElement(t, form, "section", "goal-form-what")
 	if title := tagAround(t, what, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
 		t.Errorf("Title isn't the Goal's, read-only: %s", title)
 	}
@@ -2419,11 +2439,13 @@ func TestNewGoalPageDatedTileHoldsTheDeliveryDate(t *testing.T) {
 	}
 }
 
-// The Check-in cadence is one segmented control: a 1px control edge around
-// the whole, segments divided by the border colour, and the chosen one filled
-// with ink. The native radio hides, and the focus ring shows on the focused
-// segment, only with :has. At phone widths the Kind tiles stack and the
-// control becomes a 2×2 grid the width of the form.
+// The Check-in cadence is one segmented control in § Direction's look: a
+// --color-chip-bg track holding the segments, the chosen one on the canvas
+// with a control edge and in bold, so the choice reads by more than a fill.
+// The native radio hides, and the focus ring shows on the focused segment,
+// only with :has. At phone widths
+// the Kind tiles stack and the control becomes a 2×2 grid the width of the
+// form.
 func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
 	t.Parallel()
 
@@ -2434,8 +2456,8 @@ func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
 
 	style := between(t, getBody(t, client, ts.URL+"/goals/new"), ".gf-form{", "</style>")
 	for sel, want := range map[string][]string{
-		".gf-segctl":      {"border:1px solid var(--color-border-strong)", "border-radius:var(--radius-md)"},
-		".gf-seg+.gf-seg": {"border-left:1px solid var(--color-border)"},
+		".gf-segctl": {"background:var(--color-chip-bg)", "border-radius:var(--radius-md)"},
+		".gf-seg":    {"border:1px solid transparent"},
 	} {
 		rule, ok := ruleFor(style, sel)
 		if !ok {
@@ -2455,7 +2477,7 @@ func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
 	block := mediaBlock(t, style, supports)
 	for sel, want := range map[string][]string{
 		".gf-seg input":                    {"position:absolute", "opacity:0"},
-		".gf-seg:has(input:checked)":       {"background:var(--color-ink)", "color:var(--color-ink-inverse)", "font-weight:600"},
+		".gf-seg:has(input:checked)":       {"background:var(--color-canvas)", "border-color:var(--color-border-strong)", "color:var(--color-ink)", "font-weight:600"},
 		".gf-seg:has(input:focus-visible)": {"outline:2px solid var(--color-focus)"},
 	} {
 		rule, ok := ruleFor(block, sel)
