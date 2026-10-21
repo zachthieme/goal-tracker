@@ -759,6 +759,20 @@ func TestWithoutChromePDFDownloadsFallBackToThePrintPage(t *testing.T) {
 	}
 }
 
+// With no Chromium, a TMPDIR too long for one doesn't stop startup: only
+// Chromium needs it short.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestWithoutChromeALongTMPDIRDoesNotStopStartup(t *testing.T) {
+	devEnv(t)
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("TMPDIR", "/"+strings.Repeat("t", 62))
+
+	if _, err := loadConfig(); err != nil {
+		t.Errorf("without a Chromium, loadConfig under a TMPDIR too long for one: %v", err)
+	}
+}
+
 // startupEnv is devEnv with a Chromium named, a database, and a listen
 // address that can't be listened on, so run returns as it would start
 // serving.
@@ -776,17 +790,32 @@ func startupEnv(t *testing.T) {
 }
 
 // With a Chromium, a TMPDIR too long for Chromium's socket, under which every
-// render would abort, stops startup with an error naming it.
+// render would abort, stops startup with an error naming it, before the
+// database is made or the directory synced, as a missing Chromium does.
 //
 //nolint:paralleltest // sets the process environment, through devEnv
 func TestATMPDIRTooLongForChromiumStopsStartup(t *testing.T) {
 	startupEnv(t)
+	people := filepath.Join(t.TempDir(), "people.csv")
+	if err := os.WriteFile(people, []byte("email,name,manager_email\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(directoryFileVar, people)
 	tmp := "/" + strings.Repeat("t", 62)
 	t.Setenv("TMPDIR", tmp)
 
-	err := run(t.Context(), discardLogger(), nil, io.Discard)
+	var log bytes.Buffer
+	err := run(t.Context(), slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "TMPDIR "+tmp) {
 		t.Errorf("goal-tracker under the %d-byte TMPDIR: %v; want startup stopped, naming the TMPDIR", len(tmp), err)
+	}
+	if _, err := os.Stat(os.Getenv("GOAL_TRACKER_DB")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("startup stopped for the TMPDIR made the database: %v", err)
+	}
+	for line := range strings.Lines(log.String()) {
+		if strings.Contains(line, "sync") {
+			t.Errorf("startup stopped for the TMPDIR synced the directory: %s", line)
+		}
 	}
 }
 

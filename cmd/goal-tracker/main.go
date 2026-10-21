@@ -372,6 +372,14 @@ func loadConfig() (config, error) {
 	if err != nil {
 		return config{}, fmt.Errorf("GOAL_TRACKER_CHROME: %w", err)
 	}
+	// A TMPDIR too long for the Chromium stops startup here, before the
+	// database opens or the directory syncs, as a missing Chromium does;
+	// pdfDownloads logs a warning.
+	if cfg.chrome != "" {
+		if _, err := pdf.CheckTMPDIR(); err != nil {
+			return config{}, fmt.Errorf("rendering PDF downloads with %s: %w", cfg.chrome, err)
+		}
+	}
 
 	cfg.trustedProxies, err = parseTrustedProxies(os.Getenv("GOAL_TRACKER_TRUSTED_PROXIES"))
 	if err != nil {
