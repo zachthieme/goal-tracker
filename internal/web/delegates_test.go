@@ -124,10 +124,11 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 	}
 }
 
-// The Delegate's page shows each delegated Goal as a card with its Health, its
+// The Delegate's page shows each delegated Goal as a row with its Health, its
 // Owner, when it was last checked in on, and a Check in link to the Check-in
-// page, rather than embedding the whole form.
-func TestDelegatePageShowsGoalCards(t *testing.T) {
+// page, rather than embedding the whole form. It sits in the flat frame: its
+// name in the header strip, and the Goals hairline rows, none a card.
+func TestDelegatePageShowsGoalRows(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -146,10 +147,8 @@ func TestDelegatePageShowsGoalCards(t *testing.T) {
 	if strings.Contains(page, `data-testid="checkin-form"`) {
 		t.Errorf("the Delegate page still embeds the Check-in form")
 	}
-	card := delegatedCard(t, page, checked)
-	if !strings.Contains(openTag(card), "card") {
-		t.Errorf("a delegated Goal is not a card: %s", openTag(card))
-	}
+	assertInFlatFrame(t, page, "Delegated to me")
+	row := delegatedRow(t, page, checked)
 	for _, want := range []string{
 		"Reduce outages",
 		`class="badge y"`,
@@ -158,23 +157,23 @@ func TestDelegatePageShowsGoalCards(t *testing.T) {
 		"3 days ago",
 		fmt.Sprintf(`href="/goals/%d/checkin"`, checked.ID),
 	} {
-		if !strings.Contains(card, want) {
-			t.Errorf("card lacks %s:\n%s", want, card)
+		if !strings.Contains(row, want) {
+			t.Errorf("row lacks %s:\n%s", want, row)
 		}
 	}
 
-	rest := delegatedCard(t, page, proposed)
+	rest := delegatedRow(t, page, proposed)
 	if strings.Contains(rest, fmt.Sprintf(`href="/goals/%d/checkin"`, proposed.ID)) {
 		t.Errorf("a Proposed Goal offers Check in: %s", rest)
 	}
 	if !strings.Contains(rest, `data-testid="delegated-goal-no-health"`) || !strings.Contains(rest, `data-testid="delegated-goal-not-active"`) {
-		t.Errorf("a Proposed Goal's card doesn't say it has no Check-ins and can't be checked in on: %s", rest)
+		t.Errorf("a Proposed Goal's row doesn't say it has no Check-ins and can't be checked in on: %s", rest)
 	}
 }
 
-// delegatedCard returns the Delegate page's card for g, from its opening <li>
+// delegatedRow returns the Delegate page's row for g, from its opening <li>
 // to its close.
-func delegatedCard(t *testing.T, page string, g domain.Goal) string {
+func delegatedRow(t *testing.T, page string, g domain.Goal) string {
 	t.Helper()
 	at := strings.Index(page, navTo(g.ID))
 	if at < 0 {
@@ -182,7 +181,7 @@ func delegatedCard(t *testing.T, page string, g domain.Goal) string {
 	}
 	start := strings.LastIndex(page[:at], `<li data-testid="delegated-goal"`)
 	if start < 0 {
-		t.Fatalf("%s isn't in a delegated-goal card", g.Title)
+		t.Fatalf("%s isn't in a delegated-goal row", g.Title)
 	}
 	return between(t, page[start:], "", "</li>")
 }

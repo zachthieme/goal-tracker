@@ -17,7 +17,9 @@ import (
 // suggestParentPage is the form by which someone other than a Goal's Owner
 // suggests a parent for it, with an optional note: the Owner decides it
 // (CONTEXT.md: Parent suggestion). A refused submit comes back with the
-// reason above the form and the form as it was sent.
+// reason above the form and the form as it was sent. It sits in the flat
+// frame: its title in the page header, and the form a plain section
+// (DESIGN.md § Shared components: Sections).
 func suggestParentPage(current *domain.Account, v suggestParentView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -55,14 +57,14 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Suggest a parent</h1><p class=\"muted\">For <a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <section class=\"sg-section\"><div><h2>Parent suggestion</h2><p class=\"muted\">For <a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 templ.SafeURL
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(goalPath(v.Goal.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 20, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 22, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -75,7 +77,7 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(v.Goal.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 20, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 22, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -88,7 +90,7 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(", owned by ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 20, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 22, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -101,13 +103,13 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(", who decides whether to link it.")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 22, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 24, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p></div></header><section class=\"card sg-card\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -221,7 +223,7 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Suggest a parent", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Suggest a parent", current, pageHeader(pageHead{Title: "Suggest a parent"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -251,7 +253,7 @@ func suggestionStyles() templ.Component {
 			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.sg-card{display:flex;flex-direction:column;gap:12px;max-width:560px}\n\t\t.sg-form{display:flex;flex-direction:column;gap:12px}\n\t\t.sg-actions{display:flex;gap:8px;align-items:center}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.sg-section{display:flex;flex-direction:column;gap:12px;max-width:560px}\n\t\t.sg-form{display:flex;flex-direction:column;gap:12px}\n\t\t.sg-actions{display:flex;gap:8px;align-items:center}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

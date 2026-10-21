@@ -15,9 +15,11 @@ import (
 )
 
 // pendingLinksPage lists the link requests awaiting the current Account's
-// decision as the Owner of each request's parent Goal, a card each with accept
+// decision as the Owner of each request's parent Goal, a row each with accept
 // and reject actions. toast, when set, offers Undo for the request just
-// rejected.
+// rejected. It sits in the flat frame: its title in the page header, and the
+// requests a plain section of hairline rows (DESIGN.md § Shared components:
+// Sections).
 func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -55,25 +57,25 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><div><h1>Pending link requests</h1><p class=\"muted\">Goals asking to contribute to yours. Accept one to link it into the graph.</p></div></header><ul data-testid=\"pending-links\" class=\"pd-list\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <section class=\"pd-section\"><div><h2>Link requests</h2><p class=\"muted\">Goals asking to contribute to yours. Accept one to link it into the graph.</p></div><ul data-testid=\"pending-links\" class=\"pd-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(pending) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<li data-testid=\"no-pending-links\" class=\"card pd-row muted\">No pending requests.</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<li data-testid=\"no-pending-links\" class=\"pd-row muted\">No pending requests.</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, l := range pending {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<li data-testid=\"pending-link\" class=\"card pd-row\"><div class=\"pd-what\"><p><a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<li data-testid=\"pending-link\" class=\"pd-row\"><div class=\"pd-what\"><p><a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 30, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 31, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -86,7 +88,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(l.Child.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 30, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 31, Col: 87}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -99,7 +101,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs("(Owner ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 32, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 33, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -112,7 +114,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(") wants to contribute to")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 34, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 35, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -125,7 +127,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 				var templ_7745c5c3_Var7 templ.SafeURL
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 36, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 37, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -138,7 +140,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(l.Parent.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 36, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 37, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -156,7 +158,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(l.Note)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 39, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 40, Col: 76}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -180,7 +182,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</ul>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</ul></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -190,7 +192,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toa
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Pending links", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Pending links", current, pageHeader(pageHead{Title: "Pending links"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -240,7 +242,7 @@ func linkRefusedPage(current *domain.Account, reason, back string) templ.Compone
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(reason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 58, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 60, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -253,7 +255,7 @@ func linkRefusedPage(current *domain.Account, reason, back string) templ.Compone
 			var templ_7745c5c3_Var13 templ.SafeURL
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(back))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 59, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 61, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -274,7 +276,8 @@ func linkRefusedPage(current *domain.Account, reason, back string) templ.Compone
 }
 
 // pendingStyles are the rules the Pending links and Pending handoffs pages share
-// on top of app.css: a list of card rows, the decision buttons at the right.
+// on top of app.css: a section of hairline rows, the decision buttons at the
+// right.
 func pendingStyles() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -296,7 +299,7 @@ func pendingStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.pd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}\n\t\t.pd-row{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}\n\t\t.pd-note{margin:0;padding-left:12px;border-left:1px solid var(--color-border);color:var(--color-ink-muted)}\n\t\t.pd-actions{display:flex;gap:8px;flex:none}\n\t\t.pd-actions form{margin:0}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.pd-section{display:flex;flex-direction:column;gap:12px}\n\t\t.pd-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}\n\t\t.pd-row{min-height:44px;padding:12px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}\n\t\t.pd-note{margin:0;padding-left:12px;border-left:1px solid var(--color-border);color:var(--color-ink-muted)}\n\t\t.pd-actions{display:flex;gap:8px;flex:none}\n\t\t.pd-actions form{margin:0}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
