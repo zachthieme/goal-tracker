@@ -211,7 +211,54 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				@draftPreview(r, asOf, d, false)
 			</div>
 		</div>
+		if m.Manage {
+			@narrativeSaveScript()
+		}
 	}
+}
+
+// narrativeSaveScript keeps the compose form's unsaved changes in sight. A
+// change to the form marks the save status Unsaved changes at once, before
+// its preview answers saying whether the form still differs from what is
+// saved. While the status is marked (data-unsaved), Publish… says to save the
+// narrative first, its Publish button disabled, and leaving or reloading the
+// page asks the browser's "Leave site?". Without script none of it runs, and
+// Publish works as ever.
+templ narrativeSaveScript() {
+	<script>
+		(function () {
+			document.addEventListener("input", changed);
+			document.addEventListener("change", changed);
+			// toggle doesn't bubble, so Publish… opening is caught on its way down.
+			document.addEventListener("toggle", heed, true);
+			document.addEventListener("htmx:afterSettle", heed);
+			window.addEventListener("beforeunload", function (e) {
+				if (!unsaved()) return;
+				e.preventDefault();
+				e.returnValue = "";
+			});
+			heed();
+
+			function unsaved() {
+				var status = document.getElementById("save-status");
+				return !!status && status.hasAttribute("data-unsaved");
+			}
+			function changed(e) {
+				var status = document.getElementById("save-status");
+				if (!status || !(e.target instanceof Element) || !e.target.closest("#narrative-curation")) return;
+				status.setAttribute("data-unsaved", "");
+				document.getElementById("save-result").textContent = "Unsaved changes";
+				heed();
+			}
+			function heed() {
+				var publish = document.querySelector('[data-testid="publish-confirm"]');
+				if (!publish) return;
+				var refused = unsaved();
+				publish.querySelector('[data-testid="publish-unsaved"]').hidden = !refused;
+				publish.querySelector('[data-testid="report-publish"] button').disabled = refused;
+			}
+		})();
+	</script>
 }
 
 // reportDraftHeader is the draft's header strip: Reports › its name, marked a
@@ -446,7 +493,9 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 
 // reportPublish is the draft header's Publish…: a disclosure confirming what
 // the publication will freeze, with Cancel, which reloads the draft as it
-// stands and so closes it, and the publish form. A date the reader picked is
+// stands and so closes it, and the publish form. While the compose form has
+// unsaved changes, script shows "Save the narrative first." and disables
+// Publish (narrativeSaveScript). A date the reader picked is
 // carried on the action; otherwise publishing reads against the previous
 // publication, as the draft does.
 templ reportPublish(r domain.Report, chip baselineChip) {
@@ -456,6 +505,7 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 			<div>
 				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
 				@publishSummaryText(r, chip, false)
+				<p data-testid="publish-unsaved" role="alert" hidden><strong>Save the narrative first.</strong></p>
 			</div>
 			<div class="rp-actions">
 				<a data-testid="publish-cancel" class="btn quiet" href={ templ.SafeURL(chip.Draft + chip.Query) }>Cancel</a>

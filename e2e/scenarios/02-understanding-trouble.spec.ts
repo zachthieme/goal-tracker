@@ -272,10 +272,32 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     }
     await curation.getByTestId("section-text-Insight").getByTestId("section-text-summary").click();
     await curation.getByLabel("Insights, note 1").fill(note);
-    // It autosaves once she pauses, and the preview follows.
+    // The preview follows once she pauses, but nothing is saved until she
+    // says so.
     await expect(preview(elena).getByTestId("narrative-text")).toHaveText([note]);
-    await expect(elena.getByTestId("save-result")).toHaveText("Saved");
+    await expect(elena.getByTestId("save-result")).toHaveText("Unsaved changes");
     await expect(elena.getByTestId("curation-count")).toHaveText(`${highlights.length} of ${highlights.length} in`);
+    expect(await leavingWarns(elena), "leaving with unsaved changes warns").toBe(true);
+
+    // Publish… won't publish what she hasn't saved.
+    const confirm = elena.getByTestId("publish-confirm");
+    await confirm.getByText("Publish…").click();
+    await expect(confirm.getByTestId("publish-unsaved")).toHaveText("Save the narrative first.");
+    await expect(confirm.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+    await confirm.getByText("Publish…").click();
+
+    // Saving writes one entry in the Report log, which the page shows.
+    const log = elena.getByTestId("report-log-entry");
+    const logged = await log.count();
+    await curation.getByRole("button", { name: "Save narrative" }).click();
+    await expect(elena.getByTestId("save-result")).toHaveText("Saved");
+    await expect(log).toHaveCount(logged + 1);
+    await expect(log.first()).toContainText("Narrative: picked");
+    expect(await leavingWarns(elena), "leaving once saved doesn't warn").toBe(false);
+    await confirm.getByText("Publish…").click();
+    await expect(confirm.getByTestId("publish-unsaved")).toBeHidden();
+    await expect(confirm.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+    await confirm.getByText("Publish…").click();
 
     await elena.reload();
     for (const h of highlights) {
@@ -700,6 +722,16 @@ function goalOfBlock(seedLookup: SeedLookup, anchor: string | null): GoalDetail 
 }
 
 type SeedLookup = <T = Record<string, unknown>>(sql: string, ...params: (string | number)[]) => T[];
+
+// leavingWarns reports whether leaving the page now would ask the browser's
+// "Leave site?" question: whether its beforeunload is cancelled.
+async function leavingWarns(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    return leaving.defaultPrevented;
+  });
+}
 
 // publish presses Publish… on the draft page, checks the confirmation names
 // the Report, and confirms, landing on the publication.
