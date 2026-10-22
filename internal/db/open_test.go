@@ -263,3 +263,58 @@ func TestOpenLetsAReadRunWhileAWriteIsHeld(t *testing.T) {
 		t.Errorf("read %d rows, want the 1 committed before the write", count)
 	}
 }
+
+// DSN is the connection string Open opens with, so a caller that opens the
+// database itself, as the test harness does, gets the same pragmas on the same
+// file. The path holds a '#', which would end an unescaped URI's path.
+func TestDSNOpensWhatOpenOpens(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		opts []db.OpenOption
+	}{
+		{"default", nil},
+		{"ForBulkLoad", []db.OpenOption{db.ForBulkLoad()}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), "#app.db")
+			viaOpen, err := db.Open(path, tc.opts...)
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			t.Cleanup(func() { _ = viaOpen.Close() })
+			viaDSN, err := sql.Open("sqlite", db.DSN(path, tc.opts...))
+			if err != nil {
+				t.Fatalf("open DSN: %v", err)
+			}
+			t.Cleanup(func() { _ = viaDSN.Close() })
+
+			if _, err := viaDSN.Exec(`CREATE TABLE tally (n INTEGER NOT NULL)`); err != nil {
+				t.Fatalf("create table through DSN: %v", err)
+			}
+			var tables int
+			if err := viaOpen.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'tally'`).Scan(&tables); err != nil {
+				t.Fatalf("read schema through Open: %v", err)
+			}
+			if tables != 1 {
+				t.Errorf("Open sees %d tally tables, want the 1 made through DSN: they opened different files", tables)
+			}
+
+			for _, pragma := range []string{"busy_timeout", "foreign_keys", "journal_mode", "synchronous"} {
+				var fromOpen, fromDSN string
+				if err := viaOpen.QueryRow(`PRAGMA ` + pragma).Scan(&fromOpen); err != nil {
+					t.Fatalf("read %s through Open: %v", pragma, err)
+				}
+				if err := viaDSN.QueryRow(`PRAGMA ` + pragma).Scan(&fromDSN); err != nil {
+					t.Fatalf("read %s through DSN: %v", pragma, err)
+				}
+				if fromDSN != fromOpen {
+					t.Errorf("%s = %q through DSN, want %q as through Open", pragma, fromDSN, fromOpen)
+				}
+			}
+		})
+	}
+}

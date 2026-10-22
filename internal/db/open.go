@@ -29,16 +29,26 @@ import (
 //
 // Options adjust that for a caller other than the app, such as ForBulkLoad.
 func Open(path string, opts ...OpenOption) (*sql.DB, error) {
-	cfg := openConfig{synchronous: "NORMAL"}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-	sqlDB, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous("+cfg.synchronous+")&_txlock=immediate")
+	sqlDB, err := sql.Open("sqlite", DSN(path, opts...))
 	if err != nil {
 		return nil, err
 	}
 	sqlDB.SetMaxOpenConns(8)
 	return sqlDB, nil
+}
+
+// DSN is the connection string Open opens the database at path with, every
+// pragma above set on each connection. It is for a caller that opens the
+// database itself, such as the test harness, so its pragmas can't drift from
+// the app's (ADR 0009); the pool cap is Open's alone. The path is escaped
+// because it's a URI: a '#' in it would otherwise end the path and open a
+// different file.
+func DSN(path string, opts ...OpenOption) string {
+	cfg := openConfig{synchronous: "NORMAL"}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(" + cfg.synchronous + ")&_txlock=immediate"
 }
 
 // An OpenOption adjusts how Open sets up the database's connections.

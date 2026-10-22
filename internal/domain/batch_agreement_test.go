@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -16,7 +17,10 @@ import (
 // Milestone; Yellow whose back-to-Green date slipped and is now overdue; Red
 // with its delivery date and a Milestone's date slipped; Check-in overdue on a
 // daily cadence; Active carrying the required Team; On Hold; and Done. Team is
-// required, so the Active Goals without it are Incomplete.
+// required, so the Active Goals without it are Incomplete. The Goal carrying
+// Team also carries an Area, two Metrics with readings and a second Milestone,
+// each listed out of the order it was added, and contributes to two parents;
+// the daily Goal has a Metric, a Retired Team value and a Pending parent.
 func seedBatchAgreementGoals(t *testing.T, h *testsupport.Harness) []domain.Goal {
 	t.Helper()
 	ctx := context.Background()
@@ -26,11 +30,12 @@ func seedBatchAgreementGoals(t *testing.T, h *testsupport.Harness) []domain.Goal
 	h.SetTimezone(priya, "America/New_York")
 	h.SetTimezone(sam, "Asia/Tokyo")
 	team := h.CreateDimension(admin, "Team", "Platform", "Growth")
+	area := h.CreateDimension(admin, "Area", "Search", "Billing")
 
 	// It moves the clock to just before its Milestone, so it goes first.
 	h.GreenGoalWithOverdueMilestone(priya, "Green with an overdue Milestone")
 	h.CreateGoal(sam, "Proposed", "It matters.")
-	h.ActiveGoal(priya, "Active with no Check-in", "It matters.")
+	unchecked := h.ActiveGoal(priya, "Active with no Check-in", "It matters.")
 
 	slippedPath := h.ActiveGoal(sam, "Back-to-Green date slipped", "It matters.")
 	h.Checkin(sam, slippedPath.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 2))
@@ -65,15 +70,47 @@ func seedBatchAgreementGoals(t *testing.T, h *testsupport.Harness) []domain.Goal
 	if _, err := h.Service.SetCadence(ctx, sam.ID, daily.ID, 1); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
+	batchAgreementMetric(t, h, sam, daily, "Deploys", h.Clock.Now().AddDate(0, 1, 0))
+	// Daily carries Growth, which is then Retired: it stays readable.
+	h.AssignGoalValue(daily, team.Values[1])
+	if err := h.Service.RetireDimensionValue(ctx, admin.ID, team.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue Growth: %v", err)
+	}
 	h.Checkin(sam, daily.ID, domain.HealthGreen, "Daily so far.", "", time.Time{})
 
 	carried := h.ActiveGoal(priya, "Carries Team", "It matters.")
 	h.AssignGoalValue(carried, team.Values[0])
-	h.Checkin(priya, carried.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.AssignGoalValue(carried, area.Values[0])
+	// Alpha, added after Beta, is due before it, and the Metrics are added
+	// latest due first: each lists in date order, not the order it was added.
+	if _, err := h.Service.AddMilestone(ctx, priya.ID, domain.AddMilestoneInput{
+		GoalID:     carried.ID,
+		Name:       "Alpha",
+		TargetDate: h.Clock.Now().AddDate(0, 1, 0),
+	}); err != nil {
+		t.Fatalf("AddMilestone Alpha: %v", err)
+	}
+	latency := batchAgreementMetric(t, h, priya, carried, "Latency", h.Clock.Now().AddDate(0, 2, 0))
+	uptime := batchAgreementMetric(t, h, priya, carried, "Uptime", h.Clock.Now().AddDate(0, 1, 0))
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:   carried.ID,
+		AuthorID: priya.ID,
+		Health:   domain.HealthGreen,
+		Status:   "On track.",
+		Readings: []domain.MetricReadingInput{{MetricID: latency.ID, Value: 120}, {MetricID: uptime.ID, Value: 99.5}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin with Metric readings: %v", err)
+	}
 
 	h.OnHoldGoal(sam, "On Hold", "It matters.", "Waiting on budget.")
 	done := h.ActiveGoal(priya, "Done", "It matters.")
 	h.EndGoalInCheckin(priya, done.ID, domain.LifecycleDone)
+
+	// Carries Team contributes to two Goals, its Owner's own, so each link
+	// is accepted at once; Daily has only asked to contribute to one.
+	h.RequestLink(priya, carried, unchecked, "")
+	h.RequestLink(priya, carried, slipped, "")
+	h.RequestLink(sam, daily, unchecked, "")
 
 	h.SetDimensionRequired(admin, team, true)
 	// Days on, the daily Goal is Check-in overdue and the slipped back-to-Green
@@ -85,6 +122,25 @@ func seedBatchAgreementGoals(t *testing.T, h *testsupport.Harness) []domain.Goal
 		t.Fatalf("ListGoals: %v", err)
 	}
 	return goals
+}
+
+// batchAgreementMetric adds a Metric named name, due on targetDate, to goal
+// as its Owner, failing the test on error.
+func batchAgreementMetric(t *testing.T, h *testsupport.Harness, owner domain.Account, goal domain.Goal, name string, targetDate time.Time) domain.Metric {
+	t.Helper()
+	m, err := h.Service.AddMetric(context.Background(), owner.ID, domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       name,
+		Unit:       "count",
+		Direction:  domain.MetricUp,
+		Baseline:   0,
+		Target:     100,
+		TargetDate: targetDate,
+	})
+	if err != nil {
+		t.Fatalf("AddMetric %q: %v", name, err)
+	}
+	return m
 }
 
 // batchAgreementIDs is the IDs of goals, in order.
@@ -175,10 +231,124 @@ func TestBatchReadsAgreeWithTheirSingleGoalReads(t *testing.T) {
 	}
 }
 
+// batchAgreementOutOfIDOrder reports whether the n rows idAt reads are out of
+// the order of their IDs, so a read that listed them by ID instead would show.
+func batchAgreementOutOfIDOrder(n int, idAt func(i int) int64) bool {
+	for i := 1; i < n; i++ {
+		if idAt(i) < idAt(i-1) {
+			return true
+		}
+	}
+	return false
+}
+
 // batchAgreementCount is 1 for true and 0 for false.
 func batchAgreementCount(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
+}
+
+// The batch reads the Goal list and the CSV download read with return, for
+// every Goal, what its single-Goal read returns for that Goal alone:
+// RunOffGreenByGoal as RunOffGreen (#449) and MetricsByGoal as ListMetrics,
+// MilestonesByGoal as ListMilestones, ParentsByGoal as ParentsOf and
+// GoalValuesByGoal as GoalValues (#450).
+func TestListingBatchReadsAgreeWithTheirSingleGoalReads(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	goals := seedBatchAgreementGoals(t, h)
+	ids := batchAgreementIDs(goals)
+
+	runs, err := h.Service.RunOffGreenByGoal(ctx, goals)
+	if err != nil {
+		t.Fatalf("RunOffGreenByGoal: %v", err)
+	}
+	metrics, err := h.Service.MetricsByGoal(ctx, ids)
+	if err != nil {
+		t.Fatalf("MetricsByGoal: %v", err)
+	}
+	milestones, err := h.Service.MilestonesByGoal(ctx, ids)
+	if err != nil {
+		t.Fatalf("MilestonesByGoal: %v", err)
+	}
+	parents, err := h.Service.ParentsByGoal(ctx, ids)
+	if err != nil {
+		t.Fatalf("ParentsByGoal: %v", err)
+	}
+	values, err := h.Service.GoalValuesByGoal(ctx)
+	if err != nil {
+		t.Fatalf("GoalValuesByGoal: %v", err)
+	}
+
+	var offGreen, withMetrics, metricsOutOfIDOrder, withMilestones, milestonesOutOfIDOrder, withParents, withSeveralParents int
+	var withValues, valuesOutOfIDOrder, withRetiredValue int
+	for _, g := range goals {
+		r, err := h.Service.RunOffGreen(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("RunOffGreen(%q): %v", g.Title, err)
+		}
+		if batch, ok := runs[g.ID]; !ok || !reflect.DeepEqual(batch, r) {
+			t.Errorf("RunOffGreenByGoal[%q] = %+v, %t; RunOffGreen = %+v", g.Title, batch, ok, r)
+		}
+		m, err := h.Service.ListMetrics(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ListMetrics(%q): %v", g.Title, err)
+		}
+		// A Goal with none has no entry in the batch, and an empty list alone.
+		if batch := metrics[g.ID]; len(batch) != len(m) || len(m) > 0 && !reflect.DeepEqual(batch, m) {
+			t.Errorf("MetricsByGoal[%q] = %+v; ListMetrics = %+v", g.Title, batch, m)
+		}
+		ms, err := h.Service.ListMilestones(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ListMilestones(%q): %v", g.Title, err)
+		}
+		if batch := milestones[g.ID]; len(batch) != len(ms) || len(ms) > 0 && !reflect.DeepEqual(batch, ms) {
+			t.Errorf("MilestonesByGoal[%q] = %+v; ListMilestones = %+v", g.Title, batch, ms)
+		}
+		p, err := h.Service.ParentsOf(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ParentsOf(%q): %v", g.Title, err)
+		}
+		if batch := parents[g.ID]; len(batch) != len(p) || len(p) > 0 && !reflect.DeepEqual(batch, p) {
+			t.Errorf("ParentsByGoal[%q] = %+v; ParentsOf = %+v", g.Title, batch, p)
+		}
+		v, err := h.Service.GoalValues(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("GoalValues(%q): %v", g.Title, err)
+		}
+		if batch := values[g.ID]; len(batch) != len(v) || len(v) > 0 && !reflect.DeepEqual(batch, v) {
+			t.Errorf("GoalValuesByGoal[%q] = %+v; GoalValues = %+v", g.Title, batch, v)
+		}
+
+		offGreen += batchAgreementCount(r.Running())
+		withMetrics += batchAgreementCount(len(m) > 0)
+		metricsOutOfIDOrder += batchAgreementCount(batchAgreementOutOfIDOrder(len(m), func(i int) int64 { return m[i].ID }))
+		withMilestones += batchAgreementCount(len(ms) > 0)
+		milestonesOutOfIDOrder += batchAgreementCount(batchAgreementOutOfIDOrder(len(ms), func(i int) int64 { return ms[i].ID }))
+		withParents += batchAgreementCount(len(p) > 0)
+		withSeveralParents += batchAgreementCount(len(p) > 1)
+		withValues += batchAgreementCount(len(v) > 0)
+		valuesOutOfIDOrder += batchAgreementCount(batchAgreementOutOfIDOrder(len(v), func(i int) int64 { return v[i].ID }))
+		withRetiredValue += batchAgreementCount(slices.ContainsFunc(v, func(dv domain.DimensionValue) bool { return dv.Retired }))
+	}
+	// The agreement means something only over Goals that differ.
+	for what, n := range map[string]int{
+		"off Green":     offGreen,
+		"with a Metric": withMetrics,
+		"with Metrics out of the order they were added": metricsOutOfIDOrder,
+		"with a Milestone": withMilestones,
+		"with Milestones out of the order they were added": milestonesOutOfIDOrder,
+		"with a parent":                                  withParents,
+		"with several parents":                           withSeveralParents,
+		"with a Dimension value":                         withValues,
+		"with values out of the order they were defined": valuesOutOfIDOrder,
+		"with a Retired value":                           withRetiredValue,
+	} {
+		if n == 0 || n == len(goals) {
+			t.Errorf("%d of the %d Goals are %s; want some and not all", n, len(goals), what)
+		}
+	}
 }
