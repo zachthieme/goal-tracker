@@ -3475,6 +3475,24 @@ func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	}
 }
 
+// The compose form asks the browser not to restore what was typed into it
+// after a reload, so a reloaded draft shows the narrative as saved, as its
+// save status and Publish… do (ticket #455).
+func TestComposeFormShowsTheSavedNarrativeAfterAReloadOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	if got := attrOf(findByTestID(t, page, "narrative-curation"), "autocomplete"); got != "off" {
+		t.Errorf("the compose form's autocomplete = %q, want off", got)
+	}
+}
+
 // postHX posts a form with the HX-Request header set, as htmx does, and
 // returns the response, its headers intact, and its body.
 func postHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string) {

@@ -948,12 +948,15 @@ templ narrativeCuration(f narrativeForm) {
 		// A date the reader picked rides on the action, so the draft reloads
 		// against it. With htmx the form previews as the author types,
 		// swapping in the preview and the save status but never its own
-		// fields, and saves nothing; only Save narrative saves.
+		// fields, and saves nothing; only Save narrative saves. A reload
+		// shows what is saved, not what the browser kept of the typing
+		// (autocomplete off), as the save status and Publish… do.
 		<form
 			data-testid="narrative-curation"
 			id="narrative-curation"
 			class="rp-form"
 			method="post"
+			autocomplete="off"
 			action={ templ.SafeURL(narrativeAction(f.Report, f.Chip)) }
 			hx-post={ narrativePreviewAction(f.Report, f.Chip) }
 			hx-trigger="change, input delay:400ms"
