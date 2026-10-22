@@ -22,6 +22,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On screen a Red, Yellow or Green Health chip shows only its colour and shape: the word is read to screen readers and shown as the chip's tooltip, and the chip shrinks to its shape. Text without colour keeps its words: "No Health yet", a Lifecycle in place of a Health, the Health filter and the counts (#453).
 - [user] A Goal's Health comes before its title everywhere: the Goal table's first column, the Goal page's and Check-in page's Contributes to and Contributed to by, a Report block's head (with "· N wks" and "· was X" straight after the Health), a Report's linked Goals ("[Red] Alpha ledger ↓"), and the On track and Follow-ups rows at phone width (#453).
 - [user] The print page and PDF put a Goal's Health before its title too, keeping the word beside the shape since paper may be black and white; the Markdown export writes the word first: "- Red — Title — Owner — due …", "### Red · Title" over a meta line without "Health: **Red**", and "Red Title" for a linked Goal (#453).
+- [user] A Milestone's mark says what it means: one still Planned past its date reads **Overdue** (in the Red tint) and one that has slipped reads **Slipped** (in the Yellow tint), instead of "Red" and "Yellow", so it no longer reads as a Health chip that kept its word. The Goal page, a Report's draft, publications (frozen ones included) and print page, and the Markdown export (`**[Overdue]**`, `**[Slipped]**`) all use the new words (#461).
 
 **Bug fixes:**
 - [user] A Report draft's Goal blocks, narrow in the draft's right-hand column below 1280px wide, drop their badges under Health and the title instead of squeezing the title until its words break mid-word (#453).
@@ -35,6 +36,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The last string-matching web test helpers (`assertSubmitsAtOnce`, `assertStyledBy`, `assertTermHelp`, `assertInFlatFrame`) read markup through the HTML parser, and the `cardClass` regexp is gone (#457).
 - [internal] The test harness opens its database with `db.DSN`, the connection string `db.Open` uses, so its pragmas can't drift from the app's (ADR 0009) (#457).
 - [internal] `batch_agreement_test.go` pins `RunOffGreenByGoal`, `MetricsByGoal`, `MilestonesByGoal`, `ParentsByGoal` and `GoalValuesByGoal` to their single-Goal reads over a fixture with Metric readings, out-of-order Milestones, two parents and a Retired value (#457).
+- [internal] `assertSubmitsAtOnce` again fails a form whose confirm() dialog is set through htmx's `hx-on*` attributes, not only `on*` ones, so the no-confirm guard on Reject, Retire and Remove (#56) can't be passed that way (#458).
 
 **Code quality:**
 - [internal] Every Health shape is drawn by the one `.dot` rule set in `app.css`, scaled by `--dot-size`; the Goal list's mark and Home's My org counts draw a `.dot` rather than shapes of their own, and the print page's `healthShape` characters are gone. `scripts/contrast.py` also checks each Health's ink on its new `--health-*-tint` (#452).
