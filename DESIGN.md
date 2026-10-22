@@ -1678,8 +1678,13 @@ and so on).
     baseline chip; then **History (N)**, **Edit definition** (a secondary
     small button) and **Publish…** (`.btn.primary.sm`), both only for those
     who may manage the Report Definition: its creator, a Report Delegate or
-    an Admin. At 600px and below it stops sticking
-    and stacks into three rows.
+    an Admin. From 1280px it holds one row, whatever the save status says:
+    the status keeps room for "Unsaved changes" (9em), so the strip doesn't
+    shift as it changes, and takes only what is left beyond that, a long
+    "Not saved" reason cut short; the chip and the actions keep their width,
+    and the name gives way, cut short. Narrower, beside the sidebar, one row
+    doesn't fit, and it wraps. At 600px and below it stops sticking and
+    stacks into three rows.
   - **Baseline chip (`.rp-chip`):** a `<details>` whose summary is a 32px
     `--radius-full` pill in a 1px `--color-border-strong` edge, "Changes since
     **<baseline>** ▾". Its panel (`.rp-pop`), anchored left, is
@@ -1729,8 +1734,12 @@ and so on).
       form unsaved: on change and 400ms after typing stops, the form posts
       for a preview of the narrative as it stands, which saves nothing, and
       the save status says whether it differs from what was saved. **Add
-      another** saves nothing either. Leaving or reloading the page with
-      unsaved changes asks the browser's "Leave site?" question.
+      another** saves nothing either. The form posts which Highlights it
+      offered, so picks it doesn't list, of Highlights from before a later
+      baseline, stay as saved and don't read as unsaved. Leaving or reloading
+      the page with unsaved changes asks the browser's "Leave site?"
+      question; the form is `autocomplete="off"`, so a reload shows what is
+      saved, not typing the browser kept.
   - **Delegates (`reportDelegates`, `.rp-delegates`):** 24px under the
     narrative, a "Delegates" `h2` over the Report Delegates as hairline rows,
     each its person, a `badge lc` "departed" on a Departed one, and for the
