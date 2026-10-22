@@ -135,6 +135,42 @@ func TestGoalPageReadsEachThingOnce(t *testing.T) {
 	}
 }
 
+// Walking up past Departed Managers to the Ask for help's addressee reads
+// everyone once, however many it passes: GoalPage still runs no query twice
+// for an Owner with three Departed Managers above them, and names the fourth.
+func TestGoalPageWalksPastDepartedManagersInOneRead(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, queryCountAdmin)
+	admin := h.SignIn(queryCountAdmin)
+	var line []domain.Account
+	for _, e := range []string{"sam@example.com", "mia@example.com", "dir@example.com", "svp@example.com", "vp@example.com"} {
+		line = append(line, h.SignIn(e))
+	}
+	for i := 0; i+1 < len(line); i++ {
+		h.SetManager(line[i], line[i+1])
+	}
+	for _, departed := range line[1:4] {
+		if err := h.Service.MarkDeparted(context.Background(), admin.ID, departed.ID); err != nil {
+			t.Fatalf("MarkDeparted(%s): %v", departed.Email, err)
+		}
+	}
+	g := h.ActiveGoal(line[0], "Launch in EU", "Expand the market.")
+	_, svc, queries := newQueryCountingServer(t, h)
+	queries.take()
+	page, err := svc.GoalPage(context.Background(), line[0].ID, g.ID)
+	if err != nil {
+		t.Fatalf("GoalPage: %v", err)
+	}
+	for name, times := range countQueryNames(queries.take()) {
+		if times > 1 {
+			t.Errorf("GoalPage ran %s %d times walking past three Departed Managers; want it once", name, times)
+		}
+	}
+	if page.AskAddressee == nil || page.AskAddressee.ID != line[4].ID {
+		t.Errorf("GoalPage's Ask for help addressee = %v, want %s", page.AskAddressee, line[4].Email)
+	}
+}
+
 // countQueryNames is how many times each named query among statements was
 // run, by the name sqlc gives it ("-- name: GetGoal :one"); a statement with
 // no name counts under its own text.

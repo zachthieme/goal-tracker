@@ -96,8 +96,9 @@ type GoalPage struct {
 // do (ADR 0010). Any signed-in viewer may see any Goal, as with ViewGoal: a
 // missing Goal is ErrNotFound.
 //
-// Walking up past a Departed Manager to the Ask for help's addressee reads one
-// more Account a step; everyone else the page names is read at once.
+// Walking up past a Departed Manager to the Ask for help's addressee reads
+// every Account once more, however far it goes; everyone else the page names
+// is read at once.
 func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage, error) {
 	g, err := s.ViewGoal(ctx, goalID)
 	if err != nil {
@@ -324,8 +325,9 @@ func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) error {
 // goalPageAccounts reads at once the viewer and everyone else the page names
 // by ID alone: the Owner's Manager, whoever added a Milestone outside a
 // Check-in, and the people of the Action Items about the Goal and their
-// reassignments. It returns a lookup of them, which reads anyone else, such
-// as a Manager further up, on their own; one who doesn't exist is ErrNotFound.
+// reassignments. It returns a lookup of them which, asked for anyone else,
+// such as a Manager further up, reads every Account once and answers from
+// them from then on; one who doesn't exist is ErrNotFound.
 func (s *Service) goalPageAccounts(ctx context.Context, actorID int64, g Goal, changes []db.ListMilestoneChangesByGoalRow, items []db.ListActionItemsForGoalRow, reassigns []db.ActionItemReassignment) (func(id int64) (Account, error), error) {
 	ids := []int64{actorID}
 	if g.Owner.ManagerID != nil {
@@ -351,11 +353,27 @@ func (s *Service) goalPageAccounts(ctx context.Context, actorID int64, g Goal, c
 	for _, r := range rows {
 		byID[r.ID] = accountFromRow(r)
 	}
+	everyone := false
 	return func(id int64) (Account, error) {
 		if a, ok := byID[id]; ok {
 			return a, nil
 		}
-		return s.Account(ctx, id)
+		if !everyone {
+			// Someone further up, past a Departed Manager: read everyone once,
+			// as OpenAsksForHelp does, so a walk of any length is one query.
+			rows, err := s.queries.ListAskWalkAccounts(ctx)
+			if err != nil {
+				return Account{}, fmt.Errorf("load people: list accounts: %w", err)
+			}
+			for _, r := range rows {
+				byID[r.ID] = accountFromRow(r)
+			}
+			everyone = true
+			if a, ok := byID[id]; ok {
+				return a, nil
+			}
+		}
+		return Account{}, fmt.Errorf("%w: account %d", ErrNotFound, id)
 	}, nil
 }
 
