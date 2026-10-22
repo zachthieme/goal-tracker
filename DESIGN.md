@@ -501,9 +501,10 @@ and so on).
   octagon, Yellow a yield sign's triangle pointing down, Green a circle for
   go. One shape set draws them all: `.dot` inside a `.r`, `.y` or `.g`
   (app.css), filled with `currentColor`. Its size is `--dot-size`, the
-  circle's width, 8px by default; the octagon is drawn 1.125 times that
-  square and the triangle 1.25 wide by 1.125 tall, so each reads as its shape
-  beside the circle. A place that draws the shape bigger sets `--dot-size` on
+  circle's width, 8px by default; the triangle is drawn 1.25 times as wide
+  and 1.125 times as tall, and the octagon 1.125 times the size but never
+  under 12px, below which it reads as a circle on a 1x screen, so each reads
+  as its shape beside the circle. A place that draws the shape bigger sets `--dot-size` on
   its `.dot` and never draws a shape of its own.
   - **The shape alone (`.gl-mark`, `goalHealthMark`):** in the Goal list's
     rows and group headers, a `.dot` at 11px in `--health-*-mark`. In a row

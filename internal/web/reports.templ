@@ -721,7 +721,7 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				.dot { --dot-size: 8px; width: var(--dot-size); height: var(--dot-size); display: inline-block; margin-right: 0.3em; vertical-align: 0.05em; background: currentColor; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 				.g .dot { border-radius: 50%; }
 				.y .dot { clip-path: polygon(0 0, 100% 0, 50% 100%); width: calc(var(--dot-size) * 1.25); height: calc(var(--dot-size) * 1.125); }
-				.r .dot { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); width: calc(var(--dot-size) * 1.125); height: calc(var(--dot-size) * 1.125); }
+				.r .dot { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); width: max(12px, calc(var(--dot-size) * 1.125)); height: max(12px, calc(var(--dot-size) * 1.125)); }
 				.badge { font-weight: 600; white-space: nowrap; padding: 0 0.3em; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 				.r { background: var(--print-health-r-bg); color: var(--print-health-r-ink); }
 				.y { background: var(--print-health-y-bg); color: var(--print-health-y-ink); }

@@ -742,7 +742,12 @@ func TestCheckinHealthChoicesShowTheirColours(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	styles := between(t, page, ".checkin-page{", "</style>")
 	for sel, want := range map[string]string{
-		".health-toggle label.badge":                      "border:2px solid transparent",
+		".health-toggle label.badge": "border:2px solid transparent",
+		// The form's labels are --color-ink, so each choice names its ink
+		// again for its word, shape and edge to take it.
+		".health-toggle label.r":                          "color:var(--health-r-ink)",
+		".health-toggle label.y":                          "color:var(--health-y-ink)",
+		".health-toggle label.g":                          "color:var(--health-g-ink)",
 		".health-toggle label.badge:has(input:checked)":   "border-color:currentColor",
 		".health-toggle label.r:not(:has(input:checked))": "background:var(--health-r-tint)",
 		".health-toggle label.y:not(:has(input:checked))": "background:var(--health-y-tint)",

@@ -245,14 +245,15 @@ strong{color:var(--color-ink)}
 /* Health's shape (DESIGN.md § Health): Red a stop-sign octagon, Yellow a
  * yield triangle pointing down, Green a circle, in the Health's ink. A place
  * that draws it bigger sets --dot-size, the circle's width; the triangle and
- * octagon are drawn wider so they read as their shape at that size */
+ * octagon are drawn wider so they read as their shape at that size, the
+ * octagon never under 12px, below which it reads as a circle on screen */
 .dot{--dot-size:8px;width:var(--dot-size);height:var(--dot-size);display:inline-block;background:currentColor;flex:none}
 .g{background:var(--health-g-bg);color:var(--health-g-ink)}
 .y{background:var(--health-y-bg);color:var(--health-y-ink)}
 .r{background:var(--health-r-bg);color:var(--health-r-ink)}
 .g .dot{border-radius:50%}
 .y .dot{clip-path:polygon(0 0,100% 0,50% 100%);width:calc(var(--dot-size)*1.25);height:calc(var(--dot-size)*1.125)}
-.r .dot{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);width:calc(var(--dot-size)*1.125);height:calc(var(--dot-size)*1.125)}
+.r .dot{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);width:max(12px,calc(var(--dot-size)*1.125));height:max(12px,calc(var(--dot-size)*1.125))}
 .st{background:var(--checkin-overdue-bg);color:var(--checkin-overdue-ink);border-width:1px;border-style:dashed;border-color:var(--checkin-overdue-edge)}
 .badge.st{padding:0 8px}
 .alert.st{background:var(--color-surface);color:var(--color-ink)}
