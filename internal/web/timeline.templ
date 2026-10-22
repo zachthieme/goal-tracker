@@ -194,7 +194,7 @@ templ historyFolded(h history, e historyEntry) {
 		<p class="tl-head">
 			<span class="tl-kind">{ e.foldedLabel() }</span>
 			if c.Health != "" {
-				<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+				@healthChip("history-health", c.Health)
 			}
 			<time class="muted small" datetime={ e.At.In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At) }</time>
 		</p>
@@ -250,7 +250,7 @@ templ historyCheckin(h history, e historyEntry) {
 	{{ c := e.Checkin }}
 	<p>
 		if c.Health != "" {
-			<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+			@healthChip("history-health", c.Health)
 			{ " " }
 		}
 		<span>{ c.Status }</span>

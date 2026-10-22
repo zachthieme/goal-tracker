@@ -548,7 +548,7 @@ templ statusCells(v goalView) {
 		<div data-testid="goal-health-cell" class="gp-cell">
 			<dt class="label">Owner's Health</dt>
 			<dd>
-				<span class={ "badge", healthClass(c.Health) }><span class="dot"></span><span data-testid="goal-health">{ c.Health }</span></span>
+				@healthChip("goal-health", c.Health)
 				if v.RunOffGreen.Running() {
 					<span data-testid="goal-run-off-green" class="muted small">{ "· " + v.RunOffGreen.Label() }</span>
 				}
@@ -559,7 +559,7 @@ templ statusCells(v goalView) {
 				<dt class="label">Rolled-up Health</dt>
 				<dd>
 					if v.RolledUp.Present {
-						<span class={ "badge", healthClass(v.RolledUp.Health) } title="Lowest Health among Active children"><span class="dot"></span><span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span></span>
+						@healthChipWith("goal-rollup-health", v.RolledUp.Health, v.RolledUp.Health+": the lowest Health among Active children", "")
 					} else {
 						<span class="muted">—</span>
 					}
@@ -651,7 +651,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 						if c.Health != "" || c.PathToGreen != "" {
 							<p class="checkin-context-health">
 								if c.Health != "" {
-									<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+									@healthChip("", c.Health)
 								}
 								if c.PathToGreen != "" {
 									<span class="muted">{ "back to Green by " + v.dates().date(c.PathTargetDate) }</span>
@@ -823,9 +823,9 @@ templ checkinForm(d checkinFormData) {
 			<fieldset data-testid="checkin-health" class="health-toggle">
 				<legend class="sr-only">Health</legend>
 				for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
-					<label class={ "badge", healthClass(health) }>
+					<label class={ "badge", healthClass(health) } title={ health }>
 						<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
-						<span class="dot"></span>{ health }
+						<span class="dot"></span><span class="sr-only">{ health }</span>
 					</label>
 				}
 			</fieldset>
@@ -839,7 +839,7 @@ templ checkinForm(d checkinFormData) {
 				<div class="checkin-rollup">
 					<p data-testid="checkin-form-rollup">
 						<span class="muted">Rolled-up Health:</span>
-						<span class={ "badge", healthClass(d.RolledUp.Health) }><span class="dot"></span>{ d.RolledUp.Health }</span>
+						@healthChip("checkin-form-rollup-health", d.RolledUp.Health)
 						if count := d.RolledUp.CountLine(); count != "" {
 							<span class="muted">{ count }</span>
 						}
@@ -1113,11 +1113,17 @@ templ checkinSummaryScript() {
 
 				function badge(health) {
 					var span = document.createElement("span");
-					span.className = "badge " + ({ Green: "g", Yellow: "y", Red: "r" }[health] || "lc");
+					span.className = "badge shape " + ({ Green: "g", Yellow: "y", Red: "r" }[health] || "lc");
 					var dot = document.createElement("span");
 					dot.className = "dot";
 					span.appendChild(dot);
-					span.appendChild(document.createTextNode(health));
+					// A Health's colour and shape say it: its word is for a
+					// screen reader and the tooltip (DESIGN.md § Health).
+					span.title = health;
+					var word = document.createElement("span");
+					word.className = "sr-only";
+					word.textContent = health;
+					span.appendChild(word);
 					return span;
 				}
 			}

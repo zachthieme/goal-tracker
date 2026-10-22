@@ -79,7 +79,7 @@ func Markdown(p domain.Publication) string {
 	if len(r.Lines) > 0 {
 		b.WriteString("\n## Other Goals\n\n")
 		for _, sg := range r.Lines {
-			fmt.Fprintf(&b, "- %s — %s — %s", text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)), health(sg.Health))
+			fmt.Fprintf(&b, "- %s — %s — %s", health(sg.Health), text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)))
 			if !sg.Goal.DeliveryDate.IsZero() {
 				fmt.Fprintf(&b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
 			}
@@ -92,11 +92,12 @@ func Markdown(p domain.Publication) string {
 	return b.String()
 }
 
-// writeBlock writes an exception Goal's full MBR block: title and badges, due
-// date with its history struck through, Health with its Run off Green as
-// published ("Red · 5 wks") and what it was when it changed since the baseline,
-// what changed on it since, the Goals in the Report it contributes to, the
-// chosen Fields, Why it matters, latest status, Path to Green with its back-to-Green
+// writeBlock writes an exception Goal's full MBR block: its Health, which
+// leads a Goal's title everywhere, then the title and badges ("### Red ·
+// Launch in EU"); the Owner, Lifecycle, Run off Green as published ("5 wks"),
+// what the Health was when it changed since the baseline and the due date with
+// its history struck through; what changed on it since, the Goals in the
+// Report it contributes to, the chosen Fields, Why it matters, latest status, Path to Green with its back-to-Green
 // date struck through as a Milestone's is when it slipped in the Run off Green
 // ("2026-10-03 ~~2026-09-12~~ (2)"), whom it asks for help, Milestones, Metrics
 // against target, and the Rolled-up Health with how many children are Red,
@@ -105,11 +106,11 @@ func Markdown(p domain.Publication) string {
 // published, read in the zone the block's Goal was judged in.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
-	fmt.Fprintf(b, "\n### %s", text(g.Title))
+	fmt.Fprintf(b, "\n### %s · %s", health(blk.Health), text(g.Title))
 	for _, badge := range blk.Badges {
 		fmt.Fprintf(b, " **[%s]**", badge)
 	}
-	fmt.Fprintf(b, "\n\n%s · %s · Health: **%s**", text(people.Of(g.Owner)), g.Lifecycle, health(blk.Health))
+	fmt.Fprintf(b, "\n\n%s · %s", text(people.Of(g.Owner)), g.Lifecycle)
 	if blk.RunOffGreenWeeks > 0 {
 		fmt.Fprintf(b, " · %s", domain.RunOffGreenLabel(blk.RunOffGreenWeeks))
 	}
@@ -191,18 +192,18 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 }
 
 // linkedGoals names the Goals an exception block links to, joined by " · ",
-// each marked ↓ when the Report holds it and with its Health in brackets when
-// it has one ("Alpha ledger ↓ (Red)"). With no base URL to link from, they
-// are names, not links.
+// each led by its Health when it has one and marked ↓ when the Report holds it
+// ("Red Alpha ledger ↓"). With no base URL to link from, they are names, not
+// links.
 func linkedGoals(goals []domain.LinkedGoal) string {
 	names := make([]string, 0, len(goals))
 	for _, g := range goals {
 		name := text(g.Title)
+		if g.Health != "" {
+			name = g.Health + " " + name
+		}
 		if g.InReport {
 			name += " ↓"
-		}
-		if g.Health != "" {
-			name += " (" + g.Health + ")"
 		}
 		names = append(names, name)
 	}

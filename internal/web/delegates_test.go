@@ -151,8 +151,6 @@ func TestDelegatePageShowsGoalRows(t *testing.T) {
 	row := delegatedRow(t, page, checked)
 	for _, want := range []string{
 		"Reduce outages",
-		`class="badge y"`,
-		`data-testid="delegated-goal-health">Yellow<`,
 		`data-testid="delegated-goal-owner">` + shownAs("sam@example.com", "sam"),
 		"3 days ago",
 		fmt.Sprintf(`href="/goals/%d/checkin"`, checked.ID),
@@ -161,6 +159,8 @@ func TestDelegatePageShowsGoalRows(t *testing.T) {
 			t.Errorf("row lacks %s:\n%s", want, row)
 		}
 	}
+
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "delegated-goal-health"), "Yellow")
 
 	rest := delegatedRow(t, page, proposed)
 	if strings.Contains(rest, fmt.Sprintf(`href="/goals/%d/checkin"`, proposed.ID)) {

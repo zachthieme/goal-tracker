@@ -41,14 +41,16 @@ func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID))
-	if !strings.Contains(page, `data-testid="goal-health">Green`) {
-		t.Errorf("Goal page missing Owner-set Health; body:\n%s", page)
+	doc := parsePage(t, page)
+	// Each is a chip with no title beside it: its shape, the word for a
+	// screen reader and as its tooltip.
+	assertHealthChip(t, findByTestID(t, doc, "goal-health"), "Green")
+	rollup := findByTestID(t, doc, "goal-rollup-health")
+	if shown, read := shownTextOf(rollup), textOf(rollup); shown != "" || read != "Red" {
+		t.Errorf("Rolled-up Health shows %q and reads %q, want nothing shown and Red read: %s", shown, read, renderNode(rollup))
 	}
-	if !strings.Contains(page, `data-testid="goal-rollup-health">Red`) {
-		t.Errorf("Goal page missing Rolled-up Health next to it; body:\n%s", page)
-	}
-	if cell := pageElement(t, page, "div", "goal-rollup-cell"); !strings.Contains(cell, `title="Lowest Health among Active children"`) {
-		t.Errorf("Rolled-up Health doesn't say it is the lowest among Active children: %s", cell)
+	if tip := attrOf(rollup, "title"); tip != "Red: the lowest Health among Active children" {
+		t.Errorf("Rolled-up Health is titled %q, want its word and that it is the lowest among Active children", tip)
 	}
 
 	quiet := h.ActiveGoal(sam, "Quiet parent", "It matters.")

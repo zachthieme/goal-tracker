@@ -39,6 +39,9 @@ type discussion struct {
 	Return string
 	// Loc is the org's timezone, the Report's times are shown in.
 	Loc *time.Location
+	// Print is set on the print page, which a PDF is made from: paper may
+	// lose the colour, so a Health shows its word beside its shape.
+	Print bool
 }
 
 // dates is the clock a Report page shows its dates against: every one with

@@ -185,23 +185,20 @@ func TestCheckinPageChildrenStyles(t *testing.T) {
 	if !strings.Contains(list, `<h3 class="checkin-rail-head">Contributed to by</h3>`) {
 		t.Errorf("children list is not headed by a rail head; list:\n%s", list)
 	}
+	children := parsePage(t, list)
 	for _, child := range []struct {
-		goal  domain.Goal
-		badge string
+		goal   domain.Goal
+		health string
 	}{
-		{f.yellow, `<span class="badge y"><span class="dot"></span>Yellow</span>`},
-		{f.green, `<span class="badge g"><span class="dot"></span>Green</span>`},
+		{f.yellow, "Yellow"},
+		{f.green, "Green"},
 	} {
-		link := fmt.Sprintf(`<a href="/goals/%d">%s</a>`, child.goal.ID, child.goal.Title)
-		at := strings.Index(list, link)
-		if at < 0 {
-			t.Errorf("children list has no link %s; list:\n%s", link, list)
+		link := linkTo(children, fmt.Sprintf("/goals/%d", child.goal.ID))
+		if link == nil {
+			t.Errorf("children list has no link to %s; list:\n%s", child.goal.Title, list)
 			continue
 		}
-		item, _, _ := strings.Cut(list[at:], "</li>")
-		if !strings.Contains(item, child.badge) {
-			t.Errorf("%s shows no %s; item:\n%s", child.goal.Title, child.badge, item)
-		}
+		assertHealthChip(t, healthChipIn(t, link.Parent), child.health)
 	}
 	if line := pageElement(t, page, "p", "checkin-form-rollup"); !strings.Contains(line, `<span class="muted">1 of 2 Yellow</span>`) {
 		t.Errorf("rollup line doesn't show the count as the badge's muted count line; line:\n%s", line)
@@ -224,9 +221,7 @@ func TestCheckinFormRolledUpPanelStyles(t *testing.T) {
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
-	if line := pageElement(t, page, "p", "checkin-form-rollup"); !strings.Contains(line, `<span class="badge r"><span class="dot"></span>Red</span>`) {
-		t.Errorf("rollup line doesn't show Red as a badge; line:\n%s", line)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, page), "checkin-form-rollup-health"), "Red")
 }
 
 // The children list's rules live in app.css, shared by the Goal page and the
@@ -416,13 +411,13 @@ func TestCheckinPageContextClasses(t *testing.T) {
 	last := pageElement(t, aside, "section", "checkin-last-time")
 	for _, want := range []string{
 		`<h3 class="checkin-rail-head">Last time · Jan 2</h3>`,
-		`<span class="badge y"><span class="dot"></span>Yellow</span>`,
 		`<span class="muted">back to Green by Mar 2</span>`,
 	} {
 		if !strings.Contains(last, want) {
 			t.Errorf("Last time lacks %s:\n%s", want, last)
 		}
 	}
+	assertHealthChip(t, healthChipIn(t, parsePage(t, last)), "Yellow")
 	if dates := pageElement(t, aside, "section", "checkin-context-dates"); !strings.Contains(dates, `<h3 class="checkin-rail-head">Dates</h3>`) {
 		t.Errorf("the Dates section isn't headed by a rail head:\n%s", dates)
 	}
@@ -822,5 +817,54 @@ func TestReportDraftHeaderKeepsOneRowStyles(t *testing.T) {
 	}
 	if decls, ok := ruleFor(css, ".ph-title h1"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") {
 		t.Errorf(".ph-title h1{%s} doesn't cut a long name short", decls)
+	}
+}
+
+// A Health chip without its word shrinks to its shape: centred, at least 24px
+// wide, and at least 24px tall where it is a link (the Goal table in Edit
+// values). The Check-in page's Health choice keeps its 44px height, now
+// showing only the shape (#453).
+func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Cut scope.", pathDate)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	chip := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "goal-health")
+	if !flatFrameHasClass(chip, "shape") {
+		t.Fatalf("the Health chip isn't marked to shrink to its shape: %s", renderNode(chip))
+	}
+	rule, _ := ruleFor(css, ".badge.shape")
+	for _, want := range []string{"justify-content:center", "min-width:24px"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("a Health chip doesn't shrink to its centred shape: .badge.shape{%s} lacks %s", rule, want)
+		}
+	}
+	if rule, _ := ruleFor(css, "a>.badge.shape"); !strings.Contains(rule, "min-height:24px") {
+		t.Errorf("a Health chip that is a link is under a 24px target: a>.badge.shape{%s}", rule)
+	}
+
+	table := getPage(t, client, ts.URL+"/goals?layout=table&edit=1")
+	link := healthChipIn(t, findByTestID(t, table, "goal-table-row"))
+	if link.Parent.Data != "a" {
+		t.Errorf("the Goal table's Health in Edit values isn't the chip as a link: %s", renderNode(link.Parent))
+	}
+
+	checkin := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if rule := cssRule(t, checkin, ".health-toggle label.badge"); !strings.Contains(rule, "height:44px") {
+		t.Errorf("the Health choice is under 44px tall: .health-toggle label.badge{%s}", rule)
+	}
+	choices := findByTestID(t, parsePage(t, checkin), "checkin-health")
+	labels := findAll(choices, func(n *html.Node) bool { return n.Data == "label" })
+	if len(labels) != 3 {
+		t.Fatalf("the Health choice has %d options, want 3: %s", len(labels), renderNode(choices))
+	}
+	for i, health := range []string{"Green", "Yellow", "Red"} {
+		assertHealthChip(t, labels[i], health)
 	}
 }

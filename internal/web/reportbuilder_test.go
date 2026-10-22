@@ -823,9 +823,10 @@ func TestBuilderMatchesMarkAlsoIncludeAndShowHealthOrLifecycleOverHTTP(t *testin
 	if len(matches) != 2 {
 		t.Fatalf("the rules rail lists %d Goals, want 2:\n%s", len(matches), rail)
 	}
-	if m := matches[reliability.Title]; strings.Contains(m, "match-added") || !strings.Contains(m, `class="badge g"><span class="dot"></span>Green</span>`) {
-		t.Errorf("the rule match isn't shown Green and unmarked:\n%s", m)
+	if m := matches[reliability.Title]; strings.Contains(m, "match-added") {
+		t.Errorf("the rule match is marked added:\n%s", m)
 	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, matches[reliability.Title]), "match-badge"), "Green")
 	if m := matches[sdk.Title]; !strings.Contains(m, `data-testid="match-added"`) || !strings.Contains(m, `class="badge lc">Active</span>`) {
 		t.Errorf("the Also include Goal isn't marked added with its Lifecycle:\n%s", m)
 	}

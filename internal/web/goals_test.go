@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/seed"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -1858,8 +1860,11 @@ func TestGoalPageRailHoldsTheGoalsProperties(t *testing.T) {
 		t.Errorf("the rail's property rows read %q, want %q", got, want)
 	}
 	props := strings.Join(strings.Fields(rail), " ")
+	// The Health property is a chip with no title beside it: its shape, the
+	// word for a screen reader and as its tooltip.
+	railDoc := parsePage(t, rail)
+	assertHealthChip(t, healthChipIn(t, railDoc), "Yellow")
 	for _, want := range []string{
-		`<dt>Health</dt><dd><span class="badge y"><span class="dot"></span>Yellow</span></dd>`,
 		`<dt>Lifecycle</dt><dd><span data-testid="goal-lifecycle">Active</span></dd>`,
 		`<span data-testid="goal-kind"><button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span>`,
 		`<dt>Owner</dt><dd><strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
@@ -2340,9 +2345,10 @@ func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 	if !strings.Contains(section, "<del>Launch party</del>") {
 		t.Errorf("the Removed Milestone's name is not struck through:\n%s", section)
 	}
-	for _, want := range []string{`<span data-testid="goal-health">Yellow</span>`, `<span data-testid="goal-rollup-health">Yellow</span>`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("Goal page lacks %s: the Owner's Yellow and the Rolled-up Health stand whatever the Milestones' marks", want)
+	doc := parsePage(t, page)
+	for _, testID := range []string{"goal-health", "goal-rollup-health"} {
+		if got := textOf(findByTestID(t, doc, testID)); got != "Yellow" {
+			t.Errorf("Goal page's %s reads %q, want Yellow: the Owner's Yellow and the Rolled-up Health stand whatever the Milestones' marks", testID, got)
 		}
 	}
 }
@@ -2445,9 +2451,12 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 		{"goal-children", child, "g"},
 	} {
 		section := pageElement(t, page, "section", tc.section)
-		entry := between(t, section, navTo(tc.linked.ID), "</li>")
-		if !strings.Contains(entry, `class="badge `+tc.class+`"`) {
-			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, entry)
+		title := linkTo(parsePage(t, section), fmt.Sprintf("/goals/%d", tc.linked.ID))
+		if title == nil {
+			t.Fatalf("%s doesn't link %s:\n%s", tc.section, tc.linked.Title, section)
+		}
+		if chip := healthChipIn(t, title.Parent); !flatFrameHasClass(chip, tc.class) {
+			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, renderNode(title.Parent))
 		}
 		assertSubmitsAtOnce(t, tc.section+": Remove", tagAround(t, section, `/remove"`))
 	}
@@ -3797,7 +3806,8 @@ func cellTexts(html, tag string) []string {
 	return texts
 }
 
-// The Goal list's table layout has a column for the Goal's title, Owner, Health,
+// The Goal list's table layout has a column for the Goal's Health, which leads
+// as it does everywhere a Goal's title shows, then its title, Owner,
 // Lifecycle, delivery date and last Check-in, then one per live Dimension and
 // one per live Field, each in name order; a Retired one has none, nor do
 // Metrics and Milestones. A several-values cell lists its values with commas.
@@ -3830,7 +3840,7 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
-	want := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
+	want := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
 	if got := tableHeads(t, page); !slices.Equal(got, want) {
 		t.Fatalf("columns = %q, want %q", got, want)
 	}
@@ -3841,6 +3851,12 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 	row := rows[0]
 	if !strings.Contains(row, navTo(goal.ID)+">Reduce outages<") {
 		t.Errorf("the title doesn't link to the Goal:\n%s", row)
+	}
+	doc := findByTestID(t, parsePage(t, page), "goal-table-row")
+	chip := healthChipIn(t, doc)
+	assertHealthChip(t, chip, "Green")
+	if title := linkTo(doc, fmt.Sprintf("/goals/%d", goal.ID)); title == nil || !precedes(chip, title) {
+		t.Errorf("the row's Health doesn't come before its title:\n%s", renderNode(doc))
 	}
 	for head, cell := range map[string]string{
 		"Owner":     "Sam Ortiz sam@example.com", // the Name, its email disclosed on demand
@@ -4031,7 +4047,7 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	h.CreateGoal(sam, "Bravo", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	all := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
+	all := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
 
 	page := getBody(t, client, ts.URL+"/goals?layout=table&q=alpha")
 	if got := tableHeads(t, page); !slices.Equal(got, all) {
@@ -4042,7 +4058,7 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	}
 
 	page = submitColumns(t, client, ts.URL, page, "Owner", "Budget")
-	want := []string{"Title", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
+	want := []string{"Health", "Title", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
 	if got := tableHeads(t, page); !slices.Equal(got, want) {
 		t.Errorf("after hiding Owner and Budget, columns = %q, want %q", got, want)
 	}
@@ -6827,5 +6843,51 @@ func TestAPulledBackDeliveryDateIsNotStruckThrough(t *testing.T) {
 	}
 	if !strings.Contains(due, "<span>Nov 9</span>") {
 		t.Errorf("the Goals list isn't due Nov 9: %s", due)
+	}
+}
+
+// The Goal page lists the Goals a Goal contributes to and those contributing
+// to it with each one's Health first, then its title, on one line: a chip with
+// no word shown, read out and given as its tooltip; or, with no Health, its
+// Lifecycle in words (#453).
+func TestGoalPageLinkedGoalsLeadWithTheirHealth(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	children := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, f.parent)), "goal-children")
+	for _, child := range []struct {
+		goal   domain.Goal
+		health string
+	}{{f.yellow, "Yellow"}, {f.green, "Green"}} {
+		title := linkTo(children, fmt.Sprintf("/goals/%d", child.goal.ID))
+		if title == nil {
+			t.Fatalf("Contributed to by has no link to %s:\n%s", child.goal.Title, renderNode(children))
+		}
+		item := title
+		for item.Data != "li" {
+			item = item.Parent
+		}
+		chip := healthChipIn(t, item)
+		assertHealthChip(t, chip, child.health)
+		if !precedes(chip, title) || chip.Parent != title.Parent {
+			t.Errorf("%s's Health doesn't lead its title on one line:\n%s", child.goal.Title, renderNode(item))
+		}
+	}
+
+	parents := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, f.yellow)), "goal-parents")
+	title := linkTo(parents, fmt.Sprintf("/goals/%d", f.parent.ID))
+	lifecycle := findAll(parents, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "lc") })
+	if title == nil || len(lifecycle) != 1 || shownTextOf(lifecycle[0]) != "Active" || !precedes(lifecycle[0], title) || lifecycle[0].Parent != title.Parent {
+		t.Errorf("a parent with no Health doesn't lead with its Lifecycle in words:\n%s", renderNode(parents))
+	}
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if rule, _ := ruleFor(css, ".gp-link-head"); !strings.Contains(rule, "display:flex") || strings.Contains(rule, "column") {
+		t.Errorf("a linked Goal's Health and title don't sit on one line: .gp-link-head{%s}", rule)
 	}
 }

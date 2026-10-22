@@ -182,9 +182,7 @@ func TestFollowUpsPageListsOverduePathsToGreen(t *testing.T) {
 	if chip := followUpChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2 days overdue</button>") {
 		t.Errorf("overdue chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
 	}
-	if health := pageElement(t, row, "span", "follow-up-health"); !strings.Contains(openTag(health), `class="badge r"`) {
-		t.Errorf("row doesn't show the Goal's Red Health: %s", health)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Red")
 	if row := followUpRowOf(t, page, green); strings.Contains(row, `data-kind="path-overdue"`) {
 		t.Errorf("Green %q is overdue:\n%s", green.Title, row)
 	}
@@ -1683,10 +1681,11 @@ func TestFollowUpsHealthChipShowsOneShape(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	chip := findByTestID(t, parsePage(t, followUpRowOf(t, page, stalled)), "follow-up-health")
-	marks := findAll(chip, func(n *nethtml.Node) bool { return n != chip && n.Data == "span" })
-	if len(marks) != 1 || attrOf(marks[0], "class") != "dot" || textOf(chip) != "Green" {
-		t.Errorf("the row's Health chip doesn't show just its drawn shape and Green: %s", renderNode(chip))
+	marks := findAll(chip, func(n *nethtml.Node) bool { return n != chip && n.Data == "span" && !flatFrameHasClass(n, "sr-only") })
+	if len(marks) != 1 || attrOf(marks[0], "class") != "dot" {
+		t.Errorf("the row's Health chip doesn't show just its drawn shape: %s", renderNode(chip))
 	}
+	assertHealthChip(t, chip, "Green")
 }
 
 // An Owner's name stays on one line at desktop width rather than wrapping
@@ -2495,9 +2494,7 @@ func TestFollowUpsPageListsGoalsWithOverdueActionItems(t *testing.T) {
 	if chip := followUpChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue</button>") {
 		t.Errorf("overdue Action Item chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
 	}
-	if health := pageElement(t, row, "span", "follow-up-health"); !strings.Contains(openTag(health), `class="badge g"`) {
-		t.Errorf("row doesn't show the Goal's Green Health: %s", health)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Green")
 }
 
 // A row flagged only for an overdue Action Item has one Fix, See Action
@@ -2971,9 +2968,7 @@ func TestFollowUpsPageListsGreenGoalsPastAMilestone(t *testing.T) {
 	if chip := followUpChip(t, row, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Milestone 1 day overdue</button>") {
 		t.Errorf("Milestone overdue chip is not a Check-in overdue-colored badge saying 1 day overdue: %s", chip)
 	}
-	if health := pageElement(t, row, "span", "follow-up-health"); !strings.Contains(openTag(health), `class="badge g"`) {
-		t.Errorf("row doesn't show the Owner's Green: %s", health)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Green")
 	card := pageElement(t, page, "a", "follow-ups-group-owner")
 	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Milestone overdue · 1") {
 		t.Errorf("Waiting on a Check-in card doesn't count the Goal with a Milestone overdue · 1 chip: %s", card)

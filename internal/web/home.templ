@@ -88,7 +88,7 @@ templ homePage(current *domain.Account, v homeView) {
 						for _, g := range v.AtRisk {
 							<li>
 								<div class="hm-what">
-									<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
+									@healthChipWith("home-goal-health", g.Health, g.Health, homeAsOfClass(g))
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
 									if asOf := healthAsOf(g); asOf != "" {
 										<span data-testid="home-goal-as-of" class="hm-meta">{ asOf }</span>
@@ -225,14 +225,11 @@ templ homeOrgCounts(c domain.SignalCounts) {
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
-			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
-				<span class="dot"></span>
-				if g.Health == "" {
-					No Health yet
-				} else {
-					{ g.Health }
-				}
-			</span>
+			if g.Health == "" {
+				<span data-testid="home-due-health" class="badge lc">No Health yet</span>
+			} else {
+				@healthChipWith("home-due-health", g.Health, g.Health, homeAsOfClass(g))
+			}
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
 			<p data-testid="home-due-status" class="hm-meta">
 				<span class="hm-phrase">{ homeDueAge(g) }</span>
@@ -266,7 +263,7 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 templ askRow(a domain.AskForHelp) {
 	<li data-testid="home-ask">
 		<div class="hm-what">
-			<span class={ "badge", healthClass(a.Health) }><span class="dot"></span>{ a.Health }</span>
+			@healthChip("", a.Health)
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d#comments", a.Goal.ID)) }>{ a.Goal.Title }</a>
 			<p class="hm-meta">
 				{ "from " }
