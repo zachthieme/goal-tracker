@@ -255,6 +255,11 @@ strong{color:var(--color-ink)}
 .y .dot{clip-path:polygon(0 0,100% 0,50% 100%);width:calc(var(--dot-size)*1.25);height:calc(var(--dot-size)*1.125)}
 .r .dot{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);width:max(12px,calc(var(--dot-size)*1.125));height:max(12px,calc(var(--dot-size)*1.125))}
 .st{background:var(--checkin-overdue-bg);color:var(--checkin-overdue-ink);border-width:1px;border-style:dashed;border-color:var(--checkin-overdue-edge)}
+/* A Health chip shows only its shape, its word for a screen reader and the
+ * tooltip (DESIGN.md § Health): centred, 22px tall as it was with its word,
+ * never under 24px wide, and at least 24px tall where it is a link */
+.badge.shape{justify-content:center;min-width:24px;min-height:22px;padding:1px 4px}
+a>.badge.shape{min-height:24px}
 .badge.st{padding:0 8px}
 .alert.st{background:var(--color-surface);color:var(--color-ink)}
 .alert.st a{margin-left:auto;font-weight:600;white-space:nowrap}
@@ -265,7 +270,12 @@ strong{color:var(--color-ink)}
 .ruled:first-child{border-top:0;padding-top:0}
 .gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .gp-link{display:flex;flex-direction:column;gap:4px}
+.gp-link-head{display:flex;align-items:center;gap:8px;min-width:0}
+.gp-link-head>.badge{flex:none}
+.gp-link-head>a{min-width:0}
+.gp-link-head>.gp-link-meta{margin-left:auto}
 .gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gp-link-meta:empty{display:none}
 .gp-link-meta form{margin:0 0 0 auto}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:600;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-ink);cursor:pointer;box-sizing:border-box;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
 .btn:hover{background:var(--color-surface-hover);border-color:var(--color-primary);text-decoration:none;color:var(--color-ink)}

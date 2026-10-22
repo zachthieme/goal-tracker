@@ -601,7 +601,7 @@ type CheckinInput = {
 async function checkIn(page: Page, goalID: number, c: CheckinInput) {
   await page.goto(`/goals/${goalID}/checkin`);
   const form = page.getByTestId("checkin-form");
-  await form.getByTestId("checkin-health").getByText(c.health, { exact: true }).click();
+  await form.getByTestId("checkin-health").getByTitle(c.health, { exact: true }).click();
   if (c.pathToGreen) await form.getByRole("textbox", { name: "Plan", exact: true }).fill(c.pathToGreen);
   if (c.backToGreen) {
     await form.getByLabel("Back to Green by").fill(c.backToGreen);

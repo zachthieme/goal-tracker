@@ -856,6 +856,46 @@ func runningText(n *html.Node) string {
 	return strings.Join(strings.Fields(b.String()), " ")
 }
 
+// shownTextOf is what n shows a sighted reader: what it reads (textOf) less
+// its screen-reader text, the elements marked sr-only.
+func shownTextOf(n *html.Node) string {
+	return strings.Join(nodeWords(n, n, func(c *html.Node) bool {
+		return isHiddenElement(c) || flatFrameHasClass(c, "sr-only")
+	}), " ")
+}
+
+// assertHealthChip fails unless chip is a Health chip as the screen draws it:
+// its shape and colour with no word shown, the word read out to a screen
+// reader and given as its tooltip (DESIGN.md § Health).
+func assertHealthChip(t *testing.T, chip *html.Node, health string) {
+	t.Helper()
+	if shown, read, tip := shownTextOf(chip), textOf(chip), attrOf(chip, "title"); shown != "" || read != health || tip != health {
+		t.Errorf("Health chip shows %q, reads %q and is titled %q, want nothing shown, and %q read and titled: %s", shown, read, tip, health, renderNode(chip))
+	}
+	if len(findAll(chip, func(n *html.Node) bool { return flatFrameHasClass(n, "dot") })) != 1 {
+		t.Errorf("Health chip doesn't draw its shape: %s", renderNode(chip))
+	}
+}
+
+// healthChipsIn returns each Health badge under root, Red, Yellow or Green,
+// in document order.
+func healthChipsIn(root *html.Node) []*html.Node {
+	return findAll(root, func(n *html.Node) bool {
+		return flatFrameHasClass(n, "badge") && (flatFrameHasClass(n, "r") || flatFrameHasClass(n, "y") || flatFrameHasClass(n, "g"))
+	})
+}
+
+// healthChipIn returns the one Health badge under root, failing the test
+// unless there is exactly one.
+func healthChipIn(t *testing.T, root *html.Node) *html.Node {
+	t.Helper()
+	chips := healthChipsIn(root)
+	if len(chips) != 1 {
+		t.Fatalf("found %d Health badges, want 1:\n%s", len(chips), renderNode(root))
+	}
+	return chips[0]
+}
+
 // struckThrough is what each date or word under root shown struck through
 // reads, in order: a <del> or <s>, as an earlier date that slipped shows.
 func struckThrough(root *html.Node) []string {

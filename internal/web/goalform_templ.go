@@ -2714,56 +2714,25 @@ func parentBadge(p parentChoice) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if p.Health != "" {
-			var templ_7745c5c3_Var113 = []any{"badge", healthClass(p.Health)}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var113...)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "<span class=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var114 string
-			templ_7745c5c3_Var114, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var113).String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1, Col: 0}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var114)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "\"><span class=\"dot\"></span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var115 string
-			templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.JoinStringErrs(p.Health)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 899, Col: 84}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var115))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "</span>")
+			templ_7745c5c3_Err = healthChip("", p.Health).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<span class=\"badge lc\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "<span class=\"badge lc\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var116 string
-			templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Lifecycle)
+			var templ_7745c5c3_Var113 string
+			templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Lifecycle)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 901, Col: 43}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var113))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2792,12 +2761,12 @@ func goalFormParentsScript() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var117 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var117 == nil {
-			templ_7745c5c3_Var117 = templ.NopComponent
+		templ_7745c5c3_Var114 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var114 == nil {
+			templ_7745c5c3_Var114 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<script>\n\t\t(function () {\n\t\t\tvar field = document.querySelector('[data-testid=\"goal-form-parents\"]');\n\t\t\tif (!field) return;\n\t\t\tvar chips = field.querySelector(\"#parent-chips\");\n\t\t\tvar search = field.querySelector(\"#parent-search\");\n\t\t\tvar results = field.querySelector(\"#parent-results\");\n\t\t\tvar hint = field.querySelector('[data-testid=\"parent-hint\"]');\n\t\t\tvar select = field.querySelector('[data-testid=\"parent-select\"]');\n\t\t\tselect.disabled = true;\n\t\t\tfunction rebuildHint() {\n\t\t\t\tvar names = [];\n\t\t\t\tchips.querySelectorAll(\"[data-asks]\").forEach(function (chip) {\n\t\t\t\t\tvar name = chip.getAttribute(\"data-asks\");\n\t\t\t\t\tif (names.indexOf(name) < 0) names.push(name);\n\t\t\t\t});\n\t\t\t\thint.textContent = names.length ? \"Each Owner is asked to accept: \" + names.join(\", \") + \".\" : \"\";\n\t\t\t\thint.hidden = names.length === 0;\n\t\t\t}\n\t\t\tsearch.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\") e.preventDefault();\n\t\t\t});\n\t\t\tfield.addEventListener(\"click\", function (e) {\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tchips.appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\trebuildHint();\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"[data-testid='parent-chip']\").remove();\n\t\t\t\t\trebuildHint();\n\t\t\t\t\tsearch.focus();\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "<script>\n\t\t(function () {\n\t\t\tvar field = document.querySelector('[data-testid=\"goal-form-parents\"]');\n\t\t\tif (!field) return;\n\t\t\tvar chips = field.querySelector(\"#parent-chips\");\n\t\t\tvar search = field.querySelector(\"#parent-search\");\n\t\t\tvar results = field.querySelector(\"#parent-results\");\n\t\t\tvar hint = field.querySelector('[data-testid=\"parent-hint\"]');\n\t\t\tvar select = field.querySelector('[data-testid=\"parent-select\"]');\n\t\t\tselect.disabled = true;\n\t\t\tfunction rebuildHint() {\n\t\t\t\tvar names = [];\n\t\t\t\tchips.querySelectorAll(\"[data-asks]\").forEach(function (chip) {\n\t\t\t\t\tvar name = chip.getAttribute(\"data-asks\");\n\t\t\t\t\tif (names.indexOf(name) < 0) names.push(name);\n\t\t\t\t});\n\t\t\t\thint.textContent = names.length ? \"Each Owner is asked to accept: \" + names.join(\", \") + \".\" : \"\";\n\t\t\t\thint.hidden = names.length === 0;\n\t\t\t}\n\t\t\tsearch.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\") e.preventDefault();\n\t\t\t});\n\t\t\tfield.addEventListener(\"click\", function (e) {\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tchips.appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\trebuildHint();\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"[data-testid='parent-chip']\").remove();\n\t\t\t\t\trebuildHint();\n\t\t\t\t\tsearch.focus();\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2828,35 +2797,35 @@ func goalFormFits(v goalFormView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var118 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var118 == nil {
-			templ_7745c5c3_Var118 = templ.NopComponent
+		templ_7745c5c3_Var115 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var115 == nil {
+			templ_7745c5c3_Var115 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "<fieldset data-testid=\"goal-form-fits\" class=\"gf-section\"><legend class=\"sr-only\">Where it fits</legend><p data-testid=\"goal-form-fits-note\" class=\"muted small\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<fieldset data-testid=\"goal-form-fits\" class=\"gf-section\"><legend class=\"sr-only\">Where it fits</legend><p data-testid=\"goal-form-fits-note\" class=\"muted small\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var119 string
-		templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(v.fitsRequiredNote())
+		var templ_7745c5c3_Var116 string
+		templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.JoinStringErrs(v.fitsRequiredNote())
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 964, Col: 25}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var116))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, " ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, " ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if v.Suggested {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "Values from the Goals it contributes to come ticked; untick any that don't fit.")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "Values from the Goals it contributes to come ticked; untick any that don't fit.")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2872,7 +2841,7 @@ func goalFormFits(v goalFormView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2927,88 +2896,88 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var120 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var120 == nil {
-			templ_7745c5c3_Var120 = templ.NopComponent
+		templ_7745c5c3_Var117 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var117 == nil {
+			templ_7745c5c3_Var117 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if d.TakesSeveral() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "<fieldset id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<fieldset id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var121 string
-			templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
+			var templ_7745c5c3_Var118 string
+			templ_7745c5c3_Var118, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1011, Col: 34}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var118)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "\" class=\"gf-group\"><legend>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "\" class=\"gf-group\"><legend>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var122 string
-			templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
+			var templ_7745c5c3_Var119 string
+			templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1012, Col: 19}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var122))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "</legend><div class=\"gf-picks\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "</legend><div class=\"gf-picks\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, val := range v.choices(d) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "<label class=\"gf-pick\"><input type=\"checkbox\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "<label class=\"gf-pick\"><input type=\"checkbox\" id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var123 string
-				templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ValueInput(val.ID))
+				var templ_7745c5c3_Var120 string
+				templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ValueInput(val.ID))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1018, Col: 37}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var120)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "\" name=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "\" name=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var124 string
-				templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
+				var templ_7745c5c3_Var121 string
+				templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1019, Col: 26}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var124)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var125 string
-				templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
+				var templ_7745c5c3_Var122 string
+				templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1020, Col: 33}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var125)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var122)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if v.Chosen[val.ID] {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, " checked")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, " checked")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -3017,25 +2986,25 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "> <span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "> <span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var126 string
-				templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
+				var templ_7745c5c3_Var123 string
+				templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1024, Col: 35}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var123))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "</span></label>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "</span></label>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3049,51 +3018,51 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "</fieldset>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "</fieldset>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "<div class=\"gf-group\"><label class=\"field\"><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "<div class=\"gf-group\"><label class=\"field\"><span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var127 string
-			templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
+			var templ_7745c5c3_Var124 string
+			templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1036, Col: 18}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var127))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var124))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "</span> <select id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "</span> <select id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var128 string
-			templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
+			var templ_7745c5c3_Var125 string
+			templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1037, Col: 34}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var128)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var125)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var129 string
-			templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
+			var templ_7745c5c3_Var126 string
+			templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1037, Col: 56}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var129)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var126)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3101,89 +3070,89 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, "><option value=\"\">None</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "><option value=\"\">None</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, val := range v.choices(d) {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var130 string
-				templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
+				var templ_7745c5c3_Var127 string
+				templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1040, Col: 40}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var130)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var127)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if v.Chosen[val.ID] {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, " selected")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, " selected")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, ">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, ">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var131 string
-				templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
+				var templ_7745c5c3_Var128 string
+				templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1040, Col: 97}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var128))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "</select> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, "</select> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if bad := v.badSelect(d); bad != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "<span data-testid=\"input-error\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, "<span data-testid=\"input-error\" id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var132 string
-				templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d) + "-error")
+				var templ_7745c5c3_Var129 string
+				templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d) + "-error")
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1044, Col: 70}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var132)
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var129)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 243, "\" class=\"gf-input-error\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "\" class=\"gf-input-error\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var133 string
-				templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
+				var templ_7745c5c3_Var130 string
+				templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1044, Col: 101}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var133))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 244, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 245, "</label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "</label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3191,7 +3160,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 243, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3219,66 +3188,66 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var134 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var134 == nil {
-			templ_7745c5c3_Var134 = templ.NopComponent
+		templ_7745c5c3_Var131 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var131 == nil {
+			templ_7745c5c3_Var131 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if d.Extendable() {
 			input := domain.NewValueInput(d.ID)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "<label class=\"field\"><span class=\"hint\">Add a ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 244, "<label class=\"field\"><span class=\"hint\">Add a ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var132 string
+			templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1059, Col: 36}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 245, " value</span> <input type=\"text\" id=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var133 string
+			templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1060, Col: 32}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var133)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "\" name=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var134 string
+			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1060, Col: 47}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var134)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var135 string
-			templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1059, Col: 36}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var135))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, " value</span> <input type=\"text\" id=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var136 string
-			templ_7745c5c3_Var136, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1060, Col: 32}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var136)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, "\" name=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var137 string
-			templ_7745c5c3_Var137, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1060, Col: 47}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var137)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var138 string
-			templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.NewValues[d.ID])
+			templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.NewValues[d.ID])
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1060, Col: 75}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var138)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var135)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3286,7 +3255,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3294,7 +3263,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, "</label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "</label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3321,94 +3290,133 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var139 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var139 == nil {
-			templ_7745c5c3_Var139 = templ.NopComponent
+		templ_7745c5c3_Var136 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var136 == nil {
+			templ_7745c5c3_Var136 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		input := domain.FieldInput(f.ID)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, "<label class=\"field\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "<label class=\"field\"><span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var140 string
-		templ_7745c5c3_Var140, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
+		var templ_7745c5c3_Var137 string
+		templ_7745c5c3_Var137, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1072, Col: 11}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var140))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var137))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, " ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, " ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if f.Type == domain.FieldNumber && f.Unit != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "<span class=\"hint\">(")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, "<span class=\"hint\">(")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var141 string
-			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinStringErrs(f.Unit)
+			var templ_7745c5c3_Var138 string
+			templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.JoinStringErrs(f.Unit)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1074, Col: 32}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var138))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 257, ")</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, ")</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 258, "</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, "</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		switch f.Type {
 		case domain.FieldNumber:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 259, "<input type=\"number\" step=\"any\" id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "<input type=\"number\" step=\"any\" id=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var139 string
+			templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 46}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var139)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 257, "\" name=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var140 string
+			templ_7745c5c3_Var140, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 61}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var140)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 258, "\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var141 string
+			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 91}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var141)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 259, "\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, invalid(v.bad(input), input))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 260, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case domain.FieldLongText:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 261, "<textarea id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var142 string
 			templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var142)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 260, "\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 262, "\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var143 string
 			templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var143)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 261, "\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var144 string
-			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1079, Col: 91}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var144)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 262, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 263, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3416,38 +3424,64 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 263, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 264, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case domain.FieldLongText:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 264, "<textarea id=\"")
+			var templ_7745c5c3_Var144 string
+			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinStringErrs(v.FieldValues[f.ID])
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 99}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 265, "</textarea>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case domain.FieldDate:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, "<input type=\"date\" id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var145 string
 			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var145)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 265, "\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 267, "\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var146 string
 			templ_7745c5c3_Var146, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var146)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 268, "\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var147 string
+			templ_7745c5c3_Var147, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 78}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var147)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 269, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3455,64 +3489,51 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 267, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 270, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var147 string
-			templ_7745c5c3_Var147, templ_7745c5c3_Err = templ.JoinStringErrs(v.FieldValues[f.ID])
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 99}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var147))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 268, "</textarea>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		case domain.FieldDate:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 269, "<input type=\"date\" id=\"")
+		default:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 271, "<input type=\"text\" id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var148 string
 			templ_7745c5c3_Var148, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var148)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 270, "\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 272, "\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var149 string
 			templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var149)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 271, "\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 273, "\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var150 string
 			templ_7745c5c3_Var150, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var150)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 272, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 274, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3520,59 +3541,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 273, ">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		default:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 274, "<input type=\"text\" id=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var151 string
-			templ_7745c5c3_Var151, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 33}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var151)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 275, "\" name=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var152 string
-			templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 48}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var152)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 276, "\" value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var153 string
-			templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1085, Col: 78}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var153)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 277, "\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, invalid(v.bad(input), input))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 278, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 275, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3581,7 +3550,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 279, "</label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 276, "</label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3607,84 +3576,84 @@ func goalFormErrors(v goalFormView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var154 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var154 == nil {
-			templ_7745c5c3_Var154 = templ.NopComponent
+		templ_7745c5c3_Var151 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var151 == nil {
+			templ_7745c5c3_Var151 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(v.Problems) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 280, "<div data-testid=\"goal-form-errors\" class=\"alert r gf-errors\" role=\"alert\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 277, "<div data-testid=\"goal-form-errors\" class=\"alert r gf-errors\" role=\"alert\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if v.Goal == nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 281, "<strong>The Goal wasn't created.</strong>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 278, "<strong>The Goal wasn't created.</strong>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 282, "<strong>The Goal wasn't saved.</strong>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 279, "<strong>The Goal wasn't saved.</strong>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 283, "<ul>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 280, "<ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, p := range v.summary() {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 284, "<li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 281, "<li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if p.Input != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 285, "<a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 282, "<a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var155 templ.SafeURL
-					templ_7745c5c3_Var155, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("#" + p.Input))
+					var templ_7745c5c3_Var152 templ.SafeURL
+					templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("#" + p.Input))
 					if templ_7745c5c3_Err != nil {
 						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1105, Col: 45}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var155))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 286, "\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 283, "\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var156 string
-					templ_7745c5c3_Var156, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
+					var templ_7745c5c3_Var153 string
+					templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
 					if templ_7745c5c3_Err != nil {
 						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1105, Col: 59}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var156))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var153))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 287, "</a>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 284, "</a>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					var templ_7745c5c3_Var157 string
-					templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
+					var templ_7745c5c3_Var154 string
+					templ_7745c5c3_Var154, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
 					if templ_7745c5c3_Err != nil {
 						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1107, Col: 18}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var154))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 288, "</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 285, "</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 289, "</ul></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 286, "</ul></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3710,39 +3679,39 @@ func goalFormInputError(v goalFormView, input string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var158 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var158 == nil {
-			templ_7745c5c3_Var158 = templ.NopComponent
+		templ_7745c5c3_Var155 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var155 == nil {
+			templ_7745c5c3_Var155 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if bad := v.bad(input); bad != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 290, "<span data-testid=\"input-error\" id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 287, "<span data-testid=\"input-error\" id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var159 string
-			templ_7745c5c3_Var159, templ_7745c5c3_Err = templ.ResolveAttributeValue(input + "-error")
+			var templ_7745c5c3_Var156 string
+			templ_7745c5c3_Var156, templ_7745c5c3_Err = templ.ResolveAttributeValue(input + "-error")
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1119, Col: 55}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var159)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var156)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 291, "\" class=\"gf-input-error\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 288, "\" class=\"gf-input-error\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var160 string
-			templ_7745c5c3_Var160, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
+			var templ_7745c5c3_Var157 string
+			templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1119, Col: 86}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var160))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 292, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 289, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3768,12 +3737,12 @@ func goalFormStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var161 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var161 == nil {
-			templ_7745c5c3_Var161 = templ.NopComponent
+		templ_7745c5c3_Var158 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var158 == nil {
+			templ_7745c5c3_Var158 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 293, "<style>\n\t\t.gf-form{display:grid;grid-template-columns:minmax(0,720px) 240px;gap:40px;justify-content:center;align-items:start}\n\t\t.gf-main{display:flex;flex-direction:column;min-width:0}\n\t\t.gf-main>section{padding:24px 0;border-top:1px solid var(--color-border)}\n\t\t.gf-main>section:first-of-type{padding-top:0;border-top:0}\n\t\t.gf-form>.gf-ready{position:sticky;top:24px;gap:12px;padding-left:24px;border-left:1px solid var(--color-border)}\n\t\t.gf-ready p{margin:0}\n\t\t.gf-progress{appearance:none;display:block;width:100%;height:6px;border:0;border-radius:999px;background:var(--color-chip-bg);overflow:hidden}\n\t\t.gf-progress::-webkit-progress-bar{background:var(--color-chip-bg)}\n\t\t.gf-progress::-webkit-progress-value{background:var(--color-ink-muted)}\n\t\t.gf-progress::-moz-progress-bar{background:var(--color-ink-muted)}\n\t\t.gf-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.gf-check{position:relative;display:flex;gap:12px;align-items:flex-start}\n\t\t.gf-mark{flex:none;box-sizing:border-box;width:18px;height:18px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%;color:transparent;font-size:11px;font-weight:700;line-height:14px;text-align:center}\n\t\t.gf-check.done .gf-mark{border-color:var(--health-g-ink);background:var(--health-g-ink);color:var(--color-surface)}\n\t\t.gf-cancel{align-self:flex-start}\n\t\t@media (max-width:960px){\n\t\t\t.gf-form{grid-template-columns:minmax(0,720px);gap:0}\n\t\t\t.gf-form>.gf-ready{position:static;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}\n\t\t}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}\n\t\t.gf-errors ul{margin:0;padding-left:20px}\n\t\t.gf-errors a{color:inherit}\n\t\t.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}\n\t\t.gf-actions{display:flex;flex-direction:column;gap:8px}\n\t\t.gf-activate{order:-1}\n\t\t.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-head-line{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px}\n\t\t.gf-page-line{margin:0;font-size:13px;line-height:1.5;color:var(--color-ink-muted)}\n\t\t.gf-what .gf-title{font-weight:600;font-size:28px;line-height:1.2;letter-spacing:-0.02em;height:auto;padding:4px 0;border:0;border-bottom:1px solid var(--color-border-strong);border-radius:0;background:transparent}\n\t\t.gf-what .gf-title[aria-invalid=true]{border-bottom-color:var(--color-danger-ink)}\n\t\t.gf-delivery{gap:24px}\n\t\t.gf-group{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-group>legend{font-weight:600;font-size:13px;padding:0;margin-bottom:8px}\n\t\t.gf-segments{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}\n\t\t.gf-tile{display:flex;flex-direction:column;min-width:0;border:1px solid var(--color-border);border-radius:var(--radius-md)}\n\t\t.gf-segment{position:relative;display:flex;align-items:flex-start;gap:8px;padding:12px 16px;cursor:pointer}\n\t\t.gf-segment .hint{display:block}\n\t\t.gf-tile .gf-date{padding:0 16px 16px 40px}\n\t\t.gf-picks{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.gf-pick{position:relative;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border:1px solid var(--color-border-strong);border-radius:999px;cursor:pointer}\n\t\t.gf-segctl{display:inline-flex;flex-wrap:wrap;align-self:flex-start;gap:4px;padding:4px;background:var(--color-chip-bg);border-radius:var(--radius-md)}\n\t\t.gf-seg{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;min-height:22px;padding:0 12px;box-sizing:border-box;border:1px solid transparent;border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--color-ink-2);cursor:pointer;white-space:nowrap}\n\t\t.gf-delivery:not(:has(#kind-dated:checked)) .gf-date{display:none}\n\t\t.gf-cadence:not(:has(#cadence-custom:checked)) .gf-custom{display:none}\n\t\t.gf-custom input{max-width:160px}\n\t\t@supports selector(:has(*)){\n\t\t\t.gf-seg input,.gf-segment input,.gf-pick input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.gf-form:has(#kind-ongoing:checked) .gf-rule-any{display:none}\n\t\t\t.gf-form:has(#kind-ongoing:checked) .gf-rule-ongoing{display:inline}\n\t\t\t.gf-seg:has(input:checked){background:var(--color-canvas);border-color:var(--color-primary-strong);color:var(--color-ink);font-weight:600}\n\t\t\t.gf-pick:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}\n\t\t\t.gf-tile{border:2px solid var(--color-border-strong)}\n\t\t\t.gf-tile:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}\n\t\t\t.gf-segment::before{content:\"\";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}\n\t\t\t.gf-segment:has(input:checked)::before{border-color:var(--color-primary-strong);background:radial-gradient(circle,var(--color-primary-strong) 0 4px,transparent 4.5px)}\n\t\t\t.gf-tile:has(.gf-segment input:focus-visible),.gf-seg:has(input:focus-visible),label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t}\n\t\t@media (max-width:600px){\n\t\t\t.gf-segments{grid-template-columns:minmax(0,1fr)}\n\t\t\t.gf-segctl{display:grid;grid-template-columns:1fr 1fr;align-self:stretch}\n\t\t\t.gf-seg{white-space:normal;text-align:center}\n\t\t}\n\t\t@media (pointer:coarse){.gf-seg{min-height:44px}}\n\t\t.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}\n\t\t.gf-existing{display:flex;flex-direction:column;gap:4px}\n\t\t.gf-know{display:flex;flex-direction:column;gap:12px;min-width:0}\n\t\t.gf-know-head{margin:4px 0 0;font-family:var(--font-body)}\n\t\t.gf-rule-ongoing{display:none}\n\t\t.gf-rows{display:flex;flex-direction:column;gap:12px}\n\t\t.gf-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px}\n\t\t.gf-row .field{flex:1 1 140px;min-width:0}\n\t\t.gf-row .field input,.gf-row .field select{width:100%}\n\t\t.gf-form:not(.gf-js) .gf-js-only{display:none}\n\t\t.gf-rows:empty{display:none}\n\t\t.gf-measure-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.gf-milestone-fields,.gf-metric-fields{display:grid;gap:8px 12px}\n\t\t.gf-milestone-fields{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}\n\t\t.gf-metric-fields{grid-template-columns:repeat(2,minmax(0,1fr))}\n\t\t.gf-milestone-fields .field input,.gf-metric-fields .field input,.gf-metric-fields .field select{width:100%}\n\t\t@media (max-width:600px){\n\t\t\t.gf-milestone-fields,.gf-metric-fields{grid-template-columns:minmax(0,1fr)}\n\t\t}\n\t\t.gf-form.gf-js .gf-no-js{display:none}\n\t\t.gf-more{gap:0}\n\t\t.gf-more>h2{margin-bottom:8px}\n\t\t.gf-more>h2 .muted{margin-left:4px;font-weight:400}\n\t\t.gf-more-row+.gf-more-row{border-top:1px solid var(--color-border)}\n\t\t.gf-more-row>summary{min-height:48px;justify-content:flex-start;gap:4px;list-style:none}\n\t\t.gf-more-row>summary::-webkit-details-marker{display:none}\n\t\t.gf-more-name{flex:none;font-weight:600;color:var(--color-ink)}\n\t\t.gf-more-value{min-width:0;overflow-wrap:anywhere}\n\t\t.gf-more-action{flex:none;margin-left:auto;font-weight:600;color:var(--color-primary-strong)}\n\t\t.gf-more-row>fieldset{padding-bottom:16px}\n\t\t.gf-parents{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.gf-chips:empty{display:none}\n\t\t.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.gf-chip .gf-input-error{flex-basis:100%}\n\t\t.gf-search input{width:100%}\n\t\t.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.gf-results:empty{display:none}\n\t\t.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}\n\t\t.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}\n\t\t.gf-parents select[multiple]{width:100%;min-height:8em}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 290, "<style>\n\t\t.gf-form{display:grid;grid-template-columns:minmax(0,720px) 240px;gap:40px;justify-content:center;align-items:start}\n\t\t.gf-main{display:flex;flex-direction:column;min-width:0}\n\t\t.gf-main>section{padding:24px 0;border-top:1px solid var(--color-border)}\n\t\t.gf-main>section:first-of-type{padding-top:0;border-top:0}\n\t\t.gf-form>.gf-ready{position:sticky;top:24px;gap:12px;padding-left:24px;border-left:1px solid var(--color-border)}\n\t\t.gf-ready p{margin:0}\n\t\t.gf-progress{appearance:none;display:block;width:100%;height:6px;border:0;border-radius:999px;background:var(--color-chip-bg);overflow:hidden}\n\t\t.gf-progress::-webkit-progress-bar{background:var(--color-chip-bg)}\n\t\t.gf-progress::-webkit-progress-value{background:var(--color-ink-muted)}\n\t\t.gf-progress::-moz-progress-bar{background:var(--color-ink-muted)}\n\t\t.gf-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.gf-check{position:relative;display:flex;gap:12px;align-items:flex-start}\n\t\t.gf-mark{flex:none;box-sizing:border-box;width:18px;height:18px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%;color:transparent;font-size:11px;font-weight:700;line-height:14px;text-align:center}\n\t\t.gf-check.done .gf-mark{border-color:var(--health-g-ink);background:var(--health-g-ink);color:var(--color-surface)}\n\t\t.gf-cancel{align-self:flex-start}\n\t\t@media (max-width:960px){\n\t\t\t.gf-form{grid-template-columns:minmax(0,720px);gap:0}\n\t\t\t.gf-form>.gf-ready{position:static;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}\n\t\t}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}\n\t\t.gf-errors ul{margin:0;padding-left:20px}\n\t\t.gf-errors a{color:inherit}\n\t\t.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}\n\t\t.gf-actions{display:flex;flex-direction:column;gap:8px}\n\t\t.gf-activate{order:-1}\n\t\t.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-head-line{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px}\n\t\t.gf-page-line{margin:0;font-size:13px;line-height:1.5;color:var(--color-ink-muted)}\n\t\t.gf-what .gf-title{font-weight:600;font-size:28px;line-height:1.2;letter-spacing:-0.02em;height:auto;padding:4px 0;border:0;border-bottom:1px solid var(--color-border-strong);border-radius:0;background:transparent}\n\t\t.gf-what .gf-title[aria-invalid=true]{border-bottom-color:var(--color-danger-ink)}\n\t\t.gf-delivery{gap:24px}\n\t\t.gf-group{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-group>legend{font-weight:600;font-size:13px;padding:0;margin-bottom:8px}\n\t\t.gf-segments{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}\n\t\t.gf-tile{display:flex;flex-direction:column;min-width:0;border:1px solid var(--color-border);border-radius:var(--radius-md)}\n\t\t.gf-segment{position:relative;display:flex;align-items:flex-start;gap:8px;padding:12px 16px;cursor:pointer}\n\t\t.gf-segment .hint{display:block}\n\t\t.gf-tile .gf-date{padding:0 16px 16px 40px}\n\t\t.gf-picks{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.gf-pick{position:relative;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border:1px solid var(--color-border-strong);border-radius:999px;cursor:pointer}\n\t\t.gf-segctl{display:inline-flex;flex-wrap:wrap;align-self:flex-start;gap:4px;padding:4px;background:var(--color-chip-bg);border-radius:var(--radius-md)}\n\t\t.gf-seg{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;min-height:22px;padding:0 12px;box-sizing:border-box;border:1px solid transparent;border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--color-ink-2);cursor:pointer;white-space:nowrap}\n\t\t.gf-delivery:not(:has(#kind-dated:checked)) .gf-date{display:none}\n\t\t.gf-cadence:not(:has(#cadence-custom:checked)) .gf-custom{display:none}\n\t\t.gf-custom input{max-width:160px}\n\t\t@supports selector(:has(*)){\n\t\t\t.gf-seg input,.gf-segment input,.gf-pick input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.gf-form:has(#kind-ongoing:checked) .gf-rule-any{display:none}\n\t\t\t.gf-form:has(#kind-ongoing:checked) .gf-rule-ongoing{display:inline}\n\t\t\t.gf-seg:has(input:checked){background:var(--color-canvas);border-color:var(--color-primary-strong);color:var(--color-ink);font-weight:600}\n\t\t\t.gf-pick:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}\n\t\t\t.gf-tile{border:2px solid var(--color-border-strong)}\n\t\t\t.gf-tile:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}\n\t\t\t.gf-segment::before{content:\"\";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}\n\t\t\t.gf-segment:has(input:checked)::before{border-color:var(--color-primary-strong);background:radial-gradient(circle,var(--color-primary-strong) 0 4px,transparent 4.5px)}\n\t\t\t.gf-tile:has(.gf-segment input:focus-visible),.gf-seg:has(input:focus-visible),label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t}\n\t\t@media (max-width:600px){\n\t\t\t.gf-segments{grid-template-columns:minmax(0,1fr)}\n\t\t\t.gf-segctl{display:grid;grid-template-columns:1fr 1fr;align-self:stretch}\n\t\t\t.gf-seg{white-space:normal;text-align:center}\n\t\t}\n\t\t@media (pointer:coarse){.gf-seg{min-height:44px}}\n\t\t.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}\n\t\t.gf-existing{display:flex;flex-direction:column;gap:4px}\n\t\t.gf-know{display:flex;flex-direction:column;gap:12px;min-width:0}\n\t\t.gf-know-head{margin:4px 0 0;font-family:var(--font-body)}\n\t\t.gf-rule-ongoing{display:none}\n\t\t.gf-rows{display:flex;flex-direction:column;gap:12px}\n\t\t.gf-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px}\n\t\t.gf-row .field{flex:1 1 140px;min-width:0}\n\t\t.gf-row .field input,.gf-row .field select{width:100%}\n\t\t.gf-form:not(.gf-js) .gf-js-only{display:none}\n\t\t.gf-rows:empty{display:none}\n\t\t.gf-measure-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.gf-milestone-fields,.gf-metric-fields{display:grid;gap:8px 12px}\n\t\t.gf-milestone-fields{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}\n\t\t.gf-metric-fields{grid-template-columns:repeat(2,minmax(0,1fr))}\n\t\t.gf-milestone-fields .field input,.gf-metric-fields .field input,.gf-metric-fields .field select{width:100%}\n\t\t@media (max-width:600px){\n\t\t\t.gf-milestone-fields,.gf-metric-fields{grid-template-columns:minmax(0,1fr)}\n\t\t}\n\t\t.gf-form.gf-js .gf-no-js{display:none}\n\t\t.gf-more{gap:0}\n\t\t.gf-more>h2{margin-bottom:8px}\n\t\t.gf-more>h2 .muted{margin-left:4px;font-weight:400}\n\t\t.gf-more-row+.gf-more-row{border-top:1px solid var(--color-border)}\n\t\t.gf-more-row>summary{min-height:48px;justify-content:flex-start;gap:4px;list-style:none}\n\t\t.gf-more-row>summary::-webkit-details-marker{display:none}\n\t\t.gf-more-name{flex:none;font-weight:600;color:var(--color-ink)}\n\t\t.gf-more-value{min-width:0;overflow-wrap:anywhere}\n\t\t.gf-more-action{flex:none;margin-left:auto;font-weight:600;color:var(--color-primary-strong)}\n\t\t.gf-more-row>fieldset{padding-bottom:16px}\n\t\t.gf-parents{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.gf-chips:empty{display:none}\n\t\t.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.gf-chip .gf-input-error{flex-basis:100%}\n\t\t.gf-search input{width:100%}\n\t\t.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.gf-results:empty{display:none}\n\t\t.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}\n\t\t.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}\n\t\t.gf-parents select[multiple]{width:100%;min-height:8em}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

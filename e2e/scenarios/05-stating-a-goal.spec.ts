@@ -316,7 +316,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   await test.step("5.4 She checks in Red; the link is only a request, so the team Goal's Rolled-up Health is unchanged", async () => {
     await priya.goto(`/goals/${goalCId}/checkin`);
     const health = priya.getByTestId("checkin-health");
-    await health.getByText("Red", { exact: true }).click();
+    await health.getByTitle("Red", { exact: true }).click();
     await expect(health.getByRole("radio", { name: "Red" })).toBeChecked();
     await priya.getByLabel("Plan").fill("Move the pricing cache behind the CDN this sprint.");
     await priya.getByLabel("Back to Green by").fill(isoDaysFromNow(30));

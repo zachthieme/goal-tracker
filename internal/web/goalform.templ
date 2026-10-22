@@ -896,7 +896,7 @@ templ goalSearchResults(matches []parentChoice) {
 // Goal's, or its Lifecycle when it has none.
 templ parentBadge(p parentChoice) {
 	if p.Health != "" {
-		<span class={ "badge", healthClass(p.Health) }><span class="dot"></span>{ p.Health }</span>
+		@healthChip("", p.Health)
 	} else {
 		<span class="badge lc">{ p.Goal.Lifecycle }</span>
 	}

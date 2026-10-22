@@ -709,7 +709,9 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				ul { margin: 0.2rem 0 0.4rem; padding-left: 1.1rem; }
 				article { break-inside: avoid; border-top: 0.5pt solid var(--print-rule); padding: 0.9rem 0 0.6rem; }
 				h2 + article { border-top: none; }
-				.rp-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+				.rp-card-head { display: flex; align-items: baseline; gap: 0.75rem; }
+				.rp-health { white-space: nowrap; }
+				.rp-card-title { flex: 1; min-width: 0; }
 				.rp-card-head p { margin: 0.1rem 0 0; }
 				.rp-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 0.3rem; }
 				table { border-collapse: collapse; width: 100%; font-size: 10pt; }
@@ -755,7 +757,7 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 			@publicationSelection(p)
 			@reportMovement(p.Report)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc})
+				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc, Print: true})
 			</section>
 		</body>
 	</html>
@@ -780,7 +782,11 @@ templ healthSummary(r domain.Report) {
 	<section data-testid="health-summary" class="rp-tiles">
 		for _, t := range healthTiles(r) {
 			<div class="rp-tile">
-				<span class={ "badge", t.class }><span class="dot"></span>{ t.label }</span>
+				if t.class == "st" {
+					<span class={ "badge", t.class }><span class="dot"></span>{ t.label }</span>
+				} else {
+					@healthChip("", t.label)
+				}
 				<span data-testid={ "health-count-" + t.key } class="num rp-count">{ fmt.Sprintf("%d", t.count) }</span>
 			</div>
 		}
@@ -878,7 +884,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 						for _, sg := range r.Lines {
 							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
 								<td class="rp-track-health">
-									@healthBadge("selected-health", sg.Health)
+									@reportHealthBadge("selected-health", sg.Health, d)
 								</td>
 								<td class="rp-track-goal">
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
@@ -1131,11 +1137,12 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 }
 
 // reportBlock is an exception Goal's full MBR block, an entry ruled off from
-// the next by a hairline: title, Owner,
-// Lifecycle, and due date with its history struck through; Health and badges
-// top right; under them, when it changed since the baseline, a line saying what
-// changed ("Changed: Turned Red · 1 Milestone slipped"), and under that the
-// Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)"); Why it
+// the next by a hairline: its head reads Health first, with its Run off Green
+// and earlier Health, then the title over its Owner, Lifecycle, and due date
+// with its history struck through, then its other badges; under them, when it
+// changed since the baseline, a line saying what changed ("Changed: Turned
+// Red · 1 Milestone slipped"), and under that the Goals in the Report it
+// contributes to ("Contributes to: [Red] Growth ↓"); Why it
 // matters, latest status, and Path to Green in a tinted box, its back-to-Green
 // date followed by the date it last slipped from in the Run off Green struck
 // through and the count of slips once more than one, as drafted (see
@@ -1156,7 +1163,16 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<div class="rp-card-head">
-			<div>
+			<span class="rp-health">
+				@reportHealthBadge("report-health", b.Health, d)
+				if b.RunOffGreenWeeks > 0 {
+					<span data-testid="report-run-off-green" class="small muted">{ "· " + domain.RunOffGreenLabel(b.RunOffGreenWeeks) }</span>
+				}
+				if b.PriorHealth != "" {
+					<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+				}
+			</span>
+			<div class="rp-card-title">
 				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
 				<p class="small muted">
 					<span data-testid="report-owner">
@@ -1172,24 +1188,13 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					}
 				</p>
 			</div>
-			<div class="rp-badges">
-				if b.RunOffGreenWeeks > 0 || b.PriorHealth != "" {
-					<span class="rp-health">
-						@healthBadge("report-health", b.Health)
-						if b.RunOffGreenWeeks > 0 {
-							<span data-testid="report-run-off-green" class="small muted">{ "· " + domain.RunOffGreenLabel(b.RunOffGreenWeeks) }</span>
-						}
-						if b.PriorHealth != "" {
-							<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
-						}
-					</span>
-				} else {
-					@healthBadge("report-health", b.Health)
-				}
-				for _, badge := range b.Badges {
-					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
-				}
-			</div>
+			if len(b.Badges) > 0 {
+				<div class="rp-badges">
+					for _, badge := range b.Badges {
+						<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
+					}
+				</div>
+			}
 		</div>
 		if len(b.Changes) > 0 {
 			<p data-testid="report-changes" class="small">
@@ -1205,7 +1210,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		if len(b.ContributesTo) > 0 {
 			<p data-testid="report-contributes-to" class="small">
 				<strong>Contributes to:</strong>{ " " }
-				@linkedGoals(b.ContributesTo)
+				@linkedGoals(b.ContributesTo, d)
 			</p>
 		}
 		@reportFields(b.Fields, d.dates())
@@ -1284,7 +1289,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			<p data-testid="report-rollup">
 				if b.RolledUp.Present {
 					<strong>Rolled-up Health:</strong>
-					@healthBadge("rollup-health", b.RolledUp.Health)
+					@reportHealthBadge("rollup-health", b.RolledUp.Health, d)
 				}
 				if count := b.RolledUp.CountLine(); count != "" {
 					· <span data-testid="report-rollup-count">{ count }</span>
@@ -1295,7 +1300,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 							<br/>
 						}
 						<strong>Supported by:</strong>{ " " }
-						@linkedGoals(b.Behind)
+						@linkedGoals(b.Behind, d)
 					</span>
 				}
 				if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0) {
@@ -1331,28 +1336,24 @@ templ reportBackToGreenSlips(n int) {
 
 // linkedGoals names the Goals an exception block links to, joined by " · ":
 // one the Report holds links to its block or line and is marked ↓, one it
-// doesn't links to its Goal page. Each shows its Health in brackets when it
-// has one ("Alpha ledger ↓ (Red)").
-templ linkedGoals(goals []domain.LinkedGoal) {
+// doesn't links to its Goal page. Each is led by its Health when it has one,
+// a chip on screen and its shape and word printed ("[Red] Alpha ledger ↓").
+templ linkedGoals(goals []domain.LinkedGoal, d discussion) {
 	for i, g := range goals {
 		if i > 0 {
 			{ " · " }
 		}
-		if g.InReport {
-			<a data-testid="report-linked-goal" href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.GoalID)) }>{ g.Title + " ↓" }</a>{ linkedHealth(g) }
-		} else {
-			<a data-testid="report-linked-goal" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.GoalID)) }>{ g.Title }</a>{ linkedHealth(g) }
-		}
+		<span class="rp-linked">
+			if g.Health != "" {
+				@reportHealthBadge("", g.Health, d)
+			}
+			if g.InReport {
+				<a data-testid="report-linked-goal" href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.GoalID)) }>{ g.Title + " ↓" }</a>
+			} else {
+				<a data-testid="report-linked-goal" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.GoalID)) }>{ g.Title }</a>
+			}
+		</span>
 	}
-}
-
-// linkedHealth is a linked Goal's Health in brackets after its name, or
-// nothing when it has none.
-func linkedHealth(g domain.LinkedGoal) string {
-	if g.Health == "" {
-		return ""
-	}
-	return " (" + g.Health + ")"
 }
 
 // reportFields is a Goal's values in the Fields its Report chose, each a
@@ -1383,14 +1384,54 @@ templ reportFields(fields []domain.FieldValue, dates displayDates) {
 	}
 }
 
-// healthBadge is a Health as a coloured badge with its shape, which the print
-// page draws too so it survives black-and-white printing, or a dash when there
-// is none yet.
+// healthBadge is a Goal's Health on screen, its chip (healthChip), or a
+// neutral badge reading a dash when there is none yet.
 templ healthBadge(testID, health string) {
-	<span data-testid={ testID } class={ "badge", healthClass(health) }>
-		<span class="dot"></span>
-		{ reportHealth(health) }
-	</span>
+	if health == "" {
+		<span data-testid={ testID } class="badge lc">{ reportHealth(health) }</span>{ " " }
+	} else {
+		@healthChip(testID, health)
+	}
+}
+
+// reportHealthBadge is a Report's Health badge: on screen its healthBadge;
+// printed, its shape beside its word, which paper keeps when it loses the
+// colour (DESIGN.md § Print variant).
+templ reportHealthBadge(testID, health string, d discussion) {
+	if d.Print {
+		<span
+			if testID != "" {
+				data-testid={ testID }
+			}
+			class={ "badge", healthClass(health) }
+		>
+			<span class="dot"></span>
+			{ reportHealth(health) }
+		</span>{ " " }
+	} else {
+		@healthBadge(testID, health)
+	}
+}
+
+// healthChip is a Health on screen: its colour and shape say it, so its word
+// is screen-reader text and its tooltip, not shown (DESIGN.md § Health).
+templ healthChip(testID, health string) {
+	@healthChipWith(testID, health, health, "")
+}
+
+// healthChipWith is healthChip with its own tooltip, tip, which opens with
+// the word, and a class of the place's own beside the badge's. A space
+// stands either side of it, as between elements on their own lines, so its
+// word doesn't run into the text around it.
+templ healthChipWith(testID, health, tip, class string) {
+	{ " " }
+	<span
+		if testID != "" {
+			data-testid={ testID }
+		}
+		class={ "badge", "shape", healthClass(health), templ.KV(class, class != "") }
+		title={ tip }
+	><span class="dot"></span><span class="sr-only">{ health }</span></span>{ " " }
 }
 
 // healthClass is the badge colour for a Health; no Health yet is neutral.
@@ -1621,10 +1662,11 @@ templ reportStyles() {
 		.rp-chase-list>li:hover{background:var(--color-row-hover)}
 		.rp-chase-group:last-child>.rp-chase-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.rp-chase-list>li>a{font-weight:500;color:var(--color-ink)}
-		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+		.rp-card-head{display:flex;align-items:flex-start;gap:8px 12px}
+		.rp-card-title{flex:1;min-width:0}
 		.rp-card-head h3{font-size:16px;line-height:1.4}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
-		.rp-health{display:inline-flex;gap:8px;align-items:center;white-space:nowrap}
+		.rp-health{display:inline-flex;gap:8px;align-items:center;min-height:22px;white-space:nowrap}
 		.rp-tint{background:var(--color-sidebar);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-block ul{margin:0;padding-left:20px}
@@ -1716,7 +1758,7 @@ templ reportStyles() {
 		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 		.rp-delegate-add input{flex:1 1 200px}
 		.rp-compose+.rp-body{padding-left:24px}
-		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
+		@media (max-width:600px){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-compose{padding:0 0 24px;border-right:none;border-bottom:1px solid var(--color-border)}.rp-compose+.rp-body{padding:24px 0 0}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 		@media (min-width:1280px){.rp-draft-head{flex-wrap:nowrap}.rp-draft-head .rp-save{flex-basis:9em;min-width:9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rp-draft-head .rp-chip,.rp-draft-head .rp-head-actions{flex-shrink:0}}
 	</style>

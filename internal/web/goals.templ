@@ -594,7 +594,7 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayD
 			<td>
 				if health := row.health(); health != "" {
 					@goalLinkIf(edit, g) {
-						<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+						@healthChip("", health)
 					}
 				}
 			</td>
@@ -941,7 +941,7 @@ templ goalProperties(v goalView) {
 				<dt>Health</dt>
 				<dd>
 					if health := v.health(); health != "" {
-						<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+						@healthChip("", health)
 					} else {
 						<span class="muted">No Health</span>
 					}
@@ -1127,7 +1127,7 @@ templ goalPageStyles() {
 		.gp-rail p{margin:0}
 		.gp-rail .gp-list{gap:4px}
 		.gp-rail .gp-link{padding:4px 0}
-		.gp-rail .gp-link>a{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--color-ink)}
+		.gp-rail .gp-link-head>a{font-weight:500;color:var(--color-ink)}
 		.gp-props,.gp-people{display:flex;flex-direction:column}
 		.gp-prop-list{margin:0}
 		.gp-prop{display:grid;grid-template-columns:96px minmax(0,1fr) auto;align-items:baseline;gap:4px 8px;min-height:32px;padding:4px 0;box-sizing:border-box}
@@ -1706,11 +1706,12 @@ templ metricFields(m domain.Metric) {
 	</label>
 }
 
-// linkList renders Goal g's parents or children as navigable links, each with
-// its Health and, for current when they own g or the linked Goal (the Owners
-// RemoveLink allows), a button that removes the connecting link at once: the
-// page that follows offers Undo. emptyTestID/emptyText render when there are
-// none.
+// linkList renders Goal g's parents or children as navigable links, each led
+// by its Health, or its Lifecycle when it has none, then its title, on one
+// line with Ownerless when it is and, for current when they own g or the
+// linked Goal (the Owners RemoveLink allows), a button that removes the
+// connecting link at once: the page that follows offers Undo.
+// emptyTestID/emptyText render when there are none.
 templ linkList(g domain.Goal, current *domain.Account, links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
 	<ul class="gp-list">
 		if len(links) == 0 {
@@ -1718,22 +1719,24 @@ templ linkList(g domain.Goal, current *domain.Account, links []domain.GoalLink, 
 		}
 		for _, l := range links {
 			<li class="gp-link">
-				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
-				<span class="gp-link-meta">
+				<span class="gp-link-head">
 					if h := health[l.Goal.ID]; h != "" {
-						<span class={ "badge", healthClass(h) }><span class="dot"></span>{ h }</span>
+						@healthChip("", h)
 					} else {
 						<span class="badge lc">{ l.Goal.Lifecycle }</span>
 					}
-					if l.Goal.Ownerless {
-						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
-					}
-					if current != nil && (current.ID == g.Owner.ID || current.ID == l.Goal.Owner.ID) {
-						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>
-							<input type="hidden" name="goal_id" value={ fmt.Sprint(g.ID) }/>
-							<button type="submit" class="btn quiet sm">Remove</button>
-						</form>
-					}
+					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
+					<span class="gp-link-meta">
+						if l.Goal.Ownerless {
+							<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
+						}
+						if current != nil && (current.ID == g.Owner.ID || current.ID == l.Goal.Owner.ID) {
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>
+								<input type="hidden" name="goal_id" value={ fmt.Sprint(g.ID) }/>
+								<button type="submit" class="btn quiet sm">Remove</button>
+							</form>
+						}
+					</span>
 				</span>
 				<span class="muted small">
 					{ "Owner " }

@@ -36,7 +36,8 @@ func publication(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) d
 
 // The export opens with the Report's name, who published it and when, what it
 // read its changes against, and the introduction; every Goal that is not an
-// exception takes one line with its title, Owner, Health, and due date.
+// exception takes one line with its Health first, then its title, Owner and
+// due date; with no Health yet, a dash takes its place (#453).
 func TestMarkdownHeaderAndOneLineGoals(t *testing.T) {
 	t.Parallel()
 
@@ -53,8 +54,8 @@ Quarterly business review.
 
 ## Other Goals
 
-- Cut churn — boss — Green — due 2026-06-30
-- Hire a PM — boss — —
+- Green — Cut churn — boss — due 2026-06-30
+- — — Hire a PM — boss
 `
 	if got := export.Markdown(pub); got != want {
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
@@ -111,9 +112,9 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 
 	want := `## Exceptions
 
-### Launch in EU **[New]** **[New Date]** **[Check-in overdue]**
+### Red · Launch in EU **[New]** **[New Date]** **[Check-in overdue]**
 
-boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
+boss · Active · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
 
 **Why it matters:** Expand the market.
 
@@ -255,11 +256,11 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 
 	got := export.Markdown(pub)
 	for _, want := range []string{
-		"### Ship \\*fast\\* \\~\\~now\\~\\~\n",
+		"### Yellow · Ship \\*fast\\* \\~\\~now\\~\\~\n",
 		"**Why it matters:** See \\[docs\\](http://x).\n",
 		"**Status:** Line one. # not a heading \\<b>\n",
-		"- 1\\. Hire — boss — Green\n",
-		"- \\- Retain \\`all\\` — boss — Green\n",
+		"- Green — 1\\. Hire — boss\n",
+		"- Green — \\- Retain \\`all\\` — boss\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown missing %q:\n%s", want, got)
@@ -385,9 +386,9 @@ Quarterly business review.
 
 ## Other Goals
 
-- Cut churn — Ada Okafor (ada.okafor@example.com) — Green
-- Hire a PM — Ada Okafor — Green
-- Close the books — boss — Green
+- Green — Cut churn — Ada Okafor (ada.okafor@example.com)
+- Green — Hire a PM — Ada Okafor
+- Green — Close the books — boss
 `
 	if got := export.Markdown(pub); !strings.HasSuffix(got, want) {
 		t.Errorf("Markdown:\n%s\nwant it to end:\n%s", got, want)
@@ -442,9 +443,9 @@ func TestMarkdownCarriesTheChosenFields(t *testing.T) {
 		{Goal: domain.Goal{Title: "Hire a PM", Owner: boss}, Health: domain.HealthGreen},
 	})
 
-	want := `### Launch in EU
+	want := `### Red · Launch in EU
 
-boss · Active · Health: **Red**
+boss · Active
 
 **Budget:** 120 $ · **Notes:** Counsel hired. Legal \*unblocked\*.
 
@@ -452,8 +453,8 @@ boss · Active · Health: **Red**
 
 ## Other Goals
 
-- Cut churn — boss — Green — Budget: 40 $
-- Hire a PM — boss — Green
+- Green — Cut churn — boss — Budget: 40 $
+- Green — Hire a PM — boss
 `
 	got := export.Markdown(pub)
 	if !strings.HasSuffix(got, want) {
@@ -464,8 +465,9 @@ boss · Active · Health: **Red**
 	}
 }
 
-// A Goal whose Health changed since the baseline shows what it was after its
-// Health; one whose Health didn't change shows no earlier Health.
+// A Goal whose Health changed since the baseline shows what it was in the meta
+// line under its Health-led heading; one whose Health didn't change shows no
+// earlier Health.
 func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 	t.Parallel()
 
@@ -483,8 +485,8 @@ func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 
 	got := export.Markdown(pub)
 	for _, want := range []string{
-		"\n\nboss · Active · Health: **Yellow** · was Green · due 2026-05-01\n",
-		"\n\nboss · Active · Health: **Red**\n",
+		"### Yellow · Launch in EU\n\nboss · Active · was Green · due 2026-05-01\n",
+		"### Red · Cut churn\n\nboss · Active\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown lacks %q:\n%s", want, got)
@@ -492,9 +494,10 @@ func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 	}
 }
 
-// A block's Run off Green, frozen with the publication, sits right after its
-// Health and before what it was ("Red · 5 wks · was Green"); a block with none
-// says nothing of weeks (CONTEXT.md: Run off Green).
+// A block's Run off Green, frozen with the publication, sits in the meta line
+// under its Health-led heading, before what the Health was ("### Red · Launch
+// in EU" over "boss · Active · 5 wks · was Green"); a block with none says
+// nothing of weeks (CONTEXT.md: Run off Green).
 func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
 	t.Parallel()
 
@@ -506,7 +509,7 @@ func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
 			PriorHealth:      domain.HealthGreen,
 		},
 	}, nil)
-	if got, want := export.Markdown(pub), "Health: **Red** · 5 wks · was Green\n"; !strings.Contains(got, want) {
+	if got, want := export.Markdown(pub), "### Red · Launch in EU\n\nboss · Active · 5 wks · was Green\n"; !strings.Contains(got, want) {
 		t.Errorf("Markdown lacks %q:\n%s", want, got)
 	}
 
@@ -592,7 +595,7 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 	}, nil)
 
 	got := export.Markdown(pub)
-	if want := "\n\nboss · Active · Health: **Red** · due 2026-05-01\n\n**Changed:** Turned Red · Delivery date moved 3 weeks later\n\n**Tier:** 1\n"; !strings.Contains(got, want) {
+	if want := "\n\nboss · Active · due 2026-05-01\n\n**Changed:** Turned Red · Delivery date moved 3 weeks later\n\n**Tier:** 1\n"; !strings.Contains(got, want) {
 		t.Errorf("Markdown lacks %q:\n%s", want, got)
 	}
 	if n := strings.Count(got, "**Changed:**"); n != 1 {
@@ -637,8 +640,8 @@ func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
 
 // An exception block counts the Red, Yellow and Check-in overdue children
 // beside its Rolled-up Health, names the Goals behind it, and under its head
-// the Goals it contributes to, each marked ↓ when the Report holds it and with
-// its Health; with no base URL to link from, it names them without links
+// the Goals it contributes to, each led by its Health and marked ↓ when the
+// Report holds it ("Red Growth ↓"); with no base URL to link from, it names them without links
 // (#246).
 func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	t.Parallel()
@@ -660,8 +663,8 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	got := export.Markdown(pub)
 	for _, want := range []string{
 		"**Rolled-up Health:** Red · 2 of 6 Red · 1 Yellow · 1 overdue\n",
-		"**Supported by:** Alpha ledger ↓ (Red) · Beta\\_payouts (Red)\n",
-		"boss · Active · Health: **Red**\n\n**Contributes to:** Growth ↓ (Red)\n\n**Region:** EMEA",
+		"**Supported by:** Red Alpha ledger ↓ · Red Beta\\_payouts\n",
+		"boss · Active\n\n**Contributes to:** Red Growth ↓\n\n**Region:** EMEA",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown:\n%s\nwant it to contain %q", got, want)

@@ -239,9 +239,7 @@ func TestHomeDueRowLeadsWithItsHealth(t *testing.T) {
 	if health < 0 || title < health || status < title || actions < status {
 		t.Errorf("row doesn't read Health, title, meta line, then actions:\n%s", row)
 	}
-	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Yellow\s*</span>`).MatchString(row) {
-		t.Errorf("row's Health pill doesn't read Yellow with its shape:\n%s", row)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "home-due-health"), "Yellow")
 	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 16 days ago · every 14 days Check-in overdue" {
 		t.Errorf("row's meta line = %q, want its age, cadence and Check-in overdue mark:\n%s", got, row)
 	}
@@ -322,9 +320,7 @@ func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	if !hasClass(badge, "as-of") {
 		t.Errorf("Check-in overdue Goal's Health badge is not muted: %s", badge)
 	}
-	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
-		t.Errorf("Check-in overdue Goal's Health badge does not read just Green:\n%s", row)
-	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, row), "home-due-health"), "Green")
 	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Check-in overdue Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}

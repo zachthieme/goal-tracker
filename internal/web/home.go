@@ -326,6 +326,15 @@ func healthAsOf(g domain.PersonalGoal) string {
 	return "as of " + daysAgo(g.Freshness.DaysSince)
 }
 
+// homeAsOfClass marks a Health pill whose Health is its last Check-in's, the
+// Goal being Check-in overdue (healthAsOf), or is "" for a current one.
+func homeAsOfClass(g domain.PersonalGoal) string {
+	if healthAsOf(g) == "" {
+		return ""
+	}
+	return "as-of"
+}
+
 // healthBarLabel reads the Health distribution bar's counts.
 func healthBarLabel(v homeView) string {
 	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)

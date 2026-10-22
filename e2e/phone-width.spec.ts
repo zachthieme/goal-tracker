@@ -151,7 +151,7 @@ test("at 390px the Admin page shows the whole Make Admin button inside its form 
   await expectFitsAPhone(page);
 });
 
-test("at 390px a Report card's Health drops under its title", async ({ page }) => {
+test("at 390px a Report card's Health leads its title, and its badges drop under them", async ({ page }) => {
   await signIn(page, admin);
   await buildRuleReport(page, "Platform team");
   const cards = page.getByTestId("report-exception");
@@ -160,11 +160,15 @@ test("at 390px a Report card's Health drops under its title", async ({ page }) =
   expect(n, "the draft has a Goal card").toBeGreaterThan(0);
   for (let i = 0; i < n; i++) {
     const card = cards.nth(i);
+    const name = await card.locator("h3").textContent();
     const title = (await card.locator("h3").boundingBox())!;
     const health = (await card.getByTestId("report-health").boundingBox())!;
-    expect(health.y, `"${await card.locator("h3").textContent()}": Health sits under the title`).toBeGreaterThanOrEqual(
-      title.y + title.height - 1,
-    );
+    expect(health.x + health.width, `"${name}": Health sits left of the title`).toBeLessThanOrEqual(title.x + 1);
+    expect(health.y, `"${name}": Health sits on the title's first line`).toBeLessThan(title.y + title.height / 2);
+    for (const badge of await card.getByTestId("report-badge").all()) {
+      const b = (await badge.boundingBox())!;
+      expect(b.y, `"${name}": its badges sit under the title`).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    }
   }
   await expectFitsAPhone(page);
 });
@@ -214,7 +218,7 @@ test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
   const form = page.getByTestId("checkin-form");
   // The Health choices are labels over hidden radios, so pick one by its
   // label, as a tap does.
-  await form.getByRole("group", { name: "Health" }).getByText("Yellow", { exact: true }).click();
+  await form.getByRole("group", { name: "Health" }).getByTitle("Yellow", { exact: true }).click();
   await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
   await expect(form.getByTestId("path-to-green-field")).toBeVisible();
   await expect(form.getByTestId("checkin-readings")).toBeVisible();

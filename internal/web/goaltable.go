@@ -105,7 +105,8 @@ func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domai
 	return table, nil
 }
 
-// tableColumns are the Goal table's columns: the fixed ones, then each live
+// tableColumns are the Goal table's columns: the fixed ones, Health first as
+// it comes before a Goal's title everywhere (DESIGN.md § Health), then each live
 // Dimension and each live Field in name order (CONTEXT.md: Retired).
 func (s *Server) tableColumns(ctx context.Context, dims []domain.Dimension) ([]tableColumn, error) {
 	all, err := s.svc.ListFields(ctx)
@@ -114,9 +115,9 @@ func (s *Server) tableColumns(ctx context.Context, dims []domain.Dimension) ([]t
 	}
 	fields := domain.OfferedFields(all)
 	columns := []tableColumn{
+		{Key: "health", Label: "Health"},
 		{Key: "title", Label: "Title"},
 		{Key: "owner", Label: "Owner"},
-		{Key: "health", Label: "Health"},
 		{Key: "lifecycle", Label: "Lifecycle"},
 		{Key: "due", Label: "Delivery date"},
 		{Key: "checkin", Label: "Last check-in"},

@@ -155,7 +155,7 @@ templ reportMatchesRail(m reportMatches) {
 				for _, g := range m.Shown {
 					<li data-testid="match">
 						if g.Health != "" {
-							<span data-testid="match-badge" class={ "badge", healthClass(g.Health) }><span class="dot"></span>{ g.Health }</span>
+							@healthChip("match-badge", g.Health)
 						} else {
 							<span data-testid="match-badge" class="badge lc">{ g.Goal.Lifecycle }</span>
 						}

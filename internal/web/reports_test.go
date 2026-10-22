@@ -282,7 +282,7 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 	if !strings.HasPrefix(md, "# EU MBR\n") {
 		t.Errorf("export does not open with the Report's name:\n%s", md)
 	}
-	for _, want := range []string{"### Launch in EU", "Health: **Red**", "Vendor is late."} {
+	for _, want := range []string{"### Red · Launch in EU", "Vendor is late."} {
 		if !strings.Contains(md, want) {
 			t.Errorf("export missing %q:\n%s", want, md)
 		}
@@ -1621,10 +1621,12 @@ func TestReportsListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
-// At phone width a Report card's head stacks: the title block spans the card
-// and the Health badge and its badges drop under it, left-aligned, rather than
-// squeezing the title into a narrow column beside them (#229).
-func TestReportCardHeadStacksAtPhoneWidthOverHTTP(t *testing.T) {
+// A Report card's head reads Health first, its "· N wks" and "· was X" straight
+// after it, then the title and its meta line, then the other badges, on the
+// draft and on the print page. At phone width it keeps that order: the badges
+// drop under the Health and title, left-aligned, rather than squeezing the
+// title into a narrow column beside them (#229, #453).
+func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1632,34 +1634,50 @@ func TestReportCardHeadStacksAtPhoneWidthOverHTTP(t *testing.T) {
 	red := h.ActiveGoal(boss, "Cut infrastructure cost per request", "Margins matter.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Clock.Advance(10 * 24 * time.Hour)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
+	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-	head := between(t, pageElement(t, page, "article", "report-exception"), `<div class="rp-card-head">`, `<div class="rp-badges">`)
-	if !strings.Contains(head, "<h3>") {
-		t.Fatalf("the card head's title block holds no title:\n%s", head)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	printed := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	for where, body := range map[string]string{"the draft": page, "the print page": printed} {
+		block := findByTestID(t, parsePage(t, body), "report-exception")
+		health := findByTestID(t, block, "report-health")
+		run := findByTestID(t, block, "report-run-off-green")
+		title := linkTo(block, fmt.Sprintf("/goals/%d", red.ID))
+		badge := findByTestID(t, block, "report-badge")
+		if title == nil || !precedes(health, run) || !precedes(run, title) || !precedes(title, badge) {
+			t.Errorf("%s's card head doesn't read Health, its Run off Green, the title, then its badges:\n%s", where, renderNode(block))
+		}
+		if textOf(badge) != domain.BadgeCheckinOverdue {
+			t.Errorf("%s's card head badge reads %q, want %s", where, textOf(badge), domain.BadgeCheckinOverdue)
+		}
 	}
+	assertHealthChip(t, findByTestID(t, parsePage(t, page), "report-health"), "Red")
 
 	phone := mediaBlock(t, page, "@media (max-width:600px)")
 	cardHead, _ := ruleFor(phone, ".rp-card-head")
 	badges, _ := ruleFor(phone, ".rp-badges")
-	column := strings.Contains(cardHead, "flex-direction:column")
-	wrapped := strings.Contains(cardHead, "flex-wrap:wrap") && strings.Contains(badges, "flex-basis:100%")
-	if !column && !wrapped {
-		t.Errorf("at 600px the card head keeps its badges beside the title: .rp-card-head{%s} .rp-badges{%s}", cardHead, badges)
+	if !strings.Contains(cardHead, "flex-wrap:wrap") || !strings.Contains(badges, "flex-basis:100%") || strings.Contains(cardHead, "column") {
+		t.Errorf("at 600px the card head doesn't keep Health and title on a line with its badges under them: .rp-card-head{%s} .rp-badges{%s}", cardHead, badges)
 	}
 	if !strings.Contains(badges, "justify-content:flex-start") {
 		t.Errorf("at 600px the badges under the title stay right-aligned: .rp-badges{%s}", badges)
 	}
-	if rule := cssRule(t, page, ".rp-card-head"); !strings.Contains(rule, "justify-content:space-between") {
-		t.Errorf("above 600px the card head no longer sets its badges right of the title: .rp-card-head{%s}", rule)
+	for _, sel := range []string{".rp-card-head", ".rp-health", ".rp-card-title", ".rp-badges"} {
+		for _, css := range []string{phone, between(t, printed, "<style>", "</style>")} {
+			if rule, _ := ruleFor(css, sel); strings.Contains(strings.ReplaceAll(rule, " ", ""), "order:") || strings.Contains(rule, "reverse") {
+				t.Errorf("the card head reorders itself: %s{%s}", sel, rule)
+			}
+		}
 	}
 }
 
 // The print page sets the Report in the design system's serif, falling back to
-// Georgia, and marks Health with a shape as well as its name so it survives
-// black-and-white printing: the screen's drawn shapes, a Red octagon, a Yellow
+// Georgia, and marks Health with a shape as well as its word, shown, not left
+// to a screen reader as on screen, so it survives black-and-white printing: the screen's drawn shapes, a Red octagon, a Yellow
 // triangle pointing down and a Green circle, in the Health's ink and kept when
 // printed, not ■ ▲ ● characters (#452).
 func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
@@ -1695,8 +1713,8 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 		badge := findByTestID(t, findByTestID(t, doc, want.in), want.badge)
 		testID, health := want.in, want.health
 		dots := findAll(badge, func(n *nethtml.Node) bool { return attrOf(n, "class") == "dot" })
-		if textOf(badge) != health || len(dots) != 1 {
-			t.Errorf("%s's Health badge doesn't read %s beside one drawn shape: %s", testID, health, renderNode(badge))
+		if shownTextOf(badge) != health || len(dots) != 1 {
+			t.Errorf("%s's Health badge doesn't show %s beside one drawn shape: %s", testID, health, renderNode(badge))
 		}
 	}
 
@@ -1951,10 +1969,10 @@ func TestDraftOnTrackDueDatesDoNotBreakOverHTTP(t *testing.T) {
 }
 
 // At a phone's width each On track row stacks as a block rather than leaving
-// its Due off the side of the card (#180): the Goal first, then its Health and
-// Owner on one line, then its Due. The cells run Health, Goal, Owner, Due in
-// the HTML, so the Goal cell is ordered first. A publication's discussion row
-// spans the full width.
+// its Due off the side of the card (#180): its Health then the Goal on one
+// line, as at every width, then its Owner and Due under the Goal. The cells
+// run Health, Goal, Owner, Due in the HTML and none is reordered (#453). A
+// publication's discussion row spans the full width.
 func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1985,13 +2003,17 @@ func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 	phone := mediaBlock(t, page, "@media (max-width:600px)")
 	for selector, wants := range map[string][]string{
-		".rp-track thead":          {"display:none"},
-		".rp-track tr":             {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
-		".rp-track td":             {"display:block"},
-		".rp-track .rp-track-goal": {"order:-1", "grid-column:1/-1"},
-		".rp-track .rp-track-due":  {"grid-column:1/-1"},
-		".rp-track .rp-track-talk": {"grid-column:1/-1"},
+		".rp-track thead":           {"display:none"},
+		".rp-track tr":              {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
+		".rp-track td":              {"display:block"},
+		".rp-track .rp-track-goal":  {"grid-column:2"},
+		".rp-track .rp-track-owner": {"grid-column:2"},
+		".rp-track .rp-track-due":   {"grid-column:2"},
+		".rp-track .rp-track-talk":  {"grid-column:1/-1"},
 	} {
+		if rule, _ := ruleFor(phone, selector); strings.Contains(rule, "order:") {
+			t.Errorf("at 600px %s{%s} reorders the row, which reads Health first", selector, rule)
+		}
 		rule, ok := ruleFor(phone, selector)
 		if !ok {
 			t.Errorf("at 600px there is no %s rule", selector)
@@ -2111,8 +2133,8 @@ func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 				t.Errorf("the Removed Milestone's name is not struck through:\n%s", block)
 			}
 			for _, want := range []string{"report-health", "rollup-health"} {
-				if health := openTag(pageElement(t, block, "span", want)); attr(health, "class") != "badge "+healthClassYellow {
-					t.Errorf("%s is not the Yellow set by the Owner and rolled up from the child: %s", want, health)
+				if health := findByTestID(t, parsePage(t, block), want); !flatFrameHasClass(health, healthClassYellow) || textOf(health) != "Yellow" {
+					t.Errorf("%s is not the Yellow set by the Owner and rolled up from the child: %s", want, renderNode(health))
 				}
 			}
 		})
@@ -3993,22 +4015,18 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 		{staysRed, "Red · 1 wk"},
 		{created, "Yellow · 1 wk"},
 	} {
-		block := reportBlockFor(t, page, tc.g)
-		badges := strings.TrimPrefix(between(t, block, `class="rp-badges">`, "</div>"), `class="rp-badges">`)
-		markup := regexp.MustCompile(`<[^>]*>`)
-		if got := strings.Join(strings.Fields(markup.ReplaceAllString(badges, " ")), " "); !strings.HasPrefix(got, tc.reads+" ") && got != tc.reads {
+		block := parsePage(t, reportBlockFor(t, page, tc.g))
+		health := findByTestID(t, block, "report-health")
+		// The Health, its Run off Green and its earlier Health are one group,
+		// so a marker can't wrap onto a line of its own.
+		if got := textOf(health.Parent); got != tc.reads {
 			t.Errorf("%s's Health reads %q, want %q", tc.g.Title, got, tc.reads)
 		}
-		if marked := strings.Contains(block, `data-testid="report-prior-health"`); marked != strings.Contains(tc.reads, "was") {
-			t.Errorf("%s marks its earlier Health %t; block:\n%s", tc.g.Title, marked, block)
-		}
-		together := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span>(<span data-testid="report-run-off-green"[^>]*>[^<]*</span>)?<span data-testid="report-prior-health"[^>]*>[^<]*</span></span>`)
-		if grouped := together.MatchString(regexp.MustCompile(`>\s+<`).ReplaceAllString(badges, "><")); grouped != strings.Contains(tc.reads, "was") {
-			t.Errorf("%s groups its Health badge with its earlier Health %t, so the marker can wrap onto a line of its own; badges:\n%s", tc.g.Title, grouped, badges)
-		}
-		withRun := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span><span data-testid="report-run-off-green"[^>]*>[^<]*</span>`)
-		if grouped := withRun.MatchString(regexp.MustCompile(`>\s+<`).ReplaceAllString(badges, "><")); grouped != strings.Contains(tc.reads, "wk") {
-			t.Errorf("%s groups its Health badge with its Run off Green %t; badges:\n%s", tc.g.Title, grouped, badges)
+		for testID, marked := range map[string]bool{"report-prior-health": strings.Contains(tc.reads, "was"), "report-run-off-green": strings.Contains(tc.reads, "wk")} {
+			got := findAllByTestID(block, testID)
+			if (len(got) == 1) != marked || len(got) == 1 && got[0].Parent != health.Parent {
+				t.Errorf("%s groups its %s with its Health %t, want %t; block:\n%s", tc.g.Title, testID, len(got) == 1, marked, renderNode(block))
+			}
 		}
 	}
 	if rule := cssRule(t, page, ".rp-health"); !strings.Contains(rule, "white-space:nowrap") {
@@ -4200,8 +4218,8 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	mostUrgentFirst := []string{"Turned Red", "Stays Red", "Recovered"}
 	exceptions := func(page string) []string {
 		var out []string
-		for _, m := range regexp.MustCompile(`<article data-testid="report-exception"[^>]*>\s*<div class="rp-card-head">\s*<div>\s*<h3><a [^>]*>([^<]*)</a>`).FindAllStringSubmatch(page, -1) {
-			out = append(out, m[1])
+		for _, block := range findAllByTestID(parsePage(t, page), "report-exception") {
+			out = append(out, textOf(findAll(block, func(n *nethtml.Node) bool { return n.Data == "h3" })[0]))
 		}
 		return out
 	}
@@ -4406,9 +4424,22 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 			t.Errorf("%s: Referral program count %q, want 2 of 5 Red · 1 Yellow", page.name, got)
 		}
 		behind := pageElement(t, referral, "span", "report-behind-it")
-		alpha := linkedGoalLink(behind, fmt.Sprintf("#goal-%d", s.Alpha.ID))
-		if !strings.HasPrefix(alpha, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Alpha ledger ↓</a> (Red)`, s.Alpha.ID)) {
-			t.Errorf("%s: Supported by does not link Alpha ledger ↓ (Red) to its block; line:\n%s", page.name, behind)
+		// A linked Goal reads [Health] Title: on screen its chip, printed its
+		// shape and word.
+		alpha := linkTo(parsePage(t, behind), fmt.Sprintf("#goal-%d", s.Alpha.ID))
+		if alpha == nil || textOf(alpha) != "Alpha ledger ↓" {
+			t.Fatalf("%s: Supported by does not link Alpha ledger ↓ to its block; line:\n%s", page.name, behind)
+		}
+		alphaHealth := healthChipIn(t, alpha.Parent)
+		if !precedes(alphaHealth, alpha) {
+			t.Errorf("%s: Supported by doesn't read Alpha ledger's Health before its title; line:\n%s", page.name, behind)
+		}
+		if page.name == "print" {
+			if shown := shownTextOf(alphaHealth); shown != "Red" {
+				t.Errorf("print: Alpha ledger's Health shows %q, want its shape beside Red: %s", shown, renderNode(alphaHealth))
+			}
+		} else {
+			assertHealthChip(t, alphaHealth, "Red")
 		}
 		if beta := linkedGoalLink(behind, fmt.Sprintf("/goals/%d", s.Beta.ID)); !strings.HasPrefix(beta, fmt.Sprintf(`<a data-testid="report-linked-goal" href="/goals/%d">Beta payouts</a>`, s.Beta.ID)) {
 			t.Errorf("%s: Supported by does not link Beta payouts to its Goal page; line:\n%s", page.name, behind)

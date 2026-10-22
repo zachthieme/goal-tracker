@@ -395,7 +395,7 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
 // pickHealth picks a Health in the Check-in form. Its radios are hidden
 // inside their labels, so the label is what a person clicks.
 async function pickHealth(form: Locator, health: string): Promise<void> {
-  await form.getByTestId("checkin-health").getByText(health, { exact: true }).click();
+  await form.getByTestId("checkin-health").getByTitle(health, { exact: true }).click();
   await expect(form.getByRole("radio", { name: health })).toBeChecked();
 }
 
