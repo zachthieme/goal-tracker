@@ -1609,6 +1609,9 @@ templ reportStyles() {
 		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
 		.rp-tile{min-width:0;padding:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;border-left:1px solid var(--color-border)}
 		.rp-tile:first-child{border-left:none;padding-left:0}
+		:has(>.rp-tiles){container:rp-tiles/inline-size}
+		@container rp-tiles (max-width:44rem){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(min-content,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
+		@container rp-tiles (max-width:14rem){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:minmax(0,1fr)}.rp-tile{border-left:none;padding-left:0}.rp-tile:nth-child(n+2){border-top:1px solid var(--color-border)}}
 		.rp-count{font-size:20px;color:var(--color-ink)}
 		.rp-body{display:flex;flex-direction:column;gap:24px}
 		.rp-body section{display:flex;flex-direction:column;gap:12px}
