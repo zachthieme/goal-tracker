@@ -661,6 +661,12 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list dimension values: %w", err)
 	}
+	return dimensionsWithValues(dimRows, valRows), nil
+}
+
+// dimensionsWithValues is ListDimensions read from every Dimension's row and
+// every value's.
+func dimensionsWithValues(dimRows []db.Dimension, valRows []db.DimensionValue) []Dimension {
 	byDim := make(map[int64][]DimensionValue, len(dimRows))
 	for _, v := range valRows {
 		byDim[v.DimensionID] = append(byDim[v.DimensionID], dimensionValueFromRow(v))
@@ -671,7 +677,7 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 		dim.Values = byDim[d.ID]
 		out = append(out, dim)
 	}
-	return out, nil
+	return out
 }
 
 // OfferedDimensions keeps the Dimensions still offered for setting, filtering
@@ -899,15 +905,27 @@ func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID in
 	if err != nil {
 		return fmt.Errorf("%w: goal does not exist", ErrValidation)
 	}
-	if goal.Goal.OwnerID == actorID {
+	return goalValueSetterRefusal(actorID, goal.Goal.OwnerID, func() (bool, error) {
+		return s.isDelegate(ctx, goalID, actorID)
+	}, func() error {
+		return s.requireAdmin(ctx, actorID)
+	})
+}
+
+// goalValueSetterRefusal is requireGoalValueSetter's rule for actorID on a
+// Goal Owned by ownerID: delegate says whether they are its Delegate and
+// admin refuses them unless they are an Admin, each asked only when it
+// decides.
+func goalValueSetterRefusal(actorID, ownerID int64, delegate func() (bool, error), admin func() error) error {
+	if ownerID == actorID {
 		return nil
 	}
-	if delegate, err := s.isDelegate(ctx, goalID, actorID); err != nil {
+	if ok, err := delegate(); err != nil {
 		return err
-	} else if delegate {
+	} else if ok {
 		return nil
 	}
-	if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
+	if err := admin(); errors.Is(err, ErrNotAuthorized) {
 		return fmt.Errorf("%w: only the Owner, a Delegate or an Admin may set a Goal's Dimension values", ErrNotAuthorized)
 	} else if err != nil {
 		return err

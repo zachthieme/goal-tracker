@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -42,315 +41,93 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
 
-// domainPermits reads a domain Require predicate's answer, so a page offers
-// an action by the rule the command enforces: true when it allows, false when
-// it refuses with ErrNotAuthorized, and any other error as it is.
-func domainPermits(err error) (bool, error) {
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.Is(err, domain.ErrNotAuthorized):
-		return false, nil
-	default:
-		return false, err
-	}
-}
-
-// goalPageView loads everything the single-Goal page renders for the viewer. A
-// missing Goal comes back as domain.ErrNotFound.
+// goalPageView loads everything the single-Goal page renders for the viewer,
+// through the Goal page's loader (ADR 0010). A missing Goal comes back as
+// domain.ErrNotFound.
 func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Account) (goalView, error) {
-	g, err := s.svc.ViewGoal(ctx, id)
+	p, err := s.svc.GoalPage(ctx, current.ID, id)
 	if err != nil {
 		return goalView{}, err
 	}
-
-	parents, err := s.svc.ParentLinks(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load parents: %w", err)
-	}
-	children, err := s.svc.ChildLinks(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load children: %w", err)
-	}
-	// Candidate parents to contribute to: every other Goal. The domain rejects
-	// self-links, duplicates, and cycles when the request is actually made.
-	all, err := s.svc.ListGoals(ctx)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load goals: %w", err)
-	}
-	candidates := make([]domain.Goal, 0, len(all))
-	for _, c := range all {
-		if c.ID != g.ID {
-			candidates = append(candidates, c)
-		}
-	}
-
-	milestones, err := s.svc.ListMilestones(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load milestones: %w", err)
-	}
-	metrics, err := s.svc.ListMetrics(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load metrics: %w", err)
-	}
+	g := p.Goal
 	// Each Metric's readings over time, for its trend against target (CONTEXT.md:
 	// the Goal page shows each Metric's trend over time against its target).
-	trends := make([]metricTrend, 0, len(metrics))
-	for _, m := range metrics {
-		readings, err := s.svc.ListMetricReadings(ctx, m.ID)
-		if err != nil {
-			return goalView{}, fmt.Errorf("load metric readings: %w", err)
-		}
-		trends = append(trends, metricTrend{Metric: m, Readings: readings})
-	}
-	highlights, err := s.svc.ListHighlightsByGoal(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load highlights: %w", err)
-	}
-	contributors, err := s.svc.ListContributors(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load contributors: %w", err)
-	}
-	delegates, err := s.svc.ListDelegates(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load delegates: %w", err)
-	}
-	revisions, err := s.svc.ListWhyItMattersRevisions(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load Why it matters history: %w", err)
-	}
-	titleRevisions, err := s.svc.ListTitleRevisions(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load title history: %w", err)
-	}
-	ownership, err := s.svc.OwnershipHistory(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load ownership history: %w", err)
-	}
-	valueHistory, err := s.svc.ValueHistory(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load value history: %w", err)
-	}
-	dimensions, err := s.svc.ListDimensions(ctx)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load dimensions: %w", err)
-	}
-	values, err := s.svc.GoalValues(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load dimension values: %w", err)
-	}
-	fields, err := s.svc.ListFields(ctx)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load fields: %w", err)
-	}
-	fieldValues, err := s.svc.GoalFields(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load field values: %w", err)
-	}
-	checkins, err := s.svc.ListCheckins(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load check-ins: %w", err)
-	}
-	latest, ok, err := s.svc.LatestCheckin(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load latest check-in: %w", err)
-	}
-	var latestPtr *domain.Checkin
-	if ok {
-		latestPtr = &latest
-	}
-	rollup, err := s.svc.RolledUpHealth(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("compute rolled-up health: %w", err)
-	}
-	var askPtr *domain.AskForHelp
-	ask, ok, err := s.svc.OpenAskForHelp(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load ask for help: %w", err)
-	}
-	if ok {
-		askPtr = &ask
-	}
-	askAddressee, err := s.svc.AskAddressee(ctx, g.Owner)
-	if err != nil {
-		return goalView{}, fmt.Errorf("find ask addressee: %w", err)
-	}
-	slips, err := s.svc.ListDateSlips(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load date slips: %w", err)
-	}
-	churn, err := s.svc.MilestoneChurn(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("count milestone churn: %w", err)
-	}
-	signals, err := s.svc.GoalSignals(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read graph signals: %w", err)
-	}
-	freshness, err := s.svc.Freshness(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read freshness signals: %w", err)
-	}
-	required, err := s.svc.RequiredValues(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read required values: %w", err)
-	}
-	incomplete, err := s.svc.Incomplete(ctx, g)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read incomplete: %w", err)
-	}
-	strip, err := s.svc.HealthStrip(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read health strip: %w", err)
-	}
-	runOffGreen, err := s.svc.RunOffGreen(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("read run off green: %w", err)
-	}
-	suggestions, err := s.svc.ParentSuggestions(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load parent suggestions: %w", err)
-	}
-	nudges, err := s.svc.Nudges(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load nudges: %w", err)
-	}
-	linkEvents, err := s.svc.LinkEvents(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load link events: %w", err)
-	}
-	milestoneAdditions, err := s.svc.MilestoneChangesOutsideCheckins(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load milestone additions: %w", err)
-	}
-	actionItems, err := s.svc.ActionItemsAbout(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load action items: %w", err)
-	}
-	actionItemReassignments, err := s.svc.ActionItemReassignmentsAbout(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load action item reassignments: %w", err)
-	}
-	threads, err := s.svc.GoalThreads(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load comment threads: %w", err)
-	}
-	comments, err := s.svc.GoalComments(ctx, id)
-	if err != nil {
-		return goalView{}, fmt.Errorf("load comments: %w", err)
+	trends := make([]metricTrend, 0, len(p.Metrics))
+	for _, m := range p.Metrics {
+		trends = append(trends, metricTrend{Metric: m, Readings: p.Readings[m.ID]})
 	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
-	for _, p := range suggestions {
-		if p.Status == domain.SuggestionOpen && (current.ID == g.Owner.ID || current.ID == p.SuggestedBy.ID) {
-			suggested = append(suggested, p)
+	for _, sg := range p.Suggestions {
+		if sg.Status == domain.SuggestionOpen && (current.ID == g.Owner.ID || current.ID == sg.SuggestedBy.ID) {
+			suggested = append(suggested, sg)
 		}
-	}
-
-	// Each linked Goal's Health, shown beside it in the sidebar.
-	linkHealth := map[int64]string{}
-	for _, l := range slices.Concat(parents, children) {
-		if l.Goal.Lifecycle != domain.LifecycleActive {
-			continue
-		}
-		c, ok, err := s.svc.LatestCheckin(ctx, l.Goal.ID)
-		if err != nil {
-			return goalView{}, fmt.Errorf("load linked goal's check-in: %w", err)
-		}
-		if ok {
-			linkHealth[l.Goal.ID] = c.Health
-		}
-	}
-
-	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
-	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
-	canCheckin, err := domainPermits(s.svc.RequireCheckinAuthor(ctx, current.ID, id))
-	if err != nil {
-		return goalView{}, fmt.Errorf("check check-in author: %w", err)
-	}
-	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
-	// too (CONTEXT.md: Delegate).
-	canSetValues, err := domainPermits(s.svc.RequireGoalValueSetter(ctx, current.ID, id))
-	if err != nil {
-		return goalView{}, fmt.Errorf("check value setter: %w", err)
 	}
 	// The Owner and Delegates are offered a No change only where it would be
 	// recorded; where it wouldn't, the Check-in page says why.
 	var noChangeRefusal string
 	var noChangeOverdue bool
-	if canCheckin && g.Lifecycle == domain.LifecycleActive && latestPtr != nil {
-		switch err := s.svc.NoChangeRefusal(ctx, id); {
-		case errors.Is(err, domain.ErrValidation):
-			noChangeRefusal = sentence(s.noChangeReason(err))
-			var overdue *domain.MilestoneOverdueError
-			noChangeOverdue = errors.As(err, &overdue)
-		case err != nil:
-			return goalView{}, fmt.Errorf("check no change: %w", err)
-		}
-	}
-	// Only the Owner and Delegates see the pending Draft Highlights; one who
-	// has since Departed is refused them, and sees none (CONTEXT.md: Draft
-	// Highlight).
-	var drafts []domain.DraftHighlight
-	if canCheckin {
-		drafts, err = s.svc.PendingDraftHighlights(ctx, current.ID, id)
-		if err != nil && !errors.Is(err, domain.ErrNotAuthorized) {
-			return goalView{}, fmt.Errorf("load draft highlights: %w", err)
-		}
+	switch err := p.NoChangeRefusal; {
+	case errors.Is(err, domain.ErrValidation):
+		noChangeRefusal = sentence(s.noChangeReason(err))
+		var overdue *domain.MilestoneOverdueError
+		noChangeOverdue = errors.As(err, &overdue)
+	case err != nil:
+		return goalView{}, fmt.Errorf("check no change: %w", err)
 	}
 
 	view := goalView{
 		Goal:               g,
-		Parents:            parents,
-		Children:           children,
-		LinkHealth:         linkHealth,
-		Candidates:         candidates,
-		Milestones:         milestones,
-		Metrics:            metrics,
+		Parents:            p.Parents,
+		Children:           p.Children,
+		LinkHealth:         p.LinkHealth,
+		Candidates:         p.Candidates,
+		Milestones:         p.Milestones,
+		Metrics:            p.Metrics,
 		Trends:             trends,
-		Highlights:         highlights,
-		DraftHighlights:    drafts,
-		Contributors:       contributors,
-		Delegates:          delegates,
-		CanCheckin:         canCheckin,
+		Highlights:         p.Highlights,
+		DraftHighlights:    p.DraftHighlights,
+		Contributors:       p.Contributors,
+		Delegates:          p.Delegates,
+		CanCheckin:         p.CanCheckin,
 		NoChangeRefusal:    noChangeRefusal,
 		NoChangeOverdue:    noChangeOverdue,
-		CanSetValues:       canSetValues,
+		CanSetValues:       p.CanSetValues,
 		Owns:               current.ID == g.Owner.ID,
 		Admin:              current.IsAdmin,
-		Revisions:          revisions,
-		TitleRevisions:     titleRevisions,
-		Ownership:          ownership,
-		ValueHistory:       valueHistory,
-		Dimensions:         dimensions,
-		Values:             values,
-		Fields:             fields,
-		FieldValues:        fieldValues,
-		Checkins:           checkins,
-		LatestCheckin:      latestPtr,
-		RolledUp:           rollup,
-		Ask:                askPtr,
-		AskAddressee:       askAddressee,
-		DateSlips:          slips,
-		MilestoneChurn:     churn,
-		Signals:            signals,
-		Freshness:          freshness,
-		Required:           required,
-		Incomplete:         incomplete,
-		HealthStrip:        strip,
-		RunOffGreen:        runOffGreen,
-		Suggestions:        suggestions,
+		Revisions:          p.Revisions,
+		TitleRevisions:     p.TitleRevisions,
+		Ownership:          p.Ownership,
+		ValueHistory:       p.ValueHistory,
+		Dimensions:         p.Dimensions,
+		Values:             p.Values,
+		Fields:             p.Fields,
+		FieldValues:        p.FieldValues,
+		Checkins:           p.Checkins,
+		LatestCheckin:      p.LatestCheckin,
+		RolledUp:           p.RolledUp,
+		Ask:                p.Ask,
+		AskAddressee:       p.AskAddressee,
+		DateSlips:          p.DateSlips,
+		MilestoneChurn:     p.MilestoneChurn,
+		Signals:            p.Signals,
+		Freshness:          p.Freshness,
+		Required:           p.Required,
+		Incomplete:         p.Incomplete,
+		HealthStrip:        p.HealthStrip,
+		RunOffGreen:        p.RunOffGreen,
+		Suggestions:        p.Suggestions,
 		Suggested:          suggested,
-		Nudges:             nudges,
-		LinkEvents:         linkEvents,
-		MilestoneAdditions: milestoneAdditions,
-		ActionItems:        actionItems,
-		ActionReassigns:    actionItemReassignments,
-		Threads:            threads,
-		Comments:           comments,
-		Now:                s.svc.Now(),
-		Timezone:           s.svc.GoalTimezone(g),
+		Nudges:             p.Nudges,
+		LinkEvents:         p.LinkEvents,
+		MilestoneAdditions: p.MilestoneAdditions,
+		ActionItems:        p.ActionItems,
+		ActionReassigns:    p.ActionReassigns,
+		Threads:            p.Threads,
+		Comments:           p.Comments,
+		Now:                p.Now,
+		Timezone:           p.Timezone,
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil

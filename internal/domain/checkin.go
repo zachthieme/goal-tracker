@@ -738,13 +738,22 @@ func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, a
 		}
 		return fmt.Errorf("look up author: %w", err)
 	}
-	if author.Departed != 0 {
+	return checkinAuthorRefusal(accountFromRow(author), ownerID, func() (bool, error) {
+		return s.isDelegate(ctx, goalID, authorID)
+	})
+}
+
+// checkinAuthorRefusal is authorizeCheckinAuthor's rule for author, an
+// Account that exists, on a Goal Owned by ownerID: delegate says whether they
+// are its Delegate, and is asked only when it decides.
+func checkinAuthorRefusal(author Account, ownerID int64, delegate func() (bool, error)) error {
+	if author.Departed {
 		return fmt.Errorf("%w: a Departed person can't submit a Check-in", ErrNotAuthorized)
 	}
-	if authorID == ownerID {
+	if author.ID == ownerID {
 		return nil
 	}
-	ok, err := s.isDelegate(ctx, goalID, authorID)
+	ok, err := delegate()
 	if err != nil {
 		return err
 	}
@@ -877,6 +886,17 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 	if err != nil {
 		return nil, fmt.Errorf("list milestone changes: %w", err)
 	}
+	discardedBy, err := s.discardedDraftHighlightsByCheckin(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	return checkinHistory(rows, changes, discardedBy), nil
+}
+
+// checkinHistory is ListCheckins read from a Goal's Check-in rows, its
+// Milestone changes and the Draft Highlights its Check-ins discarded, keyed by
+// the Check-in.
+func checkinHistory(rows []db.ListCheckinsRow, changes []db.ListMilestoneChangesByGoalRow, discardedBy map[int64][]DraftHighlight) []Checkin {
 	// A change made outside a Check-in belongs to none of them
 	// (MilestoneChangesOutsideCheckins).
 	changesBy := make(map[int64][]MilestoneChange)
@@ -887,10 +907,6 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 		checkinID := *r.MilestoneChange.CheckinID
 		changesBy[checkinID] = append(changesBy[checkinID], milestoneChangeFromRow(r))
 	}
-	discardedBy, err := s.discardedDraftHighlightsByCheckin(ctx, goalID)
-	if err != nil {
-		return nil, err
-	}
 	out := make([]Checkin, 0, len(rows))
 	for _, r := range rows {
 		c := checkinFromRow(r.Checkin, r.Account, r.Account_2)
@@ -898,7 +914,7 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 		c.DiscardedDraftHighlights = discardedBy[c.ID]
 		out = append(out, c)
 	}
-	return out, nil
+	return out
 }
 
 func checkinFromRow(c db.Checkin, author, owner db.Account) Checkin {

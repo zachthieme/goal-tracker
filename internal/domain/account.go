@@ -350,7 +350,12 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 		}
 		return fmt.Errorf("look up actor: %w", err)
 	}
-	if actor.IsAdmin == 0 {
+	return adminRefusal(accountFromRow(actor))
+}
+
+// adminRefusal is requireAdmin's rule for actor, an Account that exists.
+func adminRefusal(actor Account) error {
+	if !actor.IsAdmin {
 		return fmt.Errorf("%w: only an Admin may do this", ErrNotAuthorized)
 	}
 	return nil
