@@ -1675,6 +1675,27 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 	}
 }
 
+// A Goal with no Health yet prints its dash alone: no drawn shape, which the
+// print page's base .dot rule would fill as a square.
+func TestPrintPageDrawsNoShapeForAGoalWithNoHealthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fresh := h.ActiveGoal(boss, "Hire a PM", "Fill the role.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{fresh.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+
+	badge := findByTestID(t, findByTestID(t, parsePage(t, printed), "report-exception"), "report-health")
+	dots := findAll(badge, func(n *nethtml.Node) bool { return attrOf(n, "class") == "dot" })
+	if shownTextOf(badge) != "—" || len(dots) != 0 {
+		t.Errorf("a Goal with no Health doesn't print its dash alone: %s", renderNode(badge))
+	}
+}
+
 // The print page sets the Report in the design system's serif, falling back to
 // Georgia, and marks Health with a shape as well as its word, shown, not left
 // to a screen reader as on screen, so it survives black-and-white printing: the screen's drawn shapes, a Red octagon, a Yellow

@@ -1396,7 +1396,8 @@ templ healthBadge(testID, health string) {
 
 // reportHealthBadge is a Report's Health badge: on screen its healthBadge;
 // printed, its shape beside its word, which paper keeps when it loses the
-// colour (DESIGN.md § Print variant).
+// colour (DESIGN.md § Print variant), or the dash alone when there is no
+// Health yet.
 templ reportHealthBadge(testID, health string, d discussion) {
 	if d.Print {
 		<span
@@ -1405,7 +1406,9 @@ templ reportHealthBadge(testID, health string, d discussion) {
 			}
 			class={ "badge", healthClass(health) }
 		>
-			<span class="dot"></span>
+			if health != "" {
+				<span class="dot"></span>
+			}
 			{ reportHealth(health) }
 		</span>{ " " }
 	} else {
