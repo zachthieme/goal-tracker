@@ -31,6 +31,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Report's narrative opened at a later baseline (`?baseline=`) no longer reads "Unsaved changes" or keeps Publish… disabled because of a Highlight it picked from before that baseline, and saving there keeps that pick instead of dropping it and logging it as dropped (#455).
 - [user] "Unsaved changes" no longer pushes History, Edit definition and Publish… onto a second header row: from 1280px wide the draft header holds one row whatever the save status says, cutting a long "Not saved" reason or Report name short (#455).
 - [user] Reloading a Report's draft shows the narrative as saved, not text the browser restored into the form while the save status said nothing and Publish… would publish what was saved (#455).
+- [user] A Report's Health summary tiles fit their column at every width: in a narrow one, such as the draft's preview, they go 2 × 2, and stack where even that won't fit, so the Check-in overdue chip no longer runs past its tile or off the right of the window at 1000px (#459).
 
 **Testing:**
 - [internal] The last string-matching web test helpers (`assertSubmitsAtOnce`, `assertStyledBy`, `assertTermHelp`, `assertInFlatFrame`) read markup through the HTML parser, and the `cardClass` regexp is gone (#457).
@@ -41,6 +42,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Code quality:**
 - [internal] Every Health shape is drawn by the one `.dot` rule set in `app.css`, scaled by `--dot-size`; the Goal list's mark and Home's My org counts draw a `.dot` rather than shapes of their own, and the print page's `healthShape` characters are gone. `scripts/contrast.py` also checks each Health's ink on its new `--health-*-tint` (#452).
 - [internal] A refused Add another without script builds the Report's draft once, not twice (#455).
+
+**Documentation:**
+- [internal] ADR 0010 keeps `domain.Service` one type with no general read-model layer: a page whose view model repeats reads, starting with the Goal page (#462), gets a page loader in its own file, and CLAUDE.md's Code layout says so (#429).
 
 ### Collected changes — October 21, 2026
 
