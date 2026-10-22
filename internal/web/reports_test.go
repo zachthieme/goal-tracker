@@ -1666,8 +1666,19 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 	if !strings.Contains(badges, "justify-content:flex-start") {
 		t.Errorf("at 600px the badges under the title stay right-aligned: .rp-badges{%s}", badges)
 	}
+	// A narrow block, as in the draft's column under 1280px, does the same, so
+	// its title isn't squeezed until its words break.
+	if block, _ := ruleFor(page, ".rp-block"); !strings.Contains(block, "container:rp-block/inline-size") {
+		t.Errorf("a Report block isn't a container its head can fit itself to: .rp-block{%s}", block)
+	}
+	narrow := mediaBlock(t, page, "@container rp-block (max-width:28rem)")
+	narrowHead, _ := ruleFor(narrow, ".rp-card-head")
+	narrowBadges, _ := ruleFor(narrow, ".rp-badges")
+	if !strings.Contains(narrowHead, "flex-wrap:wrap") || !strings.Contains(narrowBadges, "flex-basis:100%") || !strings.Contains(narrowBadges, "justify-content:flex-start") {
+		t.Errorf("a narrow block's head doesn't drop its badges under Health and the title: .rp-card-head{%s} .rp-badges{%s}", narrowHead, narrowBadges)
+	}
 	for _, sel := range []string{".rp-card-head", ".rp-health", ".rp-card-title", ".rp-badges"} {
-		for _, css := range []string{phone, between(t, printed, "<style>", "</style>")} {
+		for _, css := range []string{phone, narrow, between(t, printed, "<style>", "</style>")} {
 			if rule, _ := ruleFor(css, sel); strings.Contains(strings.ReplaceAll(rule, " ", ""), "order:") || strings.Contains(rule, "reverse") {
 				t.Errorf("the card head reorders itself: %s{%s}", sel, rule)
 			}

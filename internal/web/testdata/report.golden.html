@@ -61,7 +61,7 @@
 			.rp-sections label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}
 			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
 		}
-		.rp-block{display:flex;flex-direction:column;gap:12px;padding:20px 0;border-top:1px solid var(--color-border)}
+		.rp-block{container:rp-block/inline-size;display:flex;flex-direction:column;gap:12px;padding:20px 0;border-top:1px solid var(--color-border)}
 		.rp-block:last-child{border-bottom:1px solid var(--color-border)}
 		.page:has(>.rp-index){max-width:none;padding:24px 0 64px}
 		.rp-index{--rp-gutter:28px;display:flex;flex-direction:column;gap:32px}
@@ -80,6 +80,11 @@
 		.rp-card-head h3{font-size:16px;line-height:1.4}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:8px;align-items:center;min-height:22px;white-space:nowrap}
+		/* A block narrower than its head's three parts, as in the draft's
+		 * column under 1280px, drops its badges under Health and the title
+		 * rather than squeezing the title until its words break, as the
+		 * 600px rule does for a phone. */
+		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}}
 		.rp-tint{background:var(--color-sidebar);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-block ul{margin:0;padding-left:20px}

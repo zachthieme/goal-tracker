@@ -1822,8 +1822,10 @@ and so on).
       (16px, linking to the Goal) over a small muted "Owner · Lifecycle · due
       Nov 7, 2026", slipped dates struck through, then at the right its other
       badges (Check-in overdue as the chip, Ownerless in Red, New Date in
-      Yellow, the rest as `badge lc`). At 600px and below the Health and title
-      keep their line and the badges drop under them; nothing is reordered.
+      Yellow, the rest as `badge lc`). At 600px and below, and in a block
+      28rem wide or narrower (a container query, as in the draft's column
+      under 1280px), the Health and title keep their line and the badges drop
+      under them; nothing is reordered.
       Under it sit "**Changed:** …", "**Contributes to:** …" and the Report
       Definition's Fields, then the status box (`.rp-tint`:
       `--color-sidebar`, `--radius-md`, 12px × 16px padding) with **Why it

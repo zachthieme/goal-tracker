@@ -24,6 +24,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The print page and PDF put a Goal's Health before its title too, keeping the word beside the shape since paper may be black and white; the Markdown export writes the word first: "- Red — Title — Owner — due …", "### Red · Title" over a meta line without "Health: **Red**", and "Red Title" for a linked Goal (#453).
 
 **Bug fixes:**
+- [user] A Report draft's Goal blocks, narrow in the draft's right-hand column below 1280px wide, drop their badges under Health and the title instead of squeezing the title until its words break mid-word (#453).
 - [user] A printed Report's Goal with no Health yet shows its dash alone again, not a filled square beside it (#452).
 - [ops] A request whose handler panics is answered with a 500 instead of a dropped connection, still gets its access line (with 500, or the status already sent), and its panic is logged at ERROR with the panic value, its stack and the request's `request_id`, rather than as net/http's untagged "http: panic serving" line (#456).
 - [user] A Report's narrative opened at a later baseline (`?baseline=`) no longer reads "Unsaved changes" or keeps Publish… disabled because of a Highlight it picked from before that baseline, and saving there keeps that pick instead of dropping it and logging it as dropped (#455).
