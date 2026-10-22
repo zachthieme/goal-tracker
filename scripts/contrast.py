@@ -71,6 +71,15 @@ MARKS = {
 # count are --color-ink and --color-ink-muted, and no link sits on it, while
 # raising the link colour would move every link and filled button in the app.
 NOT_FOR_TEXT = {("--color-primary-strong", "--color-sidebar-on")}
+# The Check-in page's unpicked Health choices: each Health's word and shape in
+# its ink on its tint, the fill at half strength, which in dark is an alpha
+# laid over the canvas the choices sit on. Text, so 4.5:1.
+TINTS = {
+    "Red": ("--health-r-ink", "--health-r-tint"),
+    "Yellow": ("--health-y-ink", "--health-y-tint"),
+    "Green": ("--health-g-ink", "--health-g-tint"),
+}
+TINT_UNDER = "--color-canvas"
 
 
 def flag(mark, surface, r):
@@ -216,6 +225,22 @@ def is_ratio(cell):
     return re.fullmatch(r"\d+\.\d+", cell) is not None
 
 
+def over(colour, under):
+    """colour as it lands on the #RRGGBB under: an rgba() is laid over it,
+    a hex stays as it is.
+
+    >>> over("rgba(239,68,68,.10)", "#0F1012"), over("#FEF6F6", "#FFFFFF")
+    ('#251517', '#FEF6F6')
+    """
+    m = re.fullmatch(r"rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)", colour)
+    if not m:
+        return colour
+    a = float(m.group(4))
+    below = [int(under[i:i + 2], 16) for i in (1, 3, 5)]
+    mixed = [round(int(c) * a + b * (1 - a)) for c, b in zip(m.group(1, 2, 3), below)]
+    return "#" + "".join(f"{c:02X}" for c in mixed)
+
+
 def ratio(fg, bg):
     """The WCAG 2 contrast ratio of two #RRGGBB colours.
 
@@ -260,6 +285,16 @@ def main():
                 line += f"  {r:>{len(h) - 1}.2f}{f}"
             print(line)
         print()
+    print("Check-in Health choices: each ink on its tint over the canvas, ! under 4.5:1")
+    for name, theme in tokens.items():
+        cells = []
+        for health, (ink, tint) in TINTS.items():
+            back = over(theme[tint], theme[TINT_UNDER])
+            r = ratio(theme[ink], back)
+            low += r < 4.5
+            cells.append(f"{health} {theme[ink]} on {back} {r:.2f}{'!' if r < 4.5 else ''}")
+        print(f"  {name}: " + " · ".join(cells))
+    print()
     print(f"{low} ratios under the minimum (marked !)." if low else "Every ratio meets its minimum.")
     problems = low
 

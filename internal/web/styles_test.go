@@ -727,3 +727,39 @@ func TestHistoryCheckinMarkScalesTheSharedShape(t *testing.T) {
 		}
 	}
 }
+
+// The Check-in page's Health choices show their colours before one is picked:
+// an unpicked choice is its Health's tint with its ink and shape, and the
+// picked one its full fill edged 2px in its ink (#452).
+func TestCheckinHealthChoicesShowTheirColours(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	styles := between(t, page, ".checkin-page{", "</style>")
+	for sel, want := range map[string]string{
+		".health-toggle label.badge":                      "border:2px solid transparent",
+		".health-toggle label.badge:has(input:checked)":   "border-color:currentColor",
+		".health-toggle label.r:not(:has(input:checked))": "background:var(--health-r-tint)",
+		".health-toggle label.y:not(:has(input:checked))": "background:var(--health-y-tint)",
+		".health-toggle label.g:not(:has(input:checked))": "background:var(--health-g-tint)",
+	} {
+		if decls, ok := ruleFor(styles, sel); !ok || !strings.Contains(decls, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+	if strings.Contains(styles, "--color-surface;border-color:var(--color-border-strong)") || strings.Contains(styles, "label.badge:not(:has(input:checked)){") {
+		t.Errorf("an unpicked Health choice is still drawn grey rather than in its Health's tint")
+	}
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	for _, tint := range []string{"--health-r-tint:", "--health-y-tint:", "--health-g-tint:"} {
+		if n := strings.Count(css, tint); n != 3 {
+			t.Errorf("app.css declares %s %d times, want once in each of the light and two dark blocks", tint, n)
+		}
+	}
+}

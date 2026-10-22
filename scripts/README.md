@@ -126,8 +126,10 @@ prints the contrast ratio on each surface, and marks with `!` any ratio under
 4.5:1 for text or 3:1 for edges. On a surface only text sits on, such as the
 sidebar's current nav item or a chip's fill, the edges print as `—`, and a
 pair no text may use (`NOT_FOR_TEXT`, which `DESIGN.md` lists too) prints
-with `×` and isn't counted. It then checks every ratio that `DESIGN.md`'s
-tables state.
+with `×` and isn't counted. Then it prints each Health's ink on its tint
+(`--health-*-tint`, the Check-in page's unpicked Health choice), laid over
+the canvas where the tint is an alpha, and marks one under 4.5:1. It then
+checks every ratio that `DESIGN.md`'s tables state.
 
 ```sh
 scripts/contrast.py
@@ -139,6 +141,9 @@ light: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges
 --color-ink (text)             15.20    16.46          16.02        14.66          14.60           15.78
 --color-ink-muted (text)        4.73     5.12           4.98         4.56           4.54            4.91
 --color-border-strong (edge)    3.12     3.38           3.29         3.01           3.00            3.24
+…
+Check-in Health choices: each ink on its tint over the canvas, ! under 4.5:1
+  light: Red #A61B1B on #FEF6F6 7.06 · Yellow #7A4F00 on #FFF9E8 6.78 · Green #1C6435 on #F2F9F5 6.72
 …
 Every ratio meets its minimum.
 DESIGN.md: all 88 ratios its tables state match.

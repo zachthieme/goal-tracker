@@ -73,6 +73,9 @@
   --health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
   --health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
   --health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
+  /* A Health's fill at half strength: the Check-in page's unpicked Health
+   * choices (DESIGN.md § Deviations 3) */
+  --health-g-tint: #F2F9F5; --health-y-tint: #FFF9E8; --health-r-tint: #FEF6F6;
 
   --font-body: "Inter", system-ui, sans-serif;
 
@@ -130,6 +133,7 @@
     --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
     --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
     --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B; --health-r-mark: #F07171;
+    --health-g-tint: rgba(34,160,95,.10); --health-y-tint: rgba(234,179,8,.10); --health-r-tint: rgba(239,68,68,.10);
     --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
     --btn-primary-hover: var(--color-primary-hover);
   }
@@ -169,6 +173,7 @@
   --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
   --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
   --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B; --health-r-mark: #F07171;
+  --health-g-tint: rgba(34,160,95,.10); --health-y-tint: rgba(234,179,8,.10); --health-r-tint: rgba(239,68,68,.10);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
   --btn-primary-hover: var(--color-primary-hover);
 }

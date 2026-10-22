@@ -1624,7 +1624,9 @@ func TestReportCardHeadStacksAtPhoneWidthOverHTTP(t *testing.T) {
 
 // The print page sets the Report in the design system's serif, falling back to
 // Georgia, and marks Health with a shape as well as its name so it survives
-// black-and-white printing: ■ Red, ▲ Yellow, ● Green.
+// black-and-white printing: the screen's drawn shapes, a Red octagon, a Yellow
+// triangle pointing down and a Green circle, in the Health's ink and kept when
+// printed, not ■ ▲ ● characters (#452).
 func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1647,11 +1649,34 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	if count := pageElement(t, printed, "span", "needs-attention-count"); !strings.HasSuffix(count, ">1") {
 		t.Errorf("print page's Exceptions does not count its 1 exception: %s", count)
 	}
-	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {
-		t.Errorf("Red is not marked ■; block:\n%s", block)
+	if strings.ContainsAny(printed, "■▲●") {
+		t.Errorf("print page still marks Health with ■ ▲ ● characters; body:\n%s", printed)
 	}
-	if row := pageElement(t, printed, "tr", "selected-goal"); !strings.Contains(row, "●</span>Green") {
-		t.Errorf("Green is not marked ●; row:\n%s", row)
+	doc := parsePage(t, printed)
+	for _, want := range []struct{ in, badge, health string }{
+		{"report-exception", "report-health", "Red"},
+		{"selected-goal", "selected-health", "Green"},
+	} {
+		badge := findByTestID(t, findByTestID(t, doc, want.in), want.badge)
+		testID, health := want.in, want.health
+		dots := findAll(badge, func(n *nethtml.Node) bool { return attrOf(n, "class") == "dot" })
+		if textOf(badge) != health || len(dots) != 1 {
+			t.Errorf("%s's Health badge doesn't read %s beside one drawn shape: %s", testID, health, renderNode(badge))
+		}
+	}
+
+	style := between(t, printed, "<style>", "</style>")
+	dot := printPageRule(t, style, ".dot")
+	if strings.Contains(dot, "display: none") || !strings.Contains(dot, "background: currentColor") || !strings.Contains(dot, " print-color-adjust: exact;") {
+		t.Errorf("print page doesn't draw the dot in its Health's ink, kept when printed: .dot { %s }", dot)
+	}
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	unspaced := strings.NewReplacer(" ", "", "\n", "", "\t", "")
+	for _, sel := range []string{".r .dot", ".y .dot", ".g .dot"} {
+		screen, _ := ruleFor(css, sel)
+		if print := printPageRule(t, style, sel); unspaced.Replace(print) != unspaced.Replace(screen)+";" && unspaced.Replace(print) != unspaced.Replace(screen) {
+			t.Errorf("print page draws %s { %s }, not the screen's %s{%s}", sel, print, sel, screen)
+		}
 	}
 }
 
@@ -3870,7 +3895,7 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 	} {
 		block := reportBlockFor(t, page, tc.g)
 		badges := strings.TrimPrefix(between(t, block, `class="rp-badges">`, "</div>"), `class="rp-badges">`)
-		markup := regexp.MustCompile(`<[^>]*>|[■▲●]`)
+		markup := regexp.MustCompile(`<[^>]*>`)
 		if got := strings.Join(strings.Fields(markup.ReplaceAllString(badges, " ")), " "); !strings.HasPrefix(got, tc.reads+" ") && got != tc.reads {
 			t.Errorf("%s's Health reads %q, want %q", tc.g.Title, got, tc.reads)
 		}
