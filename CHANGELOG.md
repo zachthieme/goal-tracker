@@ -13,6 +13,24 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 22, 2026
+
+**Improvements:**
+- [user] Health's shapes are the road signs': Red is a stop-sign octagon, Yellow a yield triangle pointing down, and Green stays a circle, everywhere a Health is drawn — the Goal list, Home, the Check-in page, a Goal's history and Health strip, Follow-ups and the Reports (#452).
+- [user] The Report print and PDF page draws those same shapes in each Health's ink, kept when printed, rather than ■ ▲ ● characters (#452).
+- [user] No Health chip loses its colour any more: on Home, a Goal whose Check-in is overdue keeps its Health pill's colour and shape, marked stale by a dashed edge beside its "as of" date, and the Check-in page's Health choices show their colours as a lighter tint before one is picked, the picked one in full colour with an edge in its ink (#452).
+
+**Bug fixes:**
+- [ops] A request whose handler panics is answered with a 500 instead of a dropped connection, still gets its access line (with 500, or the status already sent), and its panic is logged at ERROR with the panic value, its stack and the request's `request_id`, rather than as net/http's untagged "http: panic serving" line (#456).
+
+**Testing:**
+- [internal] The last string-matching web test helpers (`assertSubmitsAtOnce`, `assertStyledBy`, `assertTermHelp`, `assertInFlatFrame`) read markup through the HTML parser, and the `cardClass` regexp is gone (#457).
+- [internal] The test harness opens its database with `db.DSN`, the connection string `db.Open` uses, so its pragmas can't drift from the app's (ADR 0009) (#457).
+- [internal] `batch_agreement_test.go` pins `RunOffGreenByGoal`, `MetricsByGoal`, `MilestonesByGoal`, `ParentsByGoal` and `GoalValuesByGoal` to their single-Goal reads over a fixture with Metric readings, out-of-order Milestones, two parents and a Retired value (#457).
+
+**Code quality:**
+- [internal] Every Health shape is drawn by the one `.dot` rule set in `app.css`, scaled by `--dot-size`; the Goal list's mark and Home's My org counts draw a `.dot` rather than shapes of their own, and `healthShape` and `.shape` are gone. `scripts/contrast.py` also checks each Health's ink on its new `--health-*-tint` (#452).
+
 ### Collected changes — October 21, 2026
 
 **Breaking changes:**
