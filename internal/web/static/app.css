@@ -256,9 +256,9 @@ strong{color:var(--color-ink)}
 .r .dot{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);width:max(12px,calc(var(--dot-size)*1.125));height:max(12px,calc(var(--dot-size)*1.125))}
 .st{background:var(--checkin-overdue-bg);color:var(--checkin-overdue-ink);border-width:1px;border-style:dashed;border-color:var(--checkin-overdue-edge)}
 /* A Health chip shows only its shape, its word for a screen reader and the
- * tooltip (DESIGN.md § Health): centred, never under 24px wide, and at least
- * 24px tall where it is a link */
-.badge.shape{justify-content:center;min-width:24px;padding:1px 4px}
+ * tooltip (DESIGN.md § Health): centred, 22px tall as it was with its word,
+ * never under 24px wide, and at least 24px tall where it is a link */
+.badge.shape{justify-content:center;min-width:24px;min-height:22px;padding:1px 4px}
 a>.badge.shape{min-height:24px}
 .badge.st{padding:0 8px}
 .alert.st{background:var(--color-surface);color:var(--color-ink)}
@@ -271,6 +271,9 @@ a>.badge.shape{min-height:24px}
 .gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .gp-link{display:flex;flex-direction:column;gap:4px}
 .gp-link-head{display:flex;align-items:center;gap:8px;min-width:0}
+.gp-link-head>.badge{flex:none}
+.gp-link-head>a{min-width:0}
+.gp-link-head>.gp-link-meta{margin-left:auto}
 .gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .gp-link-meta:empty{display:none}
 .gp-link-meta form{margin:0 0 0 auto}

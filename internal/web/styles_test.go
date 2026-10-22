@@ -826,8 +826,8 @@ func TestReportDraftHeaderKeepsOneRowStyles(t *testing.T) {
 	}
 }
 
-// A Health chip without its word shrinks to its shape: centred, at least 24px
-// wide, and at least 24px tall where it is a link (the Goal table in Edit
+// A Health chip without its word shrinks to its shape: centred, 22px tall as
+// with its word, at least 24px wide, and at least 24px tall where it is a link (the Goal table in Edit
 // values). The Check-in page's Health choice keeps its 44px height, now
 // showing only the shape (#453).
 func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
@@ -846,7 +846,7 @@ func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
 		t.Fatalf("the Health chip isn't marked to shrink to its shape: %s", renderNode(chip))
 	}
 	rule, _ := ruleFor(css, ".badge.shape")
-	for _, want := range []string{"justify-content:center", "min-width:24px"} {
+	for _, want := range []string{"justify-content:center", "min-width:24px", "min-height:22px"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf("a Health chip doesn't shrink to its centred shape: .badge.shape{%s} lacks %s", rule, want)
 		}

@@ -524,8 +524,8 @@ and so on).
     "Red" to a screen reader and in the page's text order, and the badge's
     `title` gives it as a tooltip (a Rolled-up Health's opens with it: "Red:
     the lowest Health among Active children"). The badge shrinks to its shape
-    (`.badge.shape`): centred, 4px sides, at least 24px wide, and at least
-    24px tall where it is a link. The Check-in choice keeps its 44px height.
+    (`.badge.shape`): centred, 4px sides, still 22px tall, at least 24px
+    wide, and at least 24px tall where it is a link. The Check-in choice keeps its 44px height.
   - **What has no colour keeps its words:** the Health filter's options, "No
     Health yet", "No Health", "—", a Lifecycle badge standing in for a
     Health, and counts ("3 Red", My org's "Red 4", Follow-ups' "Red · 3").
@@ -1160,9 +1160,9 @@ and so on).
     - **Contributes to**, with its Suggested parents under it, and
       **Contributed to by:** each linked Goal is its Health badge (its
       Lifecycle badge when it has no Health) then its title as a link in
-      `--color-ink` at 500, on one line (`.gp-link-head`); under them
-      Ownerless when it is, and a quiet **Remove** at the right for the Owner
-      of either Goal. A muted "Owner <Name>" ends the entry. Removing posts at once, and the page that follows offers Undo
+      `--color-ink` at 500, on one line (`.gp-link-head`) with Ownerless when
+      it is and a quiet **Remove** at the right for the Owner of either Goal.
+      A muted "Owner <Name>" ends the entry. Removing posts at once, and the page that follows offers Undo
       (§ Toast).
 - **Forms that open in place (`.gp-open`):** a Goal page action's form opens
   in the part of the page it concerns, never in a modal, side panel or the
