@@ -293,7 +293,9 @@ level=INFO msg=request request_id=3TQ5DBV7XLMAWLQQ4ZK5R2NB6E method=GET route="G
 ```
 
 `route` is the pattern the request matched, not its path, so IDs stay out of
-the log, and `unmatched` for a request refused before it reached one. Every
+the log. A request refused before it reached its handler, a cross-site 403 or
+an oversize 413, logs the route it was aimed at, and a path no route serves
+logs the catch-all (`GET /` or `/`) with its 404. Every
 record logged while handling a request, such as the `ERROR` for a 500, carries
 the same `request_id`, which the response also returns in `X-Request-ID`. A
 proxy that sends its own `X-Request-ID` of 1 to 64 letters, digits, `_` and

@@ -73,7 +73,8 @@ func (a *accessWriter) Unwrap() http.ResponseWriter {
 }
 
 // logAccess writes the request's access line to l, the request's logger: its
-// method, the route it matched ("unmatched" for none), the status it was
+// method, the route it matched (ServeHTTP fills in the one a refused request
+// was aimed at; "unmatched" only if none could be found), the status it was
 // answered with, the bytes sent, and how long it took since start.
 func (a *accessWriter) logAccess(ctx context.Context, l *slog.Logger, method string, start time.Time) {
 	route := a.route

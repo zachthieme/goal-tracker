@@ -153,6 +153,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] Split `internal/web/goals.go` into `goallist.go` (the Goal list, filters, grouping, org scope and list URLs), `goalpage.go` (the Goal page view, sparkline and activation checklist) and `goaltable.go` (the table, its edit mode and save), leaving command handlers and form helpers in `goals.go`; code moved unchanged (#422).
 
 **Documentation:**
+- [ops] docs/install.md says a refused request logs the route it was aimed at, and an unknown path the catch-all, as #441 made it; it still said `unmatched` (#441).
 - [internal] DESIGN.md's card rule lets a page's primary section be a card with a section-level `h2`, and its Home section says Home's sections are `h2`s (#386).
 - [internal] DESIGN.md's Tokens, Type scale, Sidebar, Page header, Theme menu and Nav counts describe the frame as built, and § Deviations 10 tabulates the new surfaces' contrast, which `scripts/contrast.py` now checks along with the Health shapes (#390).
 - [internal] DESIGN.md's Print variant describes colour that degrades to black and white, lists the print colour tokens, and tables each badge's contrast on its tint and on paper, which `scripts/contrast.py` checks (#389).
