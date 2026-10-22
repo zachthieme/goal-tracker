@@ -1137,6 +1137,41 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 	}
 }
 
+// A refused Add another without script answers the draft page from one build
+// of the draft: the form and the preview both show the draft as saved, so it
+// reads the saved narrative once (ticket #455).
+func TestRefusedAddAnotherWithoutScriptDraftsOnceOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, queryCountAdmin)
+	admin := h.SignIn(queryCountAdmin)
+	g := h.ActiveGoal(admin, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(admin, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+	ts, _, queries := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, queryCountAdmin)
+
+	queries.take()
+	resp := postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+		// Ticked with no section, which the narrative refuses.
+		"include-" + signed: {"on"},
+		"add_note":          {domain.HighlightMiss},
+	})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused add another: status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	drafts := 0
+	for _, q := range queries.take() {
+		if strings.HasPrefix(q, "-- name: ListNarrativePicks ") {
+			drafts++
+		}
+	}
+	if drafts != 1 {
+		t.Errorf("a refused Add another read the saved narrative %d times, want once: the draft built once", drafts)
+	}
+}
+
 // A publication frozen when a section held at most one of the author's notes
 // still shows it, as its own paragraph before the Highlights picked into the
 // section (ticket #187).
@@ -3240,6 +3275,53 @@ func TestNarrativePreviewRefreshesThePreviewAndSavesNothingOverHTTP(t *testing.T
 	}
 }
 
+// On a later baseline, the compose form doesn't list a saved pick from before
+// it: the form as it stands previews as Saved, not Unsaved changes, and saving
+// it keeps the pick (ticket #455).
+func TestNarrativeAtALaterBaselineKeepsEarlierPicksOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := draftHighlightID(t, h, def, "Signed the first EU customer.")
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC))
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightMiss, "Lost the second customer.")
+	h.Clock.Set(time.Date(2026, 1, 20, 9, 0, 0, 0, time.UTC))
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	form := findByTestID(t, getPage(t, client, reportURL+"?baseline=2026-01-10"), "narrative-curation")
+	if got := textsOf(findAllByTestID(form, "curation-highlight")); len(got) != 1 || !strings.Contains(got[0], "Lost the second customer.") {
+		t.Fatalf("the form at the baseline lists %q, want only the lost customer", got)
+	}
+	resp, body := postHX(t, client, ts.URL+attrOf(form, "hx-post"), formSubmission(form))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	}
+	if got := textOf(findByTestID(t, parsePage(t, body), "save-result")); got != "Saved" {
+		t.Errorf("previewing the unchanged form at the baseline says %q, want Saved", got)
+	}
+
+	resp, body = postHX(t, client, ts.URL+attrOf(form, "action"), formSubmission(form))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	}
+	narrative := findByTestID(t, getPage(t, client, reportURL), "report-narrative")
+	if !strings.Contains(textOf(narrative), "Signed the first EU customer.") {
+		t.Errorf("saving at the baseline dropped the earlier pick; narrative: %s", textOf(narrative))
+	}
+}
+
 // Save narrative saves the compose form: over htmx it answers the preview
 // showing the narrative as saved and, out of band, the save status saying
 // Saved, the Highlights count, Publish…'s summary and the Report log with the
@@ -3425,6 +3507,24 @@ func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	}
 	if !strings.Contains(textOf(findByTestID(t, page, "save-status")), "Saving…") {
 		t.Errorf("the save status has no Saving… indicator")
+	}
+}
+
+// The compose form asks the browser not to restore what was typed into it
+// after a reload, so a reloaded draft shows the narrative as saved, as its
+// save status and Publish… do (ticket #455).
+func TestComposeFormShowsTheSavedNarrativeAfterAReloadOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	if got := attrOf(findByTestID(t, page, "narrative-curation"), "autocomplete"); got != "off" {
+		t.Errorf("the compose form's autocomplete = %q, want off", got)
 	}
 }
 

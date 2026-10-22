@@ -361,15 +361,26 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 
 // narrativeFormInput reads the narrative the compose form posts: the in-scope
 // Highlights the author ticked (include-{highlight}), each with its section
-// (pick-{highlight}, which is ignored for a Highlight left unticked), and the
+// (pick-{highlight}, which is ignored for a Highlight left unticked), the
 // author's notes in each section (text-{section}, once per note box, in
-// order). A form it can't read is Bad Request, written to w.
+// order), and the Highlights the form offered (offered, once each), so saved
+// picks of those it didn't offer stay as saved. A form it can't read is Bad
+// Request, written to w.
 func narrativeFormInput(w http.ResponseWriter, r *http.Request) (domain.CurateNarrativeInput, bool) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return domain.CurateNarrativeInput{}, false
 	}
-	in := domain.CurateNarrativeInput{Notes: map[string][]string{}}
+	// A form offering no Highlights posts no offered, and offered nothing.
+	in := domain.CurateNarrativeInput{Notes: map[string][]string{}, Offered: []int64{}}
+	for _, raw := range r.Form["offered"] {
+		hlID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			http.Error(w, "unknown Highlight", http.StatusBadRequest)
+			return domain.CurateNarrativeInput{}, false
+		}
+		in.Offered = append(in.Offered, hlID)
+	}
 	for key := range r.Form {
 		raw, ok := strings.CutPrefix(key, "include-")
 		if !ok {
@@ -519,8 +530,10 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// The form offers the Report's Highlights whatever the narrative, so
-	// the preview serves it, or, when refused, the draft as saved.
+	// the preview serves it, or, when refused, the draft as saved, which is
+	// then a plain post's page's draft too (report), built once.
 	status, code := "", http.StatusOK
+	var report domain.Report
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
 	switch {
 	case errors.Is(err, domain.ErrValidation):
@@ -529,6 +542,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 			s.serverError(w, r, "could not build the draft", err)
 			return
 		}
+		report = posted
 	case err != nil:
 		s.writeReportError(w, r, err)
 		return
@@ -550,10 +564,12 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		render(w, r, http.StatusOK, narrativeFormAgain(form, status))
 		return
 	}
-	report, err := s.svc.DraftReport(r.Context(), def, baseline)
-	if err != nil {
-		s.serverError(w, r, "could not build the draft", err)
-		return
+	if code == http.StatusOK {
+		// posted is the narrative as posted; the page shows it as saved.
+		if report, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
+			s.serverError(w, r, "could not build the draft", err)
+			return
+		}
 	}
 	d, err := s.draftDiscussion(r, current, def.ID)
 	if err != nil {

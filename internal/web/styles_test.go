@@ -768,3 +768,59 @@ func TestCheckinHealthChoicesShowTheirColours(t *testing.T) {
 		}
 	}
 }
+
+// From 1280px wide the draft header holds one row whatever the save status
+// says (ticket #455). It doesn't wrap. The save status doesn't break; it keeps
+// room for Unsaved changes, so the header doesn't shift as it changes, and
+// takes only the room left over beyond that, cutting a long Not saved reason
+// short rather than squeezing the Report's name. The baseline chip and History,
+// Edit definition and Publish… keep their width, so the name gives way, cut
+// short. Narrower, beside the sidebar there is no room for one row, and the
+// header wraps.
+func TestReportDraftHeaderKeepsOneRowStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	header := findByTestID(t, parsePage(t, page), "draft-header")
+	for testID, class := range map[string]string{"save-status": "rp-save", "baseline-chip": "rp-chip"} {
+		if n := findByTestID(t, header, testID); !slices.Contains(strings.Fields(attrOf(n, "class")), class) {
+			t.Errorf("the header's %s has classes %q, want %s", testID, attrOf(n, "class"), class)
+		}
+	}
+	if len(findAll(header, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "rp-head-actions") })) != 1 {
+		t.Errorf("the header has no rp-head-actions holding History, Edit definition and Publish…")
+	}
+
+	styles := between(t, page, ".rp-draft-head{", "</style>")
+	wide := mediaBlock(t, styles, "@media (min-width:1280px)")
+	for sel, wants := range map[string][]string{
+		".rp-draft-head":                  {"flex-wrap:nowrap"},
+		".rp-draft-head .rp-save":         {"white-space:nowrap", "flex-basis:9em", "min-width:9em", "overflow:hidden", "text-overflow:ellipsis"},
+		".rp-draft-head .rp-chip":         {"flex-shrink:0"},
+		".rp-draft-head .rp-head-actions": {"flex-shrink:0"},
+	} {
+		decls, ok := ruleFor(wide, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("from 1280px %s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
+	}
+	if decls, ok := ruleFor(styles, ".rp-draft-head"); !ok || !strings.Contains(decls, "flex-wrap:wrap") {
+		t.Errorf(".rp-draft-head{%s} doesn't wrap where one row doesn't fit", decls)
+	}
+	// The name is what gives way: its title shrinks and cuts it short.
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if decls, ok := ruleFor(css, ".ph-title"); !ok || !strings.Contains(decls, "min-width:0") {
+		t.Errorf(".ph-title{%s} doesn't shrink", decls)
+	}
+	if decls, ok := ruleFor(css, ".ph-title h1"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") {
+		t.Errorf(".ph-title h1{%s} doesn't cut a long name short", decls)
+	}
+}

@@ -375,3 +375,78 @@ func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
 		t.Errorf("published Highlight credits %s, want the Goal's Owner %s", got, alice.Email)
 	}
 }
+
+// A narrative composed against a later baseline leaves alone the saved picks
+// of Highlights the form didn't offer: they don't make the narrative unsaved,
+// saving keeps them and the Report log doesn't say they were dropped
+// (ticket #455).
+func TestCurateNarrativeKeepsPicksTheFormDidNotOffer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	signed := highlightID(t, r, "Signed the first EU customer.")
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 1, 15, 9, 0, 0, 0, time.UTC))
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightMiss, "Lost the second customer.")
+	h.Clock.Set(time.Date(2026, 1, 20, 9, 0, 0, 0, time.UTC))
+	baseline := time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC)
+	r, err = h.Service.DraftReport(ctx, def, baseline)
+	if err != nil {
+		t.Fatalf("DraftReport at the baseline: %v", err)
+	}
+	if got := highlightNotes(r.Highlights); !slices.Equal(got, []string{"Lost the second customer."}) {
+		t.Fatalf("Highlights in scope at the baseline %q, want only the lost customer", got)
+	}
+	lost := highlightID(t, r, "Lost the second customer.")
+	logged, err := h.Service.ReportLog(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
+
+	// The form at the baseline offers only the lost customer, left unticked.
+	unchanged := domain.CurateNarrativeInput{Offered: []int64{lost}}
+	if unsaved, err := h.Service.NarrativeUnsaved(ctx, def.ID, unchanged); err != nil || unsaved {
+		t.Errorf("NarrativeUnsaved of the unchanged form = %v (err %v), want false", unsaved, err)
+	}
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, unchanged); err != nil {
+		t.Fatalf("CurateNarrative of the unchanged form: %v", err)
+	}
+	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged) {
+		t.Errorf("Report log after saving the unchanged form has %d entries (err %v), want the %d before", len(after), err, len(logged))
+	}
+
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+		Offered: []int64{lost},
+		Notes:   map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative with a note: %v", err)
+	}
+	after, err := h.Service.ReportLog(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
+	if len(after) != len(logged)+1 || after[0].Detail != "Narrative: Misses notes changed" {
+		t.Errorf("Report log after adding a note %+v, want one more entry saying only the Misses notes changed", after)
+	}
+	saved, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	wins, ok := section(saved, domain.HighlightAccomplishment)
+	if !ok || !slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
+		t.Errorf("saved narrative %+v, want the EU customer still in Accomplishments", saved.Narrative)
+	}
+}
