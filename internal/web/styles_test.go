@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -577,5 +579,192 @@ func TestFilterChipOnStateStyles(t *testing.T) {
 	keySet := `.filter-chip:has(option:checked:not([value=""])) .chip-key-set`
 	if decls, ok := ruleFor(css, keySet); !ok || !strings.Contains(decls, "display:inline") {
 		t.Errorf("app.css %s{%s} doesn't show the set key", keySet, decls)
+	}
+}
+
+// Health's shape is drawn by .dot inside a Health's .r, .y or .g: Red a
+// stop-sign octagon, Yellow a yield triangle pointing down, Green a circle.
+// Each place that draws it scales the one shape set by --dot-size rather than
+// drawing its own (#452).
+func TestHealthDotShapes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for sel, want := range map[string]string{
+		".r .dot": "clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%)",
+		".y .dot": "clip-path:polygon(0 0,100% 0,50% 100%)",
+		".g .dot": "border-radius:50%",
+	} {
+		if decls, ok := ruleFor(css, sel); !ok || !strings.Contains(decls, want) {
+			t.Errorf("app.css %s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+	for _, sel := range []string{".dot", ".r .dot", ".y .dot"} {
+		if decls, ok := ruleFor(css, sel); !ok || !strings.Contains(decls, "var(--dot-size)") {
+			t.Errorf("app.css %s{%s} isn't sized by --dot-size", sel, decls)
+		}
+	}
+}
+
+// The Goal list's Health mark draws the shared .dot in its Health's mark
+// colour at 11px, rather than drawing shapes of its own; a Goal with no Health
+// keeps its hollow ring (#452).
+func TestGoalListHealthMarkDrawsTheSharedShape(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	red := h.ActiveGoal(sam, "Zulu fire", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", pathDate)
+	h.ActiveGoal(sam, "Overdue work", "It matters.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	root := parsePage(t, page)
+	for _, mark := range findAllByTestID(root, "goal-row-health") {
+		dots := findAll(mark, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "dot") })
+		if health := attrOf(mark, "aria-label"); (health == "Red") != (len(dots) == 1) {
+			t.Errorf("the %s row's mark holds %d .dot, want one for a Health and none without: %s", health, len(dots), renderNode(mark))
+		}
+	}
+	for sel, want := range map[string]string{
+		".gl-mark .dot": "--dot-size:11px",
+		".gl-mark.r":    "color:var(--health-r-mark)",
+		".gl-mark.y":    "color:var(--health-y-mark)",
+		".gl-mark.g":    "color:var(--health-g-mark)",
+		".gl-mark.none": "border:1.5px solid var(--color-ink-muted)",
+	} {
+		if decls, ok := ruleFor(page, sel); !ok || !strings.Contains(decls, want) {
+			t.Errorf("the Goal list's %s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+	if strings.Contains(between(t, page, ".gl-mark{", "</style>"), "clip-path") {
+		t.Errorf("the Goal list draws a Health shape of its own rather than the shared .dot")
+	}
+}
+
+// Home's dated pill, for a Goal whose Check-in is overdue, keeps its Health's
+// fill, ink and shape, marked stale only by a dashed edge in that ink (#452).
+func TestHomeDatedPillKeepsItsHealthColour(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(9 * 24 * time.Hour)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	if badge := tagAround(t, page, `data-testid="home-due-health"`); !hasClass(badge, "as-of") || !hasClass(badge, "g") {
+		t.Fatalf("the Check-in overdue Goal's pill isn't a dated Green pill, so this test checks nothing: %s", badge)
+	}
+	decls, ok := ruleFor(page, ".hm-list .badge.as-of")
+	if !ok || !strings.Contains(decls, "border:1px dashed currentColor") {
+		t.Errorf(".hm-list .badge.as-of{%s} isn't edged in a 1px dashed line of its Health's ink", decls)
+	}
+	for _, prop := range []string{"background", "color:"} {
+		if strings.Contains(strings.ReplaceAll(decls, "currentColor", ""), prop) {
+			t.Errorf(".hm-list .badge.as-of{%s} overrides its Health's %s", decls, strings.TrimSuffix(prop, ":"))
+		}
+	}
+}
+
+// The Red and Yellow pills counting a person's Org on My org draw the shared
+// Health shape (.dot) before their label rather than shapes of their own; the
+// total line above them is plain text (#452).
+func TestHomeMyOrgCountsDrawTheSharedShape(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	newHomeOrgFixture(h)
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	var counts []*html.Node
+	for _, row := range findAllByTestID(parsePage(t, page), "home-org-person") {
+		counts = append(counts, findAllByTestID(row, "home-org-count")...)
+	}
+	if len(counts) == 0 {
+		t.Fatalf("My org has no person's counts, so this test checks nothing:\n%s", page)
+	}
+	for _, count := range counts {
+		kind := attrOf(count, "data-kind")
+		dots := findAll(count, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "dot") })
+		if want := kind == "red" || kind == "yellow"; want != (len(dots) == 1) {
+			t.Errorf("the %s count holds %d .dot: %s", kind, len(dots), renderNode(count))
+		}
+	}
+	if strings.Contains(between(t, page, ".hm-org-row{", "</style>"), "::before") {
+		t.Errorf("Home draws My org's Health shapes with ::before rather than the shared .dot")
+	}
+}
+
+// A Goal's history marks a Check-in with the shared Health shape at 10px,
+// scaled by --dot-size, rather than resizing Yellow's on its own (#452).
+func TestHistoryCheckinMarkScalesTheSharedShape(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	if !strings.Contains(page, `<span class="tl-mark y" aria-hidden="true"><span class="dot"></span></span>`) {
+		t.Fatalf("the history has no Yellow Check-in mark, so this test checks nothing:\n%s", page)
+	}
+	if decls, ok := ruleFor(page, ".tl-mark .dot"); !ok || !strings.Contains(decls, "--dot-size:10px") {
+		t.Errorf(".tl-mark .dot{%s} doesn't scale the shared shape to 10px", decls)
+	}
+	for _, sel := range []string{".tl-mark.r .dot", ".tl-mark.y .dot", ".tl-mark.g .dot"} {
+		if decls, ok := ruleFor(page, sel); ok {
+			t.Errorf("the history sizes %s{%s} on its own", sel, decls)
+		}
+	}
+}
+
+// The Check-in page's Health choices show their colours before one is picked:
+// an unpicked choice is its Health's tint with its ink and shape, and the
+// picked one its full fill edged 2px in its ink (#452).
+func TestCheckinHealthChoicesShowTheirColours(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	styles := between(t, page, ".checkin-page{", "</style>")
+	for sel, want := range map[string]string{
+		".health-toggle label.badge": "border:2px solid transparent",
+		// The form's labels are --color-ink, so each choice names its ink
+		// again for its word, shape and edge to take it.
+		".health-toggle label.r":                          "color:var(--health-r-ink)",
+		".health-toggle label.y":                          "color:var(--health-y-ink)",
+		".health-toggle label.g":                          "color:var(--health-g-ink)",
+		".health-toggle label.badge:has(input:checked)":   "border-color:currentColor",
+		".health-toggle label.r:not(:has(input:checked))": "background:var(--health-r-tint)",
+		".health-toggle label.y:not(:has(input:checked))": "background:var(--health-y-tint)",
+		".health-toggle label.g:not(:has(input:checked))": "background:var(--health-g-tint)",
+	} {
+		if decls, ok := ruleFor(styles, sel); !ok || !strings.Contains(decls, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+	if strings.Contains(styles, "--color-surface;border-color:var(--color-border-strong)") || strings.Contains(styles, "label.badge:not(:has(input:checked)){") {
+		t.Errorf("an unpicked Health choice is still drawn grey rather than in its Health's tint")
+	}
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	for _, tint := range []string{"--health-r-tint:", "--health-y-tint:", "--health-g-tint:"} {
+		if n := strings.Count(css, tint); n != 3 {
+			t.Errorf("app.css declares %s %d times, want once in each of the light and two dark blocks", tint, n)
+		}
 	}
 }

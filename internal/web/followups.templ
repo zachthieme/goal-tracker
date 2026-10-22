@@ -310,15 +310,13 @@ templ followUpTip(kind, label string) {
 // at the right. Its chips: the outlined neutral chip the structural signals
 // take, a .tag with the badges' small radius, the buttons naming the chips'
 // signals, and the popovers saying what they mean, never wider than the
-// window. The Health chips' print-only shapes stay hidden, as on the report
-// pages, and a Health with its Run off Green and an Owner's name keep to one
+// window. A Health with its Run off Green and an Owner's name keep to one
 // line. Below 600px each list row stacks: the Goal cell, ordered first though
 // it comes second in the HTML, then Health and Owner on one line, then the
 // Fix, and the full list of what each signal means stacks each name over its
 // meaning.
 templ followUpsStyles() {
 	<style>
-		.shape{display:none}
 		.page{--rk-pad:28px;max-width:none;padding:0 0 64px;gap:0}
 		.rk-head{flex-wrap:wrap;column-gap:16px;padding-block:8px}
 		.rk-head .ph-title{flex-wrap:wrap;column-gap:12px}

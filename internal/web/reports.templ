@@ -716,7 +716,12 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				th, td { text-align: left; vertical-align: top; padding: 0.3rem 0.75rem 0.3rem 0; border-bottom: 0.5pt solid var(--print-rule); }
 				th { font-weight: 600; font-variant: small-caps; letter-spacing: 0.05em; border-bottom: 1pt solid var(--print-ink); }
 				tr { break-inside: avoid; }
-				.dot { display: none; }
+				/* Health's shape, as the screen draws it (app.css), in the
+				 * Health's ink and kept when printed */
+				.dot { --dot-size: 8px; width: var(--dot-size); height: var(--dot-size); display: inline-block; margin-right: 0.3em; vertical-align: 0.05em; background: currentColor; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+				.g .dot { border-radius: 50%; }
+				.y .dot { clip-path: polygon(0 0, 100% 0, 50% 100%); width: calc(var(--dot-size) * 1.25); height: calc(var(--dot-size) * 1.125); }
+				.r .dot { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); width: max(12px, calc(var(--dot-size) * 1.125)); height: max(12px, calc(var(--dot-size) * 1.125)); }
 				.badge { font-weight: 600; white-space: nowrap; padding: 0 0.3em; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 				.r { background: var(--print-health-r-bg); color: var(--print-health-r-ink); }
 				.y { background: var(--print-health-y-bg); color: var(--print-health-y-ink); }
@@ -724,7 +729,6 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				.lc { background: var(--print-health-none-bg); color: var(--print-health-none-ink); }
 				.st { background: var(--print-overdue-bg); color: var(--print-overdue-ink); border: 0.5pt dashed var(--print-overdue-edge); }
 				.rp-tint.overdue { background: var(--print-health-r-bg); padding: 0.2rem 0.5rem; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-				.shape { margin-right: 0.25em; }
 				.muted { color: var(--print-ink-2); }
 				.small { font-size: 9.5pt; }
 				.label { font-variant: small-caps; letter-spacing: 0.05em; color: var(--print-ink-2); margin: 0.6rem 0 0; }
@@ -1373,37 +1377,14 @@ templ reportFields(fields []domain.FieldValue, dates displayDates) {
 	}
 }
 
-// healthBadge is a Health as a coloured badge, marked for print, or a dash
-// when there is none yet.
+// healthBadge is a Health as a coloured badge with its shape, which the print
+// page draws too so it survives black-and-white printing, or a dash when there
+// is none yet.
 templ healthBadge(testID, health string) {
 	<span data-testid={ testID } class={ "badge", healthClass(health) }>
-		@healthMark(health)
+		<span class="dot"></span>
 		{ reportHealth(health) }
 	</span>
-}
-
-// healthMark marks a Health on a badge: the design system's coloured dot on
-// screen, and on the print page, which hides the dot, a shape beside the
-// badge's colour that survives black-and-white printing — ■ Red, ▲ Yellow,
-// ● Green.
-templ healthMark(health string) {
-	<span class="dot"></span>
-	if shape := healthShape(health); shape != "" {
-		<span class="shape" aria-hidden="true">{ shape }</span>
-	}
-}
-
-// healthShape is the shape the print page marks a Health with.
-func healthShape(health string) string {
-	switch health {
-	case domain.HealthRed:
-		return "■"
-	case domain.HealthYellow:
-		return "▲"
-	case domain.HealthGreen:
-		return "●"
-	}
-	return ""
 }
 
 // healthClass is the badge colour for a Health; no Health yet is neutral.
@@ -1569,7 +1550,6 @@ func hasNotes(notes []string) bool {
 // screen between its gutters.
 templ reportStyles() {
 	<style>
-		.shape{display:none}
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;flex-direction:column;gap:4px}
 		.rp-head h1{margin:0 0 4px}

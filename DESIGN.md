@@ -141,6 +141,9 @@ leaves out.
   --health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
   --health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
   --health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
+  /* A Health's fill at half strength: the Check-in page's unpicked Health
+   * choices. See Deviations */
+  --health-g-tint: #F2F9F5; --health-y-tint: #FFF9E8; --health-r-tint: #FEF6F6;
 
   /* Type */
   --font-body: "Inter", system-ui, sans-serif;
@@ -217,6 +220,7 @@ leaves out.
   --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
   --health-y-bg: rgba(234,179,8,.20); --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
   --health-r-bg: rgba(239,68,68,.20); --health-r-ink: #F8A39B; --health-r-mark: #F07171;
+  --health-g-tint: rgba(34,160,95,.10); --health-y-tint: rgba(234,179,8,.10); --health-r-tint: rgba(239,68,68,.10);
 
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
 
@@ -492,19 +496,28 @@ and so on).
   - **Phone:** at 600px and below the column labels hide and each row stacks
     between its hairlines, the Goal or name first and the rest wrapping under
     it.
-- **Health:** shown three ways, each keeping its shape (a square for Red, a
-  triangle for Yellow, a circle for Green), so colour is never the only
-  signal.
+- **Health:** shown three ways, each keeping its shape, so colour is never
+  the only signal. The shapes are the road signs': Red a stop sign's regular
+  octagon, Yellow a yield sign's triangle pointing down, Green a circle for
+  go. One shape set draws them all: `.dot` inside a `.r`, `.y` or `.g`
+  (app.css), filled with `currentColor`. Its size is `--dot-size`, the
+  circle's width, 8px by default; the triangle is drawn 1.25 times as wide
+  and 1.125 times as tall, and the octagon 1.125 times the size but never
+  under 12px, below which it reads as a circle on a 1x screen, so each reads
+  as its shape beside the circle. A place that draws the shape bigger sets `--dot-size` on
+  its `.dot` and never draws a shape of its own.
   - **The shape alone (`.gl-mark`, `goalHealthMark`):** in the Goal list's
-    rows and group headers, 11px (Yellow's triangle 12 × 11px) in
-    `--health-*-mark`. In a row it is `role="img"` with an `aria-label`
-    naming the Health ("Red", "No Health"). A Goal with no Health shows a
-    hollow 1.5px `--color-ink-muted` ring.
+    rows and group headers, a `.dot` at 11px in `--health-*-mark`. In a row
+    it is `role="img"` with an `aria-label` naming the Health ("Red", "No
+    Health"). A Goal with no Health shows a hollow 1.5px `--color-ink-muted`
+    ring.
   - **The badge (`.badge` with `.g` / `.y` / `.r`):** a `--health-*-bg` fill
     with `--health-*-ink` text (see § Deviations 3), 22px tall with 8px
     sides, `--radius-sm` corners and 13px, 600 type on one line, its 8px
     shape (`.dot`) before the word. It is how Health shows everywhere else:
-    Follow-ups, the Goal page, the Check-in page and the Reports.
+    Follow-ups, the Goal page, the Check-in page, the Reports and Home's My
+    org counts. No Health badge gives up its colour: a dated one and an
+    unpicked Check-in choice keep their Health's hue.
   - **The pill:** in Home's rows, the badge takes `--radius-full` and 12px,
     500 type.
 - **Other badges:** the neutral badge (`.lc`), for a Lifecycle and the like,
@@ -697,10 +710,10 @@ and so on).
     30px buttons, and wrap under the row on a narrow column. Rows take no
     hover fill, save My org's.
   - **A dated pill (`.badge.as-of`, Home's own rule):** a Check-in overdue
-    Goal's Health is its last Check-in's, so its pill is muted: a
-    `--color-canvas` fill, `--color-ink-muted` text and shape, and a 1px
-    `--color-border-strong` edge, keeping the Health's word and shape. The
-    "last check-in" or "as of" beside it dates it.
+    Goal's Health is its last Check-in's, so its pill is marked stale: it
+    keeps its Health's fill, ink, word and shape, edged in a 1px dashed line
+    of its ink (`currentColor`). The "last check-in" or "as of" beside it
+    dates it.
   - **Your Yellow or Red goals:** the last section: the Active Goals the
     person Owns that are Red, then Yellow, each its Health pill (dated when
     Check-in overdue, with a muted "as of 9 days ago" after the title) and
@@ -773,7 +786,8 @@ and so on).
     avatar, their Name in 14px, 500 `--color-ink` (`personPlain`, email on
     hover), a "departed" chip beside a Departed one, then their Org's counts
     in the total line's order. Each reads as a count and a name ("1 Red"), so
-    it reads without colour: Red and Yellow as Health pills, Path to Green
+    it reads without colour: Red and Yellow as Health pills with their
+    shape (`.dot`) before the count, Path to Green
     overdue and Check-in overdue as Check-in overdue chips. On hover the row
     takes `--color-row-hover`. The most Red come first, then the most Path to
     Green overdue, the most Check-in overdue and the most Yellow, then by
@@ -1187,8 +1201,9 @@ and so on).
   - **The rule and markers (`.tl-list`, `.tl-mark`):** the week's entries hang
     16px apart off a 1px `--color-border` rule, each with a 12px marker on the
     rule, on a `--color-canvas` ground so the rule doesn't run through it.
-    A Check-in's marker is its Health's dot, in the Health's ink and shape:
-    ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
+    A Check-in's marker is its Health's dot (`--dot-size: 10px`), in the
+    Health's ink and shape: a circle for Green, a triangle pointing down for
+    Yellow, an octagon for Red. It reads without colour, and its badge names the
     Health beside it. Every other kind has a neutral `--color-ink-muted`
     marker with its own shape: a hollow ring for Why it matters and for a
     title change, a hollow diamond for an ownership change, a bar for a value
@@ -1249,7 +1264,8 @@ and so on).
     How a period ended decides its cell: the last Check-in made in it. If that
     Check-in left the Goal Active, the cell takes its Health: the
     Health's `--health-*-bg` fill with its dot in the Health's ink and shape
-    (● Green, ▲ Yellow, ■ Red), so it reads without colour. A finished period
+    (Green's circle, Yellow's downward triangle, Red's octagon), so it reads
+    without colour. A finished period
     the Goal was Active with no Check-in is an empty cell in a 1px dashed
     `--checkin-overdue-edge` border, the edge Check-in overdue uses, so a
     skipped week shows at a glance. Only a finished period can be missed: one
@@ -2042,9 +2058,11 @@ given):
   paper units. The 4px grid doesn't apply.
 - Page margins are 18mm top and bottom and 16mm at the sides.
 - A Goal's Health sits to the right of its title. Health shows as a badge in
-  its tint and ink, with its shape (■ Red, ▲ Yellow, ● Green) and its name, so
-  it reads without the colour. The screen's dot is hidden: the shape does its
-  work.
+  its tint and ink, with its shape and its name, so it reads without the
+  colour. The shape is the screen's drawn `.dot` (Red's octagon, Yellow's
+  downward triangle, Green's circle), copied into the page's style block, in
+  the Health's ink and kept when printed (`print-color-adjust: exact`), not a
+  character.
 - The badges the screen colours keep their colour: Health, a Milestone's Red or
   Yellow mark, Ownerless, New Date and a Path to Green's Overdue in the Health
   colour they take on screen, and Check-in overdue in its grey chip with a
@@ -2114,7 +2132,9 @@ given):
    validation, not for Health. A badge's text reaches 4.5:1 on its fill, and
    the shapes' ratios are in § Deviations 10. A dark fill is 20% alpha, so it
    is measured as it lands: over the canvas, a hovered row and a raised
-   surface (the Check-in submit bar's summary).
+   surface (the Check-in submit bar's summary). A Health's tint
+   (`--health-*-tint`), the fill at half strength under an unpicked Check-in
+   choice, is measured too, a dark one over the canvas the choices sit on.
 
    | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |
@@ -2124,6 +2144,12 @@ given):
    | Dark | Red ink `--health-r-ink` `#F8A39B` | Red fill over canvas `#3C1A1C` / over row hover `#452326` / over surface `#411F21` | 7.89 / 7.04 / 7.42 |
    | Dark | Yellow ink `--health-y-ink` `#F5D06B` | Yellow fill over canvas `#3B3110` / over row hover `#44391A` / over surface `#403515` | 8.65 / 7.65 / 8.12 |
    | Dark | Green ink `--health-g-ink` `#8EDDAF` | Green fill over canvas `#132D21` / over row hover `#1C362B` / over surface `#183226` | 9.20 / 8.13 / 8.61 |
+   | Light | Red ink `--health-r-ink` `#A61B1B` | Red tint `--health-r-tint` `#FEF6F6` | 7.06 |
+   | Light | Yellow ink `--health-y-ink` `#7A4F00` | Yellow tint `--health-y-tint` `#FFF9E8` | 6.78 |
+   | Light | Green ink `--health-g-ink` `#1C6435` | Green tint `--health-g-tint` `#F2F9F5` | 6.72 |
+   | Dark | Red ink `--health-r-ink` `#F8A39B` | Red tint over canvas `#251517` | 8.93 |
+   | Dark | Yellow ink `--health-y-ink` `#F5D06B` | Yellow tint over canvas `#252011` | 10.92 |
+   | Dark | Green ink `--health-g-ink` `#8EDDAF` | Green tint over canvas `#111E1A` | 10.71 |
 4. **Danger text.** `--color-error` (`#EF4444`) reaches only 3.76:1 on white,
    too low for 13–15px text. Destructive buttons and inline errors use
    `--color-danger-ink` (`#9A231B`, the Red Health ink before the flat frame)
@@ -2153,11 +2179,13 @@ given):
      in `--color-primary-strong`, not `--color-primary`, which reaches only
      2.49:1 on white. The Check-in page's Metric progress bar fills in the
      same token.
-   - On the Check-in form, an unselected Health choice is an outline: a
-     `--color-surface` fill, a 2px `--color-border-strong` edge, and the word
-     and shape in the Health's ink. The selected one is the filled Health
-     badge (`--health-*-bg`) with a 2px edge in its ink, so a choice keeps its
-     size either way. Nothing is dimmed.
+   - On the Check-in form, an unselected Health choice shows its colour
+     before one is picked: its Health's tint (`--health-*-tint`, the fill at
+     half strength: half-way to white in light, 10% alpha in dark) with the
+     word and shape in the Health's ink, inside a transparent 2px edge. The
+     selected one is the full Health badge (`--health-*-bg`) with a 2px edge
+     in its ink, so a choice keeps its size either way. The ink on each tint
+     is in § Deviations 3's table, and `scripts/contrast.py` checks it.
    - A chosen option's edge is `--color-primary-strong` (§ Segmented
      controls): the current segment of a tinted track, a chosen Kind tile, its
      radio dot and a chosen Where it fits pick. The edge sits between the

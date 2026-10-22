@@ -441,13 +441,14 @@ func mediaBlock(t *testing.T, css, query string) string {
 }
 
 // ruleFor returns the declarations of the rule in block whose selector list
-// names sel.
+// names sel. A comment before the rule isn't part of its selector.
 func ruleFor(block, sel string) (string, bool) {
 	for _, rule := range strings.Split(block, "}") {
 		selectors, decls, ok := strings.Cut(rule, "{")
 		if !ok {
 			continue
 		}
+		selectors = cssComment.ReplaceAllString(selectors, "")
 		for _, s := range strings.Split(selectors, ",") {
 			if strings.TrimSpace(s) == sel {
 				return decls, true
@@ -456,6 +457,8 @@ func ruleFor(block, sel string) (string, bool) {
 	}
 	return "", false
 }
+
+var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
 // noRedirects stops client following redirects, so a test sees where a
 // response sends the person.

@@ -241,7 +241,9 @@ templ goalListLayout(view goalsListData) {
 					<tbody data-testid="goal-health-group">
 						<tr data-testid="goal-group-head" class="gl-group">
 							<th colspan="5" scope="colgroup">
-								<span class={ "gl-mark", healthMarkClass(grp.Health) } aria-hidden="true"></span>
+								<span class={ "gl-mark", healthMarkClass(grp.Health) } aria-hidden="true">
+									@goalHealthDot(grp.Health)
+								</span>
 								@goalGroupLabel(grp.name(), len(grp.Rows))
 							</th>
 						</tr>
@@ -335,13 +337,24 @@ templ goalListRow(row goalRow, dates displayDates) {
 	</tr>
 }
 
-// goalHealthMark is a list row's Health: its shape alone — square for Red,
-// triangle for Yellow, circle for Green, an empty ring for none — named by an
-// aria-label, so colour is never the only signal (DESIGN.md § Components:
-// Health).
+// goalHealthMark is a list row's Health: its shape alone — octagon for Red,
+// a downward triangle for Yellow, circle for Green, an empty ring for none —
+// named by an aria-label, so colour is never the only signal (DESIGN.md
+// § Components: Health).
 templ goalHealthMark(health string) {
 	{{ name := goalHealthGroup{Health: health}.name() }}
-	<span data-testid="goal-row-health" class={ "gl-mark", healthMarkClass(health) } role="img" aria-label={ name }><span class="sr-only">{ name }</span></span>
+	<span data-testid="goal-row-health" class={ "gl-mark", healthMarkClass(health) } role="img" aria-label={ name }>
+		@goalHealthDot(health)
+		<span class="sr-only">{ name }</span>
+	</span>
+}
+
+// goalHealthDot is the shared Health shape (.dot) inside a .gl-mark; a Goal
+// with no Health has none, its mark the empty ring.
+templ goalHealthDot(health string) {
+	if health != "" {
+		<span class="dot"></span>
+	}
 }
 
 // goalTableLayout is the Goal list's table layout: one row per Goal, a column
@@ -671,11 +684,12 @@ templ goalsStyles() {
 		.gl-group .gl-mark{margin-right:8px}
 		.gl-group-count{margin-left:8px;color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
 		.gl-list tr[data-testid=goal-row]:hover{background:var(--color-row-hover)}
-		.gl-mark{display:inline-block;flex:none;width:11px;height:11px;box-sizing:border-box;vertical-align:middle}
-		.gl-mark.r{background:var(--health-r-mark);border-radius:2px}
-		.gl-mark.y{width:12px;background:var(--health-y-mark);clip-path:polygon(50% 0,100% 100%,0 100%)}
-		.gl-mark.g{background:var(--health-g-mark);border-radius:50%}
-		.gl-mark.none{background:none;border:1.5px solid var(--color-ink-muted);border-radius:50%}
+		.gl-mark{display:inline-flex;align-items:center;justify-content:center;flex:none;vertical-align:middle}
+		.gl-mark .dot{--dot-size:11px}
+		.gl-mark.r{background:none;color:var(--health-r-mark)}
+		.gl-mark.y{background:none;color:var(--health-y-mark)}
+		.gl-mark.g{background:none;color:var(--health-g-mark)}
+		.gl-mark.none{width:11px;height:11px;box-sizing:border-box;border:1.5px solid var(--color-ink-muted);border-radius:50%}
 		.gl-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 		.gl-title{flex:0 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--color-ink);font-weight:500}
 		.gl-title:hover{color:var(--color-ink)}

@@ -598,7 +598,6 @@ function followUpRows(page: Page): Promise<FollowUpRow[]> {
         return {
           id: Number(link?.getAttribute("href")?.replace("/goals/", "")),
           title: link?.textContent?.trim() ?? "",
-          // innerText leaves out the hidden print-only shape.
           health: (tr.querySelector('[data-testid="follow-up-health"]') as HTMLElement | null)?.innerText.trim() ?? "",
           kinds: [...tr.querySelectorAll('[data-testid="follow-up-signal"]')].map(
             (c) => c.getAttribute("data-kind") ?? "",

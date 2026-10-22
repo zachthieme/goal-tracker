@@ -685,10 +685,9 @@ async function expectReportOrder(report: Locator, required: string[]) {
   }
 }
 
-// healthOf is the Health a badge names, without the shape the print page
-// marks it with.
+// healthOf is the Health a badge names, its whitespace collapsed.
 async function healthOf(badge: Locator): Promise<string> {
-  return ((await badge.textContent()) ?? "").replace(/[^A-Za-z ]/g, "").trim();
+  return ((await badge.textContent()) ?? "").replace(/\s+/g, " ").trim();
 }
 
 type GoalDetail = Goal & {

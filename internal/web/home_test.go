@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -1168,18 +1170,15 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 // homeOrgCounts reads the My org count badges in section, in order, as
 // "kind: label", so an assertion sees both what each reads and what it is.
 func homeOrgCounts(section string) []string {
-	var out []string
-	for rest := section; ; {
-		at := strings.Index(rest, `data-testid="home-org-count"`)
-		if at < 0 {
-			return out
-		}
-		rest = rest[strings.LastIndex(rest[:at], "<"):]
-		badge, after, _ := strings.Cut(rest, "</span>")
-		_, label, _ := strings.Cut(badge, ">")
-		out = append(out, attr(openTag(badge), "data-kind")+": "+label)
-		rest = after
+	doc, err := html.Parse(strings.NewReader(section))
+	if err != nil {
+		return nil
 	}
+	var out []string
+	for _, badge := range findAllByTestID(doc, "home-org-count") {
+		out = append(out, attrOf(badge, "data-kind")+": "+textOf(badge))
+	}
+	return out
 }
 
 // homeOrgRows are the My org section's rows, one per flagged person, in order.

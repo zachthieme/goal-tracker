@@ -1668,9 +1668,9 @@ func TestFollowUpsScopeFormAppliesItself(t *testing.T) {
 	}
 }
 
-// A Health chip on the Follow-ups page shows one marker, its dot: the shape
-// healthBadge also emits is for the print page, so the page hides it on screen.
-func TestFollowUpsPageHidesHealthShapesOnScreen(t *testing.T) {
+// A Health chip on the Follow-ups page shows one marker, its drawn shape (the
+// dot), and no ■ ▲ ● character beside it (#452).
+func TestFollowUpsHealthChipShowsOneShape(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -1682,11 +1682,10 @@ func TestFollowUpsPageHidesHealthShapesOnScreen(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	if row := followUpRowOf(t, page, stalled); !strings.Contains(row, `class="shape"`) {
-		t.Fatalf("the row's Health chip has no shape, so this test checks nothing:\n%s", row)
-	}
-	if rule := cssRule(t, page, ".shape"); !strings.Contains(rule, "display:none") {
-		t.Errorf("the Follow-ups page shows .shape{%s} on screen beside each Health chip's dot", rule)
+	chip := findByTestID(t, parsePage(t, followUpRowOf(t, page, stalled)), "follow-up-health")
+	marks := findAll(chip, func(n *nethtml.Node) bool { return n != chip && n.Data == "span" })
+	if len(marks) != 1 || attrOf(marks[0], "class") != "dot" || textOf(chip) != "Green" {
+		t.Errorf("the row's Health chip doesn't show just its drawn shape and Green: %s", renderNode(chip))
 	}
 }
 

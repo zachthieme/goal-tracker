@@ -664,7 +664,7 @@ func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 		if !strings.Contains(openTag(head), `class="gl-group"`) {
 			t.Errorf("%s: header row isn't a .gl-group row: %s", w.name, head)
 		}
-		if !strings.Contains(head, `<span class="gl-mark `+w.mark+`" aria-hidden="true"></span>`) {
+		if mark := tagAround(t, head, `class="gl-mark `+w.mark+`"`); attr(mark, "aria-hidden") != "true" {
 			t.Errorf("%s: header row lacks its shape: %s", w.name, head)
 		}
 		if got := pageElement(t, head, "span", "goal-group-label"); !strings.HasSuffix(got, ">"+w.name) {

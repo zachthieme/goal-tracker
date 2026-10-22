@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Home · Goal Tracker</title><link rel="stylesheet" href="/static/app.css?v=89b93ff6"><script src="/static/htmx.min.js?v=491955cd"></script><script>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Home · Goal Tracker</title><link rel="stylesheet" href="/static/app.css?v=a437f280"><script src="/static/htmx.min.js?v=491955cd"></script><script>
 		document.addEventListener("click", function (e) {
 			var b = e.target.closest && e.target.closest("button.disclose");
 			if (!b) return;
@@ -30,16 +30,13 @@
 		.hm-phrase{white-space:nowrap}
 		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
-		.hm-list .badge.as-of{background:var(--color-canvas);color:var(--color-ink-muted);border:1px solid var(--color-border-strong)}
+		.hm-list .badge.as-of{border:1px dashed currentColor}
 		.hm-list>li:has(>.hm-org-row){padding:0}
 		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
 		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
 		.hm-org-name{font-size:14px;font-weight:500}
 		.hm-org-row:hover .hm-org-name{text-decoration:underline}
 		.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}
-		.hm-org-row .badge.r::before,.hm-org-row .badge.y::before{content:"";flex:none;width:8px;height:8px;background:currentColor}
-		.hm-org-row .badge.r::before{border-radius:1px}
-		.hm-org-row .badge.y::before{width:10px;height:9px;clip-path:polygon(50% 0,100% 100%,0 100%)}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
 		.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}
