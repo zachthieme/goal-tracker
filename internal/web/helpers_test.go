@@ -69,11 +69,18 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 }
 
 // assertSubmitsAtOnce checks a form's opening tag sends it without a browser
-// dialog asking for confirmation first (#56).
+// dialog asking for confirmation first (#56): it has no submit handler, and no
+// event handler on it calls confirm(). It reads the tag's attributes, as attr
+// reads them, so text in another attribute's value that looks like a handler
+// isn't one.
 func assertSubmitsAtOnce(t *testing.T, what, form string) {
 	t.Helper()
-	if strings.Contains(form, "onsubmit=") || strings.Contains(form, "confirm(") {
-		t.Errorf("%s asks for confirmation: %s", what, form)
+	for tag := range markupTags(partwayTagLead(form) + form + ">") {
+		for _, a := range tag.tok.Attr {
+			if a.Key == "onsubmit" || strings.HasPrefix(a.Key, "on") && strings.Contains(a.Val, "confirm(") {
+				t.Errorf("%s asks for confirmation: %s", what, form)
+			}
+		}
 	}
 }
 
@@ -314,11 +321,14 @@ func partwayTagLead(markup string) string {
 }
 
 // assertStyledBy checks the element's opening tag carries no style attribute
-// but the class, and that rules declare exactly want for that class.
+// but the class, and that rules declare exactly want for that class. It reads
+// the tag's attributes as attr reads them.
 func assertStyledBy(t *testing.T, tag, rules, class, want string) {
 	t.Helper()
-	if strings.Contains(tag, " style=") {
-		t.Errorf("element carries a style attribute: %s", tag)
+	for read := range markupTags(partwayTagLead(tag) + tag + ">") {
+		if tokenHasAttr(read.tok, "style") {
+			t.Errorf("element carries a style attribute: %s", tag)
+		}
 	}
 	if !slices.Contains(strings.Fields(attr(tag, "class")), class) {
 		t.Errorf("element lacks class %s: %s", class, tag)
@@ -625,20 +635,16 @@ func passwordSignInClient(t *testing.T, h *testsupport.Harness, baseURL, emailAd
 // assertTermHelp checks that within holds a help disclosure for a glossary
 // term: a disclose help button reading label, starting collapsed, carrying
 // text as its title, and controlling a hidden explain paragraph on page that
-// holds text. It returns the button's opening tag.
+// reads text. It returns the button's opening tag. It finds the button by
+// html's tokenizer and the paragraph by its id in the parsed page, so their
+// attributes may come in any order.
 func assertTermHelp(t *testing.T, page, within, label, text string) string {
 	t.Helper()
-	end := strings.Index(within, ">"+label+"</button>")
-	if end < 0 {
+	button := termHelpButton(within, label)
+	if button == "" {
 		t.Errorf("no button reads %q", label)
 		return ""
 	}
-	start := strings.LastIndex(within[:end], "<button")
-	if start < 0 {
-		t.Errorf("%q is not inside a button", label)
-		return ""
-	}
-	button := within[start:end]
 	if !slices.Contains(strings.Fields(attr(button, "class")), "disclose") || !slices.Contains(strings.Fields(attr(button, "class")), "help") {
 		t.Errorf("%q is not a disclose help button: %s", label, button)
 	}
@@ -649,29 +655,68 @@ func assertTermHelp(t *testing.T, page, within, label, text string) string {
 		t.Errorf("%q button's title = %q, want %q", label, got, want)
 	}
 	id := attr(button, "aria-controls")
-	if want := `<p id="` + id + `" class="explain" hidden>` + html.EscapeString(text) + `</p>`; id == "" || !strings.Contains(page, want) {
-		t.Errorf("%q button controls %q, want the collapsed explanation %s", label, id, want)
+	explains := findAll(parsePage(t, page), func(n *html.Node) bool { return id != "" && attrOf(n, "id") == id })
+	if len(explains) != 1 || !termHelpExplains(explains[0], text) {
+		t.Errorf("%q button controls %q, want the collapsed explanation, a hidden explain paragraph reading %q", label, id, text)
 	}
 	return button
 }
 
-// cardClass matches a class attribute holding the card class on its own, not
-// as part of another class's name.
-var cardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+// termHelpButton is the opening tag of the first button in markup whose last
+// words, just before it closes, read label, or "" when none does.
+func termHelpButton(markup, label string) string {
+	z := html.NewTokenizer(strings.NewReader(markup))
+	button, labelled := "", false
+	for {
+		tt := z.Next()
+		if tt == html.ErrorToken {
+			return ""
+		}
+		raw := string(z.Raw())
+		tok := z.Token()
+		switch {
+		case tt == html.StartTagToken && tok.Data == "button":
+			button, labelled = raw, false
+		case tt == html.TextToken:
+			labelled = tok.Data == label
+		case tt == html.EndTagToken && tok.Data == "button" && labelled && button != "":
+			return button
+		default:
+			labelled = false
+		}
+	}
+}
+
+// termHelpExplains reports whether n is a hidden explain paragraph reading
+// text.
+func termHelpExplains(n *html.Node, text string) bool {
+	return n.Data == "p" && slices.Contains(strings.Fields(attrOf(n, "class")), "explain") && isHiddenElement(n) &&
+		runningText(n) == strings.Join(strings.Fields(text), " ")
+}
 
 // assertInFlatFrame checks page sits in the flat frame (DESIGN.md § Page
 // header, § Components: Sections): its header strip's h1 is title,
-// and nothing on it is a card.
+// and nothing on it is a card. It reads classes from the parsed page, so a
+// class merely named in the page's text, or one only ending in "card", isn't
+// a card.
 func assertInFlatFrame(t *testing.T, page, title string) {
 	t.Helper()
-	if !strings.Contains(page, `<div class="page-header">`) {
+	doc := parsePage(t, page)
+	headers := findAll(doc, func(n *html.Node) bool { return flatFrameHasClass(n, "page-header") })
+	if len(headers) == 0 {
 		t.Errorf("the %s page has no header strip:\n%s", title, page)
-	} else if header := between(t, page, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>"+html.EscapeString(title)) {
-		t.Errorf("the %s page's header strip doesn't hold its title as its h1:\n%s", title, header)
+	} else if h1s := findAll(headers[0], func(n *html.Node) bool { return n.Data == "h1" }); len(h1s) == 0 || textOf(h1s[0]) != title {
+		t.Errorf("the %s page's header strip doesn't hold its title as its h1:\n%s", title, renderNode(headers[0]))
 	}
-	if c := cardClass.FindString(page); c != "" {
-		t.Errorf("the %s page still has a card, %s:\n%s", title, c, page)
+	if cards := findAll(doc, func(n *html.Node) bool { return flatFrameHasClass(n, "card") }); len(cards) > 0 {
+		t.Errorf("the %s page still has a card, class=%q:\n%s", title, attrOf(cards[0], "class"), page)
 	}
+}
+
+// flatFrameHasClass reports whether n's class attribute names class on its
+// own, not as part of another class's name.
+func flatFrameHasClass(n *html.Node, class string) bool {
+	return slices.Contains(strings.Fields(attrOf(n, "class")), class)
 }
 
 // The helpers below read a page as a person meets it, through a parsed DOM:
@@ -1124,4 +1169,31 @@ func TestMarkupHelpersScopeSelectCountsControlsNotTextLikeThem(t *testing.T) {
 	if got := scopeSelect(t, page, "scope"); got != sel {
 		t.Errorf("scopeSelect = %q, want %q", got, sel)
 	}
+}
+
+func TestMarkupHelpersAssertSubmitsAtOnceReadsHandlersNotTextLikeThem(t *testing.T) {
+	t.Parallel()
+	assertSubmitsAtOnce(t, "Reject", `<form method="post" title="No onsubmit= or confirm( here" action="/links/1/reject">`)
+}
+
+func TestMarkupHelpersAssertStyledByReadsTheStyleAttributeNotTextLikeIt(t *testing.T) {
+	t.Parallel()
+	assertStyledBy(t, `<form title="Keep a style=x off" class="inline-form" action="/handoffs/1/accept">`, `.inline-form{display:inline}`, "inline-form", "display:inline")
+}
+
+func TestMarkupHelpersAssertTermHelpReadsTheDisclosureInAnyAttributeOrder(t *testing.T) {
+	t.Parallel()
+	const text = "A Dated Goal has a delivery date."
+	within := `<span data-testid="goal-kind"><button aria-controls="kind-help" title="` + text + `" aria-expanded="false" class="help disclose" type="button">Dated</button></span>`
+	page := `<p>Dated</p>` + within + `<p hidden class="explain" id="kind-help">` + text + `</p>`
+	if button := assertTermHelp(t, page, within, "Dated", text); attr(button, "aria-controls") != "kind-help" {
+		t.Errorf("assertTermHelp = %q, want the Dated button's opening tag", button)
+	}
+}
+
+func TestMarkupHelpersAssertInFlatFrameReadsClassesNotTextLikeThem(t *testing.T) {
+	t.Parallel()
+	page := `<main><div data-testid="header" class="page-header"><h1>Plan &amp; Do</h1></div>` +
+		`<p class="scorecard">Cards, once class="card", are gone.</p></main>`
+	assertInFlatFrame(t, page, "Plan & Do")
 }
