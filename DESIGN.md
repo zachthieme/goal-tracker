@@ -1809,7 +1809,12 @@ and so on).
     - **Health tiles (`.rp-tiles`):** four tiles between hairlines, split by
       1px rules: Red, Yellow and Green as Health badges, and Check-in overdue
       as its chip, each count at the tile's right in 20px `--color-ink`
-      tabular figures. At 900px and below they form a 2 × 2 grid.
+      tabular figures. They form a 2 × 2 grid at 900px and below, and in any
+      column under 44rem (the tiles' holder is a container, `rp-tiles`), as
+      the draft's preview is: four tiles need about 680px before the Check-in
+      overdue chip overruns its tile. There each column is at least as wide as
+      its widest tile, so the chip's column takes what it needs, and in a
+      column under 14rem, as the draft's is just above 900px, they stack.
     - **Movement line:** "**Since the previous publication:** 2 turned Red ·
       1 back to Green", or "No movement since …".
     - **Open Action Items:** as rows (`.rp-rows`), at least 44px between

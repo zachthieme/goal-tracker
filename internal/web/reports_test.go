@@ -1686,6 +1686,63 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 	}
 }
 
+// The Health summary tiles go 2 × 2 whenever the element holding them is too
+// narrow for four, as the draft's preview column is under 1600px, so the
+// Check-in overdue chip never runs past its tile, and stack where even two
+// don't fit; at 900px and below they go 2 × 2 whatever the column (#459).
+func TestReportHealthTilesGoTwoByTwoInANarrowColumnOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	goal := h.ActiveGoal(boss, "Cut infrastructure cost per request", "Margins matter.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
+	for _, path := range []string{draft, draft + "/publications/" + strconv.FormatInt(pub.ID, 10)} {
+		page := getBody(t, client, ts.URL+path)
+		findByTestID(t, parsePage(t, page), "health-summary")
+		if holder, _ := ruleFor(page, ":has(>.rp-tiles)"); !strings.Contains(holder, "container:rp-tiles/inline-size") {
+			t.Errorf("%s: the tiles' holder isn't a container they can fit themselves to: :has(>.rp-tiles){%s}", path, holder)
+		}
+		narrow := mediaBlock(t, page, "@container rp-tiles (max-width:44rem)")
+		tiles, _ := ruleFor(narrow, ".rp-body .rp-tiles")
+		odd, _ := ruleFor(narrow, ".rp-tile:nth-child(odd)")
+		lower, _ := ruleFor(narrow, ".rp-tile:nth-child(n+3)")
+		// Each column is at least as wide as its widest tile, so in the draft's
+		// column at 1000px the Check-in overdue chip's column takes what it
+		// needs rather than half.
+		if !strings.Contains(tiles, "grid-template-columns:repeat(2,minmax(min-content,1fr))") {
+			t.Errorf("%s: narrow tiles don't form two columns each as wide as its tiles: .rp-tiles{%s}", path, tiles)
+		}
+		if !strings.Contains(odd, "border-left:none") || !strings.Contains(odd, "padding-left:0") || !strings.Contains(lower, "border-top:1px solid var(--color-border)") {
+			t.Errorf("%s: narrow tiles don't rule their 2 × 2 grid as at 900px: .rp-tile:nth-child(odd){%s} .rp-tile:nth-child(n+3){%s}", path, odd, lower)
+		}
+		// Too narrow even for that, as the draft's column is just above 900px,
+		// they stack, each under a hairline.
+		narrowest := mediaBlock(t, page, "@container rp-tiles (max-width:14rem)")
+		stacked, _ := ruleFor(narrowest, ".rp-body .rp-tiles")
+		tile, _ := ruleFor(narrowest, ".rp-tile")
+		below, _ := ruleFor(narrowest, ".rp-tile:nth-child(n+2)")
+		if !strings.Contains(stacked, "grid-template-columns:minmax(0,1fr)") || !strings.Contains(tile, "border-left:none") || !strings.Contains(tile, "padding-left:0") || !strings.Contains(below, "border-top:1px solid var(--color-border)") {
+			t.Errorf("%s: the narrowest tiles don't stack under hairlines: .rp-tiles{%s} .rp-tile{%s} .rp-tile:nth-child(n+2){%s}", path, stacked, tile, below)
+		}
+		if strings.Index(page, "@container rp-tiles (max-width:14rem)") < strings.Index(page, "@container rp-tiles (max-width:44rem)") {
+			t.Errorf("%s: the stacked tiles' rule comes before the 2 × 2 rule, which overrides it", path)
+		}
+		for _, css := range []string{narrow, narrowest} {
+			for _, sel := range []string{".rp-tiles", ".rp-body .rp-tiles", ".rp-tile"} {
+				if rule, _ := ruleFor(css, sel); strings.Contains(rule, "order:") || strings.Contains(rule, "dense") {
+					t.Errorf("%s: narrow tiles reorder themselves: %s{%s}", path, sel, rule)
+				}
+			}
+		}
+	}
+}
+
 // A Goal with no Health yet prints its dash alone: no drawn shape, which the
 // print page's base .dot rule would fill as a square.
 func TestPrintPageDrawsNoShapeForAGoalWithNoHealthOverHTTP(t *testing.T) {
