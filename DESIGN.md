@@ -1113,10 +1113,14 @@ and so on).
     own line.
   - **Milestones:** a muted "3 slips · 1 added or removed since Active" line,
     then a table with no fill: muted 12px Status, Date and Milestone labels and
-    hairline rows. Status is the Milestone's mark badge or blank; Date is in
-    tabular figures, a slipped date shown as § Status cells shows it. A Removed
-    Milestone is struck through, with its reason under it. The table scrolls
-    inside its own container on a phone.
+    hairline rows. Status is the Milestone's mark badge or blank: a badge
+    showing its word, **Overdue** in the Red tint (`badge r`), **Slipped** in
+    the Yellow (`badge y`), and **Done**, **Removed** and **New** neutral
+    (`badge lc`). Overdue and Slipped take the Red and Yellow tints but are not
+    a Health, so they show their word and no Health shape, and a Report lists
+    them the same way. Date is in tabular figures, a slipped date shown as
+    § Status cells shows it. A Removed Milestone is struck through, with its
+    reason under it. The table scrolls inside its own container on a phone.
   - **Highlights**, as "**Miss**: <Note>" rows, when there are any;
   - **Draft Highlights**, for the Owner and Delegates (§ Check-in form's
     optional sections: On the Goal page);
@@ -2103,11 +2107,11 @@ given):
   downward triangle, Green's circle), copied into the page's style block, in
   the Health's ink and kept when printed (`print-color-adjust: exact`), not a
   character.
-- The badges the screen colours keep their colour: Health, a Milestone's Red or
-  Yellow mark, Ownerless, New Date and a Path to Green's Overdue in the Health
-  colour they take on screen, and Check-in overdue in its grey chip with a
-  dashed edge. A Path to Green past its date tints its status box Red, as on
-  screen. Body text stays black.
+- The badges the screen colours keep their colour: Health, a Milestone's
+  Overdue or Slipped mark, Ownerless, New Date and a Path to Green's Overdue
+  in the Health colour they take on screen, and Check-in overdue in its grey
+  chip with a dashed edge. A Path to Green past its date tints its status box
+  Red, as on screen. Body text stays black.
 - Coloured badges and the overdue status box set `print-color-adjust: exact`
   (and `-webkit-print-color-adjust: exact`), so browsers keep their tints when
   printing and in PDF instead of dropping background colour.

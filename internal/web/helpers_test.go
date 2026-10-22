@@ -877,6 +877,34 @@ func assertHealthChip(t *testing.T, chip *html.Node, health string) {
 	}
 }
 
+// milestoneMarkTint is the tint each Milestone mark is shown in: Overdue in
+// Red's and Slipped in Yellow's, though neither is a Health, and the rest
+// neutral (DESIGN.md § Pages: Goal page sections, Milestones).
+var milestoneMarkTint = map[string]string{"Overdue": "r", "Slipped": "y", "Done": "lc", "Removed": "lc", "New": "lc"}
+
+// assertMilestoneMarksShowTheirWords fails unless the Milestone marks under
+// root read want, in order, each showing its word in its tint with no Health
+// shape drawn: a mark says what it means, unlike a Health chip (#461).
+func assertMilestoneMarksShowTheirWords(t *testing.T, root *html.Node, want []string) {
+	t.Helper()
+	marks := findAllByTestID(root, "milestone-mark")
+	if got := textsOf(marks); !slices.Equal(got, want) {
+		t.Errorf("Milestone marks read %q, want %q", got, want)
+	}
+	for _, mark := range marks {
+		word := textOf(mark)
+		if shown := shownTextOf(mark); shown != word {
+			t.Errorf("Milestone mark %q shows %q, want its word shown: %s", word, shown, renderNode(mark))
+		}
+		if tint, ok := milestoneMarkTint[word]; !ok || !flatFrameHasClass(mark, "badge") || !flatFrameHasClass(mark, tint) {
+			t.Errorf("Milestone mark %q is not a badge in tint %q: %s", word, tint, renderNode(mark))
+		}
+		if dots := findAll(mark, func(n *html.Node) bool { return flatFrameHasClass(n, "dot") }); len(dots) != 0 {
+			t.Errorf("Milestone mark %q draws a Health shape: %s", word, renderNode(mark))
+		}
+	}
+}
+
 // healthChipsIn returns each Health badge under root, Red, Yellow or Green,
 // in document order.
 func healthChipsIn(root *html.Node) []*html.Node {

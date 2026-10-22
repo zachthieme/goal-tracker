@@ -34,25 +34,25 @@ const (
 
 // Milestone marks: what the Goal page, a Report and its Markdown export show
 // ahead of each Milestone's date. They are display marks, not a Health: they
-// never feed the Goal's Health, which its Owner sets (CONTEXT.md: Milestone,
-// Health). A Planned Milestone with none of them has no mark (MilestoneMarkNone)
-// and reads as on track.
+// never feed the Goal's Health, which its Owner sets, and none reads as a
+// Health's word (CONTEXT.md: Milestone, Health). A Planned Milestone with none
+// of them has no mark (MilestoneMarkNone) and reads as on track.
 const (
 	MilestoneMarkNone    = ""
 	MilestoneMarkDone    = MilestoneDone
 	MilestoneMarkRemoved = MilestoneRemoved
-	MilestoneMarkRed     = HealthRed
-	MilestoneMarkYellow  = HealthYellow
+	MilestoneMarkOverdue = "Overdue"
+	MilestoneMarkSlipped = "Slipped"
 	MilestoneMarkNew     = "New"
 )
 
 // MilestoneMarkOf is the one mark a Milestone shows, the first that applies:
-// Done or Removed by its Status; Red while Planned and past its date as of asOf,
-// compared with the calendar date asOf falls on in its own location, so a
-// caller passes a time in the Goal's timezone to judge by its calendar; Yellow
+// Done or Removed by its Status; Overdue while Planned and past its date as of
+// asOf, compared with the calendar date asOf falls on in its own location, so a
+// caller passes a time in the Goal's timezone to judge by its calendar; Slipped
 // while Planned and slipped, having prior dates; New while Planned and isNew,
 // added within the window being read. Risk outranks newness, so a new
-// Milestone that slipped is Yellow. It needs only what a frozen Report
+// Milestone that slipped is Slipped. It needs only what a frozen Report
 // snapshot holds, so every surface marks a Milestone the same way.
 func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.Time) string {
 	switch {
@@ -61,9 +61,9 @@ func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.
 	case m.Status == MilestoneRemoved:
 		return MilestoneMarkRemoved
 	case m.TargetDate.Format(dateFormat) < asOf.Format(dateFormat):
-		return MilestoneMarkRed
+		return MilestoneMarkOverdue
 	case len(priorDates) > 0:
-		return MilestoneMarkYellow
+		return MilestoneMarkSlipped
 	case isNew:
 		return MilestoneMarkNew
 	}

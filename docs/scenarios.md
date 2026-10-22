@@ -157,7 +157,7 @@ say what's wrong, what the plan is and by when, and carries it upward.
    rules out Green for this Check-in.
 3. She moves one Milestone the same way and marks another Done.
 4. On the Goal page the delivery date now reads ~~10/15~~ 11/03, the slipped
-   Milestone shows Yellow, and the History has the Check-in with its slips.
+   Milestone is marked Slipped, and the History has the Check-in with its slips.
 5. Marcus owns the team Goal hers contributes to. His Goal's Rolled-up Health
    turns Yellow, beside the Green he last set. His next Check-in asks him to
    explain if he still says Green.
