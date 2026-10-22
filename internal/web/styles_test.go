@@ -221,7 +221,13 @@ func TestCheckinFormRolledUpPanelStyles(t *testing.T) {
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
-	assertHealthChip(t, findByTestID(t, parsePage(t, page), "checkin-form-rollup-health"), "Red")
+	doc := parsePage(t, page)
+	assertHealthChip(t, findByTestID(t, doc, "checkin-form-rollup-health"), "Red")
+	// Its word, read out, doesn't run into the label before it or the text
+	// after it.
+	if got := runningText(findByTestID(t, doc, "checkin-form-rollup")); !strings.HasPrefix(got, "Rolled-up Health: Red ") {
+		t.Errorf("rollup line runs %q, want it to read Rolled-up Health: Red, then its count", got)
+	}
 }
 
 // The children list's rules live in app.css, shared by the Goal page and the

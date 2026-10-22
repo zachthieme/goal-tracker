@@ -38,9 +38,10 @@ async function openCheckin(page: Page): Promise<Locator> {
 }
 
 // pickHealth picks a Health by its label, as a tap does: the radios under the
-// labels are hidden.
+// labels are hidden, and each label shows its Health's shape, titled with its
+// word.
 async function pickHealth(form: Locator, health: string): Promise<void> {
-  await form.getByRole("group", { name: "Health" }).getByText(health, { exact: true }).click();
+  await form.getByRole("group", { name: "Health" }).getByTitle(health, { exact: true }).click();
   await expect(form.getByRole("radio", { name: health })).toBeChecked();
 }
 
@@ -55,7 +56,7 @@ function summaryOf(form: Locator): Locator {
 test("(a) on load the summary shows the picked Health's badge", async ({ page }) => {
   const form = await openCheckin(page);
   const health = await pickedHealth(form);
-  await expect(summaryOf(form).getByText(health, { exact: true })).toBeVisible();
+  await expect(summaryOf(form).getByTitle(health, { exact: true })).toBeVisible();
   await expect(summaryOf(form)).toHaveText(health);
 });
 
@@ -107,7 +108,7 @@ test("(f) Mark Done shows → Done, and the Health badge goes", async ({ page })
   await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Pause, finish or cancel" }).click();
   await lifecycle.getByRole("radio", { name: "Mark Done" }).check();
   await expect(summaryOf(form)).toContainText("→ Done");
-  await expect(summaryOf(form).getByText(health, { exact: true })).toHaveCount(0);
+  await expect(summaryOf(form).getByTitle(health, { exact: true })).toHaveCount(0);
 });
 
 test("(g) at 1280×800 Submit check-in stays in the window, and the bar ends the form", async ({ page }) => {

@@ -1346,7 +1346,6 @@ templ linkedGoals(goals []domain.LinkedGoal, d discussion) {
 		<span class="rp-linked">
 			if g.Health != "" {
 				@reportHealthBadge("", g.Health, d)
-				{ " " }
 			}
 			if g.InReport {
 				<a data-testid="report-linked-goal" href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.GoalID)) }>{ g.Title + " ↓" }</a>
@@ -1389,7 +1388,7 @@ templ reportFields(fields []domain.FieldValue, dates displayDates) {
 // neutral badge reading a dash when there is none yet.
 templ healthBadge(testID, health string) {
 	if health == "" {
-		<span data-testid={ testID } class="badge lc">{ reportHealth(health) }</span>
+		<span data-testid={ testID } class="badge lc">{ reportHealth(health) }</span>{ " " }
 	} else {
 		@healthChip(testID, health)
 	}
@@ -1408,7 +1407,7 @@ templ reportHealthBadge(testID, health string, d discussion) {
 		>
 			<span class="dot"></span>
 			{ reportHealth(health) }
-		</span>
+		</span>{ " " }
 	} else {
 		@healthBadge(testID, health)
 	}
@@ -1421,15 +1420,18 @@ templ healthChip(testID, health string) {
 }
 
 // healthChipWith is healthChip with its own tooltip, tip, which opens with
-// the word, and a class of the place's own beside the badge's.
+// the word, and a class of the place's own beside the badge's. A space
+// stands either side of it, as between elements on their own lines, so its
+// word doesn't run into the text around it.
 templ healthChipWith(testID, health, tip, class string) {
+	{ " " }
 	<span
 		if testID != "" {
 			data-testid={ testID }
 		}
 		class={ "badge", "shape", healthClass(health), templ.KV(class, class != "") }
 		title={ tip }
-	><span class="dot"></span><span class="sr-only">{ health }</span></span>
+	><span class="dot"></span><span class="sr-only">{ health }</span></span>{ " " }
 }
 
 // healthClass is the badge colour for a Health; no Health yet is neutral.

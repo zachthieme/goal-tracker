@@ -2003,9 +2003,9 @@ func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 	phone := mediaBlock(t, page, "@media (max-width:600px)")
 	for selector, wants := range map[string][]string{
-		".rp-track thead":          {"display:none"},
-		".rp-track tr":             {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
-		".rp-track td":             {"display:block"},
+		".rp-track thead":           {"display:none"},
+		".rp-track tr":              {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
+		".rp-track td":              {"display:block"},
 		".rp-track .rp-track-goal":  {"grid-column:2"},
 		".rp-track .rp-track-owner": {"grid-column:2"},
 		".rp-track .rp-track-due":   {"grid-column:2"},
