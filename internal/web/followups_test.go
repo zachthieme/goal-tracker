@@ -1733,9 +1733,10 @@ func TestFollowUpsPageKeepsHealthAndItsRunOnOneLine(t *testing.T) {
 }
 
 // Below 600px each Follow-ups row stacks as a card rather than hiding its Fix off
-// to the side of a sideways scroller: the Goal and its chips first, then its
-// Health and Owner on one line, then its Fix. The cells run Health, Goal,
-// Owner, Fix in the HTML, so the Goal cell is ordered first.
+// to the side of a sideways scroller: its Health then the Goal and its chips on
+// one line, as at every width, then its Owner under the Goal, then its Fix.
+// The cells run Health, Goal, Owner, Fix in the HTML and none is reordered
+// (#453).
 func TestFollowUpsRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1758,15 +1759,16 @@ func TestFollowUpsRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 		".rk-table thead":    "display:none",
 		".rk-table tr":       "display:grid",
 		".rk-table td":       "display:block",
-		".rk-table .rk-goal": "order:-1",
-		".rk-table .rk-fix":  "grid-column:1/-1",
+		".rk-table .rk-goal":  "grid-column:2",
+		".rk-table .rk-owner": "grid-column:2",
+		".rk-table .rk-fix":   "grid-column:1/-1",
 	} {
 		if rule := cssRule(t, phone, selector); !strings.Contains(rule, want) {
 			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
 		}
 	}
-	if rule := cssRule(t, phone, ".rk-table .rk-goal"); !strings.Contains(rule, "grid-column:1/-1") {
-		t.Errorf("at 600px the Goal cell .rk-table .rk-goal{%s} shares its line with Health rather than heading the card", rule)
+	if strings.Contains(phone, "order:") {
+		t.Errorf("at 600px a Follow-ups row reorders its cells, which read Health first: %s", phone)
 	}
 }
 

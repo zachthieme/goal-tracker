@@ -511,13 +511,34 @@ and so on).
     it is `role="img"` with an `aria-label` naming the Health ("Red", "No
     Health"). A Goal with no Health shows a hollow 1.5px `--color-ink-muted`
     ring.
-  - **The badge (`.badge` with `.g` / `.y` / `.r`):** a `--health-*-bg` fill
-    with `--health-*-ink` text (see § Deviations 3), 22px tall with 8px
-    sides, `--radius-sm` corners and 13px, 600 type on one line, its 8px
-    shape (`.dot`) before the word. It is how Health shows everywhere else:
-    Follow-ups, the Goal page, the Check-in page, the Reports and Home's My
-    org counts. No Health badge gives up its colour: a dated one and an
-    unpicked Check-in choice keep their Health's hue.
+  - **The badge (`.badge` with `.g` / `.y` / `.r`, `healthChip`):** a
+    `--health-*-bg` fill with its 8px shape (`.dot`) in `--health-*-ink`
+    (see § Deviations 3), 22px tall with `--radius-sm` corners. It is how
+    Health shows everywhere else: Follow-ups, the Goal page, the Check-in
+    page, the Reports, Home and Delegates. No Health badge gives up its
+    colour: a dated one and an unpicked Check-in choice keep their Health's
+    hue.
+  - **The word is screen-reader text.** Where a badge shows its colour and
+    shape, those say the Health, so the word (Red, Yellow, Green) is not
+    shown: it is an `.sr-only` span inside the badge, so the badge reads
+    "Red" to a screen reader and in the page's text order, and the badge's
+    `title` gives it as a tooltip (a Rolled-up Health's opens with it: "Red:
+    the lowest Health among Active children"). The badge shrinks to its shape
+    (`.badge.shape`): centred, 4px sides, at least 24px wide, and at least
+    24px tall where it is a link. The Check-in choice keeps its 44px height.
+  - **What has no colour keeps its words:** the Health filter's options, "No
+    Health yet", "No Health", "—", a Lifecycle badge standing in for a
+    Health, and counts ("3 Red", My org's "Red 4", Follow-ups' "Red · 3").
+  - **Without colour, the word stays.** The Print variant shows the word
+    beside the shape, since paper may be black and white (§ Print variant),
+    and the Markdown export, which has no colour at all, writes the word
+    first: an Other Goal reads "- Red — Title — Owner — due …" ("- — —
+    Title …" with no Health yet), an exception's heading "### Red · Title"
+    over "Owner · Active · 5 wks · was Green · due …", and a linked Goal "Red
+    Title".
+  - **Health comes first.** Wherever a Goal's Health shows with its title, the
+    Health comes before it, at every width, on screen, in print and in the
+    Markdown export: [Health] [title], never the title then its Health.
   - **The pill:** in Home's rows, the badge takes `--radius-full` and 12px,
     500 type.
 - **Other badges:** the neutral badge (`.lc`), for a Lifecycle and the like,
@@ -711,7 +732,7 @@ and so on).
     hover fill, save My org's.
   - **A dated pill (`.badge.as-of`, Home's own rule):** a Check-in overdue
     Goal's Health is its last Check-in's, so its pill is marked stale: it
-    keeps its Health's fill, ink, word and shape, edged in a 1px dashed line
+    keeps its Health's fill, ink and shape, edged in a 1px dashed line
     of its ink (`currentColor`). The "last check-in" or "as of" beside it
     dates it.
   - **Your Yellow or Red goals:** the last section: the Active Goals the
@@ -885,7 +906,7 @@ and so on).
       tick for every column but Title and an **Apply**, remembered in this
       browser by the `goal_table_hidden` cookie, then quiet small **Download
       CSV** (the filtered Goals in the import format) and **Edit values**.
-    - **Columns:** Title, Owner, Health (the badge), Lifecycle, Delivery date
+    - **Columns:** Health (the badge), Title, Owner, Lifecycle, Delivery date
       and Last check-in, then one per offered Dimension and Field. Each label
       is a link that sorts by it, marked ↑ or ↓ and by `aria-sort`. Unsorted,
       the rows keep the list's problems-first order.
@@ -1009,7 +1030,8 @@ and so on).
     header holds no count: "No Goals need attention.", or naming the scope,
     values and group, with **Show everything** (`?org=all`) when filtered.
   - **At 600px and below** the labels hide, and each row stacks on its
-    hairline: the Goal first, then Health and Owner on one line, then the Fix.
+    hairline: its Health then the Goal on one line, the Owner under the Goal,
+    then the Fix. No cell is reordered.
     The meanings panel puts each name over its meaning.
 - **Goal page (`goalPage` in `goals.templ`):** a header strip, any banners,
   then a document column with a properties rail beside it. The page drops its
@@ -1136,11 +1158,11 @@ and so on).
     - **Fields:** each Field's name in `.label` over its value, or a muted "not
       set", ending with "All Fields →".
     - **Contributes to**, with its Suggested parents under it, and
-      **Contributed to by:** each linked Goal is its title as a link in
-      `--color-ink` at 500, then its Health badge (its Lifecycle badge when it
-      has no Health), Ownerless when it is, and a quiet **Remove** at the
-      right for the Owner of either Goal. A muted "Owner <Name>" ends the
-      entry. Removing posts at once, and the page that follows offers Undo
+      **Contributed to by:** each linked Goal is its Health badge (its
+      Lifecycle badge when it has no Health) then its title as a link in
+      `--color-ink` at 500, on one line (`.gp-link-head`); under them
+      Ownerless when it is, and a quiet **Remove** at the right for the Owner
+      of either Goal. A muted "Owner <Name>" ends the entry. Removing posts at once, and the page that follows offers Undo
       (§ Toast).
 - **Forms that open in place (`.gp-open`):** a Goal page action's form opens
   in the part of the page it concerns, never in a modal, side panel or the
@@ -1172,7 +1194,7 @@ and so on).
   of cells, each a `.label` over its value, wrapping 12px × 32px apart:
   "Owner's Health" (a Health badge, with the Run off Green beside it in muted
   small text while the Goal is Yellow or Red: "Red · 5 wks"), "Rolled-up
-  Health" (a Health badge, titled "Lowest Health among Active children", with
+  Health" (a Health badge, titled "Red: the lowest Health among Active children", with
   "· 3 of 12 overdue" when any child is Check-in overdue) and "Back to Green
   by" (a date, which shows a slipped date as a Milestone's does, counted
   within the current Run off Green: "Oct 3 ~~Sep 12~~ (3)"). A cell shows only
@@ -1795,13 +1817,15 @@ and so on).
       notes and the picked Highlights as a bulleted list, each credited in
       muted 13px " — <Owner>, <Goal>". A section with neither is left out.
     - **Exceptions N:** each an entry (`.rp-block`) between hairlines. Its
-      head is its title (16px, linking to the Goal) over a small muted "Owner ·
-      Lifecycle · due Nov 7, 2026", slipped dates struck through, and at the
-      right its Health badge with "· 2 wks" and "· was Green" small and muted,
-      then its badges (Check-in overdue as the chip, Ownerless in Red, New Date
-      in Yellow, the rest as `badge lc`), which drop under the title at 600px
-      and below. Under it sit "**Changed:** …", "**Contributes to:** …" and the
-      Report Definition's Fields, then the status box (`.rp-tint`:
+      head reads Health first: its Health badge with "· 2 wks" and "· was
+      Green" small and muted straight after it (`.rp-health`), then its title
+      (16px, linking to the Goal) over a small muted "Owner · Lifecycle · due
+      Nov 7, 2026", slipped dates struck through, then at the right its other
+      badges (Check-in overdue as the chip, Ownerless in Red, New Date in
+      Yellow, the rest as `badge lc`). At 600px and below the Health and title
+      keep their line and the badges drop under them; nothing is reordered.
+      Under it sit "**Changed:** …", "**Contributes to:** …" and the Report
+      Definition's Fields, then the status box (`.rp-tint`:
       `--color-sidebar`, `--radius-md`, 12px × 16px padding) with **Why it
       matters**, **Status**, **Path to Green** with its back-to-Green date, and
       any **Asks for help**. A Path to Green past its date marks the line with
@@ -1810,7 +1834,9 @@ and so on).
       follow.
     - **On track:** a table with no fill (Health, Goal, Owner, Due) in its own
       scrolling container; at 600px and below each row becomes a ruled grid,
-      the Goal first.
+      its Health then the Goal on one line, the Owner and Due under the Goal.
+    - **Linked Goals** ("Contributes to:", "Supported by:") read each Goal's
+      Health badge then its title, joined by " · ": "[Red] Alpha ledger ↓".
     - **Goals that entered or left this report:** a Goal, Change, Why table,
       when there are any.
   - **Discussion (`goalDiscussion`, `.rp-discussion`):** a footer under each
@@ -2066,8 +2092,11 @@ given):
 - Sizes are in points and spacing in rem, because the page is measured in
   paper units. The 4px grid doesn't apply.
 - Page margins are 18mm top and bottom and 16mm at the sides.
-- A Goal's Health sits to the right of its title. Health shows as a badge in
-  its tint and ink, with its shape and its name, so it reads without the
+- A Goal's Health comes before its title, as on screen: an exception's head
+  reads its Health, its "· 2 wks" and "· was Green", then the title, then the
+  other badges, and a linked Goal reads "[Red] Alpha ledger ↓". Health shows
+  as a badge in its tint and ink, with its shape and its word shown beside it
+  (on screen the word is screen-reader text), so it reads without the
   colour. The shape is the screen's drawn `.dot` (Red's octagon, Yellow's
   downward triangle, Green's circle), copied into the page's style block, in
   the Health's ink and kept when printed (`print-color-adjust: exact`), not a
@@ -2190,8 +2219,9 @@ given):
      same token.
    - On the Check-in form, an unselected Health choice shows its colour
      before one is picked: its Health's tint (`--health-*-tint`, the fill at
-     half strength: half-way to white in light, 10% alpha in dark) with the
-     word and shape in the Health's ink, inside a transparent 2px edge. The
+     half strength: half-way to white in light, 10% alpha in dark) with its
+     shape in the Health's ink, its word screen-reader text and its title,
+     inside a transparent 2px edge. The
      selected one is the full Health badge (`--health-*-bg`) with a 2px edge
      in its ink, so a choice keeps its size either way. The ink on each tint
      is in § Deviations 3's table, and `scripts/contrast.py` checks it.
