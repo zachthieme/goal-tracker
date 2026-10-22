@@ -237,10 +237,17 @@ strong{color:var(--color-ink)}
 @media (max-width:900px){.frame{display:block}.sidebar{position:relative;z-index:25;height:48px;flex-direction:row;align-items:center;gap:8px;padding:0 12px;border-right:0;border-bottom:1px solid var(--color-border);overflow:visible}.sb-strip-home{display:inline-flex;align-items:center;min-height:44px;margin-left:auto}.sb-strip-home:hover{text-decoration:none}.sb-menu{display:block;margin-left:auto}.sb-strip-home+.sb-menu{margin-left:0}.sb-menu>summary{min-height:36px}.sb-body{display:none}.sb-menu[open]~.sb-body{display:flex;position:absolute;left:0;right:0;top:100%;max-height:calc(100vh - 48px);overflow-y:auto;padding:12px;background:var(--color-sidebar);border-bottom:1px solid var(--color-border);box-shadow:var(--shadow-pop);box-sizing:border-box}.sb-person{margin-top:0}.sb-person-menu{position:static;box-shadow:none}.page-header{padding:0 16px}.signed-out-bar{padding:0 16px}}
 .avatar{width:32px;height:32px;border-radius:var(--radius-full);background:var(--color-primary-strong);color:var(--color-ink-inverse);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
 .badge{display:inline-flex;align-items:center;gap:8px;padding:1px 8px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;line-height:20px;white-space:nowrap;box-sizing:border-box}
-.dot{width:8px;height:8px;display:inline-block;background:currentColor;flex:none}
-.g{background:var(--health-g-bg);color:var(--health-g-ink)}.g .dot{border-radius:50%}
-.y{background:var(--health-y-bg);color:var(--health-y-ink)}.y .dot{clip-path:polygon(50% 0,100% 100%,0 100%);width:10px;height:9px}
-.r{background:var(--health-r-bg);color:var(--health-r-ink)}.r .dot{border-radius:1px}
+/* Health's shape (DESIGN.md § Health): Red a stop-sign octagon, Yellow a
+ * yield triangle pointing down, Green a circle, in the Health's ink. A place
+ * that draws it bigger sets --dot-size, the circle's width; the triangle and
+ * octagon are drawn wider so they read as their shape at that size */
+.dot{--dot-size:8px;width:var(--dot-size);height:var(--dot-size);display:inline-block;background:currentColor;flex:none}
+.g{background:var(--health-g-bg);color:var(--health-g-ink)}
+.y{background:var(--health-y-bg);color:var(--health-y-ink)}
+.r{background:var(--health-r-bg);color:var(--health-r-ink)}
+.g .dot{border-radius:50%}
+.y .dot{clip-path:polygon(0 0,100% 0,50% 100%);width:calc(var(--dot-size)*1.25);height:calc(var(--dot-size)*1.125)}
+.r .dot{clip-path:polygon(30% 0,70% 0,100% 30%,100% 70%,70% 100%,30% 100%,0 70%,0 30%);width:calc(var(--dot-size)*1.125);height:calc(var(--dot-size)*1.125)}
 .st{background:var(--checkin-overdue-bg);color:var(--checkin-overdue-ink);border-width:1px;border-style:dashed;border-color:var(--checkin-overdue-edge)}
 .badge.st{padding:0 8px}
 .alert.st{background:var(--color-surface);color:var(--color-ink)}

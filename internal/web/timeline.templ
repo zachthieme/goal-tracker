@@ -226,7 +226,7 @@ templ historyFolded(h history, e historyEntry) {
 }
 
 // historyMarker marks an entry on the timeline. A Check-in's marker takes its
-// Health's colour and shape (circle, triangle, square), so it reads without
+// Health's colour and shape (circle, downward triangle, octagon), so it reads without
 // colour; every other kind, and a Check-in with no Health, has its own neutral
 // shape. The entry's text label says the same to everyone.
 templ historyMarker(e historyEntry) {
@@ -344,8 +344,7 @@ templ timelineStyles() {
 		.tl-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
 		.tl-kind{font-weight:600;color:var(--color-ink)}
 		.tl-mark{position:absolute;left:-31px;top:4px;width:12px;height:12px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--color-canvas)}
-		.tl-mark .dot{width:10px;height:10px}
-		.tl-mark.y .dot{width:12px;height:11px}
+		.tl-mark .dot{--dot-size:10px}
 		.tl-mark.g,.tl-mark.y,.tl-mark.r{background:var(--color-canvas)}
 		.tl-checkin{border:2px solid var(--color-ink-muted);border-radius:2px}
 		.tl-why-it-matters,.tl-title{border:2px solid var(--color-ink-muted);border-radius:50%}
