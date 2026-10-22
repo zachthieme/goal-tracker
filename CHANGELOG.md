@@ -33,6 +33,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Reloading a Report's draft shows the narrative as saved, not text the browser restored into the form while the save status said nothing and Publish… would publish what was saved (#455).
 - [user] A Report's Health summary tiles fit their column at every width: in a narrow one, such as the draft's preview, they go 2 × 2, and stack where even that won't fit, so the Check-in overdue chip no longer runs past its tile or off the right of the window at 1000px (#459).
 
+**Architecture:**
+- [internal] The Goal page loads through one page loader, `Service.GoalPage`, which reads each thing once: 35 queries for a Goal with a child, a Delegate, Comments and an Action Item, where its view model's 47 separate `Service` calls ran 80, and the same for 50 Goals as for 10. A `querycount` test pins the count, and golden files pin the page as its Owner, a Delegate and a reader see it (#462).
+
 **Testing:**
 - [internal] The last string-matching web test helpers (`assertSubmitsAtOnce`, `assertStyledBy`, `assertTermHelp`, `assertInFlatFrame`) read markup through the HTML parser, and the `cardClass` regexp is gone (#457).
 - [internal] The test harness opens its database with `db.DSN`, the connection string `db.Open` uses, so its pragmas can't drift from the app's (ADR 0009) (#457).
