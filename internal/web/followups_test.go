@@ -1756,9 +1756,9 @@ func TestFollowUpsRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
 	for selector, want := range map[string]string{
-		".rk-table thead":    "display:none",
-		".rk-table tr":       "display:grid",
-		".rk-table td":       "display:block",
+		".rk-table thead":     "display:none",
+		".rk-table tr":        "display:grid",
+		".rk-table td":        "display:block",
 		".rk-table .rk-goal":  "grid-column:2",
 		".rk-table .rk-owner": "grid-column:2",
 		".rk-table .rk-fix":   "grid-column:1/-1",
