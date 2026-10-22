@@ -12,6 +12,8 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strconv"
@@ -70,14 +72,15 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 
 // assertSubmitsAtOnce checks a form's opening tag sends it without a browser
 // dialog asking for confirmation first (#56): it has no submit handler, and no
-// event handler on it calls confirm(). It reads the tag's attributes, as attr
-// reads them, so text in another attribute's value that looks like a handler
-// isn't one.
+// event handler on it, an on* attribute or htmx's hx-on*, calls confirm(). It
+// reads the tag's attributes, as attr reads them, so text in another
+// attribute's value that looks like a handler isn't one.
 func assertSubmitsAtOnce(t *testing.T, what, form string) {
 	t.Helper()
 	for tag := range markupTags(partwayTagLead(form) + form + ">") {
 		for _, a := range tag.tok.Attr {
-			if a.Key == "onsubmit" || strings.HasPrefix(a.Key, "on") && strings.Contains(a.Val, "confirm(") {
+			handler := strings.HasPrefix(a.Key, "on") || strings.HasPrefix(a.Key, "hx-on")
+			if a.Key == "onsubmit" || handler && strings.Contains(a.Val, "confirm(") {
 				t.Errorf("%s asks for confirmation: %s", what, form)
 			}
 		}
@@ -1247,6 +1250,22 @@ func TestMarkupHelpersScopeSelectCountsControlsNotTextLikeThem(t *testing.T) {
 func TestMarkupHelpersAssertSubmitsAtOnceReadsHandlersNotTextLikeThem(t *testing.T) {
 	t.Parallel()
 	assertSubmitsAtOnce(t, "Reject", `<form method="post" title="No onsubmit= or confirm( here" action="/links/1/reject">`)
+}
+
+// The child run fails the helper on purpose; the parent passes only if it did.
+func TestMarkupHelpersAssertSubmitsAtOnceFailsAConfirmSetThroughHxOn(t *testing.T) {
+	t.Parallel()
+	const form = `<form method="post" hx-on:htmx:confirm="if (!confirm('Sure?')) event.preventDefault()" action="/links/1/reject">`
+	if os.Getenv("ASSERT_SUBMITS_AT_ONCE_CHILD") == "1" {
+		assertSubmitsAtOnce(t, "Reject", form)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "ASSERT_SUBMITS_AT_ONCE_CHILD=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(out), "Reject asks for confirmation") {
+		t.Errorf("assertSubmitsAtOnce passed a confirm() set through hx-on: %s\n%s", form, out)
+	}
 }
 
 func TestMarkupHelpersAssertStyledByReadsTheStyleAttributeNotTextLikeIt(t *testing.T) {
