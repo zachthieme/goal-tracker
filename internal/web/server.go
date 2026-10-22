@@ -8,10 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"runtime/debug"
 	"time"
 
 	"github.com/a-h/templ"
@@ -142,19 +144,43 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 // refuses, with a 403, a request other than GET, HEAD or OPTIONS that a
 // browser says came from another origin, so a page elsewhere can't act as
 // whoever is signed in, and, with a 413, one whose body is over its cap (see
-// requestBodyCap). Every response carries securityHeaders.
+// requestBodyCap). Every response carries securityHeaders. A handler that
+// panics is answered 500, unless it already wrote a status, and its panic is
+// logged (see recoverHandlerPanic).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	id := requestIDFor(r)
 	w.Header().Set(requestIDHeader, id)
 	l := s.log.With("request_id", id)
 	aw := &accessWriter{ResponseWriter: w}
+	defer func() {
+		p := recover()
+		if p != nil && p != http.ErrAbortHandler {
+			recoverHandlerPanic(aw, r, l, p)
+		}
+		if aw.route == "" {
+			// Refused before routing, or panicked in its handler: logged under
+			// the route it was aimed at.
+			_, aw.route = s.mux.Handler(r)
+		}
+		aw.logAccess(r.Context(), l, r.Method, start)
+		if p == http.ErrAbortHandler {
+			// net/http aborts the response without logging it.
+			panic(p)
+		}
+	}()
 	s.serveChecked(aw, r.WithContext(withRequestLogger(r.Context(), l)))
-	if aw.route == "" {
-		// Refused before routing: logged under the route it was aimed at.
-		_, aw.route = s.mux.Handler(r)
+}
+
+// recoverHandlerPanic logs p, the value r's handler panicked with, at ERROR to
+// l, the request's logger, with the stack it panicked from, and answers r 500,
+// as serverError does, unless the handler already wrote a status.
+func recoverHandlerPanic(w *accessWriter, r *http.Request, l *slog.Logger, p any) {
+	l.ErrorContext(r.Context(), "handler panicked", "method", r.Method, "path", r.URL.Path,
+		"panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+	if w.status == 0 {
+		http.Error(w, "something went wrong", http.StatusInternalServerError)
 	}
-	aw.logAccess(r.Context(), l, r.Method, start)
 }
 
 // serveChecked serves r once it passes the checks ServeHTTP describes.

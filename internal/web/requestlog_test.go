@@ -196,3 +196,88 @@ func TestAnInvalidIncomingRequestIDIsReplaced(t *testing.T) {
 		}
 	}
 }
+
+// A handler that panics, as /healthz does on a Server with no Service, is
+// answered 500 rather than a dropped connection, its panic is logged at ERROR
+// with its stack under the request's ID, and it still gets its access line.
+func TestAPanickingHandlerIsAnswered500AndLoggedUnderItsRequestsID(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	srv := web.NewServer(nil, web.WithLogger(slog.New(slog.NewJSONHandler(&buf, nil))))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("answered %d, want 500", w.Code)
+	}
+	id := w.Header().Get("X-Request-ID")
+	errs := logRecords(t, &buf)
+	lines := accessLines(t, &buf)
+	if len(errs) != 1 || len(lines) != 1 {
+		t.Fatalf("logged %d records and %d access lines, want 1 of each:\n%s", len(errs), len(lines), &buf)
+	}
+	if e := errs[0]; e["level"] != "ERROR" || e["request_id"] != id || e["panic"] == nil || e["stack"] == nil {
+		t.Errorf("error record %v, want an ERROR with request_id %q, the panic and its stack", e, id)
+	}
+	if line := lines[0]; line["request_id"] != id || line["status"] != float64(http.StatusInternalServerError) || line["route"] != "GET /healthz" {
+		t.Errorf("access line %v, want GET /healthz under request_id %q answered 500", line, id)
+	}
+}
+
+// A handler that has already answered 200 when it panics keeps its answer: the
+// access line records the 200, and the panic is still logged at ERROR.
+func TestAHandlerThatPanicsAfterAnsweringKeepsItsStatus(t *testing.T) {
+	t.Parallel()
+
+	srv, buf := requestLogServer(t, testsupport.New(t))
+	srv.HandleForPanicTest("GET /panics-after-ok", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("partial"))
+		panic("boom")
+	})
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/panics-after-ok", nil))
+
+	if w.Code != http.StatusOK || w.Body.String() != "partial" {
+		t.Errorf("answered %d %q, want the handler's own 200 %q", w.Code, w.Body, "partial")
+	}
+	id := w.Header().Get("X-Request-ID")
+	errs := logRecords(t, buf)
+	lines := accessLines(t, buf)
+	if len(errs) != 1 || len(lines) != 1 {
+		t.Fatalf("logged %d records and %d access lines, want 1 of each:\n%s", len(errs), len(lines), buf)
+	}
+	if e := errs[0]; e["level"] != "ERROR" || e["request_id"] != id || e["panic"] != "boom" {
+		t.Errorf("error record %v, want an ERROR with request_id %q and panic boom", e, id)
+	}
+	if line := lines[0]; line["request_id"] != id || line["status"] != float64(http.StatusOK) || line["route"] != "GET /panics-after-ok" {
+		t.Errorf("access line %v, want GET /panics-after-ok under request_id %q answered 200", line, id)
+	}
+}
+
+// A handler that aborts its response with http.ErrAbortHandler gets its access
+// line, and the abort reaches net/http, which drops the connection without
+// logging it; the app logs no ERROR for it either.
+func TestAnAbortedHandlerIsLoggedAndStillAborts(t *testing.T) {
+	t.Parallel()
+
+	srv, buf := requestLogServer(t, testsupport.New(t))
+	srv.HandleForPanicTest("GET /aborts", func(http.ResponseWriter, *http.Request) {
+		panic(http.ErrAbortHandler)
+	})
+	func() {
+		defer func() {
+			if p := recover(); p != http.ErrAbortHandler {
+				t.Errorf("ServeHTTP panicked with %v, want http.ErrAbortHandler passed on", p)
+			}
+		}()
+		srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/aborts", nil))
+	}()
+
+	if errs := logRecords(t, buf); len(errs) != 0 {
+		t.Errorf("logged %v, want no records besides the access line", errs)
+	}
+	if lines := accessLines(t, buf); len(lines) != 1 || lines[0]["route"] != "GET /aborts" {
+		t.Errorf("access lines %v, want one for GET /aborts", lines)
+	}
+}
