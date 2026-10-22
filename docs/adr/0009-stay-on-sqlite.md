@@ -15,7 +15,7 @@ ADR 0004 chose relational storage, "SQLite, later Postgres". In October 2026 a p
   - a hosting requirement for a managed database, with failover or point-in-time restore.
 
   "Postgres is more serious" is not a trigger.
-- **Pragmas are per connection.** Foreign keys, WAL mode and the busy timeout are set on each connection through the connection string. Every place that opens the database (`db.Open` and the test harness's own `dsn`) must set the same ones.
+- **Pragmas are per connection.** Foreign keys, WAL mode and the busy timeout are set on each connection through the connection string. Every place that opens the database builds its connection string with `db.DSN`, as `db.Open` and the test harness do, so they set the same ones.
 - **Backups:** they use SQLite's online backup (`.backup` or `VACUUM INTO`), never a file copy. The WAL file beside the database is part of its state.
 - **Testing stays portable.** Shifting time (`clock.Fixed`) and recording email (`email.Recorder`) live in the app, not the database. A fresh database per test, and failure injection by trigger, both have Postgres equivalents (`CREATE DATABASE … TEMPLATE`, PL/pgSQL triggers). A later move keeps every testing capability, only slower.
 - **Keep the move cheap:** prefer portable SQL in new queries. Where SQLite-only behaviour is needed, keep it behind the domain service, as ADR 0004 already does for graph traversal.

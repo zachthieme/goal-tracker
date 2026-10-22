@@ -75,23 +75,20 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 	}
 }
 
-// dsn opens the SQLite file at path. The database is thrown away with the
-// test, so it skips fsync: waiting on the disk made up most of each test's
-// time, and nearly ran a package's tests past go test's 10-minute timeout.
+// dsn opens the SQLite file at path with the app's own connection string, so
+// a test's database sets the pragmas db.Open does (ADR 0009): a statement that
+// meets another connection's lock waits for it, transactions take the write
+// lock at BEGIN, foreign keys are enforced and the database runs in WAL mode,
+// so tests see the app's queueing, foreign-key errors and reads alongside an
+// open write. The database is thrown away with the test, so it is opened for a
+// bulk load and skips fsync: waiting on the disk made up most of each test's
+// time, and nearly ran a package's tests past go test's 10-minute timeout. The
+// pool is left uncapped; db.Open's cap is for the app.
 // Each test's database is copied from a template migrated once per test binary
 // rather than migrated itself: running every migration for each of the
 // hundreds of tests queued them all on modernc's process-wide allocator lock.
-// The path is escaped because it's a URI: a test's temp directory can hold a
-// '#' (an unnamed subtest is "#00"), which would otherwise end the path and
-// open a new, empty database in place of the copy. Like the app's own
-// db.Open, a statement that meets another connection's lock waits for it,
-// transactions take the write lock at BEGIN, so a test running two requests at
-// once sees them queue as they would in the app rather than fail with
-// SQLITE_BUSY, foreign keys are enforced, so a test that would orphan a row
-// fails as the app would, and the database runs in WAL mode, so a read runs
-// alongside an open write as it does in the app.
 func dsn(path string) string {
-	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_txlock=immediate"
+	return db.DSN(path, db.ForBulkLoad())
 }
 
 // The migrated database every Harness copies, built on first use, or the error
