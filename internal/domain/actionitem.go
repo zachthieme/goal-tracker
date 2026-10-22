@@ -416,21 +416,43 @@ func (s *Service) actionItemReassignmentsFromRows(ctx context.Context, rows []db
 		if err != nil {
 			return nil, fmt.Errorf("get reassigned action item: %w", err)
 		}
-		r := ActionItemReassignment{ID: row.ID, ItemID: item.ID, ItemText: item.Text, GoalID: item.GoalID}
-		for _, p := range []struct {
-			id  int64
-			acc *Account
-		}{{row.FromOwnerID, &r.From}, {row.ToOwnerID, &r.To}, {row.ReassignedBy, &r.By}} {
-			acc, err := s.queries.GetAccount(ctx, p.id)
-			if err != nil {
-				return nil, fmt.Errorf("look up reassignment account: %w", err)
-			}
-			*p.acc = accountFromRow(acc)
+		r, err := actionItemReassignmentOf(row, item, s.accountQuery(ctx))
+		if err != nil {
+			return nil, err
 		}
-		r.At, _ = time.Parse(timeFormat, row.ReassignedAt)
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// actionItemReassignmentOf is row, a reassignment of item, with who it moved
+// from, to and by looked up with account.
+func actionItemReassignmentOf(row db.ActionItemReassignment, item db.ActionItem, account func(id int64) (Account, error)) (ActionItemReassignment, error) {
+	r := ActionItemReassignment{ID: row.ID, ItemID: item.ID, ItemText: item.Text, GoalID: item.GoalID}
+	for _, p := range []struct {
+		id  int64
+		acc *Account
+	}{{row.FromOwnerID, &r.From}, {row.ToOwnerID, &r.To}, {row.ReassignedBy, &r.By}} {
+		acc, err := account(p.id)
+		if err != nil {
+			return ActionItemReassignment{}, fmt.Errorf("look up reassignment account: %w", err)
+		}
+		*p.acc = acc
+	}
+	r.At, _ = time.Parse(timeFormat, row.ReassignedAt)
+	return r, nil
+}
+
+// accountQuery looks an Account up by ID, one query each time, as the Accounts
+// an Action Item names are read; a missing one is the query's sql.ErrNoRows.
+func (s *Service) accountQuery(ctx context.Context) func(id int64) (Account, error) {
+	return func(id int64) (Account, error) {
+		row, err := s.queries.GetAccount(ctx, id)
+		if err != nil {
+			return Account{}, err
+		}
+		return accountFromRow(row), nil
+	}
 }
 
 // GetActionItem returns the Action Item with the given id, or ErrNotFound if
@@ -479,14 +501,6 @@ func (s *Service) actionItemsFromRows(ctx context.Context, rows []db.ActionItem)
 }
 
 func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (ActionItem, error) {
-	owner, err := s.queries.GetAccount(ctx, row.OwnerID)
-	if err != nil {
-		return ActionItem{}, fmt.Errorf("look up action item owner: %w", err)
-	}
-	by, err := s.queries.GetAccount(ctx, row.CreatedBy)
-	if err != nil {
-		return ActionItem{}, fmt.Errorf("look up action item author: %w", err)
-	}
 	var goalTitle string
 	if row.GoalID != 0 {
 		g, err := s.queries.GetGoal(ctx, row.GoalID)
@@ -494,6 +508,29 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 			return ActionItem{}, fmt.Errorf("look up action item goal: %w", err)
 		}
 		goalTitle = g.Goal.Title
+	}
+	var reassigned *db.ActionItemReassignment
+	latest, err := s.queries.GetLatestActionItemReassignment(ctx, row.ID)
+	switch {
+	case err == nil:
+		reassigned = &latest
+	case !errors.Is(err, sql.ErrNoRows):
+		return ActionItem{}, fmt.Errorf("get latest action item reassignment: %w", err)
+	}
+	return actionItemOf(row, goalTitle, reassigned, s.accountQuery(ctx))
+}
+
+// actionItemOf is row's Action Item, about the Goal titled goalTitle ("" for a
+// whole Report) and last reassigned by latest (nil when never), with the
+// people it names looked up with account.
+func actionItemOf(row db.ActionItem, goalTitle string, latest *db.ActionItemReassignment, account func(id int64) (Account, error)) (ActionItem, error) {
+	owner, err := account(row.OwnerID)
+	if err != nil {
+		return ActionItem{}, fmt.Errorf("look up action item owner: %w", err)
+	}
+	by, err := account(row.CreatedBy)
+	if err != nil {
+		return ActionItem{}, fmt.Errorf("look up action item author: %w", err)
 	}
 	due, _ := time.Parse(dateFormat, row.DueDate)
 	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
@@ -505,9 +542,9 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 		GoalID:        row.GoalID,
 		GoalTitle:     goalTitle,
 		Text:          row.Text,
-		Owner:         accountFromRow(owner),
+		Owner:         owner,
 		DueDate:       due,
-		CreatedBy:     accountFromRow(by),
+		CreatedBy:     by,
 		CreatedAt:     createdAt,
 		ClosingNote:   row.ClosingNote,
 	}
@@ -515,17 +552,12 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 		item.Closed = true
 		item.ClosedAt, _ = time.Parse(timeFormat, row.ClosedAt)
 	}
-	latest, err := s.queries.GetLatestActionItemReassignment(ctx, row.ID)
-	switch {
-	case err == nil:
-		from, err := s.queries.GetAccount(ctx, latest.FromOwnerID)
+	if latest != nil {
+		prev, err := account(latest.FromOwnerID)
 		if err != nil {
 			return ActionItem{}, fmt.Errorf("look up action item's previous owner: %w", err)
 		}
-		prev := accountFromRow(from)
 		item.ReassignedFrom = &prev
-	case !errors.Is(err, sql.ErrNoRows):
-		return ActionItem{}, fmt.Errorf("get latest action item reassignment: %w", err)
 	}
 	return item, nil
 }
@@ -616,13 +648,19 @@ func (s *Service) actionItemListing(ctx context.Context, row db.ActionItem, repo
 	if err != nil {
 		return ActionItemListing{}, err
 	}
+	return s.actionItemListingOf(item, row, reportName), nil
+}
+
+// actionItemListingOf is item, read from row, listed in its Report named
+// reportName.
+func (s *Service) actionItemListingOf(item ActionItem, row db.ActionItem, reportName string) ActionItemListing {
 	today := orgDate(s.clock.Now(), s.loc).Format(dateFormat)
 	return ActionItemListing{
 		Item:       item,
 		ReportName: reportName,
 		GoalTitle:  item.GoalTitle,
 		Overdue:    !item.Closed && row.DueDate < today,
-	}, nil
+	}
 }
 
 // OpenActionItemsToChase returns the open Action Items viewerID has reason to

@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -87,4 +88,64 @@ func TestGoalPageRendersAsGolden(t *testing.T) {
 			assertGolden(t, fmt.Sprintf("goal-page-%s-%s.golden.html", g.name, v.name), getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, g.goal.ID)))
 		}
 	}
+}
+
+// The Goal page loads through one page loader that reads each thing once
+// (ADR 0010): Service.GoalPage runs no query twice for Goal 04 shown to its
+// Owner, who is offered everything, and runs as many for 50 Goals as for 10.
+// The page around it adds only the session and the sidebar's reads.
+func TestGoalPageReadsEachThingOnce(t *testing.T) {
+	t.Parallel()
+	// goalPageLoaderMax is what Service.GoalPage reads for Goal 04: the Goal,
+	// the viewer and the other people it names, its links, Check-ins and
+	// what they recorded, Milestones, Metrics and readings, values, History
+	// and discussion, and every other Goal for the "Contribute to" choices.
+	const goalPageLoaderMax = 35
+	// goalPageMax is the whole page: the loader's reads, plus the session's
+	// and the sidebar's, which every signed-in page makes.
+	const goalPageMax = 64
+	type counts struct{ loader, page int }
+	countFor := func(n int) counts {
+		h := testsupport.New(t, queryCountAdmin)
+		fx := seedGoalPageFixture(t, h, n)
+		ts, svc, queries := newQueryCountingServer(t, h)
+		client := signInClient(t, ts.URL, "sam@example.com")
+		queries.take()
+		if _, err := svc.GoalPage(context.Background(), fx.red.Owner.ID, fx.red.ID); err != nil {
+			t.Fatalf("GoalPage: %v", err)
+		}
+		loader := queries.take()
+		for name, times := range countQueryNames(loader) {
+			if times > 1 {
+				t.Errorf("GoalPage ran %s %d times for %d Goals; want it once", name, times, n)
+			}
+		}
+		getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, fx.red.ID))
+		return counts{loader: len(loader), page: len(queries.take())}
+	}
+	ten, fifty := countFor(10), countFor(50)
+	if ten.loader > goalPageLoaderMax {
+		t.Errorf("GoalPage ran %d queries; want at most %d", ten.loader, goalPageLoaderMax)
+	}
+	if ten.page > goalPageMax {
+		t.Errorf("the Goal page ran %d queries; want at most %d", ten.page, goalPageMax)
+	}
+	if ten != fifty {
+		t.Errorf("GoalPage and the Goal page ran %d and %d queries for 10 Goals, and %d and %d for 50; want the same", ten.loader, ten.page, fifty.loader, fifty.page)
+	}
+}
+
+// countQueryNames is how many times each named query among statements was
+// run, by the name sqlc gives it ("-- name: GetGoal :one"); a statement with
+// no name counts under its own text.
+func countQueryNames(statements []string) map[string]int {
+	out := map[string]int{}
+	for _, s := range statements {
+		name := s
+		if rest, ok := strings.CutPrefix(s, "-- name: "); ok {
+			name, _, _ = strings.Cut(rest, " ")
+		}
+		out[name]++
+	}
+	return out
 }

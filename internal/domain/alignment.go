@@ -133,6 +133,12 @@ func (s *Service) GoalSignals(ctx context.Context, goalID int64) (GoalSignals, e
 	if err != nil {
 		return GoalSignals{}, err
 	}
+	return goalSignalsOf(g, parents, children), nil
+}
+
+// goalSignalsOf is GoalSignals for g, which contributes to parents and which
+// children contribute to.
+func goalSignalsOf(g Goal, parents, children []Goal) GoalSignals {
 	up := make([]edge, 0, len(parents))
 	for _, p := range parents {
 		up = append(up, edge{child: g, parent: p})
@@ -147,7 +153,7 @@ func (s *Service) GoalSignals(ctx context.Context, goalID int64) (GoalSignals, e
 		// Only the child is flagged when its parent halts, so a Goal's own
 		// halted-parent signals come from its links upward.
 		HaltedParents: haltedParents(up),
-	}, nil
+	}
 }
 
 // isUnlinked applies the Unlinked rule to a Goal with the given number of

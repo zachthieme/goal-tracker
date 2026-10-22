@@ -545,21 +545,31 @@ func (s *Service) MilestoneChangesOutsideCheckins(ctx context.Context, goalID in
 		return nil, fmt.Errorf("list milestone changes: %w", err)
 	}
 	authors := map[int64]Account{}
+	return milestoneChangesOutsideCheckins(rows, func(id int64) (Account, error) {
+		if author, ok := authors[id]; ok {
+			return author, nil
+		}
+		row, err := s.queries.GetAccount(ctx, id)
+		if err != nil {
+			return Account{}, err
+		}
+		authors[id] = accountFromRow(row)
+		return authors[id], nil
+	})
+}
+
+// milestoneChangesOutsideCheckins is MilestoneChangesOutsideCheckins read from
+// a Goal's Milestone changes, each author looked up with account.
+func milestoneChangesOutsideCheckins(rows []db.ListMilestoneChangesByGoalRow, account func(id int64) (Account, error)) ([]MilestoneChange, error) {
 	var out []MilestoneChange
 	for _, r := range rows {
 		if r.MilestoneChange.CheckinID != nil || r.MilestoneChange.AuthorID == nil {
 			continue
 		}
 		c := milestoneChangeFromRow(r)
-		id := *r.MilestoneChange.AuthorID
-		author, ok := authors[id]
-		if !ok {
-			row, err := s.queries.GetAccount(ctx, id)
-			if err != nil {
-				return nil, fmt.Errorf("look up milestone change author: %w", err)
-			}
-			author = accountFromRow(row)
-			authors[id] = author
+		author, err := account(*r.MilestoneChange.AuthorID)
+		if err != nil {
+			return nil, fmt.Errorf("look up milestone change author: %w", err)
 		}
 		c.Author = author
 		out = append(out, c)
