@@ -22,6 +22,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [ops] A request whose handler panics is answered with a 500 instead of a dropped connection, still gets its access line (with 500, or the status already sent), and its panic is logged at ERROR with the panic value, its stack and the request's `request_id`, rather than as net/http's untagged "http: panic serving" line (#456).
+- [user] A Report's narrative opened at a later baseline (`?baseline=`) no longer reads "Unsaved changes" or keeps Publish… disabled because of a Highlight it picked from before that baseline, and saving there keeps that pick instead of dropping it and logging it as dropped (#455).
+- [user] "Unsaved changes" no longer pushes History, Edit definition and Publish… onto a second header row: from 1280px wide the draft header holds one row whatever the save status says, cutting a long "Not saved" reason or Report name short (#455).
+- [user] Reloading a Report's draft shows the narrative as saved, not text the browser restored into the form while the save status said nothing and Publish… would publish what was saved (#455).
 
 **Testing:**
 - [internal] The last string-matching web test helpers (`assertSubmitsAtOnce`, `assertStyledBy`, `assertTermHelp`, `assertInFlatFrame`) read markup through the HTML parser, and the `cardClass` regexp is gone (#457).
@@ -30,6 +33,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Code quality:**
 - [internal] Every Health shape is drawn by the one `.dot` rule set in `app.css`, scaled by `--dot-size`; the Goal list's mark and Home's My org counts draw a `.dot` rather than shapes of their own, and `healthShape` and `.shape` are gone. `scripts/contrast.py` also checks each Health's ink on its new `--health-*-tint` (#452).
+- [internal] A refused Add another without script builds the Report's draft once, not twice (#455).
 
 ### Collected changes — October 21, 2026
 
