@@ -24,7 +24,9 @@ another area's file.
   the classes they select are tested in `styles_test.go`.
 - **Domain** (`internal/domain/`): `domain.go` holds only the `Service` and its
   constructor. Each concept's types and `Service` methods live in their own file
-  (`account.go`, `goal.go`, …) — a new concept is a new file.
+  (`account.go`, `goal.go`, …) — a new concept is a new file. A page whose
+  view model repeats reads gets a page loader, one `Service` method in its own
+  `<page>.go` file (ADR 0010).
 - **Test support** (`internal/testsupport/`): `harness.go` keeps the core
   harness (fresh database, clock, email recorder, sign-in). Scenario builders
   live one file per area (e.g. `goals.go`).
