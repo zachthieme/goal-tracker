@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -82,16 +83,22 @@ type NarrativePick struct {
 type CurateNarrativeInput struct {
 	Picks []NarrativePick
 	Notes map[string][]string
+	// Offered are the Highlights the compose form offered the author: those in
+	// scope at the baseline it was read against. A saved pick of a Highlight
+	// it didn't offer, and Picks doesn't pick, is left as saved. Nil means it
+	// offered every Highlight, so Picks replaces every saved pick.
+	Offered []int64
 }
 
 // CurateNarrative sets the narrative of the Report Definition defID's next
-// publication, replacing whatever was curated before. The author may put a
-// Highlight into any section, whatever it was flagged as; each picked
-// Highlight must be on a Goal the Definition selects, and picked once. A
-// section may hold any number of notes; a blank one is ignored. Only the
-// Definition's creator, a Report Delegate or an Admin may curate it
-// (ErrNotAuthorized); actorID is who is curating, whom the Report log records
-// with what changed. Re-saving the same narrative changes nothing. Publishing
+// publication, replacing whatever was curated before, except the picks of
+// Highlights the compose form didn't offer (in.Offered), which it leaves as
+// saved. The author may put a Highlight into any section, whatever it was
+// flagged as; each picked Highlight must be on a Goal the Definition selects,
+// and picked once. A section may hold any number of notes; a blank one is
+// ignored. Only the Definition's creator, a Report Delegate or an Admin may
+// curate it (ErrNotAuthorized); actorID is who is curating, whom the Report
+// log records with what changed. Re-saving the same narrative changes nothing. Publishing
 // freezes the narrative with the snapshot and starts the next one empty.
 func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in CurateNarrativeInput) error {
 	def, err := s.GetReportDefinition(ctx, defID)
@@ -106,7 +113,11 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 		return err
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
-		edit, err := tx.narrativeEdit(ctx, def.ID, in.Picks, notes)
+		picks, err := tx.narrativePicksSaved(ctx, def.ID, in)
+		if err != nil {
+			return err
+		}
+		edit, err := tx.narrativeEdit(ctx, def.ID, picks, notes)
 		if err != nil {
 			return err
 		}
@@ -120,7 +131,7 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 		if err := tx.clearNarrative(ctx, def.ID); err != nil {
 			return err
 		}
-		for _, p := range in.Picks {
+		for _, p := range picks {
 			if err := tx.queries.AddNarrativePick(ctx, db.AddNarrativePickParams{
 				ReportDefinitionID: def.ID,
 				HighlightID:        p.HighlightID,
@@ -172,6 +183,33 @@ func (s *Service) checkCuratedNarrative(ctx context.Context, def ReportDefinitio
 		picked[p.HighlightID] = true
 	}
 	return storedNarrativeNotes(in.Notes), nil
+}
+
+// narrativePicksSaved are the picks saving in leaves in the Report Definition
+// defID's narrative: those it picks, and each saved pick of a Highlight the
+// compose form didn't offer (in.Offered), as it was saved.
+func (s *Service) narrativePicksSaved(ctx context.Context, defID int64, in CurateNarrativeInput) ([]NarrativePick, error) {
+	if in.Offered == nil {
+		return in.Picks, nil
+	}
+	saved, err := s.queries.ListNarrativePicks(ctx, defID)
+	if err != nil {
+		return nil, fmt.Errorf("list narrative picks: %w", err)
+	}
+	inPlay := make(map[int64]bool, len(in.Offered)+len(in.Picks))
+	for _, id := range in.Offered {
+		inPlay[id] = true
+	}
+	for _, p := range in.Picks {
+		inPlay[p.HighlightID] = true
+	}
+	picks := slices.Clone(in.Picks)
+	for _, p := range saved {
+		if !inPlay[p.HighlightID] {
+			picks = append(picks, NarrativePick{HighlightID: p.HighlightID, Section: p.Section})
+		}
+	}
+	return picks, nil
 }
 
 // storedNarrativeNotes are a narrative's notes, keyed by section, as they are
