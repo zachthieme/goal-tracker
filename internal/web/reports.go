@@ -530,8 +530,10 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// The form offers the Report's Highlights whatever the narrative, so
-	// the preview serves it, or, when refused, the draft as saved.
+	// the preview serves it, or, when refused, the draft as saved, which is
+	// then a plain post's page's draft too (report), built once.
 	status, code := "", http.StatusOK
+	var report domain.Report
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
 	switch {
 	case errors.Is(err, domain.ErrValidation):
@@ -540,6 +542,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 			s.serverError(w, r, "could not build the draft", err)
 			return
 		}
+		report = posted
 	case err != nil:
 		s.writeReportError(w, r, err)
 		return
@@ -561,10 +564,12 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		render(w, r, http.StatusOK, narrativeFormAgain(form, status))
 		return
 	}
-	report, err := s.svc.DraftReport(r.Context(), def, baseline)
-	if err != nil {
-		s.serverError(w, r, "could not build the draft", err)
-		return
+	if code == http.StatusOK {
+		// posted is the narrative as posted; the page shows it as saved.
+		if report, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
+			s.serverError(w, r, "could not build the draft", err)
+			return
+		}
 	}
 	d, err := s.draftDiscussion(r, current, def.ID)
 	if err != nil {

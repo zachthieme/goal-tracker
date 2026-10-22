@@ -1137,6 +1137,41 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 	}
 }
 
+// A refused Add another without script answers the draft page from one build
+// of the draft: the form and the preview both show the draft as saved, so it
+// reads the saved narrative once (ticket #455).
+func TestRefusedAddAnotherWithoutScriptDraftsOnceOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, queryCountAdmin)
+	admin := h.SignIn(queryCountAdmin)
+	g := h.ActiveGoal(admin, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(admin, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+	ts, _, queries := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, queryCountAdmin)
+
+	queries.take()
+	resp := postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+		// Ticked with no section, which the narrative refuses.
+		"include-" + signed: {"on"},
+		"add_note":          {domain.HighlightMiss},
+	})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused add another: status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	drafts := 0
+	for _, q := range queries.take() {
+		if strings.HasPrefix(q, "-- name: ListNarrativePicks ") {
+			drafts++
+		}
+	}
+	if drafts != 1 {
+		t.Errorf("a refused Add another read the saved narrative %d times, want once: the draft built once", drafts)
+	}
+}
+
 // A publication frozen when a section held at most one of the author's notes
 // still shows it, as its own paragraph before the Highlights picked into the
 // section (ticket #187).
