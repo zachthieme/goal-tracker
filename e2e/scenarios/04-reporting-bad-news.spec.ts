@@ -90,7 +90,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(due.locator("del")).toHaveText(shownDate(oldDue));
     await expect(due).toHaveText(`${shownDate(oldDue)} ${shownDate(newDue)}`);
 
-    await expect(milestoneRow(page, slipped.name).getByTestId("milestone-mark")).toHaveText("Yellow");
+    await expect(milestoneRow(page, slipped.name).getByTestId("milestone-mark")).toHaveText("Slipped");
     await expect(milestoneRow(page, done.name).getByTestId("milestone-mark")).toHaveText("Done");
 
     const latest = page.getByTestId("history-entry").first();

@@ -2010,8 +2010,8 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 // The Goal page marks a Milestone overdue by today's date in the Goal's
 // Owner's Timezone, as the No change it offers beside the mark is judged
 // (CONTEXT.md: Timezone): with the company on UTC, late on Beta's date in the
-// Owner's Los Angeles Beta has no Red mark and No change is offered; early the
-// next day there, Beta is Red and No change is not.
+// Owner's Los Angeles Beta has no Overdue mark and No change is offered; early
+// the next day there, Beta is Overdue and No change is not.
 func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2049,8 +2049,8 @@ func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) 
 
 	h.Clock.Set(time.Date(2026, 4, 3, 8, 0, 0, 0, time.UTC)) // Apr 3, 1am in Los Angeles
 	page, beta = load()
-	if beta != "Red Apr 2 Beta" {
-		t.Errorf("Beta's row reads %q the day after its date in the Owner's timezone, want it marked Red", beta)
+	if beta != "Overdue Apr 2 Beta" {
+		t.Errorf("Beta's row reads %q the day after its date in the Owner's timezone, want it marked Overdue", beta)
 	}
 	if strings.Contains(pageElement(t, page, "div", "goal-actions"), `data-testid="no-change-checkin"`) {
 		t.Errorf("the Goal page offers No change with Beta overdue in the Owner's timezone")
@@ -2291,11 +2291,11 @@ func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing
 // goalMarkedMilestones is how the Goal page lists MilestoneMarksGoal's
 // Milestones, earliest date first: mark, then date, then name.
 var goalMarkedMilestones = []string{
-	"Red Jan 20 Security review",
+	"Overdue Jan 20 Security review",
 	"Done Feb 1 Pilot",
 	"New Mar 10 Docs",
-	"Yellow Apr 12 Apr 2 Beta",
-	"Yellow Apr 20 Mar 20 (3) Vendor sign-off",
+	"Slipped Apr 12 Apr 2 Beta",
+	"Slipped Apr 20 Mar 20 (3) Vendor sign-off",
 	"May 1 Runbook",
 	"Removed May 20 Launch party Removed: Budget cut.",
 	"Jun 15 GA launch",
@@ -2303,8 +2303,10 @@ var goalMarkedMilestones = []string{
 
 // The Goal page's Milestones table reads Status, Date, Milestone. Each
 // Milestone's mark, judged as of today, is the first that applies: Done,
-// Removed, Red while overdue, Yellow once slipped, New when the latest
-// Check-in added it — not an earlier one — and none while on track. Its date
+// Removed, Overdue while past its date, Slipped once slipped, New when the
+// latest Check-in added it — not an earlier one — and none while on track,
+// each shown as its word: Overdue in Red's tint and Slipped in Yellow's, with
+// no Health shape (#461). Its date
 // is the current one with the most recent it slipped from struck through, and
 // a count once it slipped more than once. The marks are not a Health: the
 // Goal keeps the Yellow its Owner set and its Rolled-up Health (ADR 0003).
@@ -2346,6 +2348,8 @@ func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 		t.Errorf("the Removed Milestone's name is not struck through:\n%s", section)
 	}
 	doc := parsePage(t, page)
+	assertMilestoneMarksShowTheirWords(t, findByTestID(t, doc, "goal-milestones"),
+		[]string{"Overdue", "Done", "New", "Slipped", "Slipped", "Removed"})
 	for _, testID := range []string{"goal-health", "goal-rollup-health"} {
 		if got := textOf(findByTestID(t, doc, testID)); got != "Yellow" {
 			t.Errorf("Goal page's %s reads %q, want Yellow: the Owner's Yellow and the Rolled-up Health stand whatever the Milestones' marks", testID, got)

@@ -2110,20 +2110,22 @@ const healthClassYellow = "y"
 // reportMarkedMilestones is how the Report lists MilestoneMarksGoal's
 // Milestones, earliest date first, each mark, then date, then name.
 var reportMarkedMilestones = []string{
-	"Red Jan 20, 2026 Security review",
+	"Overdue Jan 20, 2026 Security review",
 	"Done Feb 1, 2026 Pilot",
 	"New Mar 10, 2026 Docs",
-	"Yellow Apr 12, 2026 Apr 2, 2026 Beta",
-	"Yellow Apr 20, 2026 Mar 20, 2026 (3) Vendor sign-off",
+	"Slipped Apr 12, 2026 Apr 2, 2026 Beta",
+	"Slipped Apr 20, 2026 Mar 20, 2026 (3) Vendor sign-off",
 	"May 1, 2026 Runbook",
 	"Removed May 20, 2026 Launch party — Budget cut.",
 	"Jun 15, 2026 GA launch",
 }
 
 // An exception block lists each Milestone as its mark, its date and its name,
-// on the draft and the publication alike. The mark is the first that applies:
-// Done, Removed, Red while overdue, Yellow once slipped, New since the
-// baseline, and none while on track. The date is the current one with the most
+// on the draft, the publication and its print page alike. The mark is the
+// first that applies: Done, Removed, Overdue while past its date, Slipped once
+// slipped, New since the baseline, and none while on track, each shown as its
+// word: Overdue in Red's tint and Slipped in Yellow's, with no Health shape
+// (#461). The date is the current one with the most
 // recent it slipped from struck through, and a count once it slipped more than
 // once. The marks are not a Health: the Goal keeps the Yellow its Owner set and
 // its Rolled-up Health (ADR 0003).
@@ -2141,12 +2143,15 @@ func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 	for name, url := range map[string]string{
 		"draft":       fmt.Sprintf("%s/reports/%d?baseline=2026-01-12", ts.URL, def.ID),
 		"publication": fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID),
+		"print":       fmt.Sprintf("%s/reports/%d/publications/%d/print", ts.URL, def.ID, pub.ID),
 	} {
 		t.Run(name, func(t *testing.T) {
 			block := pageElement(t, getBody(t, client, url), "article", "report-exception")
 			if got := elementTexts(block, "li", "report-milestone"); !slices.Equal(got, reportMarkedMilestones) {
 				t.Errorf("Milestones read\n %q\nwant\n %q", got, reportMarkedMilestones)
 			}
+			assertMilestoneMarksShowTheirWords(t, findByTestID(t, parsePage(t, block), "report-milestones"),
+				[]string{"Overdue", "Done", "New", "Slipped", "Slipped", "Removed"})
 			vendor := pageElement(t, block, "li", "report-milestone")
 			for _, li := range strings.Split(block, `<li data-testid="report-milestone"`) {
 				if strings.Contains(li, "Vendor sign-off") {
@@ -2194,7 +2199,7 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
-	want := []string{"Red Dec 20, 2025 Dec 1, 2025 Beta", "New Mar 1, 2026 GA", "Apr 1, 2026 Launch"}
+	want := []string{"Overdue Dec 20, 2025 Dec 1, 2025 Beta", "New Mar 1, 2026 GA", "Apr 1, 2026 Launch"}
 	if got := elementTexts(pageElement(t, page, "article", "report-exception"), "li", "report-milestone"); !slices.Equal(got, want) {
 		t.Errorf("Milestones read\n %q\nwant\n %q", got, want)
 	}
@@ -4632,14 +4637,14 @@ func reportTimezoneGoal(t *testing.T, tz string) (*testsupport.Harness, domain.A
 	return h, kenji, def
 }
 
-// assertReportBlockOverdue checks the page's exception block marks Beta Red and
+// assertReportBlockOverdue checks the page's exception block marks Beta Overdue and
 // its Path to Green Overdue when want is true, and neither when it is false.
 func assertReportBlockOverdue(t *testing.T, page string, want bool) {
 	t.Helper()
 	block := pageElement(t, page, "article", "report-exception")
 	beta := pageElement(t, block, "li", "report-milestone")
-	if red := strings.Contains(beta, `data-testid="milestone-mark"`) && strings.Contains(beta, ">Red</span>"); red != want {
-		t.Errorf("Beta marked Red %v, want %v:\n%s", red, want, beta)
+	if overdue := strings.Contains(beta, `data-testid="milestone-mark"`) && strings.Contains(beta, ">Overdue</span>"); overdue != want {
+		t.Errorf("Beta marked Overdue %v, want %v:\n%s", overdue, want, beta)
 	}
 	status := pageElement(t, block, "div", "report-status-box")
 	if overdue := slices.Contains(strings.Fields(attr(openTag(status), "class")), "overdue"); overdue != want {
@@ -4650,7 +4655,7 @@ func assertReportBlockOverdue(t *testing.T, page string, want bool) {
 	}
 }
 
-// A Report marks a Milestone Red, and a Path to Green Overdue, by the date in
+// A Report marks a Milestone Overdue, and a Path to Green Overdue, by the date in
 // the Goal's Owner's Timezone, the company's for an Owner with none
 // (CONTEXT.md: Timezone): at 20:00 UTC on Apr 2 it is already Apr 3 in Tokyo.
 func TestReportJudgesOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
@@ -4675,7 +4680,7 @@ func TestReportJudgesOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
 
 // A publication keeps the timezone its Goal was judged in when published: the
 // Owner's Timezone cleared and a week on, its page and its Markdown export
-// still mark Beta Red and the Path to Green Overdue as of the day it was
+// still mark Beta Overdue and the Path to Green Overdue as of the day it was
 // published in Tokyo.
 func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -4689,8 +4694,8 @@ func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
 	assertReportBlockOverdue(t, getBody(t, client, pubPath), true)
-	if md := getBody(t, client, pubPath+"/markdown"); !strings.Contains(md, "- **[Red]** 2026-04-02 Beta\n") {
-		t.Errorf("Markdown export does not mark Beta Red:\n%s", md)
+	if md := getBody(t, client, pubPath+"/markdown"); !strings.Contains(md, "- **[Overdue]** 2026-04-02 Beta\n") {
+		t.Errorf("Markdown export does not mark Beta Overdue:\n%s", md)
 	}
 }
 

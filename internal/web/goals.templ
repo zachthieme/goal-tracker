@@ -1551,12 +1551,25 @@ templ struckDates(current time.Time, prior []time.Time, dates displayDates) {
 }
 
 // milestoneMarkBadge is a Milestone's mark (domain.MilestoneMarkOf) as a
-// badge, Red and Yellow in their Health colours though they are not a Health,
-// or nothing when it has none and reads as on track (CONTEXT.md: Milestone).
+// badge showing its word, or nothing when it has none and reads as on track
+// (CONTEXT.md: Milestone). It draws no Health shape: it is not a Health.
 templ milestoneMarkBadge(mark string) {
 	if mark != domain.MilestoneMarkNone {
-		<span data-testid="milestone-mark" class={ "badge", healthClass(mark) }>{ mark }</span>
+		<span data-testid="milestone-mark" class={ "badge", milestoneMarkClass(mark) }>{ mark }</span>
 	}
+}
+
+// milestoneMarkClass is a Milestone mark's badge colour: Overdue in the Red
+// tint and Slipped in the Yellow, though neither is a Health, and the rest
+// neutral.
+func milestoneMarkClass(mark string) string {
+	switch mark {
+	case domain.MilestoneMarkOverdue:
+		return "r"
+	case domain.MilestoneMarkSlipped:
+		return "y"
+	}
+	return "lc"
 }
 
 // milestoneDates renders a Milestone's date as slippedDates does, its count

@@ -13,11 +13,11 @@ import (
 // one Active child's, so its Rolled-up Health is Yellow too. As of 2026-02-11
 // its Milestones are:
 //
-//   - Security review, due 2026-01-20 and still Planned: Red.
+//   - Security review, due 2026-01-20 and still Planned: Overdue.
 //   - Pilot, due 2026-02-01, marked Done.
 //   - Vendor sign-off, slipped three times, 2026-03-01 to 2026-03-10 to
-//     2026-03-20 to 2026-04-20: Yellow.
-//   - Beta, slipped once, 2026-04-02 to 2026-04-12: Yellow.
+//     2026-03-20 to 2026-04-20: Slipped.
+//   - Beta, slipped once, 2026-04-02 to 2026-04-12: Slipped.
 //   - Docs, due 2026-03-10, added by the latest Check-in: New.
 //   - Runbook, due 2026-05-01, added by the first Check-in, on Epoch: no mark
 //     on the Goal page, nor in a Report read against a baseline after Epoch.

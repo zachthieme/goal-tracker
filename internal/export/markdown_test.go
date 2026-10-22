@@ -124,7 +124,7 @@ boss · Active · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
 
 **Milestones:**
 
-- **[Red]** 2026-02-15 ~~2026-02-01~~ Beta
+- **[Overdue]** 2026-02-15 ~~2026-02-01~~ Beta
 - **[Done]** 2026-01-30 Pilot
 - **[Removed]** 2026-03-01 ~~Launch party~~ — Budget cut.
 
@@ -166,8 +166,8 @@ func TestMarkdownListsMilestonesAsMarkDateName(t *testing.T) {
 
 	want := `**Milestones:**
 
-- **[Yellow]** 2026-04-20 ~~2026-04-03~~ (3) Vendor sign-off
-- **[Yellow]** 2026-04-01 ~~2026-03-20~~ Security review
+- **[Slipped]** 2026-04-20 ~~2026-04-03~~ (3) Vendor sign-off
+- **[Slipped]** 2026-04-01 ~~2026-03-20~~ Security review
 - **[New]** 2026-03-10 Docs
 - 2026-02-21 Due on the day
 - 2026-06-15 GA launch
@@ -191,7 +191,7 @@ func TestMarkdownMarksMilestonesInTheBlocksTimezone(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct{ tz, want string }{
-		{"", "- **[Red]** 2026-02-20 Docs\n"},
+		{"", "- **[Overdue]** 2026-02-20 Docs\n"},
 		{"Pacific/Honolulu", "- 2026-02-20 Docs\n"},
 	} {
 		pub := publication([]domain.ReportBlock{{
@@ -233,7 +233,7 @@ func TestMarkdownListsTheMilestonesOfAnOlderSnapshotAsMarkDateName(t *testing.T)
 		t.Fatalf("GetPublication: %v", err)
 	}
 	md := export.Markdown(got)
-	want := "- **[Red]** 2025-12-20 ~~2025-12-01~~ Beta\n- **[New]** 2026-03-01 GA\n"
+	want := "- **[Overdue]** 2025-12-20 ~~2025-12-01~~ Beta\n- **[New]** 2026-03-01 GA\n"
 	if !strings.Contains(md, want) {
 		t.Errorf("Markdown:\n%s\nwant the Milestones to read:\n%s", md, want)
 	}

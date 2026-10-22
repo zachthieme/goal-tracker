@@ -472,8 +472,9 @@ func TestMilestoneChurnIsUnchangedByRecordedChanges(t *testing.T) {
 	}
 }
 
-// A Milestone's mark is the first that applies of Done, Removed, Red (Planned
-// and past its date as of the day asOf falls on where it is), Yellow (Planned and slipped), and New
+// A Milestone's mark is the first that applies of Done, Removed, Overdue
+// (Planned and past its date as of the day asOf falls on where it is), Slipped
+// (Planned and slipped), and New
 // (Planned and added within the window); a Planned Milestone that is none of
 // these has no mark and reads as on track (CONTEXT.md: Milestone).
 func TestMilestoneMarkTakesTheFirstThatApplies(t *testing.T) {
@@ -507,17 +508,17 @@ func TestMilestoneMarkTakesTheFirstThatApplies(t *testing.T) {
 		{"done outranks overdue, slipped and new", milestone(domain.MilestoneDone, "2026-09-30"), slipped, true, asOf, "Done"},
 		{"removed", milestone(domain.MilestoneRemoved, "2026-11-01"), nil, false, asOf, "Removed"},
 		{"removed outranks overdue", milestone(domain.MilestoneRemoved, "2026-09-30"), slipped, true, asOf, "Removed"},
-		{"overdue is red", milestone(domain.MilestonePlanned, "2026-10-03"), nil, false, asOf, "Red"},
-		{"red outranks yellow and new", milestone(domain.MilestonePlanned, "2026-10-03"), slipped, true, asOf, "Red"},
+		{"overdue", milestone(domain.MilestonePlanned, "2026-10-03"), nil, false, asOf, "Overdue"},
+		{"overdue outranks slipped and new", milestone(domain.MilestonePlanned, "2026-10-03"), slipped, true, asOf, "Overdue"},
 		{"due as of the day is not overdue", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false, asOf, ""},
 		{"overdue compares the calendar date asOf falls on in its own location", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false,
 			time.Date(2026, 10, 4, 20, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60)), ""},
 		{"late on its date in Los Angeles is not overdue", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false,
 			time.Date(2026, 10, 5, 2, 0, 0, 0, time.UTC).In(la), ""},
 		{"the next day in Los Angeles is overdue", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false,
-			time.Date(2026, 10, 5, 8, 0, 0, 0, time.UTC).In(la), "Red"},
-		{"slipped is yellow", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, false, asOf, "Yellow"},
-		{"yellow outranks new", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, true, asOf, "Yellow"},
+			time.Date(2026, 10, 5, 8, 0, 0, 0, time.UTC).In(la), "Overdue"},
+		{"slipped", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, false, asOf, "Slipped"},
+		{"slipped outranks new", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, true, asOf, "Slipped"},
 		{"new", milestone(domain.MilestonePlanned, "2026-11-20"), nil, true, asOf, "New"},
 		{"on track has no mark", milestone(domain.MilestonePlanned, "2026-12-15"), nil, false, asOf, ""},
 	}
