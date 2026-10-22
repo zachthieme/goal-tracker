@@ -361,15 +361,26 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 
 // narrativeFormInput reads the narrative the compose form posts: the in-scope
 // Highlights the author ticked (include-{highlight}), each with its section
-// (pick-{highlight}, which is ignored for a Highlight left unticked), and the
+// (pick-{highlight}, which is ignored for a Highlight left unticked), the
 // author's notes in each section (text-{section}, once per note box, in
-// order). A form it can't read is Bad Request, written to w.
+// order), and the Highlights the form offered (offered, once each), so saved
+// picks of those it didn't offer stay as saved. A form it can't read is Bad
+// Request, written to w.
 func narrativeFormInput(w http.ResponseWriter, r *http.Request) (domain.CurateNarrativeInput, bool) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return domain.CurateNarrativeInput{}, false
 	}
-	in := domain.CurateNarrativeInput{Notes: map[string][]string{}}
+	// A form offering no Highlights posts no offered, and offered nothing.
+	in := domain.CurateNarrativeInput{Notes: map[string][]string{}, Offered: []int64{}}
+	for _, raw := range r.Form["offered"] {
+		hlID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			http.Error(w, "unknown Highlight", http.StatusBadRequest)
+			return domain.CurateNarrativeInput{}, false
+		}
+		in.Offered = append(in.Offered, hlID)
+	}
 	for key := range r.Form {
 		raw, ok := strings.CutPrefix(key, "include-")
 		if !ok {

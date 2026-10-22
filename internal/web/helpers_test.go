@@ -957,6 +957,36 @@ func formFields(root *html.Node, name string) []pageField {
 	return out
 }
 
+// formSubmission is what a browser posts from form as it stands when
+// submitted without a named button: each named field's value, a checkbox or
+// radio only when ticked, buttons and disabled fields left out.
+func formSubmission(form *html.Node) url.Values {
+	values := url.Values{}
+	seen := map[string]bool{}
+	for _, n := range findAll(form, func(n *html.Node) bool {
+		return (n.Data == "input" || n.Data == "select" || n.Data == "textarea") && attrOf(n, "name") != ""
+	}) {
+		name := attrOf(n, "name")
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		for _, f := range formFields(form, name) {
+			switch {
+			case hasAttr(f.Node, "disabled"),
+				f.Type == "submit", f.Type == "button", f.Type == "image", f.Type == "reset",
+				(f.Type == "checkbox" || f.Type == "radio") && !f.Checked:
+				continue
+			case (f.Type == "checkbox" || f.Type == "radio") && !hasAttr(f.Node, "value"):
+				values.Add(name, "on")
+			default:
+				values.Add(name, f.Value)
+			}
+		}
+	}
+	return values
+}
+
 // formField returns the one field under root named name, failing the test
 // unless there is exactly one.
 func formField(t *testing.T, root *html.Node, name string) pageField {

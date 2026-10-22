@@ -1065,6 +1065,9 @@ templ sectionText(section string, notes []string, action string) {
 templ curationHighlight(c curationChoice) {
 	{{ nh := c.Highlight }}
 	<li data-testid="curation-highlight" class="rp-curate">
+		// Tells the save which Highlights the form offered, so it leaves the
+		// saved picks of others, before the baseline, as they are.
+		<input type="hidden" name="offered" value={ fmt.Sprint(nh.Highlight.ID) }/>
 		<label class="rp-include">
 			<input type="checkbox" name={ fmt.Sprintf("include-%d", nh.Highlight.ID) } value="on" checked?={ c.Included }/>
 			<span>{ nh.Highlight.Note }</span>
