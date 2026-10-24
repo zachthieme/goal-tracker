@@ -24,7 +24,7 @@ jobs:
       # vetinari/Dockerfile; installed as a binary, so `make lint` uses it
       # rather than building it.
       - name: Install golangci-lint
-        run: curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/v2.13.2/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.13.2
+        run: curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/v2.15.0/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.15.0
       - run: make check
 
   image:

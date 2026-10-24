@@ -13,7 +13,7 @@
 # Go pinned with vetinari/Dockerfile and go.mod. Generated templ and sqlc code
 # is committed, so the build needs no generators. modernc's SQLite is pure Go,
 # so the binary is static.
-FROM golang:1.27.1-bookworm AS build
+FROM golang:1.27.3-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
