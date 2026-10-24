@@ -1,10 +1,12 @@
 package importer_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -921,5 +923,96 @@ func TestCSVWithAByteOrderMarkImportsAsWithout(t *testing.T) {
 	}
 	if len(rep.Rows) != 2 || rep.Rows[0].Title != "Grow revenue" {
 		t.Errorf("rows = %+v, want the two Goals of the file", rep.Rows)
+	}
+}
+
+// A workbook whose sheet unpacks far past anything a real Goal sheet needs —
+// a zip bomb, kilobytes on the wire — is refused as too large, and refused from
+// the sizes its archive declares, before any of it is unpacked (#468).
+func TestZipBombWorkbookIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	bomb := zipBombXLSX(t, 80<<20)
+	if len(bomb) > 1<<20 {
+		t.Fatalf("zip bomb is %d bytes, want it well under the 5 MiB upload cap", len(bomb))
+	}
+
+	start := time.Now()
+	_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", bomb)
+	elapsed := time.Since(start)
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "too large to import") {
+		t.Fatalf("DryRun error = %v, want the workbook refused as too large", err)
+	}
+	if elapsed > time.Second {
+		t.Errorf("refusing the zip bomb took %v, want it refused without unpacking", elapsed)
+	}
+}
+
+// zipBombXLSX is a real one-sheet workbook whose sheet XML is padded with
+// whitespace until it unpacks to sheetSize bytes; the padding compresses to
+// almost nothing.
+func zipBombXLSX(t *testing.T, sheetSize int) []byte {
+	t.Helper()
+	plain := xlsxOf(t, []any{"Title", "Owner", "Why it matters", "Kind"})
+	zr, err := zip.NewReader(bytes.NewReader(plain), int64(len(plain)))
+	if err != nil {
+		t.Fatalf("read xlsx: %v", err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, entry := range zr.File {
+		w, err := zw.Create(entry.Name)
+		if err != nil {
+			t.Fatalf("create %s: %v", entry.Name, err)
+		}
+		if entry.Name == "xl/worksheets/sheet1.xml" {
+			const head = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`
+			const tail = `</sheetData></worksheet>`
+			if _, err := io.WriteString(w, head); err != nil {
+				t.Fatalf("write sheet: %v", err)
+			}
+			chunk := bytes.Repeat([]byte(" "), 1<<20)
+			for left := sheetSize - len(head) - len(tail); left > 0; left -= len(chunk) {
+				if _, err := w.Write(chunk[:min(left, len(chunk))]); err != nil {
+					t.Fatalf("write sheet: %v", err)
+				}
+			}
+			if _, err := io.WriteString(w, tail); err != nil {
+				t.Fatalf("write sheet: %v", err)
+			}
+			continue
+		}
+		rc, err := entry.Open()
+		if err != nil {
+			t.Fatalf("open %s: %v", entry.Name, err)
+		}
+		if _, err := io.Copy(w, rc); err != nil {
+			t.Fatalf("copy %s: %v", entry.Name, err)
+		}
+		_ = rc.Close()
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// An old-format .xls or a password-protected workbook — both stored in the old
+// Office (OLE) container — is refused before it is read, with what to do
+// instead, whatever the file is named (#468).
+func TestOldOfficeFileIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	ole := append([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}, make([]byte, 504)...)
+
+	for _, name := range []string{"goals.xlsx", "goals.xls"} {
+		_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, name, ole)
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "save it as .xlsx") {
+			t.Errorf("%s: DryRun error = %v, want it refused, saying to save it as .xlsx", name, err)
+		}
 	}
 }
