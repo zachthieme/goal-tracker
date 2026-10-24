@@ -1200,8 +1200,8 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 }
 
 // A refused Add another without script answers the draft page from one build
-// of the draft: the form and the preview both show the draft as saved, so it
-// reads the saved narrative once (ticket #455).
+// of the draft: the form and the rest of the page show the draft as saved, so
+// it reads the saved narrative once (ticket #455).
 func TestRefusedAddAnotherWithoutScriptDraftsOnceOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1738,7 +1738,7 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 }
 
 // The Health summary tiles go 2 × 2 whenever the element holding them is too
-// narrow for four, as the draft's preview column is under 1600px, so the
+// narrow for four, as the draft's main column is in a narrow window, so the
 // Check-in overdue chip never runs past its tile, and stack where even two
 // don't fit; at 900px and below they go 2 × 2 whatever the column (#459).
 func TestReportHealthTilesGoTwoByTwoInANarrowColumnOverHTTP(t *testing.T) {
@@ -2286,7 +2286,7 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 // The draft's own rules outrank the generic ones they sit inside (#173): a
 // Highlight's section picker is an inline segmented control, not the form's
 // column of fields, the Highlight list and its items sit flush in its card, and
-// the preview's Health tiles stay a row of four. The baseline chip is a pill as
+// the draft's Health tiles stay a row of four. The baseline chip is a pill as
 // tall as the buttons beside it (#180).
 func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -2316,7 +2316,7 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 0") {
 		t.Errorf("list rows lost their padding: .rp-list>li{%s}", rule)
 	}
-	// .rp-body section stacks every section in the preview as a column; the
+	// .rp-body section stacks every section in the draft as a column; the
 	// Health tiles stay four across, two at 900px.
 	if rule := cssRule(t, page, ".rp-body .rp-tiles"); !strings.Contains(rule, "display:grid") || !strings.Contains(rule, "grid-template-columns:repeat(4,minmax(0,1fr))") {
 		t.Errorf("the draft's Health tiles are not four across: .rp-body .rp-tiles{%s}", rule)

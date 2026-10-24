@@ -454,9 +454,9 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id
 // addNote, and the save status saying whether the form has unsaved changes
 // or, when the narrative couldn't be saved as posted, why. It never
 // redirects: the draft rebuilt from what was saved would drop what was typed
-// and the blank boxes, the new one among them. htmx swaps in the form alone,
-// with the save status out of band; a plain post gets the whole draft page,
-// its preview and Publish… showing what is saved, as 422 when the narrative
+// and the blank boxes, the new one among them. htmx swaps in the Narrative
+// section alone, with the save status out of band; a plain post gets the whole
+// draft page, Publish… showing what is saved, as 422 when the narrative
 // couldn't be saved. The page's forms come back to the draft.
 func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, in domain.CurateNarrativeInput, addNote string) {
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
@@ -474,8 +474,9 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// The form offers the Report's Highlights whatever the narrative, so
-	// the preview serves it, or, when refused, the draft as saved, which is
-	// then a plain post's page's draft too (report), built once.
+	// the draft with the posted narrative serves it, or, when refused, the
+	// draft as saved, which is then a plain post's page's draft too
+	// (report), built once.
 	status, code := "", http.StatusOK
 	var report domain.Report
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)

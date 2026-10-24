@@ -340,7 +340,7 @@ templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Lo
 // reportDelegateHelp says what a Report Delegate is.
 const reportDelegateHelp = "Someone its creator or an Admin authorizes to change this Report, curate its narrative and publish it. Only its creator and Admins add and remove them."
 
-// reportDelegates is the compose pane's Delegates: the Report Definition's
+// reportDelegates is the draft's Delegates, in its narrow column: the Report Definition's
 // Report Delegates, marking a Departed one, and for its creator and Admins a
 // Remove on each and a form to add one by email, with why a refused one was
 // refused (CONTEXT.md: Report Delegate).
@@ -386,7 +386,7 @@ templ reportDelegates(m reportManagement) {
 // before Show all.
 const reportLogShown = 20
 
-// reportLog is the compose pane's Report log: every change to the Report
+// reportLog is the draft's Report log, in its narrow column: every change to the Report
 // Definition, newest first, each with who made it and when in the company's
 // timezone (loc), the newest reportLogShown up front and the rest behind Show
 // all. Anyone who can open the Report reads it; nobody can change it
@@ -954,7 +954,7 @@ templ narrativeCuration(f narrativeForm) {
 			if len(f.Choices) > 0 {
 				<span class="small muted">
 					{ "Highlights since " + showDateYear(f.Report.Baseline) + " · " }
-					@curationCount(f.included(), len(f.Choices), false)
+					@curationCount(f.included(), len(f.Choices))
 				</span>
 			}
 		</div>
@@ -1004,17 +1004,11 @@ templ narrativeCuration(f narrativeForm) {
 }
 
 // curationCount is how many (picked) of the Highlights the compose form offers
-// (offered) are picked into the narrative. A save's or a preview's answer
-// swaps it in out of band.
-templ curationCount(picked, offered int, oob bool) {
-	<span
-		data-testid="curation-count"
-		id="curation-count"
-		class="small muted"
-		if oob {
-			hx-swap-oob="true"
-		}
-	>{ fmt.Sprintf("%d of %d in", picked, offered) }</span>
+// (offered) are picked into the narrative, beside the Narrative heading.
+// Ticking a box updates it (narrativeSaveScript), and a save brings it as
+// saved.
+templ curationCount(picked, offered int) {
+	<span data-testid="curation-count" id="curation-count">{ fmt.Sprintf("%d of %d in", picked, offered) }</span>
 }
 
 // narrativeAction is where the curation form posts: the narrative, against the
