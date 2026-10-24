@@ -1573,6 +1573,7 @@ templ reportStyles() {
 		.rp-actions{display:flex;gap:8px}
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 		span.rp-crumb{color:var(--color-ink);font-weight:500}
+		.rp-draft-head span.rp-crumb{color:var(--color-ink-muted);font-weight:400}
 		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
 		.rp-tile{min-width:0;padding:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;border-left:1px solid var(--color-border)}
 		.rp-tile:first-child{border-left:none;padding-left:0}
@@ -1600,12 +1601,10 @@ templ reportStyles() {
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
 		.rp-section-text{border-top:1px solid var(--color-border)}
-		.rp-section-text:last-of-type{border-bottom:1px solid var(--color-border)}
 		.rp-section-text[open]{padding-bottom:12px}
 		.rp-section-text>summary{color:var(--color-ink);font-weight:500}
 		.rp-add{color:var(--color-primary-strong);font-weight:500}
 		.rp-curation-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
-		.rp-curation-head h3{font-size:15px;margin:0}
 		.rp-curate{display:flex;flex-direction:column;gap:4px}
 		.rp-list>li.rp-curate{padding-left:0;padding-right:0}
 		.rp-include{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
@@ -1725,6 +1724,7 @@ templ reportStyles() {
 		@container rp-draft (max-width:1100px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
 		.rp-intro{margin:0;font-size:15px;line-height:1.7;color:var(--color-ink)}
 		.rp-compose-section{display:flex;flex-direction:column}
+		.rp-compose-section:last-of-type{border-bottom:1px solid var(--color-border)}
 		.rp-save-narrative{align-self:flex-start}
 		.rp-delegate{display:flex;align-items:center;justify-content:space-between;gap:8px}
 		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}

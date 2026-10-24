@@ -816,13 +816,13 @@ func TestReportDraftHeaderKeepsOneRowStyles(t *testing.T) {
 	if decls, ok := ruleFor(styles, ".rp-draft-head"); !ok || !strings.Contains(decls, "flex-wrap:wrap") {
 		t.Errorf(".rp-draft-head{%s} doesn't wrap where one row doesn't fit", decls)
 	}
-	// The name is what gives way: its title shrinks and cuts it short.
+	// The name is what gives way: its breadcrumb shrinks and cuts it short.
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 	if decls, ok := ruleFor(css, ".ph-title"); !ok || !strings.Contains(decls, "min-width:0") {
 		t.Errorf(".ph-title{%s} doesn't shrink", decls)
 	}
-	if decls, ok := ruleFor(css, ".ph-title h1"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") {
-		t.Errorf(".ph-title h1{%s} doesn't cut a long name short", decls)
+	if decls, ok := ruleFor(between(t, page, "<style>", "</style>"), ".rp-crumb"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") || !strings.Contains(decls, "min-width:0") {
+		t.Errorf(".rp-crumb{%s} doesn't cut a long name short", decls)
 	}
 }
 
