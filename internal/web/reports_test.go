@@ -1390,12 +1390,12 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-block"); !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
 		t.Errorf("an exception isn't ruled off by a hairline: .rp-block{%s}", rule)
 	}
-	if status := pageElement(t, card, "div", "report-status-box"); !strings.Contains(status, "Hire counsel.") ||
-		!strings.Contains(status, `data-testid="path-overdue"`) {
-		t.Errorf("status box does not mark the missed Path to Green Overdue; box:\n%s", status)
+	if path := pageElement(t, card, "div", "report-path-box"); !strings.Contains(path, "Hire counsel.") ||
+		!strings.Contains(path, `data-testid="path-overdue"`) {
+		t.Errorf("Path to Green box does not mark the missed Path to Green Overdue; box:\n%s", path)
 	}
-	if lead := pageElement(t, card, "p", "report-why-it-matters"); !strings.Contains(lead, "<strong>Why it matters:</strong> Expand the market.") {
-		t.Errorf("exception does not lead with its Why it matters: %s", lead)
+	if lead := findByTestID(t, parsePage(t, card), "report-why-it-matters"); textOf(lead) != "Expand the market." || textOf(lead.Parent) != "Why it matters Expand the market." {
+		t.Errorf("exception does not lead with its Why it matters: %s", renderNode(lead.Parent))
 	}
 
 	onTrack := pageElement(t, page, "table", "on-track")
@@ -1405,6 +1405,97 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 			t.Errorf("On track row missing %q; row:\n%s", want, row)
 		}
 	}
+}
+
+// A Goal block's only tinted box is its Path to Green, and only on a Red or
+// Yellow Goal, in that Health's tint, with Ask for help beside it in the box: a
+// Green Goal's block, and an exception that is only Check-in overdue, render
+// none. Why it matters and Status read as plain text outside it, on the draft
+// and the publication alike (#475).
+func TestReportBlockTintsOnlyAPathToGreenOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.SetManager(boss, h.SignInNamed("mia@example.com", "Mia Chen"))
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	silent := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.AskForHelp(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, silent.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	for name, url := range map[string]string{
+		"draft":       reportURL,
+		"publication": reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10),
+	} {
+		page := getBody(t, client, url)
+		styles := between(t, page, "<style>", "</style>")
+		doc := parsePage(t, page)
+		for _, c := range []struct {
+			goal domain.Goal
+			tint string // the tint class of its one tinted box, or "" for none
+			bg   string
+		}{
+			{red, "rp-tint-r", "background:var(--health-r-bg)"},
+			{yellow, "rp-tint-y", "background:var(--health-y-bg)"},
+			{green, "", ""},
+			{silent, "", ""},
+		} {
+			block := reportBlockOf(t, doc, c.goal)
+			tints := findAll(block, func(n *nethtml.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "rp-tint") })
+			for _, id := range []string{"report-why-it-matters", "report-status"} {
+				for _, box := range tints {
+					if len(findAllByTestID(box, id)) > 0 {
+						t.Errorf("%s: %q's %s sits in a tinted box: %s", name, c.goal.Title, id, renderNode(box))
+					}
+				}
+			}
+			if c.tint == "" {
+				if len(tints) != 0 {
+					t.Errorf("%s: %q's block has %d tinted boxes, want none:\n%s", name, c.goal.Title, len(tints), renderNode(block))
+				}
+				continue
+			}
+			if len(tints) != 1 {
+				t.Fatalf("%s: %q's block has %d tinted boxes, want its Path to Green's:\n%s", name, c.goal.Title, len(tints), renderNode(block))
+			}
+			box := tints[0]
+			if classes := strings.Fields(attrOf(box, "class")); !slices.Contains(classes, c.tint) {
+				t.Errorf("%s: %q's Path to Green box is %q, want %s", name, c.goal.Title, classes, c.tint)
+			}
+			if decls, ok := ruleFor(styles, "."+c.tint); !ok || !strings.Contains(decls, c.bg) {
+				t.Errorf("%s: .%s{%s} doesn't declare %s", name, c.tint, decls, c.bg)
+			}
+			if len(findAllByTestID(box, "report-path-to-green")) != 1 {
+				t.Errorf("%s: %q's tinted box doesn't hold its Path to Green:\n%s", name, c.goal.Title, renderNode(box))
+			}
+		}
+		ask := findByTestID(t, doc, "report-ask-for-help")
+		if box := ask.Parent; !slices.Contains(strings.Fields(attrOf(box, "class")), "rp-tint-r") {
+			t.Errorf("%s: Launch in EU's Ask for help doesn't sit in its Path to Green's box: %s", name, renderNode(box))
+		}
+	}
+}
+
+// reportBlockOf is g's exception block on a Report page, failing the test
+// when there is none.
+func reportBlockOf(t *testing.T, doc *nethtml.Node, g domain.Goal) *nethtml.Node {
+	t.Helper()
+	for _, block := range findAllByTestID(doc, "report-exception") {
+		if attrOf(block, "id") == fmt.Sprintf("goal-%d", g.ID) {
+			return block
+		}
+	}
+	t.Fatalf("page has no exception block for %q", g.Title)
+	return nil
 }
 
 // A publication's narrative is a plain section, not a card, each section under
@@ -4480,7 +4571,7 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 		if got := elementTexts(referral, "span", "report-rollup-count"); !slices.Equal(got, []string{"2 of 5 Red · 1 Yellow"}) {
 			t.Errorf("%s: Referral program count %q, want 2 of 5 Red · 1 Yellow", page.name, got)
 		}
-		behind := pageElement(t, referral, "span", "report-behind-it")
+		behind := pageElement(t, referral, "dd", "report-behind-it")
 		// A linked Goal reads [Health] Title: on screen its chip, printed its
 		// shape and word.
 		alpha := linkTo(parsePage(t, behind), fmt.Sprintf("#goal-%d", s.Alpha.ID))
@@ -4538,7 +4629,7 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 	referral := linkedBlockOf(t, page, s.Referral)
-	if got := elementTexts(referral, "p", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
+	if got := elementTexts(referral, "dd", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
 		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 overdue", got)
 	}
 	for _, testID := range []string{"report-behind-it", "report-contributes-to"} {
@@ -4549,9 +4640,9 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 }
 
 // A block whose only child has no Health yet has no Rolled-up Health to count,
-// so its Supported by line opens the paragraph rather than breaking a line
-// under nothing (#246).
-func TestReportSupportedByAloneOpensItsParagraph(t *testing.T) {
+// so it shows no Rolled-up Health row, only its Supported by, under its label
+// (#246, #475).
+func TestReportSupportedByStandsAloneWithoutARolledUpHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -4563,10 +4654,13 @@ func TestReportSupportedByAloneOpensItsParagraph(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	block := linkedBlockOf(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), parent)
-	rollup := pageElement(t, block, "p", "report-rollup")
-	if want := `<p data-testid="report-rollup"><span data-testid="report-behind-it"><strong>Supported by:</strong>`; !strings.HasPrefix(rollup, want) {
-		t.Errorf("Rolled-up Health paragraph does not open with Supported by; paragraph:\n%s", rollup)
+	block := reportBlockOf(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), parent)
+	if hasTestID(block, "report-rollup") {
+		t.Errorf("Growth shows a Rolled-up Health with none to count:\n%s", renderNode(block))
+	}
+	behind := findByTestID(t, block, "report-behind-it")
+	if row := textOf(behind.Parent); !strings.HasPrefix(row, "Supported by ") || !strings.Contains(row, "Referral program") {
+		t.Errorf("Growth's Supported by row reads %q, want its label over Referral program", row)
 	}
 }
 
@@ -4666,12 +4760,12 @@ func assertReportBlockOverdue(t *testing.T, page string, want bool) {
 	if overdue := strings.Contains(beta, `data-testid="milestone-mark"`) && strings.Contains(beta, ">Overdue</span>"); overdue != want {
 		t.Errorf("Beta marked Overdue %v, want %v:\n%s", overdue, want, beta)
 	}
-	status := pageElement(t, block, "div", "report-status-box")
-	if overdue := slices.Contains(strings.Fields(attr(openTag(status), "class")), "overdue"); overdue != want {
-		t.Errorf("status box has class overdue %v, want %v:\n%s", overdue, want, openTag(status))
+	path := pageElement(t, block, "div", "report-path-box")
+	if overdue := slices.Contains(strings.Fields(attr(openTag(path), "class")), "overdue"); overdue != want {
+		t.Errorf("Path to Green box has class overdue %v, want %v:\n%s", overdue, want, openTag(path))
 	}
-	if badge := strings.Contains(status, `data-testid="path-overdue"`); badge != want {
-		t.Errorf("status box shows the Overdue badge %v, want %v:\n%s", badge, want, status)
+	if badge := strings.Contains(path, `data-testid="path-overdue"`); badge != want {
+		t.Errorf("Path to Green box shows the Overdue badge %v, want %v:\n%s", badge, want, path)
 	}
 }
 

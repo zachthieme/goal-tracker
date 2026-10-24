@@ -974,3 +974,68 @@ func TestReportDraftHistoryMarkersStyles(t *testing.T) {
 		}
 	}
 }
+
+// A Goal block's labels — Why it matters, Status, Milestones, Metrics,
+// Rolled-up Health and Supported by — sit in a 120px column beside what they
+// label, and above it at a phone's width or in a narrow block. Its one tinted
+// box is a Red or Yellow Goal's Path to Green, in that Health's tint with its
+// label in the Health's ink: no other rule tints it (#475).
+func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	block := findByTestID(t, parsePage(t, page), "report-exception")
+	for _, testID := range []string{"report-why-it-matters", "report-status", "report-milestones"} {
+		n := findByTestID(t, block, testID)
+		for n.Data != "dd" {
+			n = n.Parent
+		}
+		row := n.Parent
+		dt := row.FirstChild
+		for dt != nil && dt.Type != html.ElementNode {
+			dt = dt.NextSibling
+		}
+		if dl := row.Parent; dl.Data != "dl" || !slices.Contains(strings.Fields(attrOf(dl, "class")), "rp-facts") ||
+			dt == nil || dt.Data != "dt" || !slices.Contains(strings.Fields(attrOf(dt, "class")), "label") {
+			t.Errorf("%s isn't a labelled row of the block's .rp-facts: %s", testID, renderNode(row.Parent))
+		}
+	}
+
+	styles := between(t, page, "<style>", "</style>")
+	for sel, wants := range map[string][]string{
+		".rp-facts>div":             {"display:grid", "grid-template-columns:120px minmax(0,1fr)"},
+		".rp-tint-r":                {"background:var(--health-r-bg)"},
+		".rp-tint-y":                {"background:var(--health-y-bg)"},
+		".rp-tint-r .rp-tint-label": {"color:var(--health-r-ink)"},
+		".rp-tint-y .rp-tint-label": {"color:var(--health-y-ink)"},
+	} {
+		decls, ok := ruleFor(styles, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
+	}
+	var tinting []string
+	for _, rule := range strings.Split(styles, "}") {
+		sel, decls, ok := strings.Cut(rule, "{")
+		if ok && strings.Contains(sel, "rp-tint") && strings.Contains(decls, "background") {
+			tinting = append(tinting, strings.TrimSpace(sel))
+		}
+	}
+	if want := []string{".rp-tint-r", ".rp-tint-y"}; !slices.Equal(tinting, want) {
+		t.Errorf("the rules tinting a block's box are %q, want Red's and Yellow's alone, %q", tinting, want)
+	}
+	for _, query := range []string{"@media (max-width:600px)", "@container rp-block (max-width:28rem)"} {
+		if decls, ok := ruleFor(mediaBlock(t, styles, query), ".rp-facts>div"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
+			t.Errorf("%s .rp-facts>div{%s} doesn't put the label above what it labels", query, decls)
+		}
+	}
+}
