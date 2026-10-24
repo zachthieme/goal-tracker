@@ -998,3 +998,21 @@ func zipBombXLSX(t *testing.T, sheetSize int) []byte {
 	}
 	return buf.Bytes()
 }
+
+// An old-format .xls or a password-protected workbook — both stored in the old
+// Office (OLE) container — is refused before it is read, with what to do
+// instead, whatever the file is named (#468).
+func TestOldOfficeFileIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	ole := append([]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}, make([]byte, 504)...)
+
+	for _, name := range []string{"goals.xlsx", "goals.xls"} {
+		_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, name, ole)
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "save it as .xlsx") {
+			t.Errorf("%s: DryRun error = %v, want it refused, saying to save it as .xlsx", name, err)
+		}
+	}
+}
