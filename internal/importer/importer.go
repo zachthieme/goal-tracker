@@ -907,9 +907,26 @@ func isXLSX(filename string, data []byte) bool {
 	return len(data) >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] == 0x03 && data[3] == 0x04
 }
 
+// The most an XLSX workbook may unpack to, in all and per worksheet. The upload
+// is at most 5 MiB compressed and a real Goal sheet unpacks to far less than
+// either, but excelize's own default allows about 16 GB, so a zip bomb small
+// enough to upload could otherwise fill the server's memory or temp disk (#468).
+const (
+	xlsxUnzipSizeLimit    = 64 << 20
+	xlsxUnzipXMLSizeLimit = 16 << 20
+)
+
 // parseXLSX reads the first worksheet of an XLSX workbook into rows of cells.
 func parseXLSX(data []byte) ([]sheetRow, error) {
-	f, err := excelize.OpenReader(bytes.NewReader(data))
+	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{
+		UnzipSizeLimit:    xlsxUnzipSizeLimit,
+		UnzipXMLSizeLimit: xlsxUnzipXMLSizeLimit,
+	})
+	// excelize checks the sizes the archive declares before unpacking any of it,
+	// and has no sentinel for the error, so it is known by its text.
+	if err != nil && strings.HasPrefix(err.Error(), "unzip size exceeds") {
+		return nil, fmt.Errorf("%w: the workbook is too large to import", domain.ErrValidation)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
 	}
