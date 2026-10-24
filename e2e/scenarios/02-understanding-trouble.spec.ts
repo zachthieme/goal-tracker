@@ -106,8 +106,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(block.getByRole("heading", { level: 3 })).toHaveText(goal.title);
       await expect(block.getByTestId("report-owner")).toContainText(goal.owner);
       await expect(block).toContainText(`· ${goal.lifecycle}`);
-      await expect(block.getByTestId("report-why-it-matters")).toHaveText(`Why it matters: ${goal.why_it_matters}`);
-      await expect(block.getByTestId("report-status")).toHaveText(`Status: ${goal.status}`);
+      await expect(block.getByTestId("report-why-it-matters")).toHaveText(goal.why_it_matters);
+      await expect(block.getByTestId("report-status")).toHaveText(goal.status);
       if (goal.delivery_date)
         await expect(block.getByTestId("report-due")).toContainText(reportDate(goal.delivery_date));
       await expect(block.getByTestId("report-milestone")).toHaveCount(goal.milestones);

@@ -1120,23 +1120,24 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // changed since the baseline, a line saying what changed ("Changed: Turned
 // Red · 1 Milestone slipped"), and under that the Goals in the Report it
 // contributes to ("Contributes to: [Red] Growth ↓"); Why it
-// matters, latest status, and Path to Green in a tinted box, its back-to-Green
-// date followed by the date it last slipped from in the Run off Green struck
-// through and the count of slips once more than one, as drafted (see
-// reportBackToGreenPrior), and marked Overdue when its target date passed
-// before asOf, and after it an Ask for help open when the Report was drafted,
-// naming whom it asks or saying no one is above the Owner; Milestones, each
-// marked as of asOf, Metrics against target, and the Rolled-up Health with how
-// many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1 Yellow ·
-// 1 overdue"), the Goals behind it, and the Owner's explanation. It reads asOf
+// matters and latest status as plain labelled rows; then, on a Red or Yellow
+// Goal, the block's one tinted box, in its Health's tint (pathTintClass): its
+// Path to Green, its back-to-Green date followed by the date it last slipped
+// from in the Run off Green struck through and the count of slips once more
+// than one, as drafted (see reportBackToGreenPrior), and marked Overdue when
+// its target date passed before asOf, and after it an Ask for help open when
+// the Report was drafted (reportAskForHelp); then labelled rows of Milestones,
+// each marked as of asOf, Metrics against target, and the Rolled-up Health with
+// how many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1
+// Yellow · 1 overdue"), the Goals behind it, and the Owner's explanation. Each
+// row's label sits in a column beside it (DESIGN.md § A publication). It reads asOf
 // in the zone the block's Goal was judged in when drafted (see
 // domain.ReportBlock.Timezone). Each Goal it names links to its place in the
 // Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
 // A Yellow or Red Health reads with its Run off Green as drafted, and one that
 // changed since the baseline with what it was after that ("Yellow · 2 wks · was
-// Green"). The Fields the definition chose sit under the head, beside the Goal
-// rather than in the status box. On a publication it ends with the Goal's
-// discussion.
+// Green"). The Fields the definition chose sit under the head, beside the Goal.
+// On a publication it ends with the Goal's discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<div class="rp-card-head">
@@ -1191,103 +1192,152 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			</p>
 		}
 		@reportFields(b.Fields, d.dates())
-		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
-			<p data-testid="report-why-it-matters"><strong>Why it matters:</strong> { b.Goal.WhyItMatters }</p>
+		<dl class="rp-facts">
+			<div>
+				<dt class="label">Why it matters</dt>
+				<dd data-testid="report-why-it-matters">{ b.Goal.WhyItMatters }</dd>
+			</div>
 			if b.Status != "" {
-				<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
+				<div>
+					<dt class="label">Status</dt>
+					<dd data-testid="report-status">{ b.Status }</dd>
+				</div>
 			}
-			if b.PathToGreen != "" {
-				<p data-testid="report-path-to-green">
-					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PathTargetDate, b.PriorPathTargetDates))
-					if pathOverdueAt(b, asOf) {
-						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
-					}
-				</p>
-			}
-			if b.AsksForHelp {
-				<p data-testid="report-ask-for-help">
-					<strong>Asks for help</strong>
-					if b.AskAddressee != nil {
-						{ " of " }@person(*b.AskAddressee)
-					} else {
-						{ " · no one above the Owner" }
-					}
-				</p>
-			}
-		</div>
-		if len(b.Milestones) > 0 {
-			<div>
-				<p class="label">Milestones</p>
-				<ul data-testid="report-milestones">
-					for _, m := range b.Milestones {
-						<li data-testid="report-milestone">
-							if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(b.Location())); mark != domain.MilestoneMarkNone {
-								@milestoneMarkBadge(mark)
-								{ " " }
-							}
-							<span class="rp-dates">
-								@milestoneDates(m.Milestone.TargetDate, m.PriorDates, d.dates())
-							</span>
-							{ " " }
-							if m.Milestone.Status == domain.MilestoneRemoved {
-								<del>{ m.Milestone.Name }</del>
-							} else {
-								{ m.Milestone.Name }
-							}
-							if m.Milestone.RemovedReason != "" {
-								{ " " }
-								<span>— { m.Milestone.RemovedReason }</span>
-							}
-						</li>
-					}
-				</ul>
-			</div>
-		}
-		if len(b.Metrics) > 0 {
-			<div>
-				<p class="label">Metrics</p>
-				<ul data-testid="report-metrics">
-					for _, m := range b.Metrics {
-						<li data-testid="report-metric">
-							{ m.Metric.Name }:
-							if m.Read {
-								{ fmtNum(m.Current) }
-							} else {
-								no reading yet
-							}
-							{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
-							{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
-						</li>
-					}
-				</ul>
-			</div>
-		}
-		if b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0 || len(b.Behind) > 0 {
-			<p data-testid="report-rollup">
-				if b.RolledUp.Present {
-					<strong>Rolled-up Health:</strong>
-					@reportHealthBadge("rollup-health", b.RolledUp.Health, d)
+		</dl>
+		if tint := pathTintClass(b); tint != "" {
+			<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", pathOverdueAt(b, asOf)) }>
+				if b.PathToGreen != "" {
+					<p data-testid="report-path-to-green">
+						<strong class="rp-tint-label">Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PathTargetDate, b.PriorPathTargetDates))
+						if pathOverdueAt(b, asOf) {
+							{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
+						}
+					</p>
 				}
-				if count := b.RolledUp.CountLine(); count != "" {
-					· <span data-testid="report-rollup-count">{ count }</span>
+				@reportAskForHelp(b)
+			</div>
+		} else {
+			@reportAskForHelp(b)
+		}
+		if len(b.Milestones) > 0 || len(b.Metrics) > 0 || b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0 || len(b.Behind) > 0 {
+			<dl class="rp-facts">
+				if len(b.Milestones) > 0 {
+					<div>
+						<dt class="label">Milestones</dt>
+						<dd>
+							<ul data-testid="report-milestones">
+								for _, m := range b.Milestones {
+									<li data-testid="report-milestone">
+										if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(b.Location())); mark != domain.MilestoneMarkNone {
+											@milestoneMarkBadge(mark)
+											{ " " }
+										}
+										<span class="rp-dates">
+											@milestoneDates(m.Milestone.TargetDate, m.PriorDates, d.dates())
+										</span>
+										{ " " }
+										if m.Milestone.Status == domain.MilestoneRemoved {
+											<del>{ m.Milestone.Name }</del>
+										} else {
+											{ m.Milestone.Name }
+										}
+										if m.Milestone.RemovedReason != "" {
+											{ " " }
+											<span>— { m.Milestone.RemovedReason }</span>
+										}
+									</li>
+								}
+							</ul>
+						</dd>
+					</div>
+				}
+				if len(b.Metrics) > 0 {
+					<div>
+						<dt class="label">Metrics</dt>
+						<dd>
+							<ul data-testid="report-metrics">
+								for _, m := range b.Metrics {
+									<li data-testid="report-metric">
+										{ m.Metric.Name }:
+										if m.Read {
+											{ fmtNum(m.Current) }
+										} else {
+											no reading yet
+										}
+										{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
+										{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
+									</li>
+								}
+							</ul>
+						</dd>
+					</div>
+				}
+				if count := b.RolledUp.CountLine(); b.RolledUp.Present || count != "" {
+					<div>
+						<dt class="label">Rolled-up Health</dt>
+						<dd data-testid="report-rollup">
+							if b.RolledUp.Present {
+								@reportHealthBadge("rollup-health", b.RolledUp.Health, d)
+								if count != "" {
+									{ "· " }
+								}
+							}
+							if count != "" {
+								<span data-testid="report-rollup-count">{ count }</span>
+							}
+						</dd>
+					</div>
 				}
 				if len(b.Behind) > 0 {
-					<span data-testid="report-behind-it">
-						if b.RolledUp.Present || b.RolledUp.CountLine() != "" {
-							<br/>
-						}
-						<strong>Supported by:</strong>{ " " }
-						@linkedGoals(b.Behind, d)
-					</span>
+					<div>
+						<dt class="label">Supported by</dt>
+						<dd data-testid="report-behind-it">
+							@linkedGoals(b.Behind, d)
+						</dd>
+					</div>
 				}
 				if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0) {
-					<br/>
-					<strong>Why the Health differs:</strong> { b.Explanation }
+					<div>
+						<dt class="label">Why the Health differs</dt>
+						<dd data-testid="report-health-explanation">{ b.Explanation }</dd>
+					</div>
 				}
-			</p>
+			</dl>
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// reportAskForHelp is a block's Ask for help, open when the Report was
+// drafted, naming whom it asks or saying no one is above the Owner; it says
+// nothing when the Goal doesn't ask.
+templ reportAskForHelp(b domain.ReportBlock) {
+	if b.AsksForHelp {
+		<p data-testid="report-ask-for-help">
+			<strong>Asks for help</strong>
+			if b.AskAddressee != nil {
+				{ " of " }@person(*b.AskAddressee)
+			} else {
+				{ " · no one above the Owner" }
+			}
+		</p>
+	}
+}
+
+// pathTintClass is the tint of a block's Path to Green box: Red's or Yellow's
+// on a Red or Yellow Goal with a Path to Green or an Ask for help to show, and
+// "" otherwise, when the block has no tinted box (DESIGN.md § A publication).
+func pathTintClass(b domain.ReportBlock) string {
+	if b.PathToGreen == "" && !b.AsksForHelp {
+		return ""
+	}
+	switch b.Health {
+	case domain.HealthRed:
+		return "rp-tint-r"
+	case domain.HealthYellow:
+		return "rp-tint-y"
+	}
+	return ""
 }
 
 // reportBackToGreenPrior follows a block's back-to-Green date, current, with
@@ -1540,8 +1590,9 @@ func hasNotes(notes []string) bool {
 }
 
 // reportStyles are the Report pages' own rules on top of app.css: the reading
-// column a publication is centred in, the Health tiles, the exception cards and
-// their tinted status box, the discussion footer, the scrolling root-Goal
+// column a publication is centred in, the Report's heading scale (DESIGN.md §
+// Type scale), the Health tiles, the exception blocks with their label column
+// and the Path to Green's Health tint, the discussion footer, the scrolling root-Goal
 // picker, and the draft's header and its two columns, the Report beside its
 // Delegates and Report log, which stack into one under 1100px of the page's
 // content width and shrink to a phone's width rather than to the On track
@@ -1553,7 +1604,10 @@ templ reportStyles() {
 	<style>
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;flex-direction:column;gap:4px}
-		.rp-head h1{margin:0 0 4px}
+		.rp-head h1{margin:0 0 4px;font-size:26px;font-weight:700;line-height:1.2}
+		.rp-main h2,.rp-read h2{font-size:18px;font-weight:650;line-height:1.3}
+		.rp-main section>h2,.rp-read section>h2,.rp-curation-head{margin-top:20px;padding-top:20px;border-top:1px solid var(--color-border)}
+		.rp-exceptions>h2>.num{font-size:14px;font-weight:500}
 		.rp-actions{display:flex;gap:8px}
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 		span.rp-crumb{color:var(--color-ink);font-weight:500}
@@ -1580,14 +1634,14 @@ templ reportStyles() {
 		.rp-pop{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg)}
 		.rp-pop.rp-list>li{padding:12px 16px}
 		.rp-narrative{font-size:15px;line-height:1.7;color:var(--color-ink)}
-		.rp-narrative h3.label{margin-top:16px;font-size:13px;font-weight:600;line-height:1.4;color:var(--color-ink)}
+		.rp-narrative h3.label{margin-top:16px;font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}
 		.rp-narrative .label:first-child{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
 		.rp-section-text{border-top:1px solid var(--color-border)}
 		.rp-section-text[open]{padding-bottom:12px}
-		.rp-section-text>summary{color:var(--color-ink);font-weight:500}
-		.rp-add{color:var(--color-primary-strong);font-weight:500}
+		.rp-section-text>summary{color:var(--color-ink);font-size:15px;font-weight:600}
+		.rp-add{color:var(--color-primary-strong);font-size:13px;font-weight:500}
 		.rp-curation-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 		.rp-curate{display:flex;flex-direction:column;gap:4px}
 		.rp-list>li.rp-curate{padding-left:0;padding-right:0}
@@ -1605,7 +1659,7 @@ templ reportStyles() {
 			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
 		}
 		.rp-block{container:rp-block/inline-size;display:flex;flex-direction:column;gap:12px;padding:20px 0;border-top:1px solid var(--color-border)}
-		.rp-block:last-child{border-bottom:1px solid var(--color-border)}
+		.rp-exceptions>h2+.rp-block{border-top:none;padding-top:8px}
 		.page:has(>.rp-index){max-width:none;padding:24px 0 64px}
 		.rp-index{--rp-gutter:28px;display:flex;flex-direction:column;gap:32px}
 		.rp-index-lead,.rp-index h2{padding:0 var(--rp-gutter)}
@@ -1620,16 +1674,24 @@ templ reportStyles() {
 		.rp-chase-list>li>a{font-weight:500;color:var(--color-ink)}
 		.rp-card-head{display:flex;align-items:flex-start;gap:8px 12px}
 		.rp-card-title{flex:1;min-width:0}
-		.rp-card-head h3{font-size:16px;line-height:1.4}
+		.rp-card-head h3{font-size:16px;font-weight:600;line-height:1.4}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:8px;align-items:center;min-height:22px;white-space:nowrap}
+		.rp-facts{display:flex;flex-direction:column;gap:8px;margin:0}
+		.rp-facts>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 16px;align-items:baseline}
+		.rp-facts dd{margin:0;min-width:0}
+		.rp-tint{border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+		.rp-tint>p{margin:0}
+		.rp-tint-r{background:var(--health-r-bg)}
+		.rp-tint-y{background:var(--health-y-bg)}
+		.rp-tint-r .rp-tint-label{color:var(--health-r-ink)}
+		.rp-tint-y .rp-tint-label{color:var(--health-y-ink)}
 		/* A block narrower than its head's three parts, as in a phone's
 		 * column, drops its badges under Health and the title
-		 * rather than squeezing the title until its words break, as the
-		 * 600px rule does for a phone. */
-		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}}
-		.rp-tint{background:var(--color-sidebar);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
-		.rp-tint.overdue{background:var(--health-r-bg)}
+		 * rather than squeezing the title until its words break, and puts
+		 * each label above what it labels, as the 600px rule does for a
+		 * phone. */
+		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-facts>div{grid-template-columns:minmax(0,1fr);gap:4px}}
 		.rp-block ul{margin:0;padding-left:20px}
 		.rp-scroll{overflow-x:auto}
 		.rp-scroll th{background:none;padding:8px 12px}
@@ -1719,7 +1781,7 @@ templ reportStyles() {
 		.rp-mark{position:absolute;left:-25px;top:5px;width:10px;height:10px;box-sizing:border-box;border-radius:50%;background:var(--color-ink-muted);box-shadow:0 0 0 2px var(--color-canvas)}
 		.rp-mark-draft{background:var(--color-canvas);border:1.5px solid var(--color-ink-muted)}
 		.rp-mark-published{background:var(--color-primary)}
-		@media (max-width:600px){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
+		@media (max-width:600px){.rp-head h1{font-size:24px}.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-facts>div{grid-template-columns:minmax(0,1fr);gap:4px}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
 		@media (min-width:1280px){.rp-draft-head{flex-wrap:nowrap}.rp-draft-head .rp-save{flex-basis:9em;min-width:9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rp-draft-head .rp-chip,.rp-draft-head .rp-head-actions{flex-shrink:0}}
 	</style>

@@ -974,3 +974,132 @@ func TestReportDraftHistoryMarkersStyles(t *testing.T) {
 		}
 	}
 }
+
+// A Goal block's labels — Why it matters, Status, Milestones, Metrics,
+// Rolled-up Health and Supported by — sit in a 120px column beside what they
+// label, and above it at a phone's width or in a narrow block. Its one tinted
+// box is a Red or Yellow Goal's Path to Green, in that Health's tint with its
+// label in the Health's ink: no other rule tints it (#475).
+func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	block := findByTestID(t, parsePage(t, page), "report-exception")
+	for _, testID := range []string{"report-why-it-matters", "report-status", "report-milestones"} {
+		n := findByTestID(t, block, testID)
+		for n.Data != "dd" {
+			n = n.Parent
+		}
+		row := n.Parent
+		dt := row.FirstChild
+		for dt != nil && dt.Type != html.ElementNode {
+			dt = dt.NextSibling
+		}
+		if dl := row.Parent; dl.Data != "dl" || !slices.Contains(strings.Fields(attrOf(dl, "class")), "rp-facts") ||
+			dt == nil || dt.Data != "dt" || !slices.Contains(strings.Fields(attrOf(dt, "class")), "label") {
+			t.Errorf("%s isn't a labelled row of the block's .rp-facts: %s", testID, renderNode(row.Parent))
+		}
+	}
+
+	styles := between(t, page, "<style>", "</style>")
+	for sel, wants := range map[string][]string{
+		".rp-facts>div":             {"display:grid", "grid-template-columns:120px minmax(0,1fr)"},
+		".rp-tint-r":                {"background:var(--health-r-bg)"},
+		".rp-tint-y":                {"background:var(--health-y-bg)"},
+		".rp-tint-r .rp-tint-label": {"color:var(--health-r-ink)"},
+		".rp-tint-y .rp-tint-label": {"color:var(--health-y-ink)"},
+	} {
+		decls, ok := ruleFor(styles, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
+	}
+	var tinting []string
+	for _, rule := range strings.Split(styles, "}") {
+		sel, decls, ok := strings.Cut(rule, "{")
+		if ok && strings.Contains(sel, "rp-tint") && strings.Contains(decls, "background") {
+			tinting = append(tinting, strings.TrimSpace(sel))
+		}
+	}
+	if want := []string{".rp-tint-r", ".rp-tint-y"}; !slices.Equal(tinting, want) {
+		t.Errorf("the rules tinting a block's box are %q, want Red's and Yellow's alone, %q", tinting, want)
+	}
+	for _, query := range []string{"@media (max-width:600px)", "@container rp-block (max-width:28rem)"} {
+		if decls, ok := ruleFor(mediaBlock(t, styles, query), ".rp-facts>div"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
+			t.Errorf("%s .rp-facts>div{%s} doesn't put the label above what it labels", query, decls)
+		}
+	}
+}
+
+// A Report reads on one heading scale, on the draft and the publication
+// alike: its name leads at 26px (24px on a phone), its section headings sit
+// at 18px under a full-width rule, well apart from what comes before, its Goal
+// titles at 16px, and its block labels recede, 12px and muted. The
+// Exceptions count stays beside its heading, smaller and muted, and the
+// narrative's Insights, Accomplishments and Misses read at 15px (#475).
+func TestReportHeadingScaleStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} isn't a 12px muted label", decls)
+	}
+	for name, c := range map[string]struct{ url, column string }{
+		"draft":       {fmt.Sprintf("%s/reports/%d", ts.URL, def.ID), "rp-main"},
+		"publication": {fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID), "rp-read"},
+	} {
+		page := getBody(t, client, c.url)
+		doc := parsePage(t, page)
+		column := findAll(doc, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), c.column) })
+		if len(column) != 1 {
+			t.Fatalf("%s has %d .%s columns, want 1", name, len(column), c.column)
+		}
+		if heading := findByTestID(t, findByTestID(t, column[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
+			t.Errorf("%s: the Exceptions heading isn't its section's own h2: %s", name, renderNode(heading))
+		}
+		if title := findByTestID(t, column[0], "report-name"); title.Data != "h1" || !slices.Contains(strings.Fields(attrOf(title.Parent, "class")), "rp-head") {
+			t.Errorf("%s: the Report's name isn't the .rp-head's h1: %s", name, renderNode(title.Parent))
+		}
+
+		styles := between(t, page, "<style>", "</style>")
+		for sel, wants := range map[string][]string{
+			".rp-head h1":                  {"font-size:26px", "font-weight:700"},
+			"." + c.column + " h2":         {"font-size:18px", "font-weight:650"},
+			"." + c.column + " section>h2": {"border-top:1px solid var(--color-border)", "margin-top:20px"},
+			".rp-curation-head":            {"border-top:1px solid var(--color-border)", "margin-top:20px"},
+			".rp-exceptions>h2>.num":       {"font-size:14px"},
+			".rp-exceptions>h2+.rp-block":  {"border-top:none"},
+			".rp-card-head h3":             {"font-size:16px", "font-weight:600"},
+			".rp-narrative h3.label":       {"font-size:15px", "font-weight:600"},
+			".rp-section-text>summary":     {"font-size:15px", "font-weight:600"},
+		} {
+			decls, ok := ruleFor(styles, sel)
+			for _, want := range wants {
+				if !ok || !strings.Contains(decls, want) {
+					t.Errorf("%s: %s{%s} doesn't declare %s", name, sel, decls, want)
+				}
+			}
+		}
+		if decls, ok := ruleFor(mediaBlock(t, styles, "@media (max-width:600px)"), ".rp-head h1"); !ok || !strings.Contains(decls, "font-size:24px") {
+			t.Errorf("%s: at a phone's width .rp-head h1{%s} isn't 24px", name, decls)
+		}
+	}
+}

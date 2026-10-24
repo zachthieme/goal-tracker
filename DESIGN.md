@@ -52,7 +52,8 @@ surface, and type, space and hairlines carry the hierarchy.
   `h1` (§ Page header). A page about one thing (Home's week, a Goal, a
   publication, the Report builder) also opens its content with a 28px title.
   Sections take real `h2` headings at 13/600, and `.label` is a small
-  sentence-case label, never caps.
+  sentence-case label, never caps. A Report keeps its own four heading levels
+  (§ Type scale).
 - **Health is the colour.** Red, Yellow and Green, as their shape and pill,
   are the page's strongest colour. Teal is the accent for what a person acts
   on: primary buttons, links, focus, the logo mark and the current choice in
@@ -248,6 +249,20 @@ serif, and no other face is loaded.
 | Meta (`.small`), usually muted (`.muted`, `--color-ink-muted`) | 13 / 1.5 | 400 | — |
 | Small label (`.label`, `th`), in `--color-ink-muted` | 12, sentence case, never uppercase | 500 | — |
 | Numbers (`.num`) | inherit, `font-variant-numeric: tabular-nums` | 500 | — |
+
+A Report, on its draft and its publication, reads on its own four levels
+(`reportStyles`), so its name leads and its labels recede:
+
+| Level | What | Size / line-height | Weight |
+| --- | --- | --- | --- |
+| 1 | The Report's name (`.rp-head h1`) | 26 / 1.2, 24 at 600px and below | 700 |
+| 2 | Its section headings (`.rp-main h2`, `.rp-read h2`): Open Action Items, Narrative, Exceptions, On track, Goals that entered or left | 18 / 1.3, under a full-width 1px `--color-border` rule, about 44px below what comes before | 650 |
+| 3 | A Goal block's title (`.rp-card-head h3`) | 16 / 1.4 | 600 |
+| 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by | 12, `--color-ink-muted` | 500 |
+
+The Exceptions count sits beside its heading in 14px muted tabular figures,
+and the narrative's Insights, Accomplishments and Misses are 15px, 600. The
+print page keeps its own serif scale (§ Print variant).
 
 Dates, counts and Metric values line up in tabular figures, not a monospace
 face. The app serves Inter itself, from `internal/web/static/fonts/`, as a
@@ -1740,7 +1755,8 @@ and so on).
     widest content, so at 390px nothing scrolls sideways.
   - **Main column (`report-draft`):** the Report as readers get it, top to
     bottom:
-    - **Name:** the Report's name as the page's `h1`, over a muted meta line
+    - **Name:** the Report's name as the page's `h1` (§ Type scale, the
+      Report's level 1), over a muted meta line
       (`report-meta`): what the definition selects in plain words, the Goal
       count, and what it reads changes against ("Team: Growth · 1 left out ·
       6 Goals · changes since Sep 4, 2026", or "changes since the previous
@@ -1756,12 +1772,12 @@ and so on).
       narrative is the published one, left out when empty, for anyone who
       may not manage the Report; for its creator, a Report Delegate or an
       Admin it is the composer, **Narrative**.
-  - **Narrative (`narrativeCuration`, `.rp-curation`):** a "Narrative" `h2`,
-    with a small muted "Highlights since <baseline> · 2 of 5 in" beside it
+  - **Narrative (`narrativeCuration`, `.rp-curation`):** a "Narrative" `h2`
+    under the section heading's rule, with a small muted "Highlights since <baseline> · 2 of 5 in" beside it
     while there are Highlights to pick, or else "No Highlights to pick since
     <date>." Then each section in turn, Insights, Accomplishments and Misses:
     - **Its notes:** a `<details>` between hairlines whose 44px summary is
-      the section's name in 500 `--color-ink`, with "+ Add note" in
+      the section's name in 15px, 600 `--color-ink`, with "+ Add note" in
       `--color-primary-strong` at its right while the section has no note.
       Inside, each note is its own textarea, then a quiet **Add another**.
     - **Its Highlights:** those whose picker selects the section (the one the
@@ -1829,14 +1845,16 @@ and so on).
     2026", the Report Definition linking to the draft and the date the current
     page in 500 `--color-ink`, with the Download menu at the right.
   - **Reading column (`.rp-read`):** up to 880px, centred, its parts 24px
-    apart: the Report's name (an `h1`, 28px), two muted lines ("Published Nov
+    apart: the Report's name (an `h1`, 26px, the Report's level 1 in § Type
+    scale), two muted lines ("Published Nov
     7, 2026, 15:04 by <Name> · changes since the previous publication, …" and
     "Selection: …"), the Report's content, then Action Items raised here.
   - **The Report's content (`reportContent`), which the draft's main column
     reads too:**
     - **Health tiles (`.rp-tiles`):** four tiles between hairlines, split by
       1px rules: Red, Yellow and Green as Health badges, and Check-in overdue
-      as its chip, each count at the tile's right in 20px `--color-ink`
+      as its chip, in one row between a rule above and below, not a grid of
+      boxes, each count at the tile's right in 20px `--color-ink`
       tabular figures. They form a 2 × 2 grid at 900px and below, and in any
       column under 44rem (the tiles' holder is a container, `rp-tiles`): four
       tiles need about 680px before the Check-in overdue chip overruns its
@@ -1851,10 +1869,18 @@ and so on).
     - **Introduction and narrative (`.rp-intro`, `.rp-narrative`):** the
       introduction, then the narrative, both in 15/1.7 `--color-ink`, a touch
       larger than the body text: Insights,
-      Accomplishments and Misses, each a 13px, 600 heading over the author's
+      Accomplishments and Misses, each a 15px, 600 heading over the author's
       notes and the picked Highlights as a bulleted list, each credited in
       muted 13px " — <Owner>, <Goal>". A section with neither is left out.
-    - **Exceptions N:** each an entry (`.rp-block`) between hairlines. Its
+    - **Section headings:** each section of the Report (Open Action Items,
+      Exceptions, On track, Goals that entered or left, and the draft's
+      Narrative) opens with an 18px, 650 `h2` under a full-width 1px
+      `--color-border` rule, 20px above it and 20px of margin over it, so
+      with the column's 24px gap it stands about 44px below what comes before.
+    - **Exceptions N:** the count beside the heading, 14px muted. Each
+      exception is an entry (`.rp-block`), separated from the next by 20px
+      of space and one 1px hairline; the first, right under the heading, has
+      no rule of its own. Its
       head reads Health first: its Health badge with "· 2 wks" and "· was
       Green" small and muted straight after it (`.rp-health`), then its title
       (16px, linking to the Goal) over a small muted "Owner · Lifecycle · due
@@ -1865,13 +1891,22 @@ and so on).
       their line and the badges drop
       under them; nothing is reordered.
       Under it sit "**Changed:** …", "**Contributes to:** …" and the Report
-      Definition's Fields, then the status box (`.rp-tint`:
-      `--color-sidebar`, `--radius-md`, 12px × 16px padding) with **Why it
-      matters**, **Status**, **Path to Green** with its back-to-Green date, and
-      any **Asks for help**. A Path to Green past its date marks the line with
-      a Red **Overdue** badge and tints the box `--health-r-bg`. Milestones and
-      Metrics, each a `.label` over a list, and the Rolled-up Health line
-      follow.
+      Definition's Fields. Then its labelled rows (`.rp-facts`, a `dl`): each
+      label a `.label` (12px, 500, `--color-ink-muted`) in a 120px column
+      beside what it labels, 16px apart, rows 8px apart; at 600px and below,
+      and in a block 28rem wide or narrower, the label goes above it. Why it
+      matters and Status come first, as plain text with no tint or box.
+    - **Path to Green, the block's one tinted box (`.rp-tint`):** only on a
+      Red or Yellow Goal, in that Health's tint (`.rp-tint-r`,
+      `--health-r-bg`, or `.rp-tint-y`, `--health-y-bg`), `--radius-md`,
+      12px × 16px padding: "**Path to Green:** …" with its back-to-Green date,
+      the label in the Health's ink (`--health-r-ink` / `--health-y-ink`),
+      and any **Asks for help** with it. A Path to Green past its date keeps
+      the Health's tint and carries a Red **Overdue** badge. A Green Goal's
+      block, and one that is only Check-in overdue, has no tinted box.
+      The rest of the labelled rows follow: Milestones and Metrics, each a
+      list, Rolled-up Health with its count, Supported by, and Why the Health
+      differs.
     - **On track:** a table with no fill (Health, Goal, Owner, Due) in its own
       scrolling container; at 600px and below each row becomes a ruled grid,
       its Health then the Goal on one line, the Owner and Due under the Goal.
