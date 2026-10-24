@@ -154,6 +154,12 @@ test("at 390px the Admin page shows the whole Make Admin button inside its form 
 test("at 390px a Report card's Health leads its title, and its badges drop under them", async ({ page }) => {
   await signIn(page, admin);
   await buildRuleReport(page, "Platform team");
+  // The draft's narrow column, its Delegates and Report log, comes under
+  // the Report at full width.
+  const main = (await page.getByTestId("report-draft").boundingBox())!;
+  const side = (await page.getByTestId("draft-side").boundingBox())!;
+  expect(side.y, "the Delegates and Report log sit under the Report").toBeGreaterThanOrEqual(main.y + main.height);
+  expect(Math.abs(side.width - main.width), "the narrow column spans the Report's width").toBeLessThanOrEqual(1);
   const cards = page.getByTestId("report-exception");
   await expect(cards.first()).toBeVisible();
   const n = await cards.count();

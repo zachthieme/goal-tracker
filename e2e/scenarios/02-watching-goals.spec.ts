@@ -174,13 +174,18 @@ async function saveReport(page: Page): Promise<number> {
   return Number(new URL(page.url()).pathname.split("/").pop());
 }
 
-// reportGoalTitles are the titles on the draft's Goals panel, with Show all
-// open.
+// reportGoalTitles are the titles of the Goals the draft Report holds: each
+// exception's block and each On track row.
 async function reportGoalTitles(page: Page): Promise<string[]> {
-  const panel = page.getByTestId("report-goals");
-  const more = panel.getByTestId("report-goals-more");
-  if ((await more.count()) && (await more.getAttribute("open")) === null) await more.locator("summary").click();
-  return panel.getByTestId("report-goal").getByRole("link").allTextContents();
+  const draft = page.getByTestId("report-draft");
+  const blocks = await draft.getByTestId("report-exception").locator("h3").allTextContents();
+  const lines = await draft.getByTestId("selected-goal").locator(".rp-track-goal > a").allTextContents();
+  return [...blocks, ...lines].map((title) => title.trim());
+}
+
+// goalCount is how the draft's meta line counts n Goals: " · 6 Goals · ".
+function goalCount(n: number): string {
+  return ` · ${n} ${n === 1 ? "Goal" : "Goals"} · `;
 }
 
 test("a manager builds Reports over Goals they don't own, and gets nothing over them", async ({
@@ -237,7 +242,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
 
     ruleReport = await buildRuleReport(page, ruleReportName);
 
-    await expect(page.getByTestId("report-goal-count")).toHaveText(`${inReport.length} Goals in this report`);
+    await expect(page.getByTestId("report-meta")).toContainText(goalCount(inReport.length));
     // It worked if: the Report lists every Team = Growth Goal, and a Goal
     // finished before the baseline leaves it.
     const titles = await reportGoalTitles(page);
@@ -252,7 +257,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     pickedReport = await buildPickedReport(page, pickedReportName, picked);
 
     // The draft lists exactly the picked Goals.
-    await expect(page.getByTestId("report-goal-count")).toHaveText(`${picked.length} Goals in this report`);
+    await expect(page.getByTestId("report-meta")).toContainText(goalCount(picked.length));
     expect((await reportGoalTitles(page)).sort()).toEqual(picked.map((g) => g.title).sort());
 
     // It worked if: the Report shows him their Health and Paths to Green as
@@ -381,13 +386,15 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     await curation.getByLabel("Insights, note 1").fill("Two of these are what our launch waits on.");
     await curation.getByRole("button", { name: "Save narrative" }).click();
     await expect(lead.getByTestId("save-result")).toHaveText("Saved");
-    await expect(lead.getByTestId("report-narrative").getByTestId("narrative-text")).toHaveText(
-      "Two of these are what our launch waits on.",
-    );
+    await lead.reload();
+    await expect(curation.getByLabel("Insights, note 1")).toHaveValue("Two of these are what our launch waits on.");
     await lead.getByTestId("publish-confirm").getByText("Publish…").click();
     await lead.getByTestId("report-publish").getByRole("button", { name: "Publish" }).click();
     await lead.waitForURL(new RegExp(`/reports/${pickedReport}/publications/\\d+$`));
     await expect(lead.getByTestId("report-name")).toHaveText(pickedReportName);
+    await expect(lead.getByTestId("report-narrative").getByTestId("narrative-text")).toHaveText(
+      "Two of these are what our launch waits on.",
+    );
 
     // The Admin sees Edit definition and can save an edit.
     const adminPage = await as(admin);
