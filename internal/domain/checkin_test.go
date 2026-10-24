@@ -55,6 +55,38 @@ func TestSubmitCheckinRecordsHealthAuthorAndOwner(t *testing.T) {
 	}
 }
 
+// An author ID that names no Account is neither the Owner nor a Delegate, so
+// may not submit a Check-in, full or No change, and nothing is recorded.
+func TestSubmitCheckinRefusesAnAuthorWithNoAccount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", testsupport.Epoch)
+	nobody := sam.ID + 1000
+
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: nobody,
+		Health:   domain.HealthGreen,
+		Status:   "Written by nobody.",
+	}); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("SubmitCheckin by an author with no Account: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.SubmitNoChangeCheckin(ctx, goal.ID, nobody); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("SubmitNoChangeCheckin by an author with no Account: err = %v, want ErrNotAuthorized", err)
+	}
+	history, err := h.Service.ListCheckins(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("ListCheckins: %v", err)
+	}
+	if len(history) != 1 {
+		t.Errorf("history = %+v, want only Sam's Check-in", history)
+	}
+}
+
 var pathDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
 // A Proposed Goal has no Health and can't be checked in on (CONTEXT.md: Health

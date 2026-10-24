@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"golang.org/x/net/html"
 )
 
 // TestSmokeDelegateChecksInOnOwnersGoal is the Delegate HTTP smoke test: an Owner
@@ -121,6 +123,58 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 	}
 	if delegates, _ := h.Service.ListDelegates(context.Background(), goal.ID); len(delegates) != 0 {
 		t.Errorf("a Delegate was added by a non-Owner: %+v", delegates)
+	}
+}
+
+// Only the Owner may remove a Delegate through the web: another signed-in
+// person posting the Owner's Remove form is refused and the Delegate stays,
+// and the Owner's own Remove takes them off the Goal (CONTEXT.md: a person an
+// Owner authorizes).
+func TestOnlyOwnerRemovesDelegateThroughTheWeb(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	melClient := signInClient(t, ts.URL, "mel@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	delegatesShown := func() []string {
+		return textsOf(findAllByTestID(getPage(t, samClient, goalURL), "delegate"))
+	}
+
+	removeAction := fmt.Sprintf("/goals/%d/delegates/remove", goal.ID)
+	forms := findAll(getPage(t, samClient, goalURL+"?open=delegates"), func(n *html.Node) bool {
+		return n.Data == "form" && attrOf(n, "action") == removeAction
+	})
+	if len(forms) != 1 || buttonNamed(forms[0], "Remove") == nil {
+		t.Fatalf("the Owner's Manage Delegates form offers %d Remove forms, want one for tpm", len(forms))
+	}
+	if got := formField(t, forms[0], "email").Value; got != "tpm@example.com" {
+		t.Fatalf("the Remove form names %q, want tpm@example.com", got)
+	}
+	remove := formSubmission(forms[0])
+
+	resp := postForm(t, melClient, ts.URL+removeAction, remove)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Owner remove delegate status = %d, want 403", resp.StatusCode)
+	}
+	if got := delegatesShown(); !slices.Equal(got, []string{"tpm"}) {
+		t.Errorf("Delegates after a non-Owner's remove = %q, want tpm still listed", got)
+	}
+
+	resp = postForm(t, samClient, ts.URL+removeAction, remove)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
+		t.Fatalf("Owner remove delegate: status %d at %s, want the Goal page", resp.StatusCode, resp.Request.URL.Path)
+	}
+	if got := delegatesShown(); len(got) != 0 {
+		t.Errorf("Delegates after the Owner's remove = %q, want none", got)
 	}
 }
 
