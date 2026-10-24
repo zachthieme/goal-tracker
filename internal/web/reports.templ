@@ -178,19 +178,18 @@ templ reportHealthBar(h domain.HealthCounts) {
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
 // publication. Its header strip, sticky above a phone's width, carries the
-// breadcrumb, the save status, the baseline chip, the History of its
-// publications (times in the company's timezone, loc) and Publish at the
-// right. Below it the page is one page in two columns: the main column is the
+// breadcrumb, the save status, the baseline chip and Publish at the right.
+// Below it the page is one page in two columns: the main column is the
 // Report as readers get it, the narrative composed in place, and the narrow
-// column beside it holds its Delegates and its Report log, log, moving under
-// the main column where the page is too narrow for both (CONTEXT.md: Report,
+// column beside it holds its Delegates and its History, history, times in the
+// company's timezone, loc, moving under the main column where the page is too narrow for both (CONTEXT.md: Report,
 // Report Definition; DESIGN.md § A Report's draft page). Paths to Green are
 // judged overdue as of asOf, today. panel says what the definition selects.
 // The compose form shows form, and the save status says status. Only a reader
 // m lets manage the Report gets Edit definition, the compose form and
 // Publish…; everyone else reads the narrative as it stands.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, log []domain.ReportLogEntry, form narrativeForm, status string) {
-	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, m, status)) {
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, history []draftHistoryEntry, form narrativeForm, status string) {
+	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, chip, panel, m, status)) {
 		@reportStyles()
 		<div class="rp-draft-page">
 			<div data-testid="report-draft" class="rp-body rp-main">
@@ -213,7 +212,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)
-				@reportLog(log, loc, false)
+				@reportHistory(r, history, loc, false)
 			</aside>
 		</div>
 		if m.Manage {
@@ -312,10 +311,10 @@ templ narrativeSaveScript() {
 }
 
 // reportDraftHeader is the draft's header strip: the breadcrumb Reports › its
-// name, muted and marked a Draft, and the save status at the left, then the baseline chip, and History,
-// Edit definition and Publish…, for a reader who may manage the Report, at the
-// right (DESIGN.md § A Report's draft page).
-templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, status string) {
+// name, muted and marked a Draft, and the save status at the left, then the
+// baseline chip, and Edit definition and Publish…, for a reader who may manage
+// the Report, at the right (DESIGN.md § A Report's draft page).
+templ reportDraftHeader(r domain.Report, chip baselineChip, panel goalsPanel, m reportManagement, status string) {
 	<header data-testid="draft-header" class="page-header rp-draft-head">
 		<div class="rp-draft-title">
 			<nav class="ph-title" data-testid="report-breadcrumb" aria-label="Breadcrumb">
@@ -328,7 +327,6 @@ templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Lo
 		</div>
 		@reportBaselineChip(r, chip)
 		<div class="rp-head-actions">
-			@reportHistory(pubs, loc)
 			@editDefinitionLink(panel.Edit, "btn sm")
 			if m.Manage {
 				@reportPublish(r, chip)
@@ -382,51 +380,67 @@ templ reportDelegates(m reportManagement) {
 	</section>
 }
 
-// reportLogShown is how many of a Report log's entries its section shows
-// before Show all.
-const reportLogShown = 20
+// draftHistoryShown is how many of a draft's History entries, after the
+// Draft, it shows before Show all.
+const draftHistoryShown = 20
 
-// reportLog is the draft's Report log, in its narrow column: every change to the Report
-// Definition, newest first, each with who made it and when in the company's
-// timezone (loc), the newest reportLogShown up front and the rest behind Show
-// all. Anyone who can open the Report reads it; nobody can change it
-// (CONTEXT.md: Report log). Saving the narrative swaps it in out of band
-// (oob), with the save's entry.
-templ reportLog(log []domain.ReportLogEntry, loc *time.Location, oob bool) {
+// reportHistory is the draft's History, in its narrow column: first the Draft,
+// reading changes since r's baseline, then history, newest first: each
+// publication, linking to it, and every other change in the Report log, each
+// with who and when in the company's timezone (loc). The newest
+// draftHistoryShown show up front and the rest behind Show all. Anyone who
+// can open the Report reads it; nobody can change it (CONTEXT.md: Report log).
+// Saving the narrative swaps it in out of band (oob), with the save's entry.
+templ reportHistory(r domain.Report, history []draftHistoryEntry, loc *time.Location, oob bool) {
 	<section
-		data-testid="report-log"
-		id="report-log"
-		class="rp-log"
+		data-testid="report-history"
+		id="report-history"
+		class="rp-history"
 		if oob {
 			hx-swap-oob="true"
 		}
 	>
-		<h2>Report log</h2>
-		@reportLogList(log[:min(len(log), reportLogShown)], loc)
-		if len(log) > reportLogShown {
-			<details data-testid="report-log-more">
-				<summary>{ fmt.Sprintf("Show all %d", len(log)) }</summary>
-				@reportLogList(log[reportLogShown:], loc)
+		<h2>History</h2>
+		<ol class="rp-history-list">
+			<li data-testid="report-history-draft" class="muted">
+				<span class="rp-mark rp-mark-draft" aria-hidden="true"></span>
+				<span>Draft</span>
+				<span class="small">{ "changes since " + showDateYear(r.Baseline) }</span>
+			</li>
+			for _, e := range history[:min(len(history), draftHistoryShown)] {
+				@draftHistoryItem(e, loc)
+			}
+		</ol>
+		if len(history) > draftHistoryShown {
+			<details data-testid="report-history-more">
+				<summary>{ fmt.Sprintf("Show all %d", len(history)) }</summary>
+				<ol class="rp-history-list">
+					for _, e := range history[draftHistoryShown:] {
+						@draftHistoryItem(e, loc)
+					}
+				</ol>
 			</details>
 		}
 	</section>
 }
 
-// reportLogList lists Report log entries, each what changed, then who made
-// the change and when.
-templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
-	<ol class="rp-list">
-		for _, e := range entries {
-			<li data-testid="report-log-entry">
-				<span>{ e.Detail }</span>
-				<span class="small muted">
-					{ "— " }
-					@person(e.Actor)
-					{ " at " + showTimeYear(e.CreatedAt, loc) }
-				</span>
-			</li>
+// draftHistoryItem is one History entry: "Published", linking to its
+// publication, on an accent marker, or a Report log entry's Detail on a plain
+// one; then when, with its year, and who.
+templ draftHistoryItem(e draftHistoryEntry, loc *time.Location) {
+	<li data-testid="report-history-entry">
+		if e.Publication != "" {
+			<span class="rp-mark rp-mark-published" aria-hidden="true"></span>
+			<a href={ templ.SafeURL(e.Publication) }>{ e.Detail }</a>
+		} else {
+			<span class="rp-mark" aria-hidden="true"></span>
+			<span>{ e.Detail }</span>
 		}
-	</ol>
+		<span class="small muted">
+			{ showTimeYear(e.At, loc) + " · " }
+			@person(e.By)
+		</span>
+	</li>
 }
 
 // The save status's outcomes, beside "Saving…" while a save runs and a
@@ -460,19 +474,19 @@ templ saveStatus(text string, oob bool) {
 
 // narrativeSaved answers Save narrative over htmx: the Narrative section, its
 // compose form showing form, the narrative as saved, and out of band the save
-// status, Publish…'s summary and the Report log, log, in the company's
+// status, Publish…'s summary and the History, history, in the company's
 // timezone, loc.
-templ narrativeSaved(form narrativeForm, log []domain.ReportLogEntry, loc *time.Location) {
+templ narrativeSaved(form narrativeForm, history []draftHistoryEntry, loc *time.Location) {
 	@narrativeCuration(form)
 	@saveStatus(narrativeSavedStatus, true)
 	@publishSummaryText(form.Report, form.Chip, true)
-	@reportLog(log, loc, true)
+	@reportHistory(form.Report, history, loc, true)
 }
 
 // narrativeFormAgain answers Add another over htmx: the Narrative section, its
 // compose form as posted, with its added note box, and out of band the save
 // status saying status. Add another saves nothing, so Publish…'s summary and
-// the Report log stay as they were.
+// the History stay as they were.
 templ narrativeFormAgain(form narrativeForm, status string) {
 	@narrativeCuration(form)
 	@saveStatus(status, true)
@@ -545,30 +559,6 @@ templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
 			hx-swap-oob="true"
 		}
 	>{ publishSummary(r, chip) }</p>
-}
-
-// reportHistory is the draft header's menu of a Report Definition's
-// publications, newest first, each with when it was published in the
-// company's timezone and who published it.
-templ reportHistory(pubs []domain.Publication, loc *time.Location) {
-	<details data-testid="report-history" class="rp-menu">
-		<summary>{ fmt.Sprintf("History (%d)", len(pubs)) }</summary>
-		<ul class="rp-pop rp-list">
-			if len(pubs) == 0 {
-				<li data-testid="no-publications" class="muted">Not published yet.</li>
-			}
-			for _, p := range pubs {
-				<li data-testid="report-publication">
-					<a href={ templ.SafeURL(publicationPath(p)) }>{ showTimeYear(p.PublishedAt, loc) }</a>
-					<br/>
-					<span class="small muted">
-						{ "by " }
-						@person(p.PublishedBy)
-					</span>
-				</li>
-			}
-		</ul>
-	</details>
 }
 
 // editDefinitionLink is Edit definition, linking to edit, as class; there is
@@ -1723,6 +1713,12 @@ templ reportStyles() {
 		.rp-delegate{display:flex;align-items:center;justify-content:space-between;gap:8px}
 		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 		.rp-delegate-add input{flex:1 1 200px}
+		.rp-history-list{list-style:none;margin:0 0 0 4px;padding:0 0 0 20px;border-left:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
+		.rp-history-list>li{position:relative;display:flex;flex-direction:column;gap:4px}
+		.rp-history>details>.rp-history-list{margin-top:12px}
+		.rp-mark{position:absolute;left:-25px;top:5px;width:10px;height:10px;box-sizing:border-box;border-radius:50%;background:var(--color-ink-muted);box-shadow:0 0 0 2px var(--color-canvas)}
+		.rp-mark-draft{background:var(--color-canvas);border:1.5px solid var(--color-ink-muted)}
+		.rp-mark-published{background:var(--color-primary)}
 		@media (max-width:600px){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
 		@media (min-width:1280px){.rp-draft-head{flex-wrap:nowrap}.rp-draft-head .rp-save{flex-basis:9em;min-width:9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rp-draft-head .rp-chip,.rp-draft-head .rp-head-actions{flex-shrink:0}}

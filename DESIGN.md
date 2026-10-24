@@ -45,8 +45,8 @@ surface, and type, space and hairlines carry the hierarchy.
   - the Check-in page's sticky submit bar;
   - the toast, which takes a `--color-border-strong` edge.
 
-  A draft Report's baseline and History panels float with no shadow, and its
-  Publish… panel on a shadow of its own. Nothing else is raised.
+  A draft Report's baseline panel floats with no shadow, and its Publish…
+  panel on a shadow of its own. Nothing else is raised.
 - **Type leads.** One face, Inter (§ Type scale). A page rendered through
   `framedLayout` names itself in its header strip; the rest keep their own
   `h1` (§ Page header). A page about one thing (Home's week, a Goal, a
@@ -1694,7 +1694,7 @@ and so on).
 - **A Report's draft page (`reportDraftPage` in `reports.templ`):** a header
   strip over one page in two columns: the main column is the Report as
   readers get it, its narrative composed in place, and a narrow column beside
-  it holds its Delegates and Report log.
+  it holds its Delegates and History.
   - **Header (`.rp-draft-head`):** the page's strip, but sticky (`top: 0`, on
     `--color-canvas`), so the save status and Publish… stay in reach, and
     wrapping. Left to right: the breadcrumb "Reports › <name>", the name
@@ -1703,10 +1703,10 @@ and so on).
     reads "Saving…" while **Save narrative** saves, then "Saved"; "Unsaved
     changes" once the author changes the Narrative form; or "Not saved" and
     why, when a save or an Add another is refused or fails; the
-    baseline chip; then **History (N)**, **Edit definition** (a secondary
-    small button) and **Publish…** (`.btn.primary.sm`), both only for those
-    who may manage the Report Definition: its creator, a Report Delegate or
-    an Admin. From 1280px it holds one row, whatever the save status says:
+    baseline chip; then **Edit definition** (a secondary small button) and
+    **Publish…** (`.btn.primary.sm`), both only for those who may manage the
+    Report Definition: its creator, a Report Delegate or an Admin; anyone
+    else gets no actions there. From 1280px it holds one row, whatever the save status says:
     the status keeps room for "Unsaved changes" (9em), so the strip doesn't
     shift as it changes, and takes only what is left beyond that, a long
     "Not saved" reason cut short; the chip and the actions keep their width,
@@ -1721,10 +1721,6 @@ and so on).
     one), **30 days ago**, and **Pick a date…**, which opens a GET form with a
     "Changes since" date and a secondary **Apply**. Each choice is a link or a
     GET, so the baseline lives in the URL (`?baseline=`).
-  - **History (N):** a `--color-primary-strong`, 600 summary, not a button,
-    whose panel, like the chip's and anchored right, lists the publications
-    newest first: each one's timestamp, with its year, linking to it, over a
-    small muted "by <Name>", or "Not published yet."
   - **Publish…:** a `<details>` whose panel (`.rp-publish`), anchored right,
     up to 560px wide with 24px padding, floats on a shadow of its own. It
     reads "Publish <name>?", then a muted summary of what is saved, which
@@ -1778,7 +1774,7 @@ and so on).
     - **Saving:** one secondary **Save narrative** ends the section, and only
       it saves, so the Report log records only what the author meant to
       change. With htmx it swaps in the Narrative section as saved, with the
-      save status, Publish…'s summary and the Report log out of band; if the
+      save status, Publish…'s summary and History out of band; if the
       author changed the form while it saved, what they typed stays, only the
       out-of-band parts are taken, and the status still says "Unsaved
       changes". Without script it's a plain submit that reloads the draft.
@@ -1792,7 +1788,7 @@ and so on).
       `autocomplete="off"`, so a reload shows what is saved, not typing the
       browser kept.
   - **Narrow column (`draft-side`):** everyone sees it, **Delegates** over
-    the **Report log**, 24px apart.
+    **History**, 24px apart.
   - **Delegates (`reportDelegates`, `.rp-delegates`):** a "Delegates" `h2`
     over the Report Delegates as hairline rows,
     each its person, a `badge lc` "departed" on a Departed one, and for the
@@ -1804,15 +1800,29 @@ and so on).
     `alert r` above the form, the email kept in its field. Everyone sees the
     list; a Report Delegate gets neither form, as only the creator and Admins
     add and remove them.
-  - **Report log (`reportLog`, `.rp-log`):** a
-    "Report log" `h2` over every change to the Report Definition, newest
-    first, as hairline rows: what changed in words ("Title: EU MBR → EU
-    monthly review", "Rule added: Owner is in the org of Priya", "Report
-    Delegate added: Dana", "Narrative: picked “Signed Acme” into
-    Accomplishments; Insights notes changed", "Published"), then a small muted
-    "— <person> at <date, time>" in the company's timezone. The newest 20
-    show, the rest behind **Show all N**. Everyone who can open the Report
-    reads it, and nothing on it can be changed or undone.
+  - **History (`reportHistory`, `.rp-history`):** a "History" `h2` over one
+    timeline, its entries 12px apart hanging off a 1px `--color-border` rule
+    (`.rp-history-list`), each on a 10px round marker (`.rp-mark`) on the
+    rule, ringed in `--color-canvas` so the rule doesn't run through it.
+    First, muted, the current **Draft**: a hollow marker (`.rp-mark-draft`),
+    "Draft", and "changes since <baseline>". Then, newest first, the Report
+    Definition's publications merged with the rest of its Report log:
+    - **A publication:** a marker filled with the accent, `--color-primary`
+      (`.rp-mark-published`); "Published", linking to its publication; then a
+      small muted "<date, time> · <Name>", with its year. A publication from
+      before the Report log was kept shows the same.
+    - **Any other Report log entry:** a plain `--color-ink-muted` marker;
+      what changed in words ("Title: EU MBR → EU monthly review", "Rule
+      added: Owner is in the org of Priya", "Report Delegate added: Dana",
+      "Narrative: picked “Signed Acme” into Accomplishments; Insights notes
+      changed"); then a small muted "<date, time> · <Name>". The log's own
+      "Published" entries are left out, as the publications stand for them
+      and link.
+
+    Times are in the company's timezone. The newest 20 entries after the
+    Draft show, the rest behind **Show all N**, N counting them all. Everyone
+    who can open the Report reads it, and nothing on it can be changed or
+    undone.
 - **A publication (`publicationPage` in `reports.templ`):** a published
   Report, frozen, in a reading column.
   - **Header strip:** the breadcrumb "Reports › <Report Definition> › Nov 7,

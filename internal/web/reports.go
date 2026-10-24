@@ -121,7 +121,45 @@ func (s *Server) renderReportDraft(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, log, savedNarrativeForm(report, chip), ""))
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), d, s.svc.Timezone(), chip, panel, m, draftHistory(pubs, log), savedNarrativeForm(report, chip), ""))
+}
+
+// draftHistoryEntry is one of a Report draft's History entries after the
+// Draft: a publication, linking to it at Publication, or another change in
+// the Report log, with no link (DESIGN.md § A Report's draft page).
+type draftHistoryEntry struct {
+	// Detail is what happened: "Published", or the log entry's Detail.
+	Detail string
+	By     domain.Account
+	At     time.Time
+	// Publication is the publication's path, and "" for a log entry.
+	Publication string
+}
+
+// draftHistory merges a Report Definition's publications, pubs, with its
+// Report log, log, both newest first, into its draft's History, newest
+// first. A publication stands for its Report log entry, which can't link,
+// so the log's Published entries are left out; a publication from before
+// the Report log has none to leave out. A publication made at the same
+// moment as a log entry comes first.
+func draftHistory(pubs []domain.Publication, log []domain.ReportLogEntry) []draftHistoryEntry {
+	out := make([]draftHistoryEntry, 0, len(pubs)+len(log))
+	for len(pubs) > 0 || len(log) > 0 {
+		if len(log) > 0 && log[0].Kind == domain.ReportLogPublished {
+			log = log[1:]
+			continue
+		}
+		if len(pubs) > 0 && (len(log) == 0 || !log[0].CreatedAt.After(pubs[0].PublishedAt)) {
+			p := pubs[0]
+			out = append(out, draftHistoryEntry{Detail: "Published", By: p.PublishedBy, At: p.PublishedAt, Publication: publicationPath(p)})
+			pubs = pubs[1:]
+			continue
+		}
+		e := log[0]
+		out = append(out, draftHistoryEntry{Detail: e.Detail, By: e.Actor, At: e.CreatedAt})
+		log = log[1:]
+	}
+	return out
 }
 
 // reportManagement is what a Report's draft page lets its reader do to the
@@ -418,7 +456,7 @@ func (s *Server) narrativeStatus(r *http.Request, defID int64, in domain.CurateN
 // renderNarrativeSaved answers Save narrative over htmx with the draft's
 // Narrative section, against the baseline the reader picked, its compose form
 // showing the narrative as saved, and the save status saying Saved,
-// Publish…'s summary and the Report log as saved.
+// Publish…'s summary and the History, with the save's entry.
 func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id int64) {
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
@@ -446,7 +484,7 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, narrativeSaved(savedNarrativeForm(report, chip), log, s.svc.Timezone()))
+	render(w, r, http.StatusOK, narrativeSaved(savedNarrativeForm(report, chip), draftHistory(pubs, log), s.svc.Timezone()))
 }
 
 // renderNarrativeFormAgain answers Add another, saving nothing: the compose
@@ -537,7 +575,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		s.serverError(w, r, "could not load the Report log", err)
 		return
 	}
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, m, log, form, status))
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), d, s.svc.Timezone(), chip, panel, m, draftHistory(pubs, log), form, status))
 }
 
 // narrativeForm is what the draft's compose form shows: each Highlight in the

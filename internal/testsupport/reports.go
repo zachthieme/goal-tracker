@@ -2,6 +2,7 @@ package testsupport
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -28,6 +29,31 @@ func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinitio
 		h.T.Fatalf("PublishReport: %v", err)
 	}
 	return pub
+}
+
+// PublishBeforeTheReportLog publishes def's draft as actor now, as a
+// publication made before the Report log was kept: it has no Report log entry,
+// and its snapshot names no publisher. It fails the test on error.
+func (h *Harness) PublishBeforeTheReportLog(actor domain.Account, def domain.ReportDefinition) domain.Publication {
+	h.T.Helper()
+	ctx := context.Background()
+	report, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
+	}
+	frozen, err := json.Marshal(report)
+	if err != nil {
+		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
+	}
+	if _, err := h.DB.Exec(`INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot) VALUES (?, ?, ?, ?)`,
+		def.ID, actor.ID, h.Clock.Now().Format(time.RFC3339Nano), string(frozen)); err != nil {
+		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
+	}
+	pubs, err := h.Service.ListPublications(ctx, def.ID)
+	if err != nil || len(pubs) == 0 {
+		h.T.Fatalf("PublishBeforeTheReportLog: ListPublications = %d publications, %v", len(pubs), err)
+	}
+	return pubs[0]
 }
 
 // AddReportDelegate authorizes delegate to change, curate and publish def,

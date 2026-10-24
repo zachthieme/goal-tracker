@@ -295,8 +295,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await expect(confirm.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
     await confirm.getByText("Publish…").click();
 
-    // Saving writes one entry in the Report log, which the page shows.
-    const log = elena.getByTestId("report-log-entry");
+    // Saving writes one entry in the Report log, which the page's History shows.
+    const log = elena.getByTestId("report-history").getByTestId("report-history-entry");
     const logged = await log.count();
     await curation.getByRole("button", { name: "Save narrative" }).click();
     await expect(elena.getByTestId("save-result")).toHaveText("Saved");

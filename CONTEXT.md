@@ -200,8 +200,8 @@ A person a Report Definition's creator or an Admin authorizes to change it, cura
 _Avoid_: co-owner, editor, collaborator
 
 **Report log**:
-The record of everything that changed on a Report Definition, newest first, each with who and when: an edit to its title, rules or picked Goals (before and after), a Report Delegate added or removed, a change to the next publication's narrative (Highlights picked or dropped, a section's notes changed), and each publication. Anyone who can open the Report can read it. It records; it doesn't undo.
-_Avoid_: Definition log (a Goal's), history (the Report's list of publications), audit trail
+The record of everything that changed on a Report Definition, newest first, each with who and when: an edit to its title, rules or picked Goals (before and after), a Report Delegate added or removed, a change to the next publication's narrative (Highlights picked or dropped, a section's notes changed), and each publication. Anyone who can open the Report can read it: the draft shows it merged with the publications, each linking to its own, as its History. It records; it doesn't undo.
+_Avoid_: Definition log (a Goal's), history (the draft's History, which merges it with the publications), audit trail
 
 **Report rule**:
 A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. An org rule reads "Owner is in the org of Priya": its Owner is in any named person's org, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
