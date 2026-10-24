@@ -876,7 +876,7 @@ func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
 }
 
 // The draft's body is two columns, the Report's main column at most 780px
-// beside a 300px one for its Delegates and Report log, 56px apart, in a page
+// beside a 300px one for its Delegates and History, 56px apart, in a page
 // wide enough to hold them. Under 1100px of the page's content width — a
 // container query on the page body, so the sidebar counts — the narrow column
 // moves under the main one at full width (#473).
@@ -916,5 +916,61 @@ func TestReportDraftColumnsStackUnder1100pxStyles(t *testing.T) {
 	narrow := mediaBlock(t, styles, "@container rp-draft (max-width:1100px)")
 	if decls, ok := ruleFor(narrow, ".rp-draft-page"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
 		t.Errorf("under 1100px .rp-draft-page{%s} isn't one full-width column", decls)
+	}
+}
+
+// The draft's History hangs its entries off a rule, each on a marker: the
+// Draft's hollow, a publication's filled with the accent, and any other
+// Report log entry's plain (#474).
+func TestReportDraftHistoryMarkersStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.Clock.Advance(time.Hour)
+	h.PublishReport(boss, def)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	history := findByTestID(t, parsePage(t, page), "report-history")
+	markOf := func(entry *html.Node) []string {
+		marks := findAll(entry, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "rp-mark") })
+		if len(marks) != 1 {
+			t.Fatalf("%q has %d markers, want 1", textOf(entry), len(marks))
+		}
+		return strings.Fields(attrOf(marks[0], "class"))
+	}
+	entries := findAllByTestID(history, "report-history-entry")
+	if len(entries) != 2 {
+		t.Fatalf("History has %d entries after the Draft, want the publication and Created", len(entries))
+	}
+	for name, c := range map[string]struct {
+		entry *html.Node
+		want  []string
+	}{
+		"the Draft's":            {findByTestID(t, history, "report-history-draft"), []string{"rp-mark", "rp-mark-draft"}},
+		"the publication's":      {entries[0], []string{"rp-mark", "rp-mark-published"}},
+		"the Report log entry's": {entries[1], []string{"rp-mark"}},
+	} {
+		if got := markOf(c.entry); !slices.Equal(got, c.want) {
+			t.Errorf("%s marker is %q, want %q", name, got, c.want)
+		}
+	}
+
+	styles := between(t, page, "<style>", "</style>")
+	for sel, wants := range map[string][]string{
+		".rp-history-list":   {"border-left:1px solid var(--color-border)"},
+		".rp-mark":           {"position:absolute", "border-radius:50%", "background:var(--color-ink-muted)"},
+		".rp-mark-draft":     {"background:var(--color-canvas)", "border:1.5px solid var(--color-ink-muted)"},
+		".rp-mark-published": {"background:var(--color-primary)"},
+	} {
+		decls, ok := ruleFor(styles, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
 	}
 }

@@ -170,9 +170,9 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	draft := getBody(t, client, reportURL)
-	if !strings.Contains(draft, `data-testid="no-publications"`) {
-		t.Errorf("an unpublished definition does not say so; body:\n%s", draft)
+	unpublished := findByTestID(t, parsePage(t, getBody(t, client, reportURL)), "report-history")
+	if got := textsOf(findAllByTestID(unpublished, "report-history-entry")); !slices.Equal(got, []string{"Created Feb 11, 2026, 15:04 · boss"}) {
+		t.Errorf("an unpublished definition's History reads %q, want only its creation", got)
 	}
 	resp := postForm(t, client, reportURL+"/publications", url.Values{})
 	if resp.StatusCode != http.StatusOK {
@@ -200,9 +200,9 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("publication changed after a later Check-in; body:\n%s", published)
 	}
 
-	draft = getBody(t, client, reportURL)
-	if item := pageElement(t, draft, "li", "report-publication"); !strings.Contains(item, strings.TrimPrefix(pubURL, ts.URL)) {
-		t.Errorf("definition page does not link its publication; item:\n%s", item)
+	draft := getBody(t, client, reportURL)
+	if linkTo(findByTestID(t, parsePage(t, draft), "report-history"), strings.TrimPrefix(pubURL, ts.URL)) == nil {
+		t.Errorf("the draft's History does not link its publication; body:\n%s", draft)
 	}
 	// By default publishing reads against the previous publication, so the
 	// publish form carries no baseline.
@@ -1127,7 +1127,7 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 			if attrOf(findByTestID(t, answer, "save-status"), "hx-swap-oob") != "true" {
 				t.Errorf("the save status is not swapped out of band; body:\n%s", body)
 			}
-			for _, untouched := range []string{"report-draft", "publish-summary", "report-log"} {
+			for _, untouched := range []string{"report-draft", "publish-summary", "report-history"} {
 				if hasTestID(answer, untouched) {
 					t.Errorf("htmx add another answers %s, which nothing saved changed; body:\n%s", untouched, body)
 				}
@@ -1467,7 +1467,7 @@ func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 		t.Errorf("the draft's header isn't the page's header strip: %s", tag)
 	}
 	last := -1
-	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `aria-current="page">MBR<`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
+	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `aria-current="page">MBR<`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
 		at := strings.Index(header, part)
 		if at <= last {
 			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
@@ -1483,16 +1483,15 @@ func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 			t.Errorf("the header does not show the save status after the chip: %s{%s} lacks %s", selector, rule, want)
 		}
 	}
-	if chip := between(t, header, `data-testid="baseline-chip"`, `data-testid="report-history"`); !strings.Contains(chip, `data-testid="report-baseline"`) {
+	if chip := pageElement(t, header, "details", "baseline-chip"); !strings.Contains(chip, `data-testid="report-baseline"`) {
 		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", chip)
 	}
 	publish := pageElement(t, header, "details", "publish-confirm")
 	if !strings.Contains(publish, `<summary class="btn primary sm">Publish…</summary>`) || !strings.Contains(publish, "Readers can comment on the frozen copy.") {
 		t.Errorf("Publish… is not the primary button with its summary; disclosure:\n%s", publish)
 	}
-	history := pageElement(t, header, "details", "report-history")
-	if !strings.Contains(history, "History (0)") || !strings.Contains(pageElement(t, history, "li", "no-publications"), "Not published yet.") {
-		t.Errorf("an unpublished Report's History does not say so; menu:\n%s", history)
+	if strings.Contains(header, `data-testid="report-history"`) {
+		t.Errorf("the header still has a History menu; header:\n%s", header)
 	}
 	if strings.Contains(page, `data-testid="report-publications"`) {
 		t.Errorf("publications are still listed in a sidebar; body:\n%s", page)
@@ -2025,7 +2024,7 @@ func TestDraftHeaderStacksAtPhoneWidthOverHTTP(t *testing.T) {
 		}
 	}
 	actions := between(t, header, `<div class="rp-head-actions">`, "")
-	for _, part := range []string{`data-testid="report-history"`, `data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
+	for _, part := range []string{`data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
 		if !strings.Contains(actions, part) {
 			t.Errorf("the actions row lacks %s; row:\n%s", part, actions)
 		}
@@ -2409,8 +2408,9 @@ func TestDraftMainColumnReadsAsTheReportOverHTTP(t *testing.T) {
 // Health tiles and before the exceptions: a reader who may manage the Report
 // composes it there, under a Narrative heading, and anyone else reads it as it
 // will be published, with no compose form. Everyone gets the narrow column
-// beside it, its Delegates above its Report log; only the creator gets Remove
-// and Add (#473).
+// beside it, its Delegates above its History; only the creator gets Remove
+// and Add, and no reader who may not manage the Report gets History,
+// Edit definition or Publish… in the header (#473, #474).
 func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2453,9 +2453,9 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	if within(side, main) {
 		t.Fatalf("the narrow column is inside the main column")
 	}
-	delegates, log := findByTestID(t, side, "report-delegates"), findByTestID(t, side, "report-log")
-	if !precedes(delegates, log) {
-		t.Errorf("the Report log comes before the Delegates")
+	delegates, history := findByTestID(t, side, "report-delegates"), findByTestID(t, side, "report-history")
+	if !precedes(delegates, history) {
+		t.Errorf("History comes before the Delegates")
 	}
 	if !hasTestID(side, "add-report-delegate") || !hasTestID(side, "remove-report-delegate") {
 		t.Errorf("the creator can't add or remove Delegates: %s", renderNode(delegates))
@@ -2477,6 +2477,12 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	if hasTestID(page, "report-curation") || hasTestID(page, "narrative-curation") {
 		t.Errorf("a reader who may not manage the Report gets the composer")
 	}
+	header := findByTestID(t, page, "draft-header")
+	for _, action := range []string{"report-history", "edit-definition", "publish-confirm"} {
+		if hasTestID(header, action) {
+			t.Errorf("a reader who may not manage the Report has %s in the header", action)
+		}
+	}
 	narrative := findByTestID(t, main, "report-narrative")
 	if got := textsOf(findAllByTestID(narrative, "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
 		t.Errorf("the reader reads the notes %q, want the saved one", got)
@@ -2485,8 +2491,8 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 		t.Errorf("the reader's narrative isn't between the Health tiles and the exceptions")
 	}
 	side = findByTestID(t, page, "draft-side")
-	if !hasTestID(side, "report-delegates") || !hasTestID(side, "report-log") {
-		t.Errorf("the reader's narrow column lacks the Delegates or the Report log: %s", renderNode(side))
+	if !hasTestID(side, "report-delegates") || !hasTestID(side, "report-history") {
+		t.Errorf("the reader's narrow column lacks the Delegates or History: %s", renderNode(side))
 	}
 	if hasTestID(side, "add-report-delegate") || hasTestID(side, "remove-report-delegate") {
 		t.Errorf("the reader gets Add or Remove on the Delegates")
@@ -2885,13 +2891,15 @@ func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing
 	}
 }
 
-// The draft's header carries a History menu in place of the Publications
-// sidebar: each publication newest first, with its publisher and the date and
-// time it was published in the company's timezone, not UTC.
-func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
+// The draft's History, in its narrow column, is one timeline newest first:
+// the Draft, then each publication, linking to it, merged with the rest of
+// the Report log, every time in the company's timezone, not UTC. Publishing
+// shows once, as its publication, not again as its Report log entry.
+func TestDraftHistoryMergesPublicationsWithTheReportLogOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("load timezone: %v", err)
@@ -2900,39 +2908,89 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.AddReportDelegate(boss, ada, def)
 	// 03:00 UTC on 2 and 3 March is the evening before in Los Angeles.
 	h.Clock.Set(time.Date(2026, 3, 2, 3, 0, 0, 0, time.UTC))
-	h.PublishReport(boss, def)
+	first := h.PublishReport(boss, def)
+	h.Clock.Set(time.Date(2026, 3, 2, 20, 0, 0, 0, time.UTC))
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
 	h.Clock.Set(time.Date(2026, 3, 3, 3, 0, 0, 0, time.UTC))
-	h.AddReportDelegate(boss, ada, def)
-	h.PublishReport(ada, def)
+	second := h.PublishReport(ada, def)
 
 	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
 	t.Cleanup(ts.Close)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	header := pageElement(t, page, "header", "draft-header")
-	history := pageElement(t, header, "details", "report-history")
-	if !strings.Contains(history, "<summary>History (2)</summary>") {
-		t.Errorf("History menu does not count its publications; menu:\n%s", history)
+	if hasTestID(findByTestID(t, page, "draft-header"), "report-history") {
+		t.Errorf("the draft header still has a History menu")
 	}
-	items := strings.Split(history, `data-testid="report-publication"`)[1:]
-	if len(items) != 2 {
-		t.Fatalf("History lists %d publications, want 2; menu:\n%s", len(items), history)
+	if hasTestID(page, "report-log") {
+		t.Errorf("the draft still has a Report log apart from History")
 	}
-	for i, want := range []struct{ when, by string }{
-		{">Mar 2, 2026, 19:00<", shownAs("ada.okafor@example.com", "Ada Okafor")},
-		{">Mar 1, 2026, 19:00<", shownAs("boss@example.com", "boss")},
-	} {
-		if !strings.Contains(items[i], want.when) || !strings.Contains(items[i], want.by) {
-			t.Errorf("History entry %d is not %s by %s; entry:\n%s", i+1, want.when, want.by, items[i])
+	history := findByTestID(t, findByTestID(t, page, "draft-side"), "report-history")
+	if headingNamed(history, "History") == nil {
+		t.Errorf("History has no History heading: %s", renderNode(history))
+	}
+	draft := findByTestID(t, history, "report-history-draft")
+	if got := textOf(draft); got != "Draft changes since Mar 2, 2026" {
+		t.Errorf("History's Draft entry reads %q, want the Draft and its baseline", got)
+	}
+	entries := findAllByTestID(history, "report-history-entry")
+	want := []string{
+		"Published Mar 2, 2026, 19:00 · Ada Okafor",
+		"Narrative: Misses notes changed Mar 2, 2026, 12:00 · boss",
+		"Published Mar 1, 2026, 19:00 · boss",
+		"Report Delegate added: Ada Okafor Jan 2, 2026, 07:04 · boss",
+		"Created Jan 2, 2026, 07:04 · boss",
+	}
+	if got := textsOf(entries); !slices.Equal(got, want) {
+		t.Fatalf("History reads %q, want %q", got, want)
+	}
+	if !precedes(draft, entries[0]) {
+		t.Errorf("History's Draft entry isn't first")
+	}
+	for i, p := range map[int]domain.Publication{0: second, 2: first} {
+		if path := fmt.Sprintf("/reports/%d/publications/%d", def.ID, p.ID); linkTo(entries[i], path) == nil {
+			t.Errorf("History's entry %q doesn't link to its publication %s", textOf(entries[i]), path)
 		}
 	}
-	if strings.Contains(history, "UTC") {
-		t.Errorf("History shows UTC times; menu:\n%s", history)
+}
+
+// A publication made before the Report log was kept has no entry in it, and
+// still shows on the draft's History, linking to it.
+func TestDraftHistoryShowsAPublicationFromBeforeTheReportLogOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.Clock.Advance(time.Hour)
+	pub := h.PublishBeforeTheReportLog(boss, def)
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.UpdateReportDefinition(context.Background(), boss.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+	}); err != nil {
+		t.Fatalf("UpdateReportDefinition: %v", err)
 	}
-	if strings.Contains(page, `data-testid="report-publications"`) {
-		t.Errorf("the Publications sidebar is still on the draft; body:\n%s", page)
+	ts := newServer(t, h)
+
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	entries := findAllByTestID(findByTestID(t, page, "report-history"), "report-history-entry")
+	want := []string{
+		"Title: MBR → EU MBR Jan 2, 2026, 17:04 · boss",
+		"Published Jan 2, 2026, 16:04 · boss",
+		"Created Jan 2, 2026, 15:04 · boss",
+	}
+	if got := textsOf(entries); !slices.Equal(got, want) {
+		t.Fatalf("History reads %q, want %q", got, want)
+	}
+	if path := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID); linkTo(entries[1], path) == nil {
+		t.Errorf("the publication from before the Report log doesn't link to %s: %s", path, renderNode(entries[1]))
 	}
 }
 
@@ -3394,10 +3452,10 @@ func TestNarrativeAtALaterBaselineKeepsEarlierPicksOverHTTP(t *testing.T) {
 // Save narrative saves the compose form: over htmx it answers the Narrative
 // section, its compose form showing the narrative as saved with its Highlights
 // count, and, out of band, the save status saying Saved, Publish…'s summary
-// and the Report log with the save's one entry — nothing else of the page.
+// and the History with the save's one entry — nothing else of the page.
 // Saving again unchanged logs nothing. A plain post still reloads the draft
-// (tickets #156, #166, #444, #473).
-func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
+// (tickets #156, #166, #444, #473, #474).
+func TestSaveNarrativeLogsOnceAndRefreshesTheHistoryOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3445,7 +3503,7 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 	if box := formField(t, saved, "include-"+signed); !box.Checked {
 		t.Errorf("the saved form leaves the saved Highlight unticked")
 	}
-	for _, oob := range []string{"save-status", "publish-summary", "report-log"} {
+	for _, oob := range []string{"save-status", "publish-summary", "report-history"} {
 		if attrOf(findByTestID(t, answer, oob), "hx-swap-oob") != "true" {
 			t.Errorf("%s is not swapped out of band; body:\n%s", oob, body)
 		}
@@ -3460,13 +3518,17 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 	if got := textOf(findByTestID(t, answer, "publish-summary")); !strings.Contains(got, "· 1 Highlight · changes since 30 days ago · ") {
 		t.Errorf("Publish…'s summary %q, want the saved Highlight against the default baseline", got)
 	}
-	entries := textsOf(findAllByTestID(findByTestID(t, answer, "report-log"), "report-log-entry"))
+	history := findByTestID(t, answer, "report-history")
+	if !hasTestID(history, "report-history-draft") {
+		t.Errorf("the History answered has no Draft entry: %s", renderNode(history))
+	}
+	entries := textsOf(findAllByTestID(history, "report-history-entry"))
 	if len(entries) != len(logged)+1 || !strings.Contains(entries[0], "Narrative: picked “Signed the first EU customer.” into Accomplishments; Accomplishments notes changed") {
-		t.Errorf("the Report log answered reads %q, want the save's one entry newest above the %d before", entries, len(logged))
+		t.Errorf("the History answered reads %q, want the save's one entry newest above the %d before", entries, len(logged))
 	}
 
 	_, body = postHX(t, client, reportURL+"/narrative", form)
-	entries = textsOf(findAllByTestID(findByTestID(t, parsePage(t, body), "report-log"), "report-log-entry"))
+	entries = textsOf(findAllByTestID(findByTestID(t, parsePage(t, body), "report-history"), "report-history-entry"))
 	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged)+1 || len(entries) != len(logged)+1 {
 		t.Errorf("saving again unchanged leaves %d entries, answering %d (err %v), want the %d after the first save", len(after), len(entries), err, len(logged)+1)
 	}
@@ -5178,9 +5240,9 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	}
 }
 
-// The draft page's Report log shows anyone who can open the Report every
-// change to its Definition, newest first, each with who made it and when in
-// the company's timezone (CONTEXT.md: Report log; ticket #435).
+// The draft page's History shows anyone who can open the Report every change
+// in its Report log, newest first, each with who made it and when in the
+// company's timezone (CONTEXT.md: Report log; tickets #435, #474).
 func TestReportLogShowsOnTheDraftToAnyoneSignedIn(t *testing.T) {
 	t.Parallel()
 
@@ -5206,53 +5268,63 @@ func TestReportLogShowsOnTheDraftToAnyoneSignedIn(t *testing.T) {
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
 	page := getPage(t, sam, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
-	section := findByTestID(t, page, "report-log")
-	got := textsOf(findAllByTestID(section, "report-log-entry"))
+	section := findByTestID(t, page, "report-history")
+	got := textsOf(findAllByTestID(section, "report-history-entry"))
 	// Jan 2, 2026, 15:04 UTC is 00:04 the next day in Tokyo.
 	want := []string{
-		"Title: EU MBR → EU monthly review — Dana Cole at Jan 3, 2026, 01:04",
-		"Report Delegate added: Dana Cole — Priya Raman at Jan 3, 2026, 00:04",
-		"Created — Priya Raman at Jan 3, 2026, 00:04",
+		"Title: EU MBR → EU monthly review Jan 3, 2026, 01:04 · Dana Cole",
+		"Report Delegate added: Dana Cole Jan 3, 2026, 00:04 · Priya Raman",
+		"Created Jan 3, 2026, 00:04 · Priya Raman",
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("Sam's Report log reads %q, want %q", got, want)
+		t.Errorf("Sam's History reads %q, want %q", got, want)
 	}
-	if hasTestID(section, "report-log-more") {
-		t.Errorf("a short Report log hides some of its entries behind Show all")
+	if hasTestID(section, "report-history-more") {
+		t.Errorf("a short History hides some of its entries behind Show all")
 	}
 }
 
-// A long Report log shows its newest 20 entries, and the rest behind Show
-// all.
-func TestALongReportLogShowsTheNewestTwentyFirst(t *testing.T) {
+// A long History shows its newest 20 entries after the Draft, and the rest
+// behind Show all, counting publications and the Report log together.
+func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	priya := h.SignIn("priya@example.com")
 	g := h.ActiveGoal(priya, "Grow revenue", "Matters.")
 	def := h.SaveReportDefinition(priya, domain.SaveReportDefinitionInput{Name: "Rename 0", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	for i := 1; i <= 24; i++ {
+	for i := 1; i <= 22; i++ {
+		h.Clock.Advance(time.Minute)
 		if _, err := h.Service.UpdateReportDefinition(context.Background(), priya.ID, def.ID, domain.SaveReportDefinitionInput{
 			Name: fmt.Sprintf("Rename %d", i), Mode: domain.ReportModePicked, Picked: []int64{g.ID},
 		}); err != nil {
 			t.Fatalf("UpdateReportDefinition: %v", err)
 		}
+		if i == 11 || i == 22 {
+			h.Clock.Advance(time.Minute)
+			h.PublishReport(priya, def)
+		}
 	}
 	ts := newServer(t, h)
 
 	page := getPage(t, signInClient(t, ts.URL, "priya@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
-	section := findByTestID(t, page, "report-log")
-	more := findByTestID(t, section, "report-log-more")
-	all := findAllByTestID(section, "report-log-entry")
-	rest := findAllByTestID(more, "report-log-entry")
+	section := findByTestID(t, page, "report-history")
+	more := findByTestID(t, section, "report-history-more")
+	all := findAllByTestID(section, "report-history-entry")
+	rest := findAllByTestID(more, "report-history-entry")
+	// 22 renames, Created and two publications, whose Published log entries
+	// they stand for.
 	if len(all) != 25 || len(rest) != 5 {
-		t.Fatalf("the Report log shows %d entries, %d behind Show all; want 25, 5 behind it", len(all), len(rest))
+		t.Fatalf("History shows %d entries, %d behind Show all; want 25, 5 behind it", len(all), len(rest))
 	}
-	if first := textOf(all[0]); !strings.HasPrefix(first, "Title: Rename 23 → Rename 24") {
-		t.Errorf("the newest entry reads %q, want the last rename", first)
+	if first := textOf(all[0]); !strings.HasPrefix(first, "Published ") {
+		t.Errorf("the newest entry reads %q, want the last publication", first)
 	}
 	if shown := textOf(more); !strings.HasPrefix(shown, "Show all 25 ") {
-		t.Errorf("the rest of the Report log reads %q, want it behind Show all 25", shown)
+		t.Errorf("the rest of History reads %q, want it behind Show all 25", shown)
+	}
+	if got := textOf(rest[0]); !strings.HasPrefix(got, "Title: Rename 3 → Rename 4 ") {
+		t.Errorf("the first entry behind Show all reads %q, want the 21st newest", got)
 	}
 	if last := textOf(rest[len(rest)-1]); !strings.HasPrefix(last, "Created") {
 		t.Errorf("the oldest entry reads %q, want Created", last)

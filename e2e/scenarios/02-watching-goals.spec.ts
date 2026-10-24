@@ -347,6 +347,10 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       await expect(lead.getByTestId("narrative-curation")).toHaveCount(0);
       await expect(lead.getByTestId("publish-confirm")).toHaveCount(0);
       await expect(lead.getByTestId("add-report-delegate")).toHaveCount(0);
+      // The header has no History menu; History is in the narrow column, for
+      // anyone who can open the Report.
+      await expect(lead.getByTestId("draft-header").getByTestId("report-history")).toHaveCount(0);
+      await expect(lead.getByTestId("draft-side").getByTestId("report-history")).toBeVisible();
       expect((await lead.request.get(`/reports/${r.id}/edit`)).status(), `GET edit of "${r.name}"`).toBe(403);
       const post = await lead.request.post(`/reports/${r.id}/edit`, {
         form: {
@@ -395,6 +399,20 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     await expect(lead.getByTestId("report-narrative").getByTestId("narrative-text")).toHaveText(
       "Two of these are what our launch waits on.",
     );
+
+    // The draft's History reads newest first: the Draft, then her
+    // publication, linking to it, then the narrative she saved for it.
+    const publication = new URL(lead.url()).pathname;
+    await lead.goto(`/reports/${pickedReport}`);
+    const history = lead.getByTestId("draft-side").getByTestId("report-history");
+    await expect(history.getByTestId("report-history-draft")).toContainText("Draft");
+    const entries = history.getByTestId("report-history-entry");
+    await expect(entries.first().getByRole("link", { name: "Published", exact: true })).toHaveAttribute(
+      "href",
+      publication,
+    );
+    await expect(entries.nth(1)).toContainText("Narrative: Insights notes changed");
+    await expect(history.getByText("Published", { exact: true })).toHaveCount(1);
 
     // The Admin sees Edit definition and can save an edit.
     const adminPage = await as(admin);

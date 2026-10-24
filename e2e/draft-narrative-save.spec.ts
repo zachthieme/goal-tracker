@@ -26,7 +26,7 @@ test("Save narrative saves in place, and keeps what was typed while it saved", a
   await buildPlatformReport(page, "Platform narrative");
   const curation = page.getByTestId("narrative-curation");
   const status = page.getByTestId("save-result");
-  const log = page.getByTestId("report-log-entry");
+  const log = page.getByTestId("report-history").getByTestId("report-history-entry");
   const misses = curation.getByLabel("Misses, note 1");
 
   await curation.getByTestId("section-text-Miss").getByTestId("section-text-summary").click();
@@ -34,7 +34,7 @@ test("Save narrative saves in place, and keeps what was typed while it saved", a
   await expect(status).toHaveText("Unsaved changes");
 
   // A save whose answer is held back while she keeps typing: the answer's
-  // Report log entry lands, but her typing stays, and so does Unsaved changes.
+  // History entry lands, but her typing stays, and so does Unsaved changes.
   const logged = await log.count();
   let release = () => {};
   const held = new Promise<void>((resolve) => (release = resolve));
