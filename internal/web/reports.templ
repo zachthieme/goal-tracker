@@ -200,7 +200,10 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				@reportIntroduction(r)
 				@healthSummary(r)
 				@reportMovement(r)
-				<section data-testid="report-snapshot" class="rp-body">
+				// A div, not a section: .rp-body section's 12px gap would
+				// otherwise space the Report's sections closer than on a
+				// publication.
+				<div data-testid="report-snapshot" class="rp-body">
 					@reportActionItems(r.ActionItems, d)
 					if m.Manage {
 						@narrativeCuration(form)
@@ -208,7 +211,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 						@reportNarrative(r.Narrative)
 					}
 					@reportGoalSections(r, asOf, d)
-				</section>
+				</div>
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)

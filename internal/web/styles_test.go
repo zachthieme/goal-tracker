@@ -1075,6 +1075,11 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 		if heading := findByTestID(t, findByTestID(t, column[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
 			t.Errorf("%s: the Exceptions heading isn't its section's own h2: %s", name, renderNode(heading))
 		}
+		// The Report's sections sit .rp-body's 24px apart on both pages; a
+		// section wrapping them would take .rp-body section's 12px instead.
+		if snapshot := findByTestID(t, column[0], "report-snapshot"); snapshot.Data == "section" && slices.Contains(strings.Fields(attrOf(snapshot.Parent, "class")), "rp-body") {
+			t.Errorf("%s: the Report's sections are wrapped in a section inside .rp-body, so they sit 12px apart: %s", name, renderNode(snapshot.Parent))
+		}
 		if title := findByTestID(t, column[0], "report-name"); title.Data != "h1" || !slices.Contains(strings.Fields(attrOf(title.Parent, "class")), "rp-head") {
 			t.Errorf("%s: the Report's name isn't the .rp-head's h1: %s", name, renderNode(title.Parent))
 		}
