@@ -3,7 +3,12 @@
 Playwright tests that drive the real `goal-tracker` binary in headless
 Chromium, each over its own freshly seeded database. It's where the keystone
 scenarios in [`docs/scenarios.md`](../docs/scenarios.md) are checked in a
-browser. It isn't a gate: `make check` and vetinari don't run it.
+browser. It's a vetinari gate, after `make check`'s three, for a branch that
+changes what the browser gets or the suite itself: a `.templ` file or a Go file
+other than a `_test.go` in `internal/web/`, anything in `internal/web/static/`,
+`e2e/`, `internal/seed/` or `cmd/seed/`. The pattern is the e2e gate's `when` in
+[`vetinari/config.mts`](../vetinari/config.mts). `make check` doesn't run it, and
+neither does CI.
 
 ## Running it
 
@@ -25,7 +30,10 @@ the browser is already there. It needs:
 
 The vetinari image (`vetinari/Dockerfile`) has Playwright's Chromium and its
 system libraries installed, pinned to the version in `package.json`. The two
-pins move together.
+pins move together. The image sets `PLAYWRIGHT_BROWSERS_PATH` to that browser,
+so `playwright install chromium` finds it and downloads nothing, and vetinari's
+setup runs `npm ci --prefix e2e` once per sandbox, so the gate needs no
+network. The suite takes about 25 seconds there.
 
 From `e2e/`, `npx playwright test` runs the suite too, and `npx playwright show-report`
 opens the last run's report. A failed test keeps its trace and has the server's

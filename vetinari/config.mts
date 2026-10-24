@@ -31,15 +31,38 @@ export default defineConfig({
   // or never-committed generated files park instead of merging. Lint (seconds)
   // runs before test (minutes), so a lint failure surfaces without waiting on
   // the tests.
+  //
+  // The e2e gate runs the Playwright suite (e2e/README.md), the only check the
+  // inline JavaScript in the templ files gets: the highlight editor, the Goal
+  // form's live checks, the Check-in submit bar, the Report builder (#470). It
+  // runs only when the branch changes what the browser gets or the suite
+  // itself: a template, a non-test Go file in internal/web (handlers and
+  // generated templ code), internal/web/static/, e2e/, or the seed the suite's
+  // template databases are built from. `when` is tested against the changed
+  // files, one per line, hence the `m` flag. Whether the merged-base gate after
+  // a wave applies `when` or runs every gate couldn't be checked from the
+  // campaign container (no vetinari source there); either is safe, as the
+  // suite passes on main. budgetSeconds: `make e2e` took 21-25s (73 tests) in
+  // the campaign container, so 180 leaves room for parallel sandboxes and a
+  // cold Go build. The image sets PLAYWRIGHT_BROWSERS_PATH to its installed
+  // Chromium, so the gate's `playwright install chromium` downloads nothing.
   gates: [
     { cmd: "make generate-check", label: "generate" },
     { cmd: "make lint", label: "lint" },
     { cmd: "make test", label: "test" },
+    {
+      cmd: "make e2e",
+      label: "e2e",
+      when: /^(?:internal\/web\/.*\.templ$|internal\/web\/[^/]*(?<!_test)\.go$|internal\/web\/static\/|e2e\/|internal\/seed\/|cmd\/seed\/)/m,
+      budgetSeconds: 180,
+    },
   ],
 
   // Warm the module cache once per sandbox so the first gate isn't also the
-  // first download.
-  setup: ["go mod download"],
+  // first download, and install the e2e suite's npm packages once, so the e2e
+  // gate doesn't run `npm ci` itself (its Makefile prerequisite then finds
+  // e2e/node_modules up to date).
+  setup: ["go mod download", "npm ci --prefix e2e"],
 
   // Go's module and build caches are concurrency-safe, so parallel sandboxes
   // share them instead of each paying a cold compile.
