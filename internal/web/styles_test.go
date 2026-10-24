@@ -1039,3 +1039,67 @@ func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
 		}
 	}
 }
+
+// A Report reads on one heading scale, on the draft and the publication
+// alike: its name leads at 26px (24px on a phone), its section headings sit
+// at 18px under a full-width rule, well apart from what comes before, its Goal
+// titles at 16px, and its block labels recede, 12px and muted. The
+// Exceptions count stays beside its heading, smaller and muted, and the
+// narrative's Insights, Accomplishments and Misses read at 15px (#475).
+func TestReportHeadingScaleStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} isn't a 12px muted label", decls)
+	}
+	for name, c := range map[string]struct{ url, column string }{
+		"draft":       {fmt.Sprintf("%s/reports/%d", ts.URL, def.ID), "rp-main"},
+		"publication": {fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID), "rp-read"},
+	} {
+		page := getBody(t, client, c.url)
+		doc := parsePage(t, page)
+		column := findAll(doc, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), c.column) })
+		if len(column) != 1 {
+			t.Fatalf("%s has %d .%s columns, want 1", name, len(column), c.column)
+		}
+		if heading := findByTestID(t, findByTestID(t, column[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
+			t.Errorf("%s: the Exceptions heading isn't its section's own h2: %s", name, renderNode(heading))
+		}
+		if title := findByTestID(t, column[0], "report-name"); title.Data != "h1" || !slices.Contains(strings.Fields(attrOf(title.Parent, "class")), "rp-head") {
+			t.Errorf("%s: the Report's name isn't the .rp-head's h1: %s", name, renderNode(title.Parent))
+		}
+
+		styles := between(t, page, "<style>", "</style>")
+		for sel, wants := range map[string][]string{
+			".rp-head h1":                  {"font-size:26px", "font-weight:700"},
+			"." + c.column + " h2":         {"font-size:18px", "font-weight:650"},
+			"." + c.column + " section>h2": {"border-top:1px solid var(--color-border)", "margin-top:20px"},
+			".rp-curation-head":            {"border-top:1px solid var(--color-border)", "margin-top:20px"},
+			".rp-exceptions>h2>.num":       {"font-size:14px"},
+			".rp-exceptions>h2+.rp-block":  {"border-top:none"},
+			".rp-card-head h3":             {"font-size:16px", "font-weight:600"},
+			".rp-narrative h3.label":       {"font-size:15px", "font-weight:600"},
+			".rp-section-text>summary":     {"font-size:15px", "font-weight:600"},
+		} {
+			decls, ok := ruleFor(styles, sel)
+			for _, want := range wants {
+				if !ok || !strings.Contains(decls, want) {
+					t.Errorf("%s: %s{%s} doesn't declare %s", name, sel, decls, want)
+				}
+			}
+		}
+		if decls, ok := ruleFor(mediaBlock(t, styles, "@media (max-width:600px)"), ".rp-head h1"); !ok || !strings.Contains(decls, "font-size:24px") {
+			t.Errorf("%s: at a phone's width .rp-head h1{%s} isn't 24px", name, decls)
+		}
+	}
+}
