@@ -13,6 +13,31 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 24, 2026
+
+**Improvements:**
+- [user] A Report's draft is one page in two columns: the main column is the Report as readers get it, headed by its name and a muted line saying what it selects, how many Goals that is and what it reads changes against, then its Introduction (once, no longer twice), the Health tiles, the narrative and the Goals; a narrow column beside it holds the Delegates and the Report log, and moves under the Report where the page is narrower than about 1100px. The compose pane, the "N Goals in this report" panel and the "Preview: exactly what readers will see" frame are gone, and Edit definition is in the header only (#473).
+- [user] Whoever may manage a Report composes its narrative in place in the main column, under a Narrative heading: each section (Insights, Accomplishments, Misses) has its own "+ Add note" and the Highlights picked into it, one Save narrative ends it, and with none to pick it says "No Highlights to pick since <date>". Everyone else reads the narrative as it will be published (#473).
+- [user] Save narrative swaps in the Narrative section as saved, and never wipes what the author types while it saves: then their typing stays and the save status keeps saying Unsaved changes. Typing marks Unsaved changes at once and the "2 of 5 in" count follows the boxes ticked, without posting a preview (#473).
+
+**Bug fixes:**
+- [user] Add another on the draft's narrative no longer nests a second "Narrative" heading and section inside the first each time it is pressed (#473).
+
+**Security:**
+- [ops] The app now builds with Go 1.27.3 (`go.mod`, and the `golang:1.27.3-bookworm` base image in the `Dockerfile`), so the standard-library vulnerabilities its code reached are gone: among them unbounded `Range` header parsing on the unauthenticated `GET /static/` (GO-2026-6609), the MIME header memory limit on every POST including `/signin` (GO-2026-6608), HTTP/1 desync around CONNECT (GO-2026-6613, GO-2026-6605), an ECH check in `crypto/tls` (GO-2026-6607) and distrusting compromised intermediates in `crypto/x509` (GO-2026-6809). `golang.org/x/net` moves to v0.61.0. Building from source now needs Go 1.27.3 or newer; rebuild and redeploy the image to pick the fixes up (#467).
+- [user] A spreadsheet import now refuses a workbook that would unpack past 64 MiB ("the workbook is too large to import"), so a zip bomb small enough to upload can't fill the server's memory or temp disk. It also refuses an old-format `.xls` or password-protected Excel file before reading it, and says to save it as `.xlsx`. This keeps both files away from the parts of excelize v2.11.0 that GO-2026-6684 and GO-2026-6689 affect (#468).
+
+**Infrastructure:**
+- [internal] golangci-lint moves to v2.15.0 in the `Makefile`, `vetinari/Dockerfile` and CI, together with Go: from go1.27.2 the compiler writes export data version 5, which needs the `golang.org/x/tools` v0.52 that golangci-lint bundles from v2.15.0. Rebuild the vetinari image before the next campaign; until then `make lint` falls back to `go run …@v2.15.0` (#467).
+
+**Testing:**
+- [internal] Tests now pin the owner-only guards that no test ran: a non-Owner or a Delegate removing a Delegate, in the domain and through `POST /goals/{id}/delegates/remove`, and anyone but the proposed new Owner rejecting a Handoff, are refused and change nothing. So are three edge refusals for an ID that names no Account: marking someone Departed, submitting a Check-in, and the Goal page's offer to set values. Each test fails with its guard disabled (#469).
+- [internal] The Playwright e2e suite is a vetinari gate: `make e2e` runs after `make test` on a branch that changes a `.templ` file or a non-test Go file in `internal/web/`, or anything in `internal/web/static/`, `e2e/`, `internal/seed/` or `cmd/seed/`, so the inline JavaScript in the templates is checked before a campaign merge. Each sandbox's setup runs `npm ci --prefix e2e` once. `make check` and CI still don't run it (#470).
+- [internal] A Playwright spec holds Save narrative's answer while the author types and checks their typing survives it, and the phone-width spec checks the draft's narrow column falls under the Report (#473).
+
+**Code quality:**
+- [internal] `POST /reports/{id}/narrative/preview` and its handler are gone, and the draft no longer calls `AlsoIncludedOnly`, which nothing else uses (#473).
+
 ### Collected changes — October 22, 2026
 
 **Improvements:**
