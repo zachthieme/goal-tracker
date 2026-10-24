@@ -230,29 +230,23 @@ func builderFromDefinition(def domain.ReportDefinition) reportBuilderView {
 	return v
 }
 
-// goalsPanel is the draft's Goals panel: the Goals the draft selects, and its
-// definition's scope in plain words. Edit is where the reader edits the
-// definition, which the panel and the draft's header link to, and "" for a
-// reader who may not.
+// goalsPanel is what the draft says of the Goals its definition selects: the
+// definition's scope in plain words, which its meta line reads, and Edit,
+// where the reader edits the definition, which the draft's header links to,
+// and "" for a reader who may not.
 type goalsPanel struct {
-	Goals []reportGoal
 	Scope string
 	Edit  string
 }
 
-// draftGoalsPanel builds the Goals panel of the draft report, marking the
-// Goals it selects only because of Also include, at the draft's baseline, and
-// linking to Edit definition for a reader m lets manage it.
+// draftGoalsPanel says what the draft report's definition selects, linking to
+// Edit definition for a reader m lets manage it.
 func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report, m reportManagement) (goalsPanel, error) {
 	sum, err := s.svc.SummarizeReport(r.Context(), report)
 	if err != nil {
 		return goalsPanel{}, err
 	}
-	added, err := s.svc.AlsoIncludedOnly(r.Context(), report)
-	if err != nil {
-		return goalsPanel{}, err
-	}
-	panel := goalsPanel{Goals: reportGoals(report, added), Scope: sum.Scope}
+	panel := goalsPanel{Scope: sum.Scope}
 	if m.Manage {
 		panel.Edit = "/reports/" + strconv.FormatInt(report.Definition.ID, 10) + "/edit"
 	}
@@ -315,8 +309,8 @@ func publishSummary(r domain.Report, chip baselineChip) string {
 // publication from the draft page's form (see narrativeFormInput): Save
 // narrative. It redirects back to the draft, against the baseline the reader
 // picked (the baseline query parameter), if any. An htmx post gets the
-// preview, the save status and what else the save changed instead (see
-// renderNarrativeSaved), and a refusal changes only the save status, so the
+// Narrative section as saved, the save status and what else the save changed
+// instead (see renderNarrativeSaved), and a refusal changes only the save status, so the
 // author's typing stays. Add another (add_note={section}) saves nothing: it
 // re-renders the form as posted with one more note box in that section (see
 // renderNarrativeFormAgain).
@@ -353,7 +347,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	if hx {
-		s.renderNarrativeSaved(w, r, current, id, target)
+		s.renderNarrativeSaved(w, r, id)
 		return
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
@@ -410,50 +404,6 @@ func narrativeDraftPath(r *http.Request, id int64) string {
 	return path
 }
 
-// handlePreviewNarrative answers the compose form as the author composes,
-// over htmx: the draft's preview with the narrative as posted in place of the
-// saved one, against the baseline the reader picked, and out of band the save
-// status, saying whether the form has unsaved changes, and the form's
-// Highlights count. It saves nothing. A refusal changes only the save status,
-// so the author's typing stays.
-func (s *Server) handlePreviewNarrative(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	def, ok := s.reportFromPath(w, r)
-	if !ok {
-		return
-	}
-	in, ok := narrativeFormInput(w, r)
-	if !ok {
-		return
-	}
-	baseline, err := parseDate(r.URL.Query().Get("baseline"))
-	if err != nil {
-		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
-		return
-	}
-	report, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
-	if errors.Is(err, domain.ErrValidation) {
-		w.Header().Set("HX-Reswap", "none")
-		render(w, r, http.StatusOK, saveStatus("Not saved: "+plainReason(err), true))
-		return
-	}
-	if err != nil {
-		s.writeReportError(w, r, err)
-		return
-	}
-	status, err := s.narrativeStatus(r, def.ID, in)
-	if err != nil {
-		s.serverError(w, r, "could not compare the narrative", err)
-		return
-	}
-	d, err := s.draftDiscussion(r, current, def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load Action Items", err)
-		return
-	}
-	d.Return = narrativeDraftPath(r, def.ID)
-	render(w, r, http.StatusOK, narrativePreviewed(report, s.svc.Now(), d, status))
-}
-
 // narrativeStatus is what the save status says of the compose form posting
 // in as the Report Definition defID's narrative: Unsaved changes when saving
 // it would change the saved one, and Saved when not.
@@ -466,10 +416,10 @@ func (s *Server) narrativeStatus(r *http.Request, defID int64, in domain.CurateN
 }
 
 // renderNarrativeSaved answers Save narrative over htmx with the draft's
-// preview, against the baseline the reader picked, the save status saying
-// Saved, and the Highlights count, Publish…'s summary and the Report log as
-// saved. The preview's forms come back to draft, the draft's path.
-func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, draft string) {
+// Narrative section, against the baseline the reader picked, its compose form
+// showing the narrative as saved, and the save status saying Saved,
+// Publish…'s summary and the Report log as saved.
+func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id int64) {
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
 		s.serverError(w, r, "could not load report", err)
@@ -485,12 +435,6 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, cu
 		s.serverError(w, r, "could not build the draft", err)
 		return
 	}
-	d, err := s.draftDiscussion(r, current, def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load Action Items", err)
-		return
-	}
-	d.Return = draft
 	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
 	if err != nil {
 		s.serverError(w, r, "could not load publications", err)
@@ -502,7 +446,7 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, narrativeSaved(report, s.svc.Now(), d, chip, log, s.svc.Timezone()))
+	render(w, r, http.StatusOK, narrativeSaved(savedNarrativeForm(report, chip), log, s.svc.Timezone()))
 }
 
 // renderNarrativeFormAgain answers Add another, saving nothing: the compose
@@ -623,6 +567,18 @@ func (f narrativeForm) included() int {
 		}
 	}
 	return n
+}
+
+// in is the form's Highlights whose section control selects section, the
+// section the author picked or else the Highlight's own kind, in order.
+func (f narrativeForm) in(section string) []curationChoice {
+	var out []curationChoice
+	for _, c := range f.Choices {
+		if cmp.Or(c.Section, c.Highlight.Highlight.Kind) == section {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // savedNarrativeForm is the compose form for the narrative as saved: the

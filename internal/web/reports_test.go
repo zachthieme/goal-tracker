@@ -678,7 +678,9 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
 	}
 	page = readBody(t, resp)
-	narrative := pageElement(t, page, "section", "report-narrative")
+	// Alice, who may not manage the Report, reads the narrative as it will
+	// be published.
+	narrative := pageElement(t, getBody(t, signInClient(t, ts.URL, "alice@example.com"), reportURL), "section", "report-narrative")
 	for _, want := range []string{"Accomplishments", "EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
 		if !strings.Contains(narrative, want) {
 			t.Errorf("draft narrative missing %q; narrative:\n%s", want, narrative)
@@ -736,7 +738,7 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("curate: status %d, want the draft page", resp.StatusCode)
 	}
-	narrative := pageElement(t, readBody(t, resp), "section", "report-narrative")
+	narrative := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), reportURL), "section", "report-narrative")
 	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.HasSuffix(heading, ">Misses") {
 		t.Errorf("narrative's only section %q, want Misses", heading)
 	}
@@ -866,6 +868,65 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	}
 }
 
+// The composer reads as the narrative will: under its Narrative heading, each
+// section in turn — Insights, Accomplishments, Misses — with its own "+ Add
+// note" and the Highlights its picks would put there, a Highlight picked into
+// another section than its kind under that one. One Save narrative ends it.
+// With no Highlight to pick it says so (#473).
+func TestComposerGroupsEachSectionsNotesAndHighlightsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	quiet := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.Clock.Advance(time.Hour)
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightInsight, "Buyers want invoices in euros.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: draftHighlightID(t, h, def, "Signed the first EU customer."), Section: domain.HighlightMiss}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	none := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Quiet", Mode: domain.ReportModePicked, Picked: []int64{quiet.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	form := findByTestID(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), "narrative-curation")
+
+	for section, want := range map[string][]string{
+		domain.HighlightInsight:        {"Buyers want invoices in euros."},
+		domain.HighlightAccomplishment: nil,
+		domain.HighlightMiss:           {"Signed the first EU customer."},
+	} {
+		sec := findByTestID(t, form, "compose-section-"+section)
+		if !strings.Contains(textOf(findByTestID(t, sec, "section-text-summary")), "+ Add note") {
+			t.Errorf("the %s section has no + Add note: %s", section, renderNode(sec))
+		}
+		var got []string
+		for _, hl := range findAllByTestID(sec, "curation-highlight") {
+			got = append(got, textOf(findAll(hl, func(n *nethtml.Node) bool { return attrOf(n, "class") == "rp-include" })[0]))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("the %s section offers %q, want %q", section, got, want)
+		}
+	}
+	insights, accomplishments, misses := findByTestID(t, form, "compose-section-"+domain.HighlightInsight), findByTestID(t, form, "compose-section-"+domain.HighlightAccomplishment), findByTestID(t, form, "compose-section-"+domain.HighlightMiss)
+	if !precedes(insights, accomplishments) || !precedes(accomplishments, misses) {
+		t.Errorf("the sections aren't Insights, Accomplishments, Misses in turn")
+	}
+	saves := findAll(form, func(n *nethtml.Node) bool { return n.Data == "button" && textOf(n) == "Save narrative" })
+	if len(saves) != 1 || within(saves[0], misses) || !precedes(misses, saves[0]) {
+		t.Errorf("the composer has %d Save narrative, want one after the last section", len(saves))
+	}
+
+	empty := findByTestID(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(none.ID, 10)), "report-curation")
+	if got := textOf(findByTestID(t, empty, "no-highlights")); got != "No Highlights to pick since Dec 3, 2025." {
+		t.Errorf("with no Highlights the composer says %q", got)
+	}
+}
+
 // The author writes several notes into one section, each in its own box: the
 // draft's form shows every saved note in its own box plus one empty box, and
 // the draft and then the publication show each note as its own paragraph in
@@ -904,7 +965,8 @@ func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
 	}
 
 	want := []string{"Pricing drives churn.", "Discounts don't save accounts.", "EU is open for business."}
-	if got := narrativeTexts(pageElement(t, page, "section", "report-narrative")); !slices.Equal(got, want) {
+	reader := getBody(t, signInClient(t, ts.URL, "sam@example.com"), reportURL)
+	if got := narrativeTexts(pageElement(t, reader, "section", "report-narrative")); !slices.Equal(got, want) {
 		t.Errorf("draft narrative paragraphs %q, want %q", got, want)
 	}
 
@@ -916,7 +978,7 @@ func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
 
 // Each section offers Add another, which posts the form to its own action
 // with add_note set to the section and swaps its answer in for the whole
-// curation form (ticket #187).
+// Narrative section (tickets #187, #473).
 func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -943,7 +1005,7 @@ func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
 			"type":      "submit",
 			"value":     section,
 			"hx-post":   action,
-			"hx-target": "#narrative-curation",
+			"hx-target": "#report-curation",
 			"hx-swap":   "outerHTML",
 		} {
 			if got := html.UnescapeString(attr(button, name)); got != want {
@@ -1054,8 +1116,8 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 				if !hasTestID(answer, "draft-header") {
 					t.Errorf("plain add another does not answer the whole draft page; body:\n%s", body)
 				}
-				if got := textsOf(findAllByTestID(findByTestID(t, answer, "report-draft"), "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
-					t.Errorf("plain add another's preview reads notes %q, want the narrative saved", got)
+				if main := findByTestID(t, answer, "report-draft"); !hasTestID(main, "narrative-curation") || hasTestID(main, "report-narrative") {
+					t.Errorf("plain add another's main column doesn't compose the narrative as posted in place, alone")
 				}
 				return
 			}
@@ -1076,7 +1138,7 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 
 // Add another the domain refuses — a ticked Highlight with no section — still
 // re-renders the form as posted with its added box, and the save status says
-// why nothing was saved; the preview stays as it was. A plain post gets the
+// why nothing was saved; the rest of the draft stays as it was. A plain post gets the
 // draft page as 422 (ticket #187).
 func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -1127,7 +1189,7 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 				t.Errorf("narrative after a refusal %+v (err %v), want nothing saved", draft.Narrative, err)
 			}
 			if tc.name == "htmx" {
-				for _, untouched := range []string{`id="draft-preview"`, `data-testid="publish-summary"`, "<html"} {
+				for _, untouched := range []string{`data-testid="report-draft"`, `data-testid="publish-summary"`, "<html"} {
 					if strings.Contains(body, untouched) {
 						t.Errorf("refused add another answers %s; body:\n%s", untouched, body)
 					}
@@ -1386,12 +1448,10 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 // The draft page keeps Publish in reach: a sticky header strip carries the
 // breadcrumb to the name, the baseline, the save status, the History of
 // publications and Publish — the primary button at the right, saying what it
-// does. Below it the author curates the
-// narrative in the compose panel, then checks the preview beside it. The save
-// status sits in the name's block, so at phone width it can stay beside the
-// name (#172); above that the block lets its children into the header's row
-// and the save status is ordered after the chip, beside History.
-func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
+// does. The save status sits in the name's block, so at phone width it can
+// stay beside the name (#172); above that the block lets its children into the
+// header's row and the save status is ordered after the chip, beside History.
+func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1407,7 +1467,7 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 		t.Errorf("the draft's header isn't the page's header strip: %s", tag)
 	}
 	last := -1
-	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `data-testid="report-name"`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
+	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `aria-current="page">MBR<`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
 		at := strings.Index(header, part)
 		if at <= last {
 			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
@@ -1436,15 +1496,6 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	}
 	if strings.Contains(page, `data-testid="report-publications"`) {
 		t.Errorf("publications are still listed in a sidebar; body:\n%s", page)
-	}
-
-	panes := between(t, page, `<div data-testid="draft-panes"`, "")
-	curation, preview := strings.Index(panes, `data-testid="report-curation"`), strings.Index(panes, `id="draft-preview"`)
-	if curation < 0 || preview < curation {
-		t.Errorf("the narrative form does not come before the preview (at %d and %d); panes:\n%s", curation, preview, panes)
-	}
-	if !strings.Contains(between(t, panes, `data-testid="compose-panel"`, "</aside>"), `data-testid="narrative-curation"`) {
-		t.Errorf("the narrative form is not in the compose panel; panes:\n%s", panes)
 	}
 }
 
@@ -1925,36 +1976,6 @@ func printPageColour(t *testing.T, style, rule, property string) string {
 	return strings.ToUpper(value)
 }
 
-// The draft sets the compose panel beside the preview. At phone width the two
-// panes stack into one column, compose first, and each pane shrinks to the
-// viewport rather than to its widest content — the On track table scrolls
-// inside its card instead of pushing the baseline line and the Narrative card
-// off the right edge (#43).
-func TestDraftPanesStackAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	panes := between(t, page, `<div data-testid="draft-panes"`, "")
-	compose, preview := strings.Index(panes, `data-testid="compose-panel"`), strings.Index(panes, `id="draft-preview"`)
-	if compose < 0 || preview < 0 || compose > preview {
-		t.Errorf("the compose panel does not come before the preview in the panes (at %d and %d):\n%s", compose, preview, panes)
-	}
-	if !strings.Contains(cssRule(t, page, ".rp-panes>*"), "min-width:0") {
-		t.Errorf("draft panes keep their content's minimum width, so a wide table scrolls the page sideways")
-	}
-	phone := between(t, page, "@media (max-width:900px){", "}}")
-	if rule := cssRule(t, phone+"}", ".rp-panes"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr)") {
-		t.Errorf("at 900px the draft panes are not one column: .rp-panes{%s}", rule)
-	}
-}
-
 // At phone width the Publish… card is pinned to the viewport's gutters rather
 // than hung off its button's right edge, where it ran off the left of a 390px
 // screen with Cancel beyond reach (#172).
@@ -1998,7 +2019,7 @@ func TestDraftHeaderStacksAtPhoneWidthOverHTTP(t *testing.T) {
 
 	header := pageElement(t, page, "header", "draft-header")
 	title := between(t, header, `<div class="rp-draft-title">`, `data-testid="baseline-chip"`)
-	for _, part := range []string{`data-testid="report-name"`, `data-testid="save-status"`} {
+	for _, part := range []string{`data-testid="report-breadcrumb"`, `data-testid="save-status"`} {
 		if !strings.Contains(title, part) {
 			t.Errorf("the name block lacks %s; block:\n%s", part, title)
 		}
@@ -2321,25 +2342,154 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	}
 }
 
-// The Introduction belongs to the Report Definition, so the draft shows it
-// read-only in the compose panel: there is nothing to type it into.
-func TestDraftShowsTheIntroductionReadOnlyOverHTTP(t *testing.T) {
+// The draft is one page: its main column is the Report as readers get it,
+// headed by the Report's name, then a muted line saying what the definition
+// selects, how many Goals that is and what it reads changes against, then the
+// Introduction, once and read-only, since it belongs to the definition. The
+// header strip keeps the name only as its breadcrumb. Its creator and a reader
+// who may not manage it read the same column; the compose pane, the Goals panel
+// and the preview's frame are gone (#473).
+func TestDraftMainColumnReadsAsTheReportOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	lee := h.SignIn("lee@example.com")
+	h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	added := h.ActiveGoal(lee, "Open Tokyo", "Expand east.")
+	alsoAdded := h.ActiveGoal(lee, "Hire a CFO", "We need one.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:         "Growth MBR",
+		Introduction: "Where the EU launch stands.",
+		Mode:         domain.ReportModeRules,
+		Rules:        []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
+		Include:      []int64{added.ID, alsoAdded.ID},
+	})
+
+	ts := newServer(t, h)
+	for _, who := range []string{"boss@example.com", "lee@example.com"} {
+		page := getPage(t, signInClient(t, ts.URL, who), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+		main := findByTestID(t, page, "report-draft")
+		if name := findByTestID(t, main, "report-name"); name.Data != "h1" || textOf(name) != "Growth MBR" {
+			t.Errorf("%s: the main column's name is <%s> %q, want the h1 Growth MBR", who, name.Data, textOf(name))
+		}
+		header := findByTestID(t, page, "draft-header")
+		if hasTestID(header, "report-name") || len(findAll(header, func(n *nethtml.Node) bool { return n.Data == "h1" })) != 0 {
+			t.Errorf("%s: the header strip still heads the page with the name: %s", who, renderNode(header))
+		}
+		if got := textOf(findByTestID(t, header, "report-breadcrumb")); !strings.Contains(got, "Reports") || !strings.Contains(got, "Growth MBR") {
+			t.Errorf("%s: the header's breadcrumb reads %q, want Reports › Growth MBR", who, got)
+		}
+		if got, want := textOf(findByTestID(t, main, "report-meta")), "Owner: Dana Okafor · 2 added · 3 Goals · changes since Dec 3, 2025"; got != want {
+			t.Errorf("%s: the meta line reads %q, want %q", who, got, want)
+		}
+		intros := findAllByTestID(page, "report-introduction")
+		if len(intros) != 1 || !within(intros[0], main) || textOf(intros[0]) != "Where the EU launch stands." {
+			t.Errorf("%s: the Introduction shows %d times (%q), want once in the main column", who, len(intros), textsOf(intros))
+		}
+		if !precedes(findByTestID(t, main, "report-meta"), intros[0]) || !precedes(intros[0], findByTestID(t, main, "health-summary")) {
+			t.Errorf("%s: the Introduction isn't between the meta line and the Health tiles", who)
+		}
+		if formFields(page, "introduction") != nil {
+			t.Errorf("%s: the draft offers to edit the Introduction", who)
+		}
+		for _, gone := range []string{"compose-panel", "draft-panes", "draft-introduction", "report-goals", "report-goal", "scope-summary"} {
+			if hasTestID(page, gone) {
+				t.Errorf("%s: the draft still has %s", who, gone)
+			}
+		}
+		if strings.Contains(textOf(page), "Preview: exactly what readers will see") {
+			t.Errorf("%s: the draft still labels a preview", who)
+		}
+	}
+}
+
+// The narrative sits in the main column where readers meet it, after the
+// Health tiles and before the exceptions: a reader who may manage the Report
+// composes it there, under a Narrative heading, and anyone else reads it as it
+// will be published, with no compose form. Everyone gets the narrow column
+// beside it, its Delegates above its Report log; only the creator gets Remove
+// and Add (#473).
+func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where the EU launch stands.", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	lee := h.SignIn("lee@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	if err := h.Service.AddReportDelegateByEmail(context.Background(), boss.ID, def.ID, lee.Email); err != nil {
+		t.Fatalf("AddReportDelegateByEmail: %v", err)
+	}
+	h.SignIn("sam@example.com")
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	compose := pageElement(t, page, "aside", "compose-panel")
-	if intro := pageElement(t, compose, "section", "draft-introduction"); !strings.Contains(intro, "Where the EU launch stands.") {
-		t.Errorf("the compose panel does not show the Introduction; section:\n%s", intro)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), draftURL)
+	main := findByTestID(t, page, "report-draft")
+	composer := findByTestID(t, main, "report-curation")
+	if headingNamed(composer, "Narrative") == nil {
+		t.Errorf("the composer has no Narrative heading: %s", renderNode(composer))
 	}
-	if strings.Contains(page, `name="introduction"`) {
-		t.Errorf("the draft offers to edit the Introduction; body:\n%s", page)
+	form := findByTestID(t, composer, "narrative-curation")
+	if buttonNamed(form, "Save narrative") == nil {
+		t.Errorf("the composer has no Save narrative")
+	}
+	if !precedes(findByTestID(t, main, "health-summary"), composer) || !precedes(composer, findByTestID(t, main, "needs-attention")) {
+		t.Errorf("the composer isn't between the Health tiles and the exceptions")
+	}
+	if hasTestID(page, "report-narrative") {
+		t.Errorf("the manager reads the narrative as published beside the composer")
+	}
+	side := findByTestID(t, page, "draft-side")
+	if within(side, main) {
+		t.Fatalf("the narrow column is inside the main column")
+	}
+	delegates, log := findByTestID(t, side, "report-delegates"), findByTestID(t, side, "report-log")
+	if !precedes(delegates, log) {
+		t.Errorf("the Report log comes before the Delegates")
+	}
+	if !hasTestID(side, "add-report-delegate") || !hasTestID(side, "remove-report-delegate") {
+		t.Errorf("the creator can't add or remove Delegates: %s", renderNode(delegates))
+	}
+
+	// A Delegate composes the narrative too, but only its creator and Admins
+	// manage its Delegates.
+	page = getPage(t, signInClient(t, ts.URL, "lee@example.com"), draftURL)
+	if !hasTestID(findByTestID(t, page, "report-draft"), "narrative-curation") {
+		t.Errorf("a Delegate doesn't get the composer")
+	}
+	side = findByTestID(t, page, "draft-side")
+	if !hasTestID(side, "report-delegates") || hasTestID(side, "add-report-delegate") || hasTestID(side, "remove-report-delegate") {
+		t.Errorf("a Delegate's narrow column doesn't list the Delegates without Add and Remove: %s", renderNode(side))
+	}
+
+	page = getPage(t, signInClient(t, ts.URL, "sam@example.com"), draftURL)
+	main = findByTestID(t, page, "report-draft")
+	if hasTestID(page, "report-curation") || hasTestID(page, "narrative-curation") {
+		t.Errorf("a reader who may not manage the Report gets the composer")
+	}
+	narrative := findByTestID(t, main, "report-narrative")
+	if got := textsOf(findAllByTestID(narrative, "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
+		t.Errorf("the reader reads the notes %q, want the saved one", got)
+	}
+	if !precedes(findByTestID(t, main, "health-summary"), narrative) || !precedes(narrative, findByTestID(t, main, "needs-attention")) {
+		t.Errorf("the reader's narrative isn't between the Health tiles and the exceptions")
+	}
+	side = findByTestID(t, page, "draft-side")
+	if !hasTestID(side, "report-delegates") || !hasTestID(side, "report-log") {
+		t.Errorf("the reader's narrow column lacks the Delegates or the Report log: %s", renderNode(side))
+	}
+	if hasTestID(side, "add-report-delegate") || hasTestID(side, "remove-report-delegate") {
+		t.Errorf("the reader gets Add or Remove on the Delegates")
 	}
 }
 
@@ -2786,11 +2936,11 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	}
 }
 
-// The draft's preview is the publication: the same Health summary and Report
-// body a reader will see, read off the same component. The export links and
-// the Action Items raised on a publication stay on the publication, since a
-// draft has nothing to export or discuss yet.
-func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
+// The draft's main column is the publication: the same Health summary and
+// Report body a reader will see, read off the same components. The export
+// links and the Action Items raised on a publication stay on the publication,
+// since a draft has nothing to export or discuss yet.
+func TestDraftMainColumnIsThePublicationOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -2808,94 +2958,28 @@ func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	preview := between(t, page, `id="draft-preview"`, "")
-	summary := pageElement(t, preview, "section", "health-summary")
+	main := findByTestID(t, parsePage(t, page), "report-draft")
+	summary := findByTestID(t, main, "health-summary")
 	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "checkin-overdue": "1"} {
-		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
-			t.Errorf("preview's %s tile: %q, want a count of %s", tile, count, want)
+		if count := textOf(findByTestID(t, summary, "health-count-"+tile)); count != want {
+			t.Errorf("the main column's %s tile: %q, want a count of %s", tile, count, want)
 		}
 	}
-	snapshot := between(t, preview, `<section data-testid="report-snapshot"`, "")
-	for _, want := range []string{`data-testid="report-introduction"`, `data-testid="needs-attention"`, `data-testid="on-track"`} {
-		if !strings.Contains(snapshot, want) {
-			t.Errorf("preview's Report body missing %s; preview:\n%s", want, preview)
+	for _, want := range []string{"report-introduction", "needs-attention", "on-track"} {
+		if !hasTestID(main, want) {
+			t.Errorf("the main column's Report misses %s", want)
 		}
 	}
-	for _, publicationOnly := range []string{`data-testid="report-export"`, `data-testid="publication-action-items"`} {
-		if strings.Contains(page, publicationOnly) {
-			t.Errorf("the draft carries the publication's %s; body:\n%s", publicationOnly, page)
+	for _, publicationOnly := range []string{"report-export", "publication-action-items"} {
+		if hasTestID(parsePage(t, page), publicationOnly) {
+			t.Errorf("the draft carries the publication's %s", publicationOnly)
 		}
-	}
-}
-
-// Above the preview the author sees which Goals the Report selects — every
-// exception and every line, each once with its Health and the exceptions
-// marked for attention — with a slot for the scope summary. The panel is for
-// the author: the publication does not carry it.
-func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	checkinOverdue := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
-	proposed := h.CreateGoal(boss, "Hire a CFO", "We need one.")
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
-	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID, checkinOverdue.ID, proposed.ID}})
-	report, err := h.Service.DraftReport(context.Background(), def, time.Time{})
-	if err != nil {
-		t.Fatalf("DraftReport: %v", err)
-	}
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	panel := between(t, page, `<section data-testid="report-goals"`, `id="draft-preview"`)
-	if heading := pageElement(t, panel, "h2", "report-goal-count"); !strings.HasSuffix(heading, ">4 Goals in this report") {
-		t.Errorf("Goals panel heading %q, want 4 Goals in this report", heading)
-	}
-	if n := len(report.Exceptions) + len(report.Lines); n != 4 {
-		t.Errorf("the Report selects %d Goals, want the 4 the panel counts", n)
-	}
-	if !strings.Contains(panel, `data-testid="scope-summary"`) {
-		t.Errorf("Goals panel has no scope summary slot; panel:\n%s", panel)
-	}
-	items := strings.Split(panel, `data-testid="report-goal"`)[1:]
-	if len(items) != 4 {
-		t.Fatalf("Goals panel lists %d Goals, want 4; panel:\n%s", len(items), panel)
-	}
-	for _, g := range []domain.Goal{red, green, checkinOverdue, proposed} {
-		if n := strings.Count(panel, ">"+g.Title+"<"); n != 1 {
-			t.Errorf("Goals panel lists %q %d times, want once; panel:\n%s", g.Title, n, panel)
-		}
-	}
-	for _, item := range items {
-		if !strings.Contains(item, `class="dot"`) {
-			t.Errorf("Goal in the panel has no Health dot: %s", item)
-		}
-	}
-	if n := strings.Count(panel, `data-testid="report-goal-attention"`); n != len(report.Exceptions) {
-		t.Errorf("Goals panel marks %d for attention, want the %d exceptions; panel:\n%s", n, len(report.Exceptions), panel)
-	}
-	for _, b := range report.Exceptions {
-		if item := between(t, panel, ">"+b.Goal.Title+"<", "</li>"); !strings.Contains(item, ">attention<") {
-			t.Errorf("exception %q is not marked for attention: %s", b.Goal.Title, item)
-		}
-	}
-
-	published := readBody(t, postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications", url.Values{}))
-	if strings.Contains(published, `data-testid="report-goals"`) {
-		t.Errorf("the publication carries the author's Goals panel; body:\n%s", published)
 	}
 }
 
 // An Org rule reads back as "Owner is in the org of <Name>" in the draft's
-// Goals panel and on the Reports list, and a Goal listed to Also include whose
-// Owner is in the org isn't marked added (CONTEXT.md: Org).
+// meta line and on the Reports list, and a Goal listed to Also include whose
+// Owner is in the org doesn't count as added (CONTEXT.md: Org).
 func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2916,18 +3000,9 @@ func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "vp@example.com")
 	const want = "Owner is in the org of Priya Raman · 2 added"
 
-	panel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
-	if scope := pageElement(t, panel, "span", "scope-summary"); !strings.HasSuffix(scope, ">"+want) {
-		t.Errorf("scope summary %q, want %s", scope, want)
-	}
-	for _, c := range []struct {
-		goal  domain.Goal
-		added bool
-	}{{mias, false}, {lees, true}} {
-		item := between(t, panel, ">"+c.goal.Title+"<", "</li>")
-		if got := strings.Contains(item, `data-testid="report-goal-added"`); got != c.added {
-			t.Errorf("%q marked added %t, want %t: %s", c.goal.Title, got, c.added, item)
-		}
+	meta := textOf(findByTestID(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), "report-meta"))
+	if !strings.HasPrefix(meta, want+" · 2 Goals · ") {
+		t.Errorf("the draft's meta line reads %q, want it to open with %s", meta, want)
 	}
 	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+want+`</span>`) {
 		t.Errorf("the Reports list doesn't read the Org rule as %s:\n%s", want, list)
@@ -2944,83 +3019,9 @@ func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	}
 }
 
-// The Goals panel says what the definition selects in plain words, and marks
-// "added" each Goal in it only because of Also include: not one listed there
-// that meets the rules anyway, and never one picked by hand.
-func TestDraftGoalsPanelShowsTheScopeAndMarksAlsoIncludeOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
-	lee := h.SignIn("lee@example.com")
-	matches := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	listedAndMatches := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	addedOnly := h.ActiveGoal(lee, "Open Tokyo", "Expand east.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
-		Name:    "MBR",
-		Mode:    domain.ReportModeRules,
-		Rules:   []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
-		Include: []int64{listedAndMatches.ID, addedOnly.ID},
-	})
-	picked := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Picked", Mode: domain.ReportModePicked, Picked: []int64{matches.ID, addedOnly.ID}})
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	panel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
-
-	if scope := pageElement(t, panel, "span", "scope-summary"); !strings.HasSuffix(scope, ">Owner: Dana Okafor · 2 added") {
-		t.Errorf("scope summary %q, want Owner: Dana Okafor · 2 added", scope)
-	}
-	for _, c := range []struct {
-		goal  domain.Goal
-		added bool
-	}{{matches, false}, {listedAndMatches, false}, {addedOnly, true}} {
-		item := between(t, panel, ">"+c.goal.Title+"<", "</li>")
-		if got := strings.Contains(item, `data-testid="report-goal-added"`) && strings.Contains(item, ">added<"); got != c.added {
-			t.Errorf("%q marked added %t, want %t: %s", c.goal.Title, got, c.added, item)
-		}
-	}
-
-	pickedPanel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(picked.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
-	if scope := pageElement(t, pickedPanel, "span", "scope-summary"); !strings.HasSuffix(scope, ">2 Goals picked by hand") {
-		t.Errorf("picked scope summary %q, want 2 Goals picked by hand", scope)
-	}
-	if strings.Contains(pickedPanel, `data-testid="report-goal-added"`) {
-		t.Errorf("a picked definition's panel marks a Goal added; panel:\n%s", pickedPanel)
-	}
-}
-
-// The Goals panel shows the first 6 Goals and keeps the rest behind Show all.
-func TestDraftGoalsPanelShowsSixThenTheRestOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	var roots []int64
-	for i := 1; i <= 8; i++ {
-		roots = append(roots, h.ActiveGoal(boss, fmt.Sprintf("Goal %d", i), "Matters.").ID)
-	}
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: roots})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	panel := between(t, page, `<section data-testid="report-goals"`, `id="draft-preview"`)
-	shown, rest, ok := strings.Cut(panel, `<details data-testid="report-goals-more"`)
-	if !ok {
-		t.Fatalf("Goals panel keeps no Goals behind Show all; panel:\n%s", panel)
-	}
-	if n := strings.Count(shown, `data-testid="report-goal"`); n != 6 {
-		t.Errorf("Goals panel shows %d Goals up front, want 6; panel:\n%s", n, panel)
-	}
-	if !strings.Contains(rest, "<summary>Show all 8</summary>") || strings.Count(rest, `data-testid="report-goal"`) != 2 {
-		t.Errorf("Show all 8 does not hold the other 2 Goals; details:\n%s", rest)
-	}
-}
-
 // Readers see the Goals that entered or left a Report since its latest
-// publication, each linking to the Goal, with Added or Left and why: on the
-// draft's preview and on the publication. With none, neither shows the list.
+// publication, each linking to the Goal, with Added or Left and why: in the
+// draft's main column and on the publication. With none, neither shows the list.
 func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3049,7 +3050,7 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	}
 	draft := getBody(t, client, draftURL)
 	second := h.PublishReport(boss, def)
-	for name, page := range map[string]string{"draft preview": between(t, draft, `id="draft-preview"`, ""), "publication": getBody(t, client, pubURL(second))} {
+	for name, page := range map[string]string{"draft": renderNode(findByTestID(t, parsePage(t, draft), "report-draft")), "publication": getBody(t, client, pubURL(second))} {
 		list := pageElement(t, page, "section", "membership-changes")
 		if !strings.Contains(list, "Goals that entered or left this report") {
 			t.Errorf("%s list has no heading:\n%s", name, list)
@@ -3314,85 +3315,34 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	}
 }
 
-// The compose form previews as the author types, without saving: htmx posts
-// it to the preview and gets back the preview showing the narrative as
-// posted, and, out of band, the save status saying it is unsaved and the
-// form's Highlights count. The compose fields aren't in the answer, so the
-// author's typing stays put. Nothing is saved: the draft reloads with the
-// narrative saved before, and the Report log records nothing (tickets #156,
-// #166, #444).
-func TestNarrativePreviewRefreshesThePreviewAndSavesNothingOverHTTP(t *testing.T) {
+// The live preview is gone: the composer is in the main column, so there is
+// no separate preview to refresh, and POST /reports/{id}/narrative/preview
+// isn't routed, for a manager or anyone else (#473).
+func TestNarrativePreviewIsNoLongerRoutedOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
+	h.SignIn("stranger@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
-	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
-		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
-	}); err != nil {
-		t.Fatalf("CurateNarrative: %v", err)
-	}
-	logged, err := h.Service.ReportLog(ctx, def.ID)
-	if err != nil {
-		t.Fatalf("ReportLog: %v", err)
-	}
 
 	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	resp, body := postHX(t, client, reportURL+"/narrative/preview", url.Values{
-		"include-" + signed:                      {"on"},
-		"pick-" + signed:                         {domain.HighlightAccomplishment},
-		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
-	})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("preview: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	for _, who := range []string{"boss@example.com", "stranger@example.com"} {
+		resp, body := postHX(t, signInClient(t, ts.URL, who), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{
+			"text-" + domain.HighlightMiss: {"Slipped a week."},
+		})
+		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("%s's preview: status %d, want it unrouted; body:\n%s", who, resp.StatusCode, body)
+		}
 	}
-	answer := parsePage(t, body)
-	if hasTestID(answer, "narrative-curation") || hasTestID(answer, "draft-header") {
-		t.Errorf("the preview answers more than the preview; body:\n%s", body)
-	}
-	preview := findByTestID(t, answer, "report-draft")
-	if hasAttr(preview, "hx-swap-oob") {
-		t.Errorf("the preview is swapped out of band, want it in place of the target")
-	}
-	narrative := findByTestID(t, preview, "report-narrative")
-	if got := textsOf(findAllByTestID(narrative, "narrative-text")); !slices.Equal(got, []string{"EU is open for business."}) {
-		t.Errorf("previewed notes %q, want the posted note alone", got)
-	}
-	if !strings.Contains(textOf(narrative), "Signed the first EU customer.") {
-		t.Errorf("the preview leaves out the ticked Highlight: %s", textOf(narrative))
-	}
-	status := findByTestID(t, answer, "save-status")
-	if attrOf(status, "hx-swap-oob") != "true" {
-		t.Errorf("the save status is not swapped out of band")
-	}
-	if got := textOf(findByTestID(t, status, "save-result")); got != "Unsaved changes" {
-		t.Errorf("the save status says %q, want Unsaved changes", got)
-	}
-	count := findByTestID(t, answer, "curation-count")
-	if attrOf(count, "hx-swap-oob") != "true" || textOf(count) != "1 of 1 in" {
-		t.Errorf("the Highlights count reads %q (oob %q), want 1 of 1 in out of band", textOf(count), attrOf(count, "hx-swap-oob"))
-	}
-	if hasTestID(answer, "publish-summary") {
-		t.Errorf("the preview changes Publish…'s summary, which says what is saved")
-	}
-
-	draft := findByTestID(t, getPage(t, client, reportURL), "report-draft")
-	if got := textsOf(findAllByTestID(draft, "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
-		t.Errorf("the draft after a preview reads notes %q, want the narrative saved before", got)
-	}
-	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged) {
-		t.Errorf("Report log after a preview has %d entries (err %v), want the %d before", len(after), err, len(logged))
+	if draft, err := h.Service.DraftReport(context.Background(), def, time.Time{}); err != nil || len(draft.Narrative) != 0 {
+		t.Errorf("narrative after a post to the old preview %+v (err %v), want nothing saved", draft.Narrative, err)
 	}
 }
 
 // On a later baseline, the compose form doesn't list a saved pick from before
-// it: the form as it stands previews as Saved, not Unsaved changes, and saving
+// it: the form as it stands reads as Saved, not Unsaved changes, and saving
 // it keeps the pick (ticket #455).
 func TestNarrativeAtALaterBaselineKeepsEarlierPicksOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -3420,29 +3370,33 @@ func TestNarrativeAtALaterBaselineKeepsEarlierPicksOverHTTP(t *testing.T) {
 	if got := textsOf(findAllByTestID(form, "curation-highlight")); len(got) != 1 || !strings.Contains(got[0], "Lost the second customer.") {
 		t.Fatalf("the form at the baseline lists %q, want only the lost customer", got)
 	}
-	resp, body := postHX(t, client, ts.URL+attrOf(form, "hx-post"), formSubmission(form))
+	again := formSubmission(form)
+	again.Set("add_note", domain.HighlightMiss)
+	resp, body := postHX(t, client, ts.URL+attrOf(form, "action"), again)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("preview: status %d, want 200; body:\n%s", resp.StatusCode, body)
+		t.Fatalf("add another: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
 	if got := textOf(findByTestID(t, parsePage(t, body), "save-result")); got != "Saved" {
-		t.Errorf("previewing the unchanged form at the baseline says %q, want Saved", got)
+		t.Errorf("adding a box to the unchanged form at the baseline says %q, want Saved", got)
 	}
 
 	resp, body = postHX(t, client, ts.URL+attrOf(form, "action"), formSubmission(form))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
-	narrative := findByTestID(t, getPage(t, client, reportURL), "report-narrative")
+	h.SignIn("sam@example.com")
+	narrative := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), reportURL), "report-narrative")
 	if !strings.Contains(textOf(narrative), "Signed the first EU customer.") {
 		t.Errorf("saving at the baseline dropped the earlier pick; narrative: %s", textOf(narrative))
 	}
 }
 
-// Save narrative saves the compose form: over htmx it answers the preview
-// showing the narrative as saved and, out of band, the save status saying
-// Saved, the Highlights count, Publish…'s summary and the Report log with the
-// save's one entry — never the form's own fields. Saving again unchanged logs
-// nothing. A plain post still reloads the draft (tickets #156, #166, #444).
+// Save narrative saves the compose form: over htmx it answers the Narrative
+// section, its compose form showing the narrative as saved with its Highlights
+// count, and, out of band, the save status saying Saved, Publish…'s summary
+// and the Report log with the save's one entry — nothing else of the page.
+// Saving again unchanged logs nothing. A plain post still reloads the draft
+// (tickets #156, #166, #444, #473).
 func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3471,17 +3425,27 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 		t.Fatalf("save: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
 	answer := parsePage(t, body)
-	if hasTestID(answer, "narrative-curation") || hasTestID(answer, "draft-header") {
-		t.Errorf("the save answers the form or the page; body:\n%s", body)
+	for _, untouched := range []string{"draft-header", "report-draft", "health-summary", "needs-attention"} {
+		if hasTestID(answer, untouched) {
+			t.Errorf("the save answers %s, which it didn't change; body:\n%s", untouched, body)
+		}
 	}
-	preview := findByTestID(t, answer, "report-draft")
-	if got := textsOf(findAllByTestID(preview, "narrative-text")); !slices.Equal(got, []string{"EU is open for business."}) {
-		t.Errorf("saved preview's notes %q, want the saved note", got)
+	section := findByTestID(t, answer, "report-curation")
+	if hasAttr(section, "hx-swap-oob") {
+		t.Errorf("the Narrative section is swapped out of band, want it in place of the target")
 	}
-	if !strings.Contains(textOf(findByTestID(t, preview, "report-narrative")), "Signed the first EU customer.") {
-		t.Errorf("the saved preview leaves out the ticked Highlight")
+	saved := findByTestID(t, section, "narrative-curation")
+	var notes []string
+	for _, f := range formFields(saved, "text-"+domain.HighlightAccomplishment) {
+		notes = append(notes, f.Value)
 	}
-	for _, oob := range []string{"save-status", "curation-count", "publish-summary", "report-log"} {
+	if !slices.Equal(notes, []string{"EU is open for business.", ""}) {
+		t.Errorf("the saved form's Accomplishments boxes hold %q, want the saved note and an empty box", notes)
+	}
+	if box := formField(t, saved, "include-"+signed); !box.Checked {
+		t.Errorf("the saved form leaves the saved Highlight unticked")
+	}
+	for _, oob := range []string{"save-status", "publish-summary", "report-log"} {
 		if attrOf(findByTestID(t, answer, oob), "hx-swap-oob") != "true" {
 			t.Errorf("%s is not swapped out of band; body:\n%s", oob, body)
 		}
@@ -3490,7 +3454,7 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 	if got := textOf(findByTestID(t, status, "save-result")); got != "Saved" || hasAttr(status, "data-unsaved") {
 		t.Errorf("the save status says %q (unsaved %v), want Saved", got, hasAttr(status, "data-unsaved"))
 	}
-	if got := textOf(findByTestID(t, answer, "curation-count")); got != "1 of 1 in" {
+	if got := textOf(findByTestID(t, section, "curation-count")); got != "1 of 1 in" {
 		t.Errorf("the Highlights count %q, want 1 of 1 in", got)
 	}
 	if got := textOf(findByTestID(t, answer, "publish-summary")); !strings.Contains(got, "· 1 Highlight · changes since 30 days ago · ") {
@@ -3513,59 +3477,12 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
 	}
 }
 
-// A preview the domain refuses — a Highlight not on a Goal the Report
-// selects — changes only the save status, saying why, and tells htmx to swap
-// nothing else: the preview and what the author typed stay (tickets #156,
-// #444).
-func TestNarrativePreviewRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	resp, body := postHX(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{
-		"include-9999": {"on"},
-		"pick-9999":    {domain.HighlightInsight},
-	})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("refused preview: status %d, want 200 so htmx swaps the status; body:\n%s", resp.StatusCode, body)
-	}
-	if got := resp.Header.Get("HX-Reswap"); got != "none" {
-		t.Errorf("HX-Reswap = %q, want none", got)
-	}
-	answer := parsePage(t, body)
-	if attrOf(findByTestID(t, answer, "save-status"), "hx-swap-oob") != "true" {
-		t.Errorf("the save status is not swapped out of band; body:\n%s", body)
-	}
-	result := textOf(findByTestID(t, answer, "save-result"))
-	if !strings.HasPrefix(result, "Not saved: ") || !strings.Contains(result, "is not on a Goal this Report selects") || strings.Contains(result, "validation failed") {
-		t.Errorf("the save status %q, want Not saved and the domain's reason without its prefix", result)
-	}
-	for _, untouched := range []string{"narrative-curation", "report-draft", "curation-count", "publish-summary", "draft-header"} {
-		if hasTestID(answer, untouched) {
-			t.Errorf("refused preview answers %s; body:\n%s", untouched, body)
-		}
-	}
-
-	// Someone who may not curate the Report can't preview it either.
-	stranger := signInClient(t, ts.URL, "stranger@example.com")
-	if resp, body := postHX(t, stranger, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("a stranger's preview: status %d, want 403; body:\n%s", resp.StatusCode, body)
-	}
-}
-
-// The compose form previews as the author types — debounced, a later edit
-// queued behind one in flight — to the preview, the reader's baseline and
-// all, swapping in the preview beside it, and saves nothing by itself: no
-// trigger saves on input or change. Save narrative, shown to everyone, saves
-// it, its own post the plain submit without script; the save status says
-// Saving… meanwhile, and Not saved when an answer is an error or never comes
-// (tickets #156, #444).
-func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
+// The compose form posts nothing as the author types: nothing in it saves or
+// previews on input or change. Save narrative, shown to everyone, saves it,
+// its own post the plain submit without script, swapping in the Narrative
+// section; the save status says Saving… meanwhile, and Not saved when an
+// answer is an error or never comes (tickets #156, #444, #473).
+func TestComposeFormSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3580,24 +3497,13 @@ func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	if got := attrOf(form, "action"); got != save {
 		t.Fatalf("the compose form submits to %q, want %q", got, save)
 	}
-	for name, want := range map[string]string{
-		"hx-post":    "/reports/" + strconv.FormatInt(def.ID, 10) + "/narrative/preview?baseline=2025-12-01",
-		"hx-trigger": "change, input delay:400ms",
-		"hx-target":  "#draft-preview",
-		"hx-swap":    "outerHTML",
-		"hx-sync":    "this:queue last",
-	} {
-		if got := attrOf(form, name); got != want {
-			t.Errorf("compose form %s = %q, want %q", name, got, want)
-		}
+	if hasAttr(form, "hx-post") {
+		t.Errorf("the compose form posts to %q as the author types", attrOf(form, "hx-post"))
 	}
-	for _, n := range findAll(form, func(n *nethtml.Node) bool { return attrOf(n, "hx-post") == save }) {
+	for _, n := range findAll(form, func(n *nethtml.Node) bool { return hasAttr(n, "hx-trigger") }) {
 		if trigger := attrOf(n, "hx-trigger"); strings.Contains(trigger, "input") || strings.Contains(trigger, "change") {
-			t.Errorf("<%s> saves the narrative on %q", n.Data, trigger)
+			t.Errorf("<%s> posts the narrative on %q", n.Data, trigger)
 		}
-	}
-	if hasAttr(form, "hx-indicator") {
-		t.Errorf("the compose form's previews show Saving…")
 	}
 	for _, event := range []string{"hx-on:htmx:response-error", "hx-on:htmx:send-error"} {
 		if handler := attrOf(form, event); !strings.Contains(handler, "save-result") || !strings.Contains(handler, "Not saved") {
@@ -3612,7 +3518,7 @@ func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	for name, want := range map[string]string{
 		"type":         "submit",
 		"hx-post":      save,
-		"hx-target":    "#draft-preview",
+		"hx-target":    "#report-curation",
 		"hx-swap":      "outerHTML",
 		"hx-sync":      "closest form:replace",
 		"hx-indicator": "#save-status",
@@ -3903,9 +3809,9 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 	}
 }
 
-// Edit definition links to the edit page from both the draft's header and its
-// Goals panel, for the definition's creator and an Admin; anyone else who isn't
-// a Report Delegate sees neither (ticket #151).
+// Edit definition links to the edit page from the draft's header, and only
+// there, for the definition's creator and an Admin; anyone else who isn't a
+// Report Delegate doesn't see it (tickets #151, #473).
 func TestDraftLinksToEditTheDefinitionForThoseWhoMayOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3917,21 +3823,16 @@ func TestDraftLinksToEditTheDefinitionForThoseWhoMayOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	ts := newServer(t, h)
 	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	link := `data-testid="edit-definition"`
-	href := `href="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`
 
 	for _, who := range []string{"alice@example.com", "boss@example.com"} {
-		draft := getBody(t, signInClient(t, ts.URL, who), draftURL)
-		header := pageElement(t, draft, "header", "draft-header")
-		panel := pageElement(t, draft, "section", "report-goals")
-		for where, part := range map[string]string{"header": header, "Goals panel": panel} {
-			if at := strings.Index(part, link); at < 0 || !strings.Contains(part[at:], href) {
-				t.Errorf("%s's draft %s has no Edit definition linking to the edit page:\n%s", who, where, part)
-			}
+		draft := getPage(t, signInClient(t, ts.URL, who), draftURL)
+		links := findAllByTestID(draft, "edit-definition")
+		if len(links) != 1 || !within(links[0], findByTestID(t, draft, "draft-header")) || attrOf(links[0], "href") != "/reports/"+strconv.FormatInt(def.ID, 10)+"/edit" {
+			t.Errorf("%s's draft has %d Edit definition, want one in the header linking to the edit page", who, len(links))
 		}
 	}
-	if draft := getBody(t, signInClient(t, ts.URL, "sam@example.com"), draftURL); strings.Contains(draft, link) {
-		t.Errorf("Sam, who may not edit, is offered Edit definition; body:\n%s", draft)
+	if draft := getPage(t, signInClient(t, ts.URL, "sam@example.com"), draftURL); hasTestID(draft, "edit-definition") {
+		t.Errorf("Sam, who may not edit, is offered Edit definition")
 	}
 }
 

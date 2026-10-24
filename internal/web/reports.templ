@@ -180,36 +180,41 @@ templ reportHealthBar(h domain.HealthCounts) {
 // publication. Its header strip, sticky above a phone's width, carries the
 // breadcrumb, the save status, the baseline chip, the History of its
 // publications (times in the company's timezone, loc) and Publish at the
-// right; below it the author composes the narrative on the left beside a
-// preview of exactly what readers will see, the two plain panes split by a
-// hairline (CONTEXT.md: Report, Report Definition). Paths to Green are judged
-// overdue as of asOf, today.
+// right. Below it the page is one page in two columns: the main column is the
+// Report as readers get it, the narrative composed in place, and the narrow
+// column beside it holds its Delegates and its Report log, log, moving under
+// the main column where the page is too narrow for both (CONTEXT.md: Report,
+// Report Definition; DESIGN.md § A Report's draft page). Paths to Green are
+// judged overdue as of asOf, today. panel says what the definition selects.
 // The compose form shows form, and the save status says status. Only a reader
 // m lets manage the Report gets Edit definition, the compose form and
-// Publish…; everyone gets its Delegates and its Report log, log.
+// Publish…; everyone else reads the narrative as it stands.
 templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, log []domain.ReportLogEntry, form narrativeForm, status string) {
 	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, m, status)) {
 		@reportStyles()
-		<div data-testid="draft-panes" class="rp-panes">
-			<aside data-testid="compose-panel" class="rp-body rp-compose">
-				<section data-testid="draft-introduction">
-					<h2>Introduction</h2>
-					if r.Definition.Introduction != "" {
-						<p>{ r.Definition.Introduction }</p>
+		<div class="rp-draft-page">
+			<div data-testid="report-draft" class="rp-body rp-main">
+				<header class="rp-head">
+					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+					<p data-testid="report-meta" class="muted">{ draftMeta(r, panel) }</p>
+				</header>
+				@reportIntroduction(r)
+				@healthSummary(r)
+				@reportMovement(r)
+				<section data-testid="report-snapshot" class="rp-body">
+					@reportActionItems(r.ActionItems, d)
+					if m.Manage {
+						@narrativeCuration(form)
 					} else {
-						<p class="muted">No introduction.</p>
+						@reportNarrative(r.Narrative)
 					}
+					@reportGoalSections(r, asOf, d)
 				</section>
-				if m.Manage {
-					@narrativeCuration(form)
-				}
+			</div>
+			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)
 				@reportLog(log, loc, false)
 			</aside>
-			<div class="rp-body">
-				@reportGoalsPanel(panel)
-				@draftPreview(r, asOf, d)
-			</div>
 		</div>
 		if m.Manage {
 			@narrativeSaveScript()
@@ -217,21 +222,53 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 	}
 }
 
+// draftMeta is the draft's line under its name: what the definition selects
+// in plain words, how many Goals that is, and what the draft reads changes
+// against ("Team: Growth · 1 left out · 6 Goals · changes since Sep 4, 2026").
+func draftMeta(r domain.Report, panel goalsPanel) string {
+	parts := []string{}
+	if panel.Scope != "" {
+		parts = append(parts, panel.Scope)
+	}
+	since := "changes since " + showDateYear(r.Baseline)
+	if r.Previous.ID != 0 {
+		since = "changes since the previous publication, " + showDateYear(r.Baseline)
+	}
+	return strings.Join(append(parts, plural(len(r.Exceptions)+len(r.Lines), "Goal"), since), " · ")
+}
+
 // narrativeSaveScript keeps the compose form's unsaved changes in sight. A
-// change to the form marks the save status Unsaved changes at once, before
-// its preview answers saying whether the form still differs from what is
-// saved. While the status is marked (data-unsaved), Publish… says to save the
-// narrative first, its Publish button disabled, and leaving or reloading the
-// page asks the browser's "Leave site?". Without script none of it runs, and
-// Publish works as ever.
+// change to the form marks the save status Unsaved changes, and its Highlights
+// count follows the boxes ticked. While the status is marked (data-unsaved),
+// Publish… says to save the narrative first, its Publish button disabled, and
+// leaving or reloading the page asks the browser's "Leave site?". A save's or
+// Add another's answer swaps in the Narrative section unless the author
+// changed the form while it was on its way: then what they typed stays, only
+// the answer's out-of-band parts are taken, and the status stays marked.
+// Without script none of it runs, and Publish works as ever.
 templ narrativeSaveScript() {
 	<script>
 		(function () {
+			// edits counts the author's changes; sent is the count when the
+			// Narrative section last posted.
+			var edits = 0, sent = 0, stale = false;
 			document.addEventListener("input", changed);
 			document.addEventListener("change", changed);
 			// toggle doesn't bubble, so Publish… opening is caught on its way down.
 			document.addEventListener("toggle", heed, true);
 			document.addEventListener("htmx:afterSettle", heed);
+			document.addEventListener("htmx:beforeRequest", function (e) {
+				if (fromNarrative(e)) sent = edits;
+			});
+			document.addEventListener("htmx:beforeSwap", function (e) {
+				stale = fromNarrative(e) && edits !== sent;
+				if (stale) e.detail.swapOverride = "none";
+			});
+			document.addEventListener("htmx:afterRequest", function () {
+				if (!stale) return;
+				stale = false;
+				markUnsaved();
+			});
 			window.addEventListener("beforeunload", function (e) {
 				if (!unsaved()) return;
 				e.preventDefault();
@@ -239,13 +276,26 @@ templ narrativeSaveScript() {
 			});
 			heed();
 
+			function fromNarrative(e) {
+				return e.detail.elt instanceof Element && !!e.detail.elt.closest("#report-curation");
+			}
 			function unsaved() {
 				var status = document.getElementById("save-status");
 				return !!status && status.hasAttribute("data-unsaved");
 			}
 			function changed(e) {
+				if (!(e.target instanceof Element) || !e.target.closest("#narrative-curation")) return;
+				edits++;
+				var form = document.getElementById("narrative-curation"), count = document.getElementById("curation-count");
+				if (count) {
+					var boxes = form.querySelectorAll('input[name^="include-"]');
+					count.textContent = form.querySelectorAll('input[name^="include-"]:checked').length + " of " + boxes.length + " in";
+				}
+				markUnsaved();
+			}
+			function markUnsaved() {
 				var status = document.getElementById("save-status");
-				if (!status || !(e.target instanceof Element) || !e.target.closest("#narrative-curation")) return;
+				if (!status) return;
 				status.setAttribute("data-unsaved", "");
 				document.getElementById("save-result").textContent = "Unsaved changes";
 				heed();
@@ -261,19 +311,19 @@ templ narrativeSaveScript() {
 	</script>
 }
 
-// reportDraftHeader is the draft's header strip: Reports › its name, marked a
-// Draft, and the save status at the left, then the baseline chip, and History,
+// reportDraftHeader is the draft's header strip: the breadcrumb Reports › its
+// name, muted and marked a Draft, and the save status at the left, then the baseline chip, and History,
 // Edit definition and Publish…, for a reader who may manage the Report, at the
 // right (DESIGN.md § A Report's draft page).
 templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, status string) {
 	<header data-testid="draft-header" class="page-header rp-draft-head">
 		<div class="rp-draft-title">
-			<div class="ph-title">
+			<nav class="ph-title" data-testid="report-breadcrumb" aria-label="Breadcrumb">
 				<a class="ph-parent" href="/reports">Reports</a>
 				<span class="ph-sep" aria-hidden="true">›</span>
-				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+				<span class="rp-crumb muted" aria-current="page">{ r.Definition.Name }</span>
 				<span class="ph-count">Draft</span>
-			</div>
+			</nav>
 			@saveStatus(status, false)
 		</div>
 		@reportBaselineChip(r, chip)
@@ -379,15 +429,6 @@ templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
 	</ol>
 }
 
-// draftPreview is the draft's preview pane: exactly what readers will see.
-// Saving or previewing the narrative swaps it in place.
-templ draftPreview(r domain.Report, asOf time.Time, d discussion) {
-	<section id="draft-preview" data-testid="report-draft" class="rp-body">
-		<p class="label">Preview: exactly what readers will see</p>
-		@reportContent(r, asOf, d)
-	</section>
-}
-
 // The save status's outcomes, beside "Saving…" while a save runs and a
 // refusal's "Not saved".
 const (
@@ -417,37 +458,21 @@ templ saveStatus(text string, oob bool) {
 	</span>
 }
 
-// narrativePreviewed answers the compose form previewing what the author is
-// composing: the preview showing r, the draft with the narrative as posted,
-// and out of band the save status saying status and the form's Highlights
-// count (there is none to swap when there are no Highlights). Publish…'s
-// summary says what is saved, so it stays.
-templ narrativePreviewed(r domain.Report, asOf time.Time, d discussion, status string) {
-	@draftPreview(r, asOf, d)
-	@saveStatus(status, true)
-	if len(r.Highlights) > 0 {
-		@curationCount(pickedHighlights(r), len(r.Highlights), true)
-	}
-}
-
-// narrativeSaved answers Save narrative over htmx: the preview showing the
-// narrative as saved, and out of band the save status, the compose form's
-// Highlights count (there is none to swap when there are no Highlights),
-// Publish…'s summary and the Report log, log, in the company's timezone, loc.
-templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip, log []domain.ReportLogEntry, loc *time.Location) {
-	@draftPreview(r, asOf, d)
+// narrativeSaved answers Save narrative over htmx: the Narrative section, its
+// compose form showing form, the narrative as saved, and out of band the save
+// status, Publish…'s summary and the Report log, log, in the company's
+// timezone, loc.
+templ narrativeSaved(form narrativeForm, log []domain.ReportLogEntry, loc *time.Location) {
+	@narrativeCuration(form)
 	@saveStatus(narrativeSavedStatus, true)
-	if len(r.Highlights) > 0 {
-		@curationCount(pickedHighlights(r), len(r.Highlights), true)
-	}
-	@publishSummaryText(r, chip, true)
+	@publishSummaryText(form.Report, form.Chip, true)
 	@reportLog(log, loc, true)
 }
 
-// narrativeFormAgain answers Add another over htmx: the compose form as
-// posted, with its added note box, and out of band the save status saying
-// status. Add another saves nothing, so the preview and Publish…'s summary
-// stay as they were.
+// narrativeFormAgain answers Add another over htmx: the Narrative section, its
+// compose form as posted, with its added note box, and out of band the save
+// status saying status. Add another saves nothing, so Publish…'s summary and
+// the Report log stay as they were.
 templ narrativeFormAgain(form narrativeForm, status string) {
 	@narrativeCuration(form)
 	@saveStatus(status, true)
@@ -546,53 +571,12 @@ templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 	</details>
 }
 
-// reportGoalsPanel tells the author which Goals the draft selects, for them
-// alone and never published: what the definition selects in plain words, then
-// each Goal once with its Health, the exceptions marked for attention and
-// those only in by Also include marked added, the first few up front and the
-// rest behind Show all.
-templ reportGoalsPanel(panel goalsPanel) {
-	<section data-testid="report-goals" class="rp-goals">
-		<div class="rp-goals-head">
-			<h2 data-testid="report-goal-count">{ plural(len(panel.Goals), "Goal") + " in this report" }</h2>
-			<span data-testid="scope-summary" class="small muted">{ panel.Scope }</span>
-			@editDefinitionLink(panel.Edit, "btn quiet sm")
-		</div>
-		@reportGoalList(panel.Goals[:min(len(panel.Goals), reportGoalsShown)])
-		if len(panel.Goals) > reportGoalsShown {
-			<details data-testid="report-goals-more">
-				<summary>{ fmt.Sprintf("Show all %d", len(panel.Goals)) }</summary>
-				@reportGoalList(panel.Goals[reportGoalsShown:])
-			</details>
-		}
-	</section>
-}
-
 // editDefinitionLink is Edit definition, linking to edit, as class; there is
 // none for a reader who may not edit the definition (edit is "").
 templ editDefinitionLink(edit, class string) {
 	if edit != "" {
 		<a data-testid="edit-definition" class={ class } href={ templ.SafeURL(edit) }>Edit definition</a>
 	}
-}
-
-// reportGoalList lists Goals on the draft's Goals panel, each linking to its
-// place in the preview.
-templ reportGoalList(goals []reportGoal) {
-	<ul class="rp-goal-list">
-		for _, g := range goals {
-			<li data-testid="report-goal">
-				<span class={ "rp-goal-dot", healthClass(g.Health) } role="img" aria-label={ reportHealth(g.Health) }><span class="dot"></span></span>
-				<a href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-				if g.Added {
-					<span data-testid="report-goal-added" class="small muted rp-attention">added</span>
-				}
-				if g.Attention {
-					<span data-testid="report-goal-attention" class="small muted rp-attention">attention</span>
-				}
-			</li>
-		}
-	</ul>
 }
 
 // publicationPage shows a published Report exactly as it was frozen: who
@@ -763,10 +747,9 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	</html>
 }
 
-// reportContent is what a reader of a Report sees, published or previewed on
-// the draft: the Health summary, the line counting what moved since the
-// baseline, then the Report's body. The draft previews through it so its
-// preview is the publication.
+// reportContent is what a reader of a published Report sees: the Health
+// summary, the line counting what moved since the baseline, then the Report's
+// body. The draft's main column reads the same parts.
 templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 	@healthSummary(r)
 	@reportMovement(r)
@@ -847,20 +830,33 @@ templ publicationSelection(p domain.Publication) {
 	}
 }
 
-// reportBody is a Report's content, drafted or published: its open Action
-// Items, the introduction, the narrative curated from Highlights, then the
-// exceptions, counted and most urgent first, each an entry with
-// the full MBR block opening with what changed on it since the baseline, and
-// every other selected Goal on track, one table row with its Health, title,
-// Owner, and due date (CONTEXT.md: Report), and last the Goals that entered or
-// left since the latest publication. A Path to Green is judged overdue as of
-// asOf. On a publication, each Goal carries its discussion.
+// reportBody is a published Report's content: its open Action Items, the
+// introduction, the narrative curated from Highlights, then its Goals (see
+// reportGoalSections) (CONTEXT.md: Report). The draft reads the same parts,
+// its introduction under its name and its narrative composed in place.
 templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	@reportActionItems(r.ActionItems, d)
-	if r.Definition.Introduction != "" {
-		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
-	}
+	@reportIntroduction(r)
 	@reportNarrative(r.Narrative)
+	@reportGoalSections(r, asOf, d)
+}
+
+// reportIntroduction is the Report Definition's Introduction, read-only, when
+// it has one; it is edited only with the definition.
+templ reportIntroduction(r domain.Report) {
+	if r.Definition.Introduction != "" {
+		<p data-testid="report-introduction" class="rp-intro">{ r.Definition.Introduction }</p>
+	}
+}
+
+// reportGoalSections are a Report's Goals: the exceptions, counted and most
+// urgent first, each an entry with the full MBR block opening with what
+// changed on it since the baseline, and every other selected Goal on track,
+// one table row with its Health, title, Owner, and due date, and last the
+// Goals that entered or left since the latest publication. A Path to Green is
+// judged overdue as of asOf. On a publication, each Goal carries its
+// discussion.
+templ reportGoalSections(r domain.Report, asOf time.Time, d discussion) {
 	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
@@ -944,19 +940,28 @@ templ membershipChanges(changes []domain.MembershipChange) {
 	}
 }
 
-// narrativeCuration is the draft page's form for curating the narrative of the
-// next publication: every Highlight in scope since the baseline, each with a
-// box to include it and the section it goes into, and the author's note boxes
-// for each section (CONTEXT.md: Highlight).
+// narrativeCuration is the draft page's Narrative section for a reader who
+// may manage the Report: the form curating the narrative of the next
+// publication in place, under the Narrative heading with how many of the
+// Highlights in scope since the baseline are in. Each section in turn holds
+// the author's note boxes and the Highlights whose section control selects it,
+// each with a box to include it and the section it goes into; one Save
+// narrative ends it (CONTEXT.md: Highlight).
 templ narrativeCuration(f narrativeForm) {
-	<section data-testid="report-curation" class="rp-body">
-		<h2>Narrative</h2>
+	<section data-testid="report-curation" id="report-curation" class="rp-curation">
+		<div class="rp-curation-head">
+			<h2>Narrative</h2>
+			if len(f.Choices) > 0 {
+				<span class="small muted">
+					{ "Highlights since " + showDateYear(f.Report.Baseline) + " · " }
+					@curationCount(f.included(), len(f.Choices), false)
+				</span>
+			}
+		</div>
 		// A date the reader picked rides on the action, so the draft reloads
-		// against it. With htmx the form previews as the author types,
-		// swapping in the preview and the save status but never its own
-		// fields, and saves nothing; only Save narrative saves. A reload
-		// shows what is saved, not what the browser kept of the typing
-		// (autocomplete off), as the save status and Publish… do.
+		// against it. Only Save narrative saves. A reload shows what is
+		// saved, not what the browser kept of the typing (autocomplete off),
+		// as the save status and Publish… do.
 		<form
 			data-testid="narrative-curation"
 			id="narrative-curation"
@@ -964,39 +969,32 @@ templ narrativeCuration(f narrativeForm) {
 			method="post"
 			autocomplete="off"
 			action={ templ.SafeURL(narrativeAction(f.Report, f.Chip)) }
-			hx-post={ narrativePreviewAction(f.Report, f.Chip) }
-			hx-trigger="change, input delay:400ms"
-			hx-target="#draft-preview"
-			hx-swap="outerHTML"
-			hx-sync="this:queue last"
 			hx-on:htmx:response-error={ notSavedScript }
 			hx-on:htmx:send-error={ notSavedScript }
 		>
 			if len(f.Choices) == 0 {
-				<p data-testid="no-highlights">No Highlights since { showDateYear(f.Report.Baseline) }.</p>
-			} else {
-				<div class="rp-curation-head">
-					<h3>Highlights since { showDateYear(f.Report.Baseline) }</h3>
-					@curationCount(f.included(), len(f.Choices), false)
-				</div>
-				<ul class="rp-list">
-					for _, c := range f.Choices {
-						@curationHighlight(c)
-					}
-				</ul>
+				<p data-testid="no-highlights" class="muted">No Highlights to pick since { showDateYear(f.Report.Baseline) }.</p>
 			}
-			<h3>Your notes per section</h3>
 			for _, section := range narrativeSections {
-				@sectionText(section, f.Notes[section], narrativeAction(f.Report, f.Chip))
+				<div data-testid={ "compose-section-" + section } class="rp-compose-section">
+					@sectionText(section, f.Notes[section], narrativeAction(f.Report, f.Chip))
+					if choices := f.in(section); len(choices) > 0 {
+						<ul class="rp-list">
+							for _, c := range choices {
+								@curationHighlight(c)
+							}
+						</ul>
+					}
+				</div>
 			}
-			// With htmx it saves in place, never swapping the form's own
-			// fields, and cuts short a preview in flight, as its answer
-			// brings the preview; without script it is a plain submit.
+			// With htmx it saves in place, swapping in this section as saved
+			// unless the author changed the form while it saved
+			// (narrativeSaveScript); without script it is a plain submit.
 			<button
 				type="submit"
-				class="btn"
+				class="btn rp-save-narrative"
 				hx-post={ narrativeAction(f.Report, f.Chip) }
-				hx-target="#draft-preview"
+				hx-target="#report-curation"
 				hx-swap="outerHTML"
 				hx-sync="closest form:replace"
 				hx-indicator="#save-status"
@@ -1025,21 +1023,16 @@ func narrativeAction(r domain.Report, chip baselineChip) string {
 	return fmt.Sprintf("/reports/%d/narrative%s", r.Definition.ID, chip.Query)
 }
 
-// narrativePreviewAction is where the curation form posts to preview what the
-// author is composing, against the baseline the reader picked.
-func narrativePreviewAction(r domain.Report, chip baselineChip) string {
-	return fmt.Sprintf("/reports/%d/narrative/preview%s", r.Definition.ID, chip.Query)
-}
-
-// notSavedScript says Not saved in the draft's save status when a save or a
-// preview gets an error status or no answer at all.
+// notSavedScript says Not saved in the draft's save status when a save or an
+// Add another gets an error status or no answer at all.
 var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-result').textContent = 'Not saved'"}
 
 // sectionText is a section's own notes on the curation form, each in its own
 // box, folded under the section's heading: open when the author has written
 // some or added a box, closed and offering to add some when not. Add another
-// posts the whole form to action and swaps the answer in for it, one more box
-// in this section; without JavaScript it is a plain submit.
+// posts the whole form to action and swaps the answer in for the Narrative
+// section, one more box in this section; without JavaScript it is a plain
+// submit.
 templ sectionText(section string, notes []string, action string) {
 	<details data-testid={ "section-text-" + section } class="rp-section-text" open?={ hasNotes(notes) || len(notes) > 1 }>
 		<summary data-testid="section-text-summary">
@@ -1061,7 +1054,7 @@ templ sectionText(section string, notes []string, action string) {
 			formnovalidate
 			class="btn quiet"
 			hx-post={ action }
-			hx-target="#narrative-curation"
+			hx-target="#report-curation"
 			hx-swap="outerHTML"
 		>Add another</button>
 	</details>
@@ -1478,33 +1471,6 @@ func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
 	return fmtDate(asOf.In(b.Location())) > fmtDate(b.PathTargetDate)
 }
 
-// reportGoalsShown is how many Goals the draft's Goals panel lists before Show
-// all.
-const reportGoalsShown = 6
-
-// reportGoal is one Goal on the draft's Goals panel: its Health, whether it
-// is an exception, which gets a full block that needs the reader's attention,
-// and whether it is Added: in the Report only because of Also include.
-type reportGoal struct {
-	Goal      domain.Goal
-	Health    string
-	Attention bool
-	Added     bool
-}
-
-// reportGoals lists the Goals a Report selects, the exceptions first and then
-// the rest, as the Report itself reads, marking those in added.
-func reportGoals(r domain.Report, added map[int64]bool) []reportGoal {
-	out := make([]reportGoal, 0, len(r.Exceptions)+len(r.Lines))
-	for _, b := range r.Exceptions {
-		out = append(out, reportGoal{Goal: b.Goal, Health: b.Health, Attention: true, Added: added[b.Goal.ID]})
-	}
-	for _, sg := range r.Lines {
-		out = append(out, reportGoal{Goal: sg.Goal, Health: sg.Health, Added: added[sg.Goal.ID]})
-	}
-	return out
-}
-
 // healthTile is one count on a Report's Health summary.
 type healthTile struct {
 	key, label, class string
@@ -1592,9 +1558,10 @@ func hasNotes(notes []string) bool {
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Health tiles, the exception cards and
 // their tinted status box, the discussion footer, the scrolling root-Goal
-// picker, and the draft's header, its Goals panel, and its compose and preview
-// panes, which stack into one column at 900px and shrink to a phone's width
-// rather than to the On track table's. At a phone's width the header stops
+// picker, and the draft's header and its two columns, the Report beside its
+// Delegates and Report log, which stack into one under 1100px of the page's
+// content width and shrink to a phone's width rather than to the On track
+// table's. At a phone's width the header stops
 // sticking and stacks into rows — the name with its save status, the chip, then
 // History, Edit definition and Publish… — and the Publish… card spans the
 // screen between its gutters.
@@ -1673,8 +1640,8 @@ templ reportStyles() {
 		.rp-card-head h3{font-size:16px;line-height:1.4}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:8px;align-items:center;min-height:22px;white-space:nowrap}
-		/* A block narrower than its head's three parts, as in the draft's
-		 * column under 1280px, drops its badges under Health and the title
+		/* A block narrower than its head's three parts, as in a phone's
+		 * column, drops its badges under Health and the title
 		 * rather than squeezing the title until its words break, as the
 		 * 600px rule does for a phone. */
 		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}}
@@ -1752,25 +1719,18 @@ templ reportStyles() {
 		.rp-menu{position:relative}
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
-		.rp-goals{padding-bottom:24px;border-bottom:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
-		.rp-goals-head{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
-		.rp-goal-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px}
-		.rp-goal-list>li{display:flex;align-items:center;gap:8px;min-width:0}
-		.rp-goals .rp-goal-dot{background:none;border:none;display:inline-flex}
-		.rp-attention{margin-left:auto}
-		.rp-goals details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
-		.rp-goals details>ul{margin-top:8px}
-		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:0;align-items:stretch}
-		.rp-panes>*{min-width:0}
-		.rp-compose{padding-right:24px;border-right:1px solid var(--color-border)}
-		.rp-delegates{margin-top:24px}
-		.rp-log{margin-top:24px}
+		.page:has(>.rp-draft-page){max-width:1200px;container:rp-draft/inline-size}
+		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:56px;align-items:start}
+		.rp-draft-page>*{min-width:0}
+		@container rp-draft (max-width:1100px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
+		.rp-intro{margin:0;font-size:15px;line-height:1.7;color:var(--color-ink)}
+		.rp-compose-section{display:flex;flex-direction:column}
+		.rp-save-narrative{align-self:flex-start}
 		.rp-delegate{display:flex;align-items:center;justify-content:space-between;gap:8px}
 		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 		.rp-delegate-add input{flex:1 1 200px}
-		.rp-compose+.rp-body{padding-left:24px}
 		@media (max-width:600px){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
-		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-compose{padding:0 0 24px;border-right:none;border-bottom:1px solid var(--color-border)}.rp-compose+.rp-body{padding:24px 0 0}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
+		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
 		@media (min-width:1280px){.rp-draft-head{flex-wrap:nowrap}.rp-draft-head .rp-save{flex-basis:9em;min-width:9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rp-draft-head .rp-chip,.rp-draft-head .rp-head-actions{flex-shrink:0}}
 	</style>
 }
