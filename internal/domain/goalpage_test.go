@@ -84,6 +84,36 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 	}
 }
 
+// A viewer ID that names no Account is neither the Owner, a Delegate nor an
+// Admin, so the Goal page's loader offers them neither Check in nor setting
+// values, and none of the pending Draft Highlights.
+func TestGoalPagePermitsNothingToAViewerWithNoAccount(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	if _, err := h.Service.LogDraftHighlight(ctx, domain.LogDraftHighlightInput{
+		GoalID: g.ID, AuthorID: sam.ID, Kind: domain.HighlightInsight, Note: "Search is slow on mobile.",
+	}); err != nil {
+		t.Fatalf("LogDraftHighlight: %v", err)
+	}
+
+	p, err := h.Service.GoalPage(ctx, sam.ID+1000, g.ID)
+	if err != nil {
+		t.Fatalf("GoalPage for a viewer with no Account: %v", err)
+	}
+	if p.CanCheckin {
+		t.Errorf("CanCheckin for a viewer with no Account = true, want false")
+	}
+	if p.CanSetValues {
+		t.Errorf("CanSetValues for a viewer with no Account = true, want false")
+	}
+	if len(p.DraftHighlights) != 0 {
+		t.Errorf("a viewer with no Account sees %d Draft Highlights, want none", len(p.DraftHighlights))
+	}
+}
+
 // What the Goal page's loader works out for a Goal with a parent and a child,
 // Check-ins, Milestones and a Metric — its Rolled-up Health, Run off Green,
 // freshness, Health strip and signals — is what the separate Service methods

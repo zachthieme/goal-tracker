@@ -248,6 +248,34 @@ func TestRejectedHandoffIsKeptInHistory(t *testing.T) {
 	startHandoff(t, h, goal.ID, mel.ID, sam.ID)
 }
 
+// Only the proposed new Owner may reject a Handoff: neither the Owner who
+// started it nor a stranger may, and the refused attempt leaves it pending.
+func TestRejectHandoffOnlyByNewOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if _, err := h.Service.RejectHandoff(ctx, ho.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RejectHandoff by the Owner: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.RejectHandoff(ctx, ho.ID, mel.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RejectHandoff by a stranger: err = %v, want ErrNotAuthorized", err)
+	}
+	pending, err := h.Service.PendingHandoffs(ctx, pat.ID)
+	if err != nil {
+		t.Fatalf("PendingHandoffs: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != ho.ID {
+		t.Errorf("pending = %+v, want the Handoff still pending after refused rejections", pending)
+	}
+}
+
 // Marking someone Departed cancels the pending Handoffs to them: each is kept
 // with the outcome cancelled and can no longer be accepted.
 func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {

@@ -177,3 +177,34 @@ func TestDepartedDelegateCannotSubmitCheckin(t *testing.T) {
 		t.Errorf("Delegates = %+v, want the Departed Delegate still listed", delegates)
 	}
 }
+
+// Only the Goal's Owner may remove a Delegate: neither a stranger nor a
+// Delegate may revoke one, and the refused attempt leaves the Delegate
+// authorized (CONTEXT.md: a person an Owner authorizes).
+func TestOnlyOwnerRemovesDelegate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	pm := h.SignIn("pm@example.com")
+	mel := h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	h.AddDelegate(sam, pm, goal.ID)
+
+	if err := h.Service.RemoveDelegate(ctx, mel.ID, goal.ID, tpm.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("stranger RemoveDelegate err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RemoveDelegate(ctx, pm.ID, goal.ID, tpm.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Delegate RemoveDelegate err = %v, want ErrNotAuthorized", err)
+	}
+	delegates, err := h.Service.ListDelegates(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("ListDelegates: %v", err)
+	}
+	if len(delegates) != 2 || delegates[0].ID != pm.ID || delegates[1].ID != tpm.ID {
+		t.Fatalf("delegates = %+v, want both pm and tpm still authorized", delegates)
+	}
+}

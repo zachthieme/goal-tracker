@@ -144,6 +144,25 @@ func TestMarkReturnedOnlyByAdmin(t *testing.T) {
 	}
 }
 
+// An actor ID that names no Account is no Admin: it may not mark a person
+// Departed, and the refused attempt leaves them present.
+func TestMarkDepartedRefusesAnActorWithNoAccount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	nobody := boss.ID + sam.ID + 1000
+
+	if err := h.Service.MarkDeparted(ctx, nobody, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("MarkDeparted by an actor with no Account: err = %v, want ErrNotAuthorized", err)
+	}
+	if acc, err := h.Service.Account(ctx, sam.ID); err != nil || acc.Departed {
+		t.Errorf("Sam after a refused MarkDeparted = %+v, %v; want present", acc, err)
+	}
+}
+
 // DepartedAccounts lists every Departed person, whether or not they own a Goal,
 // in the order they are shown: by Label. A present person isn't listed, nor is
 // one who has returned.
