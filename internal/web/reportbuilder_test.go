@@ -704,13 +704,16 @@ func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *
 	return getBody(t, client, baseURL+where)
 }
 
-// draftGoalTitles are the titles the draft's Goals panel lists, sorted.
+// draftGoalTitles are the titles of the Goals the draft Report holds, each
+// exception's block and each On track row, sorted.
 func draftGoalTitles(t *testing.T, draft string) []string {
 	t.Helper()
-	panel := pageElement(t, draft, "section", "report-goals")
+	main := findByTestID(t, parsePage(t, draft), "report-draft")
 	var titles []string
-	for _, m := range regexp.MustCompile(`href="#goal-\d+">([^<]*)</a>`).FindAllStringSubmatch(panel, -1) {
-		titles = append(titles, m[1])
+	for _, testID := range []string{"report-exception", "selected-goal"} {
+		for _, g := range findAllByTestID(main, testID) {
+			titles = append(titles, textOf(linkTo(g, "/goals/"+strings.TrimPrefix(attrOf(g, "id"), "goal-"))))
+		}
 	}
 	slices.Sort(titles)
 	return titles

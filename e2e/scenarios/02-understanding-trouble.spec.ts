@@ -70,7 +70,12 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     }
 
     await builder.getByRole("button", { name: "Save report" }).click();
-    await expect(elena.getByTestId("draft-header").getByTestId("report-name")).toHaveText(reportName);
+    await expect(draftReport(elena).getByTestId("report-name")).toHaveText(reportName);
+    // Under the name, what the rule selects and how many Goals that is.
+    const goals = platform.length === 1 ? "1 Goal" : `${platform.length} Goals`;
+    const meta = draftReport(elena).getByTestId("report-meta");
+    await expect(meta).toContainText("Team: Platform");
+    await expect(meta).toContainText(` · ${goals} · changes since `);
     reportURL = new URL(elena.url()).pathname;
     expect(reportURL).toMatch(/^\/reports\/\d+$/);
   });
@@ -79,9 +84,15 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   // recorded, for "she wrote only the introduction and her own notes".
   typed.start();
 
-  await test.step("2 The draft preview shows the Health summary, the exceptions in full, then the rest on track", async () => {
-    const draft = preview(elena);
-    await expectReportOrder(draft, ["health-summary", "report-introduction", "needs-attention", "on-track-section"]);
+  await test.step("2 The draft shows the Introduction, the Health summary, the exceptions in full, then the rest on track", async () => {
+    const draft = draftReport(elena);
+    await expectReportOrder(
+      draft,
+      ["report-introduction", "health-summary", "needs-attention", "on-track-section"],
+      draftSections,
+    );
+    // The Introduction shows once, under the name.
+    await expect(elena.getByTestId("report-introduction")).toHaveCount(1);
     await expect(draft.getByTestId("report-introduction")).toHaveText(introduction);
 
     // It worked if each exception carried its data, its next steps (the Path
@@ -192,9 +203,9 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     });
 
     await elena.goto(reportURL);
-    const draft = preview(elena);
+    const draft = draftReport(elena);
     await expect(elena.getByTestId("baseline-label")).toHaveText(/^last publication · /);
-    await expectReportOrder(draft, ["health-summary", "needs-attention", "membership-changes"]);
+    await expectReportOrder(draft, ["health-summary", "needs-attention", "membership-changes"], draftSections);
 
     // The slip is marked: New Date, and the old date struck through.
     const slipBlock = draft.locator(`#goal-${slipped.id}`);
@@ -217,11 +228,11 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   });
 
   await test.step("4 Changes since: a Goal whose Health turned shows what it was", async () => {
-    const block = preview(elena).getByTestId("needs-attention").locator(`#goal-${turning.id}`);
+    const block = draftReport(elena).getByTestId("needs-attention").locator(`#goal-${turning.id}`);
     expect(await healthOf(block.getByTestId("report-health"))).toBe(turnedTo);
     await expect(block.getByTestId("report-prior-health")).toHaveText(`· was ${turning.health}`);
     // The slipped Goal was Green at the publication, so it reads "was Green".
-    await expect(preview(elena).locator(`#goal-${slipped.id}`).getByTestId("report-prior-health")).toHaveText(
+    await expect(draftReport(elena).locator(`#goal-${slipped.id}`).getByTestId("report-prior-health")).toHaveText(
       "· was Green",
     );
   });
@@ -263,7 +274,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const curation = elena.getByTestId("narrative-curation");
     // Only the Highlights since the baseline, which is now the first
     // publication: the seed wrote none, so exactly those just flagged.
-    await expect(curation.getByRole("heading", { name: `Highlights since ${firstPublishedOn}` })).toBeVisible();
+    await expect(elena.getByTestId("report-curation")).toContainText(`Highlights since ${firstPublishedOn}`);
     await expect(curation.getByTestId("curation-highlight")).toHaveCount(highlights.length);
     for (const h of highlights) {
       const row = curation.getByTestId("curation-highlight").filter({ hasText: h.note });
@@ -272,9 +283,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     }
     await curation.getByTestId("section-text-Insight").getByTestId("section-text-summary").click();
     await curation.getByLabel("Insights, note 1").fill(note);
-    // The preview follows once she pauses, but nothing is saved until she
-    // says so.
-    await expect(preview(elena).getByTestId("narrative-text")).toHaveText([note]);
+    // She composes in place, and nothing is saved until she says so.
     await expect(elena.getByTestId("save-result")).toHaveText("Unsaved changes");
     await expect(elena.getByTestId("curation-count")).toHaveText(`${highlights.length} of ${highlights.length} in`);
     expect(await leavingWarns(elena), "leaving with unsaved changes warns").toBe(true);
@@ -307,10 +316,16 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     }
     await expect(curation.getByLabel("Insights, note 1")).toHaveValue(note);
 
-    // The preview follows: her note, and each Highlight in its section,
-    // credited to the Goal's Owner.
-    const draft = preview(elena);
-    await expectReportOrder(draft, ["health-summary", "report-introduction", "report-narrative", "needs-attention"]);
+    // Readers of the draft read it as it will be published: her note, and
+    // each Highlight in its section, credited to the Goal's Owner.
+    const reader = await as(slipped.email);
+    await reader.goto(reportURL);
+    const draft = draftReport(reader);
+    await expectReportOrder(
+      draft,
+      ["report-introduction", "health-summary", "report-narrative", "needs-attention"],
+      draftSections,
+    );
     const narrative = draft.getByTestId("report-narrative");
     await expect(narrative.getByTestId("narrative-section")).toHaveText(["Insights", "Accomplishments", "Misses"]);
     await expect(narrative.getByTestId("narrative-text")).toHaveText([note]);
@@ -647,13 +662,13 @@ function reportDate(date: string): string {
   return `${month} ${d}, ${y}`;
 }
 
-// preview is the draft page's preview: exactly what readers will see.
-function preview(page: Page) {
-  return page.getByTestId("draft-panes").getByTestId("report-draft");
+// draftReport is the draft page's main column: the Report as readers get it.
+function draftReport(page: Page) {
+  return page.getByTestId("report-draft");
 }
 
-// reportSections are the parts of a Report, published or previewed, in the
-// order a reader meets them.
+// reportSections are the parts of a published Report, in the order a reader
+// meets them.
 const reportSections = [
   "health-summary",
   "report-action-items",
@@ -664,12 +679,27 @@ const reportSections = [
   "membership-changes",
 ];
 
+// draftSections are the parts of a draft Report, in the order a reader meets
+// them: the Introduction under its name, then as published, the narrative
+// composed in place for those who may.
+const draftSections = [
+  "report-introduction",
+  "health-summary",
+  "report-action-items",
+  "report-curation",
+  "report-narrative",
+  "needs-attention",
+  "on-track-section",
+  "membership-changes",
+];
+
 // expectReportOrder checks that each of required is in the Report, and that
-// the Report's parts that are there come in reportSections' order.
-async function expectReportOrder(report: Locator, required: string[]) {
+// the Report's parts that are there come in order, reportSections' unless
+// told otherwise.
+async function expectReportOrder(report: Locator, required: string[], order: string[] = reportSections) {
   for (const id of required) await expect(report.getByTestId(id), `the Report shows ${id}`).toHaveCount(1);
   const present: Locator[] = [];
-  for (const id of reportSections) {
+  for (const id of order) {
     if ((await report.getByTestId(id).count()) > 0) present.push(report.getByTestId(id));
   }
   for (let i = 1; i < present.length; i++) {

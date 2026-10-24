@@ -385,7 +385,8 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await rule.getByTestId("rule-values").selectOption({ label: team.team });
     await priya.getByRole("button", { name: "Save report" }).click();
     await expect(priya).toHaveURL(/\/reports\/\d+$/);
-    await expect(priya.getByTestId("report-goal").filter({ hasText: goalB.title })).toHaveCount(1);
+    const goals = priya.getByTestId("report-draft").locator('[data-testid="report-exception"], [data-testid="selected-goal"]');
+    await expect(goals.filter({ hasText: goalB.title })).toHaveCount(1);
   });
 });
 

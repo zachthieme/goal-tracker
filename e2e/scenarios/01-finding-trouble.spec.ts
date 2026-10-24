@@ -221,7 +221,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     await rule.getByLabel("Operator").selectOption({ label: "is any of" });
     await rule.getByLabel("Values").selectOption({ label: "Platform" });
     await builder.getByRole("button", { name: "Save report" }).click();
-    await expect(leaderPage.getByTestId("draft-header").getByTestId("report-name")).toHaveText(reportName);
+    await expect(leaderPage.getByTestId("report-draft").getByTestId("report-name")).toHaveText(reportName);
 
     const confirm = leaderPage.getByTestId("publish-confirm");
     await confirm.getByText("Publish…").click();

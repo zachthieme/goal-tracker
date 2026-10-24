@@ -816,13 +816,13 @@ func TestReportDraftHeaderKeepsOneRowStyles(t *testing.T) {
 	if decls, ok := ruleFor(styles, ".rp-draft-head"); !ok || !strings.Contains(decls, "flex-wrap:wrap") {
 		t.Errorf(".rp-draft-head{%s} doesn't wrap where one row doesn't fit", decls)
 	}
-	// The name is what gives way: its title shrinks and cuts it short.
+	// The name is what gives way: its breadcrumb shrinks and cuts it short.
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 	if decls, ok := ruleFor(css, ".ph-title"); !ok || !strings.Contains(decls, "min-width:0") {
 		t.Errorf(".ph-title{%s} doesn't shrink", decls)
 	}
-	if decls, ok := ruleFor(css, ".ph-title h1"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") {
-		t.Errorf(".ph-title h1{%s} doesn't cut a long name short", decls)
+	if decls, ok := ruleFor(between(t, page, "<style>", "</style>"), ".rp-crumb"); !ok || !strings.Contains(decls, "text-overflow:ellipsis") || !strings.Contains(decls, "min-width:0") {
+		t.Errorf(".rp-crumb{%s} doesn't cut a long name short", decls)
 	}
 }
 
@@ -872,5 +872,49 @@ func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
 	}
 	for i, health := range []string{"Green", "Yellow", "Red"} {
 		assertHealthChip(t, labels[i], health)
+	}
+}
+
+// The draft's body is two columns, the Report's main column at most 780px
+// beside a 300px one for its Delegates and Report log, 56px apart, in a page
+// wide enough to hold them. Under 1100px of the page's content width — a
+// container query on the page body, so the sidebar counts — the narrow column
+// moves under the main one at full width (#473).
+func TestReportDraftColumnsStackUnder1100pxStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	doc := parsePage(t, page)
+	main, side := findByTestID(t, doc, "report-draft"), findByTestID(t, doc, "draft-side")
+	body := main.Parent
+	if side.Parent != body || !slices.Contains(strings.Fields(attrOf(body, "class")), "rp-draft-page") || attrOf(body.Parent, "class") != "page" {
+		t.Fatalf("the main and narrow columns aren't the page body's .rp-draft-page's own: %s", renderNode(body))
+	}
+	if !precedes(main, side) {
+		t.Errorf("the narrow column comes before the main one, so it wouldn't stack under it")
+	}
+
+	styles := between(t, page, "<style>", "</style>")
+	for sel, wants := range map[string][]string{
+		".page:has(>.rp-draft-page)": {"container:rp-draft/inline-size", "max-width:1200px"},
+		".rp-draft-page":             {"display:grid", "grid-template-columns:minmax(0,780px) minmax(0,300px)", "gap:56px"},
+		".rp-draft-page>*":           {"min-width:0"},
+	} {
+		decls, ok := ruleFor(styles, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
+	}
+	narrow := mediaBlock(t, styles, "@container rp-draft (max-width:1100px)")
+	if decls, ok := ruleFor(narrow, ".rp-draft-page"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
+		t.Errorf("under 1100px .rp-draft-page{%s} isn't one full-width column", decls)
 	}
 }

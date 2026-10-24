@@ -1692,15 +1692,17 @@ and so on).
   Report's row of the Reports list and at the right of a publication's
   header.
 - **A Report's draft page (`reportDraftPage` in `reports.templ`):** a header
-  strip over two panes: the author composes on the left beside a preview of
-  exactly what readers will see.
+  strip over one page in two columns: the main column is the Report as
+  readers get it, its narrative composed in place, and a narrow column beside
+  it holds its Delegates and Report log.
   - **Header (`.rp-draft-head`):** the page's strip, but sticky (`top: 0`, on
     `--color-canvas`), so the save status and Publish… stay in reach, and
-    wrapping. Left to right: "Reports › <name>", the name the strip's `h1`,
-    with a muted "Draft"; the save status (`.rp-save`), small and muted, which
+    wrapping. Left to right: the breadcrumb "Reports › <name>", the name
+    muted and not a heading (the main column's `h1` is), with a muted
+    "Draft"; the save status (`.rp-save`), small and muted, which
     reads "Saving…" while **Save narrative** saves, then "Saved"; "Unsaved
-    changes" once the Narrative form differs from what was saved; or "Not
-    saved" and why, when a save or preview is refused or fails; the
+    changes" once the author changes the Narrative form; or "Not saved" and
+    why, when a save or an Add another is refused or fails; the
     baseline chip; then **History (N)**, **Edit definition** (a secondary
     small button) and **Publish…** (`.btn.primary.sm`), both only for those
     who may manage the Report Definition: its creator, a Report Delegate or
@@ -1733,41 +1735,66 @@ and so on).
     narrative first.**" and Publish is disabled. Without script there's no
     unsaved state to track, and Publish works as ever. At 600px and below it
     spans the window less 16px each side.
-  - **Panes (`.rp-panes`):** a 380px compose pane, then a 1px `--color-border`
-    rule with 24px each side, then the preview pane. At 900px and below they
-    stack, compose first, with a hairline between them.
-  - **Compose pane:** **Introduction** (the Report Definition's, or a muted
-    "No introduction."), then **Narrative**, then **Delegates**, then
-    **Report log**. Only those
-    who may manage the Report get Narrative; anyone else reads the narrative
-    in the preview. **Narrative**:
-    - **Highlights since <baseline>**, with a small muted "2 of 5 in" at its
-      right. Each Highlight is a hairline row: a checkbox and its Note, then a
-      small muted Owner's Name · Goal link · kind. Ticking it shows, in place of
-      the kind, a section picker, Insight | Accomplishment | Miss: an outlined
-      segmented control (§ Segmented controls) in 13px. With no Highlights, the
-      form says "No Highlights since <date>."
-    - **Your notes per section:** Insights, Accomplishments and Misses, each a
-      `<details>` between hairlines whose 44px summary is the section's name in
-      500 `--color-ink`, with "+ Add note" in `--color-primary-strong` at its
-      right while the section has no note. Inside, each note is its own
-      textarea, then a quiet **Add another**.
-    - **Saving:** only a secondary **Save narrative**, under the notes, saves,
-      so the Report log records only what the author meant to change. With
-      htmx it swaps in the preview, the save status, the Highlights count,
-      Publish…'s summary and the Report log, never the form's own fields;
-      without script it's a plain submit. Meanwhile the preview follows the
-      form unsaved: on change and 400ms after typing stops, the form posts
-      for a preview of the narrative as it stands, which saves nothing, and
-      the save status says whether it differs from what was saved. **Add
-      another** saves nothing either. The form posts which Highlights it
-      offered, so picks it doesn't list, of Highlights from before a later
-      baseline, stay as saved and don't read as unsaved. Leaving or reloading
-      the page with unsaved changes asks the browser's "Leave site?"
-      question; the form is `autocomplete="off"`, so a reload shows what is
-      saved, not typing the browser kept.
-  - **Delegates (`reportDelegates`, `.rp-delegates`):** 24px under the
-    narrative, a "Delegates" `h2` over the Report Delegates as hairline rows,
+  - **Columns (`.rp-draft-page`):** the main column, at most 780px, then
+    56px, then the narrow column, 300px, both from the top. The page widens
+    to 1200px for them (`.page:has(>.rp-draft-page)`). Under 1100px of the
+    page's content width — a container query on the page body (`rp-draft`),
+    so the sidebar counts — they stack, the narrow column under the main one
+    at full width, 40px apart. Each shrinks to the window rather than to its
+    widest content, so at 390px nothing scrolls sideways.
+  - **Main column (`report-draft`):** the Report as readers get it, top to
+    bottom:
+    - **Name:** the Report's name as the page's `h1`, over a muted meta line
+      (`report-meta`): what the definition selects in plain words, the Goal
+      count, and what it reads changes against ("Team: Growth · 1 left out ·
+      6 Goals · changes since Sep 4, 2026", or "changes since the previous
+      publication, Sep 4, 2026").
+    - **Introduction (`.rp-intro`):** the Report Definition's, once and
+      read-only, in 15/1.7 `--color-ink`, a touch larger than the body text;
+      left out when there is none. It is edited only with the definition
+      (**Edit definition**, in the header).
+    - **The Report's content:** the Health tiles, the movement line, the Open
+      Action Items, keeping Close and Reassign, each coming back to the draft,
+      the narrative, then the exceptions, On track, and the Goals that
+      entered or left, as a publication shows them (§ A publication). The
+      narrative is the published one, left out when empty, for anyone who
+      may not manage the Report; for its creator, a Report Delegate or an
+      Admin it is the composer, **Narrative**.
+  - **Narrative (`narrativeCuration`, `.rp-curation`):** a "Narrative" `h2`,
+    with a small muted "Highlights since <baseline> · 2 of 5 in" beside it
+    while there are Highlights to pick, or else "No Highlights to pick since
+    <date>." Then each section in turn, Insights, Accomplishments and Misses:
+    - **Its notes:** a `<details>` between hairlines whose 44px summary is
+      the section's name in 500 `--color-ink`, with "+ Add note" in
+      `--color-primary-strong` at its right while the section has no note.
+      Inside, each note is its own textarea, then a quiet **Add another**.
+    - **Its Highlights:** those whose picker selects the section (the one the
+      author picked, or else the Highlight's own kind), each a hairline row:
+      a checkbox and its Note, then a small muted Owner's Name · Goal link ·
+      kind. Ticking it shows, in place of the kind, a section picker, Insight
+      | Accomplishment | Miss: an outlined segmented control (§ Segmented
+      controls) in 13px. A Highlight moved to another section moves under it
+      when the narrative is saved.
+    - **Saving:** one secondary **Save narrative** ends the section, and only
+      it saves, so the Report log records only what the author meant to
+      change. With htmx it swaps in the Narrative section as saved, with the
+      save status, Publish…'s summary and the Report log out of band; if the
+      author changed the form while it saved, what they typed stays, only the
+      out-of-band parts are taken, and the status still says "Unsaved
+      changes". Without script it's a plain submit that reloads the draft.
+      Typing marks the status "Unsaved changes" at once, and the "2 of 5 in"
+      follows the boxes ticked; nothing posts as the author types. **Add
+      another** saves nothing either: it swaps in the section with one more
+      box. The form posts which Highlights it offered, so picks it doesn't
+      list, of Highlights from before a later baseline, stay as saved and
+      don't read as unsaved. Leaving or reloading the page with unsaved
+      changes asks the browser's "Leave site?" question; the form is
+      `autocomplete="off"`, so a reload shows what is saved, not typing the
+      browser kept.
+  - **Narrow column (`draft-side`):** everyone sees it, **Delegates** over
+    the **Report log**, 24px apart.
+  - **Delegates (`reportDelegates`, `.rp-delegates`):** a "Delegates" `h2`
+    over the Report Delegates as hairline rows,
     each its person, a `badge lc` "departed" on a Departed one, and for the
     creator and Admins a quiet small **Remove** at the right; "No Report
     Delegates yet." when there are none. Then the "What is a Report
@@ -1777,7 +1804,7 @@ and so on).
     `alert r` above the form, the email kept in its field. Everyone sees the
     list; a Report Delegate gets neither form, as only the creator and Admins
     add and remove them.
-  - **Report log (`reportLog`, `.rp-log`):** 24px under Delegates, a
+  - **Report log (`reportLog`, `.rp-log`):** a
     "Report log" `h2` over every change to the Report Definition, newest
     first, as hairline rows: what changed in words ("Title: EU MBR → EU
     monthly review", "Rule added: Owner is in the org of Priya", "Report
@@ -1786,15 +1813,6 @@ and so on).
     "— <person> at <date, time>" in the company's timezone. The newest 20
     show, the rest behind **Show all N**. Everyone who can open the Report
     reads it, and nothing on it can be changed or undone.
-  - **Preview pane:** first the Goals panel (`.rp-goals`), for the author:
-    "N Goals in this report" as its `h2`, the selection in small muted text and
-    a quiet small **Edit definition**, then each Goal in two columns (one at
-    900px and below): its Health's dot in the Health's ink, its title linking
-    to its place in the preview, and a small muted "attention" or "added" at
-    the right. The first six show, the rest behind **Show all N**. Then the
-    preview (`#draft-preview`): a `.label` "Preview: exactly what readers will
-    see", then the Report as a publication shows it, its Open Action Items
-    keeping Close and Reassign, each coming back to the draft.
 - **A publication (`publicationPage` in `reports.templ`):** a published
   Report, frozen, in a reading column.
   - **Header strip:** the breadcrumb "Reports › <Report Definition> › Nov 7,
@@ -1804,24 +1822,25 @@ and so on).
     apart: the Report's name (an `h1`, 28px), two muted lines ("Published Nov
     7, 2026, 15:04 by <Name> · changes since the previous publication, …" and
     "Selection: …"), the Report's content, then Action Items raised here.
-  - **The Report's content (`reportContent`), shared with the draft's
-    preview:**
+  - **The Report's content (`reportContent`), which the draft's main column
+    reads too:**
     - **Health tiles (`.rp-tiles`):** four tiles between hairlines, split by
       1px rules: Red, Yellow and Green as Health badges, and Check-in overdue
       as its chip, each count at the tile's right in 20px `--color-ink`
       tabular figures. They form a 2 × 2 grid at 900px and below, and in any
-      column under 44rem (the tiles' holder is a container, `rp-tiles`), as
-      the draft's preview is: four tiles need about 680px before the Check-in
-      overdue chip overruns its tile. There each column is at least as wide as
-      its widest tile, so the chip's column takes what it needs, and in a
-      column under 14rem, as the draft's is just above 900px, they stack.
+      column under 44rem (the tiles' holder is a container, `rp-tiles`): four
+      tiles need about 680px before the Check-in overdue chip overruns its
+      tile. There each column is at least as wide as its widest tile, so the
+      chip's column takes what it needs, and in a column under 14rem they
+      stack.
     - **Movement line:** "**Since the previous publication:** 2 turned Red ·
       1 back to Green", or "No movement since …".
     - **Open Action Items:** as rows (`.rp-rows`), at least 44px between
       hairlines: "text · <Owner> (was <Name>'s) · due Nov 7, 2026 · about
       <Goal>", **[Closed since]** on one closed since, then Close and Reassign.
-    - **Introduction and narrative (`.rp-narrative`):** the introduction as
-      body text, then the narrative in 15/1.7 `--color-ink`: Insights,
+    - **Introduction and narrative (`.rp-intro`, `.rp-narrative`):** the
+      introduction, then the narrative, both in 15/1.7 `--color-ink`, a touch
+      larger than the body text: Insights,
       Accomplishments and Misses, each a 13px, 600 heading over the author's
       notes and the picked Highlights as a bulleted list, each credited in
       muted 13px " — <Owner>, <Goal>". A section with neither is left out.
@@ -1832,8 +1851,8 @@ and so on).
       Nov 7, 2026", slipped dates struck through, then at the right its other
       badges (Check-in overdue as the chip, Ownerless in Red, New Date in
       Yellow, the rest as `badge lc`). At 600px and below, and in a block
-      28rem wide or narrower (a container query, as in the draft's column
-      under 1280px), the Health and title keep their line and the badges drop
+      28rem wide or narrower (a container query), the Health and title keep
+      their line and the badges drop
       under them; nothing is reordered.
       Under it sit "**Changed:** …", "**Contributes to:** …" and the Report
       Definition's Fields, then the status box (`.rp-tint`:
