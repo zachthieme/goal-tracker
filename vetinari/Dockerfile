@@ -53,19 +53,20 @@ RUN npm install -g @mariozechner/pi-coding-agent @openai/codex
 
 # --- goal-tracker's toolchain ---------------------------------------------
 # Go, copied from the official image rather than installed by hand, pinned to a
-# patch release golangci-lint below can read: go1.27.2's export data (version 5)
-# is newer than v2.13.2 (built with go1.27.0) supports, so `lint` fails on every
-# package's typecheck. Move this and GOLANGCI_LINT_VERSION together, with go.mod's
-# go line, the app's Dockerfile, and the Makefile's and CI's golangci-lint pins. templ and
+# patch release golangci-lint below can read: from go1.27.2 the compiler writes
+# export data version 5, which needs golang.org/x/tools v0.52 or later, bundled
+# by golangci-lint from v2.15.0 (older releases fail every package's typecheck).
+# Move this and GOLANGCI_LINT_VERSION together, with go.mod's go line, the app's
+# Dockerfile, and the Makefile's and CI's golangci-lint pins. templ and
 # sqlc are NOT installed here: they are pinned as `tool` deps in go.mod and run
 # via `go tool`, so the generator versions travel with the repo, not the image.
-COPY --from=golang:1.27.1-bookworm /usr/local/go /usr/local/go
+COPY --from=golang:1.27.3-bookworm /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:/home/agent/go/bin:$PATH"
 
 # golangci-lint pinned (same version as pike) so the `lint` gate is stable: a
 # newer release enabling new checks would make the gate stricter than main and
 # park clean work.
-ARG GOLANGCI_LINT_VERSION=v2.13.2
+ARG GOLANGCI_LINT_VERSION=v2.15.0
 RUN curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
   | sh -s -- -b /usr/local/bin "$GOLANGCI_LINT_VERSION"
 

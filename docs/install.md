@@ -35,7 +35,7 @@ Read these first; some may decide whether the install goes ahead now.
   each password sign-in briefly uses 64 MiB, one at a time per CPU.
 - A DNS name for the app, and a TLS certificate for it (the reverse proxy
   handles TLS; the app speaks plain HTTP on localhost).
-- To build: Go 1.27.1 or newer, on any machine (or Docker; see below). The binary is static (pure-Go
+- To build: Go 1.27.3 or newer, on any machine (or Docker; see below). The binary is static (pure-Go
   SQLite, no cgo), so you can build elsewhere and copy it over.
 - Optional but recommended: the `sqlite3` command-line tool on the host, for
   backups.
