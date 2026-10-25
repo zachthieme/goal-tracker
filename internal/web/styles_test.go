@@ -1447,6 +1447,80 @@ func TestReportHealthSummaryIsOneWrappingRowStyles(t *testing.T) {
 	}
 }
 
+// The "·" between two Health summary pairs is the first thing in the pair
+// after it, so it wraps with that pair and never ends a line, and it is
+// aria-hidden, so a screen reader doesn't say "middle dot" between the pairs.
+// It takes no room in the pair: it hangs to the pair's left, centred in the
+// row's column gap, and the row clips what lies past its sides, so a pair that
+// starts a wrapped line starts it without its "·" (#532).
+func TestReportHealthSummarySeparatorKeepsWithItsPairStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	for name, url := range map[string]string{
+		"draft":       fmt.Sprintf("%s/reports/%d", ts.URL, def.ID),
+		"publication": fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID),
+	} {
+		page := getBody(t, client, url)
+		summary := findByTestID(t, parsePage(t, page), "health-summary")
+		pairs := findAll(summary, func(n *html.Node) bool { return flatFrameHasClass(n, "rp-summary-pair") })
+		if len(pairs) != 4 {
+			t.Fatalf("%s: the Health summary has %d pairs, want 4: %s", name, len(pairs), renderNode(summary))
+		}
+		held := map[*html.Node]int{}
+		for n := range summary.Descendants() {
+			if n.Type != html.TextNode || !strings.Contains(n.Data, "·") {
+				continue
+			}
+			sep := n.Parent
+			if attrOf(sep, "aria-hidden") != "true" || strings.TrimSpace(textOf(sep)) != "·" {
+				t.Errorf("%s: a Health summary separator reads to a screen reader: %s", name, renderNode(sep))
+			}
+			pair := sep.Parent
+			if !flatFrameHasClass(pair, "rp-summary-pair") || firstElementChild(pair) != sep {
+				t.Errorf("%s: a Health summary separator isn't the first thing in the pair after it, so a line can end on it: %s", name, renderNode(sep.Parent))
+				continue
+			}
+			if !flatFrameHasClass(sep, "rp-summary-sep") {
+				t.Errorf("%s: a Health summary separator isn't styled to hang outside its pair: %s", name, renderNode(sep))
+			}
+			held[pair]++
+		}
+		for i, pair := range pairs {
+			if want := min(i, 1); held[pair] != want {
+				t.Errorf("%s: Health summary pair %d leads with %d separators, want %d: %s", name, i+1, held[pair], want, renderNode(pair))
+			}
+		}
+
+		styles := between(t, page, "<style>", "</style>")
+		row, _ := ruleFor(styles, ".rp-body .rp-summary")
+		if !strings.Contains(row, "overflow-x:clip") {
+			t.Errorf("%s: the Health summary doesn't clip a separator hanging past its side: .rp-body .rp-summary{%s}", name, row)
+		}
+		if pair, _ := ruleFor(styles, ".rp-summary-pair"); !strings.Contains(pair, "position:relative") {
+			t.Errorf("%s: a Health summary pair isn't what its separator hangs from: .rp-summary-pair{%s}", name, pair)
+		}
+		gap := regexp.MustCompile(`gap:\S+ (\d+px)`).FindStringSubmatch(row)
+		sep, _ := ruleFor(styles, ".rp-summary-sep")
+		for _, want := range []string{"position:absolute", "right:100%", "text-align:center"} {
+			if !strings.Contains(sep, want) {
+				t.Errorf("%s: a Health summary separator takes room in its pair, so it can start a line: .rp-summary-sep{%s} lacks %s", name, sep, want)
+			}
+		}
+		if gap == nil || !strings.Contains(sep, "width:"+gap[1]) {
+			t.Errorf("%s: a Health summary separator isn't as wide as the column gap it sits in: .rp-body .rp-summary{%s}, .rp-summary-sep{%s}", name, row, sep)
+		}
+	}
+}
+
 // reportsStyleSheetIn is the stylesheet a Report page carries itself: the
 // text of its <style> elements, in order.
 func reportsStyleSheetIn(root *html.Node) string {

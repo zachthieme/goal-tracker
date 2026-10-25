@@ -769,15 +769,18 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 // Green — and how many are Check-in overdue, so a reader sees the shape of the
 // Report's Goals before reading a block. It is one row headed "Health", each
 // count with its word beside it, so it reads to someone who doesn't know the
-// shapes; each chip is its shape alone, so a pair reads once, "2 Red".
+// shapes; each chip is its shape alone, so a pair reads once, "2 Red". The
+// "·" between two pairs leads the pair after it, hanging into the gap
+// before it, so a line never ends on one and one that starts a line is
+// clipped; it is aria-hidden, so a screen reader doesn't read it.
 templ healthSummary(r domain.Report) {
 	<section data-testid="health-summary" class="rp-summary">
 		<span class="label">Health</span>
 		for i, t := range healthTiles(r) {
-			if i > 0 {
-				<span class="muted">·</span>
-			}
 			<span class="rp-summary-pair">
+				if i > 0 {
+					<span class="muted rp-summary-sep" aria-hidden="true">·</span>
+				}
 				<span class={ "badge", "shape", t.class } title={ t.label } aria-hidden="true"><span class="dot"></span></span>
 				<span><span data-testid={ "health-count-" + t.key } class="num">{ fmt.Sprintf("%d", t.count) }</span> { t.label }</span>
 			</span>
@@ -1632,8 +1635,10 @@ templ reportStyles() {
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 		span.rp-crumb{color:var(--color-ink);font-weight:500}
 		.rp-draft-head span.rp-crumb{color:var(--color-ink-muted);font-weight:400}
-		.rp-summary,.rp-body .rp-summary{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 8px}
-		.rp-summary-pair{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+		.rp-summary,.rp-body .rp-summary{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 16px;overflow-x:clip}
+		.rp-summary>.label{margin-right:-8px}
+		.rp-summary-pair{position:relative;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+		.rp-summary-sep{position:absolute;right:100%;width:16px;text-align:center}
 		.rp-summary .num{color:var(--color-ink)}
 		.rp-body{display:flex;flex-direction:column;gap:24px}
 		.rp-body section{display:flex;flex-direction:column;gap:12px}
