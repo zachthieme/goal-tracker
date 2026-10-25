@@ -312,7 +312,10 @@ func TestTheScrapeIsPrometheusTextFormat(t *testing.T) {
 }
 
 // Requests answered at once, while the metrics are scraped, are each counted
-// once: recording is safe under concurrent requests, as -race checks.
+// once: recording is safe under concurrent requests, as -race checks. They ask
+// for a static file, which never waits on the database, so each is answered
+// 200 however loaded the machine is; /healthz answers 503 when its ping runs
+// past healthPingTimeout, as it can under the whole suite with -race.
 func TestConcurrentRequestsAreEachCounted(t *testing.T) {
 	t.Parallel()
 
@@ -322,7 +325,7 @@ func TestConcurrentRequestsAreEachCounted(t *testing.T) {
 	for range workers {
 		wg.Go(func() {
 			for range each {
-				srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+				srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
 			}
 		})
 	}
@@ -334,10 +337,10 @@ func TestConcurrentRequestsAreEachCounted(t *testing.T) {
 	wg.Wait()
 
 	samples := scrape(t, m)
-	if n := sampleValue(t, samples, "goal_tracker_http_requests_total", "method", "GET", "route", "GET /healthz", "status", "200"); n != workers*each {
+	if n := sampleValue(t, samples, "goal_tracker_http_requests_total", "method", "GET", "route", "GET /static/", "status", "200"); n != workers*each {
 		t.Errorf("%d requests at once counted %v, want %d", workers*each, n, workers*each)
 	}
-	if n := sampleValue(t, samples, "goal_tracker_http_request_duration_seconds_count", "route", "GET /healthz"); n != workers*each {
+	if n := sampleValue(t, samples, "goal_tracker_http_request_duration_seconds_count", "route", "GET /static/"); n != workers*each {
 		t.Errorf("%d requests at once timed %v, want %d", workers*each, n, workers*each)
 	}
 }
