@@ -198,6 +198,16 @@ type sessionCodec struct {
 	key []byte
 }
 
+// signingPurpose is what a signed payload is for. It goes in front of the
+// payload before it is signed, so a signature made for one cookie doesn't
+// verify as another signed under the same key.
+type signingPurpose string
+
+const (
+	sessionSigning  signingPurpose = "session:"
+	oidcFlowSigning signingPurpose = "oidc-flow:"
+)
+
 // encode is the cookie value that carries sess:
 // "<id>.<generation>.<signed-in>.<last-seen>.<signature>", the times in Unix
 // seconds.
@@ -208,7 +218,7 @@ func (c sessionCodec) encode(sess session) string {
 		strconv.FormatInt(sess.signedIn.Unix(), 10),
 		strconv.FormatInt(sess.lastSeen.Unix(), 10),
 	}, ".")
-	return payload + "." + c.sign(payload)
+	return payload + "." + c.sign(sessionSigning, payload)
 }
 
 // decode is the session value carries, and whether its signature verifies. A
@@ -220,7 +230,7 @@ func (c sessionCodec) decode(value string) (session, bool) {
 		return session{}, false
 	}
 	payload := strings.Join(parts[:4], ".")
-	if !c.verify(payload, parts[4]) {
+	if !c.verify(sessionSigning, payload, parts[4]) {
 		return session{}, false
 	}
 	var nums [4]int64
@@ -239,14 +249,14 @@ func (c sessionCodec) decode(value string) (session, bool) {
 	}, true
 }
 
-// verify reports whether sig is payload's signature.
-func (c sessionCodec) verify(payload, sig string) bool {
-	return hmac.Equal([]byte(sig), []byte(c.sign(payload)))
+// verify reports whether sig is payload's signature for purpose.
+func (c sessionCodec) verify(purpose signingPurpose, payload, sig string) bool {
+	return hmac.Equal([]byte(sig), []byte(c.sign(purpose, payload)))
 }
 
-// sign is payload's signature under the key.
-func (c sessionCodec) sign(payload string) string {
+// sign is payload's signature for purpose under the key.
+func (c sessionCodec) sign(purpose signingPurpose, payload string) string {
 	mac := hmac.New(sha256.New, c.key)
-	mac.Write([]byte(payload))
+	mac.Write([]byte(string(purpose) + payload))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
