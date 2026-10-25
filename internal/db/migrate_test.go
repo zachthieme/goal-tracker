@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1198,5 +1199,238 @@ func TestMigrationsDoNotShareANumber(t *testing.T) {
 			continue
 		}
 		t.Errorf("migrations %s share the number %s; give the newest the next free number", strings.Join(names, ", "), number)
+	}
+}
+
+// enumChecksMigration is the migration that rebuilt each enum and 0/1 flag
+// column's table with a CHECK on it.
+const enumChecksMigration = "migrations/0064_enum_checks.sql"
+
+// execIgnoringChecks runs stmt on one connection with CHECK constraints off, as
+// a database written before migration 0064 added them could hold its rows.
+func execIgnoringChecks(t *testing.T, sqlDB *sql.DB, stmt string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	for _, s := range []string{`PRAGMA ignore_check_constraints = ON`, stmt, `PRAGMA ignore_check_constraints = OFF`} {
+		if _, err := conn.ExecContext(ctx, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+}
+
+// A database already holding a value outside an enum or flag column's CHECK
+// won't migrate: the error names the table and column, and the value is kept,
+// so an operator settles it by hand.
+func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ constraint, arrange, read, want string }{
+		{
+			constraint: "goals_lifecycle_valid",
+			arrange:    `UPDATE goals SET lifecycle = 'Archived' WHERE id = 1`,
+			read:       `SELECT lifecycle FROM goals WHERE id = 1`,
+			want:       "Archived",
+		},
+		{
+			constraint: "accounts_is_admin_valid",
+			arrange:    `UPDATE accounts SET is_admin = 2 WHERE id = 1`,
+			read:       `SELECT is_admin FROM accounts WHERE id = 1`,
+			want:       "2",
+		},
+	} {
+		t.Run(tc.constraint, func(t *testing.T) {
+			t.Parallel()
+			sqlDB := migratedExcept(t, enumChecksMigration)
+			testsupport.ArrangeEnumCheckRows(t, sqlDB)
+			execIgnoringChecks(t, sqlDB, tc.arrange)
+
+			err := db.Migrate(sqlDB)
+			if err == nil {
+				t.Fatalf("Migrate succeeded on a database breaking %s", tc.constraint)
+			}
+			if !strings.Contains(err.Error(), tc.constraint) {
+				t.Errorf("Migrate error %q doesn't name %s", err, tc.constraint)
+			}
+			var got string
+			if err := sqlDB.QueryRow(tc.read).Scan(&got); err != nil {
+				t.Fatalf("read the row back: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("%s = %q after the failed migration, want %q kept", tc.read, got, tc.want)
+			}
+		})
+	}
+}
+
+// queryStrings returns each row q reads, its columns printed and joined by
+// " | ", in the order q reads them.
+func queryStrings(t *testing.T, sqlDB *sql.DB, q string, args ...any) []string {
+	t.Helper()
+	rows, err := sqlDB.Query(q, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", q, err)
+	}
+	defer func() { _ = rows.Close() }()
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("columns of %s: %v", q, err)
+	}
+	var out []string
+	for rows.Next() {
+		values := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			t.Fatalf("scan %s: %v", q, err)
+		}
+		fields := make([]string, len(values))
+		for i, v := range values {
+			fields[i] = fmt.Sprintf("%#v", v)
+		}
+		out = append(out, strings.Join(fields, " | "))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read %s: %v", q, err)
+	}
+	return out
+}
+
+// A row in each table migration 0064 rebuilt keeps every value on upgrade, and
+// the upgraded database breaks no foreign key.
+func TestMigrationKeepsEveryRowOfTheTablesItGivesEnumChecks(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, enumChecksMigration)
+	testsupport.ArrangeEnumCheckRows(t, sqlDB)
+	before := map[string][]string{}
+	for _, table := range testsupport.EnumCheckTables {
+		before[table] = queryStrings(t, sqlDB, `SELECT * FROM `+table+` ORDER BY id`)
+		if len(before[table]) == 0 {
+			t.Fatalf("no row arranged in %s", table)
+		}
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	for _, table := range testsupport.EnumCheckTables {
+		if got := queryStrings(t, sqlDB, `SELECT * FROM `+table+` ORDER BY id`); !slices.Equal(got, before[table]) {
+			t.Errorf("%s rows = %v after the migration, want %v", table, got, before[table])
+		}
+	}
+}
+
+// migratedBefore returns a database with every migration ordered before
+// version applied by hand, each in its own transaction as Migrate applies it.
+func migratedBefore(t *testing.T, version string) *sql.DB {
+	t.Helper()
+	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	entries, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	for _, entry := range entries {
+		path := "migrations/" + entry.Name()
+		if path >= version {
+			break
+		}
+		applyMigrationFile(t, sqlDB, path)
+	}
+	return sqlDB
+}
+
+// applyMigrationFile runs the migration at path in a transaction.
+func applyMigrationFile(t *testing.T, sqlDB *sql.DB, path string) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		t.Fatalf("begin %s: %v", path, err)
+	}
+	if _, err := tx.Exec(string(body)); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("apply %s: %v", path, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit %s: %v", path, err)
+	}
+}
+
+// schemaShape is what a table rebuild must keep of a database's schema, by
+// table: its columns in order, foreign keys, and indexes with their columns,
+// those a UNIQUE constraint makes included; and every index and trigger by
+// name with its definition. It leaves out each table's own CREATE TABLE, which
+// a rebuild that adds a CHECK changes.
+func schemaShape(t *testing.T, sqlDB *sql.DB) map[string][]string {
+	t.Helper()
+	shape := map[string][]string{
+		"objects": queryStrings(t, sqlDB, `SELECT type, name, tbl_name, sql FROM sqlite_schema
+			WHERE type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`),
+	}
+	var tables []string
+	if err := func() error {
+		rows, err := sqlDB.Query(`SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name`)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return err
+			}
+			tables = append(tables, name)
+		}
+		return rows.Err()
+	}(); err != nil {
+		t.Fatalf("read tables: %v", err)
+	}
+	for _, table := range tables {
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'column', cid, name, type, "notnull", dflt_value, pk FROM pragma_table_info(?)`, table)...)
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'foreign key', id, seq, "table", "from", "to", on_update, on_delete, "match" FROM pragma_foreign_key_list(?) ORDER BY id, seq`, table)...)
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'index', l.name, l."unique", l.origin, l.partial, x.seqno, x.cid, x.name, x."desc", x.coll, x."key"
+			FROM pragma_index_list(?) AS l, pragma_index_xinfo(l.name) AS x ORDER BY l.name, x.seqno`, table)...)
+	}
+	return shape
+}
+
+// Migration 0064 changes no table but for its CHECKs: every table has the
+// same columns in the same order, with the same types, defaults, NOT NULLs and
+// keys, the same foreign keys and indexes, and every index and trigger the
+// same definition.
+func TestMigrationGivingEnumChecksKeepsTheSchema(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedBefore(t, enumChecksMigration)
+	before := schemaShape(t, sqlDB)
+	applyMigrationFile(t, sqlDB, enumChecksMigration)
+	after := schemaShape(t, sqlDB)
+
+	for _, name := range slices.Sorted(maps.Keys(before)) {
+		if !slices.Equal(after[name], before[name]) {
+			t.Errorf("%s after the migration:\n%s\nwant:\n%s", name, strings.Join(after[name], "\n"), strings.Join(before[name], "\n"))
+		}
+	}
+	for name := range after {
+		if _, ok := before[name]; !ok {
+			t.Errorf("the migration left %s behind", name)
+		}
 	}
 }
