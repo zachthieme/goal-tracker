@@ -9,6 +9,8 @@ import (
 // freshnessSignalsPage is the Check-in overdue list, with the Goals whose Path
 // to Green is overdue beside it, so both surface as prominently as Red
 // (CONTEXT.md: Check-in overdue, Path to Green).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) {
 	@layout("Freshness signals", current) {
 		<h1>Freshness signals</h1>

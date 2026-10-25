@@ -4,6 +4,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // nudgeRefusedPage says, inside the normal page, why a Nudge was refused or
 // didn't reach everyone, with a link back to the Follow-ups page it was sent from.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ nudgeRefusedPage(current *domain.Account, heading, reason string) {
 	@layout(heading, current) {
 		<div class="message-page">

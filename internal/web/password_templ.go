@@ -11,6 +11,8 @@ import templruntime "github.com/a-h/templ/runtime"
 // setPasswordPage is the page a set-password link opens: the sign-in column,
 // naming whose password it sets, with the password typed twice. A refused
 // password shows the reason above the fields.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func setPasswordPage(emailAddr, token, failure string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -67,7 +69,7 @@ func setPasswordPage(emailAddr, token, failure string) templ.Component {
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(emailAddr)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 12, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 14, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -85,7 +87,7 @@ func setPasswordPage(emailAddr, token, failure string) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(failure)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 14, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 16, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -103,7 +105,7 @@ func setPasswordPage(emailAddr, token, failure string) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(token)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 16, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 18, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -116,7 +118,7 @@ func setPasswordPage(emailAddr, token, failure string) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(emailAddr)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 17, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 19, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 				if templ_7745c5c3_Err != nil {
@@ -144,6 +146,8 @@ func setPasswordPage(emailAddr, token, failure string) templ.Component {
 
 // setPasswordNoticePage is the set-password page when the link can't be used:
 // the column, saying why.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func setPasswordNoticePage(message string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -200,7 +204,7 @@ func setPasswordNoticePage(message string) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 40, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/password.templ`, Line: 44, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {

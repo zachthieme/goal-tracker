@@ -13,6 +13,8 @@ import (
 // filter bar, and the Goals as a full-bleed list grouped by Health, problems
 // first in each group (CONTEXT.md: filter and group Goals). New goal links to
 // the New goal page.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalsPage(current *domain.Account, view goalsListData) {
 	@framedLayout("Goals", current, goalsHeader(view)) {
 		@goalsStyles()
@@ -747,6 +749,8 @@ templ goalsStyles() {
 // people, cadence, delivery, level, Dimension values and Fields, then what it
 // contributes to and what contributes to it. Nothing on it is a card; at 900px
 // and below the rail stacks under the column.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	{{ owner := current != nil && current.ID == g.Owner.ID }}

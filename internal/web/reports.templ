@@ -188,6 +188,8 @@ templ reportHealthBar(h domain.HealthCounts) {
 // The compose form shows form, and the save status says status. Only a reader
 // m lets manage the Report gets Edit definition, the compose form and
 // Publish…; everyone else reads the narrative as it stands.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, history []draftHistoryEntry, form narrativeForm, status string) {
 	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, chip, panel, m, status)) {
 		@reportStyles()
@@ -458,6 +460,8 @@ const (
 // why the narrative was not saved. Unless it is empty or Saved, it marks the
 // compose form unsaved (data-unsaved), which Publish… and leaving the page
 // heed (narrativeSaveScript). An htmx answer swaps it in out of band.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ saveStatus(text string, oob bool) {
 	<span
 		data-testid="save-status"
@@ -479,6 +483,8 @@ templ saveStatus(text string, oob bool) {
 // compose form showing form, the narrative as saved, and out of band the save
 // status, Publish…'s summary and the History, history, in the company's
 // timezone, loc.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ narrativeSaved(form narrativeForm, history []draftHistoryEntry, loc *time.Location) {
 	@narrativeCuration(form)
 	@saveStatus(narrativeSavedStatus, true)
@@ -490,6 +496,8 @@ templ narrativeSaved(form narrativeForm, history []draftHistoryEntry, loc *time.
 // compose form as posted, with its added note box, and out of band the save
 // status saying status. Add another saves nothing, so Publish…'s summary and
 // the History stay as they were.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ narrativeFormAgain(form narrativeForm, status string) {
 	@narrativeCuration(form)
 	@saveStatus(status, true)
@@ -617,6 +625,8 @@ templ publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) 
 // navigation, styled to print to PDF from the browser. Under the byline it
 // says how the Report selected its Goals; it has no Health summary, so the line
 // counting what moved since the baseline follows.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	<!DOCTYPE html>
 	<html lang="en">

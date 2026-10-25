@@ -20,6 +20,8 @@ import (
 // first, and each bad input marked with why. Finishing a Proposed Goal, it is
 // the define page: the same form, filled in from the Goal, posting to
 // /goals/<id>/define.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalFormPage(current *domain.Account, v goalFormView) {
 	@framedLayout(v.heading(), current, goalFormHeader(v)) {
 		@itemEditorStyles()
@@ -87,6 +89,8 @@ const goalFormReadyID = "goal-form-ready"
 // needs a Title and Why it matters, plus the delivery date when Dated is chosen. Save
 // as Proposed comes first in the markup, so Enter in a text field saves as
 // Proposed, while CSS order shows Create and activate first.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalFormReady(v goalFormView) {
 	{{ done, of := v.readyCount() }}
 	<section data-testid="goal-form-ready" id={ goalFormReadyID } class="gf-section gf-ready" aria-labelledby="goal-form-ready-head">
@@ -874,6 +878,8 @@ templ parentChip(p parentChoice, bad string) {
 
 // goalSearchResults are the Contributes to search's matches, each a button
 // that picks it beside the <template> of the chip picking it adds.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalSearchResults(matches []parentChoice) {
 	if len(matches) == 0 {
 		<li data-testid="parent-no-results" class="muted small">No Goals match.</li>

@@ -12,6 +12,8 @@ import (
 // without sharing the Owner's login (CONTEXT.md: Delegate). It sits in the flat
 // frame: its title in the page header, and the Goals a plain section of
 // hairline rows (DESIGN.md § Components: Sections).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 	@framedLayout("Delegated to me", current, pageHeader(pageHead{Title: "Delegated to me"})) {
 		<style>

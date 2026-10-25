@@ -12,6 +12,8 @@ import (
 // reason above the form and the form as it was sent. It sits in the flat
 // frame: its title in the page header, and the form a plain section
 // (DESIGN.md § Components: Sections).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ suggestParentPage(current *domain.Account, v suggestParentView) {
 	@framedLayout("Suggest a parent", current, pageHeader(pageHead{Title: "Suggest a parent"})) {
 		@suggestionStyles()

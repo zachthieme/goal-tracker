@@ -19,6 +19,8 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 // with the setting it had once it is restored (CONTEXT.md: Retired). It sits in
 // the flat frame: its title in the page header, and the rest plain sections
 // (DESIGN.md § Fields page).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ fieldsPage(current *domain.Account, fields []domain.Field) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@framedLayout("Fields", current, pageHeader(pageHead{Title: "Fields"})) {
