@@ -38,8 +38,23 @@ check: generate-check lint test ## Run every gate: generate-check, lint, test
 build: ## Build bin/goal-tracker
 	go build -o bin/goal-tracker ./cmd/goal-tracker
 
+# Nearly all of the race detector's cost is modernc's SQLite (ADR 0004), so two
+# flags trim it without dropping -race from any package:
+#
+# -gcflags turns pointer checks off for modernc's packages alone. -race turns on
+# -d=checkptr everywhere, and modernc's C translated to Go converts
+# unsafe.Pointer constantly: checkptr was about half the CPU of a -race run.
+# -race still checks modernc's memory accesses, and our own packages keep
+# checkptr. On 48 cores, the suite took 3m29s with this flag against about
+# 4m50s without it, and internal/web 198s against 288s (#525).
+#
+# -parallel caps how many of a package's tests run at once (the default is
+# GOMAXPROCS). Every SQLite allocation in every parallel test takes modernc's
+# one process-wide allocator lock, so past a few tests more of them only queue
+# on it. The whole suite with the flag above, on 48 cores (#525): -parallel 2
+# took 263s, 4 took 183s and 155s, 6 took 186s and 8 took 201s.
 test: ## Run the Go tests with the race detector
-	go test -race -count=1 ./...
+	go test -race -count=1 -gcflags=modernc.org/...=-d=checkptr=0 -parallel 4 ./...
 
 # The tests without the race detector, for a quick local loop. `make test`
 # stays the gate.

@@ -37,8 +37,8 @@ another area's file.
 
 Run the gates (`make generate-check`, `make lint`, `make test`; `make check`
 runs all three in that order and stops at the first failure) in the
-foreground and read each to the end; `make check` takes about 3½ minutes,
-most of it `make test`, with `internal/web` under the race detector about 3
+foreground and read each to the end; `make check` takes about 3 minutes,
+most of it `make test`, with `internal/web` under the race detector about 2½
 minutes, so give a foreground gate run a tool timeout of at least 5 minutes.
 Never
 background a gate and wait for it. **Commit before you end your turn.** A

@@ -6,11 +6,17 @@ package testsupport
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -43,20 +49,12 @@ type Harness struct {
 }
 
 // New returns a Harness backed by an on-disk SQLite database of its own, a copy
-// of one the real migrations were applied to once per test binary. adminEmails
-// receive the Admin flag on first sign-in.
+// of the template the real migrations were applied to (MigratedDatabaseFile).
+// adminEmails receive the Admin flag on first sign-in.
 func New(t *testing.T, adminEmails ...string) *Harness {
 	t.Helper()
 
-	tmpl, err := template()
-	if err != nil {
-		t.Fatalf("template database: %v", err)
-	}
-	path := filepath.Join(t.TempDir(), "test.db")
-	if err := os.WriteFile(path, tmpl, 0o600); err != nil {
-		t.Fatalf("copy template database: %v", err)
-	}
-
+	path := MigratedDatabaseFile(t)
 	sqlDB, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -75,6 +73,23 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 	}
 }
 
+// MigratedDatabaseFile copies the migrated template database into a file of
+// t's own and returns its path, for a test that opens the database itself, as
+// internal/db's upgrade tests do to forget a migration and run it again. The
+// copy is in WAL mode, as the template is.
+func MigratedDatabaseFile(t *testing.T) string {
+	t.Helper()
+	tmpl, err := template()
+	if err != nil {
+		t.Fatalf("template database: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "test.db")
+	if err := os.WriteFile(path, tmpl, 0o600); err != nil {
+		t.Fatalf("copy template database: %v", err)
+	}
+	return path
+}
+
 // dsn opens the SQLite file at path with the app's own connection string, so
 // a test's database sets the pragmas db.Open does (ADR 0009): a statement that
 // meets another connection's lock waits for it, transactions take the write
@@ -84,53 +99,142 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 // bulk load and skips fsync: waiting on the disk made up most of each test's
 // time, and nearly ran a package's tests past go test's 10-minute timeout. The
 // pool is left uncapped; db.Open's cap is for the app.
-// Each test's database is copied from a template migrated once per test binary
-// rather than migrated itself: running every migration for each of the
-// hundreds of tests queued them all on modernc's process-wide allocator lock.
+// Each test's database is copied from a template migrated once and cached
+// (see templateDir) rather than migrated itself: running every migration for each
+// of the hundreds of tests queued them all on modernc's process-wide allocator
+// lock.
 func dsn(path string) string {
 	return db.DSN(path, db.ForBulkLoad())
 }
 
-// The migrated database every Harness copies, built on first use, or the error
-// building it failed with.
+// The migrated database every Harness copies, loaded on first use, or the
+// error loading it failed with.
 var (
 	templateOnce     sync.Once
 	templateContents []byte
 	templateErr      error
 )
 
-// template migrates a database once per test binary and returns its file's
-// contents. Its temp directory is left for /tmp clearing, and never reused
-// across runs, where its schema could be stale.
+// template returns the contents of the migrated template database, loaded once
+// per test binary from the one cached in templateDir for the whole run, or
+// built there by the first binary to need it.
 func template() ([]byte, error) {
-	templateOnce.Do(func() { templateContents, templateErr = buildTemplate() })
+	templateOnce.Do(func() {
+		templateContents, templateErr = cachedTemplate(templateDir(), db.Migrations(), migrateTemplate)
+	})
 	return templateContents, templateErr
 }
 
-func buildTemplate() ([]byte, error) {
-	dir, err := os.MkdirTemp("", "goal-tracker-testdb-")
+// templateDir is where the template database is cached, shared by every test
+// binary in a run and by later runs: under race detection, migrating it took
+// most of a test binary's time, and each of the eight packages that use the
+// harness built its own.
+func templateDir() string {
+	return filepath.Join(os.TempDir(), "goal-tracker-testdb")
+}
+
+// templateFormat is part of the template's cache name; change it when how
+// migrateTemplate builds the template changes, so a template an older harness
+// cached isn't reused.
+const templateFormat = "1"
+
+// templateCacheName names the template built from migrations (migrations/*.sql
+// in it) after a hash of every migration's path and contents, so a changed,
+// added or removed migration names a new template rather than reusing one
+// built without it.
+func templateCacheName(migrations fs.FS) (string, error) {
+	paths, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		return "", fmt.Errorf("glob migrations: %w", err)
+	}
+	sort.Strings(paths)
+	sum := sha256.New()
+	_, _ = io.WriteString(sum, templateFormat)
+	for _, path := range paths {
+		body, err := fs.ReadFile(migrations, path)
+		if err != nil {
+			return "", fmt.Errorf("read migration %s: %w", path, err)
+		}
+		_, _ = fmt.Fprintf(sum, "\x00%s\x00%d\x00", path, len(body))
+		_, _ = sum.Write(body)
+	}
+	return "template-" + hex.EncodeToString(sum.Sum(nil))[:16] + ".db", nil
+}
+
+// cachedTemplate returns the contents of the template built from migrations,
+// reading it from dir if a binary has already built it there and otherwise
+// building it with build, which writes a migrated database to the path it is
+// given. A template is built in a directory of its own and renamed into place,
+// so a binary reading it while another builds it never reads half a file, and
+// two that build it at once each rename a whole one. Building one deletes the
+// templates in dir that other migrations named.
+func cachedTemplate(dir string, migrations fs.FS, build func(path string) error) ([]byte, error) {
+	name, err := templateCacheName(migrations)
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "template.db")
+	path := filepath.Join(dir, name)
+	if contents, err := os.ReadFile(path); err == nil {
+		return contents, nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	work, err := os.MkdirTemp(dir, "build-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(work) }()
+	built := filepath.Join(work, "template.db")
+	if err := build(built); err != nil {
+		return nil, err
+	}
+	contents, err := os.ReadFile(built)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Rename(built, path); err != nil {
+		return nil, fmt.Errorf("cache the template: %w", err)
+	}
+	removeOtherTemplates(dir, name)
+	return contents, nil
+}
+
+// removeOtherTemplates deletes every template in dir but the one called name.
+// One another binary is still reading is gone only once it closes it, and one
+// another binary looks for after it is gone is built again, so failures are
+// ignored.
+func removeOtherTemplates(dir, name string) {
+	others, _ := filepath.Glob(filepath.Join(dir, "template-*.db"))
+	for _, other := range others {
+		if filepath.Base(other) != name {
+			_ = os.Remove(other)
+		}
+	}
+}
+
+// migrateTemplate migrates a new database at path.
+func migrateTemplate(path string) error {
 	sqlDB, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+		return fmt.Errorf("open sqlite: %w", err)
 	}
-	// Built once per test binary, for every test, so no one test's context
-	// is the caller's.
+	// Built once, for every test, so no one test's context is the caller's.
 	if err := db.Migrate(context.Background(), sqlDB); err != nil {
 		_ = sqlDB.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("migrate: %w", err)
 	}
-	// Closed before reading, so the file is complete: closing the last
+	// Closed before it is read, so the file is complete: closing the last
 	// connection checkpoints the WAL into the database file and deletes the
 	// -wal and -shm files beside it. The copy keeps WAL mode, which SQLite
 	// records in the file itself.
 	if err := sqlDB.Close(); err != nil {
-		return nil, fmt.Errorf("close: %w", err)
+		return fmt.Errorf("close: %w", err)
 	}
-	return os.ReadFile(path)
+	return nil
 }
 
 // DeliverEmail sends the email in the outbox that is due through the

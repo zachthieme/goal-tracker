@@ -24,17 +24,17 @@ import (
 )
 
 // migratedExcept returns a database migrated up to, but not including,
-// version, so a test can arrange the rows that migration finds on upgrade.
+// version, so a test can arrange the rows that migration finds on upgrade. It
+// copies the harness's migrated template and forgets version, so the test's
+// own Migrate runs only that migration: migrating each test's database from
+// empty queued the parallel tests on modernc's process-wide allocator lock.
 func migratedExcept(t *testing.T, version string) *sql.DB {
 	t.Helper()
-	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db"))
+	sqlDB, err := sql.Open("sqlite", "file:"+testsupport.MigratedDatabaseFile(t))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.Migrate(t.Context(), sqlDB); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
 	res, err := sqlDB.ExecContext(t.Context(), `DELETE FROM schema_migrations WHERE version = ?`, version)
 	if err != nil {
 		t.Fatalf("forget %s: %v", version, err)
