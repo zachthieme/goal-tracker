@@ -46,10 +46,11 @@ type fakeProvider struct {
 	// RP-initiated logout.
 	endSession bool
 	// tokenStalls, when set, makes the token endpoint never answer: it holds
-	// each request until the client gives up or the test ends.
-	tokenStalls bool
-	stalled     chan struct{}
-	unstallOnce sync.Once
+	// each request until the client gives up or the test ends. jwksStalls
+	// does the same to the key set endpoint.
+	tokenStalls, jwksStalls bool
+	stalled                 chan struct{}
+	unstallOnce             sync.Once
 
 	mu    sync.Mutex
 	codes map[string]pendingCode
@@ -82,7 +83,7 @@ func newFakeProvider(t *testing.T, claims map[string]any) *fakeProvider {
 	return p
 }
 
-// unstall lets every stalled token request end.
+// unstall lets every stalled token and key set request end.
 func (p *fakeProvider) unstall() { p.unstallOnce.Do(func() { close(p.stalled) }) }
 
 func (p *fakeProvider) issuer() string { return p.srv.URL }
@@ -111,7 +112,11 @@ func (p *fakeProvider) discovery(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, doc)
 }
 
-func (p *fakeProvider) jwks(w http.ResponseWriter, _ *http.Request) {
+func (p *fakeProvider) jwks(w http.ResponseWriter, r *http.Request) {
+	if p.jwksStalls {
+		p.stall(r)
+		return
+	}
 	writeJSON(w, map[string]any{"keys": []map[string]any{{
 		"kty": "RSA", "alg": "RS256", "use": "sig", "kid": "test",
 		"n": base64.RawURLEncoding.EncodeToString(p.key.N.Bytes()),
@@ -155,10 +160,7 @@ func (p *fakeProvider) authorizeEndpoint(w http.ResponseWriter, r *http.Request)
 // PKCE verifier.
 func (p *fakeProvider) token(w http.ResponseWriter, r *http.Request) {
 	if p.tokenStalls {
-		select {
-		case <-r.Context().Done():
-		case <-p.stalled:
-		}
+		p.stall(r)
 		return
 	}
 	id, secret, ok := r.BasicAuth()
@@ -202,6 +204,14 @@ func (p *fakeProvider) token(w http.ResponseWriter, r *http.Request) {
 		"access_token": "access", "token_type": "Bearer", "expires_in": 3600,
 		"id_token": idToken,
 	})
+}
+
+// stall holds r unanswered until its client gives up or the test ends.
+func (p *fakeProvider) stall(r *http.Request) {
+	select {
+	case <-r.Context().Done():
+	case <-p.stalled:
+	}
 }
 
 // sign is claims as an RS256 JWT under the provider's key.
@@ -526,10 +536,29 @@ func TestTheDevelopmentFormIsOffWithOIDC(t *testing.T) {
 func TestAStalledTokenEndpointFailsTheSignInInsteadOfHanging(t *testing.T) {
 	t.Parallel()
 
-	const timeout = 200 * time.Millisecond
-	h := testsupport.New(t)
 	p := newFakeProvider(t, map[string]any{"email": "noor.haddad@example.com", "email_verified": true})
 	p.tokenStalls = true
+	assertStalledProviderFailsTheSignIn(t, p)
+}
+
+// A provider whose key set endpoint never answers, when the ID token's
+// signature is checked, fails the sign-in the same way once the key fetch
+// times out (#537).
+func TestAStalledKeySetFetchFailsTheSignInInsteadOfHanging(t *testing.T) {
+	t.Parallel()
+
+	p := newFakeProvider(t, map[string]any{"email": "noor.haddad@example.com", "email_verified": true})
+	p.jwksStalls = true
+	assertStalledProviderFailsTheSignIn(t, p)
+}
+
+// assertStalledProviderFailsTheSignIn signs in through p, which stalls on a
+// call, with the app timing calls to p out after 200ms, and fails unless the
+// sign-in fails with the sign-in page's sentence within a few times that.
+func assertStalledProviderFailsTheSignIn(t *testing.T, p *fakeProvider) {
+	t.Helper()
+	const timeout = 200 * time.Millisecond
+	h := testsupport.New(t)
 	ts := newOIDCServerTimingOut(t, h, p, timeout)
 	// The app's Close waits for a callback stalled on the provider.
 	t.Cleanup(p.unstall)
@@ -546,7 +575,7 @@ func TestAStalledTokenEndpointFailsTheSignInInsteadOfHanging(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the callback was still waiting on the token endpoint after 10s")
+		t.Fatal("the callback was still waiting on the provider after 10s")
 	}
 	if took := time.Since(started); took > 10*timeout {
 		t.Errorf("the sign-in took %s to fail, want within a few times the %s timeout", took, timeout)
