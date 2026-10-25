@@ -355,6 +355,24 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	}
 }
 
+// A publication's print page carries no script, as the app's pages do: so its
+// PDF needs none, and the renderer runs Chromium with JavaScript off.
+func TestAPublicationsPrintPageNeedsNoScriptOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	f := newPDFDownloadFixture(t)
+	ts := newServer(t, f.h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	isScript := func(n *nethtml.Node) bool { return n.Data == "script" }
+	if scripts := findAll(getPage(t, client, ts.URL+f.pubPath), isScript); len(scripts) == 0 {
+		t.Fatal("publication page has no <script> to tell the print page's lack of one from")
+	}
+	if scripts := findAll(getPage(t, client, ts.URL+f.pubPath+"/print"), isScript); len(scripts) != 0 {
+		t.Errorf("print page has %d <script> elements, want none: the PDF renders with JavaScript off; first:\n%s", len(scripts), renderNode(scripts[0]))
+	}
+}
+
 // pdfDownloadFake is a PDF renderer that records what it was asked to render
 // and answers with pdf, or with err when set.
 type pdfDownloadFake struct {

@@ -226,6 +226,32 @@ func TestARenderOutlastsChromiumsHelpers(t *testing.T) {
 	}
 }
 
+// Render starts Chromium with JavaScript off, as the print page needs none,
+// and without its sandbox, which can't start in the app's container.
+func TestARenderRunsChromiumWithoutJavaScriptOrSandbox(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	args := filepath.Join(dir, "args")
+	fake := filepath.Join(dir, "chromium")
+	script := "#!/bin/sh\nfor arg; do echo \"$arg\"; done > '" + args + "'\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _ = pdf.Chromium{Path: fake}.Render(t.Context(), []byte("<p>hi</p>"), "http://127.0.0.1:1")
+	b, err := os.ReadFile(args)
+	if err != nil {
+		t.Fatalf("fake Chromium never ran: %v", err)
+	}
+	got := strings.Split(strings.TrimSpace(string(b)), "\n")
+	for _, want := range []string{"--disable-javascript", "--no-sandbox"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("Chromium started without %s; args: %q", want, got)
+		}
+	}
+}
+
 // Find takes the named Chromium as it is, when it's an executable file.
 func TestFindTakesTheNamedChromium(t *testing.T) {
 	t.Parallel()

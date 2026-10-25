@@ -194,6 +194,11 @@ time gets a "try again" page, and a render that fails logs an `ERROR`. Without
 a Chromium, the PDF choice opens the print page instead, for the reader to
 print to PDF from the browser, and startup logs that it falls back.
 
+The app runs Chromium with JavaScript off, as the print page needs no script,
+and without Chromium's sandbox: the app runs it as a non-root user in a
+container, where the sandbox can't start without a seccomp profile that allows
+it, and setting one up is the operator's work.
+
 With a Chromium, `TMPDIR` must be short: Chromium keeps a socket under it, and
 a socket's path on Linux is at most 107 bytes. `/tmp`, the default when
 `TMPDIR` is unset, is short enough, and so is the Docker image's. Up to 47
