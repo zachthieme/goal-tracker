@@ -168,6 +168,27 @@ type SubmitCheckinInput struct {
 // the Check-in records its author and the Owner it was written for. Check-ins
 // are immutable, so this always inserts a new one.
 func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Checkin, error) {
+	// The Check-in is planned and written in one transaction: everything that
+	// depends on the Goal's state — its Lifecycle, who may check in, the latest
+	// Check-in a Date Slip compares with, its Milestones and Draft Highlights —
+	// is read inside it, so two Check-ins sent together can't both close the
+	// Goal or both plan from the same latest Check-in. The Check-in and all it
+	// records are written together or not at all.
+	var out Checkin
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		c, err := tx.submitCheckinInTx(ctx, in)
+		out = c
+		return err
+	})
+	if err != nil {
+		return Checkin{}, err
+	}
+	return out, nil
+}
+
+// submitCheckinInTx is SubmitCheckin's work, on a Service already inside its
+// transaction.
+func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) (Checkin, error) {
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -271,77 +292,92 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		path = ""
 	}
 
-	// The Check-in and the Metric readings it records are one immutable update,
-	// so they are written together or not at all.
-	var out Checkin
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		// The Highlights are planned within the transaction: which Draft
-		// Highlights are still pending decides which offered rows count, and
-		// they are cleared in the same transaction, so two Check-ins can't both
-		// keep one.
-		picks, err := tx.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
-		if err != nil {
-			return err
-		}
-		highlights, err := planHighlights(picks.rows)
-		if err != nil {
-			return err
-		}
-		c, err := tx.createCheckin(ctx, db.CreateCheckinParams{
-			GoalID:          goal.Goal.ID,
-			AuthorID:        in.AuthorID,
-			OwnerID:         goal.Goal.OwnerID,
-			Health:          health,
-			Status:          status,
-			PathToGreen:     path,
-			PathTargetDate:  pathTargetDate,
-			Explanation:     explanation,
-			LifecycleFrom:   lifecycle.From,
-			LifecycleTo:     lifecycle.To,
-			LifecycleReason: lifecycle.Reason,
-			Outcome:         lifecycle.Outcome,
-			AsksForHelp:     asksForHelp,
-		})
-		if err != nil {
-			return err
-		}
-		if lifecycle.Changed() {
-			if _, err := tx.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{Lifecycle: lifecycle.To, ID: goal.Goal.ID}); err != nil {
-				return fmt.Errorf("set goal lifecycle: %w", err)
-			}
-			if lifecycle.To == LifecycleDone || lifecycle.To == LifecycleCancelled {
-				if err := tx.closeSuggestionsOfEndedGoal(ctx, goal.Goal.ID); err != nil {
-					return err
-				}
-			}
-		}
-		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
-			return err
-		}
-		for _, slip := range []*slipPlan{deliverySlip, pathSlip} {
-			if slip == nil {
-				continue
-			}
-			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, *slip); err != nil {
-				return err
-			}
-		}
-		if err := milestones.apply(ctx, tx, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
-			return err
-		}
-		if err := tx.recordHighlights(ctx, c.ID, highlights); err != nil {
-			return err
-		}
-		if err := picks.apply(ctx, tx, c.ID); err != nil {
-			return err
-		}
-		out = c
-		return nil
+	// Which Draft Highlights are still pending decides which offered rows
+	// count, and they are cleared below, so two Check-ins can't both keep one.
+	picks, err := s.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
+	if err != nil {
+		return Checkin{}, err
+	}
+	highlights, err := planHighlights(picks.rows)
+	if err != nil {
+		return Checkin{}, err
+	}
+	c, err := s.createCheckin(ctx, db.CreateCheckinParams{
+		GoalID:          goal.Goal.ID,
+		AuthorID:        in.AuthorID,
+		OwnerID:         goal.Goal.OwnerID,
+		Health:          health,
+		Status:          status,
+		PathToGreen:     path,
+		PathTargetDate:  pathTargetDate,
+		Explanation:     explanation,
+		LifecycleFrom:   lifecycle.From,
+		LifecycleTo:     lifecycle.To,
+		LifecycleReason: lifecycle.Reason,
+		Outcome:         lifecycle.Outcome,
+		AsksForHelp:     asksForHelp,
 	})
 	if err != nil {
 		return Checkin{}, err
 	}
-	return out, nil
+	if lifecycle.Changed() {
+		if err := s.setGoalLifecycle(ctx, goal.Goal.ID, lifecycle); err != nil {
+			return Checkin{}, err
+		}
+		if lifecycle.To == LifecycleDone || lifecycle.To == LifecycleCancelled {
+			if err := s.closeSuggestionsOfEndedGoal(ctx, goal.Goal.ID); err != nil {
+				return Checkin{}, err
+			}
+		}
+	}
+	if err := s.recordReadings(ctx, c.ID, in.Readings); err != nil {
+		return Checkin{}, err
+	}
+	for _, slip := range []*slipPlan{deliverySlip, pathSlip} {
+		if slip == nil {
+			continue
+		}
+		if err := s.recordSlip(ctx, goal.Goal.ID, c.ID, *slip); err != nil {
+			return Checkin{}, err
+		}
+	}
+	if err := milestones.apply(ctx, s, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
+		return Checkin{}, err
+	}
+	if err := s.recordHighlights(ctx, c.ID, highlights); err != nil {
+		return Checkin{}, err
+	}
+	if err := picks.apply(ctx, s, c.ID); err != nil {
+		return Checkin{}, err
+	}
+	return c, nil
+}
+
+// setGoalLifecycle makes a Check-in's Lifecycle change on goalID, but only
+// while the Goal is still in the Lifecycle the change was planned from. When
+// it has left it, the Check-in is refused with ErrValidation, as one checked
+// in on the Goal's Lifecycle now would be, so the caller's transaction keeps
+// nothing it wrote.
+func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change LifecycleChange) error {
+	n, err := s.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{
+		Lifecycle:     change.To,
+		ID:            goalID,
+		FromLifecycle: change.From,
+	})
+	if err != nil {
+		return fmt.Errorf("set goal lifecycle: %w", err)
+	}
+	if n == 0 {
+		goal, err := s.queries.GetGoal(ctx, goalID)
+		if err != nil {
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if _, err := planLifecycleChange(goal.Goal.Lifecycle, "", "", ""); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+	}
+	return nil
 }
 
 // planPathSlip plans the Date Slip, if any, of a Check-in on goalID whose
@@ -508,31 +544,41 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 // date needs a full Check-in that moves it, marks it Done or removes it. So it
 // is once the Path to Green's back-to-Green date has passed: the Owner must
 // submit a Check-in with a new date and reason, or update the Health. The new
-// Check-in is still immutable and records its own author and Owner.
+// Check-in is still immutable and records its own author and Owner. The Goal
+// and the previous Check-in are read in the transaction that writes the new
+// one, so a No change can't land on a Goal another Check-in has just closed.
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
-	goal, err := s.activeGoalForNoChange(ctx, goalID)
-	if err != nil {
-		return Checkin{}, err
-	}
-	if err := s.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, authorID); err != nil {
-		return Checkin{}, err
-	}
+	var out Checkin
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.activeGoalForNoChange(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		if err := tx.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, authorID); err != nil {
+			return err
+		}
 
-	prev, explanation, err := s.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
+		prev, explanation, err := tx.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
+		if err != nil {
+			return err
+		}
+		out, err = tx.createCheckin(ctx, db.CreateCheckinParams{
+			GoalID:         goalID,
+			AuthorID:       authorID,
+			OwnerID:        goal.Goal.OwnerID,
+			Health:         prev.Health,
+			Status:         prev.Status,
+			PathToGreen:    prev.PathToGreen,
+			PathTargetDate: prev.PathTargetDate,
+			AsksForHelp:    prev.AsksForHelp,
+			Explanation:    explanation,
+		})
+		return err
+	})
 	if err != nil {
 		return Checkin{}, err
 	}
-	return s.createCheckin(ctx, db.CreateCheckinParams{
-		GoalID:         goalID,
-		AuthorID:       authorID,
-		OwnerID:        goal.Goal.OwnerID,
-		Health:         prev.Health,
-		Status:         prev.Status,
-		PathToGreen:    prev.PathToGreen,
-		PathTargetDate: prev.PathTargetDate,
-		AsksForHelp:    prev.AsksForHelp,
-		Explanation:    explanation,
-	})
+	return out, nil
 }
 
 // NoChangeRefusal reports why a No change on goalID would be refused for any
