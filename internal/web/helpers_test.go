@@ -1353,6 +1353,164 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 	return resp
 }
 
+// The string helpers below read a page's markup as a string, for the tests in
+// other areas that still call them (followups_test.go, goalform_test.go,
+// handoffs_test.go, home_test.go, reports_test.go, styles_test.go,
+// suggestions_test.go, drafthighlights_test.go). goals_test.go reads its pages
+// through the parser helpers instead.
+
+// hasClass reports whether an open tag's class attribute holds class.
+func hasClass(openTag, class string) bool {
+	_, rest, ok := strings.Cut(openTag, `class="`)
+	if !ok {
+		return false
+	}
+	list, _, _ := strings.Cut(rest, `"`)
+	return slices.Contains(strings.Fields(list), class)
+}
+
+// shownPlainAs is how a page shows a person inside another control, where a
+// second control can't nest: by label, with their email on hover only.
+func shownPlainAs(emailAddr, label string) string {
+	return `<span class="person" title="` + emailAddr + `">` + label + `</span>`
+}
+
+// interactiveTag matches the open and close tags of the elements a control
+// can't nest inside.
+var interactiveTag = regexp.MustCompile(`<(/?)(a|button|label|summary)[\s>]`)
+
+// nestedControls returns every interactive element a page opens inside
+// another one, which HTML forbids.
+func nestedControls(page string) []string {
+	var nested []string
+	depth := 0
+	for _, at := range interactiveTag.FindAllStringSubmatchIndex(page, -1) {
+		if at[3] > at[2] {
+			depth = max(depth-1, 0)
+			continue
+		}
+		if depth > 0 {
+			tag, _, _ := strings.Cut(page[at[0]:], ">")
+			nested = append(nested, tag+">")
+		}
+		depth++
+	}
+	return nested
+}
+
+// activationItems reads the activation checklist on a Proposed Goal's page as
+// each item's label mapped to whether it is done. Each item reads as a mark,
+// its label, and "done" or "to do", so it never relies on the mark alone: ✓
+// for done and a neutral ○ for to do.
+func activationItems(t *testing.T, page string) map[string]bool {
+	t.Helper()
+	list := pageElement(t, page, "ul", "activation-checklist")
+	items := map[string]bool{}
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		mark, label, state := activationItemParts(t, li)
+		done := strings.Contains(openTag(li), `data-done="true"`)
+		if want := map[bool]string{true: "done", false: "to do"}[done]; state != want {
+			t.Errorf("checklist item says %q against data-done=%v, want %q: %s", state, done, want, li)
+		}
+		if want := map[bool]string{true: "✓", false: "○"}[done]; mark != want {
+			t.Errorf("checklist item is marked %q against data-done=%v, want %q: %s", mark, done, want, li)
+		}
+		items[label] = done
+	}
+	return items
+}
+
+// activationItemParts splits an activation checklist item's text into its
+// mark, its label, and its trailing state, "done" or the two words "to do".
+func activationItemParts(t *testing.T, li string) (mark, label, state string) {
+	t.Helper()
+	words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
+	stateWords := 1
+	if n := len(words); n >= 2 && words[n-2] == "to" && words[n-1] == "do" {
+		stateWords = 2
+	}
+	if len(words) < 2+stateWords {
+		t.Fatalf("checklist item has no mark, label and state: %s", li)
+	}
+	n := len(words) - stateWords
+	return words[0], strings.Join(words[1:n], " "), strings.Join(words[n:], " ")
+}
+
+var regexpTags = regexp.MustCompile(`<[^>]*>`)
+
+// formValues is what a browser submits from form as it renders: every input,
+// the ticked checkboxes and radios, each textarea, and each select's chosen (or
+// else first) option.
+func formValues(form string) url.Values {
+	values := url.Values{}
+	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
+		name, value := attr(tag, "name"), html.UnescapeString(attr(tag, "value"))
+		switch attr(tag, "type") {
+		case "checkbox", "radio":
+			if regexp.MustCompile(`\schecked[\s/>]`).MatchString(tag) {
+				values.Add(name, value)
+			}
+		default:
+			values.Add(name, value)
+		}
+	}
+	for _, m := range regexp.MustCompile(`(?s)(<textarea[^>]*>)(.*?)</textarea>`).FindAllStringSubmatch(form, -1) {
+		values.Add(attr(m[1], "name"), html.UnescapeString(m[2]))
+	}
+	for _, m := range regexp.MustCompile(`(?s)(<select[^>]*>)(.*?)</select>`).FindAllStringSubmatch(form, -1) {
+		options := regexp.MustCompile(`<option[^>]*>`).FindAllString(m[2], -1)
+		chosen := options[0]
+		for _, o := range options {
+			if regexp.MustCompile(`\sselected[\s/>]`).MatchString(o) {
+				chosen = o
+			}
+		}
+		values.Add(attr(m[1], "name"), attr(chosen, "value"))
+	}
+	return values
+}
+
+// actionMenu returns the Goal page header strip's action menu: from its
+// <details> to the end of the strip's actions, where it sits last.
+func actionMenu(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, between(t, page, `data-testid="goal-actions"`, `data-testid="goal-main"`), `data-testid="goal-more"`, "")
+}
+
+// menuLink matches one of the action menu's items: a plain link and its label.
+var menuLink = regexp.MustCompile(`<a [^>]*href="([^"]*)"[^>]*>([^<]*)</a>`)
+
+// menuItems returns the action menu's items, label to link, failing when the
+// menu holds anything but links: no form, control or nested disclosure.
+func menuItems(t *testing.T, page string) map[string]string {
+	t.Helper()
+	list := between(t, actionMenu(t, page), "<ul", "</ul>")
+	for _, control := range []string{"<form", "<input", "<button", "<select", "<textarea", "<details"} {
+		if strings.Contains(list, control) {
+			t.Errorf("the action menu holds a %s>, not only links:\n%s", control, list)
+		}
+	}
+	items := map[string]string{}
+	for _, m := range menuLink.FindAllStringSubmatch(list, -1) {
+		items[html.UnescapeString(m[2])] = html.UnescapeString(m[1])
+	}
+	if strings.Count(list, "<li") != len(items) {
+		t.Errorf("an action menu item is not a plain link:\n%s", list)
+	}
+	return items
+}
+
+// assertOpenIn checks the open form sits in the page's block from the element
+// marked start up to the one marked next, the part of the page it concerns.
+func assertOpenIn(t *testing.T, page, form, start, next string) {
+	t.Helper()
+	at := strings.Index(page, `data-open-form="`+form+`"`)
+	from, to := strings.Index(page, start), strings.Index(page, next)
+	if from < 0 || to < 0 || at < from || at > to {
+		t.Errorf("%q does not open between %s and %s", form, start, next)
+	}
+}
+
 // The markup helpers read a tag whatever order its attributes render in, and
 // past a > inside a quoted attribute value (#437).
 func TestMarkupHelpersOpenTagEndsAtTheTagNotAQuotedGreaterThan(t *testing.T) {
