@@ -529,10 +529,6 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 	render(w, r, http.StatusOK, goalSearchResults(matches))
 }
 
-// errUnparsed rolls back a New goal submit the domain accepted when the
-// handler refused some of its values.
-var errUnparsed = errors.New("the New goal form has values that don't parse")
-
 // handleCreateDefinedGoal submits the New goal page: the Goal is created as
 // defined, and activated too when Create and activate posts activate=1, and
 // the post lands on its page, which is the confirmation, so there is no toast.
@@ -542,30 +538,18 @@ var errUnparsed = errors.New("the New goal form has values that don't parse")
 // value the handler can't parse is refused the same way, under its input's
 // name, in the same 422 as the domain's problems.
 func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v, in, unparsed := readGoalForm(r, current)
+	v, in := readGoalForm(r, current)
 	in.Activate = r.PostFormValue(domain.InputActivate) == "1"
-
-	// The domain checks what parsed even when something didn't, so every
-	// problem comes back together; with any unparsed, nothing it wrote is
-	// kept. Defining a Goal sends no email, so rolling it back recalls it all.
-	var g domain.Goal
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		var err error
-		g, err = tx.CreateDefinedGoal(r.Context(), in)
-		if err == nil && len(unparsed) > 0 {
-			return errUnparsed
-		}
-		return err
-	})
+	g, err := s.svc.CreateDefinedGoal(r.Context(), in)
 	if err == nil {
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
+	if !errors.Is(err, domain.ErrValidation) {
 		s.serverError(w, r, "could not create goal", err)
 		return
 	}
-	v.Problems = goalFormProblems(err, unparsed)
+	v.Problems = goalFormProblems(err)
 	v.Dates = s.displayDates()
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
 		s.serverError(w, r, "could not load goals", err)
@@ -751,24 +735,18 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	v, in, unparsed := readGoalForm(r, current)
+	v, in := readGoalForm(r, current)
 	in.Activate = r.PostFormValue(domain.InputActivate) == "1"
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		_, err := tx.DefineGoal(r.Context(), current.ID, g.ID, in)
-		if err == nil && len(unparsed) > 0 {
-			return errUnparsed
-		}
-		return err
-	})
+	_, err := s.svc.DefineGoal(r.Context(), current.ID, g.ID, in)
 	if err == nil {
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
+	if !errors.Is(err, domain.ErrValidation) {
 		s.serverError(w, r, "could not save goal", err)
 		return
 	}
-	v.Problems = goalFormProblems(err, unparsed)
+	v.Problems = goalFormProblems(err)
 	if err := s.loadDefinition(r.Context(), current, g, &v, in.ParentIDs); err != nil {
 		s.serverError(w, r, "could not load goal", err)
 		return
@@ -783,7 +761,7 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	v, _, _ := readGoalForm(r, current)
+	v, _ := readGoalForm(r, current)
 	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
 		s.serverError(w, r, "could not load goal", err)
 		return
@@ -797,7 +775,7 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 // form's values, and Create and activate disabled until every item is done.
 // It saves nothing.
 func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v, _, _ := readGoalForm(r, current)
+	v, _ := readGoalForm(r, current)
 	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
 		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
@@ -806,10 +784,10 @@ func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request,
 	render(w, r, http.StatusOK, goalFormReady(v))
 }
 
-// readGoalForm reads a New goal post: the form as typed, to show again, the
-// definition it posts for current, and each value that doesn't parse, refused
-// under its input's name.
-func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain.DefinedGoalInput, []*domain.InputError) {
+// readGoalForm reads a New goal post: the form as typed, to show again, and
+// the definition it posts for current, with each value that doesn't parse
+// refused under its input's name (DefinedGoalInput.Unparsed).
+func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain.DefinedGoalInput) {
 	v := goalFormView{
 		Title:        r.FormValue(domain.InputTitle),
 		WhyItMatters: r.FormValue(domain.InputWhyItMatters),
@@ -925,7 +903,8 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 			TargetDate: date(domain.MetricInput(i, "target_date"), m.TargetDate),
 		})
 	}
-	return v, in, unparsed
+	in.Unparsed = unparsed
+	return v, in
 }
 
 // inputEditing is the hidden input each open Milestone or Metric editor holds,
@@ -1040,21 +1019,10 @@ func metricDirection(baseline, target float64, parsed bool, chosen string) strin
 	return chosen
 }
 
-// goalFormProblems are a refused submit's problems in the order the page
-// shows its inputs: the domain's, each displaced by the handler's under the
-// same input, since a value that didn't parse reached the domain as blank.
-func goalFormProblems(err error, unparsed []*domain.InputError) []*domain.InputError {
-	refused := map[string]bool{}
-	for _, p := range unparsed {
-		refused[p.Input] = true
-	}
-	var problems []*domain.InputError
-	for _, p := range domain.InputErrors(err) {
-		if !refused[p.Input] {
-			problems = append(problems, p)
-		}
-	}
-	problems = append(problems, unparsed...)
+// goalFormProblems are a refused submit's problems, those that didn't parse
+// among them, in the order the page shows its inputs.
+func goalFormProblems(err error) []*domain.InputError {
+	problems := domain.InputErrors(err)
 	if len(problems) == 0 {
 		problems = []*domain.InputError{{Message: strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")}}
 	}

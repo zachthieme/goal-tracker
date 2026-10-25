@@ -917,3 +917,126 @@ func TestParentCandidatesLeaveOutCyclesAndExistingParents(t *testing.T) {
 		t.Errorf("candidates = %v, want only %s", titles, free.Title)
 	}
 }
+
+// The New goal and define pages pass on the values they couldn't parse, each
+// refused under its input. The rest is still checked, so every problem comes
+// back together, and nothing is saved (#520).
+
+func TestCreateDefinedGoalRefusesAValueTheCallerCouldNotParse(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	in := s.fullDefinition()
+	in.CadenceDays = 0
+	in.Unparsed = []*domain.InputError{{Input: domain.InputCadence, Message: "the cadence must be a number of days"}}
+
+	_, err := s.h.Service.CreateDefinedGoal(ctx, in)
+
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0] != in.Unparsed[0] {
+		t.Errorf("problems = %v, want only the cadence that didn't parse", problems)
+	}
+	if goals, _ := s.h.Service.ListGoals(ctx); len(goals) != 0 {
+		t.Errorf("Goals = %+v, want none saved", goals)
+	}
+}
+
+// A value that didn't parse comes to the domain as none, so what the domain
+// says of its input gives way to the value refused; its other problems stay.
+func TestCreateDefinedGoalListsAValueTheCallerCouldNotParseWithTheOtherProblems(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	in := s.fullDefinition()
+	in.WhyItMatters = ""
+	in.Milestones[0].Date = time.Time{}
+	in.Unparsed = []*domain.InputError{{Input: domain.MilestoneInput(0, "date"), Message: "the date must be a date"}}
+
+	_, err := s.h.Service.CreateDefinedGoal(ctx, in)
+
+	var got []string
+	for _, p := range domain.InputErrors(err) {
+		got = append(got, p.Input+": "+p.Message)
+	}
+	want := []string{"why_it_matters: a Goal needs to say why it matters", "milestones[0].date: the date must be a date"}
+	if !slices.Equal(got, want) {
+		t.Errorf("problems = %q, want %q", got, want)
+	}
+	if goals, _ := s.h.Service.ListGoals(ctx); len(goals) != 0 {
+		t.Errorf("Goals = %+v, want none saved", goals)
+	}
+}
+
+// Activation still runs on what parsed, so its problems come back with the
+// values that didn't, and nothing is kept.
+func TestCreateDefinedGoalWithActivateListsActivationsProblemsWithAValueTheCallerCouldNotParse(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	s.h.SetFieldRequired(s.admin, s.h.CreateField(s.admin, "Budget", domain.FieldNumber, "$"), true)
+	in := s.fullDefinition()
+	in.Activate = true
+	in.CadenceDays = 0
+	in.Unparsed = []*domain.InputError{{Input: domain.InputCadence, Message: "the cadence must be a number of days"}}
+
+	_, err := s.h.Service.CreateDefinedGoal(ctx, in)
+
+	var inputs []string
+	for _, p := range domain.InputErrors(err) {
+		inputs = append(inputs, p.Input)
+	}
+	if !slices.Equal(inputs, []string{domain.InputActivate, domain.InputCadence}) {
+		t.Errorf("err = %v, want the activation refused and the cadence that didn't parse", err)
+	}
+	if goals, _ := s.h.Service.ListGoals(ctx); len(goals) != 0 {
+		t.Errorf("Goals = %+v, want none saved", goals)
+	}
+}
+
+func TestDefineGoalRefusesAValueTheCallerCouldNotParse(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	in := definition(g)
+	in.Kind, in.DeliveryDate = domain.GoalDated, futureDate
+	in.Milestones = []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate}}
+	in.Unparsed = []*domain.InputError{{Input: domain.InputCadence, Message: "the cadence must be a number of days"}}
+
+	_, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
+
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0] != in.Unparsed[0] {
+		t.Errorf("problems = %v, want only the cadence that didn't parse", problems)
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Kind != "" {
+		t.Errorf("Kind = %q, want the refused submit to keep nothing", got.Kind)
+	}
+	if milestones, _ := h.Service.ListMilestones(ctx, g.ID); len(milestones) != 0 {
+		t.Errorf("Milestones = %+v, want none", milestones)
+	}
+
+	in.Activate = true
+	in.Milestones = nil
+	_, err = h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
+
+	var inputs []string
+	for _, p := range domain.InputErrors(err) {
+		inputs = append(inputs, p.Input)
+	}
+	if !slices.Equal(inputs, []string{domain.InputActivate, domain.InputCadence}) {
+		t.Errorf("err = %v, want the activation refused and the cadence that didn't parse", err)
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Kind != "" || got.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("Goal = %s %q, want it still Proposed with no Kind", got.Lifecycle, got.Kind)
+	}
+}

@@ -42,6 +42,10 @@ type DefinedGoalInput struct {
 	// Activate moves the Goal to Active once it is defined, through the
 	// activation gate (CONTEXT.md: Lifecycle).
 	Activate bool
+	// Unparsed are the values the caller couldn't parse, each refused under
+	// its input's name. With any, nothing is saved, but the rest is still
+	// checked, activation included, so every problem comes back together.
+	Unparsed []*InputError
 }
 
 // MilestoneDefinition is a Milestone to add to a Goal being defined.
@@ -71,7 +75,8 @@ type MetricDefinition struct {
 // parent given twice, and several values in a Dimension that takes one, are
 // refused rather than half-applied. Activation runs only on clean inputs,
 // after the writes, by ActivateGoal's rules unchanged; each rule it fails
-// comes back under InputActivate.
+// comes back under InputActivate. A value the caller couldn't parse (see
+// in.Unparsed) is refused with the rest, under its input.
 func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (Goal, error) {
 	var g Goal
 	err := s.WithinTx(ctx, func(tx *Service) error {
@@ -80,10 +85,10 @@ func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (G
 			return err
 		}
 		if len(problems) > 0 {
-			return errors.Join(problems...)
+			return withUnparsed(errors.Join(problems...), in.Unparsed)
 		}
 		g, err = tx.writeDefinedGoal(ctx, in)
-		return err
+		return withUnparsed(err, in.Unparsed)
 	})
 	if err != nil {
 		return Goal{}, err
@@ -91,12 +96,38 @@ func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (G
 	return g, nil
 }
 
+// withUnparsed adds the values the caller couldn't parse to err, the outcome
+// of checking and writing the rest, so a definition with any is refused with
+// every problem together: each one replaces whatever err says of its input,
+// which saw no value, and the rest of err's problems come first. An err that
+// isn't a refusal is returned unchanged.
+func withUnparsed(err error, unparsed []*InputError) error {
+	if len(unparsed) == 0 || (err != nil && !errors.Is(err, ErrValidation)) {
+		return err
+	}
+	refused := map[string]bool{}
+	for _, p := range unparsed {
+		refused[p.Input] = true
+	}
+	var problems []error
+	for _, p := range InputErrors(err) {
+		if !refused[p.Input] {
+			problems = append(problems, p)
+		}
+	}
+	for _, p := range unparsed {
+		problems = append(problems, p)
+	}
+	return errors.Join(problems...)
+}
+
 // DefineGoal finishes defining a Proposed Goal, as the New goal form shows it
 // again, with CreateDefinedGoal's input, input names and rules for refusing
 // it: every input is checked before anything is written, every problem comes
 // back together, and any error leaves the Goal as it was. Only the Goal's
 // Owner may (ErrNotAuthorized), and only while it is Proposed (ErrValidation).
-// The actor is the Owner, whatever in.OwnerID says.
+// The actor is the Owner, whatever in.OwnerID says. A value the caller
+// couldn't parse is refused with the rest, as CreateDefinedGoal refuses it.
 //
 // The Goal is changed to match the input. A changed Why it matters is kept as a
 // revision (EditWhyItMatters), a Kind chosen, its delivery date and a cadence given
@@ -144,10 +175,10 @@ func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in Defi
 			return err
 		}
 		if problems = append(problems, more...); len(problems) > 0 {
-			return errors.Join(problems...)
+			return withUnparsed(errors.Join(problems...), in.Unparsed)
 		}
 		g, err = tx.writeRedefinedGoal(ctx, current, in)
-		return err
+		return withUnparsed(err, in.Unparsed)
 	})
 	if err != nil {
 		return Goal{}, err
