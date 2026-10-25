@@ -70,13 +70,16 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 	return ts
 }
 
-// assertSubmitsAtOnce checks the form on page whose opening tag holds marker
-// sends it without a browser dialog asking for confirmation first (#56): no
-// element from its <form> to its </form>, the form or its submit button, has a
-// submit handler, htmx's hx-confirm, or an event handler, an on* attribute or
-// htmx's hx-on*, that calls confirm(). It reads each tag's attributes, as attr
-// reads them, so text in another attribute's value that looks like a handler
-// isn't one.
+// assertSubmitsAtOnce checks the first form on page whose action ends in
+// marker, a whole action path or its tail (/remove), sends it without a browser
+// dialog asking for confirmation first (#56): no element from its <form> to its
+// </form>, the form or its submit button, has a submit handler, htmx's
+// hx-confirm, or an event handler, an on* attribute or htmx's hx-on*, that
+// calls confirm(). htmx reads data-hx-* as hx-*, so a data-hx- attribute counts
+// as its hx- one. It reads each tag's attributes, as the tokenizer parses them,
+// both to pick the form and to check it, so text in another attribute's value
+// that looks like an action or a handler isn't one. A form whose </form> isn't
+// in page fails: the check can't reach its end.
 func assertSubmitsAtOnce(t *testing.T, what, page, marker string) {
 	t.Helper()
 	z := html.NewTokenizer(strings.NewReader(page))
@@ -88,7 +91,7 @@ func assertSubmitsAtOnce(t *testing.T, what, page, marker string) {
 		}
 		raw := string(z.Raw())
 		tok := z.Token()
-		if depth == 0 && (tt != html.StartTagToken || tok.Data != "form" || !strings.Contains(raw, marker)) {
+		if depth == 0 && (tt != html.StartTagToken || tok.Data != "form" || !strings.HasSuffix(tokenAttr(tok, "action"), marker)) {
 			continue
 		}
 		found = true
@@ -99,8 +102,12 @@ func assertSubmitsAtOnce(t *testing.T, what, page, marker string) {
 			depth--
 		}
 		for _, a := range tok.Attr {
-			handler := strings.HasPrefix(a.Key, "on") || strings.HasPrefix(a.Key, "hx-on")
-			if a.Key == "onsubmit" || a.Key == "hx-confirm" || handler && strings.Contains(a.Val, "confirm(") {
+			key := a.Key
+			if strings.HasPrefix(key, "data-hx-") {
+				key = strings.TrimPrefix(key, "data-")
+			}
+			handler := strings.HasPrefix(key, "on") || strings.HasPrefix(key, "hx-on")
+			if key == "onsubmit" || key == "hx-confirm" || handler && strings.Contains(a.Val, "confirm(") {
 				t.Errorf("%s asks for confirmation: %s", what, raw)
 			}
 		}
@@ -109,8 +116,9 @@ func assertSubmitsAtOnce(t *testing.T, what, page, marker string) {
 		}
 	}
 	if !found {
-		t.Fatalf("no form holds %s in:\n%s", marker, page)
+		t.Fatalf("no form's action ends in %s in:\n%s", marker, page)
 	}
+	t.Fatalf("no </form> closes the form whose action ends in %s in:\n%s", marker, page)
 }
 
 // between returns s from the first start up to the first end after it, or to
@@ -1410,7 +1418,7 @@ func TestMarkupHelpersAssertSubmitsAtOnceReadsHandlersNotTextLikeThem(t *testing
 		`<form method="post" title="No onsubmit= or confirm( here" action="/links/1/reject">` +
 		`<button type="submit" title="No hx-confirm= or onclick=confirm( here">Reject</button></form>` +
 		`<button type="button" onclick="confirm('Sure?')">Help</button>`
-	assertSubmitsAtOnce(t, "Reject", page, `action="/links/1/reject"`)
+	assertSubmitsAtOnce(t, "Reject", page, "/links/1/reject")
 }
 
 // Each child run fails the helper on purpose; the parent passes only if it did.
@@ -1422,12 +1430,16 @@ func TestMarkupHelpersAssertSubmitsAtOnceFailsAConfirmDialog(t *testing.T) {
 		{"hx-on on the button", `<form method="post" action="/links/1/reject"><button type="submit" hx-on:click="if (!confirm('Sure?')) event.preventDefault()">Reject</button></form>`, asks},
 		{"onclick on the button", `<form method="post" action="/links/1/reject"><span><button type="submit" onclick="return confirm('Sure?')">Reject</button></span></form>`, asks},
 		{"hx-confirm on the form", `<form method="post" hx-confirm="Sure?" action="/links/1/reject"><button type="submit">Reject</button></form>`, asks},
-		{"no form", `<a href="/x" data-action="/links/1/reject" action="/links/1/reject">Reject</a>`, "no form holds"},
+		{"data-hx-confirm on the form", `<form method="post" data-hx-confirm="Sure?" action="/links/1/reject"><button type="submit">Reject</button></form>`, asks},
+		{"data-hx-on on the button", `<form method="post" action="/links/1/reject"><button type="submit" data-hx-on:click="if (!confirm('Sure?')) event.preventDefault()">Reject</button></form>`, asks},
+		{"marker text in another form's title", `<form title='action="/links/1/reject"' action="/x"></form><form method="post" hx-confirm="Sure?" action="/links/1/reject"><button type="submit">Reject</button></form>`, asks},
+		{"unclosed form", `<form method="post" action="/links/1/reject"><button type="submit">Reject</button>`, "no </form> closes the form"},
+		{"no form", `<a href="/x" data-action="/links/1/reject" action="/links/1/reject">Reject</a>`, "no form's action ends in"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if os.Getenv("ASSERT_SUBMITS_AT_ONCE_CHILD") == "1" {
-				assertSubmitsAtOnce(t, "Reject", `<p>Reject</p>`+tc.form, `action="/links/1/reject"`)
+				assertSubmitsAtOnce(t, "Reject", `<p>Reject</p>`+tc.form, "/links/1/reject")
 				return
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1")

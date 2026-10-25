@@ -522,7 +522,7 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 		if !strings.Contains(reject, `<button type="submit" class="btn quiet sm">Reject</button>`) {
 			t.Errorf("%s has no Reject text button:\n%s", tc.what, tc.row)
 		}
-		assertSubmitsAtOnce(t, tc.what+"'s Reject", tc.row, `action="`+tc.action+`/reject"`)
+		assertSubmitsAtOnce(t, tc.what+"'s Reject", tc.row, tc.action+"/reject")
 	}
 
 	postForm(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)

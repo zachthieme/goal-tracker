@@ -2462,7 +2462,7 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 		if chip := healthChipIn(t, title.Parent); !flatFrameHasClass(chip, tc.class) {
 			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, renderNode(title.Parent))
 		}
-		assertSubmitsAtOnce(t, tc.section+": Remove", section, `/remove"`)
+		assertSubmitsAtOnce(t, tc.section+": Remove", section, "/remove")
 	}
 
 	// Removing the link to the parent from its form unlinks it.
