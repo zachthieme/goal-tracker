@@ -2658,6 +2658,71 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	}
 }
 
+// A publication, the print page and a non-manager's draft head the narrative
+// with a level-2 "Narrative", as the composer is headed; an empty narrative
+// leaves the whole section out (#479).
+func TestPublishedNarrativeHasItsNarrativeHeadingOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	empty := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Empty", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	emptyPub := h.PublishReport(boss, empty)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	// Publishing starts the next draft's narrative afresh, so the author
+	// writes a note into each.
+	writeMiss := func() {
+		t.Helper()
+		if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
+			Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+		}); err != nil {
+			t.Fatalf("CurateNarrative: %v", err)
+		}
+	}
+	writeMiss()
+	pub := h.PublishReport(boss, def)
+	writeMiss()
+	h.SignIn("sam@example.com")
+
+	ts := newServer(t, h)
+	bossClient, sam := signInClient(t, ts.URL, "boss@example.com"), signInClient(t, ts.URL, "sam@example.com")
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	for name, c := range map[string]struct {
+		client *http.Client
+		url    string
+	}{
+		"publication":       {bossClient, pubURL},
+		"print page":        {bossClient, pubURL + "/print"},
+		"non-manager draft": {sam, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)},
+	} {
+		narrative := findByTestID(t, getPage(t, c.client, c.url), "report-narrative")
+		heading := headingNamed(narrative, "Narrative")
+		if heading == nil || heading.Data != "h2" || heading.Parent != narrative {
+			t.Errorf("%s: the narrative isn't headed by its own h2 Narrative: %s", name, renderNode(narrative))
+			continue
+		}
+		if sec := findByTestID(t, narrative, "narrative-section"); textOf(sec) != "Misses" || !precedes(heading, sec) {
+			t.Errorf("%s: Misses isn't under the Narrative heading: %s", name, renderNode(narrative))
+		}
+	}
+
+	emptyPubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, empty.ID, emptyPub.ID)
+	for name, c := range map[string]struct {
+		client *http.Client
+		url    string
+	}{
+		"empty publication":       {bossClient, emptyPubURL},
+		"empty print page":        {bossClient, emptyPubURL + "/print"},
+		"empty non-manager draft": {sam, fmt.Sprintf("%s/reports/%d", ts.URL, empty.ID)},
+	} {
+		if page := getPage(t, c.client, c.url); hasTestID(page, "report-narrative") || headingNamed(page, "Narrative") != nil {
+			t.Errorf("%s: an empty narrative still shows its section or heading", name)
+		}
+	}
+}
+
 // The Print view has no hover, so it introduces each person as Name (email) at
 // their first mention and by Name after that (CONTEXT.md: Name).
 func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {

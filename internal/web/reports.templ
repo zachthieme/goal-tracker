@@ -1094,12 +1094,14 @@ templ curationHighlight(c curationChoice) {
 }
 
 // reportNarrative is a Report's Insights, Accomplishments, and Misses as a
-// plain section, each under its own heading (a label on the print page): the
-// author's notes, each its own paragraph, and then the Highlights they picked,
-// each crediting the Goal's Owner. Sections with neither are left out.
+// plain section under a level-2 Narrative heading, each under its own heading
+// (a label on the print page): the author's notes, each its own paragraph, and
+// then the Highlights they picked, each crediting the Goal's Owner. Sections
+// with neither are left out, and an empty narrative is left out whole.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
 		<section data-testid="report-narrative" class="rp-narrative">
+			<h2>Narrative</h2>
 			for _, sec := range narrative {
 				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
 				for _, note := range sec.Notes {
@@ -1611,12 +1613,12 @@ func hasNotes(notes []string) bool {
 // Type scale), the Health tiles, the exception blocks with their label column
 // and the Path to Green's Health tint, the discussion footer, the scrolling root-Goal
 // picker, and the draft's header and its two columns, the Report beside its
-// Delegates and Report log, which stack into one under 960px of the page's
+// Delegates and History, which stack into one under 960px of the page's
 // content width and shrink to a phone's width rather than to the On track
 // table's. At a phone's width the header stops
 // sticking and stacks into rows — the name with its save status, the chip, then
-// History, Edit definition and Publish… — and the Publish… card spans the
-// screen between its gutters.
+// Edit definition and Publish… — and the Publish… card spans the screen between
+// its gutters.
 templ reportStyles() {
 	<style>
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
@@ -1652,7 +1654,7 @@ templ reportStyles() {
 		.rp-pop.rp-list>li{padding:12px 16px}
 		.rp-narrative{font-size:15px;line-height:1.7;color:var(--color-ink)}
 		.rp-narrative h3.label{margin-top:16px;font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}
-		.rp-narrative .label:first-child{margin-top:0}
+		.rp-narrative>h2+.label{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
 		.rp-section-text{border-top:1px solid var(--color-border)}

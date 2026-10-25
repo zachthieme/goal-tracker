@@ -115,48 +115,6 @@ func (r Report) selected() []SelectedGoal {
 	return append(out, r.Lines...)
 }
 
-// AlsoIncludedOnly returns the ids of the Goals r selects only because its
-// Definition lists them to Also include: they don't meet its rules at r's
-// baseline. A picked Definition has none.
-func (s *Service) AlsoIncludedOnly(ctx context.Context, r Report) (map[int64]bool, error) {
-	def := r.Definition
-	if def.Mode != ReportModeRules || len(def.Include) == 0 {
-		return nil, nil
-	}
-	valuesByGoal, err := s.goalValuesByGoal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	orgs, err := s.ruleOrgs(ctx, def.Rules)
-	if err != nil {
-		return nil, err
-	}
-	var subjects []ruleSubject
-	var decidedByHistory []int64
-	for _, sg := range r.selected() {
-		if !slices.Contains(def.Include, sg.Goal.ID) {
-			continue
-		}
-		subject := ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID], orgs: orgs}
-		subjects = append(subjects, subject)
-		if lifecycleHistoryDecides(def.Rules, subject) {
-			decidedByHistory = append(decidedByHistory, sg.Goal.ID)
-		}
-	}
-	checkins, err := s.checkinsByGoal(ctx, decidedByHistory)
-	if err != nil {
-		return nil, err
-	}
-	out := map[int64]bool{}
-	for _, subject := range subjects {
-		h := goalHistory{goal: subject.Goal, checkins: checkins[subject.Goal.ID]}
-		if !meetsRulesGiven(def.Rules, subject, h, s.since(r)) {
-			out[subject.Goal.ID] = true
-		}
-	}
-	return out, nil
-}
-
 // changedGoals counts the Goals r reads as changed since its baseline — those
 // it selects that were created, slipped a date, gained a Milestone, changed
 // Lifecycle or changed Health since, and those that entered or left it — each
