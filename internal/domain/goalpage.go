@@ -96,8 +96,11 @@ type GoalPermissions struct {
 	// (SubmitCheckin).
 	CheckIn bool
 	// AddMilestone: the same people, until it is Done or Cancelled
-	// (AddMilestoneAsAuthor).
-	AddMilestone bool
+	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
+	// Proposed, when a Milestone's date still moves outside a Check-in
+	// (EditMilestone).
+	AddMilestone   bool
+	EditMilestones bool
 	// LogDraftHighlight: the same people, while it takes Draft Highlights
 	// (LogDraftHighlight).
 	LogDraftHighlight bool
@@ -108,11 +111,8 @@ type GoalPermissions struct {
 	AddContributor  bool
 	ManageDelegates bool
 	LinkParent      bool
-	// DefineGoal: its Owner, while it is Proposed (DefineGoal, ActivateGoal);
-	// EditMilestones: its Owner, while it is Proposed, when a Milestone's date
-	// still moves outside a Check-in (EditMilestone).
-	DefineGoal     bool
-	EditMilestones bool
+	// DefineGoal: its Owner, while it is Proposed (DefineGoal, ActivateGoal).
+	DefineGoal bool
 	// SuggestParent: anyone but its Owner, while it is Active or Proposed
 	// (SuggestParent).
 	SuggestParent bool
@@ -504,13 +504,13 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	p.Permissions = GoalPermissions{
 		CheckIn:                  p.CanCheckin && LifecycleTakesCheckins(g.Lifecycle),
 		AddMilestone:             p.CanCheckin && milestonesAddable(g.Lifecycle),
+		EditMilestones:           p.CanCheckin && proposed,
 		LogDraftHighlight:        p.CanCheckin && LifecycleTakesDraftHighlights(g.Lifecycle),
 		SetValues:                setValues,
 		AddContributor:           owns,
 		ManageDelegates:          owns,
 		LinkParent:               owns,
 		DefineGoal:               owns && proposed,
-		EditMilestones:           owns && proposed,
 		SuggestParent:            found && !owns && suggestable(g.Lifecycle),
 		EditTitleAndWhyItMatters: owns || isAdmin,
 		HandOff:                  (owns || isAdmin) && !g.Ownerless,

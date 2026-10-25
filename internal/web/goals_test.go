@@ -2470,6 +2470,58 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	}
 }
 
+// On a Proposed Goal a Delegate is offered the same Edit form on each
+// Milestone as its Owner, and what they save is kept, name and date; a reader
+// and an Admin who is neither Owner nor Delegate are offered none, for
+// EditMilestone allows only the Owner and Delegates.
+func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	h.SignIn("ada@example.com")
+	h.SignIn("pat@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	if _, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	h.AddDelegate(sam, dana, proposed.ID)
+	ts := newServer(t, h)
+	milestones := func(client *http.Client) *nethtml.Node {
+		t.Helper()
+		return findByTestID(t, getPage(t, client, goalPageURL(ts.URL, proposed)), "goal-milestones")
+	}
+
+	dana2 := signInClient(t, ts.URL, "dana@example.com")
+	section := milestones(dana2)
+	if name := formField(t, section, "name"); name.Value != "Pricing page" {
+		t.Errorf("a Delegate's Edit form names the Milestone %q, want %q", name.Value, "Pricing page")
+	}
+	if date := formField(t, section, "target_date"); date.Type != "date" || date.Value != "2026-04-01" {
+		t.Errorf("a Delegate's Edit form dates the Milestone %s %q, want date 2026-04-01", date.Type, date.Value)
+	}
+	if buttonNamed(section, "Save") == nil {
+		t.Fatalf("a Delegate on a Proposed Goal isn't offered Save on its Milestone: %s", renderNode(section))
+	}
+	pricing := onlyMilestone(t, h, proposed)
+	resp := postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, pricing.ID), url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if got := onlyMilestone(t, h, proposed); resp.StatusCode != http.StatusOK || got.Name != "Pricing page live" || got.TargetDate.Format("2006-01-02") != "2026-04-15" {
+		t.Errorf("a Delegate's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
+	}
+
+	for _, who := range []string{"pat@example.com", "ada@example.com"} {
+		section := milestones(signInClient(t, ts.URL, who))
+		if fields := formFields(section, "name"); len(fields) != 0 || buttonNamed(section, "Save") != nil {
+			t.Errorf("%s is offered a Milestone's Edit form on a Proposed Goal: %s", who, renderNode(section))
+		}
+	}
+}
+
 // A Milestone added from the Goal page after the Goal's latest Check-in is
 // New on the Goal page, as one that Check-in added would be; one added before
 // it isn't, and nothing is New on a Goal with no Check-in yet (CONTEXT.md:
