@@ -79,7 +79,7 @@ func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goa
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, err.Error(), http.StatusForbidden)
+			http.Error(w, domain.Reason(err), http.StatusForbidden)
 		case errors.Is(err, domain.ErrValidation):
 			s.renderRefusedForm(w, r, goalID, current, formDelegates, http.StatusUnprocessableEntity, err)
 		default:

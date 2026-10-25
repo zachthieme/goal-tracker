@@ -498,6 +498,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	}
 	edits, err := tableEdits(r.PostForm)
 	if err != nil {
+		// Not a refusal: tableEdits's own text quotes the bad cell as posted.
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
@@ -510,7 +511,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 		http.Redirect(w, r, string(goalsListData{Query: q}.queryURL(func(url.Values) {})), http.StatusSeeOther)
 		return
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 		return
 	case !errors.Is(err, domain.ErrValidation):
 		s.serverError(w, r, "could not save values", err)

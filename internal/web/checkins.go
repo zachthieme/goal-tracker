@@ -613,9 +613,9 @@ func (s *Server) checkinRedirect(w http.ResponseWriter, r *http.Request, goalID 
 func (s *Server) writeCheckinError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:

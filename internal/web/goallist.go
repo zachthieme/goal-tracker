@@ -58,7 +58,7 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 	}
 	var buf bytes.Buffer
 	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); errors.Is(err, domain.ErrValidation) {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 		return
 	} else if err != nil {
 		s.serverError(w, r, "could not download goals", err)
