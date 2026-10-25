@@ -12,6 +12,8 @@ import (
 // header's "Home" and its New goal, the page title, Your week, over today's
 // date and Your goals, then Needs you, the page's job, My org and Your Yellow
 // or Red goals as sections of ruled rows (DESIGN.md § Home).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ homePage(current *domain.Account, v homeView) {
 	@framedLayout("Home", current, homePageHeader()) {
 		@homeStyles()

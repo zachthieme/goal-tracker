@@ -12,6 +12,8 @@ import (
 // rejected. It sits in the flat frame: its title in the page header, and the
 // requests a plain section of hairline rows (DESIGN.md § Components:
 // Sections).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toast) {
 	@framedLayout("Pending links", current, pageHeader(pageHead{Title: "Pending links"})) {
 		@pendingStyles()
@@ -52,6 +54,8 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link, toast *to
 
 // linkRefusedPage says, inside the normal page, why removing a link was
 // refused, with a link back to the Goal page the Remove was on.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ linkRefusedPage(current *domain.Account, reason, back string) {
 	@layout("Can't remove link", current) {
 		<div class="message-page">

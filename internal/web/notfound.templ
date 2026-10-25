@@ -6,6 +6,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // address asked for, with a link back to Home, or to sign in when no one is
 // signed in (notFound). It is plain text centred on the canvas, with no card
 // (DESIGN.md § Not found page).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ notFoundPage(current *domain.Account) {
 	@layout("Not found", current) {
 		<div class="message-page nf-message">

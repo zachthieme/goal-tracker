@@ -13,6 +13,8 @@ import (
 // for the Handoff just rejected. It sits in the flat frame: its title in the
 // page header, and the Handoffs a plain section of hairline rows (DESIGN.md §
 // Components: Sections).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) {
 	@framedLayout("Pending handoffs", current, pageHeader(pageHead{Title: "Pending handoffs"})) {
 		@pendingStyles()

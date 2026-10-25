@@ -4,6 +4,8 @@ package web
 // of the canvas under the app's mark, with the heading, a note on how
 // development sign-in works, and the email field. A failed sign-in shows its
 // reason above the field.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ signInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
@@ -27,6 +29,8 @@ templ signInPage(failure string) {
 // orgSignInPage is sign-in through the company's provider: the same column as
 // the development form, with one button that starts the sign-in. A failed
 // sign-in shows its reason, and the button offers to try again.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ orgSignInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
@@ -69,6 +73,8 @@ templ signInStyles() {
 // form, with the email and password fields, and where to turn for a forgotten
 // password. A failed sign-in shows its reason above the fields, with the email
 // kept.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ passwordSignInPage(failure, emailAddr string) {
 	@layout("Sign in", nil) {
 		@signInStyles()

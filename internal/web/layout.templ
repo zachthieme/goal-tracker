@@ -169,6 +169,8 @@ type pageHead struct {
 // pageHeader is a page's 48px header strip, for framedLayout's header: the
 // title or breadcrumb and count at the left, and the page's actions, its
 // children, at the right (DESIGN.md § Page header).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ pageHeader(h pageHead) {
 	<div class="page-header">
 		<div class="ph-title">

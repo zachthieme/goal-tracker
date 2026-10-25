@@ -12,6 +12,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // undoRefusedPage says, inside the normal page, why an Undo was refused, with
 // a link back to the page it was offered on (refuseUndo).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func undoRefusedPage(current *domain.Account, reason, back string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -52,7 +54,7 @@ func undoRefusedPage(current *domain.Account, reason, back string) templ.Compone
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(reason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/toast.templ`, Line: 11, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/toast.templ`, Line: 13, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -65,7 +67,7 @@ func undoRefusedPage(current *domain.Account, reason, back string) templ.Compone
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(back))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/toast.templ`, Line: 12, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/toast.templ`, Line: 14, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {

@@ -12,6 +12,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // nudgeRefusedPage says, inside the normal page, why a Nudge was refused or
 // didn't reach everyone, with a link back to the Follow-ups page it was sent from.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func nudgeRefusedPage(current *domain.Account, heading, reason string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -52,7 +54,7 @@ func nudgeRefusedPage(current *domain.Account, heading, reason string) templ.Com
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(heading)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/nudges.templ`, Line: 10, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/nudges.templ`, Line: 12, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -65,7 +67,7 @@ func nudgeRefusedPage(current *domain.Account, heading, reason string) templ.Com
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(reason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/nudges.templ`, Line: 11, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/nudges.templ`, Line: 13, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {

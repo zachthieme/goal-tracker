@@ -13,6 +13,8 @@ import (
 // (ticket #22). A non-Admin sees only a note that imports are Admin-only. It
 // sits in the flat frame: its title in the page header, and its form and
 // report plain sections (DESIGN.md § Import Goals page).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ importsPage(current *domain.Account, report *importer.Report, flash string) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@framedLayout("Import Goals", current, pageHeader(pageHead{Title: "Import Goals"})) {

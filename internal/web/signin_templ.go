@@ -12,6 +12,8 @@ import templruntime "github.com/a-h/templ/runtime"
 // of the canvas under the app's mark, with the heading, a note on how
 // development sign-in works, and the email field. A failed sign-in shows its
 // reason above the field.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func signInPage(failure string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -73,7 +75,7 @@ func signInPage(failure string) templ.Component {
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(failure)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 15, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 17, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -107,6 +109,8 @@ func signInPage(failure string) templ.Component {
 // orgSignInPage is sign-in through the company's provider: the same column as
 // the development form, with one button that starts the sign-in. A failed
 // sign-in shows its reason, and the button offers to try again.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func orgSignInPage(failure string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -168,7 +172,7 @@ func orgSignInPage(failure string) templ.Component {
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(failure)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 37, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 41, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -278,6 +282,8 @@ func signInStyles() templ.Component {
 // form, with the email and password fields, and where to turn for a forgotten
 // password. A failed sign-in shows its reason above the fields, with the email
 // kept.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func passwordSignInPage(failure, emailAddr string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -339,7 +345,7 @@ func passwordSignInPage(failure, emailAddr string) templ.Component {
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(failure)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 79, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 85, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -357,7 +363,7 @@ func passwordSignInPage(failure, emailAddr string) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(emailAddr)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 83, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 89, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 				if templ_7745c5c3_Err != nil {

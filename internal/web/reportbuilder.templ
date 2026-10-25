@@ -144,6 +144,8 @@ const reportMatchesID = "report-matches"
 // definition as typed would select, by title, each with its Health or, with
 // none yet, its Lifecycle, and "added" beside one only Also include selects.
 // Past the first railLength, it counts the rest and those left out.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ reportMatchesRail(m reportMatches) {
 	<aside data-testid="report-matches" id={ reportMatchesID } class="rb-rail" aria-live="polite">
 		if m.NeedsRule {
@@ -278,6 +280,8 @@ templ reportGoalPicker(v reportBuilderView, list, legend, help string, chosen []
 
 // reportGoalSearchResults are a picker's search matches, each a button that
 // picks it beside the <template> of the chip picking it adds to list.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ reportGoalSearchResults(list string, matches []domain.Goal) {
 	if len(matches) == 0 {
 		<li class="muted small">No Goals match.</li>

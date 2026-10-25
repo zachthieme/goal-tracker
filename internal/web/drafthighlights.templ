@@ -28,6 +28,8 @@ templ draftHighlightSection(v goalView) {
 // again: a refused log is the log form open, and a refused edit marks its
 // Draft Highlight with what was typed and the reason. Its id is the target
 // the editor's htmx posts swap.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 	if v.CanCheckin && (v.Permissions.LogDraftHighlight || len(v.DraftHighlights) > 0) {
 		<section

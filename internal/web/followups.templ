@@ -19,6 +19,8 @@ import (
 // show, #follow-ups-body says so in one line in place of the groups and the
 // list, and the header holds no count; for an Admin, the groups follow it
 // while the company has a Goal that Needs an Admin.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ followUpsPage(current *domain.Account, v followUpsPageView) {
 	@framedLayout("Follow-ups", current, followUpsHeader(v)) {
 		@followUpsStyles()

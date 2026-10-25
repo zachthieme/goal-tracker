@@ -26,6 +26,8 @@ templ topLevelControl(g domain.Goal) {
 
 // graphSignalsPage lists the risks the Goal graph flags on its own, so
 // leadership sees them without anyone reporting them (CONTEXT.md: Unlinked).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals, dates displayDates) {
 	@layout("Graph signals", current) {
 		<h1>Graph signals</h1>

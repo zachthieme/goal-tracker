@@ -623,6 +623,8 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // Rolled-up Health), and the Goal's dates (checkinContextDates). On a phone it
 // keeps only the children, as the form's ghost text already shows the latest
 // answers.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@framedLayout("Check in · "+g.Title, current, pageHeader(pageHead{Parent: g.Title, ParentHref: fmt.Sprintf("/goals/%d", g.ID), Title: "Check in"})) {
@@ -772,6 +774,8 @@ func checkinFormRefused(v goalView, refusal string) checkinFormData {
 // checkinUnavailablePage says, inside the normal page, why the Check-in
 // couldn't be reached: the Goal doesn't exist, or the reader may not check in
 // on it.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ checkinUnavailablePage(current *domain.Account, title, message string) {
 	@layout(title, current) {
 		<div class="message-page">
@@ -794,6 +798,8 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // ends with its submit bar, which sticks to the window's bottom while the form
 // runs past it: Cancel and Submit check-in beside a summary of what the
 // Check-in will record, empty until checkinSummaryScript fills it.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ checkinForm(d checkinFormData) {
 	<form
 		data-testid="checkin-form"
