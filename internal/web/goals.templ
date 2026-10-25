@@ -765,7 +765,7 @@ templ goalPage(current *domain.Account, v goalView) {
 			<div class="gp-body">
 				<div data-testid="goal-main" class="gp-doc">
 					@goalHead(v)
-					if owner && g.Lifecycle == domain.LifecycleProposed {
+					if v.Permissions.DefineGoal {
 						@defineGoal(v)
 					}
 					@checkinSection(v)
@@ -777,7 +777,7 @@ templ goalPage(current *domain.Account, v goalView) {
 						@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
 							<h2>Milestones</h2>
 						}
-						@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
+						@milestoneList(v, v.Permissions.EditMilestones)
 						if v.opens(formMilestones) {
 							@openGoalForm(v, formMilestones, "Add Milestone") {
 								<form data-testid="add-milestone" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>

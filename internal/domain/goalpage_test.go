@@ -86,10 +86,13 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 
 // The Goal page's loader says what each viewer may do with the Goal, by the
 // rule each command enforces: on an Active Goal the Owner may do everything
-// but an Admin's own acts, a Delegate what a Check-in author may and set
-// values, an Admin set values, edit, hand off, mark the Owner departed and
-// mark Top-level, and a reader nothing. Once the Goal is Done no one may check
-// in, add a Milestone or log a Draft Highlight, the Owner included.
+// but an Admin's own acts and suggest a parent, a Delegate what a Check-in
+// author may, set values and suggest a parent, an Admin set values, edit, hand
+// off, mark the Owner departed, mark Top-level and suggest a parent, and a
+// reader suggest a parent. Only while the Goal is Proposed may its Owner
+// define it and edit its Milestones, and no one checks in on it yet. Once the
+// Goal is Done no one may check in, add a Milestone, log a Draft Highlight or
+// suggest a parent, the Owner included.
 func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -98,9 +101,10 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	morgan := h.SignIn("morgan@example.com")
 	rita := h.SignIn("rita@example.com")
 	admin := h.SignIn("admin@example.com")
+	proposed := h.CreateGoal(sam, "Ship billing", "People can't pay.")
 	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	done := h.ActiveGoal(sam, "Ship sign-in", "People can't get in.")
-	for _, g := range []domain.Goal{active, done} {
+	for _, g := range []domain.Goal{proposed, active, done} {
 		h.AddDelegate(sam, morgan, g.ID)
 	}
 	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
@@ -110,26 +114,41 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 		AddContributor: true, ManageDelegates: true, LinkParent: true,
 		EditTitleAndWhyItMatters: true, HandOff: true,
 	}
-	delegate := domain.GoalPermissions{CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true}
+	delegate := domain.GoalPermissions{
+		CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		SuggestParent: true,
+	}
 	anAdmin := domain.GoalPermissions{
 		SetValues: true, EditTitleAndWhyItMatters: true, HandOff: true,
-		MarkOwnerDeparted: true, MarkTopLevel: true,
+		MarkOwnerDeparted: true, MarkTopLevel: true, SuggestParent: true,
 	}
+	reader := domain.GoalPermissions{SuggestParent: true}
+	ownerOfProposed := owner
+	ownerOfProposed.CheckIn = false
+	ownerOfProposed.DefineGoal, ownerOfProposed.EditMilestones = true, true
+	delegateOnProposed := delegate
+	delegateOnProposed.CheckIn = false
 	ownerOfDone := owner
 	ownerOfDone.CheckIn, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, false, false
+	adminOnDone := anAdmin
+	adminOnDone.SuggestParent = false
 	for _, v := range []struct {
 		name   string
 		viewer domain.Account
 		goal   domain.Goal
 		want   domain.GoalPermissions
 	}{
+		{"the Owner of the Proposed Goal", sam, proposed, ownerOfProposed},
+		{"a Delegate on the Proposed Goal", morgan, proposed, delegateOnProposed},
+		{"an Admin on the Proposed Goal", admin, proposed, anAdmin},
+		{"a reader of the Proposed Goal", rita, proposed, reader},
 		{"the Owner of the Active Goal", sam, active, owner},
 		{"a Delegate on the Active Goal", morgan, active, delegate},
 		{"an Admin on the Active Goal", admin, active, anAdmin},
-		{"a reader of the Active Goal", rita, active, domain.GoalPermissions{}},
+		{"a reader of the Active Goal", rita, active, reader},
 		{"the Owner of the Done Goal", sam, done, ownerOfDone},
 		{"a Delegate on the Done Goal", morgan, done, domain.GoalPermissions{SetValues: true}},
-		{"an Admin on the Done Goal", admin, done, anAdmin},
+		{"an Admin on the Done Goal", admin, done, adminOnDone},
 		{"a reader of the Done Goal", rita, done, domain.GoalPermissions{}},
 	} {
 		p, err := h.Service.GoalPage(ctx, v.viewer.ID, v.goal.ID)
@@ -159,7 +178,7 @@ func TestGoalPagePermitsAnAdminToReassignAnOwnerlessGoal(t *testing.T) {
 	}
 	want := domain.GoalPermissions{
 		SetValues: true, EditTitleAndWhyItMatters: true, Reassign: true,
-		MarkOwnerReturned: true, MarkTopLevel: true,
+		MarkOwnerReturned: true, MarkTopLevel: true, SuggestParent: true,
 	}
 	if p.Permissions != want {
 		t.Errorf("Permissions for an Admin on an Ownerless Goal = %+v, want %+v", p.Permissions, want)
