@@ -20,9 +20,13 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] A Report's draft keeps Delegates and History beside the Report at a 1280px window, stacking them under it only at 960px of content width and under, as the approved design does (#477).
+- [user] A Report's print page and PDF lay each Goal out as the screen does: Why it matters, Status and the other facts in a label column, and the Path to Green in its Health's tint, so an overdue Yellow one prints Yellow, not Red (#478).
 
 **Security:**
 - [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
+
+**Architecture:**
+- [internal] The sidebar every signed-in page shows loads through one page loader, `Service.Sidebar`, which reads each thing once and only what the sidebar shows, instead of building the whole Home and Follow-ups pages on every request: 11 queries, the same for a Manager two levels up as for an Owner, and for 50 Goals as for 10. The Goal page as its Owner sees it drops from 65 queries to 49, and its `querycount` test now fails any query run twice but `ListAskWalkAccounts`, which the page's loader and the sidebar both need. The counts are unchanged (#465).
 
 **Testing:**
 - [internal] The "submits at once, with no confirm dialog" test guard (#56) now takes the page and a marker, finds the form whose opening tag holds the marker, and checks every element in it, its submit button included, refusing htmx's `hx-confirm` as well as `onsubmit` and any `on*` or `hx-on*` handler that calls `confirm(`. Its own tests cover a confirm on the button's `hx-on:click` or `onclick` and an `hx-confirm` on the form (#463).
