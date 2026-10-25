@@ -1074,3 +1074,129 @@ func TestOldOfficeFileIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// A tiny workbook whose sheet has a row numbered far past any real Goal sheet —
+// which excelize's row reader would step through one missing row at a time
+// (GO-2026-6685) — is refused at once as too many rows, not read (#489).
+func TestHugeRowNumberWorkbookIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	crafted := rowNumberedXLSX(t, "900000000000")
+	if len(crafted) > 8<<10 {
+		t.Fatalf("crafted workbook is %d bytes, want a few KB at most", len(crafted))
+	}
+
+	start := time.Now()
+	_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", crafted)
+	elapsed := time.Since(start)
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "more than 10,000 rows") {
+		t.Fatalf("DryRun error = %v, want the workbook refused for having more than 10,000 rows", err)
+	}
+	if elapsed > time.Second {
+		t.Errorf("refusing the workbook took %v, want it refused at once", elapsed)
+	}
+}
+
+// rowNumberedXLSX is a real one-sheet workbook with a header row and, after
+// it, an empty row whose r attribute is rowNumber, written into the sheet XML
+// as is, since excelize won't write a row past Excel's last.
+func rowNumberedXLSX(t *testing.T, rowNumber string) []byte {
+	t.Helper()
+	plain := xlsxOf(t, []any{"Title", "Owner", "Why it matters", "Kind"})
+	zr, err := zip.NewReader(bytes.NewReader(plain), int64(len(plain)))
+	if err != nil {
+		t.Fatalf("read xlsx: %v", err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, entry := range zr.File {
+		rc, err := entry.Open()
+		if err != nil {
+			t.Fatalf("open %s: %v", entry.Name, err)
+		}
+		content, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name, err)
+		}
+		if entry.Name == "xl/worksheets/sheet1.xml" {
+			if !bytes.Contains(content, []byte("</sheetData>")) {
+				t.Fatalf("sheet1.xml has no </sheetData>: %s", content)
+			}
+			content = bytes.Replace(content, []byte("</sheetData>"), []byte(`<row r="`+rowNumber+`"></row></sheetData>`), 1)
+		}
+		w, err := zw.Create(entry.Name)
+		if err != nil {
+			t.Fatalf("create %s: %v", entry.Name, err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatalf("write %s: %v", entry.Name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// The row cap counts row numbers, not rows that hold data: a sheet whose last
+// row is numbered 10,000 imports, and one with a row numbered 10,001 is refused,
+// though each has only a header and one Goal row (#489).
+func TestRowsNumberedPastTenThousandAreRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sheetWithGoalAt := func(row int) []byte {
+		f := excelize.NewFile()
+		defer func() { _ = f.Close() }()
+		sheet := f.GetSheetName(0)
+		if err := f.SetSheetRow(sheet, "A1", &[]any{"Title", "Owner", "Why it matters", "Kind"}); err != nil {
+			t.Fatalf("set header: %v", err)
+		}
+		if err := f.SetSheetRow(sheet, fmt.Sprintf("A%d", row), &[]any{"Far goal", "owner@example.com", "It matters.", "Ongoing"}); err != nil {
+			t.Fatalf("set row: %v", err)
+		}
+		var buf bytes.Buffer
+		if _, err := f.WriteTo(&buf); err != nil {
+			t.Fatalf("write xlsx: %v", err)
+		}
+		return buf.Bytes()
+	}
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", sheetWithGoalAt(10_000))
+	if err != nil {
+		t.Fatalf("DryRun of a sheet whose last row is 10,000: %v", err)
+	}
+	// The blank rows above it are reported as rows, as any blank row is.
+	if n := len(rep.Rows); n == 0 || rep.Rows[n-1].Line != 10_000 || rep.Rows[n-1].Title != "Far goal" || len(rep.Rows[n-1].Errors) > 0 {
+		t.Errorf("last row = %+v, want Far goal, clean, on row 10000", rep.Rows[max(n-1, 0):])
+	}
+
+	_, err = importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", sheetWithGoalAt(10_001))
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "more than 10,000 rows") {
+		t.Errorf("DryRun of a row numbered 10,001: err = %v, want it refused for having more than 10,000 rows", err)
+	}
+}
+
+// A commit of a workbook refused for its rows is refused alike, and creates
+// nothing (#489).
+func TestCommitOfHugeRowNumberWorkbookCreatesNothing(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.xlsx", rowNumberedXLSX(t, "900000000000"))
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "more than 10,000 rows") {
+		t.Fatalf("Commit error = %v, want the workbook refused for having more than 10,000 rows", err)
+	}
+	if rep.Committed {
+		t.Errorf("report says committed, want nothing committed")
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("Commit created %d Goals, want none", len(goals))
+	}
+}
