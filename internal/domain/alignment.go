@@ -100,9 +100,19 @@ func (s *Service) GraphSignals(ctx context.Context) (GraphSignals, error) {
 	if err != nil {
 		return GraphSignals{}, err
 	}
+	edges, err := s.acceptedEdges(ctx)
+	if err != nil {
+		return GraphSignals{}, err
+	}
+	return graphSignalsOf(unlinked, edges), nil
+}
+
+// acceptedEdges reads every accepted link as an edge from its child to its
+// parent.
+func (s *Service) acceptedEdges(ctx context.Context) ([]edge, error) {
 	rows, err := s.queries.ListAcceptedLinkGoals(ctx)
 	if err != nil {
-		return GraphSignals{}, fmt.Errorf("list accepted links: %w", err)
+		return nil, fmt.Errorf("list accepted links: %w", err)
 	}
 	edges := make([]edge, 0, len(rows))
 	for _, r := range rows {
@@ -111,11 +121,34 @@ func (s *Service) GraphSignals(ctx context.Context) (GraphSignals, error) {
 			parent: goalFromRow(r.Goal_2, r.Account_2),
 		})
 	}
+	return edges, nil
+}
+
+// graphSignalsOf is GraphSignals given the Unlinked Goals and every accepted
+// link's edge.
+func graphSignalsOf(unlinked []Goal, edges []edge) GraphSignals {
 	return GraphSignals{
 		Unlinked:          unlinked,
 		ScheduleConflicts: scheduleConflicts(edges),
 		HaltedParents:     haltedParents(edges),
-	}, nil
+	}
+}
+
+// unlinkedAmong is UnlinkedGoals over active, every Active Goal in the order
+// it was read, given every accepted link's edge, so a reader that has both
+// needn't read the Unlinked Goals again.
+func unlinkedAmong(active []Goal, edges []edge) []Goal {
+	parents := map[int64]int{}
+	for _, e := range edges {
+		parents[e.child.ID]++
+	}
+	var out []Goal
+	for _, g := range active {
+		if isUnlinked(g, parents[g.ID]) {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // GoalSignals reads the graph signals that touch goalID: its own links up to its

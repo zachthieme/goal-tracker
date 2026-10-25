@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
 // AskForHelp is an open Ask for help: an Active Goal whose latest Check-in is
@@ -93,6 +95,12 @@ func (s *Service) OpenAsksForHelp(ctx context.Context) ([]AskForHelp, error) {
 	for _, a := range accounts {
 		byID[a.ID] = accountFromRow(a)
 	}
+	return openAsksAmong(rows, byID)
+}
+
+// openAsksAmong is OpenAsksForHelp over rows, every open Ask for help, given
+// byID, every Account by ID, to walk each ask's Owner up their line in.
+func openAsksAmong(rows []db.ListOpenAsksForHelpRow, byID map[int64]Account) ([]AskForHelp, error) {
 	lookup := func(id int64) (Account, bool, error) {
 		a, ok := byID[id]
 		return a, ok, nil
@@ -100,6 +108,7 @@ func (s *Service) OpenAsksForHelp(ctx context.Context) ([]AskForHelp, error) {
 	out := make([]AskForHelp, 0, len(rows))
 	for _, r := range rows {
 		ask := AskForHelp{Goal: goalFromRow(r.Goal, r.Account), Health: r.Health, PathToGreen: r.PathToGreen}
+		var err error
 		if ask.Addressee, err = askAddressee(ask.Goal.Owner, lookup); err != nil {
 			return nil, err
 		}

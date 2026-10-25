@@ -501,54 +501,6 @@ func followUpMeansID(kind string) string {
 	return "follow-up-means-" + kind
 }
 
-// Flagged counts the Goals the Follow-ups page lists in scope, each once however
-// many signals flag it.
-func (v followUpsView) Flagged(scope pageOrgScope) int {
-	flagged := map[int64]bool{}
-	flag := func(g domain.Goal) {
-		if scope.keeps(g) {
-			flagged[g.ID] = true
-		}
-	}
-	for _, list := range [][]domain.GoalFreshness{v.NotGreen, v.CheckinOverdue, v.OverduePaths, v.OverdueMilestones} {
-		for _, gf := range list {
-			flag(gf.Goal)
-		}
-	}
-	for _, list := range [][]domain.Goal{v.Ownerless, v.Unlinked} {
-		for _, g := range list {
-			flag(g)
-		}
-	}
-	for _, c := range v.ScheduleConflicts {
-		flag(c.Child)
-	}
-	for _, hp := range v.HaltedParents {
-		flag(hp.Child)
-	}
-	for _, og := range v.OverdueActionItems {
-		flag(og.Goal)
-	}
-	for _, ask := range v.Asks {
-		flag(ask.Goal)
-	}
-	return len(flagged)
-}
-
-// countDefaultFollowUps counts the Goals flagged in acc's default scope, as many
-// as the rows a bare /follow-ups lists, for the sidebar's Follow-ups count.
-func (s *Server) countDefaultFollowUps(ctx context.Context, acc domain.Account) (int, error) {
-	v, err := s.loadFollowUps(ctx)
-	if err != nil {
-		return 0, err
-	}
-	scope, err := s.resolvePageOrgScope(ctx, url.Values{}, acc)
-	if err != nil {
-		return 0, err
-	}
-	return v.Flagged(scope), nil
-}
-
 // loadFollowUps reads every Goal the company's signals flag.
 func (s *Server) loadFollowUps(ctx context.Context) (followUpsView, error) {
 	fresh, err := s.svc.FreshnessSignals(ctx)
@@ -796,8 +748,7 @@ type followUpSignal struct {
 	Person  *domain.Account
 }
 
-// followUpRows merges v's lists into one row per flagged Goal. Unlike loadFollowUps,
-// which every signed-in page runs for the sidebar's count, it reads each
+// followUpRows merges v's lists into one row per flagged Goal. It reads each
 // flagged Goal's latest Check-in, so only the Follow-ups page calls it.
 func (s *Server) followUpRows(ctx context.Context, v followUpsView) ([]followUpGoalRow, error) {
 	var rows []followUpGoalRow

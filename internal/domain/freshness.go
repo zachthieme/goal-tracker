@@ -191,13 +191,30 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	if err != nil {
 		return FreshnessSignals{}, fmt.Errorf("list active goals: %w", err)
 	}
-	// Each Goal's today is its Owner's (see GoalTimezone), never later than
-	// the day after the UTC date, so reading the Milestones due before that
-	// misses none; markMilestoneOverdue then judges each in its Goal's today.
+	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	if err != nil {
+		return FreshnessSignals{}, err
+	}
+	return s.freshnessSignalsAmong(rows, overdue), nil
+}
+
+// listFreshnessOverdueMilestones reads the Planned Milestones any Active Goal
+// could be Milestone overdue by. Each Goal's today is its Owner's (see
+// GoalTimezone), never later than the day after the UTC date, so reading the
+// Milestones due before that misses none; markMilestoneOverdue then judges
+// each in its Goal's today.
+func (s *Service) listFreshnessOverdueMilestones(ctx context.Context) ([]db.Milestone, error) {
 	overdue, err := s.queries.ListOverdueMilestones(ctx, s.clock.Now().UTC().AddDate(0, 0, 1).Format(dateFormat))
 	if err != nil {
-		return FreshnessSignals{}, fmt.Errorf("list overdue milestones: %w", err)
+		return nil, fmt.Errorf("list overdue milestones: %w", err)
 	}
+	return overdue, nil
+}
+
+// freshnessSignalsAmong is FreshnessSignals over rows, every Active Goal with
+// its latest Check-in, given overdue, as listFreshnessOverdueMilestones reads
+// them.
+func (s *Service) freshnessSignalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone) FreshnessSignals {
 	milestones := map[int64][]db.Milestone{}
 	for _, m := range overdue {
 		milestones[m.GoalID] = append(milestones[m.GoalID], m)
@@ -229,7 +246,7 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	slices.SortStableFunc(out.OverdueMilestones, func(a, b GoalFreshness) int {
 		return a.Freshness.OverdueMilestoneDate.Compare(b.Freshness.OverdueMilestoneDate)
 	})
-	return out, nil
+	return out
 }
 
 // PersonalGoal is an Active Goal someone Owns or is a Delegate on, with what
@@ -260,6 +277,13 @@ func (s *Service) ActiveGoalsFor(ctx context.Context, accountID int64) ([]Person
 	if err != nil {
 		return nil, fmt.Errorf("list active goals: %w", err)
 	}
+	return s.personalGoalsAmong(rows, accountID, isDelegate), nil
+}
+
+// personalGoalsAmong is ActiveGoalsFor over rows, every Active Goal with its
+// latest Check-in, given isDelegate, the IDs of the Goals accountID is a
+// Delegate on.
+func (s *Service) personalGoalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, accountID int64, isDelegate map[int64]bool) []PersonalGoal {
 	var out []PersonalGoal
 	for _, r := range rows {
 		owns := r.Goal.OwnerID == accountID
@@ -279,7 +303,7 @@ func (s *Service) ActiveGoalsFor(ctx context.Context, accountID int64) ([]Person
 	slices.SortStableFunc(out, func(a, b PersonalGoal) int {
 		return a.Freshness.LastUpdate.Compare(b.Freshness.LastUpdate)
 	})
-	return out, nil
+	return out
 }
 
 // lastCheckin is what judging freshness reads from a Goal's latest Check-in:
