@@ -44,7 +44,7 @@ func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldTyp
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return Field{}, fmt.Errorf("%w: a Field needs a name", ErrValidation)
+		return Field{}, Refuse(ErrValidation, "a Field needs a name")
 	}
 	switch fieldType {
 	case FieldNumber:
@@ -52,7 +52,7 @@ func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldTyp
 	case FieldShortText, FieldLongText, FieldDate:
 		unit = ""
 	default:
-		return Field{}, fmt.Errorf("%w: a Field holds a number, a short text, a long text or a date", ErrValidation)
+		return Field{}, Refuse(ErrValidation, "a Field holds a number, a short text, a long text or a date")
 	}
 	var field Field
 	err := s.WithinTx(ctx, func(tx *Service) error {
@@ -107,7 +107,7 @@ func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, r
 	return s.WithinTx(ctx, func(tx *Service) error {
 		before, err := tx.queries.GetField(ctx, fieldID)
 		if err != nil {
-			return fmt.Errorf("%w: field does not exist", ErrValidation)
+			return Refuse(ErrValidation, "field does not exist")
 		}
 		if fieldFromRow(before).Retired == retired {
 			return nil
@@ -136,11 +136,11 @@ func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, 
 	return s.WithinTx(ctx, func(tx *Service) error {
 		before, err := tx.queries.GetField(ctx, fieldID)
 		if err != nil {
-			return fmt.Errorf("%w: field does not exist", ErrValidation)
+			return Refuse(ErrValidation, "field does not exist")
 		}
 		field := fieldFromRow(before)
 		if field.Retired {
-			return fmt.Errorf("%w: %s is retired, so whether it is required can't be changed", ErrValidation, field.Name)
+			return Refuse(ErrValidation, "%s is retired, so whether it is required can't be changed", field.Name)
 		}
 		if field.Required == required {
 			return nil
@@ -172,17 +172,17 @@ func OfferedFields(fields []Field) []Field {
 // Goal's Owner, a Delegate or an Admin may (CONTEXT.md: Delegate).
 func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int64, value string) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
-		return fmt.Errorf("%w: only the Owner, a Delegate or an Admin may set a Goal's Fields", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Fields")
 	} else if err != nil {
 		return err
 	}
 	row, err := s.queries.GetField(ctx, fieldID)
 	if err != nil {
-		return fmt.Errorf("%w: field does not exist", ErrValidation)
+		return Refuse(ErrValidation, "field does not exist")
 	}
 	field := fieldFromRow(row)
 	if field.Retired {
-		return fmt.Errorf("%w: %s is retired, so it can't be set", ErrValidation, field.Name)
+		return Refuse(ErrValidation, "%s is retired, so it can't be set", field.Name)
 	}
 	value = strings.TrimSpace(value)
 	before, err := s.goalFieldValue(ctx, goalID, fieldID)
@@ -273,11 +273,11 @@ func (f Field) Check(value string) error {
 	case FieldNumber:
 		n, err := strconv.ParseFloat(value, 64)
 		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-			return fmt.Errorf("%w: %s takes a number, and %q isn't one", ErrValidation, f.Name, value)
+			return Refuse(ErrValidation, "%s takes a number, and %q isn't one", f.Name, value)
 		}
 	case FieldDate:
 		if _, err := time.Parse(dateFormat, value); err != nil {
-			return fmt.Errorf("%w: %s takes a date as YYYY-MM-DD, and %q isn't one", ErrValidation, f.Name, value)
+			return Refuse(ErrValidation, "%s takes a date as YYYY-MM-DD, and %q isn't one", f.Name, value)
 		}
 	}
 	return nil
@@ -308,7 +308,7 @@ func (s *Service) requireFreeAttributeName(ctx context.Context, name string) err
 	}
 	for _, d := range dims {
 		if strings.EqualFold(strings.TrimSpace(d.Name), name) {
-			return fmt.Errorf("%w: %s is already a Dimension's name", ErrValidation, d.Name)
+			return Refuse(ErrValidation, "%s is already a Dimension's name", d.Name)
 		}
 	}
 	fields, err := s.queries.ListFields(ctx)
@@ -317,7 +317,7 @@ func (s *Service) requireFreeAttributeName(ctx context.Context, name string) err
 	}
 	for _, f := range fields {
 		if strings.EqualFold(strings.TrimSpace(f.Name), name) {
-			return fmt.Errorf("%w: %s is already a Field's name", ErrValidation, f.Name)
+			return Refuse(ErrValidation, "%s is already a Field's name", f.Name)
 		}
 	}
 	return nil

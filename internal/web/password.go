@@ -82,8 +82,7 @@ func (s *Server) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	signedIn, err := s.svc.SetPassword(r.Context(), token, password)
 	switch {
 	case errors.Is(err, domain.ErrPasswordRules):
-		reason := strings.TrimPrefix(err.Error(), domain.ErrPasswordRules.Error()+": ")
-		render(w, r, http.StatusUnprocessableEntity, setPasswordPage(acc.Email, token, reason+"."))
+		render(w, r, http.StatusUnprocessableEntity, setPasswordPage(acc.Email, token, domain.Reason(err)+"."))
 		return
 	case errors.Is(err, domain.ErrLinkInvalid):
 		render(w, r, http.StatusGone, setPasswordNoticePage(passwordLinkGone))

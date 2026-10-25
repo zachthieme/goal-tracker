@@ -113,18 +113,42 @@ func overdueMilestone(milestones []db.Milestone, today string) (db.Milestone, bo
 }
 
 // MilestoneOverdueError is a refusal because Milestone is overdue — Planned and
-// past its date — naming it so a caller can show its date as a page shows
-// dates. Callers wrap it with what the missed date rules out; it is an
+// past its date — naming it and what the missed date rules out, so a caller
+// can compose its message with the date as a page shows dates. It is an
 // ErrValidation.
 type MilestoneOverdueError struct {
 	Milestone Milestone
+	RulesOut  OverdueRulesOut
 }
 
+// OverdueRulesOut is what an overdue Milestone's missed date rules out until
+// the Owner responds to it.
+type OverdueRulesOut int
+
+const (
+	// OverdueRulesOutGreen: the Goal can't be Green.
+	OverdueRulesOutGreen OverdueRulesOut = iota + 1
+	// OverdueRulesOutNoChange: a No change can't be recorded; a Check-in must
+	// move the Milestone's date, mark it Done or remove it.
+	OverdueRulesOutNoChange
+)
+
 func (e *MilestoneOverdueError) Error() string {
-	return fmt.Sprintf("%v: Milestone %q is overdue (due %s)", ErrValidation, e.Milestone.Name, e.Milestone.TargetDate.Format(dateFormat))
+	return fmt.Sprintf("%v: %s", ErrValidation, e.shownReason())
 }
 
 func (e *MilestoneOverdueError) Unwrap() error { return ErrValidation }
+
+func (e *MilestoneOverdueError) shownReason() string {
+	msg := fmt.Sprintf("Milestone %q is overdue (due %s)", e.Milestone.Name, e.Milestone.TargetDate.Format(dateFormat))
+	switch e.RulesOut {
+	case OverdueRulesOutGreen:
+		msg += ", so the Goal can't be Green"
+	case OverdueRulesOutNoChange:
+		msg += ": submit a Check-in to move its date, mark it Done or remove it"
+	}
+	return msg
+}
 
 // rejectGreenWhileOverdue refuses a Green Health while any of g's Milestones,
 // as they will stand after the Check-in, is overdue as of today in g's
@@ -138,8 +162,8 @@ func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db
 	if !ok {
 		return nil
 	}
-	overdue := &MilestoneOverdueError{Milestone: milestoneFromRow(m)}
-	return &InputError{Input: milestoneDateInput(milestones, m), Message: validationMessage(overdue) + ", so the Goal can't be Green", Err: overdue}
+	overdue := &MilestoneOverdueError{Milestone: milestoneFromRow(m), RulesOut: OverdueRulesOutGreen}
+	return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.shownReason(), Err: overdue}
 }
 
 // milestoneDateInput names the Check-in input that dates m, one of milestones
@@ -175,15 +199,15 @@ type AddMilestoneInput struct {
 func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilestoneInput) (Milestone, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
+		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a name")
 	}
 	if in.TargetDate.IsZero() {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
+		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a date")
 	}
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Milestone{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Milestone{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return Milestone{}, fmt.Errorf("look up goal: %w", err)
 	}
@@ -195,7 +219,7 @@ func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilesto
 
 // errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
 // Owner or a Delegate who tries to change its Milestones.
-var errMilestonesOwnerOrDelegateOnly = fmt.Errorf("%w: only the Owner or a Delegate may change this Goal's Milestones", ErrNotAuthorized)
+var errMilestonesOwnerOrDelegateOnly = Refuse(ErrNotAuthorized, "only the Owner or a Delegate may change this Goal's Milestones")
 
 // authorizeMilestoneChange allows the Goal's Owner or a Delegate to change its
 // Milestones, by the rules for who may write its Check-ins: a Departed person
@@ -266,14 +290,14 @@ func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in A
 		}
 		lifecycle := goal.Goal.Lifecycle
 		if !milestonesAddable(lifecycle) {
-			return fmt.Errorf("%w: a %s Goal's Milestones can't change", ErrValidation, lifecycle)
+			return Refuse(ErrValidation, "a %s Goal's Milestones can't change", lifecycle)
 		}
 		name := strings.TrimSpace(in.Name)
 		if name == "" {
-			return fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
+			return Refuse(ErrValidation, "a Milestone needs a name")
 		}
 		if in.TargetDate.IsZero() {
-			return fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
+			return Refuse(ErrValidation, "a Milestone needs a date")
 		}
 		m, err := tx.createMilestone(ctx, goal.Goal.ID, name, in.TargetDate, lifecycle == LifecycleActive)
 		if err != nil {
@@ -327,10 +351,10 @@ type EditMilestoneInput struct {
 func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMilestoneInput) (Milestone, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
+		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a name")
 	}
 	if in.TargetDate.IsZero() {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
+		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a date")
 	}
 	current, err := s.queries.GetMilestone(ctx, in.MilestoneID)
 	if err != nil {
@@ -351,7 +375,7 @@ func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMiles
 			return Milestone{}, fmt.Errorf("look up goal: %w", err)
 		}
 		if goal.Goal.Lifecycle != LifecycleProposed {
-			return Milestone{}, fmt.Errorf("%w: change a Milestone's date in a Check-in, with a reason", ErrValidation)
+			return Milestone{}, Refuse(ErrValidation, "change a Milestone's date in a Check-in, with a reason")
 		}
 	}
 
@@ -411,7 +435,7 @@ func planMilestoneStatus(m db.Milestone, status, removedReason string) (*milesto
 		}
 		return &milestoneStatusChange{milestoneID: m.ID, name: m.Name, status: MilestoneRemoved, removedReason: reason}, nil
 	default:
-		return nil, fmt.Errorf("%w: a Milestone must be %q, %q, or %q", ErrValidation, MilestonePlanned, MilestoneDone, MilestoneRemoved)
+		return nil, Refuse(ErrValidation, "a Milestone must be %q, %q, or %q", MilestonePlanned, MilestoneDone, MilestoneRemoved)
 	}
 }
 
@@ -442,15 +466,15 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 	for _, ch := range changes {
 		i, ok := index[ch.MilestoneID]
 		if !ok {
-			return milestonePlan{}, fmt.Errorf("%w: milestone %d is not on this Goal", ErrValidation, ch.MilestoneID)
+			return milestonePlan{}, Refuse(ErrValidation, "milestone %d is not on this Goal", ch.MilestoneID)
 		}
 		m := &plan.resulting[i]
 		if seen[m.ID] {
-			return milestonePlan{}, fmt.Errorf("%w: Milestone %q is changed twice", ErrValidation, m.Name)
+			return milestonePlan{}, Refuse(ErrValidation, "Milestone %q is changed twice", m.Name)
 		}
 		seen[m.ID] = true
 		if m.Status != MilestonePlanned {
-			return milestonePlan{}, fmt.Errorf("%w: Milestone %q is already %s", ErrValidation, m.Name, m.Status)
+			return milestonePlan{}, Refuse(ErrValidation, "Milestone %q is already %s", m.Name, m.Status)
 		}
 		slip, err := planMilestoneSlip(*m, ch.TargetDate, ch.DateReason)
 		if err != nil {

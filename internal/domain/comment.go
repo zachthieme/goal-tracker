@@ -45,14 +45,14 @@ type Thread struct {
 func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return Comment{}, fmt.Errorf("%w: a comment cannot be blank", ErrValidation)
+		return Comment{}, Refuse(ErrValidation, "a comment cannot be blank")
 	}
 	pub, err := s.GetPublication(ctx, pubID)
 	if err != nil {
 		return Comment{}, err
 	}
 	if !pub.Report.covers(goalID) {
-		return Comment{}, fmt.Errorf("%w: goal %d is not in this publication", ErrValidation, goalID)
+		return Comment{}, Refuse(ErrValidation, "goal %d is not in this publication", goalID)
 	}
 	var c Comment
 	err = s.WithinTx(ctx, func(tx *Service) error {
@@ -73,7 +73,7 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return Comment{}, fmt.Errorf("%w: a comment cannot be blank", ErrValidation)
+		return Comment{}, Refuse(ErrValidation, "a comment cannot be blank")
 	}
 	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -101,7 +101,7 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return Comment{}, fmt.Errorf("%w: a reply cannot be blank", ErrValidation)
+		return Comment{}, Refuse(ErrValidation, "a reply cannot be blank")
 	}
 	parent, err := s.GetComment(ctx, commentID)
 	if err != nil {

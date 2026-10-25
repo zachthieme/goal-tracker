@@ -74,7 +74,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		return ActionItem{}, err
 	}
 	if !author {
-		return ActionItem{}, fmt.Errorf("%w: only the Report's author raises Action Items", ErrNotAuthorized)
+		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Report's author raises Action Items")
 	}
 	text := strings.TrimSpace(in.Text)
 	goalID := in.GoalID
@@ -84,33 +84,33 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 			return ActionItem{}, err
 		}
 		if c.PublicationID != pub.ID {
-			return ActionItem{}, fmt.Errorf("%w: comment %d is not on this publication", ErrValidation, c.ID)
+			return ActionItem{}, Refuse(ErrValidation, "comment %d is not on this publication", c.ID)
 		}
 		if goalID != 0 && goalID != c.GoalID {
-			return ActionItem{}, fmt.Errorf("%w: an Action Item raised from a comment is about the comment's Goal", ErrValidation)
+			return ActionItem{}, Refuse(ErrValidation, "an Action Item raised from a comment is about the comment's Goal")
 		}
 		goalID = c.GoalID
 		if text == "" {
 			text = c.Body
 		}
 	} else if goalID != 0 && !pub.Report.covers(goalID) {
-		return ActionItem{}, fmt.Errorf("%w: goal %d is not in this publication", ErrValidation, goalID)
+		return ActionItem{}, Refuse(ErrValidation, "goal %d is not in this publication", goalID)
 	}
 	if text == "" {
-		return ActionItem{}, fmt.Errorf("%w: an Action Item needs a description", ErrValidation)
+		return ActionItem{}, Refuse(ErrValidation, "an Action Item needs a description")
 	}
 	if in.DueDate.IsZero() {
-		return ActionItem{}, fmt.Errorf("%w: an Action Item needs a due date", ErrValidation)
+		return ActionItem{}, Refuse(ErrValidation, "an Action Item needs a due date")
 	}
 	owner, err := s.queries.GetAccount(ctx, in.OwnerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, fmt.Errorf("%w: an Action Item needs an owner", ErrValidation)
+			return ActionItem{}, Refuse(ErrValidation, "an Action Item needs an owner")
 		}
 		return ActionItem{}, fmt.Errorf("look up owner: %w", err)
 	}
 	if owner.Departed != 0 {
-		return ActionItem{}, fmt.Errorf("%w: %s has left the company", ErrValidation, owner.Email)
+		return ActionItem{}, Refuse(ErrValidation, "%s has left the company", owner.Email)
 	}
 	var item ActionItem
 	err = s.WithinTx(ctx, func(tx *Service) error {
@@ -191,7 +191,7 @@ func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in 
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(ownerEmail))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, fmt.Errorf("%w: no account with email %q", ErrValidation, ownerEmail)
+			return ActionItem{}, Refuse(ErrValidation, "no account with email %q", ownerEmail)
 		}
 		return ActionItem{}, fmt.Errorf("look up owner: %w", err)
 	}
@@ -207,14 +207,14 @@ func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note s
 		return ActionItem{}, err
 	}
 	if actorID != item.Owner.ID {
-		return ActionItem{}, fmt.Errorf("%w: only the Action Item's owner closes it", ErrNotAuthorized)
+		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Action Item's owner closes it")
 	}
 	if item.Closed {
-		return ActionItem{}, fmt.Errorf("%w: the Action Item is already closed", ErrValidation)
+		return ActionItem{}, Refuse(ErrValidation, "the Action Item is already closed")
 	}
 	note = strings.TrimSpace(note)
 	if note == "" {
-		return ActionItem{}, fmt.Errorf("%w: closing an Action Item needs a note", ErrValidation)
+		return ActionItem{}, Refuse(ErrValidation, "closing an Action Item needs a note")
 	}
 	if err := s.queries.CloseActionItem(ctx, db.CloseActionItemParams{
 		ClosedAt:    s.clock.Now().Format(timeFormat),
@@ -254,15 +254,15 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 	owner, err := s.queries.GetAccount(ctx, newOwnerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, fmt.Errorf("%w: an Action Item needs an owner", ErrValidation)
+			return ActionItem{}, Refuse(ErrValidation, "an Action Item needs an owner")
 		}
 		return ActionItem{}, fmt.Errorf("look up new owner: %w", err)
 	}
 	if owner.Departed != 0 {
-		return ActionItem{}, fmt.Errorf("%w: %s has left the company", ErrValidation, owner.Email)
+		return ActionItem{}, Refuse(ErrValidation, "%s has left the company", owner.Email)
 	}
 	if owner.ID == item.Owner.ID {
-		return ActionItem{}, fmt.Errorf("%w: %s already owns this Action Item", ErrValidation, owner.Email)
+		return ActionItem{}, Refuse(ErrValidation, "%s already owns this Action Item", owner.Email)
 	}
 	var reassigned ActionItem
 	if err := s.WithinTx(ctx, func(tx *Service) error {
@@ -271,7 +271,7 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 			return fmt.Errorf("reassign action item: %w", err)
 		}
 		if n == 0 {
-			return fmt.Errorf("%w: the Action Item is already closed", ErrValidation)
+			return Refuse(ErrValidation, "the Action Item is already closed")
 		}
 		if _, err := tx.queries.CreateActionItemReassignment(ctx, db.CreateActionItemReassignmentParams{
 			ActionItemID: item.ID,
@@ -314,7 +314,7 @@ func (s *Service) ReassignActionItemByEmail(ctx context.Context, actorID, itemID
 		if _, err := s.reassignableActionItem(ctx, actorID, itemID); err != nil {
 			return ActionItem{}, err
 		}
-		return ActionItem{}, fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+		return ActionItem{}, Refuse(ErrValidation, "no account with email %q", email)
 	}
 	return s.ReassignActionItem(ctx, actorID, itemID, acc.ID)
 }
@@ -327,14 +327,14 @@ func (s *Service) reassignableActionItem(ctx context.Context, actorID, itemID in
 		return ActionItem{}, err
 	}
 	if item.Closed {
-		return ActionItem{}, fmt.Errorf("%w: the Action Item is already closed", ErrValidation)
+		return ActionItem{}, Refuse(ErrValidation, "the Action Item is already closed")
 	}
 	ok, err := s.CanReassignActionItem(ctx, actorID, item)
 	if err != nil {
 		return ActionItem{}, err
 	}
 	if !ok {
-		return ActionItem{}, fmt.Errorf("%w: only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item", ErrNotAuthorized)
+		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item")
 	}
 	return item, nil
 }

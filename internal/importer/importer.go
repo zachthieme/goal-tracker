@@ -118,7 +118,7 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 		return Report{}, fmt.Errorf("resolve importing Admin: %w", err)
 	}
 	if !admin.IsAdmin {
-		return Report{}, fmt.Errorf("%w: only an Admin may import Goals", domain.ErrNotAuthorized)
+		return Report{}, domain.Refuse(domain.ErrNotAuthorized, "only an Admin may import Goals")
 	}
 
 	grid, err := parseGrid(filename, data)
@@ -256,7 +256,7 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 			} else if f, ok := attrs.fields[normalize(raw)]; ok {
 				lay.fields = append(lay.fields, fieldColumn{field: f, index: i})
 			} else {
-				return layout{}, fmt.Errorf("%w: column %q is not a known column, a Dimension or a Field", domain.ErrValidation, strings.TrimSpace(raw))
+				return layout{}, domain.Refuse(domain.ErrValidation, "column %q is not a known column, a Dimension or a Field", strings.TrimSpace(raw))
 			}
 		}
 	}
@@ -270,7 +270,7 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 		}
 	}
 	if len(missing) > 0 {
-		return layout{}, fmt.Errorf("%w: the spreadsheet is missing required column(s): %s", domain.ErrValidation, strings.Join(missing, ", "))
+		return layout{}, domain.Refuse(domain.ErrValidation, "the spreadsheet is missing required column(s): %s", strings.Join(missing, ", "))
 	}
 	return lay, nil
 }
@@ -777,10 +777,10 @@ func valueIDOf(dim domain.Dimension, value string) (int64, bool) {
 	return 0, false
 }
 
-// message renders a domain error for a row, dropping the internal "validation
-// failed:" prefix so the report reads plainly.
+// message renders a domain error for a row by its reason (domain.Reason), so
+// the report reads plainly.
 func message(err error) string {
-	return strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")
+	return domain.Reason(err)
 }
 
 func linkMessage(err error, parentTitle string) string {
@@ -851,7 +851,7 @@ func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 		err  error
 	)
 	if isOLE(data) {
-		return nil, fmt.Errorf("%w: this is an old-format or password-protected Excel file; save it as .xlsx and import that", domain.ErrValidation)
+		return nil, domain.Refuse(domain.ErrValidation, "this is an old-format or password-protected Excel file; save it as .xlsx and import that")
 	}
 	if isXLSX(filename, data) {
 		grid, err = parseXLSX(data)
@@ -862,7 +862,7 @@ func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 		return nil, err
 	}
 	if len(grid) == 0 {
-		return nil, fmt.Errorf("%w: the spreadsheet has no rows", domain.ErrValidation)
+		return nil, domain.Refuse(domain.ErrValidation, "the spreadsheet has no rows")
 	}
 	for _, row := range grid {
 		for i, c := range row.cells {
@@ -891,7 +891,7 @@ func parseCSV(data []byte) ([]sheetRow, error) {
 			return rows, nil
 		}
 		if err != nil {
-			return nil, fmt.Errorf("%w: could not read CSV: %v", domain.ErrValidation, err)
+			return nil, domain.Refuse(domain.ErrValidation, "could not read CSV: %v", err)
 		}
 		line, _ := r.FieldPos(0)
 		number += line - nextLine + 1
@@ -954,15 +954,15 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 	// excelize checks the sizes the archive declares before unpacking any of it,
 	// and has no sentinel for the error, so it is known by its text.
 	if err != nil && strings.HasPrefix(err.Error(), "unzip size exceeds") {
-		return nil, fmt.Errorf("%w: the workbook is too large to import", domain.ErrValidation)
+		return nil, domain.Refuse(domain.ErrValidation, "the workbook is too large to import")
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
+		return nil, domain.Refuse(domain.ErrValidation, "could not read XLSX: %v", err)
 	}
 
 	sheets := f.GetSheetList()
 	if len(sheets) == 0 {
-		return nil, fmt.Errorf("%w: the workbook has no worksheets", domain.ErrValidation)
+		return nil, domain.Refuse(domain.ErrValidation, "the workbook has no worksheets")
 	}
 	sheet := sheets[0]
 	rows, err := readXLSXRows(f, sheet)
@@ -975,7 +975,7 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 	}
 	props, err := f.GetWorkbookProps()
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
+		return nil, domain.Refuse(domain.ErrValidation, "could not read XLSX: %v", err)
 	}
 	date1904 := props.Date1904 != nil && *props.Date1904
 
@@ -1013,10 +1013,10 @@ const xlsxMaxRowNumber = 10_000
 func readXLSXRows(f *excelize.File, sheet string, opts ...excelize.Options) ([][]string, error) {
 	it, err := f.Rows(sheet)
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+		return nil, domain.Refuse(domain.ErrValidation, "could not read worksheet %q: %v", sheet, err)
 	}
 	defer func() { _ = it.Close() }()
-	tooMany := fmt.Errorf("%w: the spreadsheet has more than 10,000 rows; split it and import each part", domain.ErrValidation)
+	tooMany := domain.Refuse(domain.ErrValidation, "the spreadsheet has more than 10,000 rows; split it and import each part")
 	var rows [][]string
 	number, last := 0, 0
 	for it.Next() {
@@ -1041,7 +1041,7 @@ func readXLSXRows(f *excelize.File, sheet string, opts ...excelize.Options) ([][
 		return nil, tooMany
 	}
 	if err := it.Error(); err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+		return nil, domain.Refuse(domain.ErrValidation, "could not read worksheet %q: %v", sheet, err)
 	}
 	return rows, nil
 }

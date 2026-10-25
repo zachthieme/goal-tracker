@@ -257,7 +257,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 	var goalID int64
 	if v := r.FormValue("goal"); v != "" {
 		if goalID, err = strconv.ParseInt(v, 10, 64); err != nil {
-			s.writeCommentError(w, r, fmt.Errorf("%w: the Goal must be a Goal's id", domain.ErrValidation))
+			s.writeCommentError(w, r, domain.Refuse(domain.ErrValidation, "the Goal must be a Goal's id"))
 			return
 		}
 	}

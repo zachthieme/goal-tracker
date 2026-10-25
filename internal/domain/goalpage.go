@@ -473,7 +473,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	delegate := func() (bool, error) {
 		return slices.ContainsFunc(p.Delegates, func(d Account) bool { return d.ID == actorID }), nil
 	}
-	refusal := fmt.Errorf("%w: the author does not exist", ErrNotAuthorized)
+	refusal := Refuse(ErrNotAuthorized, "the author does not exist")
 	if found {
 		refusal = checkinAuthorRefusal(viewer, g.Owner.ID, delegate)
 	}
@@ -482,7 +482,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	}
 	admin := func() error {
 		if !found {
-			return fmt.Errorf("%w: not an Admin", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "not an Admin")
 		}
 		return adminRefusal(viewer)
 	}

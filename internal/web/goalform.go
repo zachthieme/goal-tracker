@@ -1050,7 +1050,7 @@ func metricDirection(baseline, target float64, parsed bool, chosen string) strin
 func goalFormProblems(err error) []*domain.InputError {
 	problems := domain.InputErrors(err)
 	if len(problems) == 0 {
-		problems = []*domain.InputError{{Message: strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")}}
+		problems = []*domain.InputError{{Message: domain.Reason(err)}}
 	}
 	slices.SortStableFunc(problems, func(a, b *domain.InputError) int {
 		return slices.Compare(goalFormPlace(a.Input), goalFormPlace(b.Input))

@@ -650,7 +650,7 @@ func goalsByID(goals []domain.Goal, ids []int64) []domain.Goal {
 func reportBuilderProblems(err error) []*domain.InputError {
 	problems := domain.InputErrors(err)
 	if len(problems) == 0 {
-		problems = []*domain.InputError{{Message: strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")}}
+		problems = []*domain.InputError{{Message: domain.Reason(err)}}
 	}
 	return problems
 }

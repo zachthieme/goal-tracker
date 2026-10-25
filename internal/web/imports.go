@@ -79,9 +79,9 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 }
 
 // importFlash renders a whole-file error (a bad header, an unknown Dimension
-// column) plainly, dropping the internal "validation failed:" prefix.
+// column) plainly, by its reason (domain.Reason).
 func importFlash(err error) string {
-	return strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")
+	return domain.Reason(err)
 }
 
 // importRowLabel is the title shown for a report row, or a placeholder when the

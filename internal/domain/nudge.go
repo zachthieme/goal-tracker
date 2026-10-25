@@ -47,7 +47,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		return Nudge{}, err
 	}
 	if goal.Owner.ID == actorID || containsAccount(delegates, actorID) {
-		return Nudge{}, fmt.Errorf("%w: you can check in on this Goal yourself, so there's no one to nudge", ErrNotAuthorized)
+		return Nudge{}, Refuse(ErrNotAuthorized, "you can check in on this Goal yourself, so there's no one to nudge")
 	}
 	fresh, err := s.Freshness(ctx, goalID)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 	// for.
 	conflicted := goal.Lifecycle == LifecycleActive && len(signals.ScheduleConflicts) > 0
 	if !fresh.CheckinOverdue && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue && !conflicted {
-		return Nudge{}, fmt.Errorf("%w: only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged", ErrValidation)
+		return Nudge{}, Refuse(ErrValidation, "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged")
 	}
 	var conflicts []ScheduleConflict
 	if conflicted {
@@ -69,7 +69,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 	}
 	to := nudgeRecipients(goal.Owner, delegates)
 	if len(to) == 0 {
-		return Nudge{}, fmt.Errorf("%w: nobody can check in on this Goal; it needs an Admin to reassign it", ErrValidation)
+		return Nudge{}, Refuse(ErrValidation, "nobody can check in on this Goal; it needs an Admin to reassign it")
 	}
 
 	now := s.clock.Now()
@@ -82,7 +82,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		}
 		for _, r := range earlier {
 			if r.Nudge.GoalID == goalID {
-				return fmt.Errorf("%w: %s already nudged this Goal today", ErrValidation, accountFromRow(r.Account).Label())
+				return Refuse(ErrValidation, "%s already nudged this Goal today", accountFromRow(r.Account).Label())
 			}
 		}
 		row, err := tx.queries.CreateNudge(ctx, db.CreateNudgeParams{
@@ -114,7 +114,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		}
 	}
 	if len(unsent) > 0 {
-		return n, fmt.Errorf("%w: the Nudge was recorded, but the email to %s couldn't be sent", ErrNudgeNotSent, strings.Join(unsent, ", "))
+		return n, Refuse(ErrNudgeNotSent, "the Nudge was recorded, but the email to %s couldn't be sent", strings.Join(unsent, ", "))
 	}
 	return n, nil
 }

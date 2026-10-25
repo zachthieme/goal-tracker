@@ -126,16 +126,16 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 	title := strings.TrimSpace(in.Title)
 	whyItMatters := strings.TrimSpace(in.WhyItMatters)
 	if title == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs a title", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "a Goal needs a title")
 	}
 	if whyItMatters == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "a Goal needs to say why it matters")
 	}
 
 	owner, err := s.queries.GetAccount(ctx, in.OwnerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: owner does not exist", ErrValidation)
+			return Goal{}, Refuse(ErrValidation, "owner does not exist")
 		}
 		return Goal{}, fmt.Errorf("look up owner: %w", err)
 	}
@@ -194,7 +194,7 @@ type WhyItMattersRevision struct {
 func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
 	whyItMatters = strings.TrimSpace(whyItMatters)
 	if whyItMatters == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "a Goal needs to say why it matters")
 	}
 	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
 		return Goal{}, err
@@ -266,23 +266,23 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 	// but the gate states the full minimum standard so it still holds if those
 	// invariants ever change.
 	if strings.TrimSpace(g.WhyItMatters) == "" {
-		reasons = append(reasons, fmt.Errorf("%w: a Goal must say why it matters to become Active", ErrValidation))
+		reasons = append(reasons, Refuse(ErrValidation, "a Goal must say why it matters to become Active"))
 	}
 	if g.Owner.ID == 0 {
-		reasons = append(reasons, fmt.Errorf("%w: a Goal needs an Owner to become Active", ErrValidation))
+		reasons = append(reasons, Refuse(ErrValidation, "a Goal needs an Owner to become Active"))
 	}
 
 	switch g.Kind {
 	case GoalDated:
 		if g.DeliveryDate.IsZero() {
-			reasons = append(reasons, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation))
+			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs a delivery date"))
 		}
 		milestones, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
 		if err != nil {
 			return Goal{}, err
 		}
 		if milestones == 0 && metrics == 0 {
-			reasons = append(reasons, fmt.Errorf("%w: a Dated Goal needs at least one Milestone or Metric", ErrValidation))
+			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs at least one Milestone or Metric"))
 		}
 	case GoalOngoing:
 		_, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
@@ -290,17 +290,17 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 			return Goal{}, err
 		}
 		if metrics == 0 {
-			reasons = append(reasons, fmt.Errorf("%w: an Ongoing Goal needs at least one Metric", ErrValidation))
+			reasons = append(reasons, Refuse(ErrValidation, "an Ongoing Goal needs at least one Metric"))
 		}
 	default:
-		reasons = append(reasons, fmt.Errorf("%w: a Goal must be marked Dated or Ongoing to become Active", ErrValidation))
+		reasons = append(reasons, Refuse(ErrValidation, "a Goal must be marked Dated or Ongoing to become Active"))
 	}
 	missing, err := s.MissingRequired(ctx, goalID)
 	if err != nil {
 		return Goal{}, err
 	}
 	for _, name := range missing {
-		reasons = append(reasons, fmt.Errorf("%w: a Goal needs a value in %s to become Active", ErrValidation, name))
+		reasons = append(reasons, Refuse(ErrValidation, "a Goal needs a value in %s to become Active", name))
 	}
 
 	if len(reasons) > 0 {
@@ -422,7 +422,7 @@ func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) e
 		return err
 	}
 	if g.Owner.ID != actorID {
-		return fmt.Errorf("%w: only the Goal's Owner may change it", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Goal's Owner may change it")
 	}
 	return nil
 }
@@ -436,7 +436,7 @@ func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deli
 		return Goal{}, err
 	}
 	if deliveryDate.IsZero() {
-		return Goal{}, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "a Dated Goal needs a delivery date")
 	}
 	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
 		return Goal{}, err
@@ -459,7 +459,7 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 		return Goal{}, err
 	}
 	if days <= 0 {
-		return Goal{}, fmt.Errorf("%w: the Check-in cadence must be a positive number of days", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "the Check-in cadence must be a positive number of days")
 	}
 	if _, err := s.queries.SetGoalCadence(ctx, db.SetGoalCadenceParams{
 		CadenceDays: int64(days),
@@ -478,7 +478,7 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {
 	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Refuse(ErrValidation, "goal does not exist")
 		}
 		return fmt.Errorf("look up goal: %w", err)
 	}
@@ -487,7 +487,7 @@ func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -495,7 +495,7 @@ func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID
 		GoalID:    goalID,
 		AccountID: accountID,
 	}); err == nil {
-		return fmt.Errorf("%w: already a Contributor", ErrValidation)
+		return Refuse(ErrValidation, "already a Contributor")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("look up contributor: %w", err)
 	}
@@ -521,7 +521,7 @@ func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -574,7 +574,7 @@ func (s *Service) requireProposedToSetDelivery(ctx context.Context, goalID int64
 		return fmt.Errorf("look up goal: %w", err)
 	}
 	if g.Goal.Lifecycle != LifecycleProposed {
-		return fmt.Errorf("%w: a %s Goal's delivery date changes only in a Check-in, with a reason", ErrValidation, g.Goal.Lifecycle)
+		return Refuse(ErrValidation, "a %s Goal's delivery date changes only in a Check-in, with a reason", g.Goal.Lifecycle)
 	}
 	return nil
 }

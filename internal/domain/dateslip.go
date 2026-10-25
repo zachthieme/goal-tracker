@@ -86,7 +86,7 @@ func (p slipPlan) later() bool { return p.newDate.After(p.oldDate) }
 // reason, and only a Dated Goal has a delivery date to move.
 func planDeliverySlip(goal db.Goal, newDate time.Time, reason string) (*slipPlan, error) {
 	if !newDate.IsZero() && newDate.Format(dateFormat) != goal.DeliveryDate && goal.Kind != GoalDated {
-		return nil, fmt.Errorf("%w: only a Dated Goal has a delivery date to change", ErrValidation)
+		return nil, Refuse(ErrValidation, "only a Dated Goal has a delivery date to change")
 	}
 	return planSlip(0, "the delivery date", CheckinInputDeliveryDateReason, goal.DeliveryDate, newDate, reason)
 }

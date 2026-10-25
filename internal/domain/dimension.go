@@ -98,7 +98,7 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 	}
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
-		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
+		return Dimension{}, Refuse(ErrValidation, "a Dimension needs a name")
 	}
 	cleaned := make([]string, 0, len(def.Values))
 	for _, v := range def.Values {
@@ -111,14 +111,14 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 		}
 	}
 	if len(cleaned) == 0 {
-		return Dimension{}, fmt.Errorf("%w: a Dimension needs at least one value", ErrValidation)
+		return Dimension{}, Refuse(ErrValidation, "a Dimension needs at least one value")
 	}
 	selection, list := cmp.Or(def.Selection, SelectionOne), cmp.Or(def.List, ListFixed)
 	if selection != SelectionOne && selection != SelectionSeveral {
-		return Dimension{}, fmt.Errorf("%w: a Dimension takes one value or several", ErrValidation)
+		return Dimension{}, Refuse(ErrValidation, "a Dimension takes one value or several")
 	}
 	if list != ListFixed && list != ListExtendable {
-		return Dimension{}, fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
+		return Dimension{}, Refuse(ErrValidation, "a Dimension's list is Fixed or Extendable")
 	}
 
 	var dim Dimension
@@ -175,11 +175,11 @@ func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID in
 	}
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
+		return DimensionValue{}, Refuse(ErrValidation, "a value cannot be blank")
 	}
 	dim, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
-		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		return DimensionValue{}, Refuse(ErrValidation, "dimension does not exist")
 	}
 	if match, ok, err := s.matchingValue(ctx, dimensionID, value); err != nil || ok {
 		return match, err
@@ -218,7 +218,7 @@ func (s *Service) addDimensionValue(ctx context.Context, actorID int64, dim db.D
 // not be downloaded and imported again (#101).
 func checkValueName(name string) error {
 	if strings.Contains(name, ";") {
-		return fmt.Errorf("%w: %s: a value can't contain a semicolon, because the import format uses it to separate values", ErrValidation, name)
+		return Refuse(ErrValidation, "%s: a value can't contain a semicolon, because the import format uses it to separate values", name)
 	}
 	return nil
 }
@@ -227,7 +227,7 @@ func checkValueName(name string) error {
 func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.DimensionValue, db.Dimension, error) {
 	val, err := s.queries.GetDimensionValue(ctx, valueID)
 	if err != nil {
-		return db.DimensionValue{}, db.Dimension{}, fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+		return db.DimensionValue{}, db.Dimension{}, Refuse(ErrValidation, "dimension value does not exist")
 	}
 	dim, err := s.queries.GetDimension(ctx, val.DimensionID)
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 	}
 	newValue = strings.TrimSpace(newValue)
 	if newValue == "" {
-		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
+		return DimensionValue{}, Refuse(ErrValidation, "a value cannot be blank")
 	}
 	if err := checkValueName(newValue); err != nil {
 		return DimensionValue{}, err
@@ -295,8 +295,8 @@ func (s *Service) requireNoOtherValueNamed(ctx context.Context, val db.Dimension
 	}
 	for _, r := range rows {
 		if r.ID != val.ID && strings.EqualFold(strings.TrimSpace(r.Value), name) {
-			return fmt.Errorf("%w: %s already has %s, so %s can't be renamed to it; merge %s into %s instead",
-				ErrValidation, dim.Name, r.Value, val.Value, val.Value, r.Value)
+			return Refuse(ErrValidation,
+				"%s already has %s, so %s can't be renamed to it; merge %s into %s instead", dim.Name, r.Value, val.Value, val.Value, r.Value)
 		}
 	}
 	return nil
@@ -367,7 +367,7 @@ func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID 
 	return s.WithinTx(ctx, func(tx *Service) error {
 		before, err := tx.queries.GetDimension(ctx, dimensionID)
 		if err != nil {
-			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+			return Refuse(ErrValidation, "dimension does not exist")
 		}
 		if dimensionFromRow(before).Retired == retired {
 			return nil
@@ -399,11 +399,11 @@ func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID
 	return s.WithinTx(ctx, func(tx *Service) error {
 		before, err := tx.queries.GetDimension(ctx, dimensionID)
 		if err != nil {
-			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+			return Refuse(ErrValidation, "dimension does not exist")
 		}
 		dim := dimensionFromRow(before)
 		if dim.Retired {
-			return fmt.Errorf("%w: %s is retired, so whether it is required can't be changed", ErrValidation, dim.Name)
+			return Refuse(ErrValidation, "%s is retired, so whether it is required can't be changed", dim.Name)
 		}
 		if dim.Required == required {
 			return nil
@@ -434,7 +434,7 @@ func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64
 	}
 	step := map[string]int{MoveUp: -1, MoveDown: 1}[direction]
 	if step == 0 {
-		return fmt.Errorf("%w: a value moves up or down", ErrValidation)
+		return Refuse(ErrValidation, "a value moves up or down")
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
 		val, dim, err := tx.valueInDimension(ctx, valueID)
@@ -468,7 +468,7 @@ func (s *Service) SortDimensionValues(ctx context.Context, actorID, dimensionID 
 	return s.WithinTx(ctx, func(tx *Service) error {
 		dim, err := tx.queries.GetDimension(ctx, dimensionID)
 		if err != nil {
-			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+			return Refuse(ErrValidation, "dimension does not exist")
 		}
 		rows, err := tx.queries.ListDimensionValues(ctx, dimensionID)
 		if err != nil {
@@ -520,17 +520,17 @@ func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, ta
 	}
 	merged, err := s.queries.GetDimensionValue(ctx, mergedID)
 	if err != nil {
-		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+		return Refuse(ErrValidation, "dimension value does not exist")
 	}
 	target, err := s.queries.GetDimensionValue(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("%w: the value to merge into does not exist", ErrValidation)
+		return Refuse(ErrValidation, "the value to merge into does not exist")
 	}
 	if merged.DimensionID != target.DimensionID {
-		return fmt.Errorf("%w: %s and %s are in different Dimensions, so they can't be merged", ErrValidation, merged.Value, target.Value)
+		return Refuse(ErrValidation, "%s and %s are in different Dimensions, so they can't be merged", merged.Value, target.Value)
 	}
 	if merged.ID == target.ID {
-		return fmt.Errorf("%w: a value can't be merged into itself", ErrValidation)
+		return Refuse(ErrValidation, "a value can't be merged into itself")
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
 		goals := db.RemoveMergedGoalValueWhereTargetCarriedParams{MergedID: mergedID, TargetID: targetID}
@@ -588,11 +588,11 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 		return err
 	}
 	if selection != SelectionOne && selection != SelectionSeveral {
-		return fmt.Errorf("%w: a Dimension takes one value or several", ErrValidation)
+		return Refuse(ErrValidation, "a Dimension takes one value or several")
 	}
 	dim, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
-		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		return Refuse(ErrValidation, "dimension does not exist")
 	}
 	if dim.Selection == selection {
 		return nil
@@ -631,12 +631,12 @@ func (s *Service) SetDimensionList(ctx context.Context, actorID, dimensionID int
 		return err
 	}
 	if list != ListFixed && list != ListExtendable {
-		return fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
+		return Refuse(ErrValidation, "a Dimension's list is Fixed or Extendable")
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
 		before, err := tx.queries.GetDimension(ctx, dimensionID)
 		if err != nil {
-			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+			return Refuse(ErrValidation, "dimension does not exist")
 		}
 		if before.List == list {
 			return nil
@@ -707,10 +707,10 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	}
 	val, err := s.queries.GetDimensionValue(ctx, valueID)
 	if err != nil {
-		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+		return Refuse(ErrValidation, "dimension value does not exist")
 	}
 	if val.Retired != 0 {
-		return fmt.Errorf("%w: that value is retired and cannot be newly assigned", ErrValidation)
+		return Refuse(ErrValidation, "that value is retired and cannot be newly assigned")
 	}
 	dimRow, err := s.queries.GetDimension(ctx, val.DimensionID)
 	if err != nil {
@@ -774,11 +774,11 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
+		return DimensionValue{}, Refuse(ErrValidation, "a value cannot be blank")
 	}
 	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
-		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		return DimensionValue{}, Refuse(ErrValidation, "dimension does not exist")
 	}
 	if dim := dimensionFromRow(dimRow); dim.Retired {
 		return DimensionValue{}, retiredDimensionError(dim)
@@ -790,7 +790,7 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 	}
 	if dim := dimensionFromRow(dimRow); !dim.Extendable() {
 		if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
-			return DimensionValue{}, fmt.Errorf("%w: %s is a Fixed list, so only an Admin may add to it", ErrNotAuthorized, dim.Name)
+			return DimensionValue{}, Refuse(ErrNotAuthorized, "%s is a Fixed list, so only an Admin may add to it", dim.Name)
 		} else if err != nil {
 			return DimensionValue{}, err
 		}
@@ -815,12 +815,12 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 	}
 	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
-		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		return Refuse(ErrValidation, "dimension does not exist")
 	}
 	dim := dimensionFromRow(dimRow)
 	valueIDs = dedupeIDs(valueIDs)
 	if len(valueIDs) > 1 && !dim.TakesSeveral() {
-		return fmt.Errorf("%w: %s takes one value per Goal", ErrValidation, dim.Name)
+		return Refuse(ErrValidation, "%s takes one value per Goal", dim.Name)
 	}
 	carried, err := s.GoalValues(ctx, goalID)
 	if err != nil {
@@ -834,10 +834,10 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 	for _, id := range valueIDs {
 		val, err := s.queries.GetDimensionValue(ctx, id)
 		if err != nil || val.DimensionID != dimensionID {
-			return fmt.Errorf("%w: that value is not in %s", ErrValidation, dim.Name)
+			return Refuse(ErrValidation, "that value is not in %s", dim.Name)
 		}
 		if val.Retired != 0 && !carries[id] {
-			return fmt.Errorf("%w: %s is retired and cannot be newly assigned", ErrValidation, val.Value)
+			return Refuse(ErrValidation, "%s is retired and cannot be newly assigned", val.Value)
 		}
 		if dim.Retired && !carries[id] {
 			return retiredDimensionError(dim)
@@ -874,7 +874,7 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 // retiredDimensionError refuses newly giving a Goal a value in a Retired
 // Dimension (CONTEXT.md: Retired).
 func retiredDimensionError(dim Dimension) error {
-	return fmt.Errorf("%w: %s is retired, so its values can't be newly assigned", ErrValidation, dim.Name)
+	return Refuse(ErrValidation, "%s is retired, so its values can't be newly assigned", dim.Name)
 }
 
 // matchingValue finds the Dimension's value that name matches whatever its
@@ -893,7 +893,7 @@ func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name str
 		}
 		v := dimensionValueFromRow(r)
 		if v.Retired {
-			return DimensionValue{}, false, fmt.Errorf("%w: %s is retired, so it can't be added or newly assigned", ErrValidation, v.Value)
+			return DimensionValue{}, false, Refuse(ErrValidation, "%s is retired, so it can't be added or newly assigned", v.Value)
 		}
 		return v, true, nil
 	}
@@ -905,7 +905,7 @@ func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name str
 func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
-		return fmt.Errorf("%w: goal does not exist", ErrValidation)
+		return Refuse(ErrValidation, "goal does not exist")
 	}
 	return goalValueSetterRefusal(actorID, goal.Goal.OwnerID, func() (bool, error) {
 		return s.isDelegate(ctx, goalID, actorID)
@@ -964,7 +964,7 @@ func goalValueSetterRefusal(actorID, ownerID int64, delegate func() (bool, error
 		return nil
 	}
 	if err := admin(); errors.Is(err, ErrNotAuthorized) {
-		return fmt.Errorf("%w: only the Owner, a Delegate or an Admin may set a Goal's Dimension values", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Dimension values")
 	} else if err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ type TitleRevision struct {
 func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, authorID int64) (Goal, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs a title", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "a Goal needs a title")
 	}
 	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
 		return Goal{}, err
@@ -135,7 +135,7 @@ func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID i
 		return fmt.Errorf("look up actor: %w", err)
 	}
 	if err != nil || actor.IsAdmin == 0 {
-		return fmt.Errorf("%w: only the Goal's Owner or an Admin may change it", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Goal's Owner or an Admin may change it")
 	}
 	return nil
 }

@@ -82,8 +82,8 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 					continue
 				}
 				if strings.Contains(v.Value, ";") {
-					return fmt.Errorf("%w: %s carries the %s value %q, and a value can't contain a semicolon, because the import format uses it to separate values; an Admin can rename it on the Dimensions page",
-						domain.ErrValidation, g.Title, d.Name, v.Value)
+					return domain.Refuse(domain.ErrValidation,
+						"%s carries the %s value %q, and a value can't contain a semicolon, because the import format uses it to separate values; an Admin can rename it on the Dimensions page", g.Title, d.Name, v.Value)
 				}
 				names = append(names, v.Value)
 			}

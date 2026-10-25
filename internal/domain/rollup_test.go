@@ -193,8 +193,12 @@ func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
 	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
-	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), parent.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+	_, err := h.Service.SubmitNoChangeCheckin(context.Background(), parent.ID, sam.ID)
+	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation (no-change would differ from the Rolled-up Health)", err)
+	}
+	if got, want := domain.Reason(err), "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain"; got != want {
+		t.Errorf("Reason(%v) = %q, want %q", err, got, want)
 	}
 }
 

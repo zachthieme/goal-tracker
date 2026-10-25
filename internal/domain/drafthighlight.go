@@ -187,7 +187,7 @@ func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (Dra
 // one at.
 func draftHighlightsTaken(goal Goal) error {
 	if !LifecycleTakesDraftHighlights(goal.Lifecycle) {
-		return fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
+		return Refuse(ErrValidation, "a %s Goal takes no more Check-ins, so it takes no Draft Highlights", goal.Lifecycle)
 	}
 	return nil
 }
@@ -198,10 +198,10 @@ func draftHighlightsTaken(goal Goal) error {
 func draftHighlightValues(kind, note string) (string, error) {
 	note = strings.TrimSpace(note)
 	if note == "" {
-		return "", fmt.Errorf("%w: a Draft Highlight needs a note", ErrValidation)
+		return "", Refuse(ErrValidation, "a Draft Highlight needs a note")
 	}
 	if kind != "" && !validHighlightKind(kind) {
-		return "", fmt.Errorf("%w: a Draft Highlight's kind must be an %q, %q, or %q, or none", ErrValidation, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+		return "", Refuse(ErrValidation, "a Draft Highlight's kind must be an %q, %q, or %q, or none", HighlightInsight, HighlightAccomplishment, HighlightMiss)
 	}
 	return note, nil
 }
@@ -297,7 +297,7 @@ func (s *Service) discardedDraftHighlightsByCheckin(ctx context.Context, goalID 
 func (s *Service) authorizeDraftHighlighter(ctx context.Context, goal Goal, actorID int64) error {
 	if err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.Owner.ID, actorID); err != nil {
 		if errors.Is(err, ErrNotAuthorized) {
-			return fmt.Errorf("%w: only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights")
 		}
 		return err
 	}

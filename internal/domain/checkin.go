@@ -192,7 +192,7 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Checkin{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Checkin{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return Checkin{}, fmt.Errorf("look up goal: %w", err)
 	}
@@ -375,7 +375,7 @@ func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change Lif
 		if _, err := planLifecycleChange(goal.Goal.Lifecycle, "", "", ""); err != nil {
 			return err
 		}
-		return fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+		return Refuse(ErrValidation, "only an Active Goal can be checked in on")
 	}
 	return nil
 }
@@ -509,12 +509,12 @@ func (s *Service) validateReadings(ctx context.Context, goalID int64, readings [
 		m, err := s.queries.GetMetric(ctx, rd.MetricID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: metric %d does not exist", ErrValidation, rd.MetricID)
+				return Refuse(ErrValidation, "metric %d does not exist", rd.MetricID)
 			}
 			return fmt.Errorf("look up metric: %w", err)
 		}
 		if m.GoalID != goalID {
-			return fmt.Errorf("%w: metric %d is not on this Goal", ErrValidation, rd.MetricID)
+			return Refuse(ErrValidation, "metric %d is not on this Goal", rd.MetricID)
 		}
 	}
 	return nil
@@ -601,7 +601,7 @@ func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.G
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return db.GetGoalRow{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return db.GetGoalRow{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
 	}
@@ -722,8 +722,8 @@ func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map
 // errNotActiveForNoChange and errNoCheckinToRepeat refuse a No change on a
 // Goal that isn't Active, and on one with no previous Check-in to repeat.
 var (
-	errNotActiveForNoChange = fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
-	errNoCheckinToRepeat    = fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
+	errNotActiveForNoChange = Refuse(ErrValidation, "only an Active Goal can be checked in on")
+	errNoCheckinToRepeat    = Refuse(ErrValidation, "there is no previous Check-in to repeat")
 )
 
 // noChangeFacts is what judging a No change on a Goal reads of it: its
@@ -747,21 +747,21 @@ func (s *Service) judgeNoChange(g Goal, facts noChangeFacts) (string, error) {
 	// the full form to explain (ADR-0003).
 	explanation, err := rollupExplanation(facts.rollup, facts.health, facts.explanation)
 	if err != nil {
-		return "", fmt.Errorf("%w — submit a Check-in to explain", err)
+		return "", Refuse(ErrValidation, "%s — submit a Check-in to explain", Reason(err))
 	}
 	// Nor can it repeat any Health once a Milestone has gone overdue, as of
 	// today in the Goal's timezone: the missed date needs a response.
 	today := s.goalToday(g).Format(dateFormat)
 	for _, m := range facts.milestones {
 		if m.Status == MilestonePlanned && m.TargetDate.Format(dateFormat) < today {
-			return "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: m})
+			return "", &MilestoneOverdueError{Milestone: m, RulesOut: OverdueRulesOutNoChange}
 		}
 	}
 	// Nor once the back-to-Green date has passed, as of today in the Goal's
 	// timezone, whatever the Health: the Owner must submit a Check-in with a
 	// new date and reason, or update the Health (CONTEXT.md: Check-in).
 	if facts.freshness.PathToGreenOverdue {
-		return "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health", ErrValidation)
+		return "", Refuse(ErrValidation, "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health")
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.
@@ -780,7 +780,7 @@ func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, a
 	author, err := s.queries.GetAccount(ctx, authorID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: the author does not exist", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "the author does not exist")
 		}
 		return fmt.Errorf("look up author: %w", err)
 	}
@@ -794,7 +794,7 @@ func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, a
 // are its Delegate, and is asked only when it decides.
 func checkinAuthorRefusal(author Account, ownerID int64, delegate func() (bool, error)) error {
 	if author.Departed {
-		return fmt.Errorf("%w: a Departed person can't submit a Check-in", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "a Departed person can't submit a Check-in")
 	}
 	if author.ID == ownerID {
 		return nil
@@ -804,7 +804,7 @@ func checkinAuthorRefusal(author Account, ownerID int64, delegate func() (bool, 
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("%w: only the Owner or a Delegate may submit a Check-in", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Owner or a Delegate may submit a Check-in")
 	}
 	return nil
 }

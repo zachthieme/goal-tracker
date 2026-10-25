@@ -59,26 +59,26 @@ type RequestLinkInput struct {
 // brings it back.
 func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, error) {
 	if in.ChildID == in.ParentID {
-		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
+		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
 
 	child, err := s.queries.GetGoal(ctx, in.ChildID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, fmt.Errorf("%w: child goal does not exist", ErrValidation)
+			return Link{}, Refuse(ErrValidation, "child goal does not exist")
 		}
 		return Link{}, fmt.Errorf("look up child goal: %w", err)
 	}
 	parent, err := s.queries.GetGoal(ctx, in.ParentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, fmt.Errorf("%w: parent goal does not exist", ErrValidation)
+			return Link{}, Refuse(ErrValidation, "parent goal does not exist")
 		}
 		return Link{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 
 	if child.Goal.OwnerID != in.RequesterID {
-		return Link{}, fmt.Errorf("%w: only the child's Owner may request a link", ErrNotAuthorized)
+		return Link{}, Refuse(ErrNotAuthorized, "only the child's Owner may request a link")
 	}
 
 	status := LinkPending
@@ -143,19 +143,19 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 		return Link{}, err
 	}
 	if childID == parentID {
-		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
+		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
 	child, err := s.queries.GetGoal(ctx, childID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, fmt.Errorf("%w: child goal does not exist", ErrValidation)
+			return Link{}, Refuse(ErrValidation, "child goal does not exist")
 		}
 		return Link{}, fmt.Errorf("look up child goal: %w", err)
 	}
 	parent, err := s.queries.GetGoal(ctx, parentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, fmt.Errorf("%w: parent goal does not exist", ErrValidation)
+			return Link{}, Refuse(ErrValidation, "parent goal does not exist")
 		}
 		return Link{}, fmt.Errorf("look up parent goal: %w", err)
 	}
@@ -211,7 +211,7 @@ func (s *Service) AcceptLink(ctx context.Context, linkID, actorID int64) (Link, 
 			return fmt.Errorf("look up parent goal: %w", err)
 		}
 		if parent.Goal.OwnerID != actorID {
-			return fmt.Errorf("%w: only the parent's Owner may accept a link", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "only the parent's Owner may accept a link")
 		}
 		if err := tx.ensureNoCycle(ctx, row.ChildID, row.ParentID); err != nil {
 			return err
@@ -263,7 +263,7 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		return LinkRejection{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if parent.Goal.OwnerID != actorID {
-		return LinkRejection{}, fmt.Errorf("%w: only the parent's Owner may reject a link", ErrNotAuthorized)
+		return LinkRejection{}, Refuse(ErrNotAuthorized, "only the parent's Owner may reject a link")
 	}
 	now := s.clock.Now()
 	var rejection db.RejectedLinkRequest
@@ -320,10 +320,10 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 		return Link{}, fmt.Errorf("look up link rejection: %w", err)
 	}
 	if rejection.RejectedBy != actorID {
-		return Link{}, fmt.Errorf("%w: only the person who rejected a request may undo it", ErrNotAuthorized)
+		return Link{}, Refuse(ErrNotAuthorized, "only the person who rejected a request may undo it")
 	}
 	if rejection.RestoredAt != nil {
-		return Link{}, fmt.Errorf("%w: this rejection has already been undone", ErrValidation)
+		return Link{}, Refuse(ErrValidation, "this rejection has already been undone")
 	}
 	if _, err := s.spendUndo(ctx, token, undoLinkRejection, rejectionID, actorID); err != nil {
 		return Link{}, err
@@ -346,7 +346,7 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 			return fmt.Errorf("mark link rejection restored: %w", err)
 		}
 		if n == 0 {
-			return fmt.Errorf("%w: this rejection has already been undone", ErrValidation)
+			return Refuse(ErrValidation, "this rejection has already been undone")
 		}
 		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
 			ChildID:     rejection.ChildID,
@@ -375,7 +375,7 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 // been requested or accepted again since: it exists now, a later request for
 // it was rejected too, or it was accepted and has since been removed.
 func (s *Service) ensureNotRequestedSince(ctx context.Context, rejection db.RejectedLinkRequest) error {
-	again := fmt.Errorf("%w: this link has been requested again since it was rejected", ErrValidation)
+	again := Refuse(ErrValidation, "this link has been requested again since it was rejected")
 	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
 		ChildID:  rejection.ChildID,
 		ParentID: rejection.ParentID,
@@ -481,7 +481,7 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		return LinkRemoval{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-		return LinkRemoval{}, fmt.Errorf("%w: only an Owner of the linked Goals may remove the link", ErrNotAuthorized)
+		return LinkRemoval{}, Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may remove the link")
 	}
 	now := s.clock.Now()
 	var removal db.LinkRemoval
@@ -568,10 +568,10 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 		return Link{}, fmt.Errorf("look up link removal: %w", err)
 	}
 	if removal.RemovedBy != actorID {
-		return Link{}, fmt.Errorf("%w: only the person who removed a link may undo it", ErrNotAuthorized)
+		return Link{}, Refuse(ErrNotAuthorized, "only the person who removed a link may undo it")
 	}
 	if removal.RestoredAt != nil {
-		return Link{}, fmt.Errorf("%w: this removal has already been undone", ErrValidation)
+		return Link{}, Refuse(ErrValidation, "this removal has already been undone")
 	}
 	child, err := s.queries.GetGoal(ctx, removal.ChildID)
 	if err != nil {
@@ -582,7 +582,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 		return Link{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-		return Link{}, fmt.Errorf("%w: only an Owner of the linked Goals may undo removing the link", ErrNotAuthorized)
+		return Link{}, Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may undo removing the link")
 	}
 	if _, err := s.spendUndo(ctx, token, undoLinkRemoval, removalID, actorID); err != nil {
 		return Link{}, err
@@ -593,7 +593,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 			ChildID:  removal.ChildID,
 			ParentID: removal.ParentID,
 		}); err == nil {
-			return fmt.Errorf("%w: a link between these Goals already exists again", ErrValidation)
+			return Refuse(ErrValidation, "a link between these Goals already exists again")
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("look up existing link: %w", err)
 		}
@@ -613,7 +613,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 			return fmt.Errorf("mark link removal restored: %w", err)
 		}
 		if n == 0 {
-			return fmt.Errorf("%w: this removal has already been undone", ErrValidation)
+			return Refuse(ErrValidation, "this removal has already been undone")
 		}
 		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
 			ChildID:     removal.ChildID,
@@ -643,7 +643,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 // rejected no earlier than the removal. (A link that exists again is refused
 // on its own.)
 func (s *Service) ensureNotLinkedSince(ctx context.Context, removal db.LinkRemoval) error {
-	again := fmt.Errorf("%w: this link has been requested again since it was removed", ErrValidation)
+	again := Refuse(ErrValidation, "this link has been requested again since it was removed")
 	later, err := s.queries.CountLaterLinkRemovals(ctx, db.CountLaterLinkRemovalsParams{
 		ChildID:  removal.ChildID,
 		ParentID: removal.ParentID,
@@ -835,7 +835,7 @@ func (s *Service) ensureNewAcyclicLink(ctx context.Context, childID, parentID in
 		ChildID:  childID,
 		ParentID: parentID,
 	}); err == nil {
-		return fmt.Errorf("%w: a link between these Goals already exists", ErrValidation)
+		return Refuse(ErrValidation, "a link between these Goals already exists")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("look up existing link: %w", err)
 	}

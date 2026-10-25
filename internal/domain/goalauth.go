@@ -39,7 +39,7 @@ func (s *Service) importedBy(actorID, goalID int64) bool {
 // for, and everyone when it runs for none.
 func (s *Service) requireImportingAdmin(actorID int64) error {
 	if s.goalImport == nil || s.goalImport.adminID != actorID {
-		return fmt.Errorf("%w: only an Admin's import may do this", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only an Admin's import may do this")
 	}
 	return nil
 }
