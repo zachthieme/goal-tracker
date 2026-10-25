@@ -31,6 +31,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On a touch screen, such as an iPad, text is larger and easier to read: body copy is 16px, secondary copy and section headings are 15px, and muted copy darkens to the body's ink, while labels keep their size and recede by colour. A laptop or a mouse-driven window keeps today's sizes (#513).
 - [user] The Definition log now shows its newest 100 changes, and when there are older ones ends with an **Older changes** link to the 100 before them (`/definition-log?before=<id>`), so the page stays quick however long the log grows. A log narrowed to one Dimension or Field still shows every change to it (#500).
 - [ops] Migration 0061 indexes the Nudges by day, each Goal's Check-ins newest first (replacing `idx_checkins_goal`) and the open Action Items by due date, so the Follow-ups page, the latest-Check-in lookups and the overdue and open Action Item lists stop scanning or sorting those tables as they grow (#500).
+- [ops] Sent email, and email given up on after five failed tries, is now deleted 90 days on, and each Undo token once its 15 minutes have passed; email still being tried is kept. The app prunes at startup and hourly, logging `msg="pruned stale rows"` at `INFO` with how many of each it deleted, or an `ERROR` (#498).
+- [ops] Email log lines (the development sender's, and the outbox's retry, give-up and unreadable-row lines) now name the recipient by `account_id` instead of their address. Migration 0062 rebuilds `email_outbox` with the recipient's `account_id`, dropping any queued email to an address no Account has (#498).
 
 **Bug fixes:**
 - [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
@@ -45,6 +47,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] `/healthz` now reads a table from the database file, so a database file that is missing, unmounted, replaced or unreadable answers `503` rather than `200` (#503).
 - [user] The New goal form's Contributes to search answers at most 20 matches, and reads their Health in one query rather than one per match, so it stays quick as Goals grow (#499).
 - [user] A Goal's Owner can add a Contributor to it in any Lifecycle: the Goal page's Contributors block now offers Manage on an Active, On Hold, Done or Cancelled Goal too, not just a Proposed one, matching what adding a Contributor already allowed (#505).
+- [ops] An email in the outbox whose next attempt time can't be read no longer stops every email queued after it: it is given up on, with `last_error` saying why, logged once at `ERROR` with its `email_outbox_id` and `account_id`, and skipped (#498).
+- [internal] The e2e scenario for a Report's Comment and reply checks that each email went to the right person by their `account_id` in the server log, which no longer names addresses (#498).
 
 **Security:**
 - [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
@@ -68,6 +72,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Architecture:**
 - [internal] The sidebar every signed-in page shows loads through one page loader, `Service.Sidebar`, which reads each thing once and only what the sidebar shows, instead of building the whole Home and Follow-ups pages on every request: 11 queries, the same for a Manager two levels up as for an Owner, and for 50 Goals as for 10. The Goal page as its Owner sees it drops from 65 queries to 49, and its `querycount` test now fails any query run twice but `ListAskWalkAccounts`, which the page's loader and the sidebar both need. The counts are unchanged (#465).
 - [internal] `internal/web` opens no transactions. The Edit title and Why it matters form saves through one domain method, `Service.EditTitleAndWhyItMatters`; the New goal and define pages pass the values they couldn't parse to `CreateDefinedGoal` and `DefineGoal` as `DefinedGoalInput.Unparsed`, which refuse them with every other problem and save nothing; and the report builder's save calls `SaveReportDefinition` or `UpdateReportDefinition` directly. Every form refuses what it did before, with the same messages in the same order (#520).
+- [internal] The domain says what a viewer may do with a Goal: the Goal page loader returns a `GoalPermissions` value (check in, add a Milestone, log a Draft Highlight, set values, add a Contributor, manage Delegates, link to a parent, edit the title and Why it matters, hand off, reassign, mark the Owner departed or returned, mark Top-level), `LifecycleTakesCheckins` and `LifecycleTakesDraftHighlights` say what a Lifecycle takes, and `ValueSettableGoals` names the Goals whose values a viewer may set. The Goal, Check-in and Delegate pages, the Draft Highlights block and the Goal table's edit mode read these instead of re-deriving the rules, and every page offers what it did before (#506).
 
 **Testing:**
 - [internal] The "submits at once, with no confirm dialog" test guard (#56) now takes the page and a marker, finds the form whose opening tag holds the marker, and checks every element in it, its submit button included, refusing htmx's `hx-confirm` as well as `onsubmit` and any `on*` or `hx-on*` handler that calls `confirm(`. Its own tests cover a confirm on the button's `hx-on:click` or `onclick` and an `hx-confirm` on the form (#463).
@@ -85,6 +90,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `scripts/shots.mjs` takes a `touch` field that emulates a touch screen, so a shot's `(pointer:coarse)` rules apply, and every shot's facts print whether its pointer is coarse or fine (#513).
 - [internal] `internal/db/indexes_test.go` checks the plans of `ListNudgesOn`, `ListOverdueActionItems` and `ListOpenActionItemsWithParties` (a scan of a partial index allowed), and that no latest-Check-in query sorts a Goal's Check-ins in a temp B-tree (#500).
 - [internal] The Reports HTTP tests in `reports_test.go` now read each page through the parser helpers, checking what a person sees and can do rather than matching markup. Their style-rule checks, the print page's included, now live in `styles_test.go`, where each checks the class on the element and the property its rule sets (#522).
+- [internal] The Home page's HTTP tests in `home_test.go` now read the page through the parser helpers, checking what a person sees and can do rather than matching markup. Their style-rule checks now live in `styles_test.go`, where each checks the class on the element and the property its rule sets (#523).
 
 **Code quality:**
 - [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
@@ -95,6 +101,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The e2e gate's comment in `vetinari/config.mts` and `e2e/README.md` say that its `when` pattern only scopes it on a branch: after each wave, vetinari's merged-base gate runs every gate, `make e2e` included, whatever the wave changed (#481).
 - [internal] `CLAUDE.md` gives the measured gate times (`make check` about 3½ minutes, `internal/web` about 3 of it) and asks for a tool timeout of at least 5 minutes, and lists everything `internal/domain/domain.go` holds (#511).
 - [user] The code is licensed under MIT: anyone may use, copy, modify and distribute it, keeping the copyright notice. `LICENSE` holds the text, and the README says so (#524).
+- [internal] `docs/install.md` says how long email and Undo tokens are kept, and that email log lines name the recipient's Account ID (#498).
 
 ### Collected changes — October 24, 2026
 
