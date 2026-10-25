@@ -47,7 +47,7 @@ The one person accountable for a Goal, who writes its Check-ins and answers for 
 _Avoid_: co-owner, DRI, lead
 
 **Delegate**:
-A person an Owner authorizes to write and submit Check-ins for a Goal and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep. A Delegate is always a Goal's; a Report Definition has Report Delegates.
+A person an Owner authorizes to write and submit Check-ins for a Goal, to add and edit its Milestones, and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep. A Delegate is always a Goal's; a Report Definition has Report Delegates.
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:

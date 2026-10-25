@@ -90,7 +90,8 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 // author may, set values and suggest a parent, an Admin set values, edit, hand
 // off, mark the Owner departed, mark Top-level and suggest a parent, and a
 // reader suggest a parent. Only while the Goal is Proposed may its Owner
-// define it and edit its Milestones, and no one checks in on it yet. Once the
+// define it, and its Owner and Delegates edit its Milestones, and no one checks
+// in on it yet. Once the
 // Goal is Done no one may check in, add a Milestone, log a Draft Highlight or
 // suggest a parent, the Owner included.
 func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
@@ -127,7 +128,7 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	ownerOfProposed.CheckIn = false
 	ownerOfProposed.DefineGoal, ownerOfProposed.EditMilestones = true, true
 	delegateOnProposed := delegate
-	delegateOnProposed.CheckIn = false
+	delegateOnProposed.CheckIn, delegateOnProposed.EditMilestones = false, true
 	ownerOfDone := owner
 	ownerOfDone.CheckIn, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, false, false
 	adminOnDone := anAdmin
