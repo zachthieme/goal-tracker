@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -209,6 +211,100 @@ func startHandoff(t *testing.T, h *testsupport.Harness, goalID, toID, actorID in
 		t.Fatalf("StartHandoff: %v", err)
 	}
 	return ho
+}
+
+// raceHandoffCommands runs a and b at the same moment and returns both errors.
+func raceHandoffCommands(a, b func() error) (errA, errB error) {
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	wg.Add(2)
+	go func() { defer wg.Done(); <-start; errA = a() }()
+	go func() { defer wg.Done(); <-start; errB = b() }()
+	close(start)
+	wg.Wait()
+	return errA, errB
+}
+
+// Two Handoffs of one Goal started at the same moment, as a double-submit
+// does: one is started and the other refused, so the Goal has only one
+// pending Handoff (CONTEXT.md: Handoff).
+func TestHandoffsStartedTogetherLeaveOnePending(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	for i := range 30 {
+		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "why")
+		start := func() error {
+			_, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: pat.ID, ActorID: sam.ID})
+			return err
+		}
+		errA, errB := raceHandoffCommands(start, start)
+		if (errA == nil) == (errB == nil) {
+			t.Fatalf("round %d: errs = %v, %v, want exactly one Handoff started", i, errA, errB)
+		}
+		if err := errors.Join(errA, errB); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("round %d: err = %v, want ErrValidation for the Handoff refused", i, err)
+		}
+		history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("OwnershipHistory: %v", err)
+		}
+		pending := 0
+		for _, ho := range history {
+			if ho.Status == domain.HandoffPending {
+				pending++
+			}
+		}
+		if pending != 1 {
+			t.Fatalf("round %d: %d pending Handoffs, want 1", i, pending)
+		}
+	}
+}
+
+// A Handoff accepted and rejected at the same moment, as a new Owner clicking
+// both does: only one wins, and the Goal is on the new Owner exactly when the
+// Handoff was accepted.
+func TestHandoffAcceptedAndRejectedTogetherHasOneOutcome(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	for i := range 30 {
+		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "why")
+		ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+		accept := func() error {
+			_, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID, nil)
+			return err
+		}
+		reject := func() error {
+			_, err := h.Service.RejectHandoff(ctx, ho.ID, pat.ID)
+			return err
+		}
+		errAccept, errReject := raceHandoffCommands(accept, reject)
+		if (errAccept == nil) == (errReject == nil) {
+			t.Fatalf("round %d: accept err = %v, reject err = %v, want exactly one to win", i, errAccept, errReject)
+		}
+		got, err := h.Service.Handoff(ctx, ho.ID)
+		if err != nil {
+			t.Fatalf("Handoff: %v", err)
+		}
+		accepted := got.Status == domain.HandoffAccepted
+		if onPat := got.Goal.Owner.ID == pat.ID; onPat != accepted {
+			t.Fatalf("round %d: Handoff %s but the Goal's Owner is %d", i, got.Status, got.Goal.Owner.ID)
+		}
+		want := domain.HandoffRejected
+		if errAccept == nil {
+			want = domain.HandoffAccepted
+		}
+		if got.Status != want {
+			t.Fatalf("round %d: Status = %q, want %q for the command that won", i, got.Status, want)
+		}
+	}
 }
 
 // Rejecting a Handoff keeps it in the Goal's ownership history with the outcome
