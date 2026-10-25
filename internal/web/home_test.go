@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,25 +28,116 @@ func setCadence(t *testing.T, h *testsupport.Harness, g domain.Goal, days int) {
 	}
 }
 
-// homeRow returns the row of a Home section that links to g, failing the test
-// when the section has none.
-func homeRow(t *testing.T, section string, g domain.Goal) string {
+// homeGoalPath is the address of g's page, where a Home row's title links.
+func homeGoalPath(g domain.Goal) string {
+	return fmt.Sprintf("/goals/%d", g.ID)
+}
+
+// homeLinksTo reports whether anything under root links to g's page.
+func homeLinksTo(root *html.Node, g domain.Goal) bool {
+	return linkTo(root, homeGoalPath(g)) != nil
+}
+
+// homeRowIn returns the row of a Home section that links to g: the <li>
+// holding the link, failing the test when the section has none.
+func homeRowIn(t *testing.T, section *html.Node, g domain.Goal) *html.Node {
 	t.Helper()
-	at := strings.Index(section, navTo(g.ID))
-	if at < 0 {
-		t.Fatalf("section has no row for %q:\n%s", g.Title, section)
+	for n := linkTo(section, homeGoalPath(g)); n != nil && within(n, section); n = n.Parent {
+		if n.Type == html.ElementNode && n.Data == "li" {
+			return n
+		}
 	}
-	start := strings.LastIndex(section[:at], "<li")
-	end := strings.Index(section[at:], "</li>")
-	return section[start : at+end]
+	t.Fatalf("section has no row for %q:\n%s", g.Title, renderNode(section))
+	return nil
+}
+
+// homeFormTo returns the first form under root posting to action, or nil.
+func homeFormTo(root *html.Node, action string) *html.Node {
+	if forms := findAll(root, func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == action }); len(forms) > 0 {
+		return forms[0]
+	}
+	return nil
+}
+
+// homeFormsEndingIn returns every form under root whose action ends in tail.
+func homeFormsEndingIn(root *html.Node, tail string) []*html.Node {
+	return findAll(root, func(n *html.Node) bool { return n.Data == "form" && strings.HasSuffix(attrOf(n, "action"), tail) })
+}
+
+// homeClasses are the classes n carries, in order.
+func homeClasses(n *html.Node) []string { return strings.Fields(attrOf(n, "class")) }
+
+// homeIsHeading reports whether n is a heading, h1 to h6.
+func homeIsHeading(n *html.Node) bool {
+	return len(n.Data) == 2 && n.Data[0] == 'h' && n.Data[1] >= '1' && n.Data[1] <= '6'
+}
+
+// homeOneElement returns the one element under root that match reports,
+// failing the test, which names it what, unless there is exactly one.
+func homeOneElement(t *testing.T, root *html.Node, what string, match func(*html.Node) bool) *html.Node {
+	t.Helper()
+	found := findAll(root, match)
+	if len(found) != 1 {
+		t.Fatalf("page has %d %s, want 1:\n%s", len(found), what, renderNode(root))
+	}
+	return found[0]
+}
+
+// homeMainIn is the page's <main>.
+func homeMainIn(t *testing.T, root *html.Node) *html.Node {
+	t.Helper()
+	return homeOneElement(t, root, "<main>s", func(n *html.Node) bool { return n.Data == "main" })
+}
+
+// homePageHeaderIn is the page's header strip, over the page title.
+func homePageHeaderIn(t *testing.T, root *html.Node) *html.Node {
+	t.Helper()
+	return homeOneElement(t, root, "header strips", func(n *html.Node) bool { return flatFrameHasClass(n, "page-header") })
+}
+
+// homeNavIn is the sidebar's main navigation.
+func homeNavIn(t *testing.T, root *html.Node) *html.Node {
+	t.Helper()
+	return homeOneElement(t, root, "Main navs", func(n *html.Node) bool { return n.Data == "nav" && attrOf(n, "aria-label") == "Main" })
+}
+
+// homeNavCounts are the counts a sidebar nav item shows, each as its classes
+// and then what it reads ("count needs-you: 3"), so an assertion sees both
+// what it reads and whether it is the needs-you pill.
+func homeNavCounts(item *html.Node) []string {
+	var out []string
+	for _, c := range findAll(item, func(n *html.Node) bool { return flatFrameHasClass(n, "count") }) {
+		out = append(out, attrOf(c, "class")+": "+textOf(c))
+	}
+	return out
 }
 
 // needsYouHeading reads the Needs you heading, "" when Home has none.
-func needsYouHeading(page string) string {
-	if got := elementTexts(page, "h2", "home-needs-you-heading"); len(got) == 1 {
-		return got[0]
+func needsYouHeading(root *html.Node) string {
+	if got := findAllByTestID(root, "home-needs-you-heading"); len(got) == 1 && got[0].Data == "h2" {
+		return textOf(got[0])
 	}
 	return ""
+}
+
+// homeShowsPerson reports whether root shows the person emailAddr by label,
+// on a collapsed control that discloses their email, hidden beside it, with
+// the email on hover too (CONTEXT.md: Name).
+func homeShowsPerson(root *html.Node, emailAddr, label string) bool {
+	for _, p := range findAll(root, func(n *html.Node) bool { return flatFrameHasClass(n, "person") }) {
+		buttons := findAll(p, func(n *html.Node) bool { return n.Data == "button" })
+		emails := findAll(p, func(n *html.Node) bool { return flatFrameHasClass(n, "person-email") })
+		if len(buttons) != 1 || len(emails) != 1 {
+			continue
+		}
+		b := buttons[0]
+		if textOf(b) == label && attrOf(b, "title") == emailAddr && attrOf(b, "type") == "button" &&
+			flatFrameHasClass(b, "disclose") && attrOf(b, "aria-expanded") == "false" &&
+			isHiddenElement(emails[0]) && runningText(emails[0]) == emailAddr {
+			return true
+		}
+	}
+	return false
 }
 
 // The Needs you heading carries how many things need the viewer, in muted
@@ -63,15 +153,15 @@ func TestHomeNeedsYouHeadingCarriesTheCount(t *testing.T) {
 	h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 	if got := needsYouHeading(page); got != "Needs you 2" {
 		t.Errorf("Needs you heading = %q, want %q", got, "Needs you 2")
 	}
-	if strings.Contains(page, "home-summary") || strings.Contains(page, "things need you") {
-		t.Errorf("the page head still says how many things need sam:\n%s", pageElement(t, page, "header", "home-head"))
+	if hasTestID(page, "home-summary") || strings.Contains(textOf(page), "things need you") {
+		t.Errorf("the page head still says how many things need sam: %q", textOf(findByTestID(t, page, "home-head")))
 	}
 
-	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	pat := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
 	if got := needsYouHeading(pat); got != "Needs you" {
 		t.Errorf("pat's Needs you heading = %q, want %q", got, "Needs you")
 	}
@@ -91,51 +181,45 @@ func TestHomeIsOneSurfaceWithNoCard(t *testing.T) {
 	mine := h.ActiveGoal(f.lead, "Hire", "We need people.")
 	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
 
-	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
-	main := between(t, page, "<main", "</main>")
+	page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	main := homeMainIn(t, page)
 
-	var cards []string
-	for _, tag := range regexp.MustCompile(`<[a-z]+ [^>]*>`).FindAllString(page, -1) {
-		if hasClass(tag, "card") {
-			cards = append(cards, tag)
-		}
+	if cards := findAll(page, func(n *html.Node) bool { return flatFrameHasClass(n, "card") }); len(cards) != 0 {
+		t.Errorf("Home has %d cards, want none: %s", len(cards), renderNode(cards[0]))
 	}
-	if len(cards) != 0 {
-		t.Errorf("Home's cards = %q, want none", cards)
-	}
-	if strings.Contains(main, "<aside") {
-		t.Errorf("Home still has a side column:\n%s", main)
+	if asides := findAll(main, func(n *html.Node) bool { return n.Data == "aside" }); len(asides) != 0 {
+		t.Errorf("Home still has a side column:\n%s", renderNode(asides[0]))
 	}
 
-	strip := between(t, page, `<div class="page-header">`, `<main class="page">`)
-	text := strings.Join(strings.Fields(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(strip, " ")), " ")
-	if text != "Home New goal" {
-		t.Errorf("page header reads %q, want Home beside New goal", text)
+	strip := homePageHeaderIn(t, page)
+	if got := textOf(strip); got != "Home New goal" {
+		t.Errorf("page header reads %q, want Home beside New goal", got)
 	}
-	if newGoal := tagAround(t, strip, `href="/goals/new"`); !hasClass(newGoal, "primary") {
-		t.Errorf("New goal isn't the page header's primary action: %s", newGoal)
+	if newGoal := linkTo(strip, "/goals/new"); newGoal == nil || !flatFrameHasClass(newGoal, "primary") {
+		t.Errorf("New goal isn't the page header's primary action:\n%s", renderNode(strip))
 	}
 
-	head := pageElement(t, page, "header", "home-head")
-	if got := elementTexts(page, "header", "home-head"); len(got) != 1 || got[0] != "Your week Monday, Jan 12 Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with →" {
+	head := findByTestID(t, page, "home-head")
+	if got := textOf(head); got != "Your week Monday, Jan 12 Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with →" {
 		t.Errorf("page title reads %q, want Your week over the date and the Your goals line", got)
 	}
-	if !strings.Contains(head, `<h1>Your week</h1>`) || !strings.Contains(head, `datetime="2026-01-12"`) {
-		t.Errorf("Your week isn't the page title over today's date:\n%s", head)
+	times := findAll(head, func(n *html.Node) bool { return n.Data == "time" })
+	if title := headingNamed(head, "Your week"); title == nil || title.Data != "h1" || len(times) != 1 || attrOf(times[0], "datetime") != "2026-01-12" {
+		t.Errorf("Your week isn't the page title over today's date:\n%s", renderNode(head))
 	}
-	if !strings.Contains(head, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
-		t.Errorf("page head's Your goals line doesn't link to the Goals the lead owns or helps with:\n%s", head)
+	if link := linkTo(head, "/goals?org=mine"); link == nil || textOf(link) != "Goals you own or help with →" {
+		t.Errorf("page head's Your goals line doesn't link to the Goals the lead owns or helps with:\n%s", renderNode(head))
 	}
-	if notGreen := pageElement(t, main, "section", "home-not-green"); !strings.Contains(notGreen, navTo(mine.ID)) {
-		t.Errorf("the lead's Red Goal isn't listed as not Green:\n%s", notGreen)
+	if notGreen := findByTestID(t, main, "home-not-green"); !homeLinksTo(notGreen, mine) {
+		t.Errorf("the lead's Red Goal isn't listed as not Green:\n%s", renderNode(notGreen))
 	}
 }
 
 // Home's outline reads Your week, then a section heading (h2) for each of
 // Needs you, My org and Your Yellow or Red goals, so no heading skips a level
-// (#386). Each is a section-heading-sized, 600 heading with its count in muted text after its
-// name: My org counts the people it lists, and Your Yellow or Red goals its
-// Goals (#391).
+// (#386). Each heading has its count after its name: My org counts the people
+// it lists, and Your Yellow or Red goals its Goals (#391). How they look is
+// TestHomeSectionsAreHeadedH2Styles's.
 func TestHomeSectionsAreHeadedH2(t *testing.T) {
 	t.Parallel()
 
@@ -145,34 +229,34 @@ func TestHomeSectionsAreHeadedH2(t *testing.T) {
 	mine := h.ActiveGoal(f.lead, "Hire", "We need people.")
 	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
 
-	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
-	main := between(t, page, "<main", "</main>")
+	main := homeMainIn(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 
 	for _, testID := range []string{"home-needs-you", "home-org", "home-not-green"} {
-		section := pageElement(t, main, "section", testID)
-		heading := regexp.MustCompile(`<h[1-6][ >]`).FindString(section)
-		if heading != "<h2 " && heading != "<h2>" {
-			t.Errorf("%s's heading is %q, want an h2:\n%s", testID, heading, section)
+		section := findByTestID(t, main, testID)
+		if headings := findAll(section, homeIsHeading); len(headings) == 0 || headings[0].Data != "h2" {
+			t.Errorf("%s's first heading isn't an h2:\n%s", testID, renderNode(section))
 		}
 	}
-	firstH2, firstH3 := strings.Index(main, "<h2"), strings.Index(main, "<h3")
-	if firstH2 < 0 || (firstH3 >= 0 && firstH3 < firstH2) {
-		t.Errorf("an h3 (at %d) comes before Home's first h2 (at %d):\n%s", firstH3, firstH2, main)
+	var firstH2, firstH3 *html.Node
+	for _, heading := range findAll(main, homeIsHeading) {
+		if heading.Data == "h2" && firstH2 == nil {
+			firstH2 = heading
+		}
+		if heading.Data == "h3" && firstH3 == nil {
+			firstH3 = heading
+		}
+	}
+	if firstH2 == nil || (firstH3 != nil && precedes(firstH3, firstH2)) {
+		t.Errorf("an h3 comes before Home's first h2:\n%s", renderNode(main))
 	}
 
 	for testID, want := range map[string]string{
-		"home-org":       `<h2>My org <span class="hm-count">2</span></h2>`,
-		"home-not-green": `<h2>Your Yellow or Red goals <span class="hm-count">1</span></h2>`,
+		"home-org":       "My org 2",
+		"home-not-green": "Your Yellow or Red goals 1",
 	} {
-		if section := pageElement(t, main, "section", testID); !strings.Contains(section, want) {
-			t.Errorf("%s isn't headed %s:\n%s", testID, want, section)
+		if heading := headingNamed(findByTestID(t, main, testID), want); heading == nil || heading.Data != "h2" {
+			t.Errorf("%s isn't headed %q", testID, want)
 		}
-	}
-	if decls := cssRule(t, page, ".hm-section>h2"); !strings.Contains(decls, "font-size:var(--text-h2)") || !strings.Contains(decls, "font-weight:600") {
-		t.Errorf("a Home section heading isn't --text-h2 at 600: %s", decls)
-	}
-	if decls := cssRule(t, page, ".hm-count"); !strings.Contains(decls, "color:var(--color-ink-muted)") {
-		t.Errorf("a Home section's count isn't muted: %s", decls)
 	}
 }
 
@@ -194,34 +278,33 @@ func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 	h.Clock.Advance(16 * day)
 	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	due := pageElement(t, page, "ul", "home-due")
-	row := homeRow(t, due, checkinOverdue)
-	for _, want := range []string{
-		`data-testid="home-due-checkin-overdue"`,
-		`data-testid="home-due-health"`,
-		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, checkinOverdue.ID),
-		`data-testid="home-due-checkin"`,
-	} {
-		if !strings.Contains(row, want) {
-			t.Errorf("Check-in overdue Goal's row lacks %s:\n%s", want, row)
+	due := findByTestID(t, page, "home-due")
+	row := homeRowIn(t, due, checkinOverdue)
+	for _, testID := range []string{"home-due-checkin-overdue", "home-due-health", "home-due-checkin"} {
+		if !hasTestID(row, testID) {
+			t.Errorf("Check-in overdue Goal's row lacks %s:\n%s", testID, renderNode(row))
 		}
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || !strings.Contains(got[0], "last check-in 16 days ago · every 14 days") {
+	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID)); form == nil || buttonNamed(form, "No change") == nil {
+		t.Errorf("Check-in overdue Goal's row offers no No change:\n%s", renderNode(row))
+	}
+	if got := textOf(findByTestID(t, row, "home-due-status")); !strings.Contains(got, "last check-in 16 days ago · every 14 days") {
 		t.Errorf("Check-in overdue Goal's status line = %q, want how long since its last Check-in against its cadence", got)
 	}
 	for _, g := range []domain.Goal{fresh, others} {
-		if strings.Contains(due, navTo(g.ID)) {
-			t.Errorf("Check in on these lists %q, which isn't due for sam:\n%s", g.Title, due)
+		if homeLinksTo(due, g) {
+			t.Errorf("Check in on these lists %q, which isn't due for sam:\n%s", g.Title, renderNode(due))
 		}
 	}
 }
 
 // A row in Check-ins due leads with the Goal's Health pill, then its title,
-// then one muted meta line: how long since its last Check-in, its cadence and,
-// when it applies, its Check-in overdue mark. The age is said once, and No
-// change and Check in sit at the row's right as 30px buttons (#377, #391).
+// then one meta line: how long since its last Check-in, its cadence and, when
+// it applies, its Check-in overdue mark. The age is said once, and No change
+// and Check in sit after it (#377, #391). How the row looks is
+// TestHomeDueRowLeadsWithItsHealthStyles's.
 func TestHomeDueRowLeadsWithItsHealth(t *testing.T) {
 	t.Parallel()
 
@@ -233,30 +316,19 @@ func TestHomeDueRowLeadsWithItsHealth(t *testing.T) {
 	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	h.Clock.Advance(16 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	row := homeRow(t, pageElement(t, page, "ul", "home-due"), checkinOverdue)
-	health, title, status, actions := strings.Index(row, `data-testid="home-due-health"`), strings.Index(row, navTo(checkinOverdue.ID)), strings.Index(row, `data-testid="home-due-status"`), strings.Index(row, `class="hm-actions"`)
-	if health < 0 || title < health || status < title || actions < status {
-		t.Errorf("row doesn't read Health, title, meta line, then actions:\n%s", row)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	row := homeRowIn(t, findByTestID(t, page, "home-due"), checkinOverdue)
+	health, title, status := findByTestID(t, row, "home-due-health"), linkTo(row, homeGoalPath(checkinOverdue)), findByTestID(t, row, "home-due-status")
+	noChange, checkIn := buttonNamed(row, "No change"), findByTestID(t, row, "home-due-checkin")
+	if noChange == nil || !precedes(health, title) || !precedes(title, status) || !precedes(status, noChange) || !precedes(noChange, checkIn) {
+		t.Errorf("row doesn't read Health, title, meta line, then No change and Check in:\n%s", renderNode(row))
 	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, row), "home-due-health"), "Yellow")
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 16 days ago · every 14 days Check-in overdue" {
-		t.Errorf("row's meta line = %q, want its age, cadence and Check-in overdue mark:\n%s", got, row)
+	assertHealthChip(t, health, "Yellow")
+	if got := textOf(status); got != "last check-in 16 days ago · every 14 days Check-in overdue" {
+		t.Errorf("row's meta line = %q, want its age, cadence and Check-in overdue mark", got)
 	}
-	if !hasClass(tagAround(t, row, `data-testid="home-due-status"`), "hm-meta") {
-		t.Errorf("row's meta line isn't Home's muted meta:\n%s", row)
-	}
-	if n := strings.Count(row, "16 days ago"); n != 1 {
-		t.Errorf("row says the Goal's age %d times, want once:\n%s", n, row)
-	}
-	if decls := cssRule(t, page, ".hm-meta"); !strings.Contains(decls, "color:var(--color-ink-muted)") {
-		t.Errorf("a Home row's meta line isn't muted: %s", decls)
-	}
-	if decls := cssRule(t, page, ".hm-actions .btn"); !strings.Contains(decls, "height:30px") {
-		t.Errorf("a Home row's actions aren't 30px buttons: %s", decls)
-	}
-	if decls := cssRule(t, page, ".hm-list>li"); !strings.Contains(decls, "min-height:44px") || !strings.Contains(decls, "border-top:1px solid var(--color-border)") {
-		t.Errorf("a Home row isn't a 44px row under a hairline: %s", decls)
+	if n := strings.Count(textOf(row), "16 days ago"); n != 1 {
+		t.Errorf("row says the Goal's age %d times, want once: %q", n, textOf(row))
 	}
 }
 
@@ -279,18 +351,18 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	h.Checkin(sam, spare.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(2 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	due := pageElement(t, page, "ul", "home-due")
-	row := homeRow(t, due, dueSoon)
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 8 days ago · every 14 days" {
-		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
+	due := findByTestID(t, page, "home-due")
+	row := homeRowIn(t, due, dueSoon)
+	if got := textOf(findByTestID(t, row, "home-due-status")); got != "last check-in 8 days ago · every 14 days" {
+		t.Errorf("due-soon Goal's row does not say why it's listed: %q", got)
 	}
-	if strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
-		t.Errorf("due-soon Goal is flagged Check-in overdue before it is:\n%s", row)
+	if hasTestID(row, "home-due-checkin-overdue") {
+		t.Errorf("due-soon Goal is flagged Check-in overdue before it is:\n%s", renderNode(row))
 	}
-	if strings.Contains(due, navTo(spare.ID)) {
-		t.Errorf("Check in on these lists %q, which has a week to spare:\n%s", spare.Title, due)
+	if homeLinksTo(due, spare) {
+		t.Errorf("Check in on these lists %q, which has a week to spare:\n%s", spare.Title, renderNode(due))
 	}
 }
 
@@ -313,24 +385,24 @@ func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	h.Checkin(sam, dueSoon.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(8 * day)
 
-	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+	due := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-due")
 
-	row := homeRow(t, due, checkinOverdue)
-	badge := tagAround(t, row, `data-testid="home-due-health"`)
-	if !hasClass(badge, "as-of") {
-		t.Errorf("Check-in overdue Goal's Health badge is not muted: %s", badge)
+	row := homeRowIn(t, due, checkinOverdue)
+	badge := findByTestID(t, row, "home-due-health")
+	if !flatFrameHasClass(badge, "as-of") {
+		t.Errorf("Check-in overdue Goal's Health badge is not muted: %s", renderNode(badge))
 	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, row), "home-due-health"), "Green")
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "last check-in 9 days ago · every 7 days Check-in overdue" {
-		t.Errorf("Check-in overdue Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
+	assertHealthChip(t, badge, "Green")
+	if got := textOf(findByTestID(t, row, "home-due-status")); got != "last check-in 9 days ago · every 7 days Check-in overdue" {
+		t.Errorf("Check-in overdue Goal's Health is dated %q, want by its last Check-in 9 days ago", got)
 	}
-	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
-		t.Errorf("Check-in overdue Goal is no longer flagged Check-in overdue:\n%s", row)
+	if !hasTestID(row, "home-due-checkin-overdue") {
+		t.Errorf("Check-in overdue Goal is no longer flagged Check-in overdue:\n%s", renderNode(row))
 	}
 
-	row = homeRow(t, due, dueSoon)
-	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") {
-		t.Errorf("due Goal that isn't Check-in overdue has its Health muted:\n%s", row)
+	row = homeRowIn(t, due, dueSoon)
+	if flatFrameHasClass(findByTestID(t, row, "home-due-health"), "as-of") {
+		t.Errorf("due Goal that isn't Check-in overdue has its Health muted:\n%s", renderNode(row))
 	}
 }
 
@@ -345,16 +417,16 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	silent := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Clock.Advance(9 * day)
 
-	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), silent)
-	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
-		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Check-in overdue:\n%s", row)
+	row := homeRowIn(t, findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-due"), silent)
+	if !hasTestID(row, "home-due-checkin-overdue") {
+		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Check-in overdue:\n%s", renderNode(row))
 	}
-	badge := tagAround(t, row, `data-testid="home-due-health"`)
-	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
-		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
+	badge := findByTestID(t, row, "home-due-health")
+	if flatFrameHasClass(badge, "as-of") || textOf(badge) != "No Health yet" {
+		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", renderNode(badge))
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "no check-in since activation 9 days ago · every 7 days Check-in overdue" {
-		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
+	if got := textOf(findByTestID(t, row, "home-due-status")); got != "no check-in since activation 9 days ago · every 7 days Check-in overdue" {
+		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation", got)
 	}
 }
 
@@ -373,12 +445,12 @@ func TestHomeListsMostOverdueFirst(t *testing.T) {
 	weekly := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Clock.Advance(12 * day)
 
-	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+	due := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-due")
 
 	// weekly is 5 days past its 7-day cadence; monthly is 24 days into 28.
-	first, second := strings.Index(due, navTo(weekly.ID)), strings.Index(due, navTo(monthly.ID))
-	if first < 0 || second < 0 || first > second {
-		t.Errorf("Check-ins due does not list %q, 5 days overdue, before %q, due in 4:\n%s", weekly.Title, monthly.Title, due)
+	first, second := linkTo(due, homeGoalPath(weekly)), linkTo(due, homeGoalPath(monthly))
+	if first == nil || second == nil || !precedes(first, second) {
+		t.Errorf("Check-ins due does not list %q, 5 days overdue, before %q, due in 4:\n%s", weekly.Title, monthly.Title, renderNode(due))
 	}
 }
 
@@ -393,14 +465,14 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 	silent := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	row := homeRow(t, pageElement(t, page, "ul", "home-due"), silent)
-	if strings.Contains(row, "no-change") {
-		t.Errorf("Goal with no Check-in offers No change:\n%s", row)
+	row := homeRowIn(t, findByTestID(t, page, "home-due"), silent)
+	if buttonNamed(row, "No change") != nil || len(homeFormsEndingIn(row, "/no-change")) != 0 {
+		t.Errorf("Goal with no Check-in offers No change:\n%s", renderNode(row))
 	}
-	if !strings.Contains(row, `data-testid="home-due-checkin"`) {
-		t.Errorf("Goal with no Check-in offers no Check in link:\n%s", row)
+	if !hasTestID(row, "home-due-checkin") {
+		t.Errorf("Goal with no Check-in offers no Check in link:\n%s", renderNode(row))
 	}
 }
 
@@ -421,28 +493,29 @@ func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
 	h.AddDelegate(sam, dee, other.ID)
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "dee@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "dee@example.com"), ts.URL+"/home")
 
-	row := homeRow(t, pageElement(t, page, "ul", "home-due"), g)
-	if !strings.Contains(row, `data-testid="home-due-for" class="tag">for `+shownAs("sam@example.com", "sam")) {
-		t.Errorf("delegated Goal's row is not tagged with its Owner:\n%s", row)
+	row := homeRowIn(t, findByTestID(t, page, "home-due"), g)
+	if tag := findByTestID(t, row, "home-due-for"); textOf(tag) != "for sam" || !homeShowsPerson(tag, "sam@example.com", "sam") {
+		t.Errorf("delegated Goal's row is not tagged with its Owner: %s", renderNode(tag))
 	}
-	if n := strings.Count(page, navTo(g.ID)); n != 1 {
+	if n := len(findAll(page, func(n *html.Node) bool { return n.Data == "a" && attrOf(n, "href") == homeGoalPath(g) })); n != 1 {
 		t.Errorf("delegated Goal shows %d times on Home, want once", n)
 	}
-	if strings.Contains(page, `data-testid="home-delegated"`) {
+	if hasTestID(page, "home-delegated") {
 		t.Errorf("Home still has a Delegated to you card")
 	}
-	link := pageElement(t, page, "a", "home-delegate-link")
-	if !strings.Contains(link, `href="/delegates"`) || !strings.Contains(link, `<span class="num">2</span>`) {
-		t.Errorf("Delegate link does not lead to /delegates counting dee's 2 Goals: %s", link)
+	link := findByTestID(t, page, "home-delegate-link")
+	nums := findAll(link, func(n *html.Node) bool { return flatFrameHasClass(n, "num") })
+	if attrOf(link, "href") != "/delegates" || len(nums) != 1 || textOf(nums[0]) != "2" || textOf(link) != "Goals delegated to you 2 →" {
+		t.Errorf("Delegate link does not lead to /delegates counting dee's 2 Goals: %s", renderNode(link))
 	}
 
-	samPage := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	if strings.Contains(samPage, `data-testid="home-delegate-link"`) {
+	samPage := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	if hasTestID(samPage, "home-delegate-link") {
 		t.Errorf("sam is a Delegate on nothing but sees the Delegate link")
 	}
-	if strings.Contains(homeRow(t, pageElement(t, samPage, "ul", "home-due"), g), `data-testid="home-due-for"`) {
+	if hasTestID(homeRowIn(t, findByTestID(t, samPage, "home-due"), g), "home-due-for") {
 		t.Errorf("sam's own Goal is tagged as someone else's")
 	}
 }
@@ -463,14 +536,15 @@ func TestHomeCheckInOpensCheckinForm(t *testing.T) {
 
 	for _, who := range []string{"sam@example.com", "dee@example.com"} {
 		client := signInClient(t, ts.URL, who)
-		row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-due"), g)
-		href := attr(tagAround(t, row, `data-testid="home-due-checkin"`), "href")
-		if want := fmt.Sprintf("/goals/%d/checkin", g.ID); href != want {
-			t.Errorf("%s: Home's Check in links to %q, want %q:\n%s", who, href, want, row)
+		row := homeRowIn(t, findByTestID(t, getPage(t, client, ts.URL+"/home"), "home-due"), g)
+		checkIn := findByTestID(t, row, "home-due-checkin")
+		href := attrOf(checkIn, "href")
+		if want := fmt.Sprintf("/goals/%d/checkin", g.ID); href != want || textOf(checkIn) != "Check in" {
+			t.Errorf("%s: Home's Check in links to %q, want %q: %s", who, href, want, renderNode(checkIn))
 			continue
 		}
-		if page := getBody(t, client, ts.URL+href); !strings.Contains(page, `data-testid="checkin-form"`) {
-			t.Errorf("%s: following Check in shows no Check-in form:\n%s", who, page)
+		if page := getPage(t, client, ts.URL+href); !hasTestID(page, "checkin-form") {
+			t.Errorf("%s: following Check in shows no Check-in form:\n%s", who, renderNode(page))
 		}
 	}
 }
@@ -497,32 +571,40 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	link := h.RequestLink(kim, child, parent, "")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/home")
-	requests := pageElement(t, page, "ul", "home-requests")
+	page := getPage(t, client, ts.URL+"/home")
+	requests := findByTestID(t, page, "home-requests")
 	if got := needsYouHeading(page); got != "Needs you 2" {
 		t.Errorf("Needs you heading = %q, want %q for the two Requests", got, "Needs you 2")
 	}
 
-	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
-		t.Errorf("Requests does not list the day-old Handoff before today's link request:\n%s", requests)
+	if older, newer := linkTo(requests, homeGoalPath(handed)), linkTo(requests, homeGoalPath(child)); older == nil || newer == nil || !precedes(older, newer) {
+		t.Errorf("Requests does not list the day-old Handoff before today's link request:\n%s", renderNode(requests))
 	}
 	for _, tc := range []struct {
 		what   string
-		row    string
+		row    *html.Node
 		action string
 	}{
-		{"link request", homeRow(t, requests, child), fmt.Sprintf("/links/%d", link.ID)},
-		{"Handoff", homeRow(t, requests, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
+		{"link request", homeRowIn(t, requests, child), fmt.Sprintf("/links/%d", link.ID)},
+		{"Handoff", homeRowIn(t, requests, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
 	} {
-		accept := between(t, tc.row, `action="`+tc.action+`/accept"`, "</form>")
-		if !strings.Contains(accept, `<button type="submit" class="btn sm">Accept</button>`) {
-			t.Errorf("%s has no outlined Accept:\n%s", tc.what, tc.row)
+		for _, b := range []struct {
+			name, look string
+			classes    []string
+		}{
+			{"Accept", "outlined", []string{"btn", "sm"}},
+			{"Reject", "text", []string{"btn", "quiet", "sm"}},
+		} {
+			form := homeFormTo(tc.row, tc.action+"/"+strings.ToLower(b.name))
+			var button *html.Node
+			if form != nil {
+				button = buttonNamed(form, b.name)
+			}
+			if button == nil || !slices.Contains(submitButtons(form), button) || !slices.Equal(homeClasses(button), b.classes) {
+				t.Errorf("%s has no %s %s button:\n%s", tc.what, b.look, b.name, renderNode(tc.row))
+			}
 		}
-		reject := between(t, tc.row, `action="`+tc.action+`/reject"`, "</form>")
-		if !strings.Contains(reject, `<button type="submit" class="btn quiet sm">Reject</button>`) {
-			t.Errorf("%s has no Reject text button:\n%s", tc.what, tc.row)
-		}
-		assertSubmitsAtOnce(t, tc.what+"'s Reject", tc.row, tc.action+"/reject")
+		assertSubmitsAtOnce(t, tc.what+"'s Reject", renderNode(tc.row), tc.action+"/reject")
 	}
 
 	postForm(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)
@@ -550,38 +632,41 @@ func TestHomeOmitsEmptySubgroups(t *testing.T) {
 	parent := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
 	h.RequestLink(pat, h.ActiveGoal(pat, "Cut churn", "Customers leave."), parent, "")
 
+	needsYou := func(who string) *html.Node {
+		return findByTestID(t, getPage(t, signInClient(t, ts.URL, who), ts.URL+"/home"), "home-needs-you")
+	}
 	for _, tc := range []struct {
 		who, has, lacks string
 	}{
-		{"sam@example.com", `data-testid="home-due"`, `data-testid="home-requests"`},
-		{"kim@example.com", `data-testid="home-requests"`, `data-testid="home-due"`},
+		{"sam@example.com", "home-due", "home-requests"},
+		{"kim@example.com", "home-requests", "home-due"},
 	} {
-		list := pageElement(t, getBody(t, signInClient(t, ts.URL, tc.who), ts.URL+"/home"), "section", "home-needs-you")
-		if !strings.Contains(list, tc.has) {
-			t.Errorf("%s: Needs you lacks %s:\n%s", tc.who, tc.has, list)
+		list := needsYou(tc.who)
+		if !hasTestID(list, tc.has) {
+			t.Errorf("%s: Needs you lacks %s:\n%s", tc.who, tc.has, renderNode(list))
 		}
-		for _, gone := range []string{tc.lacks, `data-testid="home-caught-up"`} {
-			if strings.Contains(list, gone) {
-				t.Errorf("%s: Needs you shows %s:\n%s", tc.who, gone, list)
+		for _, gone := range []string{tc.lacks, "home-caught-up"} {
+			if hasTestID(list, gone) {
+				t.Errorf("%s: Needs you shows %s:\n%s", tc.who, gone, renderNode(list))
 			}
 		}
 	}
-	if !strings.Contains(pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-needs-you"), navTo(due.ID)) {
+	if !homeLinksTo(needsYou("sam@example.com"), due) {
 		t.Errorf("sam's due Goal is missing from Needs you")
 	}
 
 	// pat's Goal was activated today, and nothing waits on them.
-	list := pageElement(t, getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home"), "section", "home-needs-you")
-	if n := strings.Count(list, "<li"); n != 0 {
-		t.Errorf("pat has nothing needing them but Needs you lists %d rows:\n%s", n, list)
+	list := needsYou("pat@example.com")
+	if n := len(findAll(list, func(n *html.Node) bool { return n.Data == "li" })); n != 0 {
+		t.Errorf("pat has nothing needing them but Needs you lists %d rows:\n%s", n, renderNode(list))
 	}
 	for _, gone := range []string{"Check-ins due", "Requests"} {
-		if strings.Contains(list, gone) {
-			t.Errorf("pat's Needs you heads an empty %s subgroup:\n%s", gone, list)
+		if headingNamed(list, gone) != nil || strings.Contains(textOf(list), gone) {
+			t.Errorf("pat's Needs you heads an empty %s subgroup:\n%s", gone, renderNode(list))
 		}
 	}
-	if strings.Count(list, "You're all caught up") != 1 || !strings.Contains(list, `data-testid="home-caught-up"`) {
-		t.Errorf("pat's Needs you does not show one caught-up line:\n%s", list)
+	if strings.Count(textOf(list), "You're all caught up") != 1 || !hasTestID(list, "home-caught-up") {
+		t.Errorf("pat's Needs you does not show one caught-up line:\n%s", renderNode(list))
 	}
 }
 
@@ -605,20 +690,20 @@ func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-requests"), handed)
+	row := homeRowIn(t, findByTestID(t, getPage(t, client, ts.URL+"/home"), "home-requests"), handed)
 
-	if strings.Contains(row, "/accept") {
-		t.Errorf("Handoff with Delegates offers Accept on Home without the choice of whom to keep:\n%s", row)
+	if buttonNamed(row, "Accept") != nil || len(homeFormsEndingIn(row, "/accept")) != 0 {
+		t.Errorf("Handoff with Delegates offers Accept on Home without the choice of whom to keep:\n%s", renderNode(row))
 	}
-	review := tagAround(t, row, `data-testid="home-request-review"`)
-	if href := attr(review, "href"); href != "/handoffs" {
-		t.Fatalf("Review links to %q, want /handoffs:\n%s", href, row)
+	review := findByTestID(t, row, "home-request-review")
+	if href := attrOf(review, "href"); href != "/handoffs" {
+		t.Fatalf("Review links to %q, want /handoffs:\n%s", href, renderNode(row))
 	}
-	if !strings.Contains(row, ">Review</a>") {
-		t.Errorf("Review link does not read Review:\n%s", row)
+	if got := textOf(review); got != "Review" {
+		t.Errorf("Review link reads %q, want Review", got)
 	}
-	if !strings.Contains(row, fmt.Sprintf(`action="/handoffs/%d/reject"`, handoff.ID)) {
-		t.Errorf("Handoff with Delegates offers no Reject:\n%s", row)
+	if form := homeFormTo(row, fmt.Sprintf("/handoffs/%d/reject", handoff.ID)); form == nil || buttonNamed(form, "Reject") == nil {
+		t.Errorf("Handoff with Delegates offers no Reject:\n%s", renderNode(row))
 	}
 }
 
@@ -645,34 +730,34 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	h.AddDelegate(kim, sam, notMine.ID)
 	h.Clock.Advance(2 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
 	for testID, want := range map[string]string{
 		"home-count-green":  "1",
 		"home-count-yellow": "1",
 		"home-count-red":    "1",
 	} {
-		if got := pageElement(t, page, "span", testID); !strings.HasSuffix(got, ">"+want) {
-			t.Errorf("%s = %s, want %s", testID, got, want)
+		if got := textOf(findByTestID(t, page, testID)); got != want {
+			t.Errorf("%s = %q, want %s", testID, got, want)
 		}
 	}
-	yours := pageElement(t, page, "section", "home-not-green")
+	yours := findByTestID(t, page, "home-not-green")
 	for _, g := range []domain.Goal{yellow, red} {
-		if !strings.Contains(yours, navTo(g.ID)) {
-			t.Errorf("Your goals does not list %q:\n%s", g.Title, yours)
+		if !homeLinksTo(yours, g) {
+			t.Errorf("Your goals does not list %q:\n%s", g.Title, renderNode(yours))
 		}
 	}
 	for _, g := range []domain.Goal{green, notMine} {
-		if strings.Contains(yours, navTo(g.ID)) {
-			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
+		if homeLinksTo(yours, g) {
+			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, renderNode(yours))
 		}
 	}
-	line := between(t, page, `data-testid="home-your-goals"`, "</header>")
-	if !strings.Contains(line, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
-		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", line)
+	line := findByTestID(t, page, "home-your-goals")
+	if link := linkTo(line, "/goals?org=mine"); link == nil || textOf(link) != "Goals you own or help with →" {
+		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", renderNode(line))
 	}
-	if strings.Contains(line, `href="/goals"`) {
-		t.Errorf("Your goals still links to every Goal in the org:\n%s", line)
+	if linkTo(line, "/goals") != nil {
+		t.Errorf("Your goals still links to every Goal in the org:\n%s", renderNode(line))
 	}
 
 	// All four Goals were last checked in 2 days ago on a weekly cadence, so
@@ -680,8 +765,8 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	if got := needsYouHeading(page); got != "Needs you 4" {
 		t.Errorf("Needs you heading = %q, want %q", got, "Needs you 4")
 	}
-	if head := between(t, page, `<div class="page-header">`, `<main class="page">`); !strings.Contains(head, ">New goal</a>") {
-		t.Errorf("page header has no New goal link:\n%s", head)
+	if strip := homePageHeaderIn(t, page); len(findAll(strip, func(n *html.Node) bool { return n.Data == "a" && textOf(n) == "New goal" })) == 0 {
+		t.Errorf("page header has no New goal link:\n%s", renderNode(strip))
 	}
 }
 
@@ -703,15 +788,15 @@ func TestHomeHeadsYellowOrRedGoals(t *testing.T) {
 	green := h.ActiveGoal(kim, "Ship search", "People can't find things.")
 	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
-	heading := strings.Index(yours, `<h2>Your Yellow or Red goals <span class="hm-count">2</span></h2>`)
-	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
-	if heading < 0 || first < heading || second < first {
-		t.Errorf("Your goals does not list Red then Yellow under a Yellow or Red heading:\n%s", yours)
+	yours := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-not-green")
+	heading := headingNamed(yours, "Your Yellow or Red goals 2")
+	first, second := linkTo(yours, homeGoalPath(red)), linkTo(yours, homeGoalPath(yellow))
+	if heading == nil || heading.Data != "h2" || first == nil || second == nil || !precedes(heading, first) || !precedes(first, second) {
+		t.Errorf("Your goals does not list Red then Yellow under a Yellow or Red heading:\n%s", renderNode(yours))
 	}
 
-	if kims := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); strings.Contains(kims, "home-not-green") || strings.Contains(kims, "Yellow or Red") {
-		t.Errorf("kim has only Green Goals but sees a Yellow or Red list:\n%s", kims)
+	if kims := getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); hasTestID(kims, "home-not-green") || strings.Contains(textOf(kims), "Yellow or Red") {
+		t.Errorf("kim has only Green Goals but sees a Yellow or Red list:\n%s", renderNode(kims))
 	}
 }
 
@@ -731,20 +816,30 @@ func TestHomeDatesCheckinOverdueNotGreenHealth(t *testing.T) {
 	fresh := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	h.Checkin(sam, fresh.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
+	yours := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-not-green")
 
-	row := homeRow(t, yours, checkinOverdue)
-	if badge := tagAround(t, row, `data-testid="home-goal-health"`); !hasClass(badge, "as-of") {
-		t.Errorf("Check-in overdue Red Goal's Health badge is not muted: %s", badge)
+	row := homeRowIn(t, yours, checkinOverdue)
+	if badge := findByTestID(t, row, "home-goal-health"); !flatFrameHasClass(badge, "as-of") {
+		t.Errorf("Check-in overdue Red Goal's Health badge is not muted: %s", renderNode(badge))
 	}
-	if got := elementTexts(row, "span", "home-goal-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
-		t.Errorf("Check-in overdue Red Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+	if got := textOf(findByTestID(t, row, "home-goal-as-of")); got != "as of 9 days ago" {
+		t.Errorf("Check-in overdue Red Goal's Health is dated %q, want as of 9 days ago", got)
 	}
 
-	row = homeRow(t, yours, fresh)
-	if hasClass(tagAround(t, row, `data-testid="home-goal-health"`), "as-of") || strings.Contains(row, `data-testid="home-goal-as-of"`) {
-		t.Errorf("Yellow Goal checked in today has its Health dated:\n%s", row)
+	row = homeRowIn(t, yours, fresh)
+	if flatFrameHasClass(findByTestID(t, row, "home-goal-health"), "as-of") || hasTestID(row, "home-goal-as-of") {
+		t.Errorf("Yellow Goal checked in today has its Health dated:\n%s", renderNode(row))
 	}
+}
+
+// homeHealthBarUnits reads the Health distribution bar's units, in order, by
+// the Health each draws ("g", "y" or "r").
+func homeHealthBarUnits(bar *html.Node) []string {
+	var units []string
+	for _, unit := range findAll(bar, func(n *html.Node) bool { return n.Data == "span" }) {
+		units = append(units, attrOf(unit, "class"))
+	}
+	return units
 }
 
 // The Your goals line draws the viewer's own Active Goals by Health as a segmented
@@ -771,13 +866,13 @@ func TestHomeDrawsHealthDistributionBar(t *testing.T) {
 	h.Checkin(kim, notMine.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
 	h.AddDelegate(kim, sam, notMine.ID)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	bar := pageElement(t, page, "div", "home-health-bar")
-	if got := strings.Join(regexp.MustCompile(`<span class="(g|y|r)"`).FindAllString(bar, -1), ""); got != `<span class="g"<span class="g"<span class="r"` {
-		t.Errorf("bar's units = %s, want two Green then one Red:\n%s", got, bar)
+	bar := findByTestID(t, page, "home-health-bar")
+	if got := homeHealthBarUnits(bar); !slices.Equal(got, []string{"g", "g", "r"}) {
+		t.Errorf("bar's units = %q, want two Green then one Red", got)
 	}
-	if label := attr(tagAround(t, bar, `data-testid="home-health-bar"`), "aria-label"); label != "2 Green, 0 Yellow, 1 Red" {
+	if label := attrOf(bar, "aria-label"); label != "2 Green, 0 Yellow, 1 Red" {
 		t.Errorf("bar's label = %q, want its counts", label)
 	}
 	for testID, want := range map[string]string{
@@ -785,17 +880,15 @@ func TestHomeDrawsHealthDistributionBar(t *testing.T) {
 		"home-count-yellow": "0",
 		"home-count-red":    "1",
 	} {
-		if got := pageElement(t, page, "span", testID); !strings.HasSuffix(got, ">"+want) {
-			t.Errorf("%s = %s, want %s", testID, got, want)
+		if got := textOf(findByTestID(t, page, testID)); got != want {
+			t.Errorf("%s = %q, want %s", testID, got, want)
 		}
 	}
 
-	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
-	if !strings.Contains(kimPage, `data-testid="home-health-bar"`) {
+	if kimPage := getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); !hasTestID(kimPage, "home-health-bar") {
 		t.Errorf("kim's Yellow Goal draws no bar")
 	}
-	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
-	if strings.Contains(pat, `data-testid="home-health-bar"`) {
+	if pat := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home"); hasTestID(pat, "home-health-bar") {
 		t.Errorf("pat has no Goals but sees a distribution bar")
 	}
 }
@@ -820,13 +913,13 @@ func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
 	h.Checkin(sam, cancelled.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
 	closeGoal(t, h, sam, cancelled, domain.LifecycleCancelled)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	bar := pageElement(t, page, "div", "home-health-bar")
-	if got := strings.Join(regexp.MustCompile(`<span class="(g|y|r)"`).FindAllString(bar, -1), ""); got != `<span class="g"` {
-		t.Errorf("bar's units = %s, want only the one Green:\n%s", got, bar)
+	bar := findByTestID(t, page, "home-health-bar")
+	if got := homeHealthBarUnits(bar); !slices.Equal(got, []string{"g"}) {
+		t.Errorf("bar's units = %q, want only the one Green", got)
 	}
-	if label := attr(tagAround(t, bar, `data-testid="home-health-bar"`), "aria-label"); label != "1 Green, 0 Yellow, 0 Red" {
+	if label := attrOf(bar, "aria-label"); label != "1 Green, 0 Yellow, 0 Red" {
 		t.Errorf("bar's label = %q, want only the Active Goal counted", label)
 	}
 }
@@ -854,31 +947,32 @@ func TestNavCountsWhatNeedsYou(t *testing.T) {
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	for _, path := range []string{"/goals", "/home", "/reports"} {
-		page := getBody(t, samClient, ts.URL+path)
-		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
-		home := pageElement(t, page, "a", "nav-home")
-		if !strings.Contains(home, `href="/home"`) || !strings.Contains(home, `<span class="count needs-you">3</span>`) {
-			t.Errorf("on %s, Home does not count sam's 2 Goals to check in on and 1 link request in its needs-you pill: %s", path, home)
+		page := getPage(t, samClient, ts.URL+path)
+		nav := homeNavIn(t, page)
+		home := findByTestID(t, page, "nav-home")
+		if attrOf(home, "href") != "/home" || !slices.Equal(homeNavCounts(home), []string{"count needs-you: 3"}) {
+			t.Errorf("on %s, Home does not count sam's 2 Goals to check in on and 1 link request in its needs-you pill: %s", path, renderNode(home))
 		}
-		if first := strings.Index(nav, `data-testid="nav-`); first != strings.Index(nav, `data-testid="nav-home"`) {
-			t.Errorf("on %s, Home is not the first nav item:\n%s", path, nav)
+		if items := findAll(nav, func(n *html.Node) bool { return strings.HasPrefix(attrOf(n, "data-testid"), "nav-") }); len(items) == 0 || items[0] != home {
+			t.Errorf("on %s, Home is not the first nav item:\n%s", path, renderNode(nav))
 		}
 		for _, gone := range []string{"nav-pending-links", "nav-pending-handoffs", "nav-delegated-goals"} {
-			if strings.Contains(nav, gone) {
+			if hasTestID(nav, gone) {
 				t.Errorf("on %s, the sidebar still has %s", path, gone)
 			}
 		}
 	}
 
 	// kim checked in today and nothing is waiting on them.
-	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/goals")
-	if home := pageElement(t, kimPage, "a", "nav-home"); strings.Contains(home, "count") {
-		t.Errorf("Home shows a count with nothing needing kim: %s", home)
+	kimPage := getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/goals")
+	if home := findByTestID(t, kimPage, "nav-home"); len(homeNavCounts(home)) != 0 {
+		t.Errorf("Home shows a count with nothing needing kim: %s", renderNode(home))
 	}
 }
 
 // Home's one-button forms — a due Goal's No change, a link request's Accept and
-// Reject — sit inline through the shared class rather than a style attribute.
+// Reject — each hold the one button that sends them. How they sit inline is
+// TestHomeInlineFormsComeFromTheSharedClassStyles's.
 func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 	t.Parallel()
 
@@ -891,16 +985,21 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	h.Clock.Advance(16 * day)
 	link := h.RequestLink(kim, h.ActiveGoal(kim, "Cut churn", "Customers leave."), checkinOverdue, "")
-	client := signInClient(t, ts.URL, "sam@example.com")
-	css := getBody(t, client, ts.URL+"/static/app.css")
 
-	page := getBody(t, client, ts.URL+"/home")
-	for _, action := range []string{
-		fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID),
-		fmt.Sprintf("/links/%d/accept", link.ID),
-		fmt.Sprintf("/links/%d/reject", link.ID),
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	for action, label := range map[string]string{
+		fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID): "No change",
+		fmt.Sprintf("/links/%d/accept", link.ID):                       "Accept",
+		fmt.Sprintf("/links/%d/reject", link.ID):                       "Reject",
 	} {
-		assertStyledBy(t, tagAround(t, page, `action="`+action+`"`), css, "inline-form", "display:inline")
+		form := homeFormTo(page, action)
+		if form == nil {
+			t.Errorf("Home has no form posting to %s", action)
+			continue
+		}
+		if buttons := submitButtons(form); len(buttons) != 1 || textOf(buttons[0]) != label {
+			t.Errorf("the form posting to %s doesn't hold one %s button: %s", action, label, renderNode(form))
+		}
 	}
 }
 
@@ -919,20 +1018,21 @@ func TestHomeOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
 	h.Checkin(sam, repeatable.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(16 * day)
 
-	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+	due := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "home-due")
 
-	row := homeRow(t, due, overdue)
-	if !strings.Contains(row, `data-testid="home-due-checkin"`) {
-		t.Errorf("the overdue Goal's row has no Check in:\n%s", row)
+	row := homeRowIn(t, due, overdue)
+	if !hasTestID(row, "home-due-checkin") {
+		t.Errorf("the overdue Goal's row has no Check in:\n%s", renderNode(row))
 	}
-	if strings.Contains(row, "/checkins/no-change") {
-		t.Errorf("the overdue Goal's row offers a No change that would be refused:\n%s", row)
+	if buttonNamed(row, "No change") != nil || len(homeFormsEndingIn(row, "/checkins/no-change")) != 0 {
+		t.Errorf("the overdue Goal's row offers a No change that would be refused:\n%s", renderNode(row))
 	}
-	row = homeRow(t, due, repeatable)
-	for _, want := range []string{fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, repeatable.ID), `data-testid="home-due-checkin"`} {
-		if !strings.Contains(row, want) {
-			t.Errorf("the repeatable Goal's row lacks %s:\n%s", want, row)
-		}
+	row = homeRowIn(t, due, repeatable)
+	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", repeatable.ID)); form == nil || buttonNamed(form, "No change") == nil {
+		t.Errorf("the repeatable Goal's row lacks its No change:\n%s", renderNode(row))
+	}
+	if !hasTestID(row, "home-due-checkin") {
+		t.Errorf("the repeatable Goal's row lacks its Check in:\n%s", renderNode(row))
 	}
 }
 
@@ -976,14 +1076,14 @@ func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	head := between(t, getBody(t, client, ts.URL+"/home"), `<div class="page-header">`, `<main class="page">`)
-	link := tagAround(t, head, ">New goal<")
-	if href := attr(link, "href"); href != "/goals/new" {
-		t.Fatalf("Home's New goal links to %q, want /goals/new:\n%s", href, head)
+	strip := homePageHeaderIn(t, getPage(t, client, ts.URL+"/home"))
+	links := findAll(strip, func(n *html.Node) bool { return n.Data == "a" && textOf(n) == "New goal" })
+	if len(links) != 1 || attrOf(links[0], "href") != "/goals/new" {
+		t.Fatalf("Home's New goal doesn't link to /goals/new:\n%s", renderNode(strip))
 	}
-	form := pageElement(t, getBody(t, client, ts.URL+attr(link, "href")), "form", "goal-form")
-	if title := tagAround(t, form, `name="title"`); !strings.Contains(title, " autofocus") {
-		t.Errorf("following New goal doesn't focus the Title: %s", title)
+	form := findByTestID(t, getPage(t, client, ts.URL+attrOf(links[0], "href")), "goal-form")
+	if title := formField(t, form, "title"); !hasAttr(title.Node, "autofocus") {
+		t.Errorf("following New goal doesn't focus the Title: %s", renderNode(title.Node))
 	}
 }
 
@@ -1006,31 +1106,38 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 	}
 
 	client := signInClient(t, ts.URL, "sam@example.com")
-	page := getBody(t, client, ts.URL+"/home")
+	page := getPage(t, client, ts.URL+"/home")
 	if got := needsYouHeading(page); got != "Needs you 1" {
 		t.Errorf("Needs you heading = %q, want %q for the suggestion", got, "Needs you 1")
 	}
-	row := homeRow(t, pageElement(t, page, "ul", "home-requests"), goal)
-	for _, want := range []string{"Pat Lee", navTo(parent.ID), "displays cause outages"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("the row lacks %q:\n%s", want, row)
+	row := homeRowIn(t, findByTestID(t, page, "home-requests"), goal)
+	for _, want := range []string{"Pat Lee", "displays cause outages"} {
+		if !strings.Contains(textOf(row), want) {
+			t.Errorf("the row lacks %q: %q", want, textOf(row))
 		}
 	}
+	if !homeLinksTo(row, parent) {
+		t.Errorf("the row doesn't link to the suggested parent:\n%s", renderNode(row))
+	}
 	base := fmt.Sprintf("/parent-suggestions/%d", s.ID)
-	for _, action := range []string{"/decline", "/accept"} {
-		form := between(t, row, `action="`+base+action+`"`, "</form>")
-		if !strings.Contains(form, `name="from" value="home"`) {
-			t.Errorf("Home's %s doesn't say it came from Home:\n%s", action, form)
+	for action, label := range map[string]string{"/decline": "Decline", "/accept": "Accept"} {
+		form := homeFormTo(row, base+action)
+		if form == nil || buttonNamed(form, label) == nil {
+			t.Errorf("the row offers no %s:\n%s", label, renderNode(row))
+			continue
+		}
+		if got := formSubmission(form).Get("from"); got != "home" {
+			t.Errorf("Home's %s says it came from %q, want home: %s", label, got, renderNode(form))
 		}
 	}
 
 	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"from": {"home"}})
-	page = readBody(t, resp)
+	landed := parsePage(t, readBody(t, resp))
 	if resp.Request.URL.Path != "/home" {
 		t.Errorf("accepting landed on %s, want /home", resp.Request.URL.Path)
 	}
-	if strings.Contains(page, `data-testid="home-requests"`) {
-		t.Errorf("Home still lists the accepted suggestion:\n%s", page)
+	if hasTestID(landed, "home-requests") {
+		t.Errorf("Home still lists the accepted suggestion:\n%s", renderNode(findByTestID(t, landed, "home-requests")))
 	}
 	if pending, _ := h.Service.PendingLinkRequests(context.Background(), kim.ID); len(pending) != 1 || pending[0].Child.ID != goal.ID {
 		t.Errorf("kim's requests = %+v, want the Goal's link", pending)
@@ -1048,17 +1155,14 @@ func TestNavOffersGoalsBetweenHomeAndFollowUps(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, path := range []string{"/home", "/goals", "/follow-ups", "/reports"} {
-		page := getBody(t, client, ts.URL+path)
-		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
-		if goals := pageElement(t, page, "a", "nav-goals"); !strings.Contains(openTag(goals), `href="/goals"`) {
-			t.Errorf("on %s, the Goals nav item does not link to /goals: %s", path, goals)
+		nav := homeNavIn(t, getPage(t, client, ts.URL+path))
+		if goals := findByTestID(t, nav, "nav-goals"); attrOf(goals, "href") != "/goals" {
+			t.Errorf("on %s, the Goals nav item does not link to /goals: %s", path, renderNode(goals))
 		}
-		home := strings.Index(nav, `data-testid="nav-home"`)
-		goals := strings.Index(nav, `data-testid="nav-goals"`)
-		followUps := strings.Index(nav, `data-testid="nav-follow-ups"`)
-		reports := strings.Index(nav, `data-testid="nav-reports"`)
-		if home < 0 || goals < home || followUps < goals || reports < followUps {
-			t.Errorf("on %s, the nav items do not read Home, Goals, Follow-ups, Reports:\n%s", path, nav)
+		home, goals := findByTestID(t, nav, "nav-home"), findByTestID(t, nav, "nav-goals")
+		followUps, reports := findByTestID(t, nav, "nav-follow-ups"), findByTestID(t, nav, "nav-reports")
+		if !precedes(home, goals) || !precedes(goals, followUps) || !precedes(followUps, reports) {
+			t.Errorf("on %s, the nav items do not read Home, Goals, Follow-ups, Reports:\n%s", path, renderNode(nav))
 		}
 	}
 }
@@ -1073,9 +1177,10 @@ func TestBrandLinkLeadsHome(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, path := range []string{"/home", "/goals", "/reports"} {
-		page := getBody(t, client, ts.URL+path)
-		if brand := tagAround(t, page, `class="brand"`); attr(brand, "href") != "/home" {
-			t.Errorf("on %s, the brand link does not lead to /home: %s", path, brand)
+		page := getPage(t, client, ts.URL+path)
+		brand := findAll(page, func(n *html.Node) bool { return n.Data == "a" && textOf(n) == "Goal Tracker" })
+		if len(brand) != 1 || attrOf(brand[0], "href") != "/home" {
+			t.Errorf("on %s, the brand link does not lead to /home", path)
 		}
 	}
 }
@@ -1095,12 +1200,12 @@ func TestNavGoalsCarriesNoCount(t *testing.T) {
 
 	client := signInClient(t, ts.URL, "sam@example.com")
 	for _, path := range []string{"/home", "/goals", "/follow-ups"} {
-		page := getBody(t, client, ts.URL+path)
-		if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `class="count needs-you"`) {
-			t.Fatalf("on %s, Home counts nothing, so the fixture has nothing for Goals to count: %s", path, home)
+		page := getPage(t, client, ts.URL+path)
+		if home := findByTestID(t, page, "nav-home"); len(homeNavCounts(home)) == 0 {
+			t.Fatalf("on %s, Home counts nothing, so the fixture has nothing for Goals to count: %s", path, renderNode(home))
 		}
-		if goals := pageElement(t, page, "a", "nav-goals"); strings.Contains(goals, "<span") {
-			t.Errorf("on %s, the Goals nav item carries a count: %s", path, goals)
+		if goals := findByTestID(t, page, "nav-goals"); textOf(goals) != "Goals" || len(findAll(goals, func(n *html.Node) bool { return n.Data == "span" })) != 0 {
+			t.Errorf("on %s, the Goals nav item carries a count: %s", path, renderNode(goals))
 		}
 	}
 }
@@ -1112,12 +1217,11 @@ func TestNavOrderForAnAdmin(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	h.SignIn("ada@example.com")
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/home")
+	nav := homeNavIn(t, getPage(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/home"))
 
-	nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
 	var order []string
-	for _, m := range regexp.MustCompile(`data-testid="(nav-[a-z-]+)"`).FindAllStringSubmatch(nav, -1) {
-		order = append(order, m[1])
+	for _, item := range findAll(nav, func(n *html.Node) bool { return strings.HasPrefix(attrOf(n, "data-testid"), "nav-") }) {
+		order = append(order, attrOf(item, "data-testid"))
 	}
 	if got, want := strings.Join(order, " "), "nav-home nav-goals nav-follow-ups nav-reports nav-admin"; got != want {
 		t.Errorf("an Admin's nav items read %q, want %q", got, want)
@@ -1125,9 +1229,9 @@ func TestNavOrderForAnAdmin(t *testing.T) {
 }
 
 // homeOrgSection is Home's My org section, failing the test when Home has none.
-func homeOrgSection(t *testing.T, page string) string {
+func homeOrgSection(t *testing.T, page *html.Node) *html.Node {
 	t.Helper()
-	return pageElement(t, page, "section", "home-org")
+	return findByTestID(t, page, "home-org")
 }
 
 // Home shows a My org section only to someone with anyone under them by
@@ -1142,54 +1246,40 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 	lead := h.SignIn("lead@example.com")
 	dev := h.SignIn("dev@example.com")
 	self := h.SignIn("self@example.com")
-	if page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"); strings.Contains(page, `data-testid="home-org"`) {
+	if page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"); hasTestID(page, "home-org") {
 		t.Errorf("Home shows My org with no Managers synced")
 	}
 	h.SetManager(dev, lead)
 	h.SetManager(self, self)
 	for _, who := range []string{"dev@example.com", "self@example.com"} {
-		if page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/home"); strings.Contains(page, `data-testid="home-org"`) {
+		if page := getPage(t, signInClient(t, ts.URL, who), ts.URL+"/home"); hasTestID(page, "home-org") {
 			t.Errorf("Home shows My org to %s, who has no one under them", who)
 		}
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
 	card := homeOrgSection(t, page)
-	if !strings.Contains(card, "<h2>My org</h2>") {
-		t.Errorf("My org section isn't titled My org:\n%s", card)
+	if heading := headingNamed(card, "My org"); heading == nil || heading.Data != "h2" {
+		t.Errorf("My org section isn't titled My org:\n%s", renderNode(card))
 	}
-	if needsYou, org := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`); needsYou >= org {
-		t.Errorf("My org isn't under Needs you: needs-you at %d, my org at %d", needsYou, org)
+	if !precedes(findByTestID(t, page, "home-needs-you"), card) {
+		t.Errorf("My org isn't under Needs you")
 	}
 }
 
-// homeOrgCounts reads the My org count badges in section, in order, as
+// homeOrgCountsIn reads the My org count badges under root, in order, as
 // "kind: label", so an assertion sees both what each reads and what it is.
-func homeOrgCounts(section string) []string {
-	doc, err := html.Parse(strings.NewReader(section))
-	if err != nil {
-		return nil
-	}
+func homeOrgCountsIn(root *html.Node) []string {
 	var out []string
-	for _, badge := range findAllByTestID(doc, "home-org-count") {
+	for _, badge := range findAllByTestID(root, "home-org-count") {
 		out = append(out, attrOf(badge, "data-kind")+": "+textOf(badge))
 	}
 	return out
 }
 
-// homeOrgRows are the My org section's rows, one per flagged person, in order.
-func homeOrgRows(card string) []string {
-	var out []string
-	for rest := card; ; {
-		start := strings.Index(rest, `<li data-testid="home-org-person"`)
-		if start < 0 {
-			return out
-		}
-		rest = rest[start:]
-		end := strings.Index(rest, "</li>")
-		out = append(out, rest[:end])
-		rest = rest[end:]
-	}
+// homeOrgRowsIn are the My org section's rows, one per flagged person, in order.
+func homeOrgRowsIn(card *html.Node) []*html.Node {
+	return findAllByTestID(card, "home-org-person")
 }
 
 // homeOrgFixture is a lead with Ana and Ben directly under them and Cy under
@@ -1224,9 +1314,9 @@ func newHomeOrgFixture(h *testsupport.Harness) homeOrgFixture {
 
 // orgPersonLink is the link a My org row's person is shown by, to their Org
 // on Goals, failing the test when the row has none.
-func orgPersonLink(t *testing.T, row string) string {
+func orgPersonLink(t *testing.T, row *html.Node) *html.Node {
 	t.Helper()
-	return pageElement(t, row, "a", "home-org-person-link")
+	return findByTestID(t, row, "home-org-person-link")
 }
 
 // In My org each person's row is one link to their Org on Goals: their
@@ -1240,10 +1330,10 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	ts := newServer(t, h)
 	f := newHomeOrgFixture(h)
 
-	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
-	rows := homeOrgRows(card)
+	card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	rows := homeOrgRowsIn(card)
 	if len(rows) != 2 {
-		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), renderNode(card))
 	}
 	for i, want := range []struct {
 		who      domain.Account
@@ -1254,29 +1344,35 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 		{f.ben, "B", "B Ben 1 Red"},
 	} {
 		link := orgPersonLink(t, rows[i])
-		if href := attr(openTag(link), "href"); href != fmt.Sprintf("/goals?org=%d", want.who.ID) {
+		if href := attrOf(link, "href"); href != fmt.Sprintf("/goals?org=%d", want.who.ID) {
 			t.Errorf("%s's row links to %q, want their org on Goals", want.who.Name, href)
 		}
-		if got := elementTexts(rows[i], "a", "home-org-person-link"); len(got) != 1 || got[0] != want.reads {
+		if got := textOf(link); got != want.reads {
 			t.Errorf("%s's row link reads %q, want %q, their initials, Name and counts", want.who.Name, got, want.reads)
 		}
-		if !strings.Contains(link, `<span class="avatar hm-avatar" aria-hidden="true">`+want.initials+`</span>`) {
-			t.Errorf("%s's row doesn't lead with their initials:\n%s", want.who.Name, link)
+		lead := link.FirstChild
+		for lead != nil && lead.Type != html.ElementNode {
+			lead = lead.NextSibling
 		}
-		if _, after, _ := strings.Cut(rows[i], "</a>"); strings.Contains(after, "home-org-count") {
-			t.Errorf("%s's counts sit outside their row's link:\n%s", want.who.Name, rows[i])
+		if lead == nil || textOf(lead) != want.initials || attrOf(lead, "aria-hidden") != "true" || !slices.Equal(homeClasses(lead), []string{"avatar", "hm-avatar"}) {
+			t.Errorf("%s's row doesn't lead with their initials:\n%s", want.who.Name, renderNode(link))
+		}
+		for _, count := range findAllByTestID(rows[i], "home-org-count") {
+			if !within(count, link) {
+				t.Errorf("%s's counts sit outside their row's link:\n%s", want.who.Name, renderNode(rows[i]))
+			}
 		}
 	}
-	if strings.Contains(card, "Their org on Goals") {
-		t.Errorf("My org still links each row to Their org on Goals:\n%s", card)
+	if strings.Contains(textOf(card), "Their org on Goals") {
+		t.Errorf("My org still links each row to Their org on Goals:\n%s", renderNode(card))
 	}
 
-	total := pageElement(t, card, "p", "home-org-total")
-	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Check-in overdue · 1 Yellow" {
+	total := findByTestID(t, card, "home-org-total")
+	if got := textOf(total); got != "2 Red · 1 Path to Green overdue · 1 Check-in overdue · 1 Yellow" {
 		t.Errorf("total line reads %q", got)
 	}
-	if strings.Contains(total, "badge") {
-		t.Errorf("total line is chips, not text:\n%s", total)
+	if badges := findAll(total, func(n *html.Node) bool { return flatFrameHasClass(n, "badge") }); len(badges) != 0 {
+		t.Errorf("total line is chips, not text:\n%s", renderNode(total))
 	}
 }
 
@@ -1294,21 +1390,23 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	ts := newServer(t, h)
 	f := newHomeOrgFixture(h)
 
-	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
-	total := pageElement(t, card, "p", "home-org-total")
+	card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	total := findByTestID(t, card, "home-org-total")
 	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}
-	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
+	if got := homeOrgCountsIn(total); !slices.Equal(got, wantTotal) {
 		t.Errorf("total line = %v, want %v", got, wantTotal)
 	}
 
-	rows := homeOrgRows(card)
+	rows := homeOrgRowsIn(card)
 	if len(rows) != 2 {
-		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), renderNode(card))
 	}
-	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="checkin-overdue" class="badge st"`, `data-kind="yellow" class="badge y"`} {
-		if !strings.Contains(rows[0], want) {
-			t.Errorf("Ana's row lacks %s:\n%s", want, rows[0])
-		}
+	var anaBadges []string
+	for _, badge := range findAllByTestID(rows[0], "home-org-count") {
+		anaBadges = append(anaBadges, attrOf(badge, "data-kind")+": "+attrOf(badge, "class"))
+	}
+	if want := []string{"red: badge r", "path-overdue: badge st", "checkin-overdue: badge st", "yellow: badge y"}; !slices.Equal(anaBadges, want) {
+		t.Errorf("Ana's row's badges = %q, want %q", anaBadges, want)
 	}
 	for i, want := range []struct {
 		who    domain.Account
@@ -1317,27 +1415,27 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}},
 		{f.ben, []string{"red: 1 Red"}},
 	} {
-		if !strings.Contains(orgPersonLink(t, rows[i]), want.who.Name) {
-			t.Errorf("row %d isn't %s's:\n%s", i, want.who.Name, rows[i])
+		if !strings.Contains(textOf(orgPersonLink(t, rows[i])), want.who.Name) {
+			t.Errorf("row %d isn't %s's:\n%s", i, want.who.Name, renderNode(rows[i]))
 		}
-		if got := homeOrgCounts(rows[i]); !slices.Equal(got, want.counts) {
+		if got := homeOrgCountsIn(rows[i]); !slices.Equal(got, want.counts) {
 			t.Errorf("%s's row counts %v, want %v", want.who.Name, got, want.counts)
 		}
-		if href := fmt.Sprintf(`href="/goals?org=%d"`, want.who.ID); !strings.Contains(rows[i], href) {
-			t.Errorf("%s's row doesn't link to %s:\n%s", want.who.Name, href, rows[i])
+		if href := fmt.Sprintf("/goals?org=%d", want.who.ID); linkTo(rows[i], href) == nil {
+			t.Errorf("%s's row doesn't link to %s:\n%s", want.who.Name, href, renderNode(rows[i]))
 		}
 	}
-	if strings.Contains(card, "Cy") {
-		t.Errorf("Cy, two levels down, appears on the section:\n%s", card)
+	if strings.Contains(textOf(card), "Cy") {
+		t.Errorf("Cy, two levels down, appears on the section:\n%s", renderNode(card))
 	}
-	for _, href := range []string{fmt.Sprintf(`href="/goals?org=%d"`, f.lead.ID), fmt.Sprintf(`href="/follow-ups?org=%d"`, f.lead.ID)} {
-		if !strings.Contains(card, href) {
-			t.Errorf("My org doesn't link on with %s:\n%s", href, card)
+	for _, href := range []string{fmt.Sprintf("/goals?org=%d", f.lead.ID), fmt.Sprintf("/follow-ups?org=%d", f.lead.ID)} {
+		if linkTo(card, href) == nil {
+			t.Errorf("My org doesn't link on to %s:\n%s", href, renderNode(card))
 		}
 	}
 	for _, g := range f.goals {
-		if strings.Contains(card, g.Title) {
-			t.Errorf("My org lists the Goal %q:\n%s", g.Title, card)
+		if strings.Contains(textOf(card), g.Title) || homeLinksTo(card, g) {
+			t.Errorf("My org lists the Goal %q:\n%s", g.Title, renderNode(card))
 		}
 	}
 }
@@ -1369,25 +1467,26 @@ func TestHomeMyOrgCountsThoseAllClearInOneLine(t *testing.T) {
 				h.Checkin(fine, g.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 			}
 
-			card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
-			if rows := homeOrgRows(card); len(rows) != 2 {
-				t.Errorf("My org has %d rows, want only the 2 flagged people's", len(rows))
+			card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+			rows := homeOrgRowsIn(card)
+			if len(rows) != 2 {
+				t.Fatalf("My org has %d rows, want only the 2 flagged people's", len(rows))
 			}
-			if strings.Contains(card, "home-org-all-clear") {
-				t.Errorf("My org says everyone is all clear while some are flagged:\n%s", card)
+			if hasTestID(card, "home-org-all-clear") {
+				t.Errorf("My org says everyone is all clear while some are flagged:\n%s", renderNode(card))
 			}
 			if tc.want == "" {
-				if strings.Contains(card, "home-org-clear") {
-					t.Errorf("My org counts others all clear when there are none:\n%s", card)
+				if hasTestID(card, "home-org-clear") {
+					t.Errorf("My org counts others all clear when there are none:\n%s", renderNode(card))
 				}
 				return
 			}
-			clear := pageElement(t, card, "p", "home-org-clear")
-			if !strings.Contains(clear, ">"+tc.want) || !strings.Contains(openTag(clear), "muted") {
-				t.Errorf("all-clear line = %s, want a muted %q", clear, tc.want)
+			clear := findByTestID(t, card, "home-org-clear")
+			if textOf(clear) != tc.want || !flatFrameHasClass(clear, "muted") {
+				t.Errorf("all-clear line = %s, want a muted %q", renderNode(clear), tc.want)
 			}
-			if rows := strings.Index(card, "home-org-person"); rows > strings.Index(card, "home-org-clear") {
-				t.Errorf("the all-clear line comes before the rows:\n%s", card)
+			if !precedes(rows[len(rows)-1], clear) {
+				t.Errorf("the all-clear line comes before the rows:\n%s", renderNode(card))
 			}
 		})
 	}
@@ -1410,22 +1509,22 @@ func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 	own := h.ActiveGoal(lead, "Set strategy", "No direction.")
 	h.Checkin(lead, own.ID, domain.HealthRed, "Stuck.", "Offsite.", h.Clock.Now().AddDate(0, 1, 0))
 
-	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
-	allClear := pageElement(t, card, "p", "home-org-all-clear")
-	if !strings.Contains(allClear, ">Everyone in My org is all clear.") || !strings.Contains(openTag(allClear), "muted") {
-		t.Errorf("all-clear line = %s, want a muted %q", allClear, "Everyone in My org is all clear.")
+	card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	allClear := findByTestID(t, card, "home-org-all-clear")
+	if textOf(allClear) != "Everyone in My org is all clear." || !flatFrameHasClass(allClear, "muted") {
+		t.Errorf("all-clear line = %s, want a muted %q", renderNode(allClear), "Everyone in My org is all clear.")
 	}
-	for _, gone := range []string{"home-org-total", "home-org-person", "home-org-clear\"", "home-org-count"} {
-		if strings.Contains(card, gone) {
-			t.Errorf("My org with nothing flagged shows %s:\n%s", gone, card)
+	for _, gone := range []string{"home-org-total", "home-org-person", "home-org-clear", "home-org-count"} {
+		if hasTestID(card, gone) {
+			t.Errorf("My org with nothing flagged shows %s:\n%s", gone, renderNode(card))
 		}
 	}
 	for _, c := range []struct{ testID, href, label string }{
 		{"home-org-goals-link", fmt.Sprintf("/goals?org=%d", lead.ID), "My org on Goals →"},
 		{"home-org-follow-ups-link", fmt.Sprintf("/follow-ups?org=%d", lead.ID), "My org on Follow-ups →"},
 	} {
-		if link := pageElement(t, card, "a", c.testID); attr(openTag(link), "href") != c.href || !strings.HasSuffix(link, ">"+c.label) {
-			t.Errorf("%s = %s, want %q linking to %s", c.testID, link, c.label, c.href)
+		if link := findByTestID(t, card, c.testID); attrOf(link, "href") != c.href || textOf(link) != c.label {
+			t.Errorf("%s = %s, want %q linking to %s", c.testID, renderNode(link), c.label, c.href)
 		}
 	}
 }
@@ -1443,15 +1542,15 @@ func TestHomeMyOrgMarksADepartedPerson(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	rows := homeOrgRows(homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")))
+	rows := homeOrgRowsIn(homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")))
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's", len(rows))
 	}
-	if !strings.Contains(orgPersonLink(t, rows[1]), f.ben.Name) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
-		t.Errorf("Ben's row isn't marked departed:\n%s", rows[1])
+	if !strings.Contains(textOf(orgPersonLink(t, rows[1])), f.ben.Name) || !hasTestID(rows[1], "home-org-departed") {
+		t.Errorf("Ben's row isn't marked departed:\n%s", renderNode(rows[1]))
 	}
-	if strings.Contains(rows[0], "home-org-departed") {
-		t.Errorf("Ana's row is marked departed:\n%s", rows[0])
+	if hasTestID(rows[0], "home-org-departed") {
+		t.Errorf("Ana's row is marked departed:\n%s", renderNode(rows[0]))
 	}
 }
 
@@ -1465,16 +1564,16 @@ func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
 	ts := newServer(t, h)
 	newHomeOrgFixture(h)
 
-	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
 	homeOrgSection(t, page)
-	if !strings.Contains(page, `data-testid="home-caught-up"`) || !strings.Contains(page, "You're all caught up.") {
+	if caughtUp := findAllByTestID(page, "home-caught-up"); len(caughtUp) != 1 || textOf(caughtUp[0]) != "You're all caught up." {
 		t.Errorf("Needs you isn't caught up with only the Org's Goals Red")
 	}
 	if got := needsYouHeading(page); got != "Needs you" {
 		t.Errorf("Needs you heading = %q, want %q", got, "Needs you")
 	}
-	if home := pageElement(t, page, "a", "nav-home"); strings.Contains(home, "count") {
-		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
+	if home := findByTestID(t, page, "nav-home"); len(homeNavCounts(home)) != 0 {
+		t.Errorf("Home's nav item counts the Org's Goals: %s", renderNode(home))
 	}
 }
 
@@ -1537,26 +1636,21 @@ func (f homeActionItemFixture) raise(owner domain.Account, text string, dueIn in
 	return item
 }
 
-// homeActionItemRows returns each row of Home's Action Items, in order, or
+// homeActionItemRowsIn returns each row of Home's Action Items, in order, or
 // none when Home shows no such group.
-func homeActionItemRows(page string) []string {
-	start := strings.Index(page, `<ul data-testid="home-action-items"`)
-	if start < 0 {
+func homeActionItemRowsIn(page *html.Node) []*html.Node {
+	lists := findAllByTestID(page, "home-action-items")
+	if len(lists) == 0 {
 		return nil
 	}
-	list := page[start : start+strings.Index(page[start:], "</ul>")]
-	var rows []string
-	for _, part := range strings.Split(list, `<li data-testid="home-action-item"`)[1:] {
-		row, _, _ := strings.Cut(part, "</li>")
-		rows = append(rows, row)
-	}
-	return rows
+	return findAllByTestID(lists[0], "home-action-item")
 }
 
 // Home's Needs you lists the reader's open Action Items under their own
 // heading, soonest due first so an overdue one leads, flagged Overdue. Each
 // row names its Report and when it's due, and one about a Goal links to the
-// Goal page's Action Items and names the Goal.
+// Goal page's Action Items and names the Goal. How a row looks is
+// TestHomeListsYourOpenActionItemsStyles's.
 func TestHomeListsYourOpenActionItems(t *testing.T) {
 	t.Parallel()
 
@@ -1566,39 +1660,48 @@ func TestHomeListsYourOpenActionItems(t *testing.T) {
 	f.raise(f.sam, "Send the vendor plan.", 7, 0)
 	f.raise(f.sam, "Explain the slip.", -2, f.goal.ID)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	needs := pageElement(t, page, "section", "home-needs-you")
-	if !strings.Contains(needs, `<h3 class="hm-group-head">Action Items</h3>`) {
-		t.Errorf("Needs you has no Action Items heading:\n%s", needs)
+	needs := findByTestID(t, page, "home-needs-you")
+	if heading := headingNamed(needs, "Action Items"); heading == nil || heading.Data != "h3" {
+		t.Errorf("Needs you has no Action Items heading:\n%s", renderNode(needs))
 	}
-	rows := homeActionItemRows(page)
+	rows := homeActionItemRowsIn(page)
 	if len(rows) != 2 {
-		t.Fatalf("Home lists %d Action Items, want 2:\n%s", len(rows), needs)
+		t.Fatalf("Home lists %d Action Items, want 2:\n%s", len(rows), renderNode(needs))
 	}
 	overdue, later := rows[0], rows[1]
-	if !strings.Contains(overdue, "Explain the slip.") {
-		t.Errorf("the overdue Action Item is not listed first:\n%s", needs)
+	if !strings.Contains(textOf(overdue), "Explain the slip.") {
+		t.Errorf("the overdue Action Item is not listed first:\n%s", renderNode(needs))
 	}
-	for _, want := range []string{
-		`<span class="badge lc">Action Item</span>`,
-		`<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>`,
-		fmt.Sprintf(`href="/goals/%d#action-items"`, f.goal.ID),
-		"Launch in EU",
-		"due " + h.Clock.Now().AddDate(0, 0, -2).Format("Jan 2, 2006"),
-		`class="hm-what"`,
-		`class="hm-actions"`,
-	} {
-		if !strings.Contains(overdue, want) {
-			t.Errorf("overdue Action Item's row lacks %s:\n%s", want, overdue)
+	chips := findAll(overdue, func(n *html.Node) bool { return n.Data == "span" && flatFrameHasClass(n, "badge") })
+	var chipsRead []string
+	for _, chip := range chips {
+		chipsRead = append(chipsRead, attrOf(chip, "class")+": "+textOf(chip))
+	}
+	if want := []string{"badge lc: Action Item", "badge r: Overdue"}; !slices.Equal(chipsRead, want) {
+		t.Errorf("overdue Action Item's chips = %q, want %q", chipsRead, want)
+	}
+	if !hasTestID(overdue, "home-action-item-overdue") {
+		t.Errorf("overdue Action Item isn't flagged Overdue:\n%s", renderNode(overdue))
+	}
+	if link := linkTo(overdue, fmt.Sprintf("/goals/%d#action-items", f.goal.ID)); link == nil || textOf(link) != "Explain the slip." {
+		t.Errorf("overdue Action Item's row doesn't lead to its Goal's Action Items:\n%s", renderNode(overdue))
+	}
+	for _, want := range []string{"Launch in EU", "due " + h.Clock.Now().AddDate(0, 0, -2).Format("Jan 2, 2006")} {
+		if !strings.Contains(textOf(overdue), want) {
+			t.Errorf("overdue Action Item's row lacks %q: %q", want, textOf(overdue))
 		}
 	}
-	if strings.Contains(later, "home-action-item-overdue") {
-		t.Errorf("an Action Item due next week is flagged Overdue:\n%s", later)
+	if !hasTestID(overdue, "close-action-item") {
+		t.Errorf("overdue Action Item's row offers no Close:\n%s", renderNode(overdue))
+	}
+	if hasTestID(later, "home-action-item-overdue") {
+		t.Errorf("an Action Item due next week is flagged Overdue:\n%s", renderNode(later))
 	}
 	for _, row := range rows {
-		if !strings.Contains(row, "MBR") {
-			t.Errorf("Action Item's row does not name its Report:\n%s", row)
+		if !strings.Contains(textOf(row), "MBR") {
+			t.Errorf("Action Item's row does not name its Report: %q", textOf(row))
 		}
 	}
 }
@@ -1613,15 +1716,15 @@ func TestHomeActionItemAboutTheReportLinksToItsPublication(t *testing.T) {
 	f := newHomeActionItemFixture(h)
 	f.raise(f.sam, "Send the vendor plan.", 7, 0)
 
-	rows := homeActionItemRows(getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"))
+	rows := homeActionItemRowsIn(getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"))
 	if len(rows) != 1 {
 		t.Fatalf("Home lists %d Action Items, want 1", len(rows))
 	}
-	if want := fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.def.ID, f.pub.ID); !strings.Contains(rows[0], want) {
-		t.Errorf("whole-Report Action Item's row lacks %s:\n%s", want, rows[0])
+	if want := fmt.Sprintf("/reports/%d/publications/%d#action-items", f.def.ID, f.pub.ID); linkTo(rows[0], want) == nil {
+		t.Errorf("whole-Report Action Item's row doesn't link to %s:\n%s", want, renderNode(rows[0]))
 	}
-	if strings.Contains(rows[0], navTo(f.goal.ID)) {
-		t.Errorf("whole-Report Action Item's row links to a Goal:\n%s", rows[0])
+	if homeLinksTo(rows[0], f.goal) {
+		t.Errorf("whole-Report Action Item's row links to a Goal:\n%s", renderNode(rows[0]))
 	}
 }
 
@@ -1636,20 +1739,21 @@ func TestHomeCountsOpenActionItems(t *testing.T) {
 	f := newHomeActionItemFixture(h)
 	f.raise(f.sam, "Send the vendor plan.", 7, 0)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 	if got := needsYouHeading(page); got != "Needs you 1" {
 		t.Errorf("Needs you heading = %q, want %q for the Action Item", got, "Needs you 1")
 	}
-	if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `<span class="count needs-you">1</span>`) {
-		t.Errorf("sidebar's Home does not count the Action Item: %s", home)
+	if home := findByTestID(t, page, "nav-home"); !slices.Equal(homeNavCounts(home), []string{"count needs-you: 1"}) {
+		t.Errorf("sidebar's Home does not count the Action Item: %s", renderNode(home))
 	}
-	if strings.Contains(page, `data-testid="home-caught-up"`) {
+	if hasTestID(page, "home-caught-up") {
 		t.Errorf("Home says sam is caught up with an Action Item open")
 	}
 }
 
 // The owner closes an Action Item from its row on Home with a note, and comes
-// back to Home, where it's gone.
+// back to Home, where it's gone. How the close form is laid out is
+// TestHomeClosesAnActionItemStyles's.
 func TestHomeClosesAnActionItem(t *testing.T) {
 	t.Parallel()
 
@@ -1659,21 +1763,17 @@ func TestHomeClosesAnActionItem(t *testing.T) {
 	item := f.raise(f.sam, "Send the vendor plan.", 7, 0)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/home")
-	rows := homeActionItemRows(page)
+	rows := homeActionItemRowsIn(getPage(t, client, ts.URL+"/home"))
 	if len(rows) != 1 {
 		t.Fatalf("Home lists %d Action Items, want 1", len(rows))
 	}
-	form := tagAround(t, rows[0], `data-testid="close-action-item"`)
-	action := attr(form, "action")
+	form := findByTestID(t, rows[0], "close-action-item")
+	action := attrOf(form, "action")
 	if want := fmt.Sprintf("/action-items/%d/close", item.ID); action != want {
 		t.Fatalf("row's close form posts to %q, want %q", action, want)
 	}
-	if !strings.Contains(rows[0], `<input type="hidden" name="return" value="/home">`) {
-		t.Errorf("row's close form does not return to Home:\n%s", rows[0])
-	}
-	if got := cssRule(t, page, ".rp-inline-form"); !strings.Contains(got, "display:flex") {
-		t.Errorf("Home does not lay out the close form: .rp-inline-form{%s}", got)
+	if back := formField(t, form, "return"); back.Type != "hidden" || back.Value != "/home" {
+		t.Errorf("row's close form does not return to Home: %s", renderNode(form))
 	}
 
 	resp := postForm(t, noRedirects(client), ts.URL+action, url.Values{"note": {"Sent."}, "return": {"/home"}})
@@ -1681,8 +1781,8 @@ func TestHomeClosesAnActionItem(t *testing.T) {
 	if got := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || got != "/home" {
 		t.Errorf("closing from Home: %d to %q, want 303 to /home", resp.StatusCode, got)
 	}
-	if rows := homeActionItemRows(getBody(t, client, ts.URL+"/home")); len(rows) != 0 {
-		t.Errorf("Home still lists the closed Action Item:\n%s", rows)
+	if rows := homeActionItemRowsIn(getPage(t, client, ts.URL+"/home")); len(rows) != 0 {
+		t.Errorf("Home still lists the closed Action Item: %q", textsOf(rows))
 	}
 }
 
@@ -1702,13 +1802,13 @@ func TestHomeLeavesOutClosedAndOthersActionItems(t *testing.T) {
 	f.raise(kim, "Explain the slip.", -2, f.goal.ID)
 	f.raise(f.sam, "Book the review.", 3, 0)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	rows := homeActionItemRows(page)
-	if len(rows) != 1 || !strings.Contains(rows[0], "Book the review.") {
-		t.Errorf("Home lists %d Action Items, want only sam's open one:\n%s", len(rows), rows)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	rows := homeActionItemRowsIn(page)
+	if len(rows) != 1 || !strings.Contains(textOf(rows[0]), "Book the review.") {
+		t.Errorf("Home lists %d Action Items, want only sam's open one: %q", len(rows), textsOf(rows))
 	}
 	for _, gone := range []string{"Send the vendor plan.", "Explain the slip."} {
-		if strings.Contains(page, gone) {
+		if strings.Contains(textOf(page), gone) {
 			t.Errorf("Home shows %q, which isn't sam's to close", gone)
 		}
 	}
@@ -1737,40 +1837,38 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 	h.AskForHelp(sam, red.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 	miaClient := signInClient(t, ts.URL, "mia@example.com")
 
-	page := getBody(t, miaClient, ts.URL+"/home")
-	needsYou := pageElement(t, page, "section", "home-needs-you")
-	if !strings.Contains(needsYou, `<h3 class="hm-group-head">Asks for help</h3>`) {
-		t.Errorf("Needs you has no Asks for help subgroup:\n%s", needsYou)
+	page := getPage(t, miaClient, ts.URL+"/home")
+	needsYou := findByTestID(t, page, "home-needs-you")
+	if heading := headingNamed(needsYou, "Asks for help"); heading == nil || heading.Data != "h3" {
+		t.Errorf("Needs you has no Asks for help subgroup:\n%s", renderNode(needsYou))
 	}
-	asks := pageElement(t, page, "ul", "home-asks")
-	rows := strings.Split(asks, `<li data-testid="home-ask">`)[1:]
+	asks := findByTestID(t, page, "home-asks")
+	rows := findAllByTestID(asks, "home-ask")
 	if len(rows) != 2 {
-		t.Fatalf("Asks for help lists %d rows, want 2:\n%s", len(rows), asks)
+		t.Fatalf("Asks for help lists %d rows, want 2:\n%s", len(rows), renderNode(asks))
 	}
 	for i, g := range []struct {
 		goal   domain.Goal
 		health string
 	}{{red, domain.HealthRed}, {yellow, domain.HealthYellow}} {
 		row := rows[i]
-		if !strings.Contains(row, fmt.Sprintf(`href="/goals/%d#comments">%s</a>`, g.goal.ID, g.goal.Title)) {
-			t.Errorf("row %d doesn't link %q to its Comments:\n%s", i, g.goal.Title, row)
+		if link := linkTo(row, fmt.Sprintf("/goals/%d#comments", g.goal.ID)); link == nil || textOf(link) != g.goal.Title {
+			t.Errorf("row %d doesn't link %q to its Comments:\n%s", i, g.goal.Title, renderNode(row))
 		}
-		if !strings.Contains(row, g.health+"</span>") {
-			t.Errorf("row %d lacks its %s badge:\n%s", i, g.health, row)
-		}
-		if !strings.Contains(row, "from "+shownAs(sam.Email, "Sam Owner")) {
-			t.Errorf("row %d doesn't name the Owner who asked:\n%s", i, row)
+		assertHealthChip(t, healthChipIn(t, row), g.health)
+		if !strings.Contains(shownTextOf(row), "from Sam Owner") || !homeShowsPerson(row, sam.Email, "Sam Owner") {
+			t.Errorf("row %d doesn't name the Owner who asked:\n%s", i, renderNode(row))
 		}
 	}
 	if got := needsYouHeading(page); got != "Needs you 2" {
 		t.Errorf("Needs you heading = %q, want %q for the two asks", got, "Needs you 2")
 	}
-	if home, _ := sidebarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
-		t.Errorf("sidebar's Home = %s, want a count of 2", home)
+	if home := findByTestID(t, getPage(t, miaClient, ts.URL+"/goals"), "nav-home"); !slices.Equal(homeNavCounts(home), []string{"count needs-you: 2"}) {
+		t.Errorf("sidebar's Home = %s, want a count of 2", renderNode(home))
 	}
 
 	for _, who := range []string{"sam@example.com", "vp@example.com"} {
-		if page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/home"); strings.Contains(page, "home-ask") {
+		if page := getPage(t, signInClient(t, ts.URL, who), ts.URL+"/home"); hasTestID(page, "home-asks") || hasTestID(page, "home-ask") {
 			t.Errorf("%s's Home lists an ask addressed to Mia", who)
 		}
 	}
@@ -1778,13 +1876,13 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 	if _, err := h.Service.AddGoalComment(context.Background(), mia.ID, red.ID, "Take Lee for two weeks."); err != nil {
 		t.Fatalf("AddGoalComment: %v", err)
 	}
-	if got := len(elementTexts(getBody(t, miaClient, ts.URL+"/home"), "li", "home-ask")); got != 2 {
+	if got := len(findAllByTestID(getPage(t, miaClient, ts.URL+"/home"), "home-ask")); got != 2 {
 		t.Errorf("after Mia's answer Home lists %d asks, want both still open", got)
 	}
 
 	h.Checkin(sam, red.ID, domain.HealthRed, "Still blocked.", "Need budget.", pathDate)
 	h.Checkin(sam, yellow.ID, domain.HealthGreen, "Fixed.", "", time.Time{})
-	if page := getBody(t, miaClient, ts.URL+"/home"); strings.Contains(page, "home-ask") || strings.Contains(page, "Asks for help") {
-		t.Errorf("Home still lists asks the Owner closed:\n%s", pageElement(t, page, "section", "home-needs-you"))
+	if page := getPage(t, miaClient, ts.URL+"/home"); hasTestID(page, "home-asks") || hasTestID(page, "home-ask") || strings.Contains(textOf(page), "Asks for help") {
+		t.Errorf("Home still lists asks the Owner closed:\n%s", renderNode(findByTestID(t, page, "home-needs-you")))
 	}
 }
