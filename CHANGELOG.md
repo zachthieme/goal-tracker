@@ -13,6 +13,24 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 25, 2026
+
+**New features:**
+- [ops] `goal-tracker healthcheck` GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port, waiting up to 3 seconds, and exits 0 on a 200, or non-zero with one line on stderr saying why. It reads no other setting and opens no database, and the image's new `HEALTHCHECK` runs it every 30 seconds (#476).
+
+**Bug fixes:**
+- [user] A Report's draft keeps Delegates and History beside the Report at a 1280px window, stacking them under it only at 960px of content width and under, as the approved design does (#477).
+
+**Security:**
+- [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
+
+**Testing:**
+- [internal] The "submits at once, with no confirm dialog" test guard (#56) now takes the page and a marker, finds the form whose opening tag holds the marker, and checks every element in it, its submit button included, refusing htmx's `hx-confirm` as well as `onsubmit` and any `on*` or `hx-on*` handler that calls `confirm(`. Its own tests cover a confirm on the button's `hx-on:click` or `onclick` and an `hx-confirm` on the form (#463).
+- [internal] The Goal page's goldens now cover an off-target Metric with its readings, an overdue and a slipped Milestone, an open Ask for help that walks past a Departed Manager, a pending Handoff, an open Parent suggestion and a Nudge, plus the Red Goal's whole History, so a change to how the page loader reads any of them shows in a golden (#466).
+
+**Documentation:**
+- [internal] The e2e gate's comment in `vetinari/config.mts` and `e2e/README.md` say that its `when` pattern only scopes it on a branch: after each wave, vetinari's merged-base gate runs every gate, `make e2e` included, whatever the wave changed (#481).
+
 ### Collected changes — October 24, 2026
 
 **Improvements:**
