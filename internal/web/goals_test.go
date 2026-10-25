@@ -2462,7 +2462,7 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 		if chip := healthChipIn(t, title.Parent); !flatFrameHasClass(chip, tc.class) {
 			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, renderNode(title.Parent))
 		}
-		assertSubmitsAtOnce(t, tc.section+": Remove", tagAround(t, section, `/remove"`))
+		assertSubmitsAtOnce(t, tc.section+": Remove", section, `/remove"`)
 	}
 
 	// Removing the link to the parent from its form unlinks it.
@@ -6046,9 +6046,9 @@ func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
 
 	assertConfirms(t, "Mark departed", tagAround(t, opened(goal, "depart"), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID)))
 	assertConfirms(t, "Mark returned", tagAround(t, opened(orphan, "return"), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID)))
-	assertSubmitsAtOnce(t, "Hand off", tagAround(t, opened(goal, "handoff"), "/handoff"))
-	assertSubmitsAtOnce(t, "Reassign", tagAround(t, opened(orphan, "reassign"), "/reassign"))
-	assertSubmitsAtOnce(t, "Top-level", tagAround(t, opened(goal, "top-level"), "/top-level"))
+	assertSubmitsAtOnce(t, "Hand off", opened(goal, "handoff"), "/handoff")
+	assertSubmitsAtOnce(t, "Reassign", opened(orphan, "reassign"), "/reassign")
+	assertSubmitsAtOnce(t, "Top-level", opened(goal, "top-level"), "/top-level")
 	for _, form := range []string{"depart", "handoff"} {
 		if nested := nestedControls(getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, goal.ID, form))); len(nested) > 0 {
 			t.Errorf("the Goal page with %s open nests a control inside another: %q", form, nested)
