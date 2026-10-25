@@ -12,7 +12,8 @@ Read these first; some may decide whether the install goes ahead now.
 
 - **No email is sent.** The app has no mail transport yet. Check-in
   reminders, the parent digest, comment alerts and Action Item emails are
-  written to the log (recipient and subject) instead of sent. Everything else
+  written to the log (the recipient's Account ID and the subject) instead of
+  sent. Everything else
   works; people just aren't notified.
 - **One instance only.** The database is a single SQLite file, sign-in lockout
   counts are kept in memory, and the weekly email job runs in the process. Run
@@ -489,6 +490,21 @@ A session lasts 30 days from sign-in, however often it is used, and ends
 sooner after 7 days without a signed-in page. Only pages behind sign-in count:
 the sign-in page, `/` and a page that isn't there don't keep a session from
 idling.
+
+### What is kept, and for how long
+
+Every email is queued in the database before it is sent, and tried again
+while sending fails, up to five times. An email that was sent, or that was
+given up on after its fifth failed try, is kept 90 days, then deleted. An
+email still being tried is never deleted. The one-time token behind each Undo
+is deleted once its 15 minutes have passed. The app looks for what to delete
+when it starts and then hourly, and logs an `INFO` line, `msg="pruned stale
+rows"`, saying how many of each it deleted, or an `ERROR` if it couldn't.
+
+Email log lines name the recipient by their Account ID (`account_id`), never
+by their email address: the development sender's line, and the `WARN` and
+`ERROR` lines for an email that failed, will be tried again, or was given up
+on.
 
 ### Signing everyone out
 

@@ -9,6 +9,30 @@ import (
 	"context"
 )
 
+const deleteStaleEmail = `-- name: DeleteStaleEmail :execrows
+DELETE FROM email_outbox
+WHERE (sent_at IS NOT NULL AND julianday(sent_at) < julianday(CAST(?1 AS TEXT)))
+   OR (sent_at IS NULL AND attempts >= ?2
+       AND julianday(created_at) < julianday(CAST(?1 AS TEXT)))
+`
+
+type DeleteStaleEmailParams struct {
+	Cutoff      string
+	MaxAttempts int64
+}
+
+// Deletes the emails sent before cutoff, and those given up on (unsent and
+// tried max_attempts times) that were queued before it. An email still being
+// tried is kept however old. Times are compared as times: RFC 3339 text
+// doesn't sort, as its trailing zeros are trimmed.
+func (q *Queries) DeleteStaleEmail(ctx context.Context, arg DeleteStaleEmailParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteStaleEmail, arg.Cutoff, arg.MaxAttempts)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const listUnsentEmail = `-- name: ListUnsentEmail :many
 SELECT id, recipient, account_id, subject, body, created_at, attempts, next_attempt_at, sent_at, last_error FROM email_outbox
 WHERE sent_at IS NULL AND attempts < ?1

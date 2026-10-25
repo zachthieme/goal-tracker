@@ -85,6 +85,19 @@ func (q *Queries) CreateUndoToken(ctx context.Context, arg CreateUndoTokenParams
 	return i, err
 }
 
+const deleteUndoTokensIssuedBefore = `-- name: DeleteUndoTokensIssuedBefore :execrows
+DELETE FROM undo_tokens WHERE julianday(issued_at) < julianday(CAST(?1 AS TEXT))
+`
+
+// Deletes the tokens issued before cutoff, compared as times.
+func (q *Queries) DeleteUndoTokensIssuedBefore(ctx context.Context, cutoff string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteUndoTokensIssuedBefore, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getUndoToken = `-- name: GetUndoToken :one
 SELECT id, token, kind, subject_id, account_id, detail, issued_at, used_at FROM undo_tokens WHERE token = ? LIMIT 1
 `
