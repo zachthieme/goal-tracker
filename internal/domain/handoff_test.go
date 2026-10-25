@@ -307,6 +307,63 @@ func TestHandoffAcceptedAndRejectedTogetherHasOneOutcome(t *testing.T) {
 	}
 }
 
+// An Admin's Reassign of an Ownerless Goal at the same moment its pending
+// Handoff is accepted: only one wins, so the Goal is on the Admin's choice
+// exactly when the Reassign was kept and on the Handoff's recipient exactly
+// when the Handoff was accepted.
+func TestReassignAndAcceptTogetherHaveOneOutcome(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com") // offered the Goal by its departing Owner
+	cal := h.SignIn("cal@example.com") // chosen by the Admin
+	for i := range 30 {
+		owner := h.SignIn(fmt.Sprintf("owner%d@example.com", i))
+		goal := h.CreateGoal(owner, fmt.Sprintf("Goal %d", i), "why")
+		ho := startHandoff(t, h, goal.ID, pat.ID, owner.ID)
+		if err := h.Service.MarkDeparted(ctx, boss.ID, owner.ID); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+		reassign := func() error {
+			_, err := h.Service.ReassignGoal(ctx, boss.ID, goal.ID, cal.ID)
+			return err
+		}
+		accept := func() error {
+			_, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID, nil)
+			return err
+		}
+		errReassign, errAccept := raceHandoffCommands(reassign, accept)
+		if (errReassign == nil) == (errAccept == nil) {
+			t.Fatalf("round %d: reassign err = %v, accept err = %v, want exactly one to win", i, errReassign, errAccept)
+		}
+		history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("OwnershipHistory: %v", err)
+		}
+		g, err := h.Service.ViewGoal(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("ViewGoal: %v", err)
+		}
+		if errReassign == nil {
+			if len(history) != 2 || history[0].Status != domain.HandoffCancelled || history[1].Status != domain.HandoffReassigned {
+				t.Fatalf("round %d: history = %+v, want the Handoff cancelled then the Reassign", i, history)
+			}
+			if g.Owner.ID != cal.ID {
+				t.Fatalf("round %d: Reassign won but the Owner is %d, want Cal (%d)", i, g.Owner.ID, cal.ID)
+			}
+		} else {
+			if len(history) != 1 || history[0].Status != domain.HandoffAccepted {
+				t.Fatalf("round %d: history = %+v, want only the accepted Handoff", i, history)
+			}
+			if g.Owner.ID != pat.ID {
+				t.Fatalf("round %d: Accept won but the Owner is %d, want Pat (%d)", i, g.Owner.ID, pat.ID)
+			}
+		}
+	}
+}
+
 // Rejecting a Handoff keeps it in the Goal's ownership history with the outcome
 // rejected; the Owner is unchanged and a new Handoff may be started
 // (CONTEXT.md: every Handoff is kept with its outcome).

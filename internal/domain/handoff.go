@@ -393,61 +393,69 @@ func (s *Service) OwnershipHistory(ctx context.Context, goalID int64) ([]Handoff
 // Goal, one its Owner started before leaving, is cancelled in the same
 // transaction: whichever of the two comes first replaces the Ownerless Owner.
 func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) (Goal, error) {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return Goal{}, err
-	}
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return Goal{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if goal.Account.Departed == 0 {
-		return Goal{}, Refuse(ErrValidation, "only an Ownerless Goal is reassigned; hand off a Goal with a present Owner")
-	}
-	newOwner, err := s.queries.GetAccount(ctx, newOwnerID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, Refuse(ErrValidation, "the new Owner does not exist")
-		}
-		return Goal{}, fmt.Errorf("look up new owner: %w", err)
-	}
-	if newOwner.Departed != 0 {
-		return Goal{}, Refuse(ErrValidation, "the new Owner has left the company")
-	}
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		pending, err := tx.queries.GetPendingHandoffForGoal(ctx, goalID)
-		switch {
-		case err == nil:
-			if err := tx.decidePendingHandoff(ctx, pending.ID, HandoffCancelled); err != nil {
-				return err
-			}
-		case !errors.Is(err, sql.ErrNoRows):
-			return fmt.Errorf("look up pending handoff: %w", err)
-		}
-		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
-			OwnerID: newOwnerID,
-			ID:      goalID,
-		}); err != nil {
-			return fmt.Errorf("reassign goal: %w", err)
-		}
-		if _, err := tx.queries.CreateHandoff(ctx, db.CreateHandoffParams{
-			GoalID:      goalID,
-			FromOwner:   goal.Goal.OwnerID,
-			ToOwner:     newOwnerID,
-			Status:      HandoffReassigned,
-			InitiatedBy: actorID,
-			CreatedAt:   tx.clock.Now().Format(timeFormat),
-		}); err != nil {
-			return fmt.Errorf("record reassign: %w", err)
-		}
-		return nil
+	// Every check reads inside the transaction that writes the Reassign, so a
+	// Handoff accepted meanwhile, or a new Owner marked Departed meanwhile,
+	// isn't overwritten by it.
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		return tx.reassignGoal(ctx, actorID, goalID, newOwnerID)
 	})
 	if err != nil {
 		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
+}
+
+// reassignGoal is ReassignGoal's checks and writes, run inside its transaction.
+func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	goal, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Refuse(ErrValidation, "goal does not exist")
+		}
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	if goal.Account.Departed == 0 {
+		return Refuse(ErrValidation, "only an Ownerless Goal is reassigned; hand off a Goal with a present Owner")
+	}
+	newOwner, err := s.queries.GetAccount(ctx, newOwnerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Refuse(ErrValidation, "the new Owner does not exist")
+		}
+		return fmt.Errorf("look up new owner: %w", err)
+	}
+	if newOwner.Departed != 0 {
+		return Refuse(ErrValidation, "the new Owner has left the company")
+	}
+	pending, err := s.queries.GetPendingHandoffForGoal(ctx, goalID)
+	switch {
+	case err == nil:
+		if err := s.decidePendingHandoff(ctx, pending.ID, HandoffCancelled); err != nil {
+			return err
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return fmt.Errorf("look up pending handoff: %w", err)
+	}
+	if err := s.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
+		OwnerID: newOwnerID,
+		ID:      goalID,
+	}); err != nil {
+		return fmt.Errorf("reassign goal: %w", err)
+	}
+	if _, err := s.queries.CreateHandoff(ctx, db.CreateHandoffParams{
+		GoalID:      goalID,
+		FromOwner:   goal.Goal.OwnerID,
+		ToOwner:     newOwnerID,
+		Status:      HandoffReassigned,
+		InitiatedBy: actorID,
+		CreatedAt:   s.clock.Now().Format(timeFormat),
+	}); err != nil {
+		return fmt.Errorf("record reassign: %w", err)
+	}
+	return nil
 }
 
 // getPendingHandoff loads a Handoff that must exist and still be pending.
