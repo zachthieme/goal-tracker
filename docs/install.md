@@ -129,8 +129,9 @@ it lets anyone sign in as anyone.
 # How people sign in: oidc or password.
 GOAL_TRACKER_SIGNIN=password
 
-# Where people reach the app. Emailed links and the OIDC callback use it, and
-# session cookies are marked Secure because it is https.
+# Where people reach the app. Required: startup stops without it. Emailed
+# links, set-password links and the OIDC callback use it, and session cookies
+# are marked Secure because it is https.
 GOAL_TRACKER_BASE_URL=https://goals.example.com
 
 # Listen on localhost only; the reverse proxy is the way in.
@@ -448,6 +449,7 @@ passwords, their passwords still work.
 | `run migrations: … unable to open database file (14)` | The database's directory doesn't exist or isn't writable by `goal-tracker`. |
 | `GOAL_TRACKER_SIGNIN must be one of oidc, password, dev` | The env file isn't being read, or the variable is misspelled. |
 | `GOAL_TRACKER_SESSION_KEY is N bytes, want at least 32` | Generate it with `openssl rand -base64 32`. |
+| `GOAL_TRACKER_SIGNIN=… needs GOAL_TRACKER_BASE_URL` | Set it to the https address people reach the app at, through the reverse proxy. |
 | OIDC: startup fails discovering the issuer | The issuer URL is wrong, or the host can't reach the provider. |
 | OIDC: the provider says the redirect URI doesn't match | `GOAL_TRACKER_BASE_URL` + `/auth/callback` must match what's registered exactly. |
 | Signed out on every request, over https | `GOAL_TRACKER_BASE_URL` is `https`, so cookies are `Secure`; the browser must reach the app over https too. |
