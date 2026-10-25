@@ -1345,9 +1345,22 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 
 // The string helpers below read a page's markup as a string, for the tests in
 // other areas that still call them (drafthighlights_test.go, goalform_test.go,
-// handoffs_test.go, home_test.go, reports_test.go, styles_test.go,
-// suggestions_test.go). goals_test.go reads its pages through the parser
-// helpers instead.
+// handoffs_test.go, links_test.go, reports_test.go, styles_test.go,
+// suggestions_test.go). goals_test.go and home_test.go read their pages
+// through the parser helpers instead.
+
+// homeRow returns the row of a Home section that links to g, failing the test
+// when the section has none.
+func homeRow(t *testing.T, section string, g domain.Goal) string {
+	t.Helper()
+	at := strings.Index(section, navTo(g.ID))
+	if at < 0 {
+		t.Fatalf("section has no row for %q:\n%s", g.Title, section)
+	}
+	start := strings.LastIndex(section[:at], "<li")
+	end := strings.Index(section[at:], "</li>")
+	return section[start : at+end]
+}
 
 // hasClass reports whether an open tag's class attribute holds class.
 func hasClass(openTag, class string) bool {
