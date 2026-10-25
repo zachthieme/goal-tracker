@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -217,4 +218,81 @@ func TestDefinitionLogIsInTheFlatFrame(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 
 	assertInFlatFrame(t, getBody(t, boss, ts.URL+"/definition-log"), "Definition log")
+}
+
+// The whole log shows its newest 100 changes; when there are older ones, an
+// Older changes link leads to the next 100 before them. A log of 100 or fewer
+// has no such link, and a page bound that isn't a number is not found.
+func TestTheWholeLogPagesThroughOlderChangesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	admin := h.SignIn("boss@example.com")
+	for i := 1; i <= 105; i++ {
+		h.CreateField(admin, fmt.Sprintf("Field %d", i), domain.FieldNumber, "")
+	}
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	newest := getPage(t, pat, ts.URL+"/definition-log")
+	entries := textsOf(findAllByTestID(newest, "definition-change"))
+	if len(entries) != 100 || !strings.HasPrefix(entries[0], "Created the Field Field 105,") ||
+		!strings.HasPrefix(entries[99], "Created the Field Field 6,") {
+		t.Fatalf("newest page = %d entries, want Field 105 down to Field 6: %q", len(entries), entries)
+	}
+	older := findByTestID(t, newest, "definition-log-older")
+	if got := textOf(older); got != "Older changes" {
+		t.Errorf("older link reads %q, want Older changes", got)
+	}
+	page, err := h.Service.DefinitionLog(context.Background(), 0, 100)
+	if err != nil {
+		t.Fatalf("DefinitionLog: %v", err)
+	}
+	href := fmt.Sprintf("/definition-log?before=%d", page[99].ID)
+	if linkTo(newest, href) != older {
+		t.Errorf("older link goes to %q, want %q", attrOf(older, "href"), href)
+	}
+
+	next := getPage(t, pat, ts.URL+href)
+	entries = textsOf(findAllByTestID(next, "definition-change"))
+	if len(entries) != 5 {
+		t.Fatalf("older page = %d entries, want Field 5 down to Field 1: %q", len(entries), entries)
+	}
+	for i, e := range entries {
+		if want := fmt.Sprintf("Created the Field Field %d,", 5-i); !strings.HasPrefix(e, want) {
+			t.Errorf("older entry %d = %q, want it to start %q", i, e, want)
+		}
+	}
+	if hasTestID(next, "definition-log-older") {
+		t.Errorf("the oldest page links to older changes")
+	}
+
+	resp, err := pat.Get(ts.URL + "/definition-log?before=x")
+	if err != nil {
+		t.Fatalf("GET before=x: %v", err)
+	}
+	if _ = readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("before=x: status %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+// A log of exactly 100 changes fits its one page, so has no Older changes
+// link.
+func TestALogOfOnePageHasNoOlderChangesLinkOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	admin := h.SignIn("boss@example.com")
+	for i := 1; i <= 100; i++ {
+		h.CreateField(admin, fmt.Sprintf("Field %d", i), domain.FieldNumber, "")
+	}
+
+	page := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/definition-log")
+	if got := len(findAllByTestID(page, "definition-change")); got != 100 {
+		t.Errorf("log shows %d entries, want all 100", got)
+	}
+	if hasTestID(page, "definition-log-older") {
+		t.Errorf("a log of 100 changes links to older changes")
+	}
 }

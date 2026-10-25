@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -10,11 +11,11 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// definitionLog reads the whole Definition log, newest first, failing the test
-// on error.
+// definitionLog reads the Definition log's newest page of 100 changes, which
+// holds every change these tests write, failing the test on error.
 func definitionLog(t *testing.T, h *testsupport.Harness) []domain.DefinitionChange {
 	t.Helper()
-	changes, err := h.Service.DefinitionLog(context.Background())
+	changes, err := h.Service.DefinitionLog(context.Background(), 0, 100)
 	if err != nil {
 		t.Fatalf("DefinitionLog: %v", err)
 	}
@@ -448,4 +449,38 @@ func TestTheLogCannotBeEdited(t *testing.T) {
 	assertSummaries(t, definitionLog(t, h), []string{
 		"Created the Dimension Pillar with Growth, taking one value from a Fixed list.",
 	})
+}
+
+// The whole log reads in pages, newest first: the first page is the newest
+// changes, and each next page starts just before the last change of the one
+// before it, so together they hold every change once.
+func TestTheDefinitionLogReadsInPages(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	const created = 105
+	for i := 1; i <= created; i++ {
+		h.CreateField(boss, fmt.Sprintf("Field %d", i), domain.FieldNumber, "")
+	}
+
+	first, err := h.Service.DefinitionLog(ctx, 0, 100)
+	if err != nil {
+		t.Fatalf("DefinitionLog, first page: %v", err)
+	}
+	if len(first) != 100 {
+		t.Fatalf("first page holds %d changes, want 100", len(first))
+	}
+	next, err := h.Service.DefinitionLog(ctx, first[len(first)-1].ID, 100)
+	if err != nil {
+		t.Fatalf("DefinitionLog, next page: %v", err)
+	}
+
+	var want []string
+	for i := created; i >= 1; i-- {
+		want = append(want, fmt.Sprintf("Created the Field Field %d, holding a number.", i))
+	}
+	assertSummaries(t, first, want[:100])
+	assertSummaries(t, next, want[100:])
 }

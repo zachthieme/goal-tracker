@@ -13,18 +13,26 @@ const listDefinitionChanges = `-- name: ListDefinitionChanges :many
 SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM definition_changes
 JOIN accounts ON accounts.id = definition_changes.actor_id
+WHERE definition_changes.id < ?1
 ORDER BY definition_changes.id DESC
+LIMIT ?2
 `
+
+type ListDefinitionChangesParams struct {
+	Before   int64
+	PageSize int64
+}
 
 type ListDefinitionChangesRow struct {
 	DefinitionChange DefinitionChange
 	Account          Account
 }
 
-// The whole Definition log, newest first, with the Account that made each
-// change resolved for display.
-func (q *Queries) ListDefinitionChanges(ctx context.Context) ([]ListDefinitionChangesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDefinitionChanges)
+// A page of the whole Definition log, newest first, with the Account that made
+// each change resolved for display: up to page_size changes made before the
+// one with id before.
+func (q *Queries) ListDefinitionChanges(ctx context.Context, arg ListDefinitionChangesParams) ([]ListDefinitionChangesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDefinitionChanges, arg.Before, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

@@ -4,12 +4,15 @@ INSERT INTO definition_changes (actor_id, dimension_id, field_id, summary, creat
 VALUES (?, ?, ?, ?, ?);
 
 -- name: ListDefinitionChanges :many
--- The whole Definition log, newest first, with the Account that made each
--- change resolved for display.
+-- A page of the whole Definition log, newest first, with the Account that made
+-- each change resolved for display: up to page_size changes made before the
+-- one with id before.
 SELECT sqlc.embed(definition_changes), sqlc.embed(accounts)
 FROM definition_changes
 JOIN accounts ON accounts.id = definition_changes.actor_id
-ORDER BY definition_changes.id DESC;
+WHERE definition_changes.id < @before
+ORDER BY definition_changes.id DESC
+LIMIT @page_size;
 
 -- name: ListDefinitionChangesForDimension :many
 -- The Definition log narrowed to one Dimension and its values, newest first.
