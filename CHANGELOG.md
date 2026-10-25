@@ -15,6 +15,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 25, 2026
 
+**Breaking changes:**
+- [ops] **Sessions**: the session cookie is now signed with its purpose (`session:`) in front of its payload, and the OIDC sign-in flow cookie with its own (`oidc-flow:`), so a signature made for one can't pass as the other. Existing sessions are signed out once and everyone signs in again (#496).
+
 **New features:**
 - [ops] `goal-tracker healthcheck` GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port, waiting up to 3 seconds, and exits 0 on a 200, or non-zero with one line on stderr saying why. It reads no other setting and opens no database, and the image's new `HEALTHCHECK` runs it every 30 seconds (#476).
 
@@ -38,6 +41,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A spreadsheet import now refuses an XLSX workbook with a row numbered past 10,000 ("the spreadsheet has more than 10,000 rows; split it and import each part"), and stops reading at that row. A few-KB workbook with a row numbered in the billions used to keep the import reading for minutes, past the request's timeout, because excelize v2.11.0 steps through every missing row number (GO-2026-6685). The limit counts row numbers, not filled rows, and a dry run and a commit refuse such a file alike (#489).
 - [user] Marking someone Departed now ends their sessions, so marking them returned no longer signs a browser from before the departure back in; they sign in again as usual (#490).
 - [user] Marking someone Departed or returned now sends you back only to a page on this app: the return address keeps just the referring page's path and query, and falls back to Goals when that isn't a plain local path (#493).
+- [ops] Every call to the OIDC provider (discovery at startup, the key fetches, and the code exchange and ID-token check at sign-in) gives up after 10 seconds. A provider that doesn't answer stops startup with an error naming the issuer, or shows the "Signing in with your organization didn't work" page, instead of hanging (#496).
 
 **Architecture:**
 - [internal] The sidebar every signed-in page shows loads through one page loader, `Service.Sidebar`, which reads each thing once and only what the sidebar shows, instead of building the whole Home and Follow-ups pages on every request: 11 queries, the same for a Manager two levels up as for an Owner, and for 50 Goals as for 10. The Goal page as its Owner sees it drops from 65 queries to 49, and its `querycount` test now fails any query run twice but `ListAskWalkAccounts`, which the page's loader and the sidebar both need. The counts are unchanged (#465).
