@@ -754,3 +754,27 @@ func TestARefusedLinkDecisionLeavesTheRequestPending(t *testing.T) {
 		t.Errorf("ParentsOf(child) = %+v after refused decisions, want none", got)
 	}
 }
+
+// A link accept by someone other than the parent's Owner is refused with the
+// reason alone, not the error's "not authorized:" prefix.
+func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com") // owns the parent
+	sam := h.SignIn("sam@example.com") // owns the child
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+
+	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/links/%d/accept", ts.URL, link.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+	if got, want := strings.TrimSpace(body), "only the parent's Owner may accept a link"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}

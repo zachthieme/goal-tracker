@@ -240,7 +240,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) {

@@ -7551,3 +7551,23 @@ func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
 		t.Errorf("ListGoals = %d Goals, %v after a refused create, want none", len(goals), err)
 	}
 }
+
+// A Goal posted to /goals without a title is refused with the reason alone,
+// not the error's "validation failed:" prefix.
+func TestCreatingAGoalWithoutATitleAnswersWithTheReason(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/goals", url.Values{"title": {""}, "why_it_matters": {"Some reason."}})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	if got, want := strings.TrimSpace(body), "a Goal needs a title"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}

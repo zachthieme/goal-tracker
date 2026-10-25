@@ -904,9 +904,9 @@ func formInt64s(r *http.Request, key string) []int64 {
 func (s *Server) writeReportError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 	default:
 		s.serverError(w, r, "report action failed", err)
 	}

@@ -72,9 +72,9 @@ func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current dom
 func (s *Server) writeFieldError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 	default:
 		s.serverError(w, r, "field action failed", err)
 	}

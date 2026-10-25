@@ -41,7 +41,7 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, err.Error(), http.StatusForbidden)
+			http.Error(w, domain.Reason(err), http.StatusForbidden)
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		default:

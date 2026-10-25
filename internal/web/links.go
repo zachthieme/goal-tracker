@@ -217,11 +217,13 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCycle):
+		// Not a refusal: ErrCycle's text says the link would make a cycle,
+		// naming only the two Goals' IDs.
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, err.Error(), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:

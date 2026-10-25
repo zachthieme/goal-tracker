@@ -21,7 +21,7 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 			return
 		}
 		s.serverError(w, r, "could not create goal", err)
@@ -73,9 +73,9 @@ func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goal
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrValidation):
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, err.Error(), http.StatusForbidden)
+			http.Error(w, domain.Reason(err), http.StatusForbidden)
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		default:
@@ -258,6 +258,7 @@ func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, current
 	}
 	in, err := metricInputFromForm(r)
 	if err != nil {
+		// Not a refusal: metricInputFromForm's own text names the bad field.
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
@@ -277,6 +278,7 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	}
 	in, err := metricInputFromForm(r)
 	if err != nil {
+		// Not a refusal: metricInputFromForm's own text names the bad field.
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	}
