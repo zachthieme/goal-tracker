@@ -45,6 +45,11 @@ type fakeProvider struct {
 	// endSession advertises an end_session_endpoint in discovery, for
 	// RP-initiated logout.
 	endSession bool
+	// tokenStalls, when set, makes the token endpoint never answer: it holds
+	// each request until the client gives up or the test ends.
+	tokenStalls bool
+	stalled     chan struct{}
+	unstallOnce sync.Once
 
 	mu    sync.Mutex
 	codes map[string]pendingCode
@@ -64,7 +69,7 @@ func newFakeProvider(t *testing.T, claims map[string]any) *fakeProvider {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &fakeProvider{t: t, key: key, claims: claims, codes: map[string]pendingCode{}}
+	p := &fakeProvider{t: t, key: key, claims: claims, codes: map[string]pendingCode{}, stalled: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", p.discovery)
 	mux.HandleFunc("GET /jwks", p.jwks)
@@ -72,8 +77,13 @@ func newFakeProvider(t *testing.T, claims map[string]any) *fakeProvider {
 	mux.HandleFunc("POST /token", p.token)
 	p.srv = httptest.NewServer(mux)
 	t.Cleanup(p.srv.Close)
+	// Runs before Close, which waits for a stalled request to end.
+	t.Cleanup(p.unstall)
 	return p
 }
+
+// unstall lets every stalled token request end.
+func (p *fakeProvider) unstall() { p.unstallOnce.Do(func() { close(p.stalled) }) }
 
 func (p *fakeProvider) issuer() string { return p.srv.URL }
 
@@ -144,6 +154,13 @@ func (p *fakeProvider) authorizeEndpoint(w http.ResponseWriter, r *http.Request)
 // token exchanges a code for an ID token, checking the client's secret and the
 // PKCE verifier.
 func (p *fakeProvider) token(w http.ResponseWriter, r *http.Request) {
+	if p.tokenStalls {
+		select {
+		case <-r.Context().Done():
+		case <-p.stalled:
+		}
+		return
+	}
 	id, secret, ok := r.BasicAuth()
 	if !ok {
 		id, secret = r.FormValue("client_id"), r.FormValue("client_secret")
@@ -213,6 +230,13 @@ func writeJSON(w http.ResponseWriter, v any) {
 // newOIDCServer is the app with OIDC sign-in through p.
 func newOIDCServer(t *testing.T, h *testsupport.Harness, p *fakeProvider) *httptest.Server {
 	t.Helper()
+	return newOIDCServerTimingOut(t, h, p, 0)
+}
+
+// newOIDCServerTimingOut is the app with OIDC sign-in through p, giving up on
+// a call to p after timeout (zero for the app's default).
+func newOIDCServerTimingOut(t *testing.T, h *testsupport.Harness, p *fakeProvider, timeout time.Duration) *httptest.Server {
+	t.Helper()
 	var app http.Handler
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { app.ServeHTTP(w, r) }))
 	t.Cleanup(ts.Close)
@@ -221,6 +245,7 @@ func newOIDCServer(t *testing.T, h *testsupport.Harness, p *fakeProvider) *httpt
 		ClientID:     oidcClientID,
 		ClientSecret: oidcClientSecret,
 		RedirectURL:  ts.URL + "/auth/callback",
+		Timeout:      timeout,
 	})
 	if err != nil {
 		t.Fatalf("NewOIDC: %v", err)
@@ -482,6 +507,44 @@ func TestTheDevelopmentFormIsOffWithOIDC(t *testing.T) {
 	}
 }
 
+// A provider whose token endpoint never answers fails the sign-in with the
+// sign-in page's sentence once the call to it times out, rather than leaving
+// the person waiting on the callback.
+func TestAStalledTokenEndpointFailsTheSignInInsteadOfHanging(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 200 * time.Millisecond
+	h := testsupport.New(t)
+	p := newFakeProvider(t, map[string]any{"email": "noor.haddad@example.com", "email_verified": true})
+	p.tokenStalls = true
+	ts := newOIDCServerTimingOut(t, h, p, timeout)
+	// The app's Close waits for a callback stalled on the provider.
+	t.Cleanup(p.unstall)
+
+	done := make(chan struct{})
+	var resp *http.Response
+	var page string
+	started := time.Now()
+	go func() {
+		defer close(done)
+		_, resp, page = signInThroughProvider(t, ts.URL)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the callback was still waiting on the token endpoint after 10s")
+	}
+	if took := time.Since(started); took > 10*timeout {
+		t.Errorf("the sign-in took %s to fail, want within a few times the %s timeout", took, timeout)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("status %d, want 400", resp.StatusCode)
+	}
+	if msg := textOf(findByTestID(t, parsePage(t, page), "signin-error")); !strings.Contains(msg, "Signing in with your organization didn't work") {
+		t.Errorf("the sign-in page says %q, want that signing in didn't work", msg)
+	}
+}
+
 // An issuer whose discovery fails stops NewOIDC with the issuer in the error,
 // so startup says which provider it couldn't reach.
 func TestNewOIDCNamesAnIssuerItCantDiscover(t *testing.T) {
@@ -496,6 +559,43 @@ func TestNewOIDCNamesAnIssuerItCantDiscover(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), nothing.URL) {
 		t.Errorf("error %q doesn't name the issuer %s", err, nothing.URL)
+	}
+}
+
+// An issuer that accepts the connection but never answers discovery stops
+// NewOIDC, naming the issuer, once the call times out, rather than hanging
+// startup.
+func TestNewOIDCGivesUpOnAnIssuerThatNeverAnswers(t *testing.T) {
+	t.Parallel()
+
+	const timeout = 200 * time.Millisecond
+	release := make(chan struct{})
+	silent := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(silent.Close)
+	// Runs before Close, which waits for the unanswered discovery to end.
+	t.Cleanup(func() { close(release) })
+
+	errs := make(chan error, 1)
+	go func() {
+		_, err := web.NewOIDC(t.Context(), web.OIDCConfig{Issuer: silent.URL, ClientID: oidcClientID, ClientSecret: oidcClientSecret, RedirectURL: "http://localhost:8080/auth/callback", Timeout: timeout})
+		errs <- err
+	}()
+	var err error
+	select {
+	case err = <-errs:
+	case <-time.After(10 * time.Second):
+		t.Fatal("NewOIDC was still waiting on the issuer after 10s")
+	}
+	if err == nil {
+		t.Fatal("NewOIDC discovered a provider that never answers")
+	}
+	if !strings.Contains(err.Error(), silent.URL) {
+		t.Errorf("error %q doesn't name the issuer %s", err, silent.URL)
 	}
 }
 

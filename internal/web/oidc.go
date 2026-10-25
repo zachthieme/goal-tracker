@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -22,16 +23,23 @@ import (
 const idTokenCookie = "gt_id_token"
 
 // flowCookie carries one sign-in's state, nonce and PKCE verifier from
-// /auth/start to /auth/callback, signed like the session cookie.
+// /auth/start to /auth/callback, signed under the session cookie's key for its
+// own purpose (oidcFlowSigning).
 const flowCookie = "gt_oidc"
+
+// defaultOIDCTimeout is how long a call to the provider may take before
+// startup or the sign-in gives up on it.
+const defaultOIDCTimeout = 10 * time.Second
 
 // OIDCConfig is how the app reaches the org's OpenID Connect provider.
 // RedirectURL is the app's /auth/callback, as registered with the provider.
+// Timeout bounds each call to the provider, defaultOIDCTimeout when zero.
 type OIDCConfig struct {
 	Issuer       string
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+	Timeout      time.Duration
 }
 
 // OIDC is the org's OpenID Connect provider, discovered and ready to sign
@@ -39,6 +47,8 @@ type OIDCConfig struct {
 type OIDC struct {
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
+	// client makes every call to the provider, under the config's timeout.
+	client *http.Client
 	// endSession is the provider's RP-initiated logout endpoint, empty when
 	// it has none; signedOutURL is the app's sign-in page, where it sends the
 	// browser back to.
@@ -47,9 +57,15 @@ type OIDC struct {
 }
 
 // NewOIDC discovers the provider at cfg.Issuer. It fails, naming the issuer,
-// when discovery does.
+// when discovery does, or doesn't answer within cfg.Timeout.
 func NewOIDC(ctx context.Context, cfg OIDCConfig) (*OIDC, error) {
-	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = defaultOIDCTimeout
+	}
+	client := &http.Client{Timeout: timeout}
+	// The provider keeps the client for the verifier's key fetches.
+	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, client), cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery at %s: %w", cfg.Issuer, err)
 	}
@@ -64,6 +80,7 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig) (*OIDC, error) {
 		return nil, fmt.Errorf("OIDC redirect URL %q: %w", cfg.RedirectURL, err)
 	}
 	return &OIDC{
+		client:       client,
 		endSession:   discovered.EndSession,
 		signedOutURL: callback.ResolveReference(&url.URL{Path: "/signin"}).String(),
 		oauth: oauth2.Config{
@@ -104,7 +121,7 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 	encoded := base64.RawURLEncoding.EncodeToString(payload)
 	http.SetCookie(w, &http.Cookie{
 		Name:     flowCookie,
-		Value:    encoded + "." + s.sessions.sign(encoded),
+		Value:    encoded + "." + s.sessions.sign(oidcFlowSigning, encoded),
 		Path:     "/auth/",
 		MaxAge:   600,
 		HttpOnly: true,
@@ -231,7 +248,8 @@ func (s *Server) verifyCallback(r *http.Request) (identityClaims, error) {
 			cause:    errors.New("state doesn't match the flow cookie"),
 		}
 	}
-	token, err := s.oidc.oauth.Exchange(r.Context(), q.Get("code"), oauth2.VerifierOption(flow.Verifier))
+	ctx := oidc.ClientContext(r.Context(), s.oidc.client)
+	token, err := s.oidc.oauth.Exchange(ctx, q.Get("code"), oauth2.VerifierOption(flow.Verifier))
 	if err != nil {
 		return identityClaims{}, fmt.Errorf("exchange code: %w", err)
 	}
@@ -239,7 +257,7 @@ func (s *Server) verifyCallback(r *http.Request) (identityClaims, error) {
 	if raw == "" {
 		return identityClaims{}, errors.New("token response has no id_token")
 	}
-	idToken, err := s.oidc.verifier.Verify(r.Context(), raw)
+	idToken, err := s.oidc.verifier.Verify(ctx, raw)
 	if err != nil {
 		return identityClaims{}, fmt.Errorf("verify ID token: %w", err)
 	}
@@ -277,7 +295,7 @@ func (s *Server) readFlow(r *http.Request) (signInFlow, bool) {
 		return signInFlow{}, false
 	}
 	encoded, sig, ok := strings.Cut(c.Value, ".")
-	if !ok || !s.sessions.verify(encoded, sig) {
+	if !ok || !s.sessions.verify(oidcFlowSigning, encoded, sig) {
 		return signInFlow{}, false
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(encoded)
