@@ -40,12 +40,11 @@ type GoalPage struct {
 	Contributors    []Account
 	Delegates       []Account
 	// Viewer is the Account the page is read for. CanCheckin says whether they
-	// may write the Goal's Check-ins (RequireCheckinAuthor), and CanSetValues
-	// whether they may set its Dimension values and Fields
-	// (RequireGoalValueSetter).
-	Viewer       Account
-	CanCheckin   bool
-	CanSetValues bool
+	// may write the Goal's Check-ins (RequireCheckinAuthor), whatever its
+	// Lifecycle, and Permissions what they may do with it now.
+	Viewer      Account
+	CanCheckin  bool
+	Permissions GoalPermissions
 	// NoChangeRefusal is why a No change would be refused (NoChangeRefusal),
 	// asked only when the viewer may check in on the Active Goal and it has a
 	// Check-in to repeat; nil when one would be recorded or isn't on offer.
@@ -87,6 +86,41 @@ type GoalPage struct {
 	// (GoalTimezone), its Milestones are judged in.
 	Now      time.Time
 	Timezone *time.Location
+}
+
+// GoalPermissions says what one viewer may do with a Goal now, each by the
+// rule the command named beside it enforces, so a page offers just what that
+// command would accept from them.
+type GoalPermissions struct {
+	// CheckIn: they write its Check-ins and it takes them now
+	// (SubmitCheckin).
+	CheckIn bool
+	// AddMilestone: the same people, until it is Done or Cancelled
+	// (AddMilestoneAsAuthor).
+	AddMilestone bool
+	// LogDraftHighlight: the same people, while it takes Draft Highlights
+	// (LogDraftHighlight).
+	LogDraftHighlight bool
+	// SetValues: its Owner, a Delegate or an Admin (RequireGoalValueSetter).
+	SetValues bool
+	// AddContributor, ManageDelegates and LinkParent: its Owner, in any
+	// Lifecycle (AddContributor, AddDelegate, RequestLink).
+	AddContributor  bool
+	ManageDelegates bool
+	LinkParent      bool
+	// EditTitleAndWhyItMatters: its Owner or an Admin
+	// (EditTitleAndWhyItMatters).
+	EditTitleAndWhyItMatters bool
+	// HandOff: its Owner or an Admin, while it has a present Owner
+	// (StartHandoff); Reassign: an Admin, once it is Ownerless (ReassignGoal).
+	HandOff  bool
+	Reassign bool
+	// MarkOwnerDeparted and MarkOwnerReturned: an Admin, whichever its Owner
+	// isn't yet (MarkDeparted, MarkReturned); MarkTopLevel: an Admin, to mark
+	// or unmark it (MarkTopLevel).
+	MarkOwnerDeparted bool
+	MarkOwnerReturned bool
+	MarkTopLevel      bool
 }
 
 // GoalPage reads everything the Goal goalID's page shows actorID, running
@@ -446,14 +480,32 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	if p.CanCheckin, err = goalPagePermits(refusal); err != nil {
 		return err
 	}
-	refusal = goalValueSetterRefusal(actorID, g.Owner.ID, delegate, func() error {
+	admin := func() error {
 		if !found {
 			return fmt.Errorf("%w: not an Admin", ErrNotAuthorized)
 		}
 		return adminRefusal(viewer)
-	})
-	if p.CanSetValues, err = goalPagePermits(refusal); err != nil {
+	}
+	setValues, err := goalPagePermits(goalValueSetterRefusal(actorID, g.Owner.ID, delegate, admin))
+	if err != nil {
 		return err
+	}
+	isAdmin := admin() == nil
+	owns := actorID == g.Owner.ID
+	p.Permissions = GoalPermissions{
+		CheckIn:                  p.CanCheckin && LifecycleTakesCheckins(g.Lifecycle),
+		AddMilestone:             p.CanCheckin && milestonesAddable(g.Lifecycle),
+		LogDraftHighlight:        p.CanCheckin && LifecycleTakesDraftHighlights(g.Lifecycle),
+		SetValues:                setValues,
+		AddContributor:           owns,
+		ManageDelegates:          owns,
+		LinkParent:               owns,
+		EditTitleAndWhyItMatters: owns || isAdmin,
+		HandOff:                  (owns || isAdmin) && !g.Ownerless,
+		Reassign:                 isAdmin && g.Ownerless,
+		MarkOwnerDeparted:        isAdmin && !g.Owner.Departed,
+		MarkOwnerReturned:        isAdmin && g.Owner.Departed,
+		MarkTopLevel:             isAdmin,
 	}
 	if !p.CanCheckin {
 		return nil

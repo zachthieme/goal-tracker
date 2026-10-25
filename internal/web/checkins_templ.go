@@ -1148,7 +1148,7 @@ func checkinPage(current *domain.Account, v goalView, form checkinFormData) temp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+			if v.Permissions.CheckIn {
 				templ_7745c5c3_Err = checkinAddBar(form.Lifecycle).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -1260,7 +1260,7 @@ func checkinPage(current *domain.Account, v goalView, form checkinFormData) temp
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+			if v.Permissions.CheckIn {
 				templ_7745c5c3_Err = checkinForm(form).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

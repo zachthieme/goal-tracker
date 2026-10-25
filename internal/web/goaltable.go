@@ -342,24 +342,14 @@ func (c tableColumn) text(row goalTableRow, dates displayDates) string {
 	return ""
 }
 
-// editableGoals names the Goals among rows whose values current may set: those
-// they own or are a Delegate on, or every one for an Admin (CONTEXT.md:
-// Delegate).
+// editableGoals names the Goals among rows whose values current may set
+// (domain.Service.ValueSettableGoals).
 func (s *Server) editableGoals(ctx context.Context, rows []goalRow, current domain.Account) (map[int64]bool, error) {
-	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-	if err != nil {
-		return nil, err
-	}
-	editable := map[int64]bool{}
-	for _, g := range delegated {
-		editable[g.ID] = true
-	}
+	goals := make([]domain.Goal, 0, len(rows))
 	for _, row := range rows {
-		if current.IsAdmin || row.Goal.Owner.ID == current.ID {
-			editable[row.Goal.ID] = true
-		}
+		goals = append(goals, row.Goal)
 	}
-	return editable, nil
+	return s.svc.ValueSettableGoals(ctx, current, goals)
 }
 
 // editURL is this table in edit mode, and viewURL this table out of it.

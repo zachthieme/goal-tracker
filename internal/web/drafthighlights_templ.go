@@ -86,7 +86,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if v.CanCheckin && (draftHighlightsLoggable(v.Goal) || len(v.DraftHighlights) > 0) {
+		if v.CanCheckin && (v.Permissions.LogDraftHighlight || len(v.DraftHighlights) > 0) {
 			templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, swapErrorPageScript)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -95,7 +95,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if !draftHighlightsLoggable(v.Goal) {
+			if !v.Permissions.LogDraftHighlight {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " data-hl-no-edit")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -436,13 +436,6 @@ func draftHighlightKind(kind string) string {
 		return "No kind"
 	}
 	return kind
-}
-
-// draftHighlightsLoggable reports whether the Goal takes Draft Highlights: it
-// does while it still takes Check-ins to offer them at, so not once it is Done
-// or Cancelled.
-func draftHighlightsLoggable(g domain.Goal) bool {
-	return g.Lifecycle != domain.LifecycleDone && g.Lifecycle != domain.LifecycleCancelled
 }
 
 var _ = templruntime.GeneratedTemplate

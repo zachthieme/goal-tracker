@@ -1391,3 +1391,46 @@ func TestRetiredDimensionsRequiredSettingCannotChange(t *testing.T) {
 		t.Errorf("Retired Pillar lost its required setting")
 	}
 }
+
+// Of the Goals asked about, an Account may set the Dimension values and
+// Fields of those they own or are a Delegate on, and an Admin of every one,
+// as setting them allows (CONTEXT.md: Delegate).
+func TestValueSettableGoalsAreThoseSettingValuesAllows(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	rita := h.SignIn("rita@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	admin := h.SignIn("admin@example.com")
+	search := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	signIn := h.ActiveGoal(rita, "Ship sign-in", "People can't get in.")
+	billing := h.ActiveGoal(rita, "Ship billing", "People can't pay.")
+	h.AddDelegate(rita, morgan, signIn.ID)
+	goals := []domain.Goal{search, signIn, billing}
+
+	for _, v := range []struct {
+		name   string
+		viewer domain.Account
+		want   map[int64]bool
+	}{
+		{"an Owner", sam, map[int64]bool{search.ID: true}},
+		{"an Owner of two", rita, map[int64]bool{signIn.ID: true, billing.ID: true}},
+		{"a Delegate", morgan, map[int64]bool{signIn.ID: true}},
+		{"an Admin", admin, map[int64]bool{search.ID: true, signIn.ID: true, billing.ID: true}},
+	} {
+		got, err := h.Service.ValueSettableGoals(ctx, v.viewer, goals)
+		if err != nil {
+			t.Fatalf("ValueSettableGoals for %s: %v", v.name, err)
+		}
+		if !reflect.DeepEqual(got, v.want) {
+			t.Errorf("ValueSettableGoals for %s = %v, want %v", v.name, got, v.want)
+		}
+		for _, g := range goals {
+			err := h.Service.RequireGoalValueSetter(ctx, v.viewer.ID, g.ID)
+			if allowed := err == nil; allowed != got[g.ID] {
+				t.Errorf("%s on %q: ValueSettableGoals says %t, RequireGoalValueSetter says %t", v.name, g.Title, got[g.ID], allowed)
+			}
+		}
+	}
+}

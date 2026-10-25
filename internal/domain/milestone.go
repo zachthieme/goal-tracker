@@ -231,6 +231,17 @@ func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestone
 	return s.authorizeMilestoneChange(ctx, goal.Goal, actorID)
 }
 
+// milestonesAddable reports whether a Goal in lifecycle takes a Milestone
+// added outside a Check-in: until it is Done or Cancelled (CONTEXT.md:
+// Milestone).
+func milestonesAddable(lifecycle string) bool {
+	switch lifecycle {
+	case LifecycleProposed, LifecycleActive, LifecycleOnHold:
+		return true
+	}
+	return false
+}
+
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
 // Goal page, as authorID: only its Owner or a Delegate may, and only while the
 // Goal is Proposed, Active or On Hold. Name and target date are required. An
@@ -254,9 +265,7 @@ func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in A
 			return err
 		}
 		lifecycle := goal.Goal.Lifecycle
-		switch lifecycle {
-		case LifecycleProposed, LifecycleActive, LifecycleOnHold:
-		default:
+		if !milestonesAddable(lifecycle) {
 			return fmt.Errorf("%w: a %s Goal's Milestones can't change", ErrValidation, lifecycle)
 		}
 		name := strings.TrimSpace(in.Name)

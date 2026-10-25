@@ -832,7 +832,7 @@ templ goalPageHeader(v goalView) {
 			<span class="gp-crumb" aria-current="page">{ g.Title }</span>
 		</nav>
 		<div data-testid="goal-actions" class="ph-actions gp-actions">
-			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
+			if v.Permissions.CheckIn {
 				<a class="btn primary sm" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
 				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
 					@noChangeCheckinButton(g.ID, "No change", "btn quiet sm")
