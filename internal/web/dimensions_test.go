@@ -142,7 +142,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 		t.Errorf("an Admin control sits outside the Edit toggle:\n%s", card)
 	}
 	retire := fmt.Sprintf("/dimension-values/%d/retire", dim.Values[0].ID)
-	assertSubmitsAtOnce(t, "Retire", edit, `action="`+retire+`"`)
+	assertSubmitsAtOnce(t, "Retire", edit, retire)
 	if page := readBody(t, postForm(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+retire, url.Values{})); !strings.Contains(page, ">Growth</del>") {
 		t.Errorf("Growth isn't struck through as Retired after Retire:\n%s", page)
 	}
