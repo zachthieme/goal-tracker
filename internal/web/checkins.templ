@@ -1251,7 +1251,7 @@ templ checkinStyles() {
 			.checkin-page.checkin-js>.checkin-context{grid-row:3}
 			.checkin-page:not(.checkin-js) .checkin-js-only{display:none}
 			.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}
-			.checkin-add-label{font-size:13px;font-weight:500;color:var(--color-ink-muted)}
+			.checkin-add-label{font-size:var(--text-secondary);font-weight:500;color:var(--color-ink-muted)}
 			.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 			.checkin-add-bar .hl-add{display:contents}
 			.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}
@@ -1259,12 +1259,12 @@ templ checkinStyles() {
 			.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}
 			.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}
 			.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}
-			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:13px;box-sizing:border-box}
+			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:var(--text-secondary);box-sizing:border-box}
 			.checkin-context>section{display:flex;flex-direction:column;gap:8px}
 			.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}
 			.checkin-context>.checkin-context-children{gap:12px}
 			.checkin-context p{margin:0}
-			.checkin-rail-head{font-size:12px;font-weight:500;line-height:1.5;color:var(--color-ink-muted)}
+			.checkin-rail-head{font-size:var(--text-label);font-weight:500;line-height:1.5;color:var(--color-ink-muted)}
 			.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
 			.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}
 			.checkin-context-dates p{color:var(--color-ink-2)}
@@ -1279,13 +1279,13 @@ templ checkinStyles() {
 			.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}
 			.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}
 			.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}
-			.checkin-form legend{font-weight:600;font-size:13px;padding:0}
-			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:13px;color:var(--color-ink)}
-			.checkin-form .hint{font-size:13px;font-weight:400;color:var(--color-ink-muted)}
+			.checkin-form legend{font-weight:600;font-size:var(--text-secondary);padding:0}
+			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}
+			.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}
 			.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}
 			.checkin-form label[hidden]{display:none}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}
-			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:14px;height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}
+			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}
 			.health-toggle label.badge .dot{--dot-size:12px}
 			.health-toggle input{position:absolute;opacity:0;pointer-events:none}
 			.health-toggle label.r{color:var(--health-r-ink)}
@@ -1322,7 +1322,7 @@ templ checkinStyles() {
 			.checkin-more fieldset{border:none;padding:0;background:none}
 			.checkin-more fieldset>legend{display:none}
 			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
-			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
+			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:var(--text-secondary);color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
 			.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}
 			.checkin-js .checkin-more[open]{padding-bottom:0}
@@ -1341,12 +1341,12 @@ templ checkinStyles() {
 			.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}
 			.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}
 			.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-			.checkin-summary{flex:1;color:var(--color-ink-2);font-size:14px}
+			.checkin-summary{flex:1;color:var(--color-ink-2);font-size:var(--text-body)}
 			.checkin-summary>*{white-space:nowrap}
 			.checkin-submit-bar .btn{flex:none}
 			.checkin-submit-bar .btn.primary{height:44px}
 			html:has(.checkin-submit-bar){scroll-padding-bottom:80px}
-			@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:13px}.checkin-submit-bar .btn.primary{height:48px}}
+			@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:var(--text-secondary)}.checkin-submit-bar .btn.primary{height:48px}}
 			.checkin-history{list-style:none;padding:0;margin:0}
 			.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}
 		</style>

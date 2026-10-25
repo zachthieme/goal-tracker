@@ -371,7 +371,7 @@ func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
 		t.Errorf(".checkin-submit-bar names a colour by hex: %q", bar)
 	}
 	summary := cssRule(t, page, ".checkin-summary")
-	for _, want := range []string{"flex:1", "color:var(--color-ink-2)", "font-size:14px"} {
+	for _, want := range []string{"flex:1", "color:var(--color-ink-2)", "font-size:var(--text-body)"} {
 		if !strings.Contains(summary, want) {
 			t.Errorf(".checkin-summary declares %q, missing %s", summary, want)
 		}
@@ -388,7 +388,7 @@ func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
 
 	phone := map[string]string{
 		".checkin-submit-bar .btn.quiet":   "display:none",
-		".checkin-summary":                 "font-size:13px",
+		".checkin-summary":                 "font-size:var(--text-secondary)",
 		".checkin-submit-bar .btn.primary": "height:48px",
 	}
 	for sel, want := range phone {
@@ -458,7 +458,7 @@ func TestCheckinPageContextStyles(t *testing.T) {
 			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
 		}
 	}
-	if rule, _ := ruleFor(styles, ".checkin-context"); !strings.Contains(rule, "font-size:13px") {
+	if rule, _ := ruleFor(styles, ".checkin-context"); !strings.Contains(rule, "font-size:var(--text-secondary)") {
 		t.Errorf(".checkin-context{%s} isn't in small text", rule)
 	}
 	phone := mediaBlock(t, styles, "@media (max-width:600px)")
@@ -1046,7 +1046,7 @@ func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
 // A Report reads on one heading scale, on the draft and the publication
 // alike: its name leads at 26px (24px on a phone), its section headings sit
 // at 18px under a full-width rule, well apart from what comes before, its Goal
-// titles at 16px, and its block labels recede, 12px and muted. The
+// titles at 16px, and its block labels recede, at the label size and muted. The
 // Exceptions count stays beside its heading, smaller and muted, and the
 // narrative's Insights, Accomplishments and Misses read at 15px (#475).
 func TestReportHeadingScaleStyles(t *testing.T) {
@@ -1067,8 +1067,8 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
-		t.Errorf(".label{%s} isn't a 12px muted label", decls)
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:var(--text-label)") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} isn't a muted label at --text-label", decls)
 	}
 	for name, c := range map[string]struct{ url, column string }{
 		"draft":       {fmt.Sprintf("%s/reports/%d", ts.URL, def.ID), "rp-main"},
@@ -1107,7 +1107,7 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 			"." + c.column + " h2":         {"font-size:18px", "font-weight:650"},
 			"." + c.column + " section>h2": {"border-top:1px solid var(--color-border)", "margin-top:20px"},
 			".rp-curation-head":            {"border-top:1px solid var(--color-border)", "margin-top:20px"},
-			".rp-exceptions>h2>.num":       {"font-size:14px"},
+			".rp-exceptions>h2>.num":       {"font-size:var(--text-body)"},
 			".rp-exceptions>h2+.rp-block":  {"border-top:none"},
 			".rp-card-head h3":             {"font-size:16px", "font-weight:600"},
 			".rp-narrative h3.label":       {"font-size:15px", "font-weight:600"},
@@ -1146,8 +1146,8 @@ func TestReportHealthSummaryIsOneWrappingRowStyles(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "font-weight:500") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
-		t.Errorf(".label{%s} isn't the Report's level 4 label, 12px, 500, muted", decls)
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:var(--text-label)") || !strings.Contains(decls, "font-weight:500") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} isn't the Report's level 4 label, --text-label, 500, muted", decls)
 	}
 	for name, url := range map[string]string{
 		"draft":       fmt.Sprintf("%s/reports/%d", ts.URL, def.ID),
@@ -2132,7 +2132,7 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 	for _, sel := range []string{".gp-section>h2", ".gp-section>.gp-group-head"} {
 		assertGoalsRuleDeclares(t, css, sel, "border-bottom:1px solid var(--color-border)")
 	}
-	assertGoalsRuleDeclares(t, css, ".gp-doc h2", "font-size:13px", "font-weight:600")
+	assertGoalsRuleDeclares(t, css, ".gp-doc h2", "font-size:var(--text-h2)", "font-weight:600")
 	assertGoalsRuleDeclares(t, css, ".gp-rows>li", "border-bottom:1px solid var(--color-border)")
 	lists := findAll(findByTestID(t, page, "goal-highlights"), func(n *html.Node) bool { return n.Data == "ul" })
 	if len(lists) == 0 || !flatFrameHasClass(lists[0], "gp-rows") {
@@ -2141,7 +2141,7 @@ func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 }
 
 // The Why it matters' What goes here? button reads as the muted explanation
-// text it opens, a .explain, at the lead's 13px, a .gp-lead-help.
+// text it opens, a .explain, at the lead's secondary size, a .gp-lead-help.
 func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivationStyles(t *testing.T) {
 	t.Parallel()
 
@@ -2160,7 +2160,7 @@ func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivationStyles(t *testing.T)
 			t.Errorf("What goes here? isn't a .%s: class=%q", class, attrOf(button, "class"))
 		}
 	}
-	assertGoalsRuleDeclares(t, goalsStyleSheetIn(page), ".gp-lead-help", "font-size:13px")
+	assertGoalsRuleDeclares(t, goalsStyleSheetIn(page), ".gp-lead-help", "font-size:var(--text-secondary)")
 	assertGoalsRuleDeclares(t, getBody(t, http.DefaultClient, ts.URL+"/static/app.css"), ".explain", "color:var(--color-ink-muted)")
 }
 
@@ -2340,7 +2340,7 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTPStyles(t *testing.T) {
 		}
 	}
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:var(--text-label)") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
 		t.Errorf("app.css .label{%s} doesn't set a small muted label", decls)
 	}
 }
@@ -2367,5 +2367,103 @@ func TestGoalPageLinkedGoalsLeadWithTheirHealthStyles(t *testing.T) {
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 	if rule, _ := ruleFor(css, ".gp-link-head"); !strings.Contains(rule, "display:flex") || strings.Contains(rule, "column") {
 		t.Errorf("a linked Goal's Health and title don't sit on one line: .gp-link-head{%s}", rule)
+	}
+}
+
+// The type scale is four --text-* tokens on :root, at the laptop's sizes, so
+// one rule can raise them on a touch screen (DESIGN.md § Typography, #513):
+// body copy at 14px, secondary copy and section headings at 13px, labels at
+// 12px. The base rules take their size from them.
+func TestTypeScaleIsTokensStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	root := tokens(tokenBlock(t, css, ":root"))
+	for token, want := range map[string]string{
+		"--text-body":      "14px",
+		"--text-secondary": "13px",
+		"--text-label":     "12px",
+		"--text-h2":        "13px",
+	} {
+		if got := root[token]; got != want {
+			t.Errorf(":root %s is %q, want %s", token, got, want)
+		}
+	}
+	for sel, want := range map[string]string{
+		"body":      "font-size:var(--text-body)",
+		"h2":        "font-size:var(--text-h2)",
+		".small":    "font-size:var(--text-secondary)",
+		".label,th": "font-size:var(--text-label)",
+	} {
+		if decls := cssRule(t, css, "\n"+sel); !strings.Contains(decls, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+	if decls := cssRule(t, css, "\nh2"); !strings.Contains(decls, "font-weight:600") {
+		t.Errorf("h2{%s} isn't 600", decls)
+	}
+	if decls, _ := ruleFor(css, ".label"); !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} doesn't recede in muted ink", decls)
+	}
+}
+
+// On a touch screen, read at arm's length, the scale grows: body copy to
+// 16px, secondary copy and section headings to 15px, and muted copy darkens
+// to the body's ink. Labels keep their size and muted ink, so they recede by
+// colour (DESIGN.md § Typography, #513).
+func TestTouchScreenRaisesTheTypeScaleStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	touch := mediaBlock(t, css, "@media (pointer:coarse)")
+	root, ok := ruleFor(touch, ":root")
+	if !ok {
+		t.Fatalf("@media (pointer:coarse) sets no :root tokens: %s", touch)
+	}
+	raised := tokens(root)
+	for token, want := range map[string]string{
+		"--text-body":      "16px",
+		"--text-secondary": "15px",
+		"--text-h2":        "15px",
+	} {
+		if got := raised[token]; got != want {
+			t.Errorf("on touch %s is %q, want %s", token, got, want)
+		}
+	}
+	if got, ok := raised["--text-label"]; ok {
+		t.Errorf("on touch --text-label is raised to %s; a label keeps its size", got)
+	}
+	if decls, ok := ruleFor(touch, ".muted"); !ok || !strings.Contains(decls, "color:var(--color-ink-2)") {
+		t.Errorf("on touch .muted{%s} isn't the body's ink", decls)
+	}
+	for _, sel := range []string{".label", "th"} {
+		if decls, ok := ruleFor(touch, sel); ok && strings.Contains(decls, "color:") {
+			t.Errorf("on touch %s{%s} is recoloured; a label recedes in muted ink", sel, decls)
+		}
+	}
+}
+
+// No screen style sets a 12, 13 or 14px font size of its own, so the touch
+// screen's scale reaches every page: app.css and each page's style block take
+// a --text-* token instead. The Report Print view keeps its pt sizes
+// (DESIGN.md § Typography, #513).
+func TestNoLiteralTypeScaleSizesStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	literal := regexp.MustCompile(`font-size\s*:\s*1[234]px`)
+	for sheet, styles := range styleSheets(t, css) {
+		if n := len(literal.FindAllString(styles, -1)); n > 0 {
+			t.Errorf("%s sets %d literal 12–14px font sizes, want --text-* tokens", sheet, n)
+		}
 	}
 }

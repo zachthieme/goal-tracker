@@ -393,38 +393,38 @@ templ healthBar(v homeView) {
 templ homeStyles() {
 	<style>
 		.hm-head{display:flex;flex-direction:column;gap:8px;min-width:0}
-		.hm-date{color:var(--color-ink-muted);font-size:13px}
-		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
+		.hm-date{color:var(--color-ink-muted);font-size:var(--text-secondary)}
+		.hm-summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:var(--text-secondary)}
 		.hm-col{display:flex;flex-direction:column;gap:32px;min-width:0}
 		.hm-section{display:flex;flex-direction:column;gap:8px;min-width:0}
-		.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:13px;line-height:1.4;font-weight:600;letter-spacing:normal}
+		.hm-section>h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-size:var(--text-h2);line-height:1.4;font-weight:600;letter-spacing:normal}
 		.hm-count{color:var(--color-ink-muted);font-weight:500;font-variant-numeric:tabular-nums}
 		.hm-group{display:flex;flex-direction:column;gap:4px;margin-top:8px}
-		.hm-group-head{font-size:12px;line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
+		.hm-group-head{font-size:var(--text-label);line-height:1.4;font-weight:500;color:var(--color-ink-muted);letter-spacing:normal;text-transform:none}
 		.hm-list{list-style:none;margin:0;padding:0}
 		.hm-list:empty{display:none}
 		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;min-height:44px;padding:4px 0;border-top:1px solid var(--color-border);box-sizing:border-box}
 		.hm-list>li:last-child{border-bottom:1px solid var(--color-border)}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
-		.hm-what>a{font-size:14px;font-weight:500}
+		.hm-what>a{font-size:var(--text-body);font-weight:500}
 		.hm-what>p:not(.hm-meta){flex-basis:100%}
-		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:13px}
+		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:var(--text-secondary)}
 		.hm-phrase{white-space:nowrap}
-		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:12px;font-weight:500;line-height:20px;box-sizing:border-box}
+		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:var(--text-label);font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
 		.hm-list .badge.as-of{border:1px dashed currentColor}
 		.hm-list>li:has(>.hm-org-row){padding:0}
 		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
 		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
-		.hm-org-name{font-size:14px;font-weight:500}
+		.hm-org-name{font-size:var(--text-body);font-weight:500}
 		.hm-org-row:hover .hm-org-name{text-decoration:underline}
 		.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
-		.hm-actions .btn{height:30px;padding:0 12px;font-size:13px}
-		.hm-btn{height:30px;padding:0 12px;font-size:13px}
+		.hm-actions .btn{height:30px;padding:0 12px;font-size:var(--text-secondary)}
+		.hm-btn{height:30px;padding:0 12px;font-size:var(--text-secondary)}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
-		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--text-secondary);font-weight:600}
 		.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}
 		.hm-bar>span{flex:1 1 0;min-width:2px}
 		.hm-bar>.g{background:var(--health-g-mark)}

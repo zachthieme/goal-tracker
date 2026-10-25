@@ -133,7 +133,7 @@ func TestHomeIsOneSurfaceWithNoCard(t *testing.T) {
 
 // Home's outline reads Your week, then a section heading (h2) for each of
 // Needs you, My org and Your Yellow or Red goals, so no heading skips a level
-// (#386). Each is a 13px, 600 heading with its count in muted text after its
+// (#386). Each is a section-heading-sized, 600 heading with its count in muted text after its
 // name: My org counts the people it lists, and Your Yellow or Red goals its
 // Goals (#391).
 func TestHomeSectionsAreHeadedH2(t *testing.T) {
@@ -168,8 +168,8 @@ func TestHomeSectionsAreHeadedH2(t *testing.T) {
 			t.Errorf("%s isn't headed %s:\n%s", testID, want, section)
 		}
 	}
-	if decls := cssRule(t, page, ".hm-section>h2"); !strings.Contains(decls, "font-size:13px") || !strings.Contains(decls, "font-weight:600") {
-		t.Errorf("a Home section heading isn't 13px at 600: %s", decls)
+	if decls := cssRule(t, page, ".hm-section>h2"); !strings.Contains(decls, "font-size:var(--text-h2)") || !strings.Contains(decls, "font-weight:600") {
+		t.Errorf("a Home section heading isn't --text-h2 at 600: %s", decls)
 	}
 	if decls := cssRule(t, page, ".hm-count"); !strings.Contains(decls, "color:var(--color-ink-muted)") {
 		t.Errorf("a Home section's count isn't muted: %s", decls)

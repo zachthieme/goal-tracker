@@ -402,7 +402,7 @@ func itemEditorStyles() templ.Component {
 			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px}\n\t\t.ie-item{padding-top:12px;border-top:1px solid var(--color-border)}\n\t\t.ie-editor{padding:4px 0 4px 16px;border-left:2px solid var(--color-border-strong)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-size:13px;font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px}\n\t\t.ie-item{padding-top:12px;border-top:1px solid var(--color-border)}\n\t\t.ie-editor{padding:4px 0 4px 16px;border-left:2px solid var(--color-border-strong)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-size:var(--text-secondary);font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
