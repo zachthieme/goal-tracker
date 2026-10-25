@@ -189,7 +189,8 @@ type WhyItMattersRevision struct {
 // EditWhyItMatters replaces a Goal's Why it matters, keeping the previous text as a revision.
 // The new Why it matters is required (CONTEXT.md: Why it matters). authorID records who made
 // the edit, and must be the Goal's Owner or an Admin (ErrNotAuthorized; see
-// RequireGoalOwnerOrAdmin).
+// RequireGoalOwnerOrAdmin). The text and its revision are written together or
+// not at all, in the caller's transaction when it has one.
 func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
 	whyItMatters = strings.TrimSpace(whyItMatters)
 	if whyItMatters == "" {
@@ -199,19 +200,25 @@ func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatte
 		return Goal{}, err
 	}
 
-	if _, err := s.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{
-		WhyItMatters: whyItMatters,
-		ID:           goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("set why it matters: %w", err)
-	}
-	if _, err := s.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
-		GoalID:       goalID,
-		WhyItMatters: whyItMatters,
-		AuthorID:     authorID,
-		CreatedAt:    s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return Goal{}, fmt.Errorf("record why it matters revision: %w", err)
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{
+			WhyItMatters: whyItMatters,
+			ID:           goalID,
+		}); err != nil {
+			return fmt.Errorf("set why it matters: %w", err)
+		}
+		if _, err := tx.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
+			GoalID:       goalID,
+			WhyItMatters: whyItMatters,
+			AuthorID:     authorID,
+			CreatedAt:    tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("record why it matters revision: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
 }

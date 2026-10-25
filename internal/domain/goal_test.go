@@ -365,6 +365,74 @@ func TestEditWhyItMattersKeepsEveryRevision(t *testing.T) {
 	}
 }
 
+// EditWhyItMatters is all-or-nothing on its own: called with no transaction
+// around it, it writes the new text and one revision, and inside a caller's
+// transaction that rolls back it keeps neither (#504).
+func TestEditWhyItMattersCommitsWithItsCallerOrOnItsOwn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "First why.")
+	ctx := context.Background()
+
+	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Second why.", owner.ID); err != nil {
+		t.Fatalf("EditWhyItMatters on its own: %v", err)
+	}
+	errCallerFailed := errors.New("caller failed after the edit")
+	err := h.Service.WithinTx(ctx, func(tx *domain.Service) error {
+		if _, err := tx.EditWhyItMatters(ctx, g.ID, "Third why.", owner.ID); err != nil {
+			return err
+		}
+		return errCallerFailed
+	})
+	if !errors.Is(err, errCallerFailed) {
+		t.Fatalf("WithinTx: err = %v, want the caller's error", err)
+	}
+
+	got, err := h.Service.ViewGoal(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.WhyItMatters != "Second why." {
+		t.Errorf("Why it matters = %q, want the edit made on its own and not the rolled-back one", got.WhyItMatters)
+	}
+	revs, err := h.Service.ListWhyItMattersRevisions(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
+	}
+	if len(revs) != 2 || revs[0].WhyItMatters != "Second why." {
+		t.Errorf("revisions = %+v, want the first and one for the edit made on its own", revs)
+	}
+}
+
+// EditWhyItMatters called on its own keeps nothing when its revision can't be
+// recorded, rather than a new Why it matters with no revision behind it (#504).
+func TestEditWhyItMattersKeepsNothingWhenItsRevisionFails(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "First why.")
+	ctx := context.Background()
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_revision BEFORE INSERT ON why_it_matters_revisions
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Second why.", owner.ID); err == nil {
+		t.Fatal("EditWhyItMatters succeeded despite the injected failure")
+	}
+
+	got, err := h.Service.ViewGoal(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.WhyItMatters != "First why." {
+		t.Errorf("Why it matters after a failed edit = %q, want it unchanged", got.WhyItMatters)
+	}
+}
+
 func TestEditWhyItMattersRejectsEmpty(t *testing.T) {
 	t.Parallel()
 
