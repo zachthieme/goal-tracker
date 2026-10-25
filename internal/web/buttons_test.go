@@ -338,16 +338,20 @@ func stripComments(css string) string {
 	return regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(css, "")
 }
 
-// declValue returns the value decls gives property.
+// declValue returns the value decls gives property: the last, as the cascade
+// applies it, when decls joins more than one rule (ruleFor).
 func declValue(t *testing.T, decls, property string) string {
 	t.Helper()
+	value, found := "", false
 	for _, d := range strings.Split(decls, ";") {
 		if p, v, ok := strings.Cut(d, ":"); ok && strings.TrimSpace(p) == property {
-			return strings.TrimSpace(v)
+			value, found = strings.TrimSpace(v), true
 		}
 	}
-	t.Fatalf("no %s in %s", property, decls)
-	return ""
+	if !found {
+		t.Fatalf("no %s in %s", property, decls)
+	}
+	return value
 }
 
 // resolve follows value through var() references in theme to a literal.

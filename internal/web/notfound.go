@@ -31,13 +31,14 @@ func (s *Server) handleUnknown(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowedMethods lists, sorted, the methods some route other than a catch-all
-// serves r's path with, plus HEAD when GET is among them.
+// serves r's path with, plus HEAD when GET is among them. "GET /" is the index
+// page's route for / itself, and a catch-all for every other path.
 func (s *Server) allowedMethods(r *http.Request) []string {
 	var allowed []string
 	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		probe := r.Clone(r.Context())
 		probe.Method = m
-		if _, pattern := s.mux.Handler(probe); pattern != "" && pattern != "/" && pattern != "GET /" {
+		if _, pattern := s.mux.Handler(probe); pattern != "" && pattern != "/" && (pattern != "GET /" || r.URL.Path == "/") {
 			allowed = append(allowed, m)
 		}
 	}

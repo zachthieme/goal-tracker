@@ -1452,7 +1452,8 @@ func TestReportHealthSummaryIsOneWrappingRowStyles(t *testing.T) {
 // aria-hidden, so a screen reader doesn't say "middle dot" between the pairs.
 // It takes no room in the pair: it hangs to the pair's left, centred in the
 // row's column gap, and the row clips what lies past its sides, so a pair that
-// starts a wrapped line starts it without its "·" (#532).
+// starts a wrapped line starts it without its "·" (#532). "Health" sits as
+// far from the first pair as a chip from its count, not a whole column gap.
 func TestReportHealthSummarySeparatorKeepsWithItsPairStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1505,7 +1506,8 @@ func TestReportHealthSummarySeparatorKeepsWithItsPairStyles(t *testing.T) {
 		if !strings.Contains(row, "overflow-x:clip") {
 			t.Errorf("%s: the Health summary doesn't clip a separator hanging past its side: .rp-body .rp-summary{%s}", name, row)
 		}
-		if pair, _ := ruleFor(styles, ".rp-summary-pair"); !strings.Contains(pair, "position:relative") {
+		pair, _ := ruleFor(styles, ".rp-summary-pair")
+		if !strings.Contains(pair, "position:relative") {
 			t.Errorf("%s: a Health summary pair isn't what its separator hangs from: .rp-summary-pair{%s}", name, pair)
 		}
 		gap := regexp.MustCompile(`gap:\S+ (\d+px)`).FindStringSubmatch(row)
@@ -1517,6 +1519,17 @@ func TestReportHealthSummarySeparatorKeepsWithItsPairStyles(t *testing.T) {
 		}
 		if gap == nil || !strings.Contains(sep, "width:"+gap[1]) {
 			t.Errorf("%s: a Health summary separator isn't as wide as the column gap it sits in: .rp-body .rp-summary{%s}, .rp-summary-sep{%s}", name, row, sep)
+		}
+		px := func(v string) int {
+			n, err := strconv.Atoi(strings.TrimSuffix(v, "px"))
+			if err != nil {
+				t.Fatalf("%s: %q isn't a length in px", name, v)
+			}
+			return n
+		}
+		label, _ := ruleFor(styles, ".rp-summary>.label")
+		if gap == nil || px(gap[1])+px(declValue(t, label, "margin-right")) != px(declValue(t, pair, "gap")) {
+			t.Errorf("%s: the gap after \"Health\" isn't the gap inside a pair: .rp-body .rp-summary{%s}, .rp-summary>.label{%s}, .rp-summary-pair{%s}", name, row, label, pair)
 		}
 	}
 }
@@ -3800,5 +3813,17 @@ func TestStyleHelpersRuleForReadsEveryRuleForTheSelector(t *testing.T) {
 	}
 	if decls, ok := ruleFor(css, ".d"); ok {
 		t.Errorf("ruleFor(%q, .d) = %q, found, want no rule", css, decls)
+	}
+}
+
+// declValue reads the value the cascade applies, the last one decls gives the
+// property, so a later rule ruleFor joins overrides an earlier one (#544).
+func TestStyleHelpersDeclValueReadsTheLastValueForTheProperty(t *testing.T) {
+	t.Parallel()
+
+	css := `.a{color:red}.b{margin:0}.a{color:blue}`
+	decls, _ := ruleFor(css, ".a")
+	if got := declValue(t, decls, "color"); got != "blue" {
+		t.Errorf("color in .a's rules %q is %q, want blue, the later rule's", decls, got)
 	}
 }

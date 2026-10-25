@@ -363,7 +363,8 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 }
 
 // A publication's print page carries no script, as the app's pages do: so its
-// PDF needs none, and the renderer runs Chromium with JavaScript off.
+// PDF needs none, and the renderer serves it to Chromium under a
+// script-src 'none' Content-Security-Policy, which stops any script.
 func TestAPublicationsPrintPageNeedsNoScriptOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -376,7 +377,7 @@ func TestAPublicationsPrintPageNeedsNoScriptOverHTTP(t *testing.T) {
 		t.Fatal("publication page has no <script> to tell the print page's lack of one from")
 	}
 	if scripts := findAll(getPage(t, client, ts.URL+f.pubPath+"/print"), isScript); len(scripts) != 0 {
-		t.Errorf("print page has %d <script> elements, want none: the PDF renders with JavaScript off; first:\n%s", len(scripts), renderNode(scripts[0]))
+		t.Errorf("print page has %d <script> elements, want none: the PDF renders under script-src 'none', which stops scripts; first:\n%s", len(scripts), renderNode(scripts[0]))
 	}
 }
 
