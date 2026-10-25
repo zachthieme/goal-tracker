@@ -33,6 +33,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] Migration 0061 indexes the Nudges by day, each Goal's Check-ins newest first (replacing `idx_checkins_goal`) and the open Action Items by due date, so the Follow-ups page, the latest-Check-in lookups and the overdue and open Action Item lists stop scanning or sorting those tables as they grow (#500).
 - [ops] Sent email, and email given up on after five failed tries, is now deleted 90 days on, and each Undo token once its 15 minutes have passed; email still being tried is kept. The app prunes at startup and hourly, logging `msg="pruned stale rows"` at `INFO` with how many of each it deleted, or an `ERROR` (#498).
 - [ops] Email log lines (the development sender's, and the outbox's retry, give-up and unreadable-row lines) now name the recipient by `account_id` instead of their address. Migration 0062 rebuilds `email_outbox` with the recipient's `account_id`, dropping any queued email to an address no Account has (#498).
+- [internal] The weekly reminders read every Active Goal's Freshness and Delegates in a fixed number of queries, with the new `ListDelegatesForGoals`, rather than two per Goal (#497).
 
 **Bug fixes:**
 - [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
@@ -49,6 +50,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Goal's Owner can add a Contributor to it in any Lifecycle: the Goal page's Contributors block now offers Manage on an Active, On Hold, Done or Cancelled Goal too, not just a Proposed one, matching what adding a Contributor already allowed (#505).
 - [ops] An email in the outbox whose next attempt time can't be read no longer stops every email queued after it: it is given up on, with `last_error` saying why, logged once at `ERROR` with its `email_outbox_id` and `account_id`, and skipped (#498).
 - [internal] The e2e scenario for a Report's Comment and reply checks that each email went to the right person by their `account_id` in the server log, which no longer names addresses (#498).
+- [user] A restart no longer skips a week's emails: the weekly reminders and digests record which week's slot they last went out for (migration 0063 adds `scheduled_runs`), so a slot missed while the server was down is sent once, late, when it next starts, however many weeks it missed, and a slot is never sent twice. On the very first start nothing is sent until the next slot (#497).
+- [user] The weekly emails and Nudges are queued in the email outbox and tried again while sending fails, like comment alerts. A Nudge made while the mail server is down now succeeds, and the 502 "Nudge not emailed" page is gone (#497).
 
 **Security:**
 - [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
@@ -103,6 +106,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `CLAUDE.md` gives the measured gate times (`make check` about 3½ minutes, `internal/web` about 3 of it) and asks for a tool timeout of at least 5 minutes, and lists everything `internal/domain/domain.go` holds (#511).
 - [user] The code is licensed under MIT: anyone may use, copy, modify and distribute it, keeping the copyright notice. `LICENSE` holds the text, and the README says so (#524).
 - [internal] `docs/install.md` says how long email and Undo tokens are kept, and that email log lines name the recipient's Account ID (#498).
+- [ops] README.md's "Weekly emails" and `docs/install.md` say a slot missed while the server was down is sent once when it next starts, and that the weekly emails and Nudges are queued and retried like the other emails (#497).
 
 ### Collected changes — October 24, 2026
 
