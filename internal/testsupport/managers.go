@@ -8,7 +8,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // Org).
 func (h *Harness) SetManager(person, manager domain.Account) {
 	h.T.Helper()
-	if _, err := h.DB.Exec(`UPDATE accounts SET manager_id = ? WHERE id = ?`, manager.ID, person.ID); err != nil {
+	if _, err := h.DB.ExecContext(h.T.Context(), `UPDATE accounts SET manager_id = ? WHERE id = ?`, manager.ID, person.ID); err != nil {
 		h.T.Fatalf("SetManager(%s, %s): %v", person.Email, manager.Email, err)
 	}
 }

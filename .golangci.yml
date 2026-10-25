@@ -12,9 +12,30 @@ linters:
     # run in parallel says why with //nolint:paralleltest. Subtests may stay
     # serial.
     - paralleltest
+    # A request or query made without a context.
+    - noctx
+    # An HTTP response whose body is never closed.
+    - bodyclose
+    # An error compared with == or a type switch, or wrapped with %v, so a
+    # wrapped error isn't found.
+    - errorlint
+    # A function that drops the context its caller has.
+    - contextcheck
   settings:
     paralleltest:
       ignore-missing-subtests: true
+  exclusions:
+    rules:
+      # contextcheck can't follow a context through a struct field, and templ's
+      # generated components take theirs in one: a component's closures read
+      # it from templruntime.GeneratedComponentInput.Context, which holds the
+      # ctx its Render was given (render passes the request's). So a chain
+      # into a component's closures (page->page$1->...) is reported as
+      # dropping the context, though nothing there makes a new one.
+      - path: ^internal/web/
+        linters:
+          - contextcheck
+        text: "Function `(\\w+->)*\\w+->\\w+\\$1"
 # Fail on hand-written Go code that isn't gofmt-formatted (simplify is on by
 # default). golangci-lint skips generated files here; make generate-check
 # guards those by regenerating them and diffing against what is committed.

@@ -22,7 +22,7 @@ var EnumCheckTables = []string{
 // default where it can, so a row copied across a rebuild without one shows.
 func ArrangeEnumCheckRows(t *testing.T, sqlDB *sql.DB) {
 	t.Helper()
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO accounts (id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject) VALUES
 			(1, 'sam@example.com', 1, '2026-01-02T00:00:00Z', 0, 'Sam', NULL, 'Europe/Paris', 'subject-sam'),
 			(2, 'pat@example.com', 0, '2026-01-02T00:00:00Z', 1, 'Pat', 1, '', NULL);

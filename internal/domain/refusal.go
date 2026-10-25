@@ -40,7 +40,7 @@ func Reason(err error) string {
 	if !errors.As(err, &r) {
 		return err.Error()
 	}
-	switch e := err.(type) {
+	switch e := err.(type) { //nolint:errorlint // walks the joined tree itself, to join every refusal's reason; errors.As would stop at the first
 	case reasoned:
 		return e.shownReason()
 	case interface{ Unwrap() []error }:

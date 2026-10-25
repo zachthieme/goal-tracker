@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -27,7 +26,7 @@ import (
 // It is a scenario builder for the surfaces that list Milestones.
 func (h *Harness) MilestoneMarksGoal(owner domain.Account) domain.Goal {
 	h.T.Helper()
-	ctx := context.Background()
+	ctx := h.T.Context()
 	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
 
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")

@@ -30,6 +30,7 @@ func postSignInFetchedFrom(t *testing.T, base, site string) int {
 	if err != nil {
 		t.Fatalf("POST /signin from %q: %v", site, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	return resp.StatusCode
 }
@@ -79,6 +80,7 @@ func eachSecurityHeadersResponse(t *testing.T, base string, check func(what stri
 		if err != nil {
 			t.Fatalf("%s %s: %v", c.method, c.path, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		check(fmt.Sprintf("%s (%s %s, status %d)", c.what, c.method, c.path, resp.StatusCode), resp)
 	}

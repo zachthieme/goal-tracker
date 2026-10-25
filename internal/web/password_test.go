@@ -25,6 +25,7 @@ const samsPassword = "correct horse battery"
 func passwordSignInCookie(t *testing.T, base, emailAddr, password string) *http.Cookie {
 	t.Helper()
 	resp := postForm(t, noRedirects(http.DefaultClient), base+"/signin", url.Values{"email": {emailAddr}, "password": {password}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/home" {
 		t.Fatalf("password sign-in as %s: status %d to %q, want 303 to /home:\n%s", emailAddr, resp.StatusCode, resp.Header.Get("Location"), body)
@@ -64,6 +65,7 @@ func TestSettingAPasswordSignsThePersonInAndEndsTheirOtherSessions(t *testing.T)
 	}
 
 	resp := postForm(t, client, ts.URL+"/set-password", url.Values{"token": {token}, "password": {"a brand new password"}, "confirm": {"a brand new password"}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
 		t.Fatalf("after setting a password: status %d at %s, want 200 at /home:\n%s", resp.StatusCode, resp.Request.URL.Path, body)
@@ -79,6 +81,7 @@ func TestSettingAPasswordSignsThePersonInAndEndsTheirOtherSessions(t *testing.T)
 func postPasswordSignIn(t *testing.T, base, emailAddr, password string) (int, string) {
 	t.Helper()
 	resp := postForm(t, noRedirects(http.DefaultClient), base+"/signin", url.Values{"email": {emailAddr}, "password": {password}})
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, readBody(t, resp)
 }
 
@@ -196,6 +199,7 @@ func TestADepartedPersonsRightPasswordIsRefusedWith403(t *testing.T) {
 	}
 
 	resp := postForm(t, noRedirects(http.DefaultClient), ts.URL+"/signin", url.Values{"email": {"sam@example.com"}, "password": {samsPassword}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want 403", resp.StatusCode)
@@ -381,10 +385,11 @@ func TestSignedOutPasswordPagesAreAColumnUnderTheMark(t *testing.T) {
 		{"set-password form", "/set-password?token=" + url.QueryEscape(token), "form", "set-password-card"},
 		{"set-password notice", "/set-password?token=not-a-token", "div", "set-password-card"},
 	} {
-		resp, err := http.Get(ts.URL + tc.path)
+		resp, err := ctxGet(t, http.DefaultClient, ts.URL+tc.path)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		pageElement(t, page, tc.tag, tc.testID)
 		if above := between(t, page, "<main", `data-testid="`+tc.testID+`"`); !strings.Contains(above, `class="brand-mark si-mark"`) {
@@ -411,10 +416,11 @@ func TestABadSetPasswordLinkIsGone(t *testing.T) {
 	h.Clock.Advance(72 * time.Hour)
 
 	for name, token := range map[string]string{"unknown": "not-a-token", "missing": "", "used": used, "expired": expired} {
-		resp, err := http.Get(ts.URL + "/set-password?token=" + url.QueryEscape(token))
+		resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/set-password?token="+url.QueryEscape(token))
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusGone {
 			t.Errorf("GET with a %s link: status %d, want 410", name, resp.StatusCode)
@@ -442,10 +448,11 @@ func TestTheSetPasswordPageSendsNoReferer(t *testing.T) {
 
 	h := testsupport.New(t)
 	ts := newPasswordServer(t, h)
-	resp, err := http.Get(ts.URL + "/set-password?token=" + url.QueryEscape(passwordLinkToken(t, h, "sam@example.com")))
+	resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/set-password?token="+url.QueryEscape(passwordLinkToken(t, h, "sam@example.com")))
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /set-password: status %d, want 200", resp.StatusCode)
@@ -470,6 +477,7 @@ func TestARefusedPasswordShowsTheFormAgainWithTheReason(t *testing.T) {
 		"too long":   {strings.Repeat("a", 1025), strings.Repeat("a", 1025), "A password can be at most 1024 bytes."},
 	} {
 		resp := postForm(t, noRedirects(http.DefaultClient), ts.URL+"/set-password", url.Values{"token": {token}, "password": {tc.password}, "confirm": {tc.confirm}})
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("%s: status %d, want 422", name, resp.StatusCode)

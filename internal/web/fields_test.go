@@ -44,6 +44,7 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 		{"name": {"Kickoff"}, "type": {domain.FieldDate}},
 	} {
 		resp := postForm(t, boss, ts.URL+"/fields", f)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("define %s: status %d; body:\n%s", f.Get("name"), resp.StatusCode, body)
 		}
@@ -105,6 +106,7 @@ func TestNonAdminCannotDefineFields(t *testing.T) {
 		t.Errorf("non-Admin gets the define-a-Field form:\n%s", page)
 	}
 	resp := postForm(t, sam, ts.URL+"/fields", url.Values{"name": {"Notes"}, "type": {domain.FieldLongText}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin define a Field: status %d, want 403", resp.StatusCode)
 	}
@@ -134,27 +136,27 @@ func TestAdminRetiresAndRestoresAFieldOverHTTP(t *testing.T) {
 	if page := getBody(t, sam, ts.URL+"/fields"); strings.Contains(page, retire) {
 		t.Errorf("non-Admin gets the Retire button:\n%s", page)
 	}
-	if resp := postForm(t, sam, ts.URL+retire, nil); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin retire: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, ts.URL+retire, nil); status != http.StatusForbidden {
+		t.Errorf("non-Admin retire: status %d, want 403", status)
 	}
 
 	card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
 	if form := openTag(between(t, card, `action="`+retire+`"`, "")); !strings.Contains(form, `onsubmit="return confirm(`) {
 		t.Errorf("Retire doesn't ask for confirmation: %s", form)
 	}
-	if resp := postForm(t, boss, ts.URL+retire, nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("retire: status %d", resp.StatusCode)
+	if status := postFormStatus(t, boss, ts.URL+retire, nil); status != http.StatusOK {
+		t.Fatalf("retire: status %d", status)
 	}
 	card = pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
 	if !strings.Contains(card, `data-testid="field-retired"`) || !strings.Contains(card, `action="`+restore+`"`) {
 		t.Errorf("a Retired Field's card isn't flagged retired with a Restore button:\n%s", card)
 	}
 
-	if resp := postForm(t, sam, ts.URL+restore, nil); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin restore: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, ts.URL+restore, nil); status != http.StatusForbidden {
+		t.Errorf("non-Admin restore: status %d, want 403", status)
 	}
-	if resp := postForm(t, boss, ts.URL+restore, nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("restore: status %d", resp.StatusCode)
+	if status := postFormStatus(t, boss, ts.URL+restore, nil); status != http.StatusOK {
+		t.Fatalf("restore: status %d", status)
 	}
 	card = pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
 	if strings.Contains(card, `data-testid="field-retired"`) || !strings.Contains(card, `action="`+retire+`"`) {
@@ -207,6 +209,7 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 		}
 		for _, f := range fields {
 			resp := postForm(t, client, post, url.Values{"field_id": {fmt.Sprint(f.field.ID)}, "value": {f.value}})
+			defer func() { _ = resp.Body.Close() }()
 			if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 				t.Fatalf("%s sets %s: status %d; body:\n%s", email, f.field.Name, resp.StatusCode, body)
 			}
@@ -219,6 +222,7 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 		}
 		for _, f := range fields {
 			resp := postForm(t, client, post, url.Values{"field_id": {fmt.Sprint(f.field.ID)}, "value": {f.value}, "clear": {"1"}})
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("%s clears %s: status %d", email, f.field.Name, resp.StatusCode)
 			}
@@ -242,6 +246,7 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 		t.Errorf("a Contributor gets a Field input:\n%s", page)
 	}
 	resp := postForm(t, cory, post, url.Values{"field_id": {fmt.Sprint(fields[0].field.ID)}, "value": {"9"}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("a Contributor sets a Field: status %d, want 403", resp.StatusCode)
 	}
@@ -267,6 +272,7 @@ func TestGoalPageRefusesAFieldValueOfTheWrongType(t *testing.T) {
 	}{{budget, "abc"}, {kickoff, "tomorrow"}} {
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID),
 			url.Values{"field_id": {fmt.Sprint(tc.field.ID)}, "value": {tc.value}})
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, tc.field.Name) {
 			t.Errorf("%s = %q: status %d, body %q; want 422 naming %s", tc.field.Name, tc.value, resp.StatusCode, body, tc.field.Name)
@@ -372,17 +378,19 @@ func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
 	if page := getBody(t, sam, ts.URL+"/fields"); strings.Contains(page, action) {
 		t.Errorf("non-Admin gets the required control:\n%s", page)
 	}
-	if resp := postForm(t, sam, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin mark required: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, requiredURL, url.Values{"required": {"1"}}); status != http.StatusForbidden {
+		t.Errorf("non-Admin mark required: status %d, want 403", status)
 	}
-	if resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusOK {
+	resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("mark required: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
 	}
 	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); !strings.Contains(got, "Required") {
 		t.Errorf("card doesn't say Budget is required: %s", got)
 	}
 
-	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
+	postFormStatus(t, boss, requiredURL, url.Values{"required": {"0"}})
 	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); strings.Contains(got, "Required") {
 		t.Errorf("card still says Budget is required: %s", got)
 	}
@@ -401,6 +409,7 @@ func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	resp := postForm(t, client, ts.URL+"/fields", url.Values{"name": {"PILLAR"}, "type": {domain.FieldShortText}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Pillar is already a Dimension's name") {
 		t.Errorf("define PILLAR: status %d, body %q; want 422 naming the Dimension", resp.StatusCode, body)
 	}
@@ -420,7 +429,7 @@ func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
 	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
 	h.SetGoalField(pat, goal, budget, "200")
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -428,6 +437,7 @@ func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "pat@example.com")
 
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"350"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("setting Budget: status %d, want 500; body:\n%s", resp.StatusCode, body)
 	}
@@ -450,13 +460,13 @@ func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 	action := fmt.Sprintf(`action="/fields/%d/required"`, budget.ID)
 
-	postForm(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
 	card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
 	if strings.Contains(card, `data-testid="field-required"`) || strings.Contains(card, action) || strings.Contains(card, "Make it") {
 		t.Errorf("Retired Budget's card shows the required mark or control:\n%s", card)
 	}
 
-	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
 	card = pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
 	if !strings.Contains(card, `data-testid="field-required"`) || !strings.Contains(between(t, card, action, "</form>"), "Make it optional") {
 		t.Errorf("restored Budget's card doesn't show it required, with a control to make it optional:\n%s", card)
@@ -482,6 +492,7 @@ func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, admin, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"1200"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("the Admin sets Budget: status %d; body:\n%s", resp.StatusCode, body)
 	}
@@ -504,14 +515,14 @@ func TestRetiredFieldsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 	requiredURL := fmt.Sprintf("%s/fields/%d/required", ts.URL, budget.ID)
 
-	postForm(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
 	for _, required := range []string{"0", "1"} {
-		if resp := postForm(t, boss, requiredURL, url.Values{"required": {required}}); resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("required=%s on Retired Budget: status %d, want 422", required, resp.StatusCode)
+		if status := postFormStatus(t, boss, requiredURL, url.Values{"required": {required}}); status != http.StatusUnprocessableEntity {
+			t.Errorf("required=%s on Retired Budget: status %d, want 422", required, status)
 		}
 	}
 
-	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
 	if card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field"); !strings.Contains(card, `data-testid="field-required"`) {
 		t.Errorf("restored Budget isn't required:\n%s", card)
 	}

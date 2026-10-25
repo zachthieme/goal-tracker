@@ -35,6 +35,7 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, samClient, goalURL+"/top-level", url.Values{"top_level": {"true"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Owner marking Top-level: status %d, want %d", resp.StatusCode, http.StatusForbidden)

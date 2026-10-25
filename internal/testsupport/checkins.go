@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -12,7 +11,7 @@ import (
 // Active Goal, so tests that exercise them arrange one through this builder.
 func (h *Harness) ActiveGoal(owner domain.Account, title, whyItMatters string) domain.Goal {
 	h.T.Helper()
-	ctx := context.Background()
+	ctx := h.T.Context()
 	g := h.CreateGoal(owner, title, whyItMatters)
 	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
@@ -35,7 +34,7 @@ func (h *Harness) ActiveGoal(owner domain.Account, title, whyItMatters string) d
 // a scenario builder for arranging a Goal's Check-in history.
 func (h *Harness) Checkin(author domain.Account, goalID int64, health, status string, path string, pathTargetDate time.Time) domain.Checkin {
 	h.T.Helper()
-	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	c, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:         goalID,
 		AuthorID:       author.ID,
 		Health:         health,
@@ -54,7 +53,7 @@ func (h *Harness) Checkin(author domain.Account, goalID int64, health, status st
 // (CONTEXT.md: Date Slip), failing the test on error.
 func (h *Harness) CheckinMovingPath(author domain.Account, goalID int64, health, status, path string, pathTargetDate time.Time, reason string) domain.Checkin {
 	h.T.Helper()
-	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	c, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:               goalID,
 		AuthorID:             author.ID,
 		Health:               health,
@@ -81,7 +80,7 @@ func (h *Harness) CheckinWithHighlight(author domain.Account, goalID int64, kind
 // given Highlights in order, failing the test on error.
 func (h *Harness) CheckinWithHighlights(author domain.Account, goalID int64, highlights ...domain.HighlightInput) domain.Checkin {
 	h.T.Helper()
-	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	c, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:     goalID,
 		AuthorID:   author.ID,
 		Health:     domain.HealthGreen,
@@ -99,7 +98,7 @@ func (h *Harness) CheckinWithHighlights(author domain.Account, goalID int64, hig
 func (h *Harness) OnHoldGoal(owner domain.Account, title, whyItMatters, reason string) domain.Goal {
 	h.T.Helper()
 	g := h.ActiveGoal(owner, title, whyItMatters)
-	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	if _, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:          g.ID,
 		AuthorID:        owner.ID,
 		Status:          "Putting this On Hold.",
@@ -116,7 +115,7 @@ func (h *Harness) OnHoldGoal(owner domain.Account, title, whyItMatters, reason s
 // failing the test on error.
 func (h *Harness) EndGoalInCheckin(owner domain.Account, goalID int64, lifecycle string) {
 	h.T.Helper()
-	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	if _, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:          goalID,
 		AuthorID:        owner.ID,
 		Status:          "Wrapping this up.",

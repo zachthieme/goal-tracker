@@ -193,30 +193,29 @@ func TestARefusedLinkRemovalUndoSpendsItsToken(t *testing.T) {
 func TestUndoingALinkRejectionTakesItsToken(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	t.Run("token", func(t *testing.T) {
 		h := testsupport.New(t)
 		pat, sam, child, parent, link := pendingAcrossOwners(t, h)
-		rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+		rejection, err := h.Service.RejectLink(t.Context(), link.ID, pat.ID)
 		if err != nil {
 			t.Fatalf("RejectLink: %v", err)
 		}
 		if rejection.UndoToken == "" {
 			t.Fatal("RejectLink gave no Undo token")
 		}
-		removal, err := h.Service.RemoveLink(ctx, h.RequestLink(sam, child, h.CreateGoal(sam, "Other", "why"), "").ID, sam.ID)
+		removal, err := h.Service.RemoveLink(t.Context(), h.RequestLink(sam, child, h.CreateGoal(sam, "Other", "why"), "").ID, sam.ID)
 		if err != nil {
 			t.Fatalf("RemoveLink: %v", err)
 		}
 		for name, token := range map[string]string{"no token": "", "a removal's token": removal.UndoToken} {
-			if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, token); !errors.Is(err, domain.ErrNotAuthorized) {
+			if _, err := h.Service.RestoreLinkRequest(t.Context(), rejection.ID, pat.ID, token); !errors.Is(err, domain.ErrNotAuthorized) {
 				t.Errorf("RestoreLinkRequest with %s: err = %v, want ErrNotAuthorized", name, err)
 			}
 		}
-		if pending, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(pending) != 0 {
+		if pending, _ := h.Service.PendingLinkRequests(t.Context(), pat.ID); len(pending) != 0 {
 			t.Fatalf("pending = %+v after refused Undos, want none", pending)
 		}
-		restored, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken)
+		restored, err := h.Service.RestoreLinkRequest(t.Context(), rejection.ID, pat.ID, rejection.UndoToken)
 		if err != nil {
 			t.Fatalf("RestoreLinkRequest with its token: %v", err)
 		}
@@ -227,37 +226,37 @@ func TestUndoingALinkRejectionTakesItsToken(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		h := testsupport.New(t)
 		pat, _, _, _, link := pendingAcrossOwners(t, h)
-		rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+		rejection, err := h.Service.RejectLink(t.Context(), link.ID, pat.ID)
 		if err != nil {
 			t.Fatalf("RejectLink: %v", err)
 		}
 		h.Clock.Advance(16 * time.Minute)
-		_, err = h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken)
+		_, err = h.Service.RestoreLinkRequest(t.Context(), rejection.ID, pat.ID, rejection.UndoToken)
 		wantNoLongerAvailable(t, "RestoreLinkRequest after 15 minutes", err)
-		if pending, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(pending) != 0 {
+		if pending, _ := h.Service.PendingLinkRequests(t.Context(), pat.ID); len(pending) != 0 {
 			t.Errorf("pending = %+v after an expired Undo, want none", pending)
 		}
 	})
 	t.Run("refused once spends it", func(t *testing.T) {
 		h := testsupport.New(t)
 		pat, sam, child, parent, link := pendingAcrossOwners(t, h)
-		rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+		rejection, err := h.Service.RejectLink(t.Context(), link.ID, pat.ID)
 		if err != nil {
 			t.Fatalf("RejectLink: %v", err)
 		}
 		// Pat links the other way round and Sam accepts, so the Undo would close
 		// a cycle; once that link is gone, the spent token stays spent.
 		back := h.RequestLink(pat, parent, child, "")
-		if _, err := h.Service.AcceptLink(ctx, back.ID, sam.ID); err != nil {
+		if _, err := h.Service.AcceptLink(t.Context(), back.ID, sam.ID); err != nil {
 			t.Fatalf("AcceptLink: %v", err)
 		}
-		if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrCycle) {
+		if _, err := h.Service.RestoreLinkRequest(t.Context(), rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrCycle) {
 			t.Fatalf("RestoreLinkRequest closing a cycle: err = %v, want ErrCycle", err)
 		}
-		if _, err := h.Service.RemoveLink(ctx, back.ID, pat.ID); err != nil {
+		if _, err := h.Service.RemoveLink(t.Context(), back.ID, pat.ID); err != nil {
 			t.Fatalf("RemoveLink: %v", err)
 		}
-		_, err = h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken)
+		_, err = h.Service.RestoreLinkRequest(t.Context(), rejection.ID, pat.ID, rejection.UndoToken)
 		wantNoLongerAvailable(t, "RestoreLinkRequest with a spent token", err)
 	})
 }
@@ -268,7 +267,6 @@ func TestUndoingALinkRejectionTakesItsToken(t *testing.T) {
 func TestUndoingAHandoffRejectionTakesItsToken(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	t.Run("token", func(t *testing.T) {
 		h := testsupport.New(t)
 		sam, pat, _, ho, token := rejectedHandoff(t, h)
@@ -276,22 +274,22 @@ func TestUndoingAHandoffRejectionTakesItsToken(t *testing.T) {
 			t.Fatal("RejectHandoff gave no Undo token")
 		}
 		other := startHandoff(t, h, h.CreateGoal(sam, "Migrate displays", "Displays fail.").ID, pat.ID, sam.ID)
-		otherToken, err := h.Service.RejectHandoff(ctx, other.ID, pat.ID)
+		otherToken, err := h.Service.RejectHandoff(t.Context(), other.ID, pat.ID)
 		if err != nil {
 			t.Fatalf("RejectHandoff(other): %v", err)
 		}
 		for name, tok := range map[string]string{"no token": "", "another Handoff's token": otherToken} {
-			if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, tok); !errors.Is(err, domain.ErrNotAuthorized) {
+			if _, err := h.Service.RestoreHandoff(t.Context(), ho.ID, pat.ID, tok); !errors.Is(err, domain.ErrNotAuthorized) {
 				t.Errorf("RestoreHandoff with %s: err = %v, want ErrNotAuthorized", name, err)
 			}
 		}
-		if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 0 {
+		if pending, _ := h.Service.PendingHandoffs(t.Context(), pat.ID); len(pending) != 0 {
 			t.Fatalf("pending = %+v after refused Undos, want none", pending)
 		}
-		if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token); err != nil {
+		if _, err := h.Service.RestoreHandoff(t.Context(), ho.ID, pat.ID, token); err != nil {
 			t.Fatalf("RestoreHandoff with its token: %v", err)
 		}
-		if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 1 || pending[0].ID != ho.ID {
+		if pending, _ := h.Service.PendingHandoffs(t.Context(), pat.ID); len(pending) != 1 || pending[0].ID != ho.ID {
 			t.Errorf("pending = %+v, want the restored Handoff", pending)
 		}
 	})
@@ -299,22 +297,22 @@ func TestUndoingAHandoffRejectionTakesItsToken(t *testing.T) {
 		h := testsupport.New(t)
 		_, pat, _, ho, token := rejectedHandoff(t, h)
 		h.Clock.Advance(16 * time.Minute)
-		_, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token)
+		_, err := h.Service.RestoreHandoff(t.Context(), ho.ID, pat.ID, token)
 		wantNoLongerAvailable(t, "RestoreHandoff after 15 minutes", err)
-		if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 0 {
+		if pending, _ := h.Service.PendingHandoffs(t.Context(), pat.ID); len(pending) != 0 {
 			t.Errorf("pending = %+v after an expired Undo, want none", pending)
 		}
 	})
 	t.Run("used", func(t *testing.T) {
 		h := testsupport.New(t)
 		_, pat, _, ho, token := rejectedHandoff(t, h)
-		if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token); err != nil {
+		if _, err := h.Service.RestoreHandoff(t.Context(), ho.ID, pat.ID, token); err != nil {
 			t.Fatalf("RestoreHandoff: %v", err)
 		}
-		if _, err := h.Service.RejectHandoff(ctx, ho.ID, pat.ID); err != nil {
+		if _, err := h.Service.RejectHandoff(t.Context(), ho.ID, pat.ID); err != nil {
 			t.Fatalf("RejectHandoff again: %v", err)
 		}
-		_, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token)
+		_, err := h.Service.RestoreHandoff(t.Context(), ho.ID, pat.ID, token)
 		wantNoLongerAvailable(t, "RestoreHandoff with a used token", err)
 	})
 }
@@ -443,12 +441,11 @@ func TestUndoingAValueRetirementTakesItsToken(t *testing.T) {
 func TestAValueRetirementUndoIsOneTimeAndExpires(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	t.Run("expired", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
 		boss, _, trust, token := retiredValue(t, h)
 		h.Clock.Advance(16 * time.Minute)
-		wantNoLongerAvailable(t, "Undo after 15 minutes", h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token))
+		wantNoLongerAvailable(t, "Undo after 15 minutes", h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token))
 		if !valueRetired(t, h, trust.ID) {
 			t.Error("Trust restored by an expired Undo")
 		}
@@ -456,13 +453,13 @@ func TestAValueRetirementUndoIsOneTimeAndExpires(t *testing.T) {
 	t.Run("used", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
 		boss, _, trust, token := retiredValue(t, h)
-		if err := h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token); err != nil {
+		if err := h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token); err != nil {
 			t.Fatalf("first Undo: %v", err)
 		}
-		if err := h.Service.RetireDimensionValue(ctx, boss.ID, trust.ID); err != nil {
+		if err := h.Service.RetireDimensionValue(t.Context(), boss.ID, trust.ID); err != nil {
 			t.Fatalf("RetireDimensionValue: %v", err)
 		}
-		wantNoLongerAvailable(t, "second Undo", h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token))
+		wantNoLongerAvailable(t, "second Undo", h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token))
 		if !valueRetired(t, h, trust.ID) {
 			t.Error("Trust restored by a second Undo")
 		}
@@ -474,14 +471,13 @@ func TestAValueRetirementUndoIsOneTimeAndExpires(t *testing.T) {
 func TestAValueRetirementUndoIsRefusedOnceTheValueHasChanged(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	t.Run("renamed", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
 		boss, _, trust, token := retiredValue(t, h)
-		if _, err := h.Service.RenameDimensionValue(ctx, boss.ID, trust.ID, "Reliability"); err != nil {
+		if _, err := h.Service.RenameDimensionValue(t.Context(), boss.ID, trust.ID, "Reliability"); err != nil {
 			t.Fatalf("RenameDimensionValue: %v", err)
 		}
-		if err := h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("Undo of a renamed value: err = %v, want ErrValidation", err)
 		}
 		if !valueRetired(t, h, trust.ID) {
@@ -491,20 +487,20 @@ func TestAValueRetirementUndoIsRefusedOnceTheValueHasChanged(t *testing.T) {
 	t.Run("restored", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
 		boss, _, trust, token := retiredValue(t, h)
-		if err := h.Service.RestoreDimensionValue(ctx, boss.ID, trust.ID); err != nil {
+		if err := h.Service.RestoreDimensionValue(t.Context(), boss.ID, trust.ID); err != nil {
 			t.Fatalf("RestoreDimensionValue: %v", err)
 		}
-		if err := h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("Undo of a value no longer Retired: err = %v, want ErrValidation", err)
 		}
 	})
 	t.Run("merged away", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
 		boss, dim, trust, token := retiredValue(t, h)
-		if err := h.Service.MergeDimensionValue(ctx, boss.ID, trust.ID, dim.Values[0].ID); err != nil {
+		if err := h.Service.MergeDimensionValue(t.Context(), boss.ID, trust.ID, dim.Values[0].ID); err != nil {
 			t.Fatalf("MergeDimensionValue: %v", err)
 		}
-		if err := h.Service.UndoRetireDimensionValue(ctx, boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.UndoRetireDimensionValue(t.Context(), boss.ID, trust.ID, token); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("Undo of a merged value: err = %v, want ErrValidation", err)
 		}
 	})

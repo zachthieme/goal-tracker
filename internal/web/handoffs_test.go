@@ -37,6 +37,7 @@ func TestHandoffStartAcceptFlow(t *testing.T) {
 	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/handoff", ts.URL, goal.ID), url.Values{
 		"to_email": {"pat@example.com"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("start handoff: status %d", resp.StatusCode)
 	}
@@ -58,6 +59,7 @@ func TestHandoffStartAcceptFlow(t *testing.T) {
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("PendingHandoffs = %+v, %v", pending, err)
 	}
+	_ = resp.Body.Close()
 	resp = postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, pending[0].ID), url.Values{})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("accept handoff: status %d", resp.StatusCode)
@@ -98,6 +100,7 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 
 	// Admin marks Sam departed.
 	resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, sam.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("mark departed: status %d", resp.StatusCode)
 	}
@@ -113,6 +116,7 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 	if !strings.Contains(parentPage, `data-testid="ownerless"`) {
 		t.Errorf("parent page does not surface the Ownerless child; body:\n%s", parentPage)
 	}
+	_ = resp.Body.Close()
 
 	// Admin reassigns the Ownerless child to Pat.
 	resp = postForm(t, bossClient, fmt.Sprintf("%s/goals/%d/reassign", ts.URL, child.ID), url.Values{
@@ -173,7 +177,7 @@ func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 	assertAcceptReject(t, row, base)
 
 	client := signInClient(t, ts.URL, "pat@example.com")
-	if page := readBody(t, postForm(t, client, ts.URL+base+"/reject", url.Values{})); !strings.Contains(page, `data-testid="no-pending-handoffs"`) {
+	if page := postFormBody(t, client, ts.URL+base+"/reject", url.Values{}); !strings.Contains(page, `data-testid="no-pending-handoffs"`) {
 		t.Errorf("the Handoff is still pending after Reject:\n%s", page)
 	}
 }
@@ -199,8 +203,8 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	bossClient := signInClient(t, ts.URL, "boss@example.com")
 	handTo := func(email string) int64 {
 		t.Helper()
-		if resp := postForm(t, samClient, goalURL+"/handoff", url.Values{"to_email": {email}}); resp.StatusCode != http.StatusOK {
-			t.Fatalf("start handoff to %s: status %d", email, resp.StatusCode)
+		if status := postFormStatus(t, samClient, goalURL+"/handoff", url.Values{"to_email": {email}}); status != http.StatusOK {
+			t.Fatalf("start handoff to %s: status %d", email, status)
 		}
 		history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
 		if err != nil || len(history) == 0 {
@@ -212,14 +216,14 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 
 	// Mel rejects the first Handoff; the Goal stays Sam's.
 	rejected := handTo(mel.Email)
-	if resp := postForm(t, signInClient(t, ts.URL, mel.Email), fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, rejected), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("reject: status %d", resp.StatusCode)
+	if status := postFormStatus(t, signInClient(t, ts.URL, mel.Email), fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, rejected), url.Values{}); status != http.StatusOK {
+		t.Fatalf("reject: status %d", status)
 	}
 
 	// Pat departs before deciding, which cancels the Handoff to Pat.
 	cancelled := handTo(pat.Email)
-	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, pat.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("depart Pat: status %d", resp.StatusCode)
+	if status := postFormStatus(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, pat.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("depart Pat: status %d", status)
 	}
 	// Pat can no longer sign in to accept it, and the Handoff stays cancelled.
 	if _, err := h.Service.AcceptHandoff(context.Background(), cancelled, pat.ID, nil); err == nil {
@@ -228,14 +232,14 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 
 	// Sam departs with a Handoff to Lee pending; Lee still accepts it.
 	handTo(lee.Email)
-	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, sam.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("depart Sam: status %d", resp.StatusCode)
+	if status := postFormStatus(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, sam.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("depart Sam: status %d", status)
 	}
 	leeClient := signInClient(t, ts.URL, lee.Email)
 	inbox := getBody(t, leeClient, ts.URL+"/handoffs")
 	ho := between(t, inbox, `data-testid="pending-handoff"`, "")
-	if resp := postForm(t, leeClient, ts.URL+between(t, ho, `/handoffs/`, `/accept`)+"/accept", url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("accept: status %d", resp.StatusCode)
+	if status := postFormStatus(t, leeClient, ts.URL+between(t, ho, `/handoffs/`, `/accept`)+"/accept", url.Values{}); status != http.StatusOK {
+		t.Fatalf("accept: status %d", status)
 	}
 
 	page := getBody(t, bossClient, goalURL)
@@ -291,8 +295,8 @@ func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
 	}
 	bossClient := signInClient(t, ts.URL, "boss@example.com")
 
-	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/return", ts.URL, sam.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("mark returned: status %d", resp.StatusCode)
+	if status := postFormStatus(t, bossClient, fmt.Sprintf("%s/accounts/%d/return", ts.URL, sam.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("mark returned: status %d", status)
 	}
 
 	page := getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, kept.ID))
@@ -309,6 +313,7 @@ func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Checked in for Pat."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("returned Delegate's Check-in: status %d", resp.StatusCode)
@@ -333,6 +338,7 @@ func TestNonAdminCannotMarkReturned(t *testing.T) {
 	}
 
 	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), fmt.Sprintf("%s/accounts/%d/return", ts.URL, sam.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin mark returned: status %d, want 403", resp.StatusCode)
@@ -374,7 +380,7 @@ func TestDepartRedirectsBackOnlyWithinTheApp(t *testing.T) {
 // Referer (none when empty), and returns where the response redirects.
 func departWithReferer(t *testing.T, client *http.Client, baseURL string, who domain.Account, referer string) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/accounts/%d/depart", baseURL, who.ID), nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("%s/accounts/%d/depart", baseURL, who.ID), nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -385,6 +391,7 @@ func departWithReferer(t *testing.T, client *http.Client, baseURL string, who do
 	if err != nil {
 		t.Fatalf("POST depart: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("depart %s: status %d, want 303", who.Email, resp.StatusCode)
@@ -440,6 +447,7 @@ func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
 	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{
 		"keep": {fmt.Sprint(ann.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("accept handoff: status %d", resp.StatusCode)
 	}
@@ -499,10 +507,10 @@ func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
-	if resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{
+	if status := postFormStatus(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{
 		"keep": {fmt.Sprint(ann.ID), fmt.Sprint(bob.ID)},
-	}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("accept handoff: status %d", resp.StatusCode)
+	}); status != http.StatusOK {
+		t.Fatalf("accept handoff: status %d", status)
 	}
 	if got := delegateEmails(t, h, kept.ID); !slices.Equal(got, want) {
 		t.Errorf("Delegates after accepting with every box checked = %v, want %v", got, want)
@@ -512,8 +520,8 @@ func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
-	if resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("reject handoff: status %d", resp.StatusCode)
+	if status := postFormStatus(t, patClient, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("reject handoff: status %d", status)
 	}
 	if got := delegateEmails(t, h, rejected.ID); !slices.Equal(got, want) {
 		t.Errorf("Delegates after reject = %v, want %v", got, want)
@@ -567,10 +575,10 @@ func TestReassignKeepsDelegates(t *testing.T) {
 		}
 	}
 
-	if resp := postForm(t, signInClient(t, ts.URL, boss.Email), fmt.Sprintf("%s/goals/%d/reassign", ts.URL, goal.ID), url.Values{
+	if status := postFormStatus(t, signInClient(t, ts.URL, boss.Email), fmt.Sprintf("%s/goals/%d/reassign", ts.URL, goal.ID), url.Values{
 		"email": {"pat@example.com"},
-	}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("reassign: status %d", resp.StatusCode)
+	}); status != http.StatusOK {
+		t.Fatalf("reassign: status %d", status)
 	}
 
 	want := []string{"ann@example.com", "dee@example.com"}
@@ -596,13 +604,14 @@ func TestFailedAcceptChangesNothing(t *testing.T) {
 		t.Fatalf("StartHandoff: %v", err)
 	}
 	// Fail the last step, after ownership has moved and Ann has been removed.
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
 		WHEN NEW.status = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
 	patClient := signInClient(t, ts.URL, pat.Email)
 
 	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("failed accept: status %d, want 500", resp.StatusCode)
@@ -645,14 +654,15 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 	bossClient := signInClient(t, ts.URL, boss.Email)
 	patClient := signInClient(t, ts.URL, pat.Email)
 
-	if resp := postForm(t, bossClient, goalURL+"/reassign", url.Values{"email": {"cal@example.com"}}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("reassign: status %d", resp.StatusCode)
+	if status := postFormStatus(t, bossClient, goalURL+"/reassign", url.Values{"email": {"cal@example.com"}}); status != http.StatusOK {
+		t.Fatalf("reassign: status %d", status)
 	}
 
 	if inbox := getBody(t, patClient, ts.URL+"/handoffs"); !strings.Contains(inbox, "No pending handoffs") {
 		t.Errorf("Pat's inbox still offers the cancelled Handoff:\n%s", inbox)
 	}
 	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("accept the cancelled Handoff: status %d, want 404", resp.StatusCode)
@@ -735,6 +745,7 @@ func rejectHandoff(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 		form.Set("from", "home")
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), form)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reject: status %d", resp.StatusCode)
 	}
@@ -784,6 +795,7 @@ func TestRejectingAHandoffOffersUndoOnce(t *testing.T) {
 			}
 
 			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("undo: status %d", resp.StatusCode)
 			}
@@ -821,6 +833,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo by the Owner: status %d, want 403", resp.StatusCode)
@@ -844,8 +857,8 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Errorf("Undo of no Handoff: status %d, want 404", resp.StatusCode)
 	}
 
-	if resp := postForm(t, pat, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
+	if status := postFormStatus(t, pat, ts.URL+action, toastFields(t, landed)); status != http.StatusOK {
+		t.Fatalf("Undo by the rejecter: status %d", status)
 	}
 	resp = postForm(t, pat, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "isn't rejected") {
@@ -897,6 +910,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 			tc.since(t, h, goal)
 
 			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			body := readBody(t, resp)
 			if tc.says == "" {
 				// A Departed person's session ends with their departure, so
@@ -942,6 +956,7 @@ func TestAHandoffRejectionUndoCantReviveItAfterLaterHandoffs(t *testing.T) {
 	}
 
 	resp := postForm(t, pat, ts.URL+undoAction(t, landed), toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "handed off again") {
 		t.Errorf("revived Undo: status %d %q, want 422 saying the Goal was handed off again", resp.StatusCode, body)
 	}
@@ -965,12 +980,13 @@ func TestAHandoffRejectedBeforeUndoTokensCantBeUndoneOverHTTP(t *testing.T) {
 		t.Fatalf("StartHandoff: %v", err)
 	}
 	// Rejected as it was before, leaving nothing but its status.
-	if _, err := h.DB.Exec(`UPDATE handoffs SET status = 'rejected' WHERE id = ?`, ho.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE handoffs SET status = 'rejected' WHERE id = ?`, ho.ID); err != nil {
 		t.Fatalf("reject as before: %v", err)
 	}
 	pat := signInClient(t, ts.URL, "pat@example.com")
 
 	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/restore", ts.URL, ho.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo of an old rejection: status %d %q, want 403", resp.StatusCode, body)
 	}

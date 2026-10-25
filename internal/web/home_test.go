@@ -607,11 +607,11 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 		assertSubmitsAtOnce(t, tc.what+"'s Reject", renderNode(tc.row), tc.action+"/reject")
 	}
 
-	postForm(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)
+	postFormStatus(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)
 	if parents := h.ParentsOf(child); len(parents) != 1 || parents[0].ID != parent.ID {
 		t.Errorf("Home's Accept did not link %q under %q: parents = %v", child.Title, parent.Title, parents)
 	}
-	postForm(t, client, ts.URL+fmt.Sprintf("/handoffs/%d/reject", handoff.ID), nil)
+	postFormStatus(t, client, ts.URL+fmt.Sprintf("/handoffs/%d/reject", handoff.ID), nil)
 	if pending, _ := h.Service.PendingHandoffs(context.Background(), sam.ID); len(pending) != 0 {
 		t.Errorf("Home's Reject left the Handoff pending")
 	}
@@ -1052,6 +1052,7 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 
 	for _, hx := range []bool{false, true} {
 		resp, page := postNoChange(t, client, ts.URL+action, hx)
+		defer func() { _ = resp.Body.Close() }()
 		want := http.StatusUnprocessableEntity
 		if hx {
 			want = http.StatusOK
@@ -1132,6 +1133,7 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 	}
 
 	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"from": {"home"}})
+	defer func() { _ = resp.Body.Close() }()
 	landed := parsePage(t, readBody(t, resp))
 	if resp.Request.URL.Path != "/home" {
 		t.Errorf("accepting landed on %s, want /home", resp.Request.URL.Path)
@@ -1590,14 +1592,15 @@ func TestHomeFailsWhenNoChangeCantBeChecked(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(8 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.Exec(`ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
 		t.Fatalf("rename milestones: %v", err)
 	}
 
-	resp, err := client.Get(ts.URL + "/home")
+	resp, err := ctxGet(t, client, ts.URL+"/home")
 	if err != nil {
 		t.Fatalf("GET /home: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", resp.StatusCode)
@@ -1777,6 +1780,7 @@ func TestHomeClosesAnActionItem(t *testing.T) {
 	}
 
 	resp := postForm(t, noRedirects(client), ts.URL+action, url.Values{"note": {"Sent."}, "return": {"/home"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if got := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || got != "/home" {
 		t.Errorf("closing from Home: %d to %q, want 303 to /home", resp.StatusCode, got)

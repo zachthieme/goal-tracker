@@ -1310,6 +1310,7 @@ func TestFollowUpFixOnAScheduleConflict(t *testing.T) {
 
 	pat := signInClient(t, ts.URL, "pat@example.com")
 	resp := postForm(t, noRedirects(pat), ts.URL+nudge, url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/follow-ups" {
 		t.Fatalf("nudging got %d → %q, want 303 → /follow-ups", resp.StatusCode, resp.Header.Get("Location"))

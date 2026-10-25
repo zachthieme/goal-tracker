@@ -58,6 +58,7 @@ func TestNudgingFromTheFollowUpsFix(t *testing.T) {
 	}
 
 	resp := postForm(t, pat, ts.URL+action, url.Values{"return": {"/follow-ups?group=owner&org=all"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if got := resp.Request.URL.String(); got != ts.URL+"/follow-ups?group=owner&org=all" {
 		t.Errorf("nudging landed on %s, want the Follow-ups page as filtered", got)
@@ -156,6 +157,7 @@ func TestARefusedNudgeSaysWhy(t *testing.T) {
 		{"sam@example.com", silent, 403, "You can check in on this Goal yourself, so there's no one to nudge."},
 	} {
 		resp := postForm(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/goals/"+strconv.FormatInt(c.goal.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
+		defer func() { _ = resp.Body.Close() }()
 		body := html.UnescapeString(readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s nudging %q: status %d, want %d", c.viewer, c.goal.Title, resp.StatusCode, c.status)
@@ -190,6 +192,7 @@ func TestANudgeWhileMailIsDownReturnsToFollowUps(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/goals/"+strconv.FormatInt(silent.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != ts.URL+"/follow-ups" {
 		t.Errorf("nudging landed on %s with status %d, want the Follow-ups page", resp.Request.URL, resp.StatusCode)

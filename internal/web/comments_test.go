@@ -40,6 +40,7 @@ func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
 		"goal": {strconv.FormatInt(g.ID, 10)},
 		"body": {"Why did the vendor slip?"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != strings.TrimPrefix(pubURL, ts.URL) {
 		t.Fatalf("comment: status %d at %s, want back on the publication", resp.StatusCode, resp.Request.URL)
 	}
@@ -107,6 +108,7 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 		"owner":   {"owner@example.com"},
 		"due":     {"2026-02-01"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("raise action item: status %d", resp.StatusCode)
 	}
@@ -207,6 +209,7 @@ func TestDirectActionItemNamesAGoalOverHTTP(t *testing.T) {
 	resp := postForm(t, client, pubURL+"/action-items", url.Values{
 		"text": {"Book the EU legal review."}, "goal": {strconv.FormatInt(eu.ID, 10)}, "owner": {"author@example.com"}, "due": {"2026-02-01"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("raise action item: status %d", resp.StatusCode)
 	}
@@ -247,6 +250,7 @@ func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 		resp := postForm(t, client, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{
 			"note": {"Done."}, "return": {back},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		want := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
 		if got := resp.Header.Get("Location"); got != want {
@@ -390,6 +394,7 @@ func TestAuthorReassignsAnActionItemOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, ownerClient, reassignURL, url.Values{"owner": {"newbie@example.com"}, "return": {pubPath}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("reassigned by its owner: status %d, want 403", resp.StatusCode)
@@ -447,6 +452,7 @@ func TestReassignActionItemNeverRedirectsOffSite(t *testing.T) {
 		resp := postForm(t, client, fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID), url.Values{
 			"owner": {to.Email}, "return": {back},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		want := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
 		if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
@@ -486,6 +492,7 @@ func TestFrozenActionItemFollowsItsReassignmentOverHTTP(t *testing.T) {
 		t.Errorf("the author, who doesn't own the carried item, is offered to close it; row:\n%s", row)
 	}
 	resp := postForm(t, authorClient, ts.URL+attr(openTag(form), "action"), url.Values{"owner": {"newbie@example.com"}, "return": {secondPath}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != secondPath {
 		t.Fatalf("reassign: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL, secondPath)
 	}
@@ -538,6 +545,7 @@ func TestSmokeCommentAndReplyOnTheGoalPageOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, noRedirects(reader), goalURL+"/comments", url.Values{"body": {"Is the EU date still real?"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != wantBack {
 		t.Fatalf("comment: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), wantBack)
@@ -603,6 +611,7 @@ func TestGoalCommentRefusalsOverHTTP(t *testing.T) {
 		{"non-numeric id", "/goals/eu/comments", "Why?", http.StatusNotFound},
 	} {
 		resp := postForm(t, noRedirects(client), ts.URL+tc.path, url.Values{"body": {tc.body}})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: status %d, want %d", tc.name, resp.StatusCode, tc.want)
@@ -628,6 +637,7 @@ func TestReplyToAReportCommentReturnsToThePublication(t *testing.T) {
 	client := noRedirects(signInClient(t, ts.URL, "owner@example.com"))
 
 	resp := postForm(t, client, fmt.Sprintf("%s/comments/%d/replies", ts.URL, question.ID), url.Values{"body": {"Their factory flooded."}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	want := fmt.Sprintf("/reports/%d/publications/%d#goal-%d", def.ID, pub.ID, g.ID)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {

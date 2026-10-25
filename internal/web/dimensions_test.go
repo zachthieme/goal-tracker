@@ -30,6 +30,7 @@ func TestAdminManagesDimensionsOverHTTP(t *testing.T) {
 		"name":   {"Pillar"},
 		"values": {"Growth, Reliability"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("create dimension: status %d", resp.StatusCode)
 	}
@@ -54,11 +55,11 @@ func TestAdminManagesDimensionsOverHTTP(t *testing.T) {
 	}
 
 	// Add a value.
-	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/values", ts.URL, dim.ID), url.Values{"value": {"Efficiency"}})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimensions/%d/values", ts.URL, dim.ID), url.Values{"value": {"Efficiency"}})
 	// Rename a value.
-	postForm(t, boss, fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, growth), url.Values{"value": {"Expansion"}})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, growth), url.Values{"value": {"Expansion"}})
 	// Retire a value.
-	postForm(t, boss, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, reliability), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, reliability), url.Values{})
 
 	page = getBody(t, boss, ts.URL+"/dimensions")
 	for _, want := range []string{"Efficiency", "Expansion"} {
@@ -93,6 +94,7 @@ func TestNonAdminCannotManageDimensions(t *testing.T) {
 		t.Errorf("non-Admin should not see the create-Dimension form; body:\n%s", page)
 	}
 	resp := postForm(t, sam, ts.URL+"/dimensions", url.Values{"name": {"Quarter"}, "values": {"Q1"}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin create dimension: status %d, want 403", resp.StatusCode)
 	}
@@ -143,7 +145,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	}
 	retire := fmt.Sprintf("/dimension-values/%d/retire", dim.Values[0].ID)
 	assertSubmitsAtOnce(t, "Retire", edit, retire)
-	if page := readBody(t, postForm(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+retire, url.Values{})); !strings.Contains(page, ">Growth</del>") {
+	if page := postFormBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+retire, url.Values{}); !strings.Contains(page, ">Growth</del>") {
 		t.Errorf("Growth isn't struck through as Retired after Retire:\n%s", page)
 	}
 
@@ -181,7 +183,7 @@ func TestDimensionsPageIsInTheFlatFrame(t *testing.T) {
 	if page := getBody(t, client, ts.URL+"/dimensions"); card.MatchString(page) {
 		t.Errorf("the Dimensions page has a card, %s:\n%s", card.FindString(page), page)
 	}
-	refused := readBody(t, postForm(t, client, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, teams.ID), url.Values{"selection": {"one"}}))
+	refused := postFormBody(t, client, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, teams.ID), url.Values{"selection": {"one"}})
 	pageElement(t, refused, "section", "selection-refusal")
 	if c := card.FindString(refused); c != "" {
 		t.Errorf("the refused switch's page has a card, %s:\n%s", c, refused)
@@ -216,8 +218,8 @@ func TestAdminChoosesOneOrSeveralValuesOverHTTP(t *testing.T) {
 		t.Fatalf("create form lacks a one/several choice defaulting to one:\n%s", form)
 	}
 
-	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Team"}, "values": {"Core, Infra"}, "selection": {"several"}})
-	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
+	postFormStatus(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Team"}, "values": {"Core, Infra"}, "selection": {"several"}})
+	postFormStatus(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
 	dims, err := h.Service.ListDimensions(context.Background())
 	if err != nil {
 		t.Fatalf("ListDimensions: %v", err)
@@ -244,6 +246,7 @@ func TestAdminChoosesOneOrSeveralValuesOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, pillarID), url.Values{"selection": {"several"}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("switch to several: status %d", resp.StatusCode)
 	}
@@ -283,6 +286,7 @@ func TestSwitchToOneValueRefusalNamesGoalsOverHTTP(t *testing.T) {
 	switchURL := fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, teams.ID)
 
 	resp := postForm(t, bossClient, switchURL, url.Values{"selection": {"one"}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("refused switch: status %d, want 422", resp.StatusCode)
@@ -325,8 +329,8 @@ func TestAdminMarksDimensionExtendableAndFixedOverHTTP(t *testing.T) {
 		t.Fatalf("create form lacks a Fixed/Extendable choice defaulting to Fixed:\n%s", form)
 	}
 
-	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Customer"}, "values": {"Acme"}, "list": {"extendable"}})
-	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
+	postFormStatus(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Customer"}, "values": {"Acme"}, "list": {"extendable"}})
+	postFormStatus(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
 	lists := map[string]string{}
 	var pillarID int64
 	dims, err := h.Service.ListDimensions(context.Background())
@@ -354,6 +358,7 @@ func TestAdminMarksDimensionExtendableAndFixedOverHTTP(t *testing.T) {
 
 	for _, want := range []string{domain.ListExtendable, domain.ListFixed} {
 		resp := postForm(t, boss, listURL, url.Values{"list": {want}})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("switch Pillar to %s: status %d", want, resp.StatusCode)
@@ -365,6 +370,7 @@ func TestAdminMarksDimensionExtendableAndFixedOverHTTP(t *testing.T) {
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
 	resp := postForm(t, sam, listURL, url.Values{"list": {"extendable"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin switch: status %d, want 403", resp.StatusCode)
@@ -423,27 +429,28 @@ func TestAdminReordersDimensionValuesOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, efficiency.ID), url.Values{"direction": {"up"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("move up: status %d: %s", resp.StatusCode, body)
 	}
 	if got, want := order(), "Reliability Efficiency Growth"; got != want {
 		t.Errorf("after moving Efficiency up = %q, want %q", got, want)
 	}
-	postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, reliability.ID), url.Values{"direction": {"down"}})
+	postFormStatus(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, reliability.ID), url.Values{"direction": {"down"}})
 	if got, want := order(), "Efficiency Reliability Growth"; got != want {
 		t.Errorf("after moving Reliability down = %q, want %q", got, want)
 	}
-	postForm(t, bossClient, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{})
+	postFormStatus(t, bossClient, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{})
 	if got, want := order(), "Efficiency Growth Reliability"; got != want {
 		t.Errorf("after sorting = %q, want %q", got, want)
 	}
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
-	if resp := postForm(t, sam, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, growth.ID), url.Values{"direction": {"up"}}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin move: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, growth.ID), url.Values{"direction": {"up"}}); status != http.StatusForbidden {
+		t.Errorf("non-Admin move: status %d, want 403", status)
 	}
-	if resp := postForm(t, sam, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin sort: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{}); status != http.StatusForbidden {
+		t.Errorf("non-Admin sort: status %d, want 403", status)
 	}
 }
 
@@ -544,14 +551,15 @@ func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
 	}
 
 	sam2 := signInClient(t, ts.URL, "sam@example.com")
-	if resp := postForm(t, sam2, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin merge: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam2, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}}); status != http.StatusForbidden {
+		t.Errorf("non-Admin merge: status %d, want 403", status)
 	}
-	if resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(pillar.Values[0].ID)}}); resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("merge across Dimensions: status %d, want 422", resp.StatusCode)
+	if status := postFormStatus(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(pillar.Values[0].ID)}}); status != http.StatusUnprocessableEntity {
+		t.Errorf("merge across Dimensions: status %d, want 422", status)
 	}
 
 	resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("merge: status %d: %s", resp.StatusCode, body)
 	}
@@ -576,7 +584,7 @@ func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
 	customer := h.CreateDimension(boss, "Customer", "Acme", "Globex")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AssignGoalValue(goal, customer.Values[1])
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -585,6 +593,7 @@ func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
 
 	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, customer.Values[1].ID),
 		url.Values{"into": {fmt.Sprint(customer.Values[0].ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("failed merge: status %d, want 500", resp.StatusCode)
@@ -630,13 +639,13 @@ func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
 	}
 
 	for _, path := range []string{retire, restore, restoreValue} {
-		if resp := postForm(t, sam, path, url.Values{}); resp.StatusCode != http.StatusForbidden {
-			t.Errorf("non-Admin POST %s: status %d, want 403", path, resp.StatusCode)
+		if status := postFormStatus(t, sam, path, url.Values{}); status != http.StatusForbidden {
+			t.Errorf("non-Admin POST %s: status %d, want 403", path, status)
 		}
 	}
 
-	if resp := postForm(t, admin, retire, url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("retire Pillar: status %d", resp.StatusCode)
+	if status := postFormStatus(t, admin, retire, url.Values{}); status != http.StatusOK {
+		t.Fatalf("retire Pillar: status %d", status)
 	}
 	card = between(t, getBody(t, admin, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "")
 	if !strings.Contains(card, `data-testid="dimension-retired"`) {
@@ -646,8 +655,8 @@ func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
 		t.Errorf("Retired Pillar's card has no Restore; card:\n%s", card)
 	}
 
-	postForm(t, admin, restore, url.Values{})
-	postForm(t, admin, restoreValue, url.Values{})
+	postFormStatus(t, admin, restore, url.Values{})
+	postFormStatus(t, admin, restoreValue, url.Values{})
 	card = between(t, getBody(t, admin, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "")
 	if strings.Contains(card, `data-testid="dimension-retired"`) || strings.Contains(card, `data-testid="retired"`) {
 		t.Errorf("Pillar and Trust still flagged retired after Restore; card:\n%s", card)
@@ -671,10 +680,12 @@ func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
 	if !strings.Contains(edit, `action="/dimensions/`+fmt.Sprint(pillar.ID)+`/required"`) {
 		t.Fatalf("Edit toggle has no control to mark Pillar required:\n%s", edit)
 	}
-	if resp := postForm(t, sam, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin mark required: status %d, want 403", resp.StatusCode)
+	if status := postFormStatus(t, sam, requiredURL, url.Values{"required": {"1"}}); status != http.StatusForbidden {
+		t.Errorf("non-Admin mark required: status %d, want 403", status)
 	}
-	if resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusOK {
+	resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("mark required: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
 	}
 	card := pageElement(t, getBody(t, sam, ts.URL+"/dimensions"), "p", "dimension-rules")
@@ -682,7 +693,7 @@ func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
 		t.Errorf("card doesn't say Pillar is required:\n%s", card)
 	}
 
-	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
+	postFormStatus(t, boss, requiredURL, url.Values{"required": {"0"}})
 	dims, err := h.Service.ListDimensions(context.Background())
 	if err != nil {
 		t.Fatalf("ListDimensions: %v", err)
@@ -724,12 +735,14 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 		"rename": {fmt.Sprintf("/dimension-values/%d/rename", pillar.Values[0].ID), url.Values{"value": {"Growth; Expansion"}}},
 	} {
 		resp := postForm(t, client, ts.URL+post.path, post.form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, reason) {
 			t.Errorf("%s: status %d, body %q; want 422 saying why", what, resp.StatusCode, body)
 		}
 	}
 
 	resp := postForm(t, client, fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, rnd.ID), url.Values{"value": {"R&D and Ops"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("renaming R&D; Ops: status %d: %s", resp.StatusCode, body)
 	}
@@ -755,6 +768,7 @@ func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	resp := postForm(t, client, ts.URL+"/dimensions", url.Values{"name": {"budget"}, "values": {"Low, High"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Budget is already a Field's name") {
 		t.Errorf("define budget: status %d, body %q; want 422 naming the Field", resp.StatusCode, body)
 	}
@@ -778,6 +792,7 @@ func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
 	rename := fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, payments.ID)
 
 	resp := postForm(t, client, rename, url.Values{"value": {"growth"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "merge Payments into Growth instead") {
 		t.Errorf("rename to growth: status %d, body %q; want 422 saying to merge", resp.StatusCode, body)
 	}
@@ -808,13 +823,13 @@ func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 	action := fmt.Sprintf(`action="/dimensions/%d/required"`, pillar.ID)
 
-	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
 	page := getBody(t, boss, ts.URL+"/dimensions")
 	if strings.Contains(page, `data-testid="dimension-required"`) || strings.Contains(page, action) {
 		t.Errorf("Retired Pillar's card shows the required mark or control:\n%s", page)
 	}
 
-	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
 	page = getBody(t, boss, ts.URL+"/dimensions")
 	if !strings.Contains(page, `data-testid="dimension-required"`) || !strings.Contains(between(t, page, action, "</form>"), "Make it optional") {
 		t.Errorf("restored Pillar's card doesn't show it required, with a control to make it optional:\n%s", page)
@@ -836,6 +851,7 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 	admin := signInClient(t, ts.URL, "boss@example.com")
 
 	resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, trust.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("retire Trust: status %d", resp.StatusCode)
 	}
@@ -855,8 +871,8 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 		t.Errorf("toast shown again on a later visit:\n%s", later)
 	}
 
-	if resp := postForm(t, admin, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("undo: status %d", resp.StatusCode)
+	if status := postFormStatus(t, admin, ts.URL+action, toastFields(t, landed)); status != http.StatusOK {
+		t.Fatalf("undo: status %d", status)
 	}
 	dims, err := h.Service.ListDimensions(context.Background())
 	if err != nil {
@@ -895,6 +911,7 @@ func TestMergedValueKeepsASavedReportRuleSelectingTheSameGoalsOverHTTP(t *testin
 	}
 
 	resp := postForm(t, client, fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, acmeCorp.ID), url.Values{"into": {fmt.Sprint(acme.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("merge: status %d: %s", resp.StatusCode, body)
 	}
@@ -934,15 +951,15 @@ func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
 		t.Fatalf("the Retired Trust is offered on the Goal page:\n%s", edit)
 	}
 
-	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("restore Trust: status %d", resp.StatusCode)
+	if status := postFormStatus(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("restore Trust: status %d", status)
 	}
 
 	edit = openForm(t, getBody(t, owner, goalURL+"?open=dimensions"), "dimensions")
 	if !strings.Contains(edit, trustOption) {
 		t.Fatalf("the restored Trust isn't offered on the Goal page:\n%s", edit)
 	}
-	postForm(t, owner, goalURL+"/dimensions", url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {fmt.Sprint(trust.ID)}})
+	postFormStatus(t, owner, goalURL+"/dimensions", url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {fmt.Sprint(trust.ID)}})
 	shown := pageElement(t, getBody(t, owner, goalURL), "section", "goal-dimensions")
 	if !strings.Contains(shown, `data-testid="goal-dimension-value">Trust<`) {
 		t.Errorf("the Owner couldn't set the restored Trust:\n%s", shown)
@@ -962,14 +979,14 @@ func TestRetiredDimensionsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 	requiredURL := fmt.Sprintf("%s/dimensions/%d/required", ts.URL, pillar.ID)
 
-	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
 	for _, required := range []string{"0", "1"} {
-		if resp := postForm(t, boss, requiredURL, url.Values{"required": {required}}); resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("required=%s on Retired Pillar: status %d, want 422", required, resp.StatusCode)
+		if status := postFormStatus(t, boss, requiredURL, url.Values{"required": {required}}); status != http.StatusUnprocessableEntity {
+			t.Errorf("required=%s on Retired Pillar: status %d, want 422", required, status)
 		}
 	}
 
-	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
+	postFormStatus(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
 	if page := getBody(t, boss, ts.URL+"/dimensions"); !strings.Contains(page, `data-testid="dimension-required"`) {
 		t.Errorf("restored Pillar isn't required:\n%s", page)
 	}
@@ -986,8 +1003,8 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 	trust := pillar.Values[1]
 	ts := newServer(t, h)
 	admin := signInClient(t, ts.URL, "boss@example.com")
-	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("retire Trust: status %d", resp.StatusCode)
+	if status := postFormStatus(t, admin, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, trust.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("retire Trust: status %d", status)
 	}
 	h.Clock.Advance(30 * 24 * time.Hour)
 	// The session from before the clock moved has ended; sign in again.
@@ -998,8 +1015,8 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 	if !strings.Contains(page, restore) {
 		t.Fatalf("the Dimensions page has no Restore button for Trust:\n%s", page)
 	}
-	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("restore Trust: status %d", resp.StatusCode)
+	if status := postFormStatus(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("restore Trust: status %d", status)
 	}
 	dims, err := h.Service.ListDimensions(context.Background())
 	if err != nil {

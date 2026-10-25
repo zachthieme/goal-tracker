@@ -53,6 +53,7 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 		"mode":         {domain.ReportModePicked},
 		"picked":       {strconv.FormatInt(a.ID, 10), strconv.FormatInt(b.ID, 10), strconv.FormatInt(c.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
 	}
@@ -91,6 +92,7 @@ func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{"name": {"Selects nothing"}, "mode": {domain.ReportModeRules}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("empty selection: status %d, want 422", resp.StatusCode)
 	}
@@ -145,7 +147,7 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 		t.Errorf("with an earlier baseline, %d exception blocks, want 2:\n%s", got, renderNode(page))
 	}
 
-	resp, err := client.Get(reportURL + "?baseline=not-a-date")
+	resp, err := ctxGet(t, client, reportURL+"?baseline=not-a-date")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -181,6 +183,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("an unpublished definition's History reads %q, want only its creation", got)
 	}
 	resp := postForm(t, client, reportURL+"/publications", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("publish: status %d", resp.StatusCode)
 	}
@@ -233,7 +236,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 
 	// A publication is only found under its own definition.
 	wrong := ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + strings.TrimPrefix(pubURL, reportURL)
-	resp, err := client.Get(wrong)
+	resp, err := ctxGet(t, client, wrong)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -268,10 +271,11 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 		t.Errorf("publication page's Download menu links %q for Markdown, want its Markdown export %q", href, pubPath+"/markdown")
 	}
 
-	resp, err := client.Get(ts.URL + pubPath + "/markdown")
+	resp, err := ctxGet(t, client, ts.URL+pubPath+"/markdown")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("markdown export: status %d", resp.StatusCode)
 	}
@@ -295,7 +299,7 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 	}
 
 	// A publication exports only under its own definition.
-	resp, err = client.Get(ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/markdown")
+	resp, err = ctxGet(t, client, ts.URL+"/reports/"+strconv.FormatInt(other.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/markdown")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -348,7 +352,7 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 		t.Errorf("print page carries the app's navigation, its Sign out: %s", renderNode(signOut[0]))
 	}
 
-	resp, err := client.Get(ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/print")
+	resp, err := ctxGet(t, client, ts.URL+"/reports/"+strconv.FormatInt(other.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -428,10 +432,11 @@ func TestAPublicationDownloadsAsAPDFOverHTTP(t *testing.T) {
 	t.Cleanup(ts.Close)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	resp, err := ctxGet(t, client, ts.URL+f.pubPath+"/pdf")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("pdf download: status %d, body:\n%s", resp.StatusCode, body)
@@ -465,7 +470,7 @@ func TestWithoutARendererAPDFDownloadIsThePrintPageOverHTTP(t *testing.T) {
 	ts := newServer(t, f.h)
 	client := noRedirects(signInClient(t, ts.URL, "boss@example.com"))
 
-	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	resp, err := ctxGet(t, client, ts.URL+f.pubPath+"/pdf")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -489,7 +494,7 @@ func TestAPDFDownloadIsFoundOnlyUnderItsOwnDefinitionOverHTTP(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	wrong := ts.URL + "/reports/" + strconv.FormatInt(f.other.ID, 10) + "/publications/" + strconv.FormatInt(f.pub.ID, 10) + "/pdf"
-	resp, err := signInClient(t, ts.URL, "boss@example.com").Get(wrong)
+	resp, err := ctxGet(t, signInClient(t, ts.URL, "boss@example.com"), wrong)
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -497,8 +502,9 @@ func TestAPDFDownloadIsFoundOnlyUnderItsOwnDefinitionOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("pdf download under another definition: status %d, want 404", resp.StatusCode)
 	}
+	_ = resp.Body.Close()
 
-	resp, err = noRedirects(&http.Client{}).Get(ts.URL + f.pubPath + "/pdf")
+	resp, err = ctxGet(t, noRedirects(&http.Client{}), ts.URL+f.pubPath+"/pdf")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
@@ -523,10 +529,11 @@ func TestAFailedPDFRenderIsAServerErrorOverHTTP(t *testing.T) {
 	t.Cleanup(ts.Close)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp, err := client.Get(ts.URL + f.pubPath + "/pdf")
+	resp, err := ctxGet(t, client, ts.URL+f.pubPath+"/pdf")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("failed render: status %d, want 500", resp.StatusCode)
@@ -692,6 +699,7 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 		"pick-" + strconv.FormatInt(lost, 10):      {domain.HighlightMiss},
 		"text-" + domain.HighlightAccomplishment:   {"EU is open for business."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
 	}
@@ -759,6 +767,7 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightMiss},
 		"pick-" + strconv.FormatInt(lost, 10):      {domain.HighlightMiss},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("curate: status %d, want the draft page", resp.StatusCode)
 	}
@@ -772,6 +781,7 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 	if read := textOf(narrative); strings.Contains(read, "Lost the second customer.") || strings.Contains(read, "Accomplishments") {
 		t.Errorf("narrative includes a Highlight whose box wasn't ticked; narrative reads %q", read)
 	}
+	_ = resp.Body.Close()
 
 	resp = postForm(t, client, reportURL+"/narrative", url.Values{"include-" + strconv.FormatInt(lost, 10): {"on"}})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -831,6 +841,7 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 		"include-" + signed: {"on"},
 		"pick-" + signed:    {domain.HighlightMiss},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page = parsePage(t, readBody(t, resp))
 	if count := textOf(findByTestID(t, page, "curation-count")); count != "1 of 2 in" {
 		t.Errorf("count after saving one Highlight %q, want 1 of 2 in", count)
@@ -864,6 +875,7 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
 		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	form := findByTestID(t, parsePage(t, readBody(t, resp)), "narrative-curation")
 
 	written := findByTestID(t, form, "section-text-"+domain.HighlightAccomplishment)
@@ -976,6 +988,7 @@ func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
 		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
 		"text-" + domain.HighlightMiss:           {""},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
 	}
@@ -997,7 +1010,7 @@ func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
 		t.Errorf("draft narrative paragraphs %q, want %q", got, want)
 	}
 
-	published := parsePage(t, readBody(t, postForm(t, client, reportURL+"/publications", url.Values{})))
+	published := parsePage(t, postFormBody(t, client, reportURL+"/publications", url.Values{}))
 	if got := narrativeParagraphs(findByTestID(t, published, "report-narrative")); !slices.Equal(got, want) {
 		t.Errorf("published narrative paragraphs %q, want %q", got, want)
 	}
@@ -1096,6 +1109,7 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 				"text-" + domain.HighlightMiss:           {""},
 				"add_note":                               {domain.HighlightInsight},
 			})
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != draftPath+"/narrative" {
 				t.Fatalf("add another: status %d at %s, want 200 with no redirect; body:\n%s", resp.StatusCode, resp.Request.URL, body)
 			}
@@ -1200,6 +1214,7 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 				"text-" + domain.HighlightMiss: {"Slipped a week."},
 				"add_note":                     {domain.HighlightMiss},
 			})
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != tc.status {
 				t.Fatalf("refused add another: status %d, want %d; body:\n%s", resp.StatusCode, tc.status, body)
 			}
@@ -1253,6 +1268,7 @@ func TestRefusedAddAnotherWithoutScriptDraftsOnceOverHTTP(t *testing.T) {
 		"include-" + signed: {"on"},
 		"add_note":          {domain.HighlightMiss},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused add another: status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
@@ -1281,7 +1297,7 @@ func TestPublicationFromBeforeSeveralNotesShowsItsNoteOverHTTP(t *testing.T) {
 	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[{"Kind":"Accomplishment","Text":"EU is open for business.",` +
 		`"Highlights":[{"Highlight":{"ID":1,"Kind":"Accomplishment","Note":"Signed the first EU customer.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Accomplishment"}]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
 		t.Fatalf("write a pre-several-notes snapshot: %v", err)
 	}
 
@@ -1668,6 +1684,7 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 		t.Errorf("the reports page still has its own create form; body:\n%s", renderNode(doc))
 	}
 	resp := postForm(t, noRedirects(client), ts.URL+"/reports", url.Values{"name": {"Old way"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST /reports: status %d, want 405; body:\n%s", resp.StatusCode, body)
 	}
@@ -2078,7 +2095,7 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
 		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null},` +
 		`{"Milestone":{"ID":3,"Name":"Launch","TargetDate":"2026-04-01T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":null}]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 
@@ -2379,12 +2396,12 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	renamed := h.PublishReport(boss, def)
 	old := h.PublishReport(boss, def)
-	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Ada Mensah' WHERE id = ?`, ada.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE accounts SET name = 'Ada Mensah' WHERE id = ?`, ada.ID); err != nil {
 		t.Fatalf("rename Ada: %v", err)
 	}
 	before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
 		`"Owner":{"ID":%d,"Email":"ada.okafor@example.com","IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, ada.ID)
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
 		t.Fatalf("write a pre-Names snapshot: %v", err)
 	}
 
@@ -2416,7 +2433,7 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(ceo, def)
-	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Dana Renamed' WHERE id = ?`, ceo.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE accounts SET name = 'Dana Renamed' WHERE id = ?`, ceo.ID); err != nil {
 		t.Fatalf("rename the publisher: %v", err)
 	}
 
@@ -2565,6 +2582,7 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 		"picked": {strconv.FormatInt(red.ID, 10), strconv.FormatInt(green.ID, 10)},
 		"field":  {strconv.FormatInt(budget.ID, 10), strconv.FormatInt(notes.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
 	}
@@ -2696,22 +2714,24 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 		t.Errorf("pick list has %d entries, want one per Highlight; form:\n%s", n, renderNode(form))
 	}
 
-	postForm(t, client, reportURL+"/narrative", url.Values{
+	postFormStatus(t, client, reportURL+"/narrative", url.Values{
 		"include-" + strconv.FormatInt(signed, 10): {"on"},
 		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightAccomplishment},
 		"pick-" + strconv.FormatInt(hired, 10):     {domain.HighlightAccomplishment},
 	})
 	resp := postForm(t, client, reportURL+"/publications", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	published := parsePage(t, readBody(t, resp))
 	narrative := findByTestID(t, published, "report-narrative")
 	if !reportPageMentions(narrative, "Signed the first EU customer.") || reportPageMentions(narrative, "Hired the EU lead.") {
 		t.Errorf("published narrative should show only the Highlight pulled; narrative:\n%s", renderNode(narrative))
 	}
 
-	mdResp, err := client.Get(ts.URL + resp.Request.URL.Path + "/markdown")
+	mdResp, err := ctxGet(t, client, ts.URL+resp.Request.URL.Path+"/markdown")
 	if err != nil {
 		t.Fatalf("GET markdown: %v", err)
 	}
+	defer func() { _ = mdResp.Body.Close() }()
 	md := readBody(t, mdResp)
 	if !strings.Contains(md, "Signed the first EU customer.") || strings.Contains(md, "Hired the EU lead.") {
 		t.Errorf("Markdown export should show only the Highlight pulled:\n%s", md)
@@ -2744,6 +2764,7 @@ func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {fmt.Sprintf("%s=%d", dim, globex.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d: %s", resp.StatusCode, body)
@@ -2969,7 +2990,7 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	}
 
 	// The definition's picked list changes; editing it arrives with #151.
-	if _, err := h.DB.Exec(`UPDATE report_definition_goals SET goal_id = ? WHERE report_definition_id = ? AND goal_id = ?`, picked.ID, def.ID, dropped.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_definition_goals SET goal_id = ? WHERE report_definition_id = ? AND goal_id = ?`, picked.ID, def.ID, dropped.ID); err != nil {
 		t.Fatalf("change the picked list: %v", err)
 	}
 	draft := getPage(t, client, draftURL)
@@ -3029,6 +3050,7 @@ func TestSavingTheNarrativeKeepsTheChosenBaselineOverHTTP(t *testing.T) {
 		t.Errorf("narrative form does not carry the chosen baseline on its action alone; form:\n%s", renderNode(form))
 	}
 	resp := postForm(t, client, ts.URL+path+"/narrative?baseline=2026-01-01", url.Values{"text-" + domain.HighlightInsight: {"Steady."}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if want := path + "?baseline=2026-01-01"; resp.StatusCode != http.StatusOK || resp.Request.URL.RequestURI() != want {
 		t.Errorf("saving the narrative: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL.RequestURI(), want)
@@ -3204,10 +3226,10 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	path := "/reports/" + strconv.FormatInt(def.ID, 10)
-	_ = readBody(t, postForm(t, client, ts.URL+path+"/narrative", url.Values{
+	_ = postFormBody(t, client, ts.URL+path+"/narrative", url.Values{
 		"include-" + strconv.FormatInt(halved, 10): {"on"},
 		"pick-" + strconv.FormatInt(halved, 10):    {domain.HighlightAccomplishment},
-	}))
+	})
 
 	page := getPage(t, client, ts.URL+path)
 	publishing := findAll(page, func(n *nethtml.Node) bool {
@@ -3247,6 +3269,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 		t.Errorf("Cancel links to %q, want it to keep the chosen baseline", got)
 	}
 	resp := postForm(t, client, ts.URL+path+"/publications?baseline=2026-01-01", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if line := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "report-published")); !strings.Contains(line, "changes since Jan 1, 2026") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
@@ -3269,6 +3292,7 @@ func TestNarrativePreviewIsNoLongerRoutedOverHTTP(t *testing.T) {
 		resp, body := postHX(t, signInClient(t, ts.URL, who), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{
 			"text-" + domain.HighlightMiss: {"Slipped a week."},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 			t.Errorf("%s's preview: status %d, want it unrouted; body:\n%s", who, resp.StatusCode, body)
 		}
@@ -3310,6 +3334,7 @@ func TestNarrativeAtALaterBaselineKeepsEarlierPicksOverHTTP(t *testing.T) {
 	again := formSubmission(form)
 	again.Set("add_note", domain.HighlightMiss)
 	resp, body := postHX(t, client, ts.URL+attrOf(form, "action"), again)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("add another: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
@@ -3358,6 +3383,7 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheHistoryOverHTTP(t *testing.T) {
 		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
 	}
 	resp, body := postHX(t, client, reportURL+"/narrative", form)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
@@ -3406,13 +3432,14 @@ func TestSaveNarrativeLogsOnceAndRefreshesTheHistoryOverHTTP(t *testing.T) {
 		t.Errorf("the History answered reads %q, want the save's one entry newest above the %d before", entries, len(logged))
 	}
 
-	_, body = postHX(t, client, reportURL+"/narrative", form)
+	resp, body = postHX(t, client, reportURL+"/narrative", form)
 	entries = textsOf(findAllByTestID(findByTestID(t, parsePage(t, body), "report-history"), "report-history-entry"))
 	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged)+1 || len(entries) != len(logged)+1 {
 		t.Errorf("saving again unchanged leaves %d entries, answering %d (err %v), want the %d after the first save", len(after), len(entries), err, len(logged)+1)
 	}
 
 	plain := postForm(t, client, reportURL+"/narrative", form)
+	defer func() { _ = plain.Body.Close() }()
 	if plain.StatusCode != http.StatusOK || plain.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Errorf("plain post: status %d at %s, want a redirect to the draft", plain.StatusCode, plain.Request.URL)
 	}
@@ -3495,7 +3522,7 @@ func TestComposeFormShowsTheSavedNarrativeAfterAReloadOverHTTP(t *testing.T) {
 // returns the response, its headers intact, and its body.
 func postHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -3540,6 +3567,7 @@ func TestEditDefinitionChangesOnlyTheDraftOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {dim + "=" + strconv.FormatInt(web.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != draftPath {
 		t.Fatalf("edit: status %d to %q, want 303 to %s", resp.StatusCode, resp.Header.Get("Location"), draftPath)
@@ -3695,6 +3723,7 @@ func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, client, editURL, typed)
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused edit: status %d, want 422; body:\n%s", resp.StatusCode, page)
@@ -3773,10 +3802,11 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 	}
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
-	resp, err := sam.Get(editURL)
+	resp, err := ctxGet(t, sam, editURL)
 	if err != nil {
 		t.Fatalf("GET %s: %v", editURL, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Sam's GET of Alice's edit page: status %d, want 403; body:\n%s", resp.StatusCode, body)
 	}
@@ -3792,13 +3822,14 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 		client := signInClient(t, ts.URL, who)
 		getBody(t, client, editURL)
 		resp := postForm(t, noRedirects(client), editURL, edit("Edited by "+who))
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
 			t.Errorf("%s's edit: status %d, want 303; body:\n%s", who, resp.StatusCode, body)
 		}
 	}
 
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		req, err := http.NewRequest(method, ts.URL+"/reports/9999/edit", strings.NewReader(edit("Nobody's").Encode()))
+		req, err := http.NewRequestWithContext(t.Context(), method, ts.URL+"/reports/9999/edit", strings.NewReader(edit("Nobody's").Encode()))
 		if err != nil {
 			t.Fatalf("new request: %v", err)
 		}
@@ -3807,6 +3838,7 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s an unknown definition's edit: %v", method, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s an unknown definition's edit: status %d, want 404; body:\n%s", method, resp.StatusCode, body)
 		}
@@ -3935,6 +3967,7 @@ func TestEditDefinitionKeepsARetiredFieldOverHTTP(t *testing.T) {
 		"field":  {id(legacy.ID)},
 	}
 	resp := postForm(t, noRedirects(client), editURL, form)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("save with no name: status %d, want 422", resp.StatusCode)
 	}
@@ -4056,7 +4089,7 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 	old := h.PublishReport(boss, def)
 	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked."}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 	h.Clock.Advance(14 * 24 * time.Hour)
@@ -4108,7 +4141,7 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 
 	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Yellow","Status":"Vendor is late."}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, before.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, before.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 
@@ -4278,7 +4311,7 @@ func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","PriorHealth":"Green","Status":"Vendor is gone."}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, pub.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 
@@ -4314,7 +4347,7 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 	})
 	pub := h.PublishReport(boss, def)
 	old := h.PublishReport(boss, def)
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, old.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, old.ID); err != nil {
 		t.Fatalf("write a pre-selection snapshot: %v", err)
 	}
 
@@ -4781,7 +4814,7 @@ func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffers
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
 		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-06-16T00:00:00Z",` +
 		`"PriorPathTargetDates":["2026-06-09T00:00:00Z","2026-06-16T00:00:00Z"]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, frozen, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, frozen, pub.ID); err != nil {
 		t.Fatalf("write a frozen snapshot: %v", err)
 	}
 
@@ -4823,7 +4856,7 @@ func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T)
 	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
 		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 
@@ -4863,7 +4896,6 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	ctx := context.Background()
 	viewer := h.SignIn("viewer@example.com")
 	mid := h.SignIn("mid@example.com")
 	outsider := h.SignIn("outsider@example.com")
@@ -4874,7 +4906,7 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 		t.Helper()
 		def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: report, Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
 		pub := h.PublishReport(author, def)
-		item, err := h.Service.RaiseActionItem(ctx, author.ID, domain.RaiseActionItemInput{
+		item, err := h.Service.RaiseActionItem(t.Context(), author.ID, domain.RaiseActionItemInput{
 			PublicationID: pub.ID, GoalID: goalID, Text: text, OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, dueIn),
 		})
 		if err != nil {
@@ -5092,6 +5124,7 @@ func TestOnlyThoseWhoManageAReportEditCurateAndPublishOverHTTP(t *testing.T) {
 	}
 	for path, form := range map[string]url.Values{"/edit": edit, "/narrative": curate, "/publications": {}} {
 		resp := postForm(t, noRedirects(sam), draftURL+path, form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("Sam's POST to %s: status %d, want 403; body:\n%s", path, resp.StatusCode, body)
 		}
@@ -5112,6 +5145,7 @@ func TestOnlyThoseWhoManageAReportEditCurateAndPublishOverHTTP(t *testing.T) {
 	}
 	for path, form := range map[string]url.Values{"/edit": edit, "/narrative": curate, "/publications": {}} {
 		resp := postForm(t, noRedirects(client), draftURL+path, form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
 			t.Errorf("Dana's POST to %s: status %d, want 303; body:\n%s", path, resp.StatusCode, body)
 		}
@@ -5146,6 +5180,7 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 		t.Fatalf("the creator is not offered Add Delegate; body:\n%s", renderNode(draft))
 	}
 	resp := postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"dana@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != draftURL {
 		t.Fatalf("adding Dana: status %d at %s, want the draft", resp.StatusCode, resp.Request.URL)
@@ -5179,6 +5214,7 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 		"/delegates/remove": {"account": {strconv.FormatInt(dana.ID, 10)}},
 	} {
 		resp := postForm(t, noRedirects(client), draftURL+path, form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
 			t.Errorf("Dana's POST to %s: status %d, want 403; body:\n%s", path, resp.StatusCode, body)
 		}

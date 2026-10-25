@@ -343,6 +343,7 @@ func TestAnImportFileOneByteOverItsCapIsTooLargeOverHTTP(t *testing.T) {
 	admin := signInClient(t, ts.URL, "admin@example.com")
 
 	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", importFileOfSize(t, 5<<20+1), "commit")
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("POST /imports with a file of 5 MiB + 1 byte: status %d, want 413", resp.StatusCode)
@@ -381,6 +382,7 @@ func TestImportMissingRequiredColumnsFlashesThemOverHTTP(t *testing.T) {
 
 	const noOwnerOrWhy = "Title,Kind,Delivery Date\nParent goal,Ongoing,\n"
 	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", noOwnerOrWhy, "commit")
+	defer func() { _ = resp.Body.Close() }()
 	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422", resp.StatusCode)

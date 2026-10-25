@@ -551,7 +551,7 @@ func teamDimensionID(t *testing.T, h *testsupport.Harness) int64 {
 // Every row the seed writes points at parents that exist, so the seeded dev
 // database passes the foreign-key check the app runs on startup.
 func noRowBreaksAForeignKey(t *testing.T, h *testsupport.Harness) {
-	rows, err := h.DB.Query(`PRAGMA foreign_key_check`)
+	rows, err := h.DB.QueryContext(t.Context(), `PRAGMA foreign_key_check`)
 	if err != nil {
 		t.Fatalf("foreign_key_check: %v", err)
 	}

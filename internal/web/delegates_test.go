@@ -35,6 +35,7 @@ func TestSmokeDelegateChecksInOnOwnersGoal(t *testing.T) {
 	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/delegates", ts.URL, goal.ID), url.Values{
 		"email": {"tpm@example.com"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("add delegate: status %d", resp.StatusCode)
 	}
@@ -51,6 +52,7 @@ func TestSmokeDelegateChecksInOnOwnersGoal(t *testing.T) {
 	if !strings.Contains(delegateBody, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
 		t.Errorf("delegate page does not link to the Check-in page; body:\n%s", delegateBody)
 	}
+	_ = resp.Body.Close()
 
 	// The Delegate checks in on the Goal.
 	resp = postForm(t, tpmClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
@@ -93,6 +95,7 @@ func TestSmokeNonDelegateCheckinForbidden(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Meddling."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Delegate check-in status = %d, want 403", resp.StatusCode)
 	}
@@ -118,6 +121,7 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 	resp := postForm(t, melClient, fmt.Sprintf("%s/goals/%d/delegates", ts.URL, goal.ID), url.Values{
 		"email": {"tpm@example.com"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Owner add delegate status = %d, want 403", resp.StatusCode)
 	}
@@ -162,12 +166,14 @@ func TestOnlyOwnerRemovesDelegateThroughTheWeb(t *testing.T) {
 	remove := formSubmission(forms[0])
 
 	resp := postForm(t, melClient, ts.URL+removeAction, remove)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Owner remove delegate status = %d, want 403", resp.StatusCode)
 	}
 	if got := delegatesShown(); !slices.Equal(got, []string{"tpm"}) {
 		t.Errorf("Delegates after a non-Owner's remove = %q, want tpm still listed", got)
 	}
+	_ = resp.Body.Close()
 
 	resp = postForm(t, samClient, ts.URL+removeAction, remove)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {

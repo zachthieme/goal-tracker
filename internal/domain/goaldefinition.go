@@ -703,7 +703,7 @@ func InputErrors(err error) []*InputError {
 	var out []*InputError
 	var walk func(error)
 	walk = func(err error) {
-		switch e := err.(type) {
+		switch e := err.(type) { //nolint:errorlint // walks the joined tree itself, to collect every *InputError; errors.As would stop at the first
 		case *InputError:
 			out = append(out, e)
 		case interface{ Unwrap() []error }:

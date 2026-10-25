@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -10,7 +8,7 @@ import (
 // It is a scenario builder for arranging Goals a test needs.
 func (h *Harness) CreateGoal(owner domain.Account, title, whyItMatters string) domain.Goal {
 	h.T.Helper()
-	g, err := h.Service.CreateGoal(context.Background(), domain.CreateGoalInput{
+	g, err := h.Service.CreateGoal(h.T.Context(), domain.CreateGoalInput{
 		Title:        title,
 		WhyItMatters: whyItMatters,
 		OwnerID:      owner.ID,
@@ -25,7 +23,7 @@ func (h *Harness) CreateGoal(owner domain.Account, title, whyItMatters string) d
 // a test that has only the Goal's ID to hand and needs to act as its Owner.
 func (h *Harness) GoalOwnerID(goalID int64) int64 {
 	h.T.Helper()
-	g, err := h.Service.ViewGoal(context.Background(), goalID)
+	g, err := h.Service.ViewGoal(h.T.Context(), goalID)
 	if err != nil {
 		h.T.Fatalf("ViewGoal: %v", err)
 	}

@@ -39,6 +39,7 @@ func TestBuilderSavesAPickedDefinitionOverHTTP(t *testing.T) {
 		"mode":   {domain.ReportModePicked},
 		"picked": {strconv.FormatInt(child.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	draft := assertSavedReport(t, client, ts.URL, resp)
 	if got, want := draftGoalTitles(t, draft), []string{child.Title}; !slices.Equal(got, want) {
 		t.Errorf("the picked draft selects %q, want %q", got, want)
@@ -84,6 +85,7 @@ func TestBuilderSavesARulesDefinitionWithAlsoIncludeAndLeaveOutOverHTTP(t *testi
 		"include":            {id(sdk.ID)},
 		"exclude":            {id(sso.ID), id(app.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	draft := assertSavedReport(t, client, ts.URL, resp)
 	want := []string{sdk.Title, reliability.Title}
 	slices.Sort(want)
@@ -121,6 +123,7 @@ func TestBuilderRefusalKeepsValuesAndShowsEachErrorBesideItsInputOverHTTP(t *tes
 		"include":            {id(sdk.ID)},
 		"exclude":            {id(sso.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused save: status %d, want 422; body:\n%s", resp.StatusCode, page)
@@ -169,6 +172,7 @@ func TestBuilderRefusesAnUnknownModeBesideTheModeOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{"name": {"MBR"}, "mode": {"graph"}})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused save: status %d, want 422; body:\n%s", resp.StatusCode, page)
@@ -205,6 +209,7 @@ func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 		"include":            {id(sdk.ID)},
 		"do":                 {"add-rule"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
@@ -268,6 +273,7 @@ func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"do":                 {"add-rule"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
@@ -325,6 +331,7 @@ func TestBuilderRemovesARuleRowOverHTTP(t *testing.T) {
 		"rules[1].value":     {"lifecycle=" + domain.LifecycleActive},
 		"remove-rule":        {"0"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
@@ -409,6 +416,7 @@ func TestBuilderDropsAValueFromAnotherAttributeFromItsRuleOverHTTP(t *testing.T)
 		"rules[1].op":        {domain.RuleIsAnyOf},
 		"rules[1].value":     {"owner=" + bossID, "health=" + domain.HealthRed},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	assertSavedReport(t, client, ts.URL, resp)
 	defs, err := h.Service.ListReportDefinitions(context.Background())
 	if err != nil || len(defs) != 1 {
@@ -439,6 +447,7 @@ func TestBuilderSavesAChangedStartingRowWithoutItsStaleValueOverHTTP(t *testing.
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10), domain.RuleLifecycle + "=" + domain.LifecycleActive},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	assertSavedReport(t, client, ts.URL, resp)
 	defs, err := h.Service.ListReportDefinitions(context.Background())
 	if err != nil || len(defs) != 1 {
@@ -477,6 +486,7 @@ func TestBuilderRerendersAChangedRowWithOnlyItsOwnValuesOverHTTP(t *testing.T) {
 			"rules[0].op":        {domain.RuleIs},
 			"rules[0].value":     {stale, domain.RuleLifecycle + "=" + domain.LifecycleActive},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		if resp.StatusCode != tc.status {
 			t.Fatalf("%s: status %d, want %d; body:\n%s", tc.what, resp.StatusCode, tc.status, page)
@@ -507,6 +517,7 @@ func TestBuilderRefusesARowLeftWithNoValueOfItsOwnOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a Lifecycle row with only an org value: status %d, want 422; body:\n%s", resp.StatusCode, page)
@@ -541,6 +552,7 @@ func TestBuilderLeavesOutARowWithNoAttributeAndAStaleValueOverHTTP(t *testing.T)
 		"rules[1].op":        {domain.RuleIs},
 		"rules[1].value":     {domain.RuleLifecycle + "=" + domain.LifecycleActive},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	assertSavedReport(t, client, ts.URL, resp)
 	defs, err := h.Service.ListReportDefinitions(context.Background())
 	if err != nil || len(defs) != 1 {
@@ -670,6 +682,7 @@ func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
 		"do":                 {"show-matches"},
 	}
 	resp := postForm(t, client, ts.URL+"/reports/new", form)
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Show matches: status %d, want 200; body:\n%s", resp.StatusCode, page)
@@ -746,7 +759,9 @@ func TestBuilderMatchesCountWhatTheSavedDraftSelectsOverHTTP(t *testing.T) {
 	if strings.Contains(rail, "<html") || strings.Contains(rail, "<form") {
 		t.Errorf("matches answers more than the rail:\n%s", rail)
 	}
-	draft := assertSavedReport(t, client, ts.URL, postForm(t, noRedirects(client), ts.URL+"/reports/new", form))
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", form)
+	defer func() { _ = resp.Body.Close() }()
+	draft := assertSavedReport(t, client, ts.URL, resp)
 	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != want {
 		t.Errorf("the rail matches %d Goals, the saved draft selects %d:\n%s", got, want, rail)
 	}
@@ -945,7 +960,9 @@ func TestBuilderMatchesReadAgainstTheDefinitionsBaselineOverHTTP(t *testing.T) {
 	}
 
 	rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
-	draft := assertSavedReport(t, client, ts.URL, postForm(t, noRedirects(client), ts.URL+"/reports/new", form))
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", form)
+	defer func() { _ = resp.Body.Close() }()
+	draft := assertSavedReport(t, client, ts.URL, resp)
 	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != 2 || got != want {
 		t.Errorf("for a new definition the rail matches %d Goals, its saved draft %d, want 2", got, want)
 	}
@@ -1043,7 +1060,7 @@ func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
 	for what, do := range map[string]string{"Add rule": "add-rule", "a refused save": ""} {
 		form := url.Values{"do": {do}}
 		maps.Copy(form, rules)
-		page := readBody(t, postForm(t, client, ts.URL+"/reports/new", form))
+		page := postFormBody(t, client, ts.URL+"/reports/new", form)
 		if got := railCount(t, pageElement(t, page, "aside", "report-matches")); got != 1 {
 			t.Errorf("after %s the rail matches %d Goals, want 1", what, got)
 		}
@@ -1084,6 +1101,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 			}
 			maps.Copy(form, submit)
 			resp := postForm(t, client, ts.URL+"/reports/new", form)
+			defer func() { _ = resp.Body.Close() }()
 			page := readBody(t, resp)
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("%s with a ticked Remove in %s: status %d, want 200; body:\n%s", submit, list, resp.StatusCode, page)
@@ -1104,6 +1122,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 		"exclude":            {id(gone.ID), id(kept.ID)},
 		"remove-exclude":     {id(gone.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	assertSavedReport(t, client, ts.URL, resp)
 	resp = postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
 		"name":          {"Picked weekly"},
@@ -1148,6 +1167,7 @@ func TestBuilderTopLevelRowHidesItsValuesWithoutScriptOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"do":                 {"add-rule"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
@@ -1312,7 +1332,7 @@ func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
 			"rules[0].op":        {domain.RuleIs},
 		}
 		maps.Copy(form, tc.submit)
-		page := readBody(t, postForm(t, client, ts.URL+draft+"/edit", form))
+		page := postFormBody(t, client, ts.URL+draft+"/edit", form)
 		if nav, _ := reportBuilderHead(t, page); !strings.Contains(nav, crumb) {
 			t.Errorf("after %s the breadcrumb isn't %s:\n%s", tc.name, crumb, nav)
 		}
@@ -1351,6 +1371,7 @@ func TestBuilderSavesAndReloadsAnOrgRuleOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {person},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	draft := assertSavedReport(t, client, ts.URL, resp)
 	want := []string{vps.Title, mias.Title}
 	slices.Sort(want)
@@ -1457,6 +1478,7 @@ func TestEditBuilderKeepsAnOwnerRulesPersonWhoOwnsNoGoalOverHTTP(t *testing.T) {
 			form.Add("rules[0].value", domain.RuleOwner+"="+id)
 		}
 		resp := postForm(t, noRedirects(client), ts.URL+draftPath+"/edit", form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
 			t.Fatalf("Owner %s: saving the edit form gives %d, want 303; body:\n%s", c.op, resp.StatusCode, body)
 		}
@@ -1669,6 +1691,7 @@ func TestNewBuilderStartNoteIsOnlyOnTheFirstRenderOverHTTP(t *testing.T) {
 		maps.Copy(form, started)
 		maps.Copy(form, tc.submit)
 		resp := postForm(t, client, ts.URL+"/reports/new", form)
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("%s: status %d, want 200; body:\n%s", tc.name, resp.StatusCode, page)
@@ -1710,6 +1733,7 @@ func TestNewBuilderSavesPickedWithTheStartedRuleStillThereOverHTTP(t *testing.T)
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	assertSavedReport(t, client, ts.URL, resp)
 	defs, err := h.Service.ListReportDefinitions(context.Background())
 	if err != nil || len(defs) != 1 {

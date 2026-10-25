@@ -74,6 +74,7 @@ func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
 		"path_to_green":    {"Escalate."},
 		"path_target_date": {"2026-06-29"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	body = between(t, readBody(t, resp), `id="checkin-form"`, "</form>")
 	if fieldset := tagAround(t, body, `data-testid="path-to-green-field"`); !hasClass(fieldset, "has-error") {
 		t.Errorf("the Path to Green isn't marked as holding the error: %s", fieldset)
@@ -114,7 +115,8 @@ func TestNoChangeRefusalIsStyledAsAnError(t *testing.T) {
 	goal := overdueGreenGoal(h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 
 	form := between(t, page, `data-testid="checkin-form"`, `data-testid="checkin-health"`)
 	if tag := tagAround(t, form, `data-testid="checkin-error"`); attr(tag, "class") != "alert r" {

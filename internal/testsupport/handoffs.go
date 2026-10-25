@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -11,7 +9,7 @@ import (
 // Handoff (CONTEXT.md: Handoff).
 func (h *Harness) StartHandoff(actor domain.Account, goalID int64, to domain.Account) domain.Handoff {
 	h.T.Helper()
-	ho, err := h.Service.StartHandoff(context.Background(), domain.StartHandoffInput{
+	ho, err := h.Service.StartHandoff(h.T.Context(), domain.StartHandoffInput{
 		GoalID:    goalID,
 		ToOwnerID: to.ID,
 		ActorID:   actor.ID,

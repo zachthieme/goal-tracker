@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -12,7 +10,7 @@ import (
 // Highlight).
 func (h *Harness) LogDraftHighlight(author domain.Account, goalID int64, kind, note string) domain.DraftHighlight {
 	h.T.Helper()
-	d, err := h.Service.LogDraftHighlight(context.Background(), domain.LogDraftHighlightInput{
+	d, err := h.Service.LogDraftHighlight(h.T.Context(), domain.LogDraftHighlightInput{
 		GoalID: goalID, AuthorID: author.ID, Kind: kind, Note: note,
 	})
 	if err != nil {

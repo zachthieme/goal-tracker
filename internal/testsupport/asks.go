@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -12,7 +11,7 @@ import (
 // scenario builder for arranging an open ask; health is Yellow or Red.
 func (h *Harness) AskForHelp(author domain.Account, goalID int64, health, status, path string, pathTargetDate time.Time) domain.Checkin {
 	h.T.Helper()
-	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+	c, err := h.Service.SubmitCheckin(h.T.Context(), domain.SubmitCheckinInput{
 		GoalID:         goalID,
 		AuthorID:       author.ID,
 		Health:         health,

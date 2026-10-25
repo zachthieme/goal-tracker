@@ -1134,7 +1134,7 @@ func TestStoppingFinishesTheRequestInFlight(t *testing.T) {
 
 	// A sign-in whose body is slow to come: the server asks for it, with a
 	// 100 Continue, once the route has begun reading it.
-	conn, err := net.Dial("tcp", addr)
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1153,7 +1153,7 @@ func TestStoppingFinishesTheRequestInFlight(t *testing.T) {
 
 	stop()
 	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		probe, err := net.Dial("tcp", addr)
+		probe, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", addr)
 		if err != nil {
 			break // no longer taking connections
 		}
@@ -1194,7 +1194,7 @@ func TestStoppingFinishesTheRequestInFlight(t *testing.T) {
 func TestARequestOutlastingTheGraceIsCutOff(t *testing.T) {
 	t.Parallel()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1209,9 +1209,13 @@ func TestARequestOutlastingTheGraceIsCutOff(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- serve(ctx, s, ln, 50*time.Millisecond) }()
 
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	cut := make(chan error, 1)
 	go func() {
-		resp, err := http.Get("http://" + ln.Addr().String())
+		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -1286,7 +1290,7 @@ func TestTheHealthcheckCommandPassesOnA200(t *testing.T) {
 //
 //nolint:paralleltest // sets the process environment
 func TestTheHealthcheckCommandFailsWhenTheAppIsntHealthy(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1343,7 +1347,7 @@ func TestTheHealthcheckCommandChecksTheLoopbackAtGOAL_TRACKER_ADDRsPort(t *testi
 //
 //nolint:paralleltest // sets the process environment
 func TestTheHealthcheckCommandTimesOutWhenTheAppNeverAnswers(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1527,7 +1531,11 @@ func (l metricsListening) Handle(_ context.Context, r slog.Record) error {
 // get GETs url and returns the response's status, Content-Type and body.
 func get(t *testing.T, url string) (int, string, string) {
 	t.Helper()
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET %s: %v", url, err)
 	}
@@ -1585,7 +1593,7 @@ func TestMetricsAreServedAtGOAL_TRACKER_METRICS_ADDR(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("run didn't return within 10s of being asked to stop")
 	}
-	if conn, err := net.Dial("tcp", metricsAddr); err == nil {
+	if conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", metricsAddr); err == nil {
 		_ = conn.Close()
 		t.Errorf("the metrics listener still takes connections once run has returned")
 	}
@@ -1630,7 +1638,7 @@ func TestMetricsAreOffWithoutGOAL_TRACKER_METRICS_ADDR(t *testing.T) {
 //nolint:paralleltest // sets the process environment, through serveEnv
 func TestAMetricsAddressInUseStopsStartup(t *testing.T) {
 	serveEnv(t)
-	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	taken, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

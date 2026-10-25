@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -11,7 +10,7 @@ import (
 // on error. It is a scenario builder for arranging the org's root outcomes.
 func (h *Harness) MarkTopLevel(admin domain.Account, g domain.Goal) domain.Goal {
 	h.T.Helper()
-	marked, err := h.Service.MarkTopLevel(context.Background(), admin.ID, g.ID)
+	marked, err := h.Service.MarkTopLevel(h.T.Context(), admin.ID, g.ID)
 	if err != nil {
 		h.T.Fatalf("MarkTopLevel: %v", err)
 	}
@@ -21,7 +20,7 @@ func (h *Harness) MarkTopLevel(admin domain.Account, g domain.Goal) domain.Goal 
 // Unlinked returns the Unlinked Goals, failing the test on error.
 func (h *Harness) Unlinked() []domain.Goal {
 	h.T.Helper()
-	goals, err := h.Service.UnlinkedGoals(context.Background())
+	goals, err := h.Service.UnlinkedGoals(h.T.Context())
 	if err != nil {
 		h.T.Fatalf("UnlinkedGoals: %v", err)
 	}
@@ -33,7 +32,7 @@ func (h *Harness) Unlinked() []domain.Goal {
 // a scenario builder for arranging Goals whose delivery dates differ.
 func (h *Harness) ActiveGoalDue(owner domain.Account, title string, due time.Time) domain.Goal {
 	h.T.Helper()
-	ctx := context.Background()
+	ctx := h.T.Context()
 	g := h.CreateGoal(owner, title, title+" matters.")
 	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, due); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
@@ -55,7 +54,7 @@ func (h *Harness) ActiveGoalDue(owner domain.Account, title string, due time.Tim
 // GraphSignals returns the org-wide graph signals, failing the test on error.
 func (h *Harness) GraphSignals() domain.GraphSignals {
 	h.T.Helper()
-	signals, err := h.Service.GraphSignals(context.Background())
+	signals, err := h.Service.GraphSignals(h.T.Context())
 	if err != nil {
 		h.T.Fatalf("GraphSignals: %v", err)
 	}
@@ -65,7 +64,7 @@ func (h *Harness) GraphSignals() domain.GraphSignals {
 // GoalSignals returns the graph signals flagged on g, failing the test on error.
 func (h *Harness) GoalSignals(g domain.Goal) domain.GoalSignals {
 	h.T.Helper()
-	signals, err := h.Service.GoalSignals(context.Background(), g.ID)
+	signals, err := h.Service.GoalSignals(h.T.Context(), g.ID)
 	if err != nil {
 		h.T.Fatalf("GoalSignals: %v", err)
 	}

@@ -89,7 +89,7 @@ func (h *Harness) FreezeBeforeLinkedGoals(pub domain.Publication, overdue domain
 	q := fmt.Sprintf(`UPDATE report_publications SET snapshot = json_set(json_remove(snapshot, %s), '$.Exceptions[%d].RolledUp', json(?)) WHERE id = ?`,
 		strings.Join(paths, ", "), overdueAt)
 	rolledUp := `{"Health":"Red","Present":true,"CheckinOverdueChildren":1,"ActiveChildren":3}`
-	if _, err := h.DB.Exec(q, rolledUp, pub.ID); err != nil {
+	if _, err := h.DB.ExecContext(h.T.Context(), q, rolledUp, pub.ID); err != nil {
 		h.T.Fatalf("FreezeBeforeLinkedGoals: %v", err)
 	}
 }

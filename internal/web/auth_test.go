@@ -31,10 +31,11 @@ func TestGoalsRequiresSignIn(t *testing.T) {
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	resp, err := client.Get(ts.URL + "/goals")
+	resp, err := ctxGet(t, client, ts.URL+"/goals")
 	if err != nil {
 		t.Fatalf("GET /goals: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status %d, want 303 redirect to sign-in", resp.StatusCode)
 	}
@@ -59,7 +60,7 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	resp, err := client.PostForm(ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	resp, err := ctxPostForm(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
 	if err != nil {
 		t.Fatalf("POST /signin: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 		t.Errorf("sign-in: status %d to %q, want 303 to /home", resp.StatusCode, loc)
 	}
 	for _, path := range []string{"/", "/signin"} {
-		resp, err := client.Get(ts.URL + path)
+		resp, err := ctxGet(t, client, ts.URL+path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
@@ -131,6 +132,7 @@ func TestDepartedPersonCannotSignIn(t *testing.T) {
 	}
 
 	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("sign-in as Departed: status %d, want 403", resp.StatusCode)
@@ -160,6 +162,7 @@ func TestDepartedPersonCannotSignInUnderADifferentCase(t *testing.T) {
 	}
 
 	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"Freya.Nilsen@Example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("sign-in as a different case of a Departed email: status %d, want 403", resp.StatusCode)
@@ -196,6 +199,7 @@ func TestDepartureEndsAnExistingSession(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"All good."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
 		t.Errorf("Check-in POST on a departed session: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
@@ -228,6 +232,7 @@ func TestDepartedDelegateCannotCheckIn(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Checked in for Sam."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
 		t.Errorf("Departed Delegate's Check-in POST: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
@@ -262,6 +267,7 @@ func TestReturningDoesNotReviveASessionFromBeforeDeparture(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Back from before."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
 		t.Errorf("Check-in POST on a session from before the departure: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
@@ -290,6 +296,7 @@ func TestReturningDoesNotReviveASessionFromBeforeDeparture(t *testing.T) {
 func sessionCookieOf(t *testing.T, baseURL, emailAddr string) *http.Cookie {
 	t.Helper()
 	resp := postForm(t, noRedirects(http.DefaultClient), baseURL+"/signin", url.Values{"email": {emailAddr}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	for _, c := range resp.Cookies() {
 		if c.Name == "gt_session" && c.Value != "" {
@@ -312,6 +319,7 @@ func signedOut(t *testing.T, baseURL string, cookie *http.Cookie) bool {
 	if err != nil {
 		t.Fatalf("GET /home: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
 }
@@ -489,10 +497,11 @@ func TestARequestKeepsASessionFromIdling(t *testing.T) {
 // clientSignedOut reports whether client's GET /home is sent to sign-in.
 func clientSignedOut(t *testing.T, client *http.Client, baseURL string) bool {
 	t.Helper()
-	resp, err := client.Get(baseURL + "/home")
+	resp, err := ctxGet(t, client, baseURL+"/home")
 	if err != nil {
 		t.Fatalf("GET /home: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
 }
@@ -540,6 +549,7 @@ func TestTheSessionCookieLastsWhatRemainsOf30Days(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /home: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	var reissued *http.Cookie
 	for _, c := range resp.Cookies() {
@@ -575,6 +585,7 @@ func TestSigningOutEndsEverySessionOnTheServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /signout: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 
 	if !signedOut(t, ts.URL, here) {
