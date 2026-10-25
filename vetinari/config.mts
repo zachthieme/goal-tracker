@@ -34,15 +34,16 @@ export default defineConfig({
   //
   // The e2e gate runs the Playwright suite (e2e/README.md), the only check the
   // inline JavaScript in the templ files gets: the highlight editor, the Goal
-  // form's live checks, the Check-in submit bar, the Report builder (#470). It
-  // runs only when the branch changes what the browser gets or the suite
-  // itself: a template, a non-test Go file in internal/web (handlers and
+  // form's live checks, the Check-in submit bar, the Report builder (#470). On
+  // a branch it runs only when the branch changes what the browser gets or the
+  // suite itself: a template, a non-test Go file in internal/web (handlers and
   // generated templ code), internal/web/static/, e2e/, or the seed the suite's
   // template databases are built from. `when` is tested against the changed
-  // files, one per line, hence the `m` flag. Whether the merged-base gate after
-  // a wave applies `when` or runs every gate couldn't be checked from the
-  // campaign container (no vetinari source there); either is safe, as the
-  // suite passes on main. budgetSeconds: `make e2e` took 21-25s (73 tests) in
+  // files, one per line, hence the `m` flag. `when` scopes the gate on a branch
+  // only: the merged-base gate after each wave runs every gate, e2e included,
+  // whatever the wave changed (vetinari's gateMergedBase passes `all`), so a
+  // change `when` skips, such as one to internal/domain or the queries, is
+  // still covered there. budgetSeconds: `make e2e` took 21-25s (73 tests) in
   // the campaign container, so 180 leaves room for parallel sandboxes and a
   // cold Go build. The image sets PLAYWRIGHT_BROWSERS_PATH to its installed
   // Chromium, so the gate's `playwright install chromium` downloads nothing.
