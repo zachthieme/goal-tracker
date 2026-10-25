@@ -63,9 +63,11 @@ surface, and type, space and hairlines carry the hierarchy.
   bar on the Check-in page, both in teal (see § Deviations 6). No neon, and no
   tint on the canvas, so Health's colours stand out from the page (see
   § Deviations 7).
-- **Density:** tight and aligned. It is built for long lists: rows of 40–44px,
-  13–14px text, a 4px grid, and numbers in tabular figures so columns line up.
-  Sections sit 24–40px apart.
+- **Density:** tight and aligned. It is built for long lists on a laptop:
+  rows of 40–44px, 13–14px text, a 4px grid, and numbers in tabular figures
+  so columns line up. Sections sit 24–40px apart. A touch screen trades some
+  density for size: a 16px body, and 15px secondary text and section headings
+  (§ Type scale).
 - **The frame.** Every signed-in page is a 240px sidebar beside a content
   column that opens with a 48px header strip (§ Components: Sidebar, Page
   header). Within the column:
@@ -238,17 +240,33 @@ In the stylesheet, the empty dark `@media` block above repeats the full
 One face, Inter, for headings and text alike. The Print variant keeps its own
 serif, and no other face is loaded.
 
-| Role | Size / line-height | Weight | Tracking |
-| --- | --- | --- | --- |
-| Page title (`h1` in the content) | 28 / 1.2 | 600 | -0.02em |
-| Header strip title (`.ph-title h1`) | 14 / 1.4 | 600 | — |
-| Section heading (`h2`) | 13 / 1.4 | 600 | — |
-| Sub-heading (`h3`), unless its page sets its own | 14 / 1.4 | 600 | — |
-| Row title | 14 | 500 | — |
-| Body | 14 / 1.5 | 400 | — |
-| Meta (`.small`), usually muted (`.muted`, `--color-ink-muted`) | 13 / 1.5 | 400 | — |
-| Small label (`.label`, `th`), in `--color-ink-muted` | 12, sentence case, never uppercase | 500 | — |
-| Numbers (`.num`) | inherit, `font-variant-numeric: tabular-nums` | 500 | — |
+| Role | Size / line-height | On a touch screen | Weight | Tracking |
+| --- | --- | --- | --- | --- |
+| Page title (`h1` in the content) | 28 / 1.2 | 28 | 600 | -0.02em |
+| Header strip title (`.ph-title h1`) | 14 / 1.4, `--text-body` | 16 | 600 | — |
+| Section heading (`h2`) | 13 / 1.4, `--text-h2` | 15 | 600 | — |
+| Sub-heading (`h3`), unless its page sets its own | 14 / 1.4, `--text-body` | 16 | 600 | — |
+| Row title | 14, `--text-body` | 16 | 500 | — |
+| Body | 14 / 1.5, `--text-body` | 16 | 400 | — |
+| Meta (`.small`), usually muted (`.muted`, `--color-ink-muted`) | 13 / 1.5, `--text-secondary` | 15, and `.muted` takes `--color-ink-2` | 400 | — |
+| Small label (`.label`, `th`), in `--color-ink-muted` | 12, `--text-label`, sentence case, never uppercase | 12, still `--color-ink-muted` | 500 | — |
+| Numbers (`.num`) | inherit, `font-variant-numeric: tabular-nums` | inherit | 500 | — |
+
+The sizes are four tokens on `:root` in `app.css`, outside the theme blocks
+since they don't change with the theme: `--text-body` (14px), `--text-secondary`
+(13px, meta and other secondary copy), `--text-h2` (13px, a section heading's
+role: `h2`, `.gp-doc h2`, `.hm-section>h2`) and `--text-label` (12px). No screen
+style sets a 12, 13 or 14px size of its own; it takes the token for its role,
+inside a media block too. Other sizes (10–11px marks, 15px and up) stay literal.
+Where § Components gives a 12, 13 or 14px size, it is the laptop's value of
+the token for that role.
+
+**On a touch screen** (`@media (pointer:coarse)`, a tablet read at arm's
+length) one rule raises the scale: `--text-body` to 16px, `--text-secondary`
+and `--text-h2` to 15px (a section heading keeps 600), and `.muted` copy takes
+`--color-ink-2`. A label keeps its 12px and `--color-ink-muted`, so it recedes
+by colour rather than size. A mouse-driven window keeps the laptop's scale at
+any width, and the Report's own levels below don't change.
 
 A Report, on its draft and its publication, reads on its own four levels
 (`reportStyles`), so its name leads and its labels recede:
@@ -260,7 +278,8 @@ A Report, on its draft and its publication, reads on its own four levels
 | 3 | A Goal block's title (`.rp-card-head h3`) | 16 / 1.4 | 600 |
 | 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
 
-The Exceptions count sits beside its heading in 14px muted tabular figures,
+The Exceptions count sits beside its heading in muted tabular figures at
+`--text-body` (14px, 16px on a touch screen),
 and the narrative's Insights, Accomplishments and Misses are 15px, 600. The
 print page keeps its own serif scale (§ Print variant).
 
