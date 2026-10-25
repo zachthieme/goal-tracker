@@ -100,9 +100,6 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 	if name == "" {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
 	}
-	if err := s.requireFreeAttributeName(ctx, name); err != nil {
-		return Dimension{}, err
-	}
 	cleaned := make([]string, 0, len(def.Values))
 	for _, v := range def.Values {
 		v = strings.TrimSpace(v)
@@ -126,6 +123,11 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 
 	var dim Dimension
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		// The name is checked in the transaction that creates the Dimension,
+		// so a Dimension or Field given the name meanwhile is seen.
+		if err := tx.requireFreeAttributeName(ctx, name); err != nil {
+			return err
+		}
 		now := tx.clock.Now().Format(timeFormat)
 		row, err := tx.queries.CreateDimension(ctx, db.CreateDimensionParams{
 			Name:      name,

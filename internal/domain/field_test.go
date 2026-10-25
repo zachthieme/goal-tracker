@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -286,5 +288,42 @@ func TestRetiredFieldsRequiredSettingCannotChange(t *testing.T) {
 	fields, err := h.Service.ListFields(ctx)
 	if err != nil || len(fields) != 1 || !fields[0].Required {
 		t.Errorf("Fields after refused changes = %+v (%v), want Budget still required", fields, err)
+	}
+}
+
+// A Dimension defined and a Field created at the same moment with one name,
+// differing only in case: only one is made, the other refused as it would be
+// sent after: the two share one namespace (ADR 0005).
+func TestDimensionAndFieldNamedTogetherOnlyOneIsMade(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	for i := range 30 {
+		var errDim, errField error
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errDim = h.Service.CreateDimension(ctx, boss.ID, fmt.Sprintf("Region %d", i), []string{"EMEA"})
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, errField = h.Service.CreateField(ctx, boss.ID, fmt.Sprintf("region %d", i), domain.FieldShortText, "")
+		}()
+		close(start)
+		wg.Wait()
+		if (errDim == nil) == (errField == nil) {
+			t.Fatalf("round %d: Dimension err = %v, Field err = %v; want exactly one made", i, errDim, errField)
+		}
+		for _, err := range []error{errDim, errField} {
+			if err != nil && !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("round %d: err = %v, want ErrValidation for the one refused", i, err)
+			}
+		}
 	}
 }
