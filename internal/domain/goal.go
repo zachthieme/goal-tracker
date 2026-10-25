@@ -471,7 +471,8 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 }
 
 // AddContributor lists an Account on the Goal as a Contributor: named for
-// information only, with no update duty (CONTEXT.md: Contributor). Adding the
+// information only, with no update duty (CONTEXT.md: Contributor), so one can
+// be added in any Lifecycle, not just while the Goal is Proposed. Adding the
 // same Account twice is rejected. Only the Goal's Owner may add one
 // (ErrNotAuthorized).
 func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {

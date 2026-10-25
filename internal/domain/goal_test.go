@@ -269,6 +269,34 @@ func TestAddContributorListsThem(t *testing.T) {
 	}
 }
 
+// A Contributor is listed for information only, so the Owner can add one in
+// any Lifecycle, not just while the Goal is Proposed (CONTEXT.md: Contributor).
+func TestAddContributorListsThemAfterTheGoalLeavesProposed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	active := h.ActiveGoal(owner, "Ship v2", "why")
+	done := h.ActiveGoal(owner, "Ship v1", "why")
+	h.EndGoalInCheckin(owner, done.ID, domain.LifecycleDone)
+	ctx := context.Background()
+
+	for name, goalID := range map[string]int64{"Active": active.ID, "Done": done.ID} {
+		if err := h.Service.AddContributor(ctx, owner.ID, goalID, dana.ID); err != nil {
+			t.Errorf("%s: AddContributor: %v", name, err)
+			continue
+		}
+		list, err := h.Service.ListContributors(ctx, goalID)
+		if err != nil {
+			t.Fatalf("%s: ListContributors: %v", name, err)
+		}
+		if len(list) != 1 || list[0].Email != "dana@example.com" {
+			t.Errorf("%s: ListContributors = %+v, want dana@example.com", name, list)
+		}
+	}
+}
+
 func TestAddContributorRejectsDuplicate(t *testing.T) {
 	t.Parallel()
 

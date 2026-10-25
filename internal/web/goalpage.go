@@ -332,7 +332,9 @@ func (v goalView) offers(form goalForm) bool {
 	case formParentLink, formDelegates:
 		return v.Owns
 	case formContributors:
-		return v.Owns && g.Lifecycle == domain.LifecycleProposed
+		// The Owner lists one in any Lifecycle: the listing is for
+		// information only (CONTEXT.md: Contributor).
+		return v.Owns
 	case formMilestones:
 		// The Owner or a Delegate adds a Milestone at any time until the Goal
 		// is Done or Cancelled (CONTEXT.md: Milestone).
