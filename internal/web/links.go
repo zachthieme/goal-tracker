@@ -217,9 +217,9 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCycle):
-		// Not a refusal: ErrCycle's text says the link would make a cycle,
-		// naming only the two Goals' IDs.
-		http.Error(w, err.Error(), http.StatusConflict)
+		// ErrCycle's own text names the two Goals by ID, so a person reads
+		// this sentence instead.
+		http.Error(w, "Linking these Goals would make a cycle: the parent already contributes to the child.", http.StatusConflict)
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
 	case errors.Is(err, domain.ErrNotAuthorized):

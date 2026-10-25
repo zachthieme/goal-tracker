@@ -231,8 +231,9 @@ func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
 }
 
 // A path some route serves, asked with a method none serves it with, still
-// answers 405 naming the methods it takes, rather than the Not found page. The
-// bare root names nothing to anything but GET (#127).
+// answers 405 naming the methods it takes, rather than the Not found page. So
+// does the bare root, which takes GET, while an unknown path still answers
+// with the Not found page (#127, #544).
 func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -241,15 +242,17 @@ func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp, err := ctxPost(t, client, ts.URL+"/follow-ups", "application/x-www-form-urlencoded", nil)
-	if err != nil {
-		t.Fatalf("POST /follow-ups: %v", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
-		t.Errorf("POST /follow-ups: status %d, Allow %q; want 405, %q", resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")
+	for _, path := range []string{"/follow-ups", "/"} {
+		resp, err := ctxPost(t, client, ts.URL+path, "application/x-www-form-urlencoded", nil)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		_ = readBody(t, resp)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
+			t.Errorf("POST %s: status %d, Allow %q; want 405, %q", path, resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")
+		}
 	}
 
-	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/", "/home")
+	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/no-such-page", "/home")
 }

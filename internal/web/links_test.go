@@ -778,3 +778,36 @@ func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 		t.Errorf("body = %q, want %q", got, want)
 	}
 }
+
+// A link accept refused for making a cycle says so in a sentence a person can
+// read, naming no Goal by its ID (#544).
+func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com") // owns the parent
+	sam := h.SignIn("sam@example.com") // owns the child
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	// Pat links the other way round and Sam accepts, so accepting Sam's request
+	// now would close a cycle.
+	other := h.RequestLink(pat, parent, child, "")
+	if _, err := h.Service.AcceptLink(context.Background(), other.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+
+	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), fmt.Sprintf("%s/links/%d/accept", ts.URL, link.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
+	}
+	if got, want := strings.TrimSpace(body), "Linking these Goals would make a cycle: the parent already contributes to the child."; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after a refused accept, want none", got)
+	}
+}
