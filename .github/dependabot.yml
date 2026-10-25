@@ -1,0 +1,29 @@
+# Weekly updates for the Go modules, the app's Dockerfile and the CI Actions.
+# Dependabot acts only on the default branch on GitHub, so it does nothing
+# until main is pushed (#418).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  # The app's Dockerfile. Go moves by hand, with go.mod's go line,
+  # vetinari/Dockerfile and golangci-lint (see the Dockerfile and Makefile), so
+  # golang's version updates are ignored; digest refreshes of the pinned tags
+  # still come through.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: golang
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

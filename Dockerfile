@@ -10,10 +10,12 @@
 # Settings are the environment variables in docs/install.md. The database
 # lives on the /data volume; back it up as docs/install.md § Backups says.
 
-# Go pinned with vetinari/Dockerfile and go.mod. Generated templ and sqlc code
+# Go pinned with vetinari/Dockerfile and go.mod. Each base image is pinned by
+# digest beside its tag; Dependabot refreshes the digests
+# (.github/dependabot.yml). Generated templ and sqlc code
 # is committed, so the build needs no generators. modernc's SQLite is pure Go,
 # so the binary is static.
-FROM golang:1.27.3-bookworm AS build
+FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -24,7 +26,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
     -o /out/goal-tracker ./cmd/goal-tracker
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8
 # chromium renders PDF downloads (GOAL_TRACKER_CHROME); without it they fall
 # back to the print page. ca-certificates for OIDC and the directory sync;
 # sqlite3 for online backups through `docker exec` (docs/install.md).
