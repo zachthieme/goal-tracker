@@ -5531,3 +5531,66 @@ func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
 		t.Errorf("the oldest entry reads %q, want Created", last)
 	}
 }
+
+// The helpers below read a Report page through the parser (helpers_test.go),
+// as a person meets it.
+
+// reportRowIn is the Reports page's status-table row for the Report named
+// name: the row whose link reads it.
+func reportRowIn(t *testing.T, root *nethtml.Node, name string) *nethtml.Node {
+	t.Helper()
+	for _, row := range findAllByTestID(root, "report-row") {
+		if slices.ContainsFunc(findAll(row, func(n *nethtml.Node) bool { return n.Data == "a" }), func(a *nethtml.Node) bool { return textOf(a) == name }) {
+			return row
+		}
+	}
+	t.Fatalf("Reports page has no row for %q:\n%s", name, renderNode(root))
+	return nil
+}
+
+// downloadMenuItem is where the Download menu's item carrying testID goes and
+// what it reads, failing the test when there's none.
+func downloadMenuItem(t *testing.T, menu *nethtml.Node, testID string) (href, text string) {
+	t.Helper()
+	item := findByTestID(t, menu, testID)
+	return attrOf(item, "href"), textOf(item)
+}
+
+// reportNoteBoxes is what each of a narrative section's note boxes on the
+// curation form holds, in order.
+func reportNoteBoxes(t *testing.T, form *nethtml.Node, section string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range formFields(findByTestID(t, form, "section-text-"+section), "text-"+section) {
+		if f.Type == "textarea" {
+			out = append(out, f.Value)
+		}
+	}
+	return out
+}
+
+// narrativeParagraphs is each of the author's notes a Report's narrative
+// shows, as its own paragraph, in order.
+func narrativeParagraphs(narrative *nethtml.Node) []string {
+	return textsOf(findAllByTestID(narrative, "narrative-text"))
+}
+
+// curationChoice is the box or radio on the curation form named name with
+// this value, failing the test when there's none.
+func curationChoice(t *testing.T, form *nethtml.Node, name, value string) pageField {
+	t.Helper()
+	for _, f := range formFields(form, name) {
+		if f.Value == value {
+			return f
+		}
+	}
+	t.Fatalf("form has no field %s=%s:\n%s", name, value, renderNode(form))
+	return pageField{}
+}
+
+// baselineChipLabel is the bold part of the baseline chip: what it says the
+// draft reads changes since.
+func baselineChipLabel(t *testing.T, chip *nethtml.Node) string {
+	t.Helper()
+	return textOf(findByTestID(t, chip, "baseline-label"))
+}

@@ -2467,3 +2467,44 @@ func TestNoLiteralTypeScaleSizesStyles(t *testing.T) {
 		}
 	}
 }
+
+// reportsStyleSheetIn is the stylesheet a Report page carries itself: the
+// text of its <style> elements, in order.
+func reportsStyleSheetIn(root *html.Node) string {
+	var b strings.Builder
+	for _, s := range findAll(root, func(n *html.Node) bool { return n.Data == "style" }) {
+		for c := s.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.TextNode {
+				b.WriteString(c.Data)
+			}
+		}
+	}
+	return b.String()
+}
+
+// assertReportsRuleDeclares fails unless css has a rule for sel declaring
+// each of wants.
+func assertReportsRuleDeclares(t *testing.T, css, sel string, wants ...string) {
+	t.Helper()
+	decls, ok := ruleFor(css, sel)
+	if !ok {
+		t.Errorf("there is no %s rule", sel)
+		return
+	}
+	for _, want := range wants {
+		if !strings.Contains(decls, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+}
+
+// assertReportsCarriesClass fails unless n, which a Report page shows as
+// what, carries each of classes.
+func assertReportsCarriesClass(t *testing.T, what string, n *html.Node, classes ...string) {
+	t.Helper()
+	for _, class := range classes {
+		if !flatFrameHasClass(n, class) {
+			t.Errorf("%s doesn't carry the %s class: %s", what, class, renderNode(n))
+		}
+	}
+}
