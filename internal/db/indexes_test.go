@@ -140,10 +140,10 @@ func TestEveryForeignKeyColumnLeadsAnIndex(t *testing.T) {
 }
 
 // fkIndexHotQueries are the queries read on every Goal page and list, by the
-// Goal or the person they are for. Each must find its rows by index; queries
-// meant to read a whole table stay off this list. No query lists Goals by
-// Owner alone: the two "ForOwner" queries are the ones that find an Owner's
-// Goals.
+// Goal or the person they are for, and the ones that find a day's Nudges or the
+// open Action Items. Each must find its rows by index; queries meant to read a
+// whole table stay off this list. No query lists Goals by Owner alone: the two
+// "ForOwner" queries are the ones that find an Owner's Goals.
 var fkIndexHotQueries = map[string]string{
 	"ListOpenParentSuggestionsForOwner": listOpenParentSuggestionsForOwner,
 	"ListPendingLinksForOwner":          listPendingLinksForOwner,
@@ -154,15 +154,38 @@ var fkIndexHotQueries = map[string]string{
 	"ListActionItemsForGoal":            listActionItemsForGoal,
 	"ListParentGoals":                   listParentGoals,
 	"ListChildGoals":                    listChildGoals,
+	"ListNudgesOn":                      listNudgesOn,
+	"ListOverdueActionItems":            listOverdueActionItems,
+	"ListOpenActionItemsWithParties":    listOpenActionItemsWithParties,
 }
 
 // fkIndexNoScanTables are the tables that grow with every Goal: a hot query
 // must never read one of them whole.
-var fkIndexNoScanTables = []string{"goals", "checkins", "metrics", "comments", "links", "action_items"}
+var fkIndexNoScanTables = []string{"goals", "checkins", "metrics", "comments", "links", "action_items", "nudges"}
 
 // fkIndexScanDetail matches a plan step that reads a table, or a whole index
 // of it, end to end: "SCAN goals", "SCAN parent", "SCAN g USING INDEX ...".
-var fkIndexScanDetail = regexp.MustCompile(`^SCAN (\S+)`)
+// The second group is the index it reads, if any.
+var fkIndexScanDetail = regexp.MustCompile(`^SCAN (\S+)(?: USING (?:COVERING )?INDEX (\S+))?`)
+
+// fkIndexPartialIndexes names every partial index in the schema. Reading one
+// whole reads only the rows its WHERE keeps, such as the open Action Items, so
+// a hot query may scan it.
+func fkIndexPartialIndexes(t *testing.T, sqlDB *sql.DB) map[string]bool {
+	t.Helper()
+	rows, err := sqlDB.Query(`
+		SELECT il.name
+		FROM sqlite_schema AS m, pragma_index_list(m.name) AS il
+		WHERE m.type = 'table' AND il.partial = 1`)
+	if err != nil {
+		t.Fatalf("list partial indexes: %v", err)
+	}
+	partial := map[string]bool{}
+	for _, name := range fkIndexScanStrings(t, rows) {
+		partial[name] = true
+	}
+	return partial
+}
 
 // fkIndexParams counts query's parameters as SQLite numbers them: "?N" is
 // parameter N, and a bare "?" is one past the highest so far. A "?" in a
@@ -205,26 +228,44 @@ func fkIndexParams(query string) int {
 	return highest
 }
 
-// fkIndexPlan returns the steps of query's plan, with NULL bound to each of
-// its parameters.
-func fkIndexPlan(t *testing.T, sqlDB *sql.DB, query string) []string {
+// fkIndexPlanStep is one step of a query plan: Parent is the ID of the step,
+// such as a subquery, it belongs to, 0 for the query itself.
+type fkIndexPlanStep struct {
+	ID, Parent int
+	Detail     string
+}
+
+// fkIndexPlanSteps returns the steps of query's plan, with NULL bound to each
+// of its parameters.
+func fkIndexPlanSteps(t *testing.T, sqlDB *sql.DB, query string) []fkIndexPlanStep {
 	t.Helper()
 	rows, err := sqlDB.Query("EXPLAIN QUERY PLAN "+query, make([]any, fkIndexParams(query))...)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var plan []string
+	var plan []fkIndexPlanStep
 	for rows.Next() {
-		var id, parent, notUsed int
-		var detail string
-		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+		var step fkIndexPlanStep
+		var notUsed int
+		if err := rows.Scan(&step.ID, &step.Parent, &notUsed, &step.Detail); err != nil {
 			t.Fatalf("scan plan: %v", err)
 		}
-		plan = append(plan, detail)
+		plan = append(plan, step)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("read plan: %v", err)
+	}
+	return plan
+}
+
+// fkIndexPlan returns the details of query's plan steps, with NULL bound to
+// each of its parameters.
+func fkIndexPlan(t *testing.T, sqlDB *sql.DB, query string) []string {
+	t.Helper()
+	var plan []string
+	for _, step := range fkIndexPlanSteps(t, sqlDB, query) {
+		plan = append(plan, step.Detail)
 	}
 	return plan
 }
@@ -253,12 +294,13 @@ func TestHotQueriesScanNoGrowingTable(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := fkIndexMigratedDB(t)
+	partial := fkIndexPartialIndexes(t, sqlDB)
 	for name, query := range fkIndexHotQueries {
 		aliases := fkIndexTableAliases(query)
 		plan := fkIndexPlan(t, sqlDB, query)
 		for _, step := range plan {
 			m := fkIndexScanDetail.FindStringSubmatch(step)
-			if m == nil {
+			if m == nil || partial[m[2]] {
 				continue
 			}
 			if table, ok := aliases[m[1]]; ok {
@@ -266,4 +308,55 @@ func TestHotQueriesScanNoGrowingTable(t *testing.T) {
 			}
 		}
 	}
+}
+
+// fkIndexLatestCheckinQueries are the queries that pick a Goal's latest
+// Check-in: its Check-ins newest first, the first of them.
+var fkIndexLatestCheckinQueries = map[string]string{
+	"GetLatestCheckin":                 getLatestCheckin,
+	"ListLatestCheckinsForGoals":       listLatestCheckinsForGoals,
+	"ListActiveGoalsWithLatestCheckin": listActiveGoalsWithLatestCheckin,
+	"ListOpenAsksForHelp":              listOpenAsksForHelp,
+	"GetOpenAskForHelp":                getOpenAskForHelp,
+}
+
+// fkIndexGoalCheckinsDetail matches a plan step that finds a Goal's Check-ins
+// by its goal_id: "SEARCH c USING INDEX ... (goal_id=?)".
+var fkIndexGoalCheckinsDetail = regexp.MustCompile(`^(?:SEARCH|SCAN) (\S+) .*\bgoal_id\b`)
+
+// The queries that pick a Goal's latest Check-in read its Check-ins already
+// newest first from an index, rather than sorting them each time. A sort of
+// anything else, such as a list of Goals, is not this test's business.
+func TestLatestCheckinQueriesSortNoCheckins(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := fkIndexMigratedDB(t)
+	for name, query := range fkIndexLatestCheckinQueries {
+		aliases := fkIndexTableAliases(query)
+		plan := fkIndexPlanSteps(t, sqlDB, query)
+		findsGoalCheckins := map[int]bool{}
+		for _, step := range plan {
+			m := fkIndexGoalCheckinsDetail.FindStringSubmatch(step.Detail)
+			if m != nil && aliases[m[1]] == "checkins" {
+				findsGoalCheckins[step.Parent] = true
+			}
+		}
+		if len(findsGoalCheckins) == 0 {
+			t.Errorf("%s finds no Goal's Check-ins by goal_id; plan: %s", name, fkIndexPlanText(plan))
+		}
+		for _, step := range plan {
+			if step.Detail == "USE TEMP B-TREE FOR ORDER BY" && findsGoalCheckins[step.Parent] {
+				t.Errorf("%s sorts a Goal's Check-ins in a temp B-tree; plan: %s", name, fkIndexPlanText(plan))
+			}
+		}
+	}
+}
+
+// fkIndexPlanText joins plan's step details for a failure message.
+func fkIndexPlanText(plan []fkIndexPlanStep) string {
+	details := make([]string, 0, len(plan))
+	for _, step := range plan {
+		details = append(details, step.Detail)
+	}
+	return strings.Join(details, "; ")
 }
