@@ -937,6 +937,135 @@ func TestOnlyOneHandoffOfAGoalIsPending(t *testing.T) {
 	}
 }
 
+// uniqueIndexCases are the duplicates migration 0060's unique indexes refuse,
+// one per index. arrange adds the rows a duplicate points at, to a database
+// arranged by arrangeUpgradeAccountsAndGoals; first is a row, duplicate
+// repeats it, and distinct is a row beside it that repeats nothing. count
+// counts the row and its duplicate.
+var uniqueIndexCases = []struct {
+	table, arrange, first, duplicate, distinct, count string
+}{
+	{
+		table: "metric_readings",
+		arrange: `INSERT INTO metrics (id, goal_id, name, unit, direction, baseline, target, target_date, created_at) VALUES
+				(1, 1, 'Uptime', '%', 'up', 90, 99, '2026-12-31', '2026-01-02T00:00:00Z'),
+				(2, 1, 'Incidents', 'count', 'down', 10, 2, '2026-12-31', '2026-01-02T00:00:00Z');
+			INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at)
+				VALUES (1, 1, 7, 7, 'Green', 'On track.', '2026-01-03T00:00:00Z')`,
+		first:     `INSERT INTO metric_readings (checkin_id, metric_id, value, created_at) VALUES (1, 1, 95, '2026-01-03T00:00:00Z')`,
+		duplicate: `INSERT INTO metric_readings (checkin_id, metric_id, value, created_at) VALUES (1, 1, 96, '2026-01-03T00:00:00Z')`,
+		distinct:  `INSERT INTO metric_readings (checkin_id, metric_id, value, created_at) VALUES (1, 2, 4, '2026-01-03T00:00:00Z')`,
+		count:     `SELECT COUNT(*) FROM metric_readings WHERE checkin_id = 1 AND metric_id = 1`,
+	},
+	{
+		table: "report_definition_fields",
+		arrange: `INSERT INTO report_definitions (id, name, introduction, created_by, created_at)
+				VALUES (1, 'Monthly review', '', 7, '2026-01-02T00:00:00Z');
+			INSERT INTO fields (id, name, type, created_at) VALUES
+				(1, 'Budget', 'number', '2026-01-02T00:00:00Z'),
+				(2, 'Sponsor', 'short_text', '2026-01-02T00:00:00Z')`,
+		first:     `INSERT INTO report_definition_fields (report_definition_id, field_id) VALUES (1, 1)`,
+		duplicate: `INSERT INTO report_definition_fields (report_definition_id, field_id) VALUES (1, 1)`,
+		distinct:  `INSERT INTO report_definition_fields (report_definition_id, field_id) VALUES (1, 2)`,
+		count:     `SELECT COUNT(*) FROM report_definition_fields WHERE report_definition_id = 1 AND field_id = 1`,
+	},
+	{
+		table:     "dimension_values",
+		arrange:   `INSERT INTO dimensions (id, name, created_at) VALUES (1, 'Pillar', '2026-01-02T00:00:00Z')`,
+		first:     `INSERT INTO dimension_values (dimension_id, value, created_at) VALUES (1, 'Growth', '2026-01-02T00:00:00Z')`,
+		duplicate: `INSERT INTO dimension_values (dimension_id, value, retired, created_at) VALUES (1, 'growth', 1, '2026-01-02T00:00:00Z')`,
+		distinct:  `INSERT INTO dimension_values (dimension_id, value, created_at) VALUES (1, 'Efficiency', '2026-01-02T00:00:00Z')`,
+		count:     `SELECT COUNT(*) FROM dimension_values WHERE dimension_id = 1 AND lower(value) = 'growth'`,
+	},
+	{
+		table:     "dimensions",
+		first:     `INSERT INTO dimensions (name, created_at) VALUES ('Pillar', '2026-01-02T00:00:00Z')`,
+		duplicate: `INSERT INTO dimensions (name, retired, created_at) VALUES ('pillar', 1, '2026-01-02T00:00:00Z')`,
+		distinct:  `INSERT INTO dimensions (name, created_at) VALUES ('Quarter', '2026-01-02T00:00:00Z')`,
+		count:     `SELECT COUNT(*) FROM dimensions WHERE lower(name) = 'pillar'`,
+	},
+	{
+		table:     "fields",
+		first:     `INSERT INTO fields (name, type, created_at) VALUES ('Budget', 'number', '2026-01-02T00:00:00Z')`,
+		duplicate: `INSERT INTO fields (name, type, retired, created_at) VALUES ('budget', 'short_text', 1, '2026-01-02T00:00:00Z')`,
+		distinct:  `INSERT INTO fields (name, type, created_at) VALUES ('Sponsor', 'short_text', '2026-01-02T00:00:00Z')`,
+		count:     `SELECT COUNT(*) FROM fields WHERE lower(name) = 'budget'`,
+	},
+}
+
+// A database already holding a duplicate that migration 0060's unique indexes
+// refuse won't migrate: the error names the duplicate's table and both rows
+// are kept, so an operator settles which stays by hand.
+func TestMigrationFailsOnADuplicateTheUniqueIndexesRefuse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range uniqueIndexCases {
+		t.Run(tc.table, func(t *testing.T) {
+			t.Parallel()
+			sqlDB := migratedExcept(t, "migrations/0060_unique_indexes.sql")
+			// Back to the schema before 0060, which held none of its indexes.
+			if _, err := sqlDB.Exec(`
+				DROP INDEX idx_metric_readings_unique_metric;
+				CREATE INDEX idx_metric_readings_checkin ON metric_readings (checkin_id);
+				DROP INDEX idx_report_definition_fields_unique_field;
+				CREATE INDEX idx_report_definition_fields_definition ON report_definition_fields (report_definition_id);
+				DROP INDEX idx_dimension_values_unique_value;
+				CREATE INDEX idx_dimension_values_dimension ON dimension_values (dimension_id);
+				DROP INDEX idx_dimensions_unique_name;
+				DROP INDEX idx_fields_unique_name`); err != nil {
+				t.Fatalf("restore the indexes before 0060: %v", err)
+			}
+			arrangeUpgradeAccountsAndGoals(t, sqlDB)
+			for _, stmt := range []string{tc.arrange, tc.first, tc.duplicate} {
+				if _, err := sqlDB.Exec(stmt); err != nil {
+					t.Fatalf("arrange %s: %v", tc.table, err)
+				}
+			}
+
+			err := db.Migrate(sqlDB)
+			if err == nil {
+				t.Fatalf("Migrate succeeded on a database with a duplicate in %s", tc.table)
+			}
+			if !strings.Contains(err.Error(), tc.table) {
+				t.Errorf("Migrate error %q doesn't name the %s table", err, tc.table)
+			}
+			var rows int
+			if err := sqlDB.QueryRow(tc.count).Scan(&rows); err != nil {
+				t.Fatalf("count %s: %v", tc.table, err)
+			}
+			if rows != 2 {
+				t.Errorf("%d of the duplicate's rows in %s after the failed migration, want both kept", rows, tc.table)
+			}
+		})
+	}
+}
+
+// Once migrated, each of migration 0060's tables refuses a duplicate, whatever
+// its case where it holds a name or a value, and takes a row beside it that
+// repeats nothing: another Metric in the same Check-in, another value in the
+// same Dimension.
+func TestTheUniqueIndexesRefuseADuplicate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range uniqueIndexCases {
+		t.Run(tc.table, func(t *testing.T) {
+			t.Parallel()
+			sqlDB := openMigratedForFKCheck(t)
+			arrangeUpgradeAccountsAndGoals(t, sqlDB)
+			for _, stmt := range []string{tc.arrange, tc.first} {
+				if _, err := sqlDB.Exec(stmt); err != nil {
+					t.Fatalf("arrange %s: %v", tc.table, err)
+				}
+			}
+
+			if _, err := sqlDB.Exec(tc.duplicate); err == nil {
+				t.Errorf("a duplicate was stored in %s", tc.table)
+			}
+			if _, err := sqlDB.Exec(tc.distinct); err != nil {
+				t.Errorf("a row repeating nothing was refused by %s: %v", tc.table, err)
+			}
+		})
+	}
+}
+
 // openMigratedForFKCheck opens a database through db.Open, as the app does, and
 // migrates it.
 func openMigratedForFKCheck(t *testing.T) *sql.DB {
