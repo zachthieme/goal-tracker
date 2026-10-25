@@ -122,11 +122,13 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	sender := email.LogSender{Logger: logger}
 	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL), domain.WithEmailOutboxLogger(logger))
 	if linkFor != "" {
-		token, _, err := svc.IssuePasswordLink(ctx, linkFor)
+		link, err := svc.IssueOperatorPasswordLink(ctx, linkFor)
 		if err != nil {
 			return fmt.Errorf("issue a set-password link for %s: %w", linkFor, err)
 		}
-		_, err = fmt.Fprintln(stdout, svc.PasswordLinkURL(token))
+		logger.Info("set-password link issued", "issuer", "command-line",
+			"account_id", link.Account.ID, "email", link.Account.Email, "expires", link.Expires)
+		_, err = fmt.Fprintln(stdout, svc.PasswordLinkURL(link.Token))
 		return err
 	}
 	webOpts := []web.Option{

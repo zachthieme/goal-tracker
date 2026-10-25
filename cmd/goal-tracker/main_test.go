@@ -628,6 +628,41 @@ func TestThePasswordLinkCommandPrintsALink(t *testing.T) {
 	}
 }
 
+// The password-link command logs, at INFO, that the command line issued a
+// link, for whom and until when, but never the link or its token.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestThePasswordLinkCommandLogsTheLinkItIssued(t *testing.T) {
+	passwordEnv(t)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com")
+
+	var out, log bytes.Buffer
+	if err := run(t.Context(), slog.New(slog.NewTextHandler(&log, nil)), []string{"password-link", "first.admin@example.com"}, &out); err != nil {
+		t.Fatalf("password-link: %v", err)
+	}
+	var issued string
+	for line := range strings.SplitSeq(log.String(), "\n") {
+		if strings.Contains(line, `msg="set-password link issued"`) {
+			issued = line
+		}
+	}
+	for _, want := range []string{"level=INFO", "issuer=command-line", "account_id=", "email=first.admin@example.com", "expires="} {
+		if !strings.Contains(issued, want) {
+			t.Errorf("the issued line %q lacks %s:\n%s", issued, want, &log)
+		}
+	}
+	_, token, found := strings.Cut(strings.TrimSpace(out.String()), "token=")
+	if !found {
+		t.Fatalf("password-link printed %q, want a link", out.String())
+	}
+	for _, secret := range []string{token, "/set-password?token="} {
+		if strings.Contains(log.String(), secret) {
+			t.Errorf("the log holds %q:\n%s", secret, &log)
+		}
+	}
+}
+
 // The password-link command refuses without a base URL, as the app does, and
 // prints nothing rather than a link to localhost.
 //

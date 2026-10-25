@@ -621,6 +621,93 @@ func TestAdminCantIssueASetPasswordLinkToSomethingNotAnEmail(t *testing.T) {
 	}
 }
 
+// passwordLogServer serves the app with password sign-in, logging as JSON to
+// the buffer it returns, and returns the cookies of emailAddr signed in with a
+// password. The log holds nothing from before the sign-in.
+func passwordLogServer(t *testing.T, h *testsupport.Harness, emailAddr string, opts ...web.Option) (*web.Server, *bytes.Buffer, []*http.Cookie) {
+	t.Helper()
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	srv := web.NewServer(h.Service, append([]web.Option{web.WithPasswordSignIn(), web.WithLogger(logger)}, opts...)...)
+	const password = "a password for tests"
+	givePassword(t, h, emailAddr, password)
+	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {emailAddr}, "password": {password}}.Encode()))
+	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	signedIn := httptest.NewRecorder()
+	srv.ServeHTTP(signedIn, signIn)
+	if signedIn.Code != http.StatusSeeOther {
+		t.Fatalf("password sign-in as %q: status %d:\n%s", emailAddr, signedIn.Code, signedIn.Body)
+	}
+	buf.Reset()
+	return srv, &buf, signedIn.Result().Cookies()
+}
+
+// postWithCookies serves a form POST to path, with cookies, through srv.
+func postWithCookies(srv *web.Server, path string, form url.Values, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+	return w
+}
+
+// Issuing a set-password link is logged at INFO with the request's ID: the
+// Admin who issued it, the person it's for, and when it expires. No line
+// holds the link or its token.
+func TestIssuingASetPasswordLinkIsLogged(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	srv, buf, cookies := passwordLogServer(t, h, "ada@example.com")
+
+	w := postWithCookies(srv, "/admin/password-links", url.Values{"email": {"kim@example.com"}}, cookies)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Issue link: status %d, want 200:\n%s", w.Code, w.Body)
+	}
+	token := regexp.MustCompile(`/set-password\?token=([A-Za-z0-9_-]+)`).FindStringSubmatch(w.Body.String())
+	if token == nil {
+		t.Fatalf("the page shows no link:\n%s", w.Body)
+	}
+	kim, err := h.Service.AccountByEmail(t.Context(), "kim@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var issued []map[string]any
+	for _, rec := range logRecords(t, buf) {
+		if rec["msg"] == "set-password link issued" {
+			issued = append(issued, rec)
+		}
+	}
+	if len(issued) != 1 {
+		t.Fatalf("logged %d set-password link lines, want 1:\n%s", len(issued), buf)
+	}
+	rec := issued[0]
+	want := map[string]any{
+		"level":        "INFO",
+		"request_id":   w.Header().Get("X-Request-ID"),
+		"issuer_id":    float64(ada.ID),
+		"issuer_email": "ada@example.com",
+		"account_id":   float64(kim.ID),
+		"email":        "kim@example.com",
+		"expires":      testsupport.Epoch.Add(72 * time.Hour).UTC().Format(time.RFC3339Nano),
+	}
+	for key, value := range want {
+		if rec[key] != value {
+			t.Errorf("the line's %s is %v, want %v:\n%v", key, rec[key], value, rec)
+		}
+	}
+	for _, secret := range []string{token[1], "/set-password?token="} {
+		if strings.Contains(buf.String(), secret) {
+			t.Errorf("the log holds %q:\n%s", secret, buf)
+		}
+	}
+}
+
 // Only an Admin may issue a set-password link: anyone else is refused, as with
 // Sync now, and no link is made.
 func TestNonAdminCantIssueASetPasswordLink(t *testing.T) {

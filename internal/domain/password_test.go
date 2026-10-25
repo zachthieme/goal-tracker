@@ -23,11 +23,11 @@ func TestASetPasswordLinkLetsThePersonSignIn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	token, _, err := h.Service.IssuePasswordLink(t.Context(), "sam@example.com")
+	link, err := h.Service.IssueOperatorPasswordLink(t.Context(), "sam@example.com")
 	if err != nil {
-		t.Fatalf("IssuePasswordLink: %v", err)
+		t.Fatalf("IssueOperatorPasswordLink: %v", err)
 	}
-	set, err := h.Service.SetPassword(t.Context(), token, samPassword)
+	set, err := h.Service.SetPassword(t.Context(), link.Token, samPassword)
 	if err != nil {
 		t.Fatalf("SetPassword: %v", err)
 	}
@@ -44,11 +44,50 @@ func TestASetPasswordLinkLetsThePersonSignIn(t *testing.T) {
 // issueLink issues a set-password link for emailAddr, failing the test on error.
 func issueLink(t *testing.T, h *testsupport.Harness, emailAddr string) string {
 	t.Helper()
-	token, _, err := h.Service.IssuePasswordLink(t.Context(), emailAddr)
+	link, err := h.Service.IssueOperatorPasswordLink(t.Context(), emailAddr)
 	if err != nil {
-		t.Fatalf("IssuePasswordLink(%q): %v", emailAddr, err)
+		t.Fatalf("IssueOperatorPasswordLink(%q): %v", emailAddr, err)
 	}
-	return token
+	return link.Token
+}
+
+// Only an Admin may issue a set-password link: anyone else is refused with
+// ErrNotAuthorized, and no Account or link is made. An Admin's link works as
+// the operator's does.
+func TestOnlyAnAdminMayIssueASetPasswordLink(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+
+	if _, err := h.Service.IssuePasswordLink(t.Context(), sam.ID, "kim@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a non-Admin's IssuePasswordLink for a new email: %v, want ErrNotAuthorized", err)
+	}
+	if acc, err := h.Service.AccountByEmail(t.Context(), "kim@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a non-Admin's IssuePasswordLink made an Account %+v (err %v)", acc, err)
+	}
+	if link, err := h.Service.IssuePasswordLink(t.Context(), sam.ID, "sam@example.com"); !errors.Is(err, domain.ErrNotAuthorized) || link.Token != "" {
+		t.Errorf("a non-Admin's IssuePasswordLink for themself: %+v, %v, want no link and ErrNotAuthorized", link, err)
+	}
+
+	link, err := h.Service.IssuePasswordLink(t.Context(), ada.ID, "kim@example.com")
+	if err != nil {
+		t.Fatalf("an Admin's IssuePasswordLink: %v", err)
+	}
+	if link.Account.Email != "kim@example.com" || link.Account.ID == 0 {
+		t.Errorf("the link is for %+v, want kim@example.com's new Account", link.Account)
+	}
+	if want := testsupport.Epoch.Add(72 * time.Hour); !link.Expires.Equal(want) {
+		t.Errorf("the link expires %v, want %v", link.Expires, want)
+	}
+	set, err := h.Service.SetPassword(t.Context(), link.Token, samPassword)
+	if err != nil {
+		t.Fatalf("SetPassword with an Admin's link: %v", err)
+	}
+	if set.ID != link.Account.ID {
+		t.Errorf("the link set the password of %+v, want %+v", set, link.Account)
+	}
 }
 
 // A set-password link is only issued for a bare email address: anything else
@@ -58,11 +97,11 @@ func TestASetPasswordLinkIsOnlyForAnEmailAddress(t *testing.T) {
 
 	h := testsupport.New(t)
 	for _, notAnEmail := range []string{"ada", "Ada <ada@x.com>", "a b@x.com"} {
-		if _, _, err := h.Service.IssuePasswordLink(t.Context(), notAnEmail); !errors.Is(err, domain.ErrNotAnEmail) {
-			t.Errorf("IssuePasswordLink(%q) = %v, want ErrNotAnEmail", notAnEmail, err)
+		if _, err := h.Service.IssueOperatorPasswordLink(t.Context(), notAnEmail); !errors.Is(err, domain.ErrNotAnEmail) {
+			t.Errorf("IssueOperatorPasswordLink(%q) = %v, want ErrNotAnEmail", notAnEmail, err)
 		}
 		if acc, err := h.Service.AccountByEmail(t.Context(), notAnEmail); !errors.Is(err, domain.ErrNotFound) {
-			t.Errorf("IssuePasswordLink(%q) left an Account %+v (err %v)", notAnEmail, acc, err)
+			t.Errorf("IssueOperatorPasswordLink(%q) left an Account %+v (err %v)", notAnEmail, acc, err)
 		}
 	}
 	issueLink(t, h, "ada@example.com")
@@ -77,10 +116,11 @@ func TestASetPasswordLinkWorksOnceWithin72Hours(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		t.Parallel()
 		h := testsupport.New(t)
-		token, expires, err := h.Service.IssuePasswordLink(t.Context(), "sam@example.com")
+		link, err := h.Service.IssueOperatorPasswordLink(t.Context(), "sam@example.com")
 		if err != nil {
 			t.Fatal(err)
 		}
+		token, expires := link.Token, link.Expires
 		if want := testsupport.Epoch.Add(72 * time.Hour); !expires.Equal(want) {
 			t.Errorf("link expires %v, want %v", expires, want)
 		}
@@ -142,7 +182,7 @@ func TestNoSetPasswordLinkForADepartedPerson(t *testing.T) {
 		}
 	}
 
-	if _, _, err := h.Service.IssuePasswordLink(t.Context(), "sam@example.com"); !errors.Is(err, domain.ErrDeparted) {
+	if _, err := h.Service.IssuePasswordLink(t.Context(), boss.ID, "sam@example.com"); !errors.Is(err, domain.ErrDeparted) {
 		t.Errorf("IssuePasswordLink for a Departed person: %v, want ErrDeparted", err)
 	}
 	if _, err := h.Service.SetPassword(t.Context(), kimsLink, samPassword); !errors.Is(err, domain.ErrDeparted) {
