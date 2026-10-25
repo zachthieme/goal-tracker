@@ -525,8 +525,18 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
 // Check-in page around it. The Rolled-up Health and Run off Green still show,
 // the latest Check-in's answers still show as ghost text, and the form still
-// says whom an ask would go to.
+// says whom an ask would go to. Only whoever may open the Check-in page — the
+// Owner or a Delegate — gets the form back; anyone else gets its 403 (#528).
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
+	view, err := s.goalPageView(r.Context(), data.GoalID, current)
+	if err != nil {
+		s.serverError(w, r, "could not load goal", err)
+		return
+	}
+	if !view.CanCheckin {
+		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
+		return
+	}
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
 		data.RolledUp = rollup
 	}
@@ -537,11 +547,6 @@ func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, 
 	data.AskAddressee = s.loadCheckinAskAddressee(r, data.GoalID)
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, http.StatusOK, checkinForm(data))
-		return
-	}
-	view, err := s.goalPageView(r.Context(), data.GoalID, current)
-	if err != nil {
-		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	render(w, r, http.StatusOK, checkinPage(&current, view, data))
