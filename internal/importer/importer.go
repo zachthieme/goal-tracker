@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -929,10 +930,23 @@ func isOLE(data []byte) bool {
 
 // parseXLSX reads the first worksheet of an XLSX workbook into rows of cells.
 func parseXLSX(data []byte) ([]sheetRow, error) {
+	// excelize unpacks a worksheet over its per-sheet limit to a temp file as it
+	// reads the archive, and when a later entry takes the total over the limit
+	// it returns no File whose Close could remove it. So each parse has its own
+	// temp directory, removed however the parse ends (#480).
+	tmpDir, err := os.MkdirTemp("", "goal-tracker-xlsx-")
+	if err != nil {
+		return nil, fmt.Errorf("could not read XLSX: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{
 		UnzipSizeLimit:    xlsxUnzipSizeLimit,
 		UnzipXMLSizeLimit: xlsxUnzipXMLSizeLimit,
+		TmpDir:            tmpDir,
 	})
+	if f != nil {
+		defer func() { _ = f.Close() }()
+	}
 	// excelize checks the sizes the archive declares before unpacking any of it,
 	// and has no sentinel for the error, so it is known by its text.
 	if err != nil && strings.HasPrefix(err.Error(), "unzip size exceeds") {
@@ -941,7 +955,6 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
 	}
-	defer func() { _ = f.Close() }()
 
 	sheets := f.GetSheetList()
 	if len(sheets) == 0 {

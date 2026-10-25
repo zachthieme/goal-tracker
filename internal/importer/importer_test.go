@@ -955,10 +955,22 @@ func TestZipBombWorkbookIsRefused(t *testing.T) {
 // almost nothing.
 func zipBombXLSX(t *testing.T, sheetSize int) []byte {
 	t.Helper()
+	return paddedSheetsXLSX(t, sheetSize)
+}
+
+// paddedSheetsXLSX is a real one-sheet workbook whose worksheets, in order,
+// unpack to sheetSizes bytes each: the first is its real sheet1.xml, padded, and
+// the rest are padded sheet2.xml, sheet3.xml, … entries after it.
+func paddedSheetsXLSX(t *testing.T, sheetSizes ...int) []byte {
+	t.Helper()
 	plain := xlsxOf(t, []any{"Title", "Owner", "Why it matters", "Kind"})
 	zr, err := zip.NewReader(bytes.NewReader(plain), int64(len(plain)))
 	if err != nil {
 		t.Fatalf("read xlsx: %v", err)
+	}
+	sizes := map[string]int{}
+	for i, size := range sheetSizes {
+		sizes[fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1)] = size
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -967,21 +979,9 @@ func zipBombXLSX(t *testing.T, sheetSize int) []byte {
 		if err != nil {
 			t.Fatalf("create %s: %v", entry.Name, err)
 		}
-		if entry.Name == "xl/worksheets/sheet1.xml" {
-			const head = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`
-			const tail = `</sheetData></worksheet>`
-			if _, err := io.WriteString(w, head); err != nil {
-				t.Fatalf("write sheet: %v", err)
-			}
-			chunk := bytes.Repeat([]byte(" "), 1<<20)
-			for left := sheetSize - len(head) - len(tail); left > 0; left -= len(chunk) {
-				if _, err := w.Write(chunk[:min(left, len(chunk))]); err != nil {
-					t.Fatalf("write sheet: %v", err)
-				}
-			}
-			if _, err := io.WriteString(w, tail); err != nil {
-				t.Fatalf("write sheet: %v", err)
-			}
+		if size, ok := sizes[entry.Name]; ok {
+			writePaddedSheet(t, w, size)
+			delete(sizes, entry.Name)
 			continue
 		}
 		rc, err := entry.Open()
@@ -993,10 +993,68 @@ func zipBombXLSX(t *testing.T, sheetSize int) []byte {
 		}
 		_ = rc.Close()
 	}
+	for i := 2; i <= len(sheetSizes); i++ {
+		name := fmt.Sprintf("xl/worksheets/sheet%d.xml", i)
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		writePaddedSheet(t, w, sheetSizes[i-1])
+	}
 	if err := zw.Close(); err != nil {
 		t.Fatalf("close zip: %v", err)
 	}
 	return buf.Bytes()
+}
+
+// writePaddedSheet writes worksheet XML padded with whitespace to size bytes.
+func writePaddedSheet(t *testing.T, w io.Writer, size int) {
+	t.Helper()
+	const head = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>`
+	const tail = `</sheetData></worksheet>`
+	if _, err := io.WriteString(w, head); err != nil {
+		t.Fatalf("write sheet: %v", err)
+	}
+	chunk := bytes.Repeat([]byte(" "), 1<<20)
+	for left := size - len(head) - len(tail); left > 0; left -= len(chunk) {
+		if _, err := w.Write(chunk[:min(left, len(chunk))]); err != nil {
+			t.Fatalf("write sheet: %v", err)
+		}
+	}
+	if _, err := io.WriteString(w, tail); err != nil {
+		t.Fatalf("write sheet: %v", err)
+	}
+}
+
+// A workbook refused as too large leaves nothing on the temp disk, though
+// excelize has already unpacked a worksheet over its per-sheet limit to a temp
+// file by the time a later one takes the total over (#480), so repeated
+// uploads can't fill the disk.
+func TestRefusedWorkbookLeavesNoTempFiles(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	bomb := paddedSheetsXLSX(t, 20<<20, 50<<20)
+	if len(bomb) > 1<<20 {
+		t.Fatalf("workbook is %d bytes, want it well under the 5 MiB upload cap", len(bomb))
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", bomb)
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "too large to import") {
+		t.Fatalf("DryRun error = %v, want the workbook refused as too large", err)
+	}
+	left, err := os.ReadDir(tmp)
+	if err != nil {
+		t.Fatalf("read temp dir: %v", err)
+	}
+	if len(left) > 0 {
+		names := make([]string, len(left))
+		for i, e := range left {
+			names[i] = e.Name()
+		}
+		t.Errorf("temp dir holds %v after the refused import, want it empty", names)
+	}
 }
 
 // An old-format .xls or a password-protected workbook — both stored in the old
