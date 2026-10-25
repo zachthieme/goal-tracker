@@ -95,7 +95,7 @@ func TestNudgeIsOncePerGoalPerOrgDay(t *testing.T) {
 		t.Fatalf("LoadLocation: %v", err)
 	}
 	h := testsupport.New(t)
-	svc := domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))
+	svc := domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la), domain.WithEmailDeliveredOnCommit())
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignInNamed("pat@example.com", "Pat Okafor")
 	kim := h.SignIn("kim@example.com")
@@ -249,9 +249,9 @@ func TestNudgeLeavesOutADepartedDelegate(t *testing.T) {
 	}
 }
 
-// A Nudge whose email can't be sent still stands, and Nudge says it was
-// recorded but not sent.
-func TestNudgeStandsWhenItsEmailFails(t *testing.T) {
+// A Nudge whose email can't be sent stands with no error: its email waits in
+// the outbox, unsent, and goes out once mail is back, as a comment alert does.
+func TestNudgeStandsAndItsEmailIsRetriedWhenMailIsDown(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -260,14 +260,23 @@ func TestNudgeStandsWhenItsEmailFails(t *testing.T) {
 	pat := h.SignIn("pat@example.com")
 	goal := h.ActiveGoal(sam, "Silent work", "It matters.")
 	h.Clock.Advance(10 * nudgeDay)
-	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil)
+	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil, domain.WithEmailDeliveredOnCommit())
 
-	_, err := down.Nudge(ctx, pat.ID, goal.ID)
-	if !errors.Is(err, domain.ErrNudgeNotSent) || !strings.Contains(err.Error(), "recorded") {
-		t.Errorf("err = %v, want ErrNudgeNotSent saying the Nudge was recorded", err)
+	if _, err := down.Nudge(ctx, pat.ID, goal.ID); err != nil {
+		t.Fatalf("Nudge: %v, want it recorded though its email could not be sent", err)
 	}
 	if kept, _ := h.Service.Nudges(ctx, goal.ID); len(kept) != 1 {
 		t.Errorf("kept %d Nudges, want 1", len(kept))
+	}
+	if sent := h.Email.Sent(); len(sent) != 0 {
+		t.Fatalf("sent %+v while mail was down, want nothing", sent)
+	}
+
+	h.Clock.Advance(time.Minute)
+	h.DeliverEmail()
+	sent := h.Email.Sent()
+	if len(sent) != 1 || sent[0].To != "sam@example.com" || sent[0].AccountID != sam.ID || sent[0].Subject != "Check-in requested: Silent work" {
+		t.Errorf("sent %+v once mail was back, want the Nudge's email to sam, for their Account", sent)
 	}
 }
 

@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const addDelegate = `-- name: AddDelegate :one
@@ -139,6 +140,65 @@ func (q *Queries) ListDelegates(ctx context.Context, goalID int64) ([]ListDelega
 	for rows.Next() {
 		var i ListDelegatesRow
 		if err := rows.Scan(
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDelegatesForGoals = `-- name: ListDelegatesForGoals :many
+SELECT delegates.goal_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
+FROM delegates
+JOIN accounts ON accounts.id = delegates.account_id
+WHERE delegates.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY delegates.goal_id, accounts.email
+`
+
+type ListDelegatesForGoalsRow struct {
+	GoalID  int64
+	Account Account
+}
+
+// The Delegates of each of the given Goals, each Goal's ordered by email, as
+// ListDelegates reads one Goal's.
+func (q *Queries) ListDelegatesForGoals(ctx context.Context, goalIds []int64) ([]ListDelegatesForGoalsRow, error) {
+	query := listDelegatesForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDelegatesForGoalsRow
+	for rows.Next() {
+		var i ListDelegatesForGoalsRow
+		if err := rows.Scan(
+			&i.GoalID,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,

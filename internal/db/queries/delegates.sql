@@ -29,3 +29,12 @@ JOIN goals ON goals.id = delegates.goal_id
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE delegates.account_id = @account_id
 ORDER BY goals.created_at DESC, goals.id DESC;
+
+-- name: ListDelegatesForGoals :many
+-- The Delegates of each of the given Goals, each Goal's ordered by email, as
+-- ListDelegates reads one Goal's.
+SELECT delegates.goal_id, sqlc.embed(accounts)
+FROM delegates
+JOIN accounts ON accounts.id = delegates.account_id
+WHERE delegates.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY delegates.goal_id, accounts.email;

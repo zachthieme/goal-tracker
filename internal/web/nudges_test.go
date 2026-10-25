@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
@@ -174,9 +175,10 @@ type failingSender struct{}
 
 func (failingSender) Send(context.Context, email.Message) error { return errors.New("mail is down") }
 
-// A Nudge whose email can't go out still stands: the page says so with a 502,
-// naming the Owner it didn't reach, and the Goal keeps its Nudge.
-func TestANudgeNotEmailedSaysItWasRecorded(t *testing.T) {
+// A Nudge whose email can't go out yet is still a Nudge made: it lands back
+// on the Follow-ups page as any Nudge does, the Goal keeps its Nudge, and its
+// email waits in the outbox to be tried again.
+func TestANudgeWhileMailIsDownReturnsToFollowUps(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -184,22 +186,20 @@ func TestANudgeNotEmailedSaysItWasRecorded(t *testing.T) {
 	h.SignIn("pat@example.com")
 	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
 	h.Clock.Advance(10 * day)
-	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, failingSender{}, nil)))
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, failingSender{}, nil, domain.WithEmailDeliveredOnCommit())))
 	t.Cleanup(ts.Close)
 
 	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/goals/"+strconv.FormatInt(silent.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
-	body := html.UnescapeString(readBody(t, resp))
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status %d, want 502", resp.StatusCode)
-	}
-	if !strings.Contains(body, "<title>Nudge not emailed · Goal Tracker</title>") || !strings.Contains(body, "<h1>Nudge not emailed</h1>") || !strings.Contains(body, `<a href="/follow-ups">Back</a>`) {
-		t.Errorf("no Nudge not emailed page with a Back link:\n%s", body)
-	}
-	reason := pageElement(t, body, "p", "nudge-refused")
-	if want := "The Nudge was recorded, but the email to sam@example.com couldn't be sent."; !strings.HasSuffix(reason, ">"+want) {
-		t.Errorf("reason %s, want %q", reason, want)
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != ts.URL+"/follow-ups" {
+		t.Errorf("nudging landed on %s with status %d, want the Follow-ups page", resp.Request.URL, resp.StatusCode)
 	}
 	if kept, err := h.Service.Nudges(t.Context(), silent.ID); err != nil || len(kept) != 1 {
 		t.Errorf("kept %d Nudges (err %v), want 1", len(kept), err)
+	}
+	h.Clock.Advance(time.Minute)
+	h.DeliverEmail()
+	if sent := h.Email.Sent(); len(sent) != 1 || sent[0].To != "sam@example.com" {
+		t.Errorf("sent %+v once mail was back, want the Nudge's email to sam", sent)
 	}
 }

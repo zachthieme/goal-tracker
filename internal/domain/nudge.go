@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,9 +29,10 @@ type Nudge struct {
 // it themselves. A Goal is nudged at most once a calendar day in the org's
 // timezone, whoever asks.
 //
-// The Nudge is recorded before any email goes out, so a rollback never leaves
-// one sent. When an email can't be sent the Nudge stands, and Nudge returns it
-// with an error saying so.
+// Its emails are queued in the email outbox in the transaction that records
+// the Nudge, so they go out only once it commits, and one that can't be sent
+// is tried again while it fails: a mail server that is down doesn't fail the
+// Nudge.
 func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, error) {
 	goal, err := s.loadGoal(ctx, goalID)
 	if err != nil {
@@ -95,33 +95,23 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 			return fmt.Errorf("record nudge: %w", err)
 		}
 		n = nudgeFromRow(row, sender)
+		for _, r := range to {
+			if err := tx.queueEmail(ctx, email.Message{
+				To:        r.Email,
+				AccountID: r.ID,
+				Subject:   "Check-in requested: " + goal.Title,
+				Body:      tx.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
+			}); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {
 		return Nudge{}, err
 	}
-
-	var unsent []string
-	for _, r := range to {
-		msg := email.Message{
-			To:        r.Email,
-			AccountID: r.ID,
-			Subject:   "Check-in requested: " + goal.Title,
-			Body:      s.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
-		}
-		if err := s.email.Send(ctx, msg); err != nil {
-			unsent = append(unsent, r.Email)
-		}
-	}
-	if len(unsent) > 0 {
-		return n, Refuse(ErrNudgeNotSent, "the Nudge was recorded, but the email to %s couldn't be sent", strings.Join(unsent, ", "))
-	}
 	return n, nil
 }
-
-// ErrNudgeNotSent is a Nudge that was recorded but whose email couldn't go
-// out to everyone it was for.
-var ErrNudgeNotSent = errors.New("nudge email not sent")
 
 // NudgedToday returns, of the Goals goalIDs, those nudged today in the org's
 // calendar, each with its Nudge, so a page can say who already asked.
