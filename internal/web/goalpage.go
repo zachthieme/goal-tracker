@@ -93,9 +93,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		CanCheckin:         p.CanCheckin,
 		NoChangeRefusal:    noChangeRefusal,
 		NoChangeOverdue:    noChangeOverdue,
-		CanSetValues:       p.CanSetValues,
+		Permissions:        p.Permissions,
 		Owns:               current.ID == g.Owner.ID,
-		Admin:              current.IsAdmin,
 		Revisions:          p.Revisions,
 		TitleRevisions:     p.TitleRevisions,
 		Ownership:          p.Ownership,
@@ -157,10 +156,12 @@ type goalView struct {
 	Contributors    []domain.Account
 	// Delegates are the Accounts the Owner has authorized to write Check-ins on
 	// this Goal, and CanCheckin is true when the viewer may write one — the Owner
-	// or one of those Delegates (CONTEXT.md: Delegate).
-	Delegates  []domain.Account
-	CanCheckin bool
-	Revisions  []domain.WhyItMattersRevision
+	// or one of those Delegates (CONTEXT.md: Delegate) — whatever its
+	// Lifecycle. Permissions are what the viewer may do with it now.
+	Delegates   []domain.Account
+	CanCheckin  bool
+	Permissions domain.GoalPermissions
+	Revisions   []domain.WhyItMattersRevision
 	// NoChangeRefusal is why a No change on this Active Goal would be
 	// refused, as a sentence, or "" when one would be recorded or isn't on
 	// offer: there's no Check-in to repeat or the viewer can't check in.
@@ -183,17 +184,13 @@ type goalView struct {
 	// controls. Values are the values this Goal currently carries, retired ones
 	// included so they stay readable. Fields are all defined Fields, Retired
 	// ones included, and FieldValues the values this Goal has in them.
-	// CanSetValues is true when the viewer may set them all — the Owner, a
-	// Delegate or an Admin.
-	Dimensions   []domain.Dimension
-	Values       []domain.DimensionValue
-	Fields       []domain.Field
-	FieldValues  []domain.FieldValue
-	CanSetValues bool
-	// Owns and Admin say whether the viewer is the Goal's Owner or an Admin,
-	// which with CanCheckin and CanSetValues decides the actions offered them.
-	Owns  bool
-	Admin bool
+	Dimensions  []domain.Dimension
+	Values      []domain.DimensionValue
+	Fields      []domain.Field
+	FieldValues []domain.FieldValue
+	// Owns says whether the viewer is the Goal's Owner, who decides its
+	// Parent suggestions rather than making them.
+	Owns bool
 	// Open is the one form the page shows open in place, from its ?open=
 	// address, or "" for none. FormError is why that form's last submit was
 	// refused and FormInput what it sent, so it comes back as it was left.
@@ -312,45 +309,38 @@ const (
 	formTitleWhyItMatters goalForm = "title-why-it-matters"
 )
 
-// offers reports whether the viewer may use form on this Goal: the same people
-// each action has always been offered to.
+// offers reports whether the viewer may use form on this Goal: whether the
+// domain permits them what the form does (domain.GoalPermissions), and, for
+// the Dimension values and Fields forms, whether there is any to set.
 func (v goalView) offers(form goalForm) bool {
-	g := v.Goal
+	p := v.Permissions
 	switch form {
 	case formHandoff:
-		return (v.Owns || v.Admin) && !g.Ownerless
+		return p.HandOff
 	case formReassign:
-		return v.Admin && g.Ownerless
+		return p.Reassign
 	case formDepart:
-		return v.Admin && !g.Owner.Departed
+		return p.MarkOwnerDeparted
 	case formReturn:
-		return v.Admin && g.Owner.Departed
+		return p.MarkOwnerReturned
 	case formTopLevel:
-		return v.Admin
+		return p.MarkTopLevel
 	case formTitleWhyItMatters:
-		return v.Owns || v.Admin
-	case formParentLink, formDelegates:
-		return v.Owns
+		return p.EditTitleAndWhyItMatters
+	case formParentLink:
+		return p.LinkParent
+	case formDelegates:
+		return p.ManageDelegates
 	case formContributors:
-		// The Owner lists one in any Lifecycle: the listing is for
-		// information only (CONTEXT.md: Contributor).
-		return v.Owns
+		return p.AddContributor
 	case formMilestones:
-		// The Owner or a Delegate adds a Milestone at any time until the Goal
-		// is Done or Cancelled (CONTEXT.md: Milestone).
-		switch g.Lifecycle {
-		case domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold:
-			return v.CanCheckin
-		}
-		return false
+		return p.AddMilestone
 	case formDimensions:
-		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
+		return p.SetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
 	case formFields:
-		return v.CanSetValues && len(domain.OfferedFields(v.Fields)) > 0
+		return p.SetValues && len(domain.OfferedFields(v.Fields)) > 0
 	case formDraftHighlight:
-		// The Owner or a Delegate logs one while the Goal still takes
-		// Check-ins to offer it at (CONTEXT.md: Draft Highlight).
-		return v.CanCheckin && draftHighlightsLoggable(g)
+		return p.LogDraftHighlight
 	}
 	return false
 }

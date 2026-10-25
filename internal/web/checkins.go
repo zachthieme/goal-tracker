@@ -48,7 +48,7 @@ func lifecycleFromQuery(r *http.Request, l lifecycleFormData) (string, bool) {
 	if to == "" || to == l.defaultTo() {
 		return "", false
 	}
-	if l.Current != domain.LifecycleActive && l.Current != domain.LifecycleOnHold {
+	if !domain.LifecycleTakesCheckins(l.Current) {
 		return "", false
 	}
 	for _, c := range l.choices() {

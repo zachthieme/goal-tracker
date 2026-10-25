@@ -59,7 +59,7 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 								</p>
 							</div>
 							<div class="dg-action">
-								if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+								if domain.LifecycleTakesCheckins(g.Lifecycle) {
 									<a class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
 								} else {
 									<p data-testid="delegated-goal-not-active" class="muted small">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>

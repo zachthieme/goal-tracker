@@ -75,12 +75,94 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 		if p.CanCheckin != v.checkIn {
 			t.Errorf("CanCheckin for %s = %t, want %t", v.name, p.CanCheckin, v.checkIn)
 		}
-		if p.CanSetValues != v.setValues {
-			t.Errorf("CanSetValues for %s = %t, want %t", v.name, p.CanSetValues, v.setValues)
+		if p.Permissions.SetValues != v.setValues {
+			t.Errorf("Permissions.SetValues for %s = %t, want %t", v.name, p.Permissions.SetValues, v.setValues)
 		}
 		if len(p.DraftHighlights) != v.draftHighlightsVisible {
 			t.Errorf("%s sees %d Draft Highlights, want %d", v.name, len(p.DraftHighlights), v.draftHighlightsVisible)
 		}
+	}
+}
+
+// The Goal page's loader says what each viewer may do with the Goal, by the
+// rule each command enforces: on an Active Goal the Owner may do everything
+// but an Admin's own acts, a Delegate what a Check-in author may and set
+// values, an Admin set values, edit, hand off, mark the Owner departed and
+// mark Top-level, and a reader nothing. Once the Goal is Done no one may check
+// in, add a Milestone or log a Draft Highlight, the Owner included.
+func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	rita := h.SignIn("rita@example.com")
+	admin := h.SignIn("admin@example.com")
+	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	done := h.ActiveGoal(sam, "Ship sign-in", "People can't get in.")
+	for _, g := range []domain.Goal{active, done} {
+		h.AddDelegate(sam, morgan, g.ID)
+	}
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+
+	owner := domain.GoalPermissions{
+		CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		AddContributor: true, ManageDelegates: true, LinkParent: true,
+		EditTitleAndWhyItMatters: true, HandOff: true,
+	}
+	delegate := domain.GoalPermissions{CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true}
+	anAdmin := domain.GoalPermissions{
+		SetValues: true, EditTitleAndWhyItMatters: true, HandOff: true,
+		MarkOwnerDeparted: true, MarkTopLevel: true,
+	}
+	ownerOfDone := owner
+	ownerOfDone.CheckIn, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, false, false
+	for _, v := range []struct {
+		name   string
+		viewer domain.Account
+		goal   domain.Goal
+		want   domain.GoalPermissions
+	}{
+		{"the Owner of the Active Goal", sam, active, owner},
+		{"a Delegate on the Active Goal", morgan, active, delegate},
+		{"an Admin on the Active Goal", admin, active, anAdmin},
+		{"a reader of the Active Goal", rita, active, domain.GoalPermissions{}},
+		{"the Owner of the Done Goal", sam, done, ownerOfDone},
+		{"a Delegate on the Done Goal", morgan, done, domain.GoalPermissions{SetValues: true}},
+		{"an Admin on the Done Goal", admin, done, anAdmin},
+		{"a reader of the Done Goal", rita, done, domain.GoalPermissions{}},
+	} {
+		p, err := h.Service.GoalPage(ctx, v.viewer.ID, v.goal.ID)
+		if err != nil {
+			t.Fatalf("GoalPage for %s: %v", v.name, err)
+		}
+		if p.Permissions != v.want {
+			t.Errorf("Permissions for %s = %+v, want %+v", v.name, p.Permissions, v.want)
+		}
+	}
+}
+
+// On an Ownerless Goal an Admin may reassign it and mark its Owner returned,
+// but not hand it off or mark its Owner departed again.
+func TestGoalPagePermitsAnAdminToReassignAnOwnerlessGoal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	admin := h.SignIn("admin@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.MarkDeparted(admin, sam)
+
+	p, err := h.Service.GoalPage(ctx, admin.ID, g.ID)
+	if err != nil {
+		t.Fatalf("GoalPage: %v", err)
+	}
+	want := domain.GoalPermissions{
+		SetValues: true, EditTitleAndWhyItMatters: true, Reassign: true,
+		MarkOwnerReturned: true, MarkTopLevel: true,
+	}
+	if p.Permissions != want {
+		t.Errorf("Permissions for an Admin on an Ownerless Goal = %+v, want %+v", p.Permissions, want)
 	}
 }
 
@@ -106,8 +188,8 @@ func TestGoalPagePermitsNothingToAViewerWithNoAccount(t *testing.T) {
 	if p.CanCheckin {
 		t.Errorf("CanCheckin for a viewer with no Account = true, want false")
 	}
-	if p.CanSetValues {
-		t.Errorf("CanSetValues for a viewer with no Account = true, want false")
+	if p.Permissions != (domain.GoalPermissions{}) {
+		t.Errorf("Permissions for a viewer with no Account = %+v, want none", p.Permissions)
 	}
 	if len(p.DraftHighlights) != 0 {
 		t.Errorf("a viewer with no Account sees %d Draft Highlights, want none", len(p.DraftHighlights))

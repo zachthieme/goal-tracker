@@ -914,6 +914,42 @@ func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID in
 	})
 }
 
+// ValueSettableGoals names those of goals whose Dimension values and Fields
+// actor may set, by the rule setting them applies (RequireGoalValueSetter):
+// those they own or are a Delegate on, or every one for an Admin. It reads
+// which Goals they are a Delegate on once, however many goals there are.
+func (s *Service) ValueSettableGoals(ctx context.Context, actor Account, goals []Goal) (map[int64]bool, error) {
+	var delegated map[int64]bool
+	isDelegate := func(goalID int64) (bool, error) {
+		if delegated == nil {
+			gs, err := s.DelegatedGoals(ctx, actor.ID)
+			if err != nil {
+				return false, err
+			}
+			delegated = make(map[int64]bool, len(gs))
+			for _, g := range gs {
+				delegated[g.ID] = true
+			}
+		}
+		return delegated[goalID], nil
+	}
+	settable := map[int64]bool{}
+	for _, g := range goals {
+		refusal := goalValueSetterRefusal(actor.ID, g.Owner.ID, func() (bool, error) {
+			return isDelegate(g.ID)
+		}, func() error {
+			return adminRefusal(actor)
+		})
+		switch {
+		case refusal == nil:
+			settable[g.ID] = true
+		case !errors.Is(refusal, ErrNotAuthorized):
+			return nil, refusal
+		}
+	}
+	return settable, nil
+}
+
 // goalValueSetterRefusal is requireGoalValueSetter's rule for actorID on a
 // Goal Owned by ownerID: delegate says whether they are its Delegate and
 // admin refuses them unless they are an Admin, each asked only when it

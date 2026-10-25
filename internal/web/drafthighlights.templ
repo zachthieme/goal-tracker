@@ -1,10 +1,6 @@
 package web
 
-import (
-	"fmt"
-
-	"github.com/zachthieme/goal-tracker/internal/domain"
-)
+import "fmt"
 
 // draftHighlightSection is the Goal page's Draft Highlights block, shown only
 // to the Goal's Owner and Delegates (CONTEXT.md: Draft Highlight): the pending
@@ -33,7 +29,7 @@ templ draftHighlightSection(v goalView) {
 // Draft Highlight with what was typed and the reason. Its id is the target
 // the editor's htmx posts swap.
 templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
-	if v.CanCheckin && (draftHighlightsLoggable(v.Goal) || len(v.DraftHighlights) > 0) {
+	if v.CanCheckin && (v.Permissions.LogDraftHighlight || len(v.DraftHighlights) > 0) {
 		<section
 			data-testid="goal-draft-highlights"
 			id="draft-highlights"
@@ -41,7 +37,7 @@ templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 			data-highlight-editor
 			data-kind-optional
 			data-hl-noun="Draft Highlight"
-			if !draftHighlightsLoggable(v.Goal) {
+			if !v.Permissions.LogDraftHighlight {
 				data-hl-no-edit
 			}
 			hx-on:htmx:response-error={ swapErrorPageScript }
@@ -137,11 +133,4 @@ func draftHighlightKind(kind string) string {
 		return "No kind"
 	}
 	return kind
-}
-
-// draftHighlightsLoggable reports whether the Goal takes Draft Highlights: it
-// does while it still takes Check-ins to offer them at, so not once it is Done
-// or Cancelled.
-func draftHighlightsLoggable(g domain.Goal) bool {
-	return g.Lifecycle != domain.LifecycleDone && g.Lifecycle != domain.LifecycleCancelled
 }

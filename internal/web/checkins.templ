@@ -641,7 +641,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 					</div>
 				}
 			</div>
-			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+			if v.Permissions.CheckIn {
 				@checkinAddBar(form.Lifecycle)
 			}
 			<aside data-testid="checkin-context" class="checkin-context">
@@ -672,7 +672,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 					<p>{ checkinContextDates(g, v.Milestones, v.dates()) }</p>
 				</section>
 			</aside>
-			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+			if v.Permissions.CheckIn {
 				@checkinForm(form)
 			} else {
 				@checkinFieldError(form.Error, "")

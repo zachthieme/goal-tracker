@@ -186,7 +186,7 @@ func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (Dra
 // or Cancelled Goal with ErrValidation: it takes no more Check-ins to offer
 // one at.
 func draftHighlightsTaken(goal Goal) error {
-	if ended(goal) {
+	if !LifecycleTakesDraftHighlights(goal.Lifecycle) {
 		return fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
 	}
 	return nil
