@@ -57,7 +57,7 @@ RUN npm install -g @mariozechner/pi-coding-agent @openai/codex
 # export data version 5, which needs golang.org/x/tools v0.52 or later, bundled
 # by golangci-lint from v2.15.0 (older releases fail every package's typecheck).
 # Move this and GOLANGCI_LINT_VERSION together, with go.mod's go line, the app's
-# Dockerfile, and the Makefile's and CI's golangci-lint pins. templ and
+# Dockerfile, and the Makefile's golangci-lint pin. templ and
 # sqlc are NOT installed here: they are pinned as `tool` deps in go.mod and run
 # via `go tool`, so the generator versions travel with the repo, not the image.
 COPY --from=golang:1.27.3-bookworm /usr/local/go /usr/local/go

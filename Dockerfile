@@ -11,8 +11,8 @@
 # lives on the /data volume; back it up as docs/install.md § Backups says.
 
 # Go pinned with vetinari/Dockerfile and go.mod. Each base image is pinned by
-# digest beside its tag; Dependabot refreshes the digests
-# (.github/dependabot.yml). Generated templ and sqlc code
+# digest beside its tag; move the digests by hand when bumping an image.
+# Generated templ and sqlc code
 # is committed, so the build needs no generators. modernc's SQLite is pure Go,
 # so the binary is static.
 FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build

@@ -9,8 +9,7 @@ other than a `_test.go` in `internal/web/`, anything in `internal/web/static/`,
 `e2e/`, `internal/seed/` or `cmd/seed/`. The pattern is the e2e gate's `when` in
 [`vetinari/config.mts`](../vetinari/config.mts). That pattern only decides
 whether it runs on a branch: after each wave, vetinari runs the suite on the
-merged result whatever the wave changed. `make check` doesn't run it, and
-neither does CI.
+merged result whatever the wave changed. `make check` doesn't run it.
 
 ## Running it
 
