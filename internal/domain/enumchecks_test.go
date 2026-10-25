@@ -15,7 +15,7 @@ import (
 
 // enumCheckColumns are the enum columns the schema CHECKs, each with the
 // domain constant whose const block names its values, and whether the domain
-// also writes '' to it.
+// also writes an empty value to it.
 var enumCheckColumns = []struct {
 	table, column, anchor string
 	empty                 bool
@@ -60,10 +60,10 @@ var flagCheckColumns = []struct{ table, column string }{
 }
 
 // Every value the domain names for an enum column is one the column's CHECK
-// accepts, '' too where the domain writes it, and a value outside them is
-// refused by a CHECK named for the table and column. The values are read from
-// the domain's own const blocks, so a new Lifecycle, status or kind fails here
-// until the schema's CHECK takes it.
+// accepts, the empty value too where the domain writes it, and a value outside
+// them is refused by a CHECK named for the table and column. The values are
+// read from the domain's own const blocks, so a new Lifecycle, status or kind
+// fails here until the schema's CHECK takes it.
 func TestEnumColumnsAcceptEveryDomainValueAndNoOther(t *testing.T) {
 	t.Parallel()
 	blocks := domainConstBlocks(t)

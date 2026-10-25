@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1262,5 +1263,175 @@ func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
 				t.Errorf("%s = %q after the failed migration, want %q kept", tc.read, got, tc.want)
 			}
 		})
+	}
+}
+
+// queryStrings returns each row q reads, its columns printed and joined by
+// " | ", in the order q reads them.
+func queryStrings(t *testing.T, sqlDB *sql.DB, q string, args ...any) []string {
+	t.Helper()
+	rows, err := sqlDB.Query(q, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", q, err)
+	}
+	defer func() { _ = rows.Close() }()
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatalf("columns of %s: %v", q, err)
+	}
+	var out []string
+	for rows.Next() {
+		values := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			t.Fatalf("scan %s: %v", q, err)
+		}
+		fields := make([]string, len(values))
+		for i, v := range values {
+			fields[i] = fmt.Sprintf("%#v", v)
+		}
+		out = append(out, strings.Join(fields, " | "))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read %s: %v", q, err)
+	}
+	return out
+}
+
+// A row in each table migration 0064 rebuilt keeps every value on upgrade, and
+// the upgraded database breaks no foreign key.
+func TestMigrationKeepsEveryRowOfTheTablesItGivesEnumChecks(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, enumChecksMigration)
+	testsupport.ArrangeEnumCheckRows(t, sqlDB)
+	before := map[string][]string{}
+	for _, table := range testsupport.EnumCheckTables {
+		before[table] = queryStrings(t, sqlDB, `SELECT * FROM `+table+` ORDER BY id`)
+		if len(before[table]) == 0 {
+			t.Fatalf("no row arranged in %s", table)
+		}
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	for _, table := range testsupport.EnumCheckTables {
+		if got := queryStrings(t, sqlDB, `SELECT * FROM `+table+` ORDER BY id`); !slices.Equal(got, before[table]) {
+			t.Errorf("%s rows = %v after the migration, want %v", table, got, before[table])
+		}
+	}
+}
+
+// migratedBefore returns a database with every migration ordered before
+// version applied by hand, each in its own transaction as Migrate applies it.
+func migratedBefore(t *testing.T, version string) *sql.DB {
+	t.Helper()
+	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	entries, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("read migrations: %v", err)
+	}
+	for _, entry := range entries {
+		path := "migrations/" + entry.Name()
+		if path >= version {
+			break
+		}
+		applyMigrationFile(t, sqlDB, path)
+	}
+	return sqlDB
+}
+
+// applyMigrationFile runs the migration at path in a transaction.
+func applyMigrationFile(t *testing.T, sqlDB *sql.DB, path string) {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	tx, err := sqlDB.Begin()
+	if err != nil {
+		t.Fatalf("begin %s: %v", path, err)
+	}
+	if _, err := tx.Exec(string(body)); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("apply %s: %v", path, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit %s: %v", path, err)
+	}
+}
+
+// schemaShape is what a table rebuild must keep of a database's schema, by
+// table: its columns in order, foreign keys, and indexes with their columns,
+// those a UNIQUE constraint makes included; and every index and trigger by
+// name with its definition. It leaves out each table's own CREATE TABLE, which
+// a rebuild that adds a CHECK changes.
+func schemaShape(t *testing.T, sqlDB *sql.DB) map[string][]string {
+	t.Helper()
+	shape := map[string][]string{}
+	for _, object := range queryStrings(t, sqlDB, `SELECT type, name, tbl_name, sql FROM sqlite_schema
+		WHERE type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`) {
+		shape["objects"] = append(shape["objects"], object)
+	}
+	var tables []string
+	if err := func() error {
+		rows, err := sqlDB.Query(`SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name`)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return err
+			}
+			tables = append(tables, name)
+		}
+		return rows.Err()
+	}(); err != nil {
+		t.Fatalf("read tables: %v", err)
+	}
+	for _, table := range tables {
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'column', cid, name, type, "notnull", dflt_value, pk FROM pragma_table_info(?)`, table)...)
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'foreign key', id, seq, "table", "from", "to", on_update, on_delete, "match" FROM pragma_foreign_key_list(?) ORDER BY id, seq`, table)...)
+		shape[table] = append(shape[table], queryStrings(t, sqlDB,
+			`SELECT 'index', l.name, l."unique", l.origin, l.partial, x.seqno, x.cid, x.name, x."desc", x.coll, x."key"
+			FROM pragma_index_list(?) AS l, pragma_index_xinfo(l.name) AS x ORDER BY l.name, x.seqno`, table)...)
+	}
+	return shape
+}
+
+// Migration 0064 changes no table but for its CHECKs: every table has the
+// same columns in the same order, with the same types, defaults, NOT NULLs and
+// keys, the same foreign keys and indexes, and every index and trigger the
+// same definition.
+func TestMigrationGivingEnumChecksKeepsTheSchema(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedBefore(t, enumChecksMigration)
+	before := schemaShape(t, sqlDB)
+	applyMigrationFile(t, sqlDB, enumChecksMigration)
+	after := schemaShape(t, sqlDB)
+
+	for _, name := range slices.Sorted(maps.Keys(before)) {
+		if !slices.Equal(after[name], before[name]) {
+			t.Errorf("%s after the migration:\n%s\nwant:\n%s", name, strings.Join(after[name], "\n"), strings.Join(before[name], "\n"))
+		}
+	}
+	for name := range after {
+		if _, ok := before[name]; !ok {
+			t.Errorf("the migration left %s behind", name)
+		}
 	}
 }
