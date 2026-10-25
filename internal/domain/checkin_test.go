@@ -337,6 +337,40 @@ func TestSubmitCheckinRejectsReadingForForeignMetric(t *testing.T) {
 	}
 }
 
+// A Check-in records one value per Metric, so one that names a Metric twice is
+// refused by name before anything is recorded.
+func TestSubmitCheckinRefusesAMetricReadTwice(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+	latency, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, validMetric(goal.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	_, err = h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Read it twice.",
+		Readings: []domain.MetricReadingInput{
+			{MetricID: latency.ID, Value: 900},
+			{MetricID: latency.ID, Value: 800},
+		},
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if reason := domain.Reason(err); !strings.Contains(reason, "p95 checkout latency") {
+		t.Errorf("reason = %q, want it to name the Metric read twice", reason)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("a Check-in was recorded despite the Metric read twice: %d", len(history))
+	}
+}
+
 // One-click "no change" records a Check-in that repeats the previous values,
 // author and Owner it is written for aside.
 func TestNoChangeCheckinRepeatsPreviousValues(t *testing.T) {

@@ -507,8 +507,10 @@ func (s *Service) offTargetByLatestReading(g Goal, metrics []Metric, readings ma
 }
 
 // validateReadings checks that each reading names a Metric on goalID; a reading
-// for a Metric that does not exist or belongs to another Goal is rejected.
+// for a Metric that does not exist or belongs to another Goal is rejected, and
+// so is a second reading for one Metric: a Check-in records one value each.
 func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
+	read := make(map[int64]bool, len(readings))
 	for _, rd := range readings {
 		m, err := s.queries.GetMetric(ctx, rd.MetricID)
 		if err != nil {
@@ -520,6 +522,10 @@ func (s *Service) validateReadings(ctx context.Context, goalID int64, readings [
 		if m.GoalID != goalID {
 			return Refuse(ErrValidation, "metric %d is not on this Goal", rd.MetricID)
 		}
+		if read[rd.MetricID] {
+			return Refuse(ErrValidation, "a Check-in records one value per Metric; %q has more than one", m.Name)
+		}
+		read[rd.MetricID] = true
 	}
 	return nil
 }
