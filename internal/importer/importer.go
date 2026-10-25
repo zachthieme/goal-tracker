@@ -928,6 +928,10 @@ func isOLE(data []byte) bool {
 	return bytes.HasPrefix(data, []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1})
 }
 
+// openXLSXWorkbook is how parseXLSX opens a workbook: excelize.OpenReader,
+// but for a test that has the open fail with a workbook in hand.
+var openXLSXWorkbook = excelize.OpenReader
+
 // parseXLSX reads the first worksheet of an XLSX workbook into rows of cells.
 func parseXLSX(data []byte) ([]sheetRow, error) {
 	// excelize unpacks a worksheet over its per-sheet limit to a temp file as it
@@ -939,7 +943,7 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 		return nil, fmt.Errorf("could not read XLSX: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
-	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{
+	f, err := openXLSXWorkbook(bytes.NewReader(data), excelize.Options{
 		UnzipSizeLimit:    xlsxUnzipSizeLimit,
 		UnzipXMLSizeLimit: xlsxUnzipXMLSizeLimit,
 		TmpDir:            tmpDir,

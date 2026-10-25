@@ -66,7 +66,7 @@ const healthcheckCommand = "healthcheck"
 // there. Any other args are ignored.
 func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writer) error {
 	if len(args) > 0 && args[0] == healthcheckCommand {
-		return checkHealth(ctx, addrFromEnv())
+		return checkHealth(ctx, addrFromEnv(), healthcheckTimeout)
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -254,13 +254,14 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
-// healthcheckTimeout is how long checkHealth waits for /healthz to answer.
+// healthcheckTimeout is how long the healthcheck command waits for /healthz
+// to answer.
 const healthcheckTimeout = 3 * time.Second
 
 // checkHealth GETs /healthz from the app listening on addr, through the
 // loopback whatever host addr names, and returns nil on a 200. Any other
-// status, or no answer within healthcheckTimeout, is an error saying which.
-func checkHealth(ctx context.Context, addr string) error {
+// status, or no answer within timeout, is an error saying which.
+func checkHealth(ctx context.Context, addr string, timeout time.Duration) error {
 	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("%s: GOAL_TRACKER_ADDR: %w", healthcheckCommand, err)
@@ -270,7 +271,7 @@ func checkHealth(ctx context.Context, addr string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", healthcheckCommand, err)
 	}
-	resp, err := (&http.Client{Timeout: healthcheckTimeout}).Do(req)
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
 	if err != nil {
 		return fmt.Errorf("%s: %w", healthcheckCommand, err)
 	}

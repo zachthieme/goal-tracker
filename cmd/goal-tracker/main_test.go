@@ -1326,3 +1326,57 @@ func TestTheHealthcheckCommandChecksTheLoopbackAtGOAL_TRACKER_ADDRsPort(t *testi
 		})
 	}
 }
+
+// goal-tracker healthcheck fails, saying it timed out, when something on its
+// port accepts the connection and never answers: the image's HEALTHCHECK
+// doesn't hang on a wedged app. The check here waits a fraction of the
+// shipped healthcheckTimeout, and the test's own deadline, well past that,
+// only stops a check with no timeout hanging the run.
+//
+//nolint:paralleltest // sets the process environment
+func TestTheHealthcheckCommandTimesOutWhenTheAppNeverAnswers(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := make(chan net.Conn, 16)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn // held open, never answered
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		for {
+			select {
+			case conn := <-accepted:
+				_ = conn.Close()
+			default:
+				return
+			}
+		}
+	})
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOAL_TRACKER_ADDR", ":"+port)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	err = checkHealth(ctx, addrFromEnv(), 200*time.Millisecond)
+	if err == nil {
+		t.Fatal("healthcheck passed")
+	}
+	if !strings.Contains(err.Error(), "Client.Timeout exceeded") || strings.Contains(err.Error(), "\n") {
+		t.Errorf("healthcheck: %q, want one line saying it timed out (Client.Timeout exceeded)", err)
+	}
+	if waited := time.Since(start); waited > 2*time.Second {
+		t.Errorf("healthcheck waited %v, want about its 200ms timeout", waited)
+	}
+}

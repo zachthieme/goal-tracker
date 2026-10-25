@@ -191,65 +191,100 @@ func TestGoalPageRendersAsGolden(t *testing.T) {
 }
 
 // The Goal page loads through one page loader that reads each thing once
-// (ADR 0010): Service.GoalPage runs no query twice for Goal 04 shown to its
-// Owner, who is offered everything, and runs as many for 50 Goals as for 10.
-// The page around it adds only the session and the sidebar's reads, which
-// repeat none of the loader's but the ones both need.
+// (ADR 0010): Service.GoalPage runs no query twice for Goal 04, shown to its
+// Owner, who is offered everything, to its Delegate or to a reader with no
+// rights on it, and runs as many for 50 Goals as for 10. The page around it
+// adds only the session and the sidebar's reads, which repeat none of the
+// loader's but the ones both need.
 func TestGoalPageReadsEachThingOnce(t *testing.T) {
 	t.Parallel()
-	// goalPageLoaderMax is what Service.GoalPage reads for Goal 04: the Goal,
-	// the viewer and the other people it names, its links, Check-ins and
-	// what they recorded, Milestones, Metrics and readings, values, History
-	// and discussion, every other Goal for the "Contribute to" choices, and
-	// the people above its Owner its open Ask for help walks past (#466 gave
-	// it one, adding that read).
+	// goalPageLoaderMax is what Service.GoalPage reads for Goal 04 shown to
+	// its Owner: the Goal, the viewer and the other people it names, its
+	// links, Check-ins and what they recorded, Milestones, Metrics and
+	// readings, values, History and discussion, every other Goal for the
+	// "Contribute to" choices, and the people above its Owner its open Ask
+	// for help walks past (#466 gave it one, adding that read).
 	const goalPageLoaderMax = 36
-	// goalPageMax is the whole page: the loader's reads, plus the session's
-	// and the sidebar's (Service.Sidebar), which every signed-in page makes.
+	// goalPageMax is the whole page for the Owner: the loader's reads, plus
+	// the session's and the sidebar's (Service.Sidebar), which every
+	// signed-in page makes.
 	const goalPageMax = 49
 	// goalPageSharedReads are the queries both the loader and the sidebar
 	// need, so the whole page runs each twice: every Account, which the
 	// loader walks the Ask for help up and the sidebar finds the viewer's Org
-	// and their Asks for help in. No other query runs twice.
+	// and their Asks for help in. No other query runs twice. A reader's page
+	// shares the same.
 	goalPageSharedReads := map[string]bool{"ListAskWalkAccounts": true}
-	type counts struct{ loader, page int }
-	countFor := func(n int) counts {
-		h := testsupport.New(t, queryCountAdmin)
-		fx := seedGoalPageFixture(t, h, n)
-		ts, svc, queries := newQueryCountingServer(t, h)
-		client := signInClient(t, ts.URL, "sam@example.com")
-		queries.take()
-		if _, err := svc.GoalPage(context.Background(), fx.red.Owner.ID, fx.red.ID); err != nil {
-			t.Fatalf("GoalPage: %v", err)
-		}
-		loader := queries.take()
-		for name, times := range countQueryNames(loader) {
-			if times > 1 {
-				t.Errorf("GoalPage ran %s %d times for %d Goals; want it once", name, times, n)
+	// goalPageDelegateLoaderMax is what Service.GoalPage reads for Goal 04
+	// shown to its Delegate: the Owner's reads but every Account, since the
+	// Ask for help walks past the Owner's Departed Manager to the Delegate,
+	// whom the loader has read already as the viewer.
+	const goalPageDelegateLoaderMax = 35
+	// goalPageDelegateMax is the whole page for the Delegate: the loader's
+	// reads, plus the session's and the sidebar's.
+	const goalPageDelegateMax = 48
+	// goalPageDelegateSharedReads is none: the loader reads no Account the
+	// sidebar does, so the Delegate's whole page runs no query twice.
+	goalPageDelegateSharedReads := map[string]bool{}
+	// goalPageReaderLoaderMax is what Service.GoalPage reads for Goal 04
+	// shown to a reader with no rights on it: the Owner's reads but the
+	// pending Draft Highlights, read only for someone who can Check in.
+	const goalPageReaderLoaderMax = 35
+	// goalPageReaderMax is the whole page for the reader: the loader's
+	// reads, plus the session's and the sidebar's.
+	const goalPageReaderMax = 48
+	for _, v := range []struct {
+		name, email        string
+		loaderMax, pageMax int
+		sharedReads        map[string]bool
+	}{
+		{"owner", "sam@example.com", goalPageLoaderMax, goalPageMax, goalPageSharedReads},
+		{"delegate", "morgan@example.com", goalPageDelegateLoaderMax, goalPageDelegateMax, goalPageDelegateSharedReads},
+		{"reader", "rita@example.com", goalPageReaderLoaderMax, goalPageReaderMax, goalPageSharedReads},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			t.Parallel()
+			type counts struct{ loader, page int }
+			countFor := func(n int) counts {
+				h := testsupport.New(t, queryCountAdmin)
+				fx := seedGoalPageFixture(t, h, n)
+				viewer := h.SignIn(v.email)
+				ts, svc, queries := newQueryCountingServer(t, h)
+				client := signInClient(t, ts.URL, v.email)
+				queries.take()
+				if _, err := svc.GoalPage(context.Background(), viewer.ID, fx.red.ID); err != nil {
+					t.Fatalf("GoalPage: %v", err)
+				}
+				loader := queries.take()
+				for name, times := range countQueryNames(loader) {
+					if times > 1 {
+						t.Errorf("GoalPage ran %s %d times for %d Goals; want it once", name, times, n)
+					}
+				}
+				getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, fx.red.ID))
+				page := queries.take()
+				for name, times := range countQueryNames(page) {
+					want := 1
+					if v.sharedReads[name] {
+						want = 2
+					}
+					if times > want {
+						t.Errorf("the Goal page ran %s %d times for %d Goals; want it at most %d", name, times, n, want)
+					}
+				}
+				return counts{loader: len(loader), page: len(page)}
 			}
-		}
-		getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, fx.red.ID))
-		page := queries.take()
-		for name, times := range countQueryNames(page) {
-			want := 1
-			if goalPageSharedReads[name] {
-				want = 2
+			ten, fifty := countFor(10), countFor(50)
+			if ten.loader > v.loaderMax {
+				t.Errorf("GoalPage ran %d queries; want at most %d", ten.loader, v.loaderMax)
 			}
-			if times > want {
-				t.Errorf("the Goal page ran %s %d times for %d Goals; want it at most %d", name, times, n, want)
+			if ten.page > v.pageMax {
+				t.Errorf("the Goal page ran %d queries; want at most %d", ten.page, v.pageMax)
 			}
-		}
-		return counts{loader: len(loader), page: len(page)}
-	}
-	ten, fifty := countFor(10), countFor(50)
-	if ten.loader > goalPageLoaderMax {
-		t.Errorf("GoalPage ran %d queries; want at most %d", ten.loader, goalPageLoaderMax)
-	}
-	if ten.page > goalPageMax {
-		t.Errorf("the Goal page ran %d queries; want at most %d", ten.page, goalPageMax)
-	}
-	if ten != fifty {
-		t.Errorf("GoalPage and the Goal page ran %d and %d queries for 10 Goals, and %d and %d for 50; want the same", ten.loader, ten.page, fifty.loader, fifty.page)
+			if ten != fifty {
+				t.Errorf("GoalPage and the Goal page ran %d and %d queries for 10 Goals, and %d and %d for 50; want the same", ten.loader, ten.page, fifty.loader, fifty.page)
+			}
+		})
 	}
 }
 
