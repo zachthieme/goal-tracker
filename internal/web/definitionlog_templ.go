@@ -16,11 +16,12 @@ import (
 
 // definitionLogPage is the Definition log: every change to what Dimensions and
 // Fields exist and how they're shaped, newest first, each with who made it and
-// when. A form narrows it to one Dimension or Field. It is read-only for
-// everyone; values set on Goals are in each Goal's Value history instead. It
-// sits in the flat frame: its title in the page header, and the changes a
+// when. A form narrows it to one Dimension or Field. The whole log shows a
+// page of changes, and when there are older ones olderHref links to the next
+// page of them. It is read-only for everyone; values set on Goals are in each
+// Goal's Value history instead. It sits in the flat frame: its title in the page header, and the changes a
 // plain section of hairline rows (DESIGN.md § Components: Sections).
-func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, dates displayDates) templ.Component {
+func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, olderHref string, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -65,7 +66,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs("Every change to " + scope.Name + ", newest first.")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 20, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 21, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -105,7 +106,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(param)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 34, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 35, Col: 29}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 					if templ_7745c5c3_Err != nil {
@@ -128,7 +129,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 34, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 35, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -158,7 +159,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(param)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 42, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 43, Col: 29}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 					if templ_7745c5c3_Err != nil {
@@ -181,7 +182,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 42, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 43, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -215,7 +216,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(c.Summary)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 58, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 59, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -228,7 +229,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("— ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 60, Col: 15}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 61, Col: 15}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -245,7 +246,7 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs("at " + dates.timestamp(c.CreatedAt))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 62, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 63, Col: 45}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -256,7 +257,30 @@ func definitionLogPage(current *domain.Account, dims []domain.Dimension, fields 
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</ol></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</ol>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if olderHref != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<p class=\"muted small\"><a data-testid=\"definition-log-older\" href=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var11 templ.SafeURL
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(olderHref))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/definitionlog.templ`, Line: 69, Col: 96}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\">Older changes</a></p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -288,12 +312,12 @@ func definitionLogStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var11 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var11 == nil {
-			templ_7745c5c3_Var11 = templ.NopComponent
+		templ_7745c5c3_Var12 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var12 == nil {
+			templ_7745c5c3_Var12 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.dl-scope{display:flex;align-items:flex-end;gap:12px}\n\t\t.dl-section{display:flex;flex-direction:column;gap:12px}\n\t\t.dl-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}\n\t\t.dl-list li{padding:12px 0;border-bottom:1px solid var(--color-border)}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<style>\n\t\t.dl-scope{display:flex;align-items:flex-end;gap:12px}\n\t\t.dl-section{display:flex;flex-direction:column;gap:12px}\n\t\t.dl-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}\n\t\t.dl-list li{padding:12px 0;border-bottom:1px solid var(--color-border)}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -2093,6 +2093,11 @@ and so on).
     (`.dl-list`), newest first. A row is the change in words, then a muted
     small "— <Name> at <date and time>". With none, a muted "No changes
     logged yet."
+  - **Older changes:** the whole log shows its newest 100 changes. When there
+    are older ones, a muted small line under the rows holds a plain link,
+    **Older changes**, to the 100 before the last one shown
+    (`/definition-log?before=<id>`), on a page just like this one. A log
+    narrowed to one Dimension or Field shows every change to it, unpaged.
 - **Delegated to me (`delegatePage` in `delegates.templ`):** the Delegate
   page, linked from Home's Your goals line. "Delegated to me" is the header
   strip's title, with no actions.

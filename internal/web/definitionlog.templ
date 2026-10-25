@@ -8,11 +8,12 @@ import (
 
 // definitionLogPage is the Definition log: every change to what Dimensions and
 // Fields exist and how they're shaped, newest first, each with who made it and
-// when. A form narrows it to one Dimension or Field. It is read-only for
-// everyone; values set on Goals are in each Goal's Value history instead. It
-// sits in the flat frame: its title in the page header, and the changes a
+// when. A form narrows it to one Dimension or Field. The whole log shows a
+// page of changes, and when there are older ones olderHref links to the next
+// page of them. It is read-only for everyone; values set on Goals are in each
+// Goal's Value history instead. It sits in the flat frame: its title in the page header, and the changes a
 // plain section of hairline rows (DESIGN.md § Components: Sections).
-templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, dates displayDates) {
+templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, olderHref string, dates displayDates) {
 	@framedLayout("Definition log", current, pageHeader(pageHead{Title: "Definition log"})) {
 		@definitionLogStyles()
 		<p class="muted">
@@ -64,6 +65,9 @@ templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields
 					</li>
 				}
 			</ol>
+			if olderHref != "" {
+				<p class="muted small"><a data-testid="definition-log-older" href={ templ.SafeURL(olderHref) }>Older changes</a></p>
+			}
 		</section>
 	}
 }

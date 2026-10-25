@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -23,11 +24,16 @@ type DefinitionChange struct {
 	CreatedAt   time.Time
 }
 
-// DefinitionLog returns every change to the Dimensions' and Fields'
-// definitions, newest first. Anyone signed in may read it, and nobody can edit
-// it. Changes made before the log was kept aren't in it.
-func (s *Service) DefinitionLog(ctx context.Context) ([]DefinitionChange, error) {
-	rows, err := s.queries.ListDefinitionChanges(ctx)
+// DefinitionLog returns a page of the changes to the Dimensions' and Fields'
+// definitions, newest first: up to size changes made before the one with ID
+// before, or the newest size when before is 0. The next page is the one
+// before the last change of this one. Anyone signed in may read it, and nobody
+// can edit it. Changes made before the log was kept aren't in it.
+func (s *Service) DefinitionLog(ctx context.Context, before int64, size int) ([]DefinitionChange, error) {
+	if before == 0 {
+		before = math.MaxInt64
+	}
+	rows, err := s.queries.ListDefinitionChanges(ctx, db.ListDefinitionChangesParams{Before: before, PageSize: int64(size)})
 	if err != nil {
 		return nil, fmt.Errorf("list definition log: %w", err)
 	}
