@@ -28,6 +28,10 @@ type Metric struct {
 
 // Metric directions: whether higher (MetricUp) or lower (MetricDown) values are
 // better. This is the direction of desired movement from baseline to target.
+//
+// Each name starts Metric: the CHECK test on metrics.direction finds its values
+// by that prefix (enumchecks_test.go), so a value named otherwise goes
+// unchecked.
 const (
 	MetricUp   = "up"
 	MetricDown = "down"

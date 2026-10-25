@@ -27,6 +27,10 @@ type Highlight struct {
 
 // Highlight kinds a Check-in's Highlights can be marked as (CONTEXT.md:
 // Highlight).
+//
+// Each name starts Highlight: the CHECK test on a Highlight's or draft
+// Highlight's kind and a narrative's section finds its values by that prefix
+// (enumchecks_test.go), so a value named otherwise goes unchecked.
 const (
 	HighlightInsight        = "Insight"
 	HighlightAccomplishment = "Accomplishment"

@@ -34,6 +34,10 @@ type ParentSuggestion struct {
 // accepts or declines it, its suggester withdraws it, or it no longer applies:
 // the link it proposes came about another way, or its Goal or parent became
 // Done or Cancelled.
+//
+// Each name starts Suggestion: the CHECK test on parent_suggestions.status
+// finds its values by that prefix (enumchecks_test.go), so a value named
+// otherwise goes unchecked.
 const (
 	SuggestionOpen            = "open"
 	SuggestionAccepted        = "accepted"

@@ -26,6 +26,10 @@ type Milestone struct {
 
 // Milestone statuses. A Planned Milestone past its date is overdue, and Green is
 // rejected while one is.
+//
+// Each name starts Milestone, not MilestoneChange or MilestoneMark, which name
+// other groups: the CHECK test on milestones.status finds its values by that
+// prefix (enumchecks_test.go), so a value named otherwise goes unchecked.
 const (
 	MilestonePlanned = "Planned"
 	MilestoneDone    = "Done"
@@ -95,6 +99,10 @@ type MilestoneChange struct {
 }
 
 // The kinds of MilestoneChange.
+//
+// Each name starts MilestoneChange: the CHECK test on milestone_changes.kind
+// finds its values by that prefix (enumchecks_test.go), so a value named
+// otherwise goes unchecked.
 const (
 	MilestoneChangeAdded   = "Added"
 	MilestoneChangeDone    = MilestoneDone

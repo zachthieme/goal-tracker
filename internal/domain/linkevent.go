@@ -28,6 +28,10 @@ type LinkEvent struct {
 // LinkEvent kinds. A link made Accepted without a separate accept (a request
 // to a Goal the requester owns, or an import) is linked; one requested and then
 // accepted is requested, then accepted.
+//
+// Each name starts LinkEvent: the CHECK test on link_events.kind finds its
+// values by that prefix (enumchecks_test.go), so a value named otherwise goes
+// unchecked.
 const (
 	LinkEventRequested       = "requested"
 	LinkEventLinked          = "linked"

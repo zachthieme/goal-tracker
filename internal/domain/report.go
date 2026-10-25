@@ -44,6 +44,10 @@ type ReportDefinition struct {
 }
 
 // The modes a Report Definition selects its Goals in.
+//
+// Each name starts ReportMode: the CHECK test on report_definitions.mode finds
+// its values by that prefix (enumchecks_test.go), so a value named otherwise
+// goes unchecked.
 const (
 	ReportModeRules  = "rules"
 	ReportModePicked = "picked"
@@ -69,6 +73,10 @@ type ReportRule struct {
 
 // The attributes a Report rule can test. Fields are not among them: a Report
 // shows Fields but never selects by them (ADR 0005, ADR 0007).
+//
+// Each name starts Rule, not RuleIs, which names the operators: the CHECK test
+// on report_rules.attribute finds its values by that prefix
+// (enumchecks_test.go), so a value named otherwise goes unchecked.
 const (
 	RuleDimension = "dimension"
 	RuleOwner     = "owner"
@@ -82,6 +90,10 @@ const (
 )
 
 // The operators of a Report rule.
+//
+// Each name starts RuleIs: the CHECK test on report_rules.op finds its values
+// by that prefix (enumchecks_test.go), so a value named otherwise goes
+// unchecked.
 const (
 	RuleIs      = "is"
 	RuleIsAnyOf = "is any of"
@@ -89,6 +101,10 @@ const (
 )
 
 // The lists a Report Definition names Goals in, as stored.
+//
+// Each name starts reportList: the CHECK test on report_definition_goals.list
+// finds its values by that prefix (enumchecks_test.go), so a value named
+// otherwise goes unchecked.
 const (
 	reportListPicked  = "picked"
 	reportListInclude = "include"

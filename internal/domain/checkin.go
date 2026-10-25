@@ -55,6 +55,10 @@ type Checkin struct {
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
 // Green; Yellow and Red require one.
+//
+// Each name starts Health: the CHECK test on checkins.health finds its values
+// by that prefix (enumchecks_test.go), so a value named otherwise goes
+// unchecked.
 const (
 	HealthGreen  = "Green"
 	HealthYellow = "Yellow"
