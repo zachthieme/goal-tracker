@@ -166,9 +166,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			recoverHandlerPanic(aw, r, l, p)
 		}
 		if aw.route == "" {
-			// Refused before routing, or panicked in its handler: logged under
-			// the route it was aimed at.
-			_, aw.route = s.mux.Handler(r)
+			// Refused before routing, panicked in its handler, or answered by a
+			// catch-all: logged under the route it was aimed at, if any.
+			_, pattern := s.mux.Handler(r)
+			aw.route = matchedRoute(pattern, r.URL.Path)
 		}
 		elapsed := time.Since(start)
 		aw.logAccess(r.Context(), l, r.Method, elapsed)
@@ -267,13 +268,26 @@ var securityHeaders = map[string]string{
 
 // serveRoutes hands r to the route it matches. It records the browser's chosen
 // theme in the request context, so every page the request renders is pinned to
-// it, and the route's pattern for the request's access line.
+// it, and the route's pattern for the request's access line (see
+// matchedRoute).
 func (s *Server) serveRoutes(w http.ResponseWriter, r *http.Request) {
 	r = withTheme(r)
 	s.mux.ServeHTTP(w, r)
 	if aw, ok := w.(*accessWriter); ok {
-		aw.route = r.Pattern
+		aw.route = matchedRoute(r.Pattern, r.URL.Path)
 	}
+}
+
+// matchedRoute is the route a request for path that matched pattern is logged
+// and counted under: pattern, or none, so it is unmatched, when only a
+// catch-all answers it. "/" catches every method no route serves the path
+// with, and "GET /" every GET but the index page's own, /, so a scanned or
+// mistyped path's 404 doesn't share the index page's series.
+func matchedRoute(pattern, path string) string {
+	if pattern == "/" || pattern == "GET /" && path != "/" {
+		return ""
+	}
+	return pattern
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil

@@ -102,9 +102,9 @@ func TestAnOversizeRefusalIsLoggedUnderItsRoute(t *testing.T) {
 	}
 }
 
-// A path no route serves is answered by the catch-all, and logged under it
-// with its 404.
-func TestAnUnknownPathIsLoggedUnderTheCatchAll(t *testing.T) {
+// A path no route serves is answered 404 by the catch-all, and logged as
+// unmatched, not under the index page's GET /.
+func TestAnUnknownPathIsLoggedAsUnmatched(t *testing.T) {
 	t.Parallel()
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
@@ -114,8 +114,8 @@ func TestAnUnknownPathIsLoggedUnderTheCatchAll(t *testing.T) {
 	if len(lines) != 1 {
 		t.Fatalf("logged %d access lines, want 1:\n%s", len(lines), buf)
 	}
-	if line := lines[0]; line["route"] != "GET /" || line["status"] != float64(http.StatusNotFound) {
-		t.Errorf("access line %v, want GET / answered 404", line)
+	if line := lines[0]; line["route"] != "unmatched" || line["status"] != float64(http.StatusNotFound) {
+		t.Errorf("access line %v, want unmatched answered 404", line)
 	}
 }
 
