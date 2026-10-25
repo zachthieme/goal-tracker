@@ -181,15 +181,6 @@ func assertAcceptReject(t *testing.T, row, base string) {
 	assertSubmitsAtOnce(t, "Reject", row, base+"/reject")
 }
 
-// assertConfirms checks a form's opening tag asks for confirmation in a browser
-// dialog before sending it.
-func assertConfirms(t *testing.T, what, form string) {
-	t.Helper()
-	if !strings.Contains(form, `onsubmit="return confirm(`) {
-		t.Errorf("%s doesn't ask for confirmation: %s", what, form)
-	}
-}
-
 // undoAction pulls the Undo form's action out of a page's toast, failing when
 // the page carries no toast.
 func undoAction(t *testing.T, page string) string {

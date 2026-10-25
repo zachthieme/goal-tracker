@@ -67,13 +67,6 @@ func historyBlock(t *testing.T, page string) string {
 	return between(t, page, `data-testid="goal-history"`, "<aside")
 }
 
-// valueEntries are the value changes on the Goal page's History timeline under
-// the Values chip, newest first, with entities unescaped.
-func valueEntries(t *testing.T, client *http.Client, goalURL string) []string {
-	t.Helper()
-	return filteredEntries(t, client, goalURL, "values", "value")
-}
-
 // ownershipEntries are the Handoffs and Admin Reassigns on the Goal page's
 // History timeline under the Ownership chip, newest first.
 func ownershipEntries(t *testing.T, client *http.Client, goalURL string) []string {

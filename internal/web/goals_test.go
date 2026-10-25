@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"fmt"
-	"html"
 	"maps"
 	"net/http"
 	"net/http/cookiejar"
@@ -45,8 +44,9 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after sign-in: status %d", resp.StatusCode)
 	}
-	if body := readBody(t, resp); !strings.Contains(body, "Signed in as "+shownAs("boss@example.com", "boss")) {
-		t.Errorf("goals page does not show the signed-in user; body:\n%s", body)
+	who := findByTestID(t, parsePage(t, readBody(t, resp)), "current-user")
+	if !strings.HasPrefix(textOf(who), "Signed in as boss") || !goalShows(who, "boss@example.com", "boss") {
+		t.Errorf("goals page does not show the signed-in user: %s", renderNode(who))
 	}
 
 	// Create a Proposed Goal.
@@ -57,36 +57,45 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after create goal: status %d", resp.StatusCode)
 	}
-	listBody := readBody(t, resp)
-	if !strings.Contains(listBody, "Cut checkout latency") {
-		t.Errorf("Goal list does not show the new Goal; body:\n%s", listBody)
+	link := findGoalLink(t, parsePage(t, readBody(t, resp)))
+	if got := textOf(link); got != "Cut checkout latency" {
+		t.Errorf("Goal list's first Goal link reads %q, want the new Goal", got)
 	}
 
 	// Find the Goal's own page and confirm it renders the full Goal.
-	goalPath := findGoalLink(t, listBody)
+	goalPath := attrOf(link, "href")
 	resp, err = client.Get(ts.URL + goalPath)
 	if err != nil {
 		t.Fatalf("GET %s: %v", goalPath, err)
 	}
-	goalBody := readBody(t, resp)
+	goalPage := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("goal page status %d", resp.StatusCode)
 	}
-	for _, want := range []string{"Cut checkout latency", "Shoppers abandon slow carts.", "Proposed", "boss@example.com"} {
-		if !strings.Contains(goalBody, want) {
-			t.Errorf("goal page missing %q; body:\n%s", want, goalBody)
+	for testID, want := range map[string]string{
+		"goal-title":          "Cut checkout latency",
+		"goal-why-it-matters": "Shoppers abandon slow carts.",
+		"goal-lifecycle":      "Proposed",
+	} {
+		if got := textOf(findByTestID(t, goalPage, testID)); got != want {
+			t.Errorf("goal page's %s reads %q, want %q", testID, got, want)
 		}
+	}
+	if owner := findByTestID(t, goalPage, "goal-owner"); !goalShows(owner, "boss@example.com", "boss") {
+		t.Errorf("goal page's Owner isn't boss@example.com: %s", renderNode(owner))
 	}
 }
 
-// findGoalLink pulls the first /goals/<id> href out of the rendered list.
-func findGoalLink(t *testing.T, body string) string {
+// findGoalLink returns the first link on the page to a Goal's own page,
+// /goals/<id>.
+func findGoalLink(t *testing.T, root *nethtml.Node) *nethtml.Node {
 	t.Helper()
-	m := regexp.MustCompile(`href="(/goals/\d+)"`).FindStringSubmatch(body)
-	if m == nil {
-		t.Fatalf("no goal link in body:\n%s", body)
+	goalPath := regexp.MustCompile(`^/goals/\d+$`)
+	links := findAll(root, func(n *nethtml.Node) bool { return n.Data == "a" && goalPath.MatchString(attrOf(n, "href")) })
+	if len(links) == 0 {
+		t.Fatalf("no goal link in page:\n%s", renderNode(root))
 	}
-	return m[1]
+	return links[0]
 }
 
 // TestSmokeDefineAndActivateGoal is the define-and-activate HTTP smoke test: an
@@ -115,7 +124,7 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		"title":          {"Cut checkout latency"},
 		"why_it_matters": {"Shoppers abandon slow carts."},
 	})
-	goalPath := findGoalLink(t, readBody(t, resp))
+	goalPath := attrOf(findGoalLink(t, parsePage(t, readBody(t, resp))), "href")
 	goalURL := ts.URL + goalPath
 
 	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
@@ -139,19 +148,21 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after activate: status %d", resp.StatusCode)
 	}
-	body := readBody(t, resp)
-	for _, want := range []string{
-		"Active",
-		"Beta cut",
-		"p95 checkout latency",
-		"every 14 days",
-		"Faster checkout lifts conversion.",
-		"Shoppers abandon slow carts.", // the original Why it matters, kept as a revision
-		"dana@example.com",
+	page := parsePage(t, readBody(t, resp))
+	for _, tc := range []struct{ testID, want string }{
+		{"goal-lifecycle", "Active"},
+		{"goal-milestones", "Beta cut"},
+		{"goal-metrics", "p95 checkout latency"},
+		{"goal-cadence", "every 14 days"},
+		{"goal-why-it-matters", "Faster checkout lifts conversion."},
+		{"goal-history", "Shoppers abandon slow carts."}, // the original Why it matters, kept as a revision
 	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("activated goal page missing %q; body:\n%s", want, body)
+		if got := textOf(findByTestID(t, page, tc.testID)); !strings.Contains(got, tc.want) {
+			t.Errorf("activated goal page's %s reads %q, missing %q", tc.testID, got, tc.want)
 		}
+	}
+	if contributors := findByTestID(t, page, "goal-contributors"); !goalShows(contributors, "dana@example.com", "dana") {
+		t.Errorf("activated goal page doesn't list dana@example.com as a Contributor: %s", renderNode(contributors))
 	}
 }
 
@@ -173,15 +184,22 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 		"title":          {"Bare goal"},
 		"why_it_matters": {"Some reason."},
 	})
-	goalPath := findGoalLink(t, readBody(t, resp))
+	goalPath := attrOf(findGoalLink(t, parsePage(t, readBody(t, resp))), "href")
 
 	resp = postForm(t, client, ts.URL+goalPath+"/activate", nil)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
 	}
+	// The refusal is plain text, not a page.
 	if body := readBody(t, resp); !strings.Contains(body, "Dated") {
 		t.Errorf("rejection should explain the missing Dated/Ongoing choice; body:\n%s", body)
 	}
+}
+
+// goalDimensionValuesIn is what each Dimension value shown under root reads,
+// in order.
+func goalDimensionValuesIn(root *nethtml.Node) []string {
+	return textsOf(findAllByTestID(root, "goal-dimension-value"))
 }
 
 // An Owner assigns a Dimension value to their Goal from the Goal page; after the
@@ -202,27 +220,41 @@ func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
 
 	// Assign Growth, then replace it with Reliability.
 	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}})
-	page := getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-dimension-value">Growth`) {
-		t.Fatalf("Goal page missing assigned Growth; body:\n%s", page)
+	if got := goalDimensionValuesIn(getPage(t, samClient, goalURL)); !slices.Contains(got, "Growth") {
+		t.Fatalf("Goal page shows values %q, missing assigned Growth", got)
 	}
 	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}})
-	page = getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-dimension-value">Reliability`) {
-		t.Errorf("Goal page should show Reliability after reassignment; body:\n%s", page)
+	got := goalDimensionValuesIn(getPage(t, samClient, goalURL))
+	if !slices.Contains(got, "Reliability") {
+		t.Errorf("Goal page shows values %q, want Reliability after reassignment", got)
 	}
-	if strings.Contains(page, `data-testid="goal-dimension-value">Growth`) {
-		t.Errorf("Growth should be replaced, not kept; body:\n%s", page)
+	if slices.Contains(got, "Growth") {
+		t.Errorf("Goal page shows values %q: Growth should be replaced, not kept", got)
 	}
 
 	// Admin retires Reliability; it stays readable on the Goal that carries it.
 	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, pillar.Values[1].ID); err != nil {
 		t.Fatalf("RetireDimensionValue: %v", err)
 	}
-	page = getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-dimension-value">Reliability`) {
-		t.Errorf("retired value should stay readable on the Goal; body:\n%s", page)
+	if got := goalDimensionValuesIn(getPage(t, samClient, goalURL)); !slices.Contains(got, "Reliability") {
+		t.Errorf("Goal page shows values %q: retired Reliability should stay readable on the Goal", got)
 	}
+}
+
+// goalFormFieldWithValue returns the field named name under root whose value
+// is value, a checkbox's or the select's holding an option of that value, or
+// false when there is none.
+func goalFormFieldWithValue(root *nethtml.Node, name, value string) (pageField, bool) {
+	for _, f := range formFields(root, name) {
+		if f.Type == "select" {
+			if len(findAll(f.Node, func(n *nethtml.Node) bool { return n.Data == "option" && attrOf(n, "value") == value })) > 0 {
+				return f, true
+			}
+		} else if f.Value == value {
+			return f, true
+		}
+	}
+	return pageField{}, false
 }
 
 // On the Goal page a several-values Dimension offers a checkbox per non-retired
@@ -245,17 +277,17 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions")
+	edit := goalOpenFormIn(t, getPage(t, samClient, goalURL+"?open=dimensions"), "dimensions")
 	for _, v := range []domain.DimensionValue{core, infra} {
-		if !strings.Contains(edit, fmt.Sprintf(`type="checkbox" name="value_id" value="%d"`, v.ID)) {
-			t.Errorf("no checkbox for %s:\n%s", v.Value, edit)
+		if f, ok := goalFormFieldWithValue(edit, "value_id", fmt.Sprint(v.ID)); !ok || f.Type != "checkbox" {
+			t.Errorf("no checkbox for %s: %s", v.Value, renderNode(edit))
 		}
 	}
-	if strings.Contains(edit, fmt.Sprintf(`value="%d"`, legacy.ID)) {
-		t.Errorf("retired Legacy is offered:\n%s", edit)
+	if offered := findAll(edit, func(n *nethtml.Node) bool { return attrOf(n, "value") == fmt.Sprint(legacy.ID) }); len(offered) > 0 {
+		t.Errorf("retired Legacy is offered: %s", renderNode(offered[0]))
 	}
-	if !strings.Contains(edit, `<select name="value_id" aria-label="Pillar"`) {
-		t.Errorf("one-value Pillar lost its select:\n%s", edit)
+	if !slices.ContainsFunc(formFields(edit, "value_id"), func(f pageField) bool { return f.Type == "select" && f.Label == "Pillar" }) {
+		t.Errorf("one-value Pillar lost its select: %s", renderNode(edit))
 	}
 
 	dimID := fmt.Sprintf("%d", teams.ID)
@@ -263,26 +295,27 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 		"dimension_id": {dimID},
 		"value_id":     {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", infra.ID)},
 	})
-	section := pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
-	for _, want := range []string{`data-testid="goal-dimension-value">Core`, `data-testid="goal-dimension-value">Infra`} {
-		if !strings.Contains(section, want) {
-			t.Errorf("Goal page missing %s after saving two values:\n%s", want, section)
+	section := findByTestID(t, getPage(t, samClient, goalURL), "goal-dimensions")
+	for _, want := range []string{"Core", "Infra"} {
+		if got := goalDimensionValuesIn(section); !slices.Contains(got, want) {
+			t.Errorf("Goal page shows values %q after saving two values, missing %s", got, want)
 		}
 	}
-	if edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions"); !strings.Contains(edit, fmt.Sprintf(`value="%d" checked`, core.ID)) {
-		t.Errorf("Core's checkbox isn't checked:\n%s", edit)
+	edit = goalOpenFormIn(t, getPage(t, samClient, goalURL+"?open=dimensions"), "dimensions")
+	if f, ok := goalFormFieldWithValue(edit, "value_id", fmt.Sprint(core.ID)); !ok || !f.Checked {
+		t.Errorf("Core's checkbox isn't checked: %s", renderNode(edit))
 	}
 
 	postForm(t, samClient, goalURL+"/dimensions", url.Values{
 		"dimension_id": {dimID},
 		"value_id":     {fmt.Sprintf("%d", infra.ID)},
 	})
-	section = pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
-	if strings.Contains(section, `data-testid="goal-dimension-value">Core`) {
-		t.Errorf("Core still shown after it was unchecked:\n%s", section)
+	got := goalDimensionValuesIn(findByTestID(t, getPage(t, samClient, goalURL), "goal-dimensions"))
+	if slices.Contains(got, "Core") {
+		t.Errorf("Core still shown after it was unchecked: %q", got)
 	}
-	if !strings.Contains(section, `data-testid="goal-dimension-value">Infra`) {
-		t.Errorf("Infra lost when Core was removed:\n%s", section)
+	if !slices.Contains(got, "Infra") {
+		t.Errorf("Infra lost when Core was removed: %q", got)
 	}
 
 	postForm(t, samClient, goalURL+"/dimensions", url.Values{"dimension_id": {dimID}})
@@ -342,21 +375,21 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 	otherClient := signInClient(t, ts.URL, "other@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	empty := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
-	if !strings.Contains(empty, "No Dimensions defined yet.") {
-		t.Fatalf("Dimensions section isn't empty:\n%s", empty)
+	empty := findByTestID(t, getPage(t, otherClient, goalURL), "goal-dimensions")
+	if got := textOf(findByTestID(t, empty, "no-dimensions-defined")); got != "No Dimensions defined yet." {
+		t.Fatalf("Dimensions section isn't empty, it reads %q", got)
 	}
-	if !strings.Contains(empty, `href="/dimensions"`) {
-		t.Errorf("empty Dimensions section has no link to /dimensions:\n%s", empty)
+	if linkTo(empty, "/dimensions") == nil {
+		t.Errorf("empty Dimensions section has no link to /dimensions: %s", renderNode(empty))
 	}
 
 	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
-	defined := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
-	if listed := elementTexts(defined, "div", "goal-dimension"); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
-		t.Fatalf("Dimensions section doesn't list Quarter:\n%s", defined)
+	defined := findByTestID(t, getPage(t, otherClient, goalURL), "goal-dimensions")
+	if listed := textsOf(findAllByTestID(defined, "goal-dimension")); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
+		t.Fatalf("Dimensions section lists %q, want Quarter", listed)
 	}
-	if !strings.Contains(defined, `href="/dimensions"`) {
-		t.Errorf("Dimensions section has no link to /dimensions:\n%s", defined)
+	if linkTo(defined, "/dimensions") == nil {
+		t.Errorf("Dimensions section has no link to /dimensions: %s", renderNode(defined))
 	}
 }
 
@@ -376,23 +409,23 @@ func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, teams.ID))
-	groups := strings.Split(grouped, `<tbody data-testid="goal-group"`)[1:]
+	grouped := getPage(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, teams.ID))
+	groups := findAllByTestID(grouped, "goal-group")
 	if len(groups) != 3 {
-		t.Fatalf("got %d groups, want Core, Infra and Unassigned; body:\n%s", len(groups), grouped)
+		t.Fatalf("got %d groups, want Core, Infra and Unassigned: %s", len(groups), renderNode(grouped))
 	}
 	for i, label := range []string{"Core", "Infra"} {
 		group := groups[i]
-		if !strings.Contains(group, label) || !strings.Contains(group, ">Alpha<") {
-			t.Errorf("group %d should be %s holding Alpha:\n%s", i, label, group)
+		if got := textOf(findByTestID(t, group, "goal-group-label")); got != label || !slices.Contains(goalRowTitlesIn(goalListRowsIn(group), shared), "Alpha") {
+			t.Errorf("group %d should be %s holding Alpha, is %q: %s", i, label, got, renderNode(group))
 		}
 	}
-	if got := pageElement(t, grouped, "span", "goal-count"); !strings.HasSuffix(got, ">2") {
+	if got := textOf(findByTestID(t, grouped, "goal-count")); got != "2" {
 		t.Errorf("total = %q, want 2", got)
 	}
 
-	flat := getBody(t, client, ts.URL+"/goals")
-	if got := pageElement(t, flat, "span", "goal-count"); !strings.HasSuffix(got, ">2") {
+	flat := getPage(t, client, ts.URL+"/goals")
+	if got := textOf(findByTestID(t, flat, "goal-count")); got != "2" {
 		t.Errorf("flat total = %q, want 2", got)
 	}
 }
@@ -416,41 +449,35 @@ func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	// Filter to Growth: Alpha shows, Bravo does not.
-	filtered := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
-	if !strings.Contains(filtered, "Alpha") || strings.Contains(filtered, ">Bravo<") {
-		t.Errorf("filter by Growth should show only Alpha; body:\n%s", filtered)
+	filtered := getPage(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
+	if got := goalRowTitlesIn(goalListRowsIn(filtered), alpha, bravo); !slices.Equal(got, []string{"Alpha"}) {
+		t.Errorf("filter by Growth shows %q, want only Alpha", got)
 	}
 
 	// Group by Pillar: value-labelled groups appear.
-	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if !strings.Contains(grouped, `data-testid="goal-group"`) {
-		t.Fatalf("grouped list missing groups; body:\n%s", grouped)
+	grouped := getPage(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if !hasTestID(grouped, "goal-group") {
+		t.Fatalf("grouped list missing groups: %s", renderNode(grouped))
 	}
-	if !strings.Contains(grouped, "Growth") || !strings.Contains(grouped, "Reliability") {
-		t.Errorf("grouped list missing value labels; body:\n%s", grouped)
+	if labels := textsOf(findAllByTestID(grouped, "goal-group-label")); !slices.Contains(labels, "Growth") || !slices.Contains(labels, "Reliability") {
+		t.Errorf("grouped list's group labels are %q, missing a value", labels)
 	}
 }
 
-// A grouped Goal list's group headers sit on the neutral group-header surface,
-// not a teal fill: a header row is nothing to act on, and teal is kept for
-// what is (DESIGN.md § Components: List rows).
-func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	pillar := h.CreateDimension(boss, "Pillar", "Growth")
-	h.AssignGoalValue(h.CreateGoal(sam, "Alpha", "A matters."), pillar.Values[0])
-	ts := newServer(t, h)
-
-	grouped := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if !strings.Contains(grouped, `class="gl-group">`) {
-		t.Fatalf("grouped list has no group header row; body:\n%s", grouped)
+// goalFormFitsChosen reports whether the New goal form's Where it fits offers
+// v chosen: its checkbox ticked or its option selected. It fails the test when
+// Where it fits doesn't offer v at all.
+func goalFormFitsChosen(t *testing.T, root *nethtml.Node, v domain.DimensionValue) bool {
+	t.Helper()
+	fits := findByTestID(t, root, "goal-form-fits")
+	f, ok := goalFormFieldWithValue(fits, "value_id", fmt.Sprint(v.ID))
+	if !ok {
+		t.Fatalf("Where it fits doesn't offer %s: %s", v.Value, renderNode(fits))
 	}
-	if rule := cssRule(t, grouped, ".gl-group th"); !strings.Contains(rule, "background:var(--color-group)") {
-		t.Errorf("group header isn't on --color-group; rule: %s", rule)
+	if f.Type == "select" {
+		return f.Value == fmt.Sprint(v.ID) && hasAttr(chosenOption(f.Node), "selected")
 	}
+	return f.Checked
 }
 
 // Creating a Goal under a parent, from /goals/new?parent=<id>, offers the
@@ -473,9 +500,8 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	// The New goal form, opened for the parent, offers Growth chosen.
-	page := getBody(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID))
-	if !chosen(t, fitsSection(t, page), growth) {
-		t.Errorf("parent value not offered as a chosen default; body:\n%s", page)
+	if page := getPage(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID)); !goalFormFitsChosen(t, page, growth) {
+		t.Errorf("parent value not offered as a chosen default: %s", renderNode(findByTestID(t, page, "goal-form-fits")))
 	}
 
 	// Keeping the default assigns Growth to the child and links it to the parent.
@@ -485,12 +511,12 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 		"parent_id":      {fmt.Sprint(parent.ID)},
 		"value_id":       {fmt.Sprintf("%d", growth.ID)},
 	})
-	childPage := readBody(t, resp)
-	if !strings.Contains(childPage, `data-testid="goal-dimension-value">Growth`) {
-		t.Errorf("kept default not assigned to the child; body:\n%s", childPage)
+	childPage := parsePage(t, readBody(t, resp))
+	if got := goalDimensionValuesIn(childPage); !slices.Contains(got, "Growth") {
+		t.Errorf("kept default not assigned to the child, which shows values %q", got)
 	}
-	if !strings.Contains(childPage, "Parent") {
-		t.Errorf("child does not contribute to the parent; body:\n%s", childPage)
+	if parents := findByTestID(t, childPage, "goal-parents"); !strings.Contains(textOf(parents), "Parent") {
+		t.Errorf("child does not contribute to the parent: %s", renderNode(parents))
 	}
 
 	// Creating a child without the default leaves it unassigned (not inherited).
@@ -499,9 +525,8 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 		"why_it_matters": {"Child matters."},
 		"parent_id":      {fmt.Sprint(parent.ID)},
 	})
-	barePage := readBody(t, resp)
-	if !strings.Contains(barePage, `data-testid="goal-dimension-unassigned"`) {
-		t.Errorf("child without the default should be unassigned; body:\n%s", barePage)
+	if barePage := parsePage(t, readBody(t, resp)); !hasTestID(barePage, "goal-dimension-unassigned") {
+		t.Errorf("child without the default should be unassigned: %s", renderNode(findByTestID(t, barePage, "goal-dimensions")))
 	}
 }
 
@@ -524,8 +549,8 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	// The form is loaded while Growth is still live, then Growth is retired.
-	if page := getBody(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID)); !chosen(t, fitsSection(t, page), growth) {
-		t.Fatalf("the New goal form does not offer Growth as a default; body:\n%s", page)
+	if page := getPage(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID)); !goalFormFitsChosen(t, page, growth) {
+		t.Fatalf("the New goal form does not offer Growth as a default: %s", renderNode(findByTestID(t, page, "goal-form-fits")))
 	}
 	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, growth.ID); err != nil {
 		t.Fatalf("RetireDimensionValue: %v", err)
@@ -541,69 +566,218 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
-	form := pageElement(t, body, "form", "goal-form")
-	if !strings.Contains(form, "retired") {
-		t.Errorf("the form does not say the value is retired; form:\n%s", form)
+	page := parsePage(t, body)
+	form := findByTestID(t, page, "goal-form")
+	if !strings.Contains(textOf(form), "retired") {
+		t.Errorf("the form does not say the value is retired: %s", renderNode(form))
 	}
-	if !strings.Contains(form, `value="GrandKid"`) || !strings.Contains(form, "Feeds the parent.") {
-		t.Errorf("the form lost the title or Why it matters; form:\n%s", form)
+	if title, why := formField(t, form, "title").Value, formField(t, form, "why_it_matters").Value; title != "GrandKid" || why != "Feeds the parent." {
+		t.Errorf("the form lost the title or Why it matters: title %q, Why it matters %q", title, why)
 	}
-	if !chosen(t, fitsSection(t, body), core) {
-		t.Errorf("the form lost the kept Core default; form:\n%s", form)
+	if !goalFormFitsChosen(t, page, core) {
+		t.Errorf("the form lost the kept Core default: %s", renderNode(findByTestID(t, page, "goal-form-fits")))
 	}
-	tagAround(t, form, fmt.Sprintf(`id="parent:%d"`, parent.ID)) // the parent is still picked
+	if picked := formFields(form, "parent_id"); !slices.ContainsFunc(picked, func(f pageField) bool { return f.Value == fmt.Sprint(parent.ID) }) {
+		t.Errorf("the parent is no longer picked: %s", renderNode(form))
+	}
 
-	if list := getBody(t, samClient, ts.URL+"/goals"); strings.Contains(list, "GrandKid") {
-		t.Errorf("a failed child create left a Goal behind; list:\n%s", list)
+	if list := getPage(t, samClient, ts.URL+"/goals"); strings.Contains(textOf(list), "GrandKid") {
+		t.Errorf("a failed child create left a Goal behind: %q", textsOf(goalListRowsIn(list)))
 	}
 	if children := h.ChildrenOf(parent); len(children) != 0 {
 		t.Errorf("a failed child create requested a link: %v", children)
 	}
 }
 
-// goalRows returns the Goal list's rows in the order they render, each from its
-// opening <tr> to its closing </tr>.
-func goalRows(t *testing.T, page string) []string {
-	t.Helper()
-	const marker = `<tr data-testid="goal-row"`
-	var rows []string
-	for {
-		start := strings.Index(page, marker)
-		if start < 0 {
-			return rows
-		}
-		end := strings.Index(page[start:], "</tr>")
-		if end < 0 {
-			t.Fatalf("unterminated goal row:\n%s", page[start:])
-		}
-		rows = append(rows, page[start:start+end+len("</tr>")])
-		page = page[start+end:]
-	}
+// The helpers below read the Goal list, the Goal page and the Goal table
+// through the parser helpers (helpers_test.go): each returns the nodes a person
+// meets there, or the text they read, never markup.
+
+// goalHref is where a link to the Goal goalID goes.
+func goalHref(goalID int64) string { return "/goals/" + strconv.FormatInt(goalID, 10) }
+
+// goalListRowsIn returns the Goal list's rows under root, in the order they
+// render.
+func goalListRowsIn(root *nethtml.Node) []*nethtml.Node {
+	return findAll(root, func(n *nethtml.Node) bool { return n.Data == "tr" && attrOf(n, "data-testid") == "goal-row" })
 }
 
-// pageTag returns the opening tag of the tag element carrying data-testid, for
-// void elements such as <input> that pageElement can't close.
-func pageTag(t *testing.T, page, tag, testID string) string {
-	t.Helper()
-	start := strings.Index(page, "<"+tag+` data-testid="`+testID+`"`)
-	if start < 0 {
-		t.Fatalf("page has no <%s> %q", tag, testID)
-	}
-	return openTag(page[start:])
-}
-
-// rowTitles names the Goals in rows, in order, by matching each row against the
-// Goals it could be.
-func rowTitles(rows []string, goals ...domain.Goal) []string {
+// goalRowTitlesIn names the Goals rows link to, in order, by matching each row
+// against the Goals it could be.
+func goalRowTitlesIn(rows []*nethtml.Node, goals ...domain.Goal) []string {
 	titles := make([]string, 0, len(rows))
 	for _, r := range rows {
 		for _, g := range goals {
-			if strings.Contains(r, navTo(g.ID)) {
+			if linkTo(r, goalHref(g.ID)) != nil {
 				titles = append(titles, g.Title)
 			}
 		}
 	}
 	return titles
+}
+
+// goalListRowOf returns the Goal list's one row under root linking to g,
+// failing the test unless there is exactly one.
+func goalListRowOf(t *testing.T, root *nethtml.Node, g domain.Goal) *nethtml.Node {
+	t.Helper()
+	var found []*nethtml.Node
+	for _, r := range goalListRowsIn(root) {
+		if linkTo(r, goalHref(g.ID)) != nil {
+			found = append(found, r)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("the Goal list has %d rows for %q, want 1:\n%s", len(found), g.Title, renderNode(root))
+	}
+	return found[0]
+}
+
+// goalTableHeadsIn is what each of the Goal table's column headers reads, in
+// order.
+func goalTableHeadsIn(t *testing.T, root *nethtml.Node) []string {
+	t.Helper()
+	return textsOf(findAll(findByTestID(t, root, "goal-table-head"), func(n *nethtml.Node) bool { return n.Data == "th" }))
+}
+
+// goalTableRowsIn returns the Goal table's rows of Goals, in order.
+func goalTableRowsIn(t *testing.T, root *nethtml.Node) []*nethtml.Node {
+	t.Helper()
+	return findAllByTestID(findByTestID(t, root, "goal-table"), "goal-table-row")
+}
+
+// goalTableRowOf returns the Goal table's row linking to g, failing the test
+// unless there is one.
+func goalTableRowOf(t *testing.T, root *nethtml.Node, g domain.Goal) *nethtml.Node {
+	t.Helper()
+	for _, row := range goalTableRowsIn(t, root) {
+		if linkTo(row, goalHref(g.ID)) != nil {
+			return row
+		}
+	}
+	t.Fatalf("the Goal table has no row for %s:\n%s", g.Title, renderNode(root))
+	return nil
+}
+
+// goalTableCellIn returns row's cell under the column headed head in the
+// Goal table under root.
+func goalTableCellIn(t *testing.T, root, row *nethtml.Node, head string) *nethtml.Node {
+	t.Helper()
+	i := slices.Index(goalTableHeadsIn(t, root), head)
+	if i < 0 {
+		t.Fatalf("the Goal table has no %s column", head)
+	}
+	var cells []*nethtml.Node
+	for c := row.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == nethtml.ElementNode && c.Data == "td" {
+			cells = append(cells, c)
+		}
+	}
+	if i >= len(cells) {
+		t.Fatalf("row has %d cells, no %s: %s", len(cells), head, renderNode(row))
+	}
+	return cells[i]
+}
+
+// goalActionMenuIn returns the Goal page header's "More ▾" action menu, the
+// goal-more disclosure among the header's actions.
+func goalActionMenuIn(t *testing.T, root *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	menu := findByTestID(t, root, "goal-more")
+	if !within(menu, findByTestID(t, root, "goal-actions")) {
+		t.Fatalf("the action menu isn't among the header's actions: %s", renderNode(menu))
+	}
+	return menu
+}
+
+// goalMenuItemsIn returns the action menu's items, label to link, failing
+// when the menu's list holds anything but links: no form, control or nested
+// disclosure, and no item that isn't a link.
+func goalMenuItemsIn(t *testing.T, root *nethtml.Node) map[string]string {
+	t.Helper()
+	menu := goalActionMenuIn(t, root)
+	for _, control := range findAll(menu, func(n *nethtml.Node) bool {
+		switch n.Data {
+		case "form", "input", "button", "select", "textarea":
+			return true
+		case "details":
+			return n != menu
+		}
+		return false
+	}) {
+		t.Errorf("the action menu holds a <%s>, not only links: %s", control.Data, renderNode(menu))
+	}
+	items := map[string]string{}
+	for _, li := range findAll(menu, func(n *nethtml.Node) bool { return n.Data == "li" }) {
+		links := findAll(li, func(n *nethtml.Node) bool { return n.Data == "a" })
+		if len(links) != 1 || textOf(links[0]) != textOf(li) {
+			t.Errorf("an action menu item is not a plain link: %s", renderNode(li))
+			continue
+		}
+		items[textOf(links[0])] = attrOf(links[0], "href")
+	}
+	return items
+}
+
+// goalOpenFormIn returns the form the Goal page shows open in place, the
+// element carrying data-open-form, failing unless exactly one form is open
+// and it is the named one.
+func goalOpenFormIn(t *testing.T, root *nethtml.Node, form string) *nethtml.Node {
+	t.Helper()
+	open := findAll(root, func(n *nethtml.Node) bool { return hasAttr(n, "data-open-form") })
+	if len(open) != 1 {
+		t.Fatalf("page shows %d forms open, want only %q", len(open), form)
+	}
+	if got := attrOf(open[0], "data-open-form"); got != form {
+		t.Fatalf("page shows the %q form open, want %q", got, form)
+	}
+	return open[0]
+}
+
+// goalOpenFormsIn names the forms the Goal page shows open in place, in order.
+func goalOpenFormsIn(root *nethtml.Node) []string {
+	var names []string
+	for _, n := range findAll(root, func(n *nethtml.Node) bool { return hasAttr(n, "data-open-form") }) {
+		names = append(names, attrOf(n, "data-open-form"))
+	}
+	return names
+}
+
+// goalShownPerson is a person as a page shows them (CONTEXT.md: Name): the
+// label they're shown by, the email on hover, and, for one shown as a control,
+// whether the control starts collapsed over their hidden email.
+type goalShownPerson struct {
+	Label, Title string
+	// Discloses reports a disclose button reading Label, collapsed, with the
+	// email hidden beside it; a person shown plainly, inside another control,
+	// has none.
+	Discloses bool
+	// Email is the hidden email the button discloses, or "".
+	Email string
+}
+
+// goalPeopleShownIn returns each person shown under root, in order.
+func goalPeopleShownIn(root *nethtml.Node) []goalShownPerson {
+	var out []goalShownPerson
+	for _, p := range findAll(root, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "person") }) {
+		person := goalShownPerson{Label: shownTextOf(p), Title: attrOf(p, "title")}
+		buttons := findAll(p, func(n *nethtml.Node) bool { return n.Data == "button" })
+		emails := findAll(p, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "person-email") })
+		if len(buttons) == 1 && len(emails) == 1 {
+			b := buttons[0]
+			person.Label, person.Title = textOf(b), attrOf(b, "title")
+			person.Discloses = flatFrameHasClass(b, "disclose") && attrOf(b, "type") == "button" &&
+				attrOf(b, "aria-expanded") == "false" && isHiddenElement(emails[0])
+			person.Email = strings.Join(nodeWords(emails[0], emails[0], nil), " ")
+		}
+		out = append(out, person)
+	}
+	return out
+}
+
+// goalShows reports whether root shows the person emailAddr by label as a
+// control that discloses their email, the email on hover too (shownAs).
+func goalShows(root *nethtml.Node, emailAddr, label string) bool {
+	return slices.Contains(goalPeopleShownIn(root), goalShownPerson{Label: label, Title: emailAddr, Discloses: true, Email: emailAddr})
 }
 
 // The Goal list is grouped by Health: Red, Yellow, Green, then the Goals with
@@ -614,7 +788,9 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 // Check-in overdue or Path to Green overdue, then the rest, alphabetical
 // within each. Each row leads with its Health's shape alone, named by an
 // aria-label so colour is never the only signal, and a Goal with no Health
-// shows its Lifecycle as a chip. Nothing sits in a card.
+// shows its Lifecycle as a chip. Nothing sits in a card. The classes that
+// draw the shapes and the chip are styles_test.go's
+// (TestGoalListGroupsByHealthProblemsFirstInEachStyles).
 func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 	t.Parallel()
 
@@ -643,59 +819,55 @@ func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 	ts := newServer(t, h)
 	goals := []domain.Goal{checkinOverdue, proposed, betaGreen, alphaGreen, yellow, ownerless, red}
 
-	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all")
-	if strings.Contains(list, `class="card`) {
-		t.Errorf("the Goal list sits in a card:\n%s", swappedList(t, list))
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all")
+	if cards := findAll(page, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "card") }); len(cards) > 0 {
+		t.Errorf("the Goal list sits in a card: %s", renderNode(cards[0]))
 	}
-	groups := strings.Split(swappedList(t, list), `<tbody data-testid="goal-health-group"`)[1:]
-	type group struct {
-		mark, name, count string
-		rows              []string
-	}
-	want := []group{
-		{"none", "No Health", "2", []string{"Overdue work", "Proposed idea"}},
-		{"r", "Red", "1", []string{"Zulu fire"}},
-		{"y", "Yellow", "1", []string{"Wobbly"}},
-		{"g", "Green", "3", []string{"Orphaned", "Alpha green", "Beta green"}},
+	list := findByTestID(t, page, "goal-list")
+	groups := findAllByTestID(list, "goal-health-group")
+	want := []struct {
+		name, count string
+		rows        []string
+	}{
+		{"No Health", "2", []string{"Overdue work", "Proposed idea"}},
+		{"Red", "1", []string{"Zulu fire"}},
+		{"Yellow", "1", []string{"Wobbly"}},
+		{"Green", "3", []string{"Orphaned", "Alpha green", "Beta green"}},
 	}
 	if len(groups) != len(want) {
-		t.Fatalf("got %d Health groups, want %d:\n%s", len(groups), len(want), swappedList(t, list))
+		t.Fatalf("got %d Health groups, want %d: %s", len(groups), len(want), renderNode(list))
 	}
 	for i, w := range want {
-		head := pageElement(t, groups[i], "tr", "goal-group-head")
-		if !strings.Contains(openTag(head), `class="gl-group"`) {
-			t.Errorf("%s: header row isn't a .gl-group row: %s", w.name, head)
+		head := findByTestID(t, groups[i], "goal-group-head")
+		if mark := findByTestID(t, head, "goal-group-mark"); attrOf(mark, "aria-hidden") != "true" {
+			t.Errorf("%s: header row's shape isn't hidden from assistive technology: %s", w.name, renderNode(mark))
 		}
-		if mark := tagAround(t, head, `class="gl-mark `+w.mark+`"`); attr(mark, "aria-hidden") != "true" {
-			t.Errorf("%s: header row lacks its shape: %s", w.name, head)
+		if got := textOf(findByTestID(t, head, "goal-group-label")); got != w.name {
+			t.Errorf("%s: header label = %q", w.name, got)
 		}
-		if got := pageElement(t, head, "span", "goal-group-label"); !strings.HasSuffix(got, ">"+w.name) {
-			t.Errorf("%s: header label = %s", w.name, got)
+		if got := textOf(findByTestID(t, head, "goal-group-count")); got != w.count {
+			t.Errorf("%s: header count = %q, want %s", w.name, got, w.count)
 		}
-		if got := pageElement(t, head, "span", "goal-group-count"); !strings.HasSuffix(got, ">"+w.count) {
-			t.Errorf("%s: header count = %s, want %s", w.name, got, w.count)
-		}
-		rows := goalRows(t, groups[i])
-		if got := rowTitles(rows, goals...); !slices.Equal(got, w.rows) {
+		rows := goalListRowsIn(groups[i])
+		if got := goalRowTitlesIn(rows, goals...); !slices.Equal(got, w.rows) {
 			t.Errorf("%s group rows = %q, want %q", w.name, got, w.rows)
 		}
 		for _, row := range rows {
-			mark := openTag(pageElement(t, row, "span", "goal-row-health"))
-			if attr(mark, "class") != "gl-mark "+w.mark || attr(mark, "role") != "img" || attr(mark, "aria-label") != w.name {
-				t.Errorf("%s row's Health mark = %s, want a .gl-mark.%s img labelled %q", w.name, mark, w.mark, w.name)
+			if mark := findByTestID(t, row, "goal-row-health"); attrOf(mark, "role") != "img" || attrOf(mark, "aria-label") != w.name {
+				t.Errorf("%s row's Health mark = %s, want an img labelled %q", w.name, renderNode(mark), w.name)
 			}
 		}
 	}
-	if chip := pageElement(t, goalRows(t, groups[0])[1], "span", "goal-row-lifecycle"); !strings.Contains(chip, `class="badge lc"`) || !strings.HasSuffix(chip, ">Proposed") {
-		t.Errorf("a Goal with no Health doesn't show its Lifecycle as a chip: %s", chip)
+	if chip := findByTestID(t, goalListRowsIn(groups[0])[1], "goal-row-lifecycle"); textOf(chip) != "Proposed" {
+		t.Errorf("a Goal with no Health doesn't show its Lifecycle as a chip: %s", renderNode(chip))
 	}
 }
 
 // A Goal whose latest Check-in is Green while a Milestone is overdue is marked
-// Milestone overdue beside its title, in Check-in overdue's chip, and sorts
-// with the Check-in overdue Goals, at the head of the Green group, below the
-// Yellow one. Its Health stays Green, and a plain Green Goal carries no such
-// mark.
+// Milestone overdue beside its title, in Check-in overdue's chip
+// (TestGoalListMarksAGreenGoalPastAMilestoneStyles), and sorts with the
+// Check-in overdue Goals, at the head of the Green group, below the Yellow
+// one. Its Health stays Green, and a plain Green Goal carries no such mark.
 func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
 	t.Parallel()
 
@@ -708,27 +880,40 @@ func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
 	h.Checkin(sam, green.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 	ts := newServer(t, h)
 
-	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all"))
-	if got, want := rowTitles(rows, overdue, yellow, green), []string{"Wobbly", "Zulu launch", "Alpha green"}; !slices.Equal(got, want) {
+	rows := goalListRowsIn(getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all"))
+	if got, want := goalRowTitlesIn(rows, overdue, yellow, green), []string{"Wobbly", "Zulu launch", "Alpha green"}; !slices.Equal(got, want) {
 		t.Fatalf("row order = %q, want %q", got, want)
 	}
-	chip := pageElement(t, rows[1], "span", "milestone-overdue")
-	if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.Contains(chip, ">Milestone overdue") {
-		t.Errorf("Milestone overdue chip = %s, want a .badge.st reading \"Milestone overdue\"", chip)
+	if chip := findByTestID(t, rows[1], "milestone-overdue"); textOf(chip) != "Milestone overdue" {
+		t.Errorf("Milestone overdue chip = %s, want one reading \"Milestone overdue\"", renderNode(chip))
 	}
-	if health := pageElement(t, rows[1], "span", "goal-row-health"); attr(openTag(health), "aria-label") != "Green" {
-		t.Errorf("Health = %s, want the Owner's Green", health)
+	if health := findByTestID(t, rows[1], "goal-row-health"); attrOf(health, "aria-label") != "Green" {
+		t.Errorf("Health = %s, want the Owner's Green", renderNode(health))
 	}
-	for _, row := range []string{rows[0], rows[2]} {
-		if strings.Contains(row, `data-testid="milestone-overdue"`) {
-			t.Errorf("an unmarked row carries a Milestone overdue chip: %s", row)
+	for _, row := range []*nethtml.Node{rows[0], rows[2]} {
+		if hasTestID(row, "milestone-overdue") {
+			t.Errorf("an unmarked row carries a Milestone overdue chip: %s", renderNode(row))
 		}
 	}
 }
 
+// goalListDueDates is what each date a Goal list row's Due cell shows reads,
+// each its own element, as tag and text ("del Jul 2"), in order.
+func goalListDueDates(cell *nethtml.Node) []string {
+	var dates []string
+	for c := cell.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == nethtml.ElementNode {
+			dates = append(dates, c.Data+" "+textOf(c))
+		}
+	}
+	return dates
+}
+
 // Each row shows when the Goal is due, with the dates its Date Slips moved it
-// from struck through (wrapping between dates, never mid-date: #180), or a dash
-// for an Ongoing Goal, and how long ago its last Check-in was.
+// from struck through, each date whole in its own element so the dates wrap
+// between them and never mid-date (#180; the rule keeping each whole is
+// TestGoalListShowsDueDateAndLastCheckinStyles'), or a dash for an Ongoing
+// Goal, and how long ago its last Check-in was.
 func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	t.Parallel()
 
@@ -754,86 +939,23 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	h.Clock.Advance(3 * day)
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
-	rows := goalRows(t, page)
-	if got := rowTitles(rows, slipped, ongoing); !slices.Equal(got, []string{"Slipped", "Keep the lights on"}) {
+	rows := goalListRowsIn(getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals"))
+	if got := goalRowTitlesIn(rows, slipped, ongoing); !slices.Equal(got, []string{"Slipped", "Keep the lights on"}) {
 		t.Fatalf("rows = %q", got)
 	}
 
-	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, `<td data-testid="goal-row-due" class="num gl-dates"><del>Jul 2</del> <span>Jul 16</span>`) {
-		t.Errorf("slipped Goal's Due does not strike its prior date, each date whole: %s", due)
+	due := findByTestID(t, rows[0], "goal-row-due")
+	if got, want := goalListDueDates(due), []string{"del Jul 2", "span Jul 16"}; !slices.Equal(got, want) || !strings.HasPrefix(runningText(due), "Jul 2 Jul 16") {
+		t.Errorf("slipped Goal's Due does not strike its prior date, each date whole: reads %q as %q, want %q: %s", runningText(due), got, want, renderNode(due))
 	}
-	if rule := cssRule(t, page, ".gl-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("a Due date can break mid-date: .gl-dates>*{%s}", rule)
+	if last := textOf(findByTestID(t, rows[0], "goal-row-last-checkin")); !strings.Contains(last, "3 days ago") {
+		t.Errorf("Last check-in is not relative: %q", last)
 	}
-	if rule, ok := ruleFor(page, ".gl-dates"); ok && strings.Contains(rule, "nowrap") {
-		t.Errorf("the whole Due cell is kept on one line, so its slips can't wrap: .gl-dates{%s}", rule)
+	if due := textOf(findByTestID(t, rows[1], "goal-row-due")); !strings.Contains(due, "—") || strings.Contains(due, "20") {
+		t.Errorf("Ongoing Goal's Due is not a dash: %q", due)
 	}
-	if last := pageElement(t, rows[0], "td", "goal-row-last-checkin"); !strings.Contains(last, "3 days ago") {
-		t.Errorf("Last check-in is not relative: %s", last)
-	}
-	if due := pageElement(t, rows[1], "td", "goal-row-due"); !strings.Contains(due, "—") || strings.Contains(due, "20") {
-		t.Errorf("Ongoing Goal's Due is not a dash: %s", due)
-	}
-	if last := pageElement(t, rows[1], "td", "goal-row-last-checkin"); !strings.Contains(last, "—") {
-		t.Errorf("a Goal with no Check-in shows a Last check-in: %s", last)
-	}
-}
-
-// At phone width the Goal list's rows stack (#258): the Goal across the top,
-// its Health's shape in the row's gutter beside it, then Owner, Due and Last
-// check-in wrapping under it, Due and Last check-in each led by a label only
-// the phone shows, with the Dimension tags hidden.
-func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Ship the phone layout", "It matters.")
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
-	if !strings.Contains(page, `<table class="gl-list">`) {
-		t.Errorf("the list layout's table has no gl-list class to style")
-	}
-	rows := goalRows(t, page)
-	if got := rowTitles(rows, goal); !slices.Equal(got, []string{goal.Title}) {
-		t.Fatalf("rows = %q", got)
-	}
-	for _, class := range []string{"gl-health", "gl-goal", "gl-owner", "num gl-dates", "muted gl-checkin", "gl-tags"} {
-		if !strings.Contains(rows[0], `class="`+class+`"`) {
-			t.Errorf("the row has no %s cell to style:\n%s", class, rows[0])
-		}
-	}
-
-	phone := mediaBlock(t, page, "@media (max-width:600px)")
-	for selector, want := range map[string]string{
-		".gl-list thead":      "display:none",
-		".gl-list tr":         "display:flex",
-		".gl-list td":         "display:block",
-		".gl-list .gl-goal":   "order:-1",
-		".gl-list .gl-tags":   "display:none",
-		".gl-dates::before":   `content:"Due "`,
-		".gl-checkin::before": `content:"Last check-in "`,
-		".gl-list .gl-owner":  "white-space:normal",
-		".gl-list [colspan]":  "flex-basis:100%",
-		".gl-list .gl-health": "order:-2",
-	} {
-		rule, ok := ruleFor(phone, selector)
-		if !ok {
-			t.Errorf("at 600px there is no %s rule", selector)
-		} else if !strings.Contains(rule, want) {
-			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
-		}
-	}
-	if rule, _ := ruleFor(phone, ".gl-list .gl-goal"); !strings.Contains(rule, "flex-basis:100%") {
-		t.Errorf("at 600px the Goal cell .gl-list .gl-goal{%s} shares its line with the Owner rather than heading the row", rule)
-	}
-	outside := strings.Replace(page, phone, "", 1)
-	for _, label := range []string{".gl-dates::before", ".gl-checkin::before"} {
-		if strings.Contains(outside, label) {
-			t.Errorf("%s labels the cell outside the phone block, so the desktop table shows it too", label)
-		}
+	if last := textOf(findByTestID(t, rows[1], "goal-row-last-checkin")); !strings.Contains(last, "—") {
+		t.Errorf("a Goal with no Check-in shows a Last check-in: %q", last)
 	}
 }
 
@@ -860,17 +982,27 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
 		{"nothing like it", nil},
 	} {
-		page := getBody(t, client, ts.URL+"/goals?org=all&q="+url.QueryEscape(tc.q))
-		if got := rowTitles(goalRows(t, page), latency, hiring); !slices.Equal(got, tc.want) {
+		page := getPage(t, client, ts.URL+"/goals?org=all&q="+url.QueryEscape(tc.q))
+		if got := goalRowTitlesIn(goalListRowsIn(page), latency, hiring); !slices.Equal(got, tc.want) {
 			t.Errorf("q=%q: rows = %q, want %q", tc.q, got, tc.want)
 		}
-		if search := pageTag(t, page, "input", "goal-search"); !strings.Contains(search, `value="`+tc.q+`"`) {
-			t.Errorf("q=%q: search box lost the query: %s", tc.q, search)
+		if search := findByTestID(t, page, "goal-search"); attrOf(search, "value") != tc.q {
+			t.Errorf("q=%q: search box lost the query: %s", tc.q, renderNode(search))
 		}
-		if tc.want == nil && !strings.Contains(page, `data-testid="no-goals"`) {
+		if tc.want == nil && !hasTestID(page, "no-goals") {
 			t.Errorf("q=%q: no empty state", tc.q)
 		}
 	}
+}
+
+// goalFilterChoice is the value a Goal list filter select carries selected,
+// or "" when it marks no option selected.
+func goalFilterChoice(t *testing.T, root *nethtml.Node, testID string) string {
+	t.Helper()
+	if opt := chosenOption(findByTestID(t, root, testID)); opt != nil && hasAttr(opt, "selected") {
+		return attrOf(opt, "value")
+	}
+	return ""
 }
 
 // The Health filter keeps the Goals at the chosen Health, or those with none,
@@ -897,12 +1029,12 @@ func TestGoalListFiltersByHealth(t *testing.T) {
 		"red":    "Red one",
 		"none":   "Proposed one",
 	} {
-		page := getBody(t, client, ts.URL+"/goals?health="+health)
-		if got := rowTitles(goalRows(t, page), green, yellow, red, proposed); !slices.Equal(got, []string{want}) {
+		page := getPage(t, client, ts.URL+"/goals?health="+health)
+		if got := goalRowTitlesIn(goalListRowsIn(page), green, yellow, red, proposed); !slices.Equal(got, []string{want}) {
 			t.Errorf("health=%s: rows = %q, want [%q]", health, got, want)
 		}
-		if sel := pageElement(t, page, "select", "goal-health-filter"); !strings.Contains(sel, `value="`+health+`" selected`) {
-			t.Errorf("health=%s: select lost the choice: %s", health, sel)
+		if got := goalFilterChoice(t, page, "goal-health-filter"); got != health {
+			t.Errorf("health=%s: select lost the choice, has %q selected", health, got)
 		}
 	}
 }
@@ -920,8 +1052,8 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	all := getBody(t, client, ts.URL+"/goals")
-	if got := rowTitles(goalRows(t, all), active, paused, proposed); len(got) != 3 {
+	all := getPage(t, client, ts.URL+"/goals")
+	if got := goalRowTitlesIn(goalListRowsIn(all), active, paused, proposed); len(got) != 3 {
 		t.Errorf("default Lifecycle filter should keep every Goal; rows = %q", got)
 	}
 	for lifecycle, want := range map[string]string{
@@ -929,12 +1061,12 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 		domain.LifecycleOnHold:   "Paused one",
 		domain.LifecycleProposed: "Proposed one",
 	} {
-		page := getBody(t, client, ts.URL+"/goals?lifecycle="+url.QueryEscape(lifecycle))
-		if got := rowTitles(goalRows(t, page), active, paused, proposed); !slices.Equal(got, []string{want}) {
+		page := getPage(t, client, ts.URL+"/goals?lifecycle="+url.QueryEscape(lifecycle))
+		if got := goalRowTitlesIn(goalListRowsIn(page), active, paused, proposed); !slices.Equal(got, []string{want}) {
 			t.Errorf("lifecycle=%s: rows = %q, want [%q]", lifecycle, got, want)
 		}
-		if sel := pageElement(t, page, "select", "goal-lifecycle-filter"); !strings.Contains(sel, `value="`+lifecycle+`" selected`) {
-			t.Errorf("lifecycle=%s: select lost the choice: %s", lifecycle, sel)
+		if got := goalFilterChoice(t, page, "goal-lifecycle-filter"); got != lifecycle {
+			t.Errorf("lifecycle=%s: select lost the choice, has %q selected", lifecycle, got)
 		}
 	}
 }
@@ -955,12 +1087,12 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?org=mine")
-	got := rowTitles(goalRows(t, page), owned, delegated, others)
+	page := getPage(t, client, ts.URL+"/goals?org=mine")
+	got := goalRowTitlesIn(goalListRowsIn(page), owned, delegated, others)
 	if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
 		t.Errorf("rows = %q, want %q", got, want)
 	}
-	choices, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter"))
+	choices, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter"))
 	if value != "mine" || label != "Mine" {
 		t.Errorf("the Scope select shows %q %q chosen, want Mine", value, label)
 	}
@@ -968,11 +1100,11 @@ func TestGoalListFiltersToMine(t *testing.T) {
 		t.Errorf("without Managers the Scope select offers %q, want %q", choices, want)
 	}
 
-	page = getBody(t, client, ts.URL+"/goals?org=all")
-	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
+	page = getPage(t, client, ts.URL+"/goals?org=all")
+	if got := goalRowTitlesIn(goalListRowsIn(page), owned, delegated, others); len(got) != 3 {
 		t.Errorf("for Everyone every Goal shows; rows = %q", got)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "all" || label != "Everyone" {
+	if _, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != "all" || label != "Everyone" {
 		t.Errorf("for Everyone, the Scope select shows %q %q chosen, want Everyone", value, label)
 	}
 
@@ -981,8 +1113,8 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	h.Checkin(sam, ownRed.ID, domain.HealthRed, "On fire.", "Put it out.", later)
 	kimsRed := h.ActiveGoal(kim, "Kim's red", "It matters.")
 	h.Checkin(kim, kimsRed.ID, domain.HealthRed, "On fire.", "Put it out.", later)
-	page = getBody(t, client, ts.URL+"/goals?org=mine&health=red")
-	if got := rowTitles(goalRows(t, page), owned, delegated, others, ownRed, kimsRed); !slices.Equal(got, []string{"Sam's red"}) {
+	page = getPage(t, client, ts.URL+"/goals?org=mine&health=red")
+	if got := goalRowTitlesIn(goalListRowsIn(page), owned, delegated, others, ownRed, kimsRed); !slices.Equal(got, []string{"Sam's red"}) {
 		t.Errorf("Mine and Red: rows = %q, want only Sam's red", got)
 	}
 }
@@ -1002,31 +1134,58 @@ func TestGoalListScopesToAnOrgOverMine(t *testing.T) {
 	oz := signInClient(t, ts.URL, "oz@example.com")
 	miaID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, mia, ts.URL+"/goals?mine=1")
-	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+	page := getPage(t, mia, ts.URL+"/goals?mine=1")
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia at the old Mine address: rows = %q, want her default, My org's %q", got, want)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != miaID {
+	if _, value, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != miaID {
 		t.Errorf("Mia at the old Mine address: the Scope select shows %q chosen, want her default, %s", value, miaID)
 	}
 
-	page = getBody(t, oz, ts.URL+"/goals?mine=1&org="+miaID)
-	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+	page = getPage(t, oz, ts.URL+"/goals?mine=1&org="+miaID)
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia's org beside the old Mine parameter: rows = %q, want %q", got, want)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != miaID {
+	if _, value, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != miaID {
 		t.Errorf("Mia's org beside the old Mine parameter: the Scope select shows %q chosen", value)
 	}
 
 	for _, raw := range []string{"abc", "999999"} {
-		page := getBody(t, oz, ts.URL+"/goals?org="+raw)
-		if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+		page := getPage(t, oz, ts.URL+"/goals?org="+raw)
+		if got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
 			t.Errorf("org=%s: rows = %q, want Oz's default, Mine", raw, got)
 		}
-		if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" {
+		if _, value, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != "mine" {
 			t.Errorf("org=%s: the Scope select shows %q chosen, want Oz's default, Mine", raw, value)
 		}
 	}
+}
+
+// goalScopeOptionIn returns the Scope select's one option submitting value,
+// failing the test unless there is exactly one.
+func goalScopeOptionIn(t *testing.T, sel *nethtml.Node, value string) *nethtml.Node {
+	t.Helper()
+	opts := findAll(sel, func(n *nethtml.Node) bool { return n.Data == "option" && attrOf(n, "value") == value })
+	if len(opts) != 1 {
+		t.Fatalf("the Scope select has %d options submitting %q, want 1: %s", len(opts), value, renderNode(sel))
+	}
+	return opts[0]
+}
+
+// goalListCount is what the Goal list header's count reads.
+func goalListCount(t *testing.T, page *nethtml.Node) string {
+	t.Helper()
+	return textOf(findByTestID(t, page, "goal-count"))
+}
+
+// goalListLinkQuery is the query of the link carrying testID on the Goal list.
+func goalListLinkQuery(t *testing.T, page *nethtml.Node, testID string) url.Values {
+	t.Helper()
+	u, err := url.Parse(attrOf(findByTestID(t, page, testID), "href"))
+	if err != nil {
+		t.Fatalf("%s href: %v", testID, err)
+	}
+	return u.Query()
 }
 
 // My org keeps the Goals whose Owner is in the viewer's org, their own
@@ -1042,13 +1201,13 @@ func TestGoalListScopesToMyOrg(t *testing.T) {
 	ts := newServer(t, h)
 
 	vera := signInClient(t, ts.URL, "vera@example.com")
-	page := getBody(t, vera, scopeOrgURL(ts.URL, "/goals", org.Vera))
-	got := rowTitles(goalRows(t, page), org.goals()...)
+	page := getPage(t, vera, scopeOrgURL(ts.URL, "/goals", org.Vera))
+	got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...)
 	if want := []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Vera's My org: rows = %q, want %q", got, want)
 	}
-	sel := scopeSelect(t, page, "goal-scope-filter")
-	choices, value, label := scopeChoices(sel)
+	sel := scopeSelectIn(t, page, "goal-scope-filter")
+	choices, value, label := selectChoices(sel)
 	if want := []string{
 		"Everyone", "Mine", "My org",
 		"Other orgs: Max Marsh (max@example.com)", "Other orgs: Mia Moss (mia@example.com)", "Other orgs: Oz Ortiz (oz@example.com)",
@@ -1059,32 +1218,49 @@ func TestGoalListScopesToMyOrg(t *testing.T) {
 	if want := strconv.FormatInt(org.Vera.ID, 10); value != want || label != "My org" {
 		t.Errorf("Vera's My org isn't the chosen scope: %q %q", value, label)
 	}
-	if attr(openTag(sel), "name") != "org" {
-		t.Errorf("the Scope select doesn't submit ?org=: %s", openTag(sel))
+	if attrOf(sel, "name") != "org" {
+		t.Errorf("the Scope select doesn't submit ?org=: %s", renderNode(sel))
 	}
-	bar := between(t, page, `<div class="gl-bar">`, "</div>")
-	if !strings.HasPrefix(bar, `<div class="gl-bar"><label class="filter-chip on"><span class="chip-key" aria-hidden="true">Scope:</span><select data-testid="goal-scope-filter"`) {
-		t.Errorf("the Scope select isn't the filter bar's first control: %s", bar)
+	// The bar opens with the Scope chip: its key, read only by sight, then
+	// the select.
+	bar := findByTestID(t, page, "goal-filter-bar")
+	if chip := firstElementChild(bar); chip == nil || chip.Data != "label" || sel.Parent != chip {
+		t.Errorf("the Scope select isn't the filter bar's first control: %s", renderNode(bar))
+	} else if key := firstElementChild(chip); key == nil || key.Data != "span" || textOf(key) != "Scope:" || attrOf(key, "aria-hidden") != "true" || key.NextSibling != sel {
+		t.Errorf("the Scope chip doesn't read Scope: before its select: %s", renderNode(chip))
 	}
-	if strings.Contains(page, `name="mine"`) || strings.Contains(page, "Mine only") {
+	if len(formFields(page, "mine")) != 0 || strings.Contains(strings.Join(nodeWords(page, page, nil), " "), "Mine only") {
 		t.Errorf("the filter bar still has a Mine only checkbox")
 	}
-	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">5 in My org") {
-		t.Errorf("the count doesn't name My org: %s", count)
+	if count := goalListCount(t, page); count != "5 in My org" {
+		t.Errorf("the count doesn't name My org: %q", count)
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
-	page = getBody(t, mia, scopeOrgURL(ts.URL, "/goals", org.Mia))
-	got = rowTitles(goalRows(t, page), org.goals()...)
+	page = getPage(t, mia, scopeOrgURL(ts.URL, "/goals", org.Mia))
+	got = goalRowTitlesIn(goalListRowsIn(page), org.goals()...)
 	if want := []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia's My org: rows = %q, want %q", got, want)
 	}
 
 	pia := signInClient(t, ts.URL, "pia@example.com")
-	page = getBody(t, pia, ts.URL+"/goals")
-	if choices, _, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); slices.Contains(choices, "My org") {
+	page = getPage(t, pia, ts.URL+"/goals")
+	if choices, _, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); slices.Contains(choices, "My org") {
 		t.Errorf("Pia, with no one under her, is offered My org: %q", choices)
 	}
+}
+
+// firstElementChild is n's first child element, or nil.
+func firstElementChild(n *nethtml.Node) *nethtml.Node {
+	if n == nil {
+		return nil
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == nethtml.ElementNode {
+			return c
+		}
+	}
+	return nil
 }
 
 // Anyone may scope the list to another person's org, picked by Name with
@@ -1103,24 +1279,25 @@ func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	}
 	ts := newServer(t, h)
 	pia := signInClient(t, ts.URL, "pia@example.com")
+	maxID := strconv.FormatInt(org.Max.ID, 10)
 
-	page := getBody(t, pia, ts.URL+"/goals")
-	orgSel := scopeSelect(t, page, "goal-scope-filter")
-	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d">Max Marsh (max@example.com)</option>`, org.Max.ID)) {
-		t.Errorf("the Scope select doesn't offer Max by Name and email: %s", orgSel)
+	page := getPage(t, pia, ts.URL+"/goals")
+	orgSel := scopeSelectIn(t, page, "goal-scope-filter")
+	if opt := goalScopeOptionIn(t, orgSel, maxID); textOf(opt) != "Max Marsh (max@example.com)" || hasAttr(opt, "selected") {
+		t.Errorf("the Scope select doesn't offer Max by Name and email: %s", renderNode(opt))
 	}
 
-	page = getBody(t, pia, scopeOrgURL(ts.URL, "/goals", org.Max))
-	got := rowTitles(goalRows(t, page), org.goals()...)
+	page = getPage(t, pia, scopeOrgURL(ts.URL, "/goals", org.Max))
+	got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...)
 	if want := []string{"Pax's goal", "Max's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Max's org: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
 	}
-	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">2 in Max Marsh&#39;s org") {
-		t.Errorf("the count doesn't name Max's org: %s", count)
+	if count := goalListCount(t, page); count != "2 in Max Marsh's org" {
+		t.Errorf("the count doesn't name Max's org: %q", count)
 	}
-	orgSel = scopeSelect(t, page, "goal-scope-filter")
-	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d" selected>Max Marsh (max@example.com)</option>`, org.Max.ID)) {
-		t.Errorf("Max's org isn't the chosen scope: %s", orgSel)
+	orgSel = scopeSelectIn(t, page, "goal-scope-filter")
+	if opt := goalScopeOptionIn(t, orgSel, maxID); textOf(opt) != "Max Marsh (max@example.com)" || !hasAttr(opt, "selected") {
+		t.Errorf("Max's org isn't the chosen scope: %s", renderNode(orgSel))
 	}
 }
 
@@ -1135,23 +1312,23 @@ func TestGoalListOpensOnTheViewersDefaultScope(t *testing.T) {
 	ts := newServer(t, h)
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
-	page := getBody(t, mia, ts.URL+"/goals")
-	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+	page := getPage(t, mia, ts.URL+"/goals")
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia's default: rows = %q, want %q", got, want)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) || label != "My org" {
+	if _, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) || label != "My org" {
 		t.Errorf("Mia's default: the Scope select shows %q %q chosen, want My org", value, label)
 	}
-	if count := pageElement(t, page, "span", "goal-count"); !strings.HasSuffix(count, ">2 in My org") {
-		t.Errorf("Mia's default: the count doesn't name My org: %s", count)
+	if count := goalListCount(t, page); count != "2 in My org" {
+		t.Errorf("Mia's default: the count doesn't name My org: %q", count)
 	}
 
 	pia := signInClient(t, ts.URL, "pia@example.com")
-	page = getBody(t, pia, ts.URL+"/goals")
-	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal"}; !slices.Equal(got, want) {
+	page = getPage(t, pia, ts.URL+"/goals")
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), org.goals()...), []string{"Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Pia's default: rows = %q, want %q", got, want)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
+	if _, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
 		t.Errorf("Pia's default: the Scope select shows %q %q chosen, want Mine", value, label)
 	}
 }
@@ -1189,11 +1366,11 @@ func TestGoalListKeepsAnExplicitScopeOverTheDefault(t *testing.T) {
 			{"org=999999", viewer.defaultValue, viewer.defaultTitles},
 			{"org=", viewer.defaultValue, viewer.defaultTitles},
 		} {
-			page := getBody(t, client, ts.URL+"/goals?"+c.query)
-			if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, c.titles) {
+			page := getPage(t, client, ts.URL+"/goals?"+c.query)
+			if got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...); !slices.Equal(got, c.titles) {
 				t.Errorf("%s, %s: rows = %q, want %q", viewer.email, c.query, got, c.titles)
 			}
-			if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != c.value {
+			if _, value, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != c.value {
 				t.Errorf("%s, %s: the Scope select shows %q chosen, want %q", viewer.email, c.query, value, c.value)
 			}
 		}
@@ -1216,26 +1393,26 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 	client := signInClient(t, ts.URL, "oz@example.com")
 	orgID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/goals?org="+orgID+"&group="+strconv.FormatInt(team.ID, 10))
-	if got := elementTexts(page, "span", "goal-group-label"); !slices.Equal(got, []string{"Core", "Unassigned"}) {
+	page := getPage(t, client, ts.URL+"/goals?org="+orgID+"&group="+strconv.FormatInt(team.ID, 10))
+	if got := textsOf(findAllByTestID(page, "goal-group-label")); !slices.Equal(got, []string{"Core", "Unassigned"}) {
 		t.Errorf("grouped in Mia's org, groups = %q", got)
 	}
-	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal", "Mia's goal"}; !slices.Equal(got, want) {
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), org.goals()...), []string{"Pia's goal", "Mia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("grouped in Mia's org, rows = %q, want %q", got, want)
 	}
-	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `value="`+orgID+`" selected`) {
-		t.Errorf("grouped, the Scope select lost Mia: %s", sel)
+	if sel := scopeSelectIn(t, page, "goal-scope-filter"); !hasAttr(goalScopeOptionIn(t, sel, orgID), "selected") {
+		t.Errorf("grouped, the Scope select lost Mia: %s", renderNode(sel))
 	}
-	if table := pageElement(t, page, "a", "layout-table"); !strings.Contains(attr(openTag(table), "href"), "org="+orgID) {
-		t.Errorf("the Table toggle drops the org: %s", table)
+	if q := goalListLinkQuery(t, page, "layout-table"); q.Get("org") != orgID {
+		t.Errorf("the Table toggle drops the org: %s", q.Encode())
 	}
 
 	for _, raw := range []string{"abc", "999999", ""} {
-		page := getBody(t, client, ts.URL+"/goals?org="+raw)
-		if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+		page := getPage(t, client, ts.URL+"/goals?org="+raw)
+		if got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
 			t.Errorf("org=%q: rows = %q, want Oz's default, Mine", raw, got)
 		}
-		if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
+		if _, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
 			t.Errorf("org=%q: Mine, Oz's default, isn't chosen: %q %q", raw, value, label)
 		}
 	}
@@ -1252,13 +1429,15 @@ func TestGoalListIgnoresTheOldChainParameter(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vera@example.com")
 
-	unscoped := rowTitles(goalRows(t, getBody(t, client, ts.URL+"/goals")), org.goals()...)
-	page := getBody(t, client, ts.URL+"/goals?chain="+strconv.FormatInt(org.Mia.ID, 10))
-	if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 5 {
+	unscoped := goalRowTitlesIn(goalListRowsIn(getPage(t, client, ts.URL+"/goals")), org.goals()...)
+	page := getPage(t, client, ts.URL+"/goals?chain="+strconv.FormatInt(org.Mia.ID, 10))
+	if got := goalRowTitlesIn(goalListRowsIn(page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 5 {
 		t.Errorf("?chain=: rows = %q, want the unscoped %q", got, unscoped)
 	}
-	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>My org</option>`, org.Vera.ID)) || strings.Count(sel, "selected") != 1 {
-		t.Errorf("?chain=: Vera's default isn't the one chosen scope: %s", sel)
+	sel := scopeSelectIn(t, page, "goal-scope-filter")
+	picked := findAll(sel, func(n *nethtml.Node) bool { return n.Data == "option" && hasAttr(n, "selected") })
+	if mine := goalScopeOptionIn(t, sel, strconv.FormatInt(org.Vera.ID, 10)); textOf(mine) != "My org" || len(picked) != 1 || picked[0] != mine {
+		t.Errorf("?chain=: Vera's default isn't the one chosen scope: %s", renderNode(sel))
 	}
 }
 
@@ -1273,13 +1452,13 @@ func TestGoalListSaysAnEmptyOrgIsEmpty(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vera@example.com")
 
-	page := getBody(t, client, scopeOrgURL(ts.URL, "/goals", lee))
-	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s org.") {
-		t.Errorf("an empty org doesn't say so: %s", empty)
+	page := getPage(t, client, scopeOrgURL(ts.URL, "/goals", lee))
+	if empty := textOf(findByTestID(t, page, "no-goals")); !strings.Contains(empty, "No Goals in Lee Lund's org.") {
+		t.Errorf("an empty org doesn't say so: %q", empty)
 	}
-	page = getBody(t, client, scopeOrgURL(ts.URL, "/goals", lee)+"&health=red")
-	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s org match.") {
-		t.Errorf("an empty org under another filter doesn't say so: %s", empty)
+	page = getPage(t, client, scopeOrgURL(ts.URL, "/goals", lee)+"&health=red")
+	if empty := textOf(findByTestID(t, page, "no-goals")); !strings.Contains(empty, "No Goals in Lee Lund's org match.") {
+		t.Errorf("an empty org under another filter doesn't say so: %q", empty)
 	}
 }
 
@@ -1294,15 +1473,15 @@ func TestGoalListNamesEveryoneAsOrgAll(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "mia@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?health=red")
-	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `<option value="all">Everyone</option>`) {
-		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", sel)
+	page := getPage(t, client, ts.URL+"/goals?health=red")
+	if opt := goalScopeOptionIn(t, scopeSelectIn(t, page, "goal-scope-filter"), "all"); textOf(opt) != "Everyone" || hasAttr(opt, "selected") {
+		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", renderNode(opt))
 	}
 
-	page = getBody(t, client, ts.URL+"/goals?org=all")
+	page = getPage(t, client, ts.URL+"/goals?org=all")
 	for _, id := range []string{"layout-table", "layout-list"} {
-		if href := attr(openTag(pageElement(t, page, "a", id)), "href"); !strings.Contains(href, "org=all") {
-			t.Errorf("on Everyone, the %s link drops org=all: %s", id, href)
+		if q := goalListLinkQuery(t, page, id); q.Get("org") != "all" {
+			t.Errorf("on Everyone, the %s link drops org=all: %s", id, q.Encode())
 		}
 	}
 }
@@ -1325,28 +1504,28 @@ func TestGoalListSaysAnEmptyDefaultIsEmpty(t *testing.T) {
 	} {
 		client := signInClient(t, ts.URL, c.email)
 		for _, path := range []string{"/goals", "/goals?layout=table"} {
-			empty := pageElement(t, getBody(t, client, ts.URL+path), "td", "no-goals")
-			if !strings.Contains(empty, c.empty) {
-				t.Errorf("%s, %s: the empty default doesn't say %q: %s", c.email, path, c.empty, empty)
+			empty := findByTestID(t, getPage(t, client, ts.URL+path), "no-goals")
+			if !strings.Contains(textOf(empty), c.empty) {
+				t.Errorf("%s, %s: the empty default doesn't say %q: %q", c.email, path, c.empty, textOf(empty))
 			}
-			link := pageElement(t, empty, "a", "see-everyones")
-			if href, _ := url.Parse(html.UnescapeString(attr(openTag(link), "href"))); href.Path != "/goals" || href.Query().Get("org") != "all" || !strings.Contains(link, "See everyone's →") {
-				t.Errorf("%s, %s: the empty default's link isn't to everyone's Goals: %s", c.email, path, link)
+			link := findByTestID(t, empty, "see-everyones")
+			if href, _ := url.Parse(attrOf(link, "href")); href.Path != "/goals" || href.Query().Get("org") != "all" || !strings.Contains(textOf(link), "See everyone's →") {
+				t.Errorf("%s, %s: the empty default's link isn't to everyone's Goals: %s", c.email, path, renderNode(link))
 			}
 		}
 	}
 
 	lees := signInClient(t, ts.URL, "lee@example.com")
-	empty := pageElement(t, getBody(t, lees, ts.URL+"/goals?health=red"), "td", "no-goals")
-	if !strings.Contains(empty, "No Goals in My org match.") {
-		t.Errorf("an empty default under another filter doesn't say so: %s", empty)
+	empty := findByTestID(t, getPage(t, lees, ts.URL+"/goals?health=red"), "no-goals")
+	if !strings.Contains(textOf(empty), "No Goals in My org match.") {
+		t.Errorf("an empty default under another filter doesn't say so: %q", textOf(empty))
 	}
-	href, _ := url.Parse(html.UnescapeString(attr(openTag(pageElement(t, empty, "a", "see-everyones")), "href")))
+	href, _ := url.Parse(attrOf(findByTestID(t, empty, "see-everyones"), "href"))
 	if q := href.Query(); q.Get("org") != "all" || q.Get("health") != "red" {
 		t.Errorf("the link to everyone's Goals drops the other filters: %s", href)
 	}
 
-	if strings.Contains(getBody(t, lees, scopeOrgURL(ts.URL, "/goals", lee)), `data-testid="see-everyones"`) {
+	if hasTestID(getPage(t, lees, scopeOrgURL(ts.URL, "/goals", lee)), "see-everyones") {
 		t.Errorf("an explicitly chosen empty org links to everyone's Goals")
 	}
 }
@@ -1364,9 +1543,10 @@ func TestGoalListScopeOffersNoOtherOrgsWhenNoneHoldGoals(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vera@example.com")
 
-	sel := scopeSelect(t, getBody(t, client, ts.URL+"/goals"), "goal-scope-filter")
-	if choices, _, _ := scopeChoices(sel); !slices.Equal(choices, []string{"Everyone", "Mine", "My org"}) || strings.Contains(sel, "<optgroup") {
-		t.Errorf("with no other org holding Goals the Scope select offers %q: %s", choices, sel)
+	sel := scopeSelectIn(t, getPage(t, client, ts.URL+"/goals"), "goal-scope-filter")
+	groups := findAll(sel, func(n *nethtml.Node) bool { return n.Data == "optgroup" })
+	if choices, _, _ := selectChoices(sel); !slices.Equal(choices, []string{"Everyone", "Mine", "My org"}) || len(groups) != 0 {
+		t.Errorf("with no other org holding Goals the Scope select offers %q: %s", choices, renderNode(sel))
 	}
 }
 
@@ -1384,14 +1564,14 @@ func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?org="+strconv.FormatInt(kim.ID, 10))
-	if choices, _, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
+	page := getPage(t, client, ts.URL+"/goals?org="+strconv.FormatInt(kim.ID, 10))
+	if choices, _, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
 		t.Errorf("without Managers the Scope select offers %q, want only Everyone and Mine", choices)
 	}
-	if got := len(goalRows(t, page)); got != 1 {
+	if got := len(goalListRowsIn(page)); got != 1 {
 		t.Errorf("without Managers a ?org= scoped the list to %d Goals, want Mine's 1", got)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" {
+	if _, value, _ := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != "mine" {
 		t.Errorf("without Managers a ?org= chose %q, want the default Mine", value)
 	}
 }
@@ -1413,11 +1593,11 @@ func TestGoalListScopesAnOrgLinkForAViewerOutsideAnyOrg(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "oz@example.com")
 
-	page := getBody(t, client, scopeOrgURL(ts.URL, "/goals", vera))
-	if got, want := rowTitles(goalRows(t, page), veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
+	page := getPage(t, client, scopeOrgURL(ts.URL, "/goals", vera))
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Oz in Vera's org: rows = %q, want %q", got, want)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(vera.ID, 10) || label != "Vera Vance (vera@example.com)" {
+	if _, value, label := selectChoices(scopeSelectIn(t, page, "goal-scope-filter")); value != strconv.FormatInt(vera.ID, 10) || label != "Vera Vance (vera@example.com)" {
 		t.Errorf("Oz in Vera's org: the Scope select shows %q %q chosen, want Vera's org", value, label)
 	}
 }
@@ -1443,36 +1623,40 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	plain := getBody(t, client, ts.URL+"/goals")
-	if more := pageTag(t, plain, "details", "more-filters"); strings.Contains(more, "open") {
-		t.Errorf("More filters is open with none set: %s", more)
+	plain := getPage(t, client, ts.URL+"/goals")
+	if more := findByTestID(t, plain, "more-filters"); hasAttr(more, "open") {
+		t.Errorf("More filters is open with none set: %s", renderNode(more))
 	}
 
-	filtered := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
-	if more := pageTag(t, filtered, "details", "more-filters"); !strings.Contains(more, "open") {
-		t.Errorf("More filters is closed with a value chosen: %s", more)
+	filtered := getPage(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
+	if more := findByTestID(t, filtered, "more-filters"); !hasAttr(more, "open") {
+		t.Errorf("More filters is closed with a value chosen: %s", renderNode(more))
 	}
 
 	// Group by shows among the filter bar's chips, so grouping alone leaves
 	// More filters closed.
-	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if more := pageTag(t, grouped, "details", "more-filters"); strings.Contains(more, "open") {
-		t.Errorf("More filters opens for a grouping alone: %s", more)
+	grouped := getPage(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if more := findByTestID(t, grouped, "more-filters"); hasAttr(more, "open") {
+		t.Errorf("More filters opens for a grouping alone: %s", renderNode(more))
 	}
-	section := pageElement(t, grouped, "tbody", "goal-group")
-	if label := pageElement(t, section, "span", "goal-group-label"); !strings.Contains(label, "Growth") {
-		t.Errorf("first section is not headed Growth: %s", label)
+	sections := findAll(grouped, func(n *nethtml.Node) bool { return n.Data == "tbody" && attrOf(n, "data-testid") == "goal-group" })
+	if len(sections) == 0 {
+		t.Fatalf("the grouped list has no sections: %s", renderNode(grouped))
 	}
-	if got := rowTitles(goalRows(t, section), calm, fire, loose); !slices.Equal(got, []string{"Burning growth", "Calm growth"}) {
+	section := sections[0]
+	if label := textOf(findByTestID(t, section, "goal-group-label")); !strings.Contains(label, "Growth") {
+		t.Errorf("first section is not headed Growth: %q", label)
+	}
+	if got := goalRowTitlesIn(goalListRowsIn(section), calm, fire, loose); !slices.Equal(got, []string{"Burning growth", "Calm growth"}) {
 		t.Errorf("Growth section rows = %q, want the Red Goal first", got)
 	}
-	if !strings.Contains(grouped, "Unassigned") {
-		t.Errorf("Goals without a Pillar have no Unassigned section; body:\n%s", grouped)
+	if labels := textsOf(findAllByTestID(grouped, "goal-group-label")); !slices.Contains(labels, "Unassigned") {
+		t.Errorf("Goals without a Pillar have no Unassigned section; sections %q", labels)
 	}
 
-	empty := getBody(t, client, ts.URL+"/goals?org=all&q=nothing+like+it")
-	if none := pageElement(t, empty, "td", "no-goals"); !strings.Contains(none, "No Goals match.") {
-		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
+	empty := getPage(t, client, ts.URL+"/goals?org=all&q=nothing+like+it")
+	if none := textOf(findByTestID(t, empty, "no-goals")); !strings.Contains(none, "No Goals match.") {
+		t.Errorf("a filtered-out list does not say nothing matches: %q", none)
 	}
 }
 
@@ -1492,8 +1676,8 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, path := range []string{"/goals", "/goals?org=mine", "/goals?q=&health=&lifecycle=&group="} {
-		if page := getBody(t, client, ts.URL+path); strings.Contains(page, `data-testid="goal-filters-clear"`) {
-			t.Errorf("%s: Clear is offered with no filter set:\n%s", path, between(t, page, `<div class="gl-bar">`, `</form>`))
+		if page := getPage(t, client, ts.URL+path); hasTestID(page, "goal-filters-clear") {
+			t.Errorf("%s: Clear is offered with no filter set:\n%s", path, renderNode(findByTestID(t, page, "goal-filter-bar")))
 		}
 	}
 	for _, path := range []string{
@@ -1505,12 +1689,12 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 		fmt.Sprintf("/goals?value=%d", pillar.Values[0].ID),
 		fmt.Sprintf("/goals?group=%d", pillar.ID),
 	} {
-		page := getBody(t, client, ts.URL+path)
-		if !strings.Contains(page, `data-testid="goal-filters-clear"`) {
-			t.Errorf("%s: Clear isn't offered with a filter set:\n%s", path, between(t, page, `<div class="gl-bar">`, `</form>`))
+		page := getPage(t, client, ts.URL+path)
+		if !hasTestID(page, "goal-filters-clear") {
+			t.Errorf("%s: Clear isn't offered with a filter set:\n%s", path, renderNode(findByTestID(t, page, "goal-filter-bar")))
 			continue
 		}
-		if href := attr(openTag(pageElement(t, page, "a", "goal-filters-clear")), "href"); href != "/goals" {
+		if href := attrOf(findByTestID(t, page, "goal-filters-clear"), "href"); href != "/goals" {
 			t.Errorf("%s: Clear links to %q, want the bare /goals", path, href)
 		}
 	}
@@ -1519,31 +1703,63 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 	// is no filter, while Mine is.
 	h.SetManager(sam, boss)
 	bossClient := signInClient(t, ts.URL, "boss@example.com")
-	if page := getBody(t, bossClient, fmt.Sprintf("%s/goals?org=%d", ts.URL, boss.ID)); strings.Contains(page, `data-testid="goal-filters-clear"`) {
+	if page := getPage(t, bossClient, fmt.Sprintf("%s/goals?org=%d", ts.URL, boss.ID)); hasTestID(page, "goal-filters-clear") {
 		t.Errorf("My org, the default, offers Clear")
 	}
-	if page := getBody(t, bossClient, ts.URL+"/goals?org=mine"); !strings.Contains(page, `data-testid="goal-filters-clear"`) {
+	if page := getPage(t, bossClient, ts.URL+"/goals?org=mine"); !hasTestID(page, "goal-filters-clear") {
 		t.Errorf("Mine, for someone whose default is My org, doesn't offer Clear")
 	}
 }
 
-// goalClearSlot returns the Clear slot's element on page and whether it is
-// swapped out of band, failing unless it is the only out-of-band swap, so
-// htmx replaces neither the form nor More filters.
-func goalClearSlot(t *testing.T, page string) (string, bool) {
+// goalClearSlotIn returns the Clear slot on page and whether it is swapped
+// out of band, failing unless it is the only element swapped out of band, so
+// htmx replaces neither the form nor More filters, and it has an id to land
+// on.
+func goalClearSlotIn(t *testing.T, page *nethtml.Node) (*nethtml.Node, bool) {
 	t.Helper()
-	slot := pageElement(t, page, "span", "goal-filters-clear-slot")
-	oob := regexp.MustCompile(`<[^>]*\shx-swap-oob="[^"]*"[^>]*>`).FindAllString(page, -1)
+	slot := findByTestID(t, page, "goal-filters-clear-slot")
+	oob := findAll(page, func(n *nethtml.Node) bool { return hasAttr(n, "hx-swap-oob") })
 	switch {
 	case len(oob) == 0:
 		return slot, false
-	case len(oob) > 1 || !strings.Contains(oob[0], `data-testid="goal-filters-clear-slot"`):
-		t.Fatalf("out-of-band swaps other than the Clear slot: %q", oob)
+	case len(oob) > 1 || oob[0] != slot:
+		var swapped []string
+		for _, n := range oob {
+			swapped = append(swapped, renderNode(n))
+		}
+		t.Fatalf("out-of-band swaps other than the Clear slot: %q", swapped)
 	}
-	if attr(oob[0], "id") == "" || attr(oob[0], "id") != attr(openTag(slot), "id") {
-		t.Fatalf("the Clear slot's out-of-band swap has no id to land on: %s", oob[0])
+	if attrOf(slot, "id") == "" {
+		t.Fatalf("the Clear slot's out-of-band swap has no id to land on: %s", renderNode(slot))
 	}
 	return slot, true
+}
+
+// goalListFilterChangeUnderHTMX submits the Goal list's filter form on page
+// as htmx does on a change, with set applied to what it would post, and
+// returns the parsed response and the address asked for.
+func goalListFilterChangeUnderHTMX(t *testing.T, client *http.Client, base string, page *nethtml.Node, set func(url.Values)) (*nethtml.Node, string) {
+	t.Helper()
+	form := findByTestID(t, page, "goal-filters")
+	values := formSubmission(form)
+	set(values)
+	address := attrOf(form, "hx-get") + "?" + values.Encode()
+	req, err := http.NewRequest(http.MethodGet, base+address, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "goal-list")
+	req.Header.Set("HX-Current-URL", base+"/goals")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", address, err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d:\n%s", address, resp.StatusCode, body)
+	}
+	return parsePage(t, body), address
 }
 
 // A filter changed under htmx swaps in only the list, so its response carries
@@ -1561,9 +1777,9 @@ func TestGoalListFilterChangeUnderHTMXKeepsClearInStep(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	bare := getBody(t, client, ts.URL+"/goals")
-	if slot, oob := goalClearSlot(t, bare); oob || strings.Contains(slot, `data-testid="goal-filters-clear"`) {
-		t.Errorf("a full load of /goals swaps the Clear slot out of band or offers Clear: %s", slot)
+	bare := getPage(t, client, ts.URL+"/goals")
+	if slot, oob := goalClearSlotIn(t, bare); oob || hasTestID(slot, "goal-filters-clear") {
+		t.Errorf("a full load of /goals swaps the Clear slot out of band or offers Clear: %s", renderNode(slot))
 	}
 	for name, set := range map[string]func(url.Values){
 		"Scope":      func(v url.Values) { v.Set("org", "all") },
@@ -1574,33 +1790,70 @@ func TestGoalListFilterChangeUnderHTMXKeepsClearInStep(t *testing.T) {
 		"Dimension":  func(v url.Values) { v.Add("value", fmt.Sprint(pillar.Values[0].ID)) },
 		"Group by":   func(v url.Values) { v.Set("group", fmt.Sprint(pillar.ID)) },
 	} {
-		body, address := htmxFilter(t, client, ts.URL, bare, set)
-		slot, oob := goalClearSlot(t, body)
+		body, address := goalListFilterChangeUnderHTMX(t, client, ts.URL, bare, set)
+		slot, oob := goalClearSlotIn(t, body)
 		if !oob {
 			t.Errorf("%s set under htmx (%s): the Clear slot isn't swapped out of band", name, address)
 			continue
 		}
-		if !strings.Contains(slot, `data-testid="goal-filters-clear"`) {
-			t.Errorf("%s set under htmx (%s): the Clear slot lacks Clear: %s", name, address, slot)
+		if !hasTestID(slot, "goal-filters-clear") {
+			t.Errorf("%s set under htmx (%s): the Clear slot lacks Clear: %s", name, address, renderNode(slot))
 			continue
 		}
-		if href := attr(openTag(pageElement(t, slot, "a", "goal-filters-clear")), "href"); href != "/goals" {
+		if href := attrOf(findByTestID(t, slot, "goal-filters-clear"), "href"); href != "/goals" {
 			t.Errorf("%s set under htmx (%s): Clear links to %q, want the bare /goals", name, address, href)
 		}
 	}
 
-	filtered := getBody(t, client, ts.URL+"/goals?health=red")
-	if slot, oob := goalClearSlot(t, filtered); oob || !strings.Contains(slot, `data-testid="goal-filters-clear"`) {
-		t.Errorf("a full load of /goals?health=red swaps the Clear slot out of band or lacks Clear: %s", slot)
+	filtered := getPage(t, client, ts.URL+"/goals?health=red")
+	if slot, oob := goalClearSlotIn(t, filtered); oob || !hasTestID(slot, "goal-filters-clear") {
+		t.Errorf("a full load of /goals?health=red swaps the Clear slot out of band or lacks Clear: %s", renderNode(slot))
 	}
-	body, address := htmxFilter(t, client, ts.URL, filtered, func(v url.Values) { v.Set("health", "") })
-	slot, oob := goalClearSlot(t, body)
+	body, address := goalListFilterChangeUnderHTMX(t, client, ts.URL, filtered, func(v url.Values) { v.Set("health", "") })
+	slot, oob := goalClearSlotIn(t, body)
 	if !oob {
 		t.Errorf("the last filter unset under htmx (%s): the Clear slot isn't swapped out of band", address)
 	}
-	if inner := slot[strings.Index(slot, ">")+1:]; strings.TrimSpace(inner) != "" {
-		t.Errorf("the last filter unset under htmx (%s): the Clear slot isn't empty: %s", address, slot)
+	for c := slot.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != nethtml.TextNode || strings.TrimSpace(c.Data) != "" {
+			t.Errorf("the last filter unset under htmx (%s): the Clear slot isn't empty: %s", address, renderNode(slot))
+			break
+		}
 	}
+}
+
+// goalFilterBarControlsIn returns the Goal list filter form's controls, in
+// the order its markup runs: the Scope, Health and Lifecycle selects, the
+// Incomplete checkbox, More filters and its summary, Group by, the Apply
+// fallback, Clear, the search, and the Dimension filters' legend for
+// dimension.
+func goalFilterBarControlsIn(t *testing.T, form *nethtml.Node, dimension string) map[string]*nethtml.Node {
+	t.Helper()
+	one := func(what string, match func(*nethtml.Node) bool) *nethtml.Node {
+		found := findAll(form, match)
+		if len(found) != 1 {
+			t.Fatalf("the filter form has %d %s, want 1: %s", len(found), what, renderNode(form))
+		}
+		return found[0]
+	}
+	controls := map[string]*nethtml.Node{}
+	for _, id := range []string{"goal-scope-filter", "goal-health-filter", "goal-lifecycle-filter", "goal-incomplete-filter", "more-filters", "goal-search"} {
+		controls[id] = findByTestID(t, form, id)
+	}
+	controls["summary"] = one("summaries", func(n *nethtml.Node) bool { return n.Data == "summary" })
+	if hasTestID(form, "goal-filters-clear") {
+		controls["goal-filters-clear"] = findByTestID(t, form, "goal-filters-clear")
+	}
+	if fields := formFields(form, "group"); len(fields) > 0 && fields[0].Type == "select" {
+		controls["group"] = fields[0].Node
+	}
+	if noscripts := findAll(form, func(n *nethtml.Node) bool { return n.Data == "noscript" }); len(noscripts) > 0 {
+		controls["noscript"] = noscripts[0]
+	}
+	if dimension != "" {
+		controls["legend"] = one("legends for "+dimension, func(n *nethtml.Node) bool { return n.Data == "legend" && textOf(n) == dimension })
+	}
+	return controls
 }
 
 // The filter bar is one row: the Scope, Health, Lifecycle, Incomplete, More
@@ -1618,70 +1871,49 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?health=red")
-	form := between(t, page, `data-testid="goal-filters"`, `</form>`)
-	row := between(t, form, `<div class="gl-bar">`, `</div>`)
-	at := -1
+	page := getPage(t, client, ts.URL+"/goals?health=red")
+	form := findByTestID(t, page, "goal-filters")
+	row := findByTestID(t, form, "goal-filter-bar")
+	controls := goalFilterBarControlsIn(t, form, "Pillar")
+	var prev *nethtml.Node
 	for _, part := range []string{
-		`data-testid="goal-scope-filter"`,
-		`data-testid="goal-health-filter"`,
-		`data-testid="goal-lifecycle-filter"`,
-		`data-testid="goal-incomplete-filter"`,
-		`<details data-testid="more-filters"`,
-		`<summary`,
-		`data-testid="goal-filters-clear"`,
-		`data-testid="goal-search"`,
+		"goal-scope-filter",
+		"goal-health-filter",
+		"goal-lifecycle-filter",
+		"goal-incomplete-filter",
+		"more-filters",
+		"summary",
+		"goal-filters-clear",
+		"goal-search",
 	} {
-		next := strings.Index(row, part)
-		if next <= at {
-			t.Fatalf("the filter row doesn't hold %s after what comes before it:\n%s", part, row)
+		n := controls[part]
+		if n == nil || !within(n, row) || prev != nil && !precedes(prev, n) {
+			t.Fatalf("the filter row doesn't hold %s after what comes before it:\n%s", part, renderNode(row))
 		}
-		at = next
+		prev = n
 	}
-	if strings.Contains(row, "<fieldset") {
-		t.Errorf("More filters' panel sits in the filter row:\n%s", row)
+	if fieldsets := findAll(row, func(n *nethtml.Node) bool { return n.Data == "fieldset" }); len(fieldsets) > 0 {
+		t.Errorf("More filters' panel sits in the filter row:\n%s", renderNode(row))
 	}
 
-	panel := pageElement(t, form[strings.Index(form, row)+len(row):], "div", "more-filters-panel")
-	if !strings.Contains(panel, "<legend>Pillar</legend>") {
-		t.Errorf("the panel after the row doesn't hold the Dimension filters:\n%s", panel)
+	panel := findByTestID(t, form, "more-filters-panel")
+	if within(panel, row) || !precedes(row, panel) {
+		t.Errorf("the panel doesn't follow the filter row:\n%s", renderNode(form))
 	}
-	summary := between(t, row, `<summary`, `>`)
-	if controls := attr(summary, "aria-controls"); controls == "" || attr(openTag(panel), "id") != controls {
-		t.Errorf("More filters' summary doesn't name the panel it shows: %s, %s", summary, openTag(panel))
+	if !within(controls["legend"], panel) {
+		t.Errorf("the panel after the row doesn't hold the Dimension filters:\n%s", renderNode(panel))
 	}
-}
-
-// On a coarse pointer the Goal page's group heads' small links — Manage,
-// Edit, + Add — are 44px tall, as DESIGN.md's accessibility rule asks; on a
-// fine pointer they keep their size (#404).
-func TestGoalPageGroupHeadLinksAre44pxOnCoarsePointer(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	goal := h.CreateGoal(sam, "Grow revenue", "It matters.")
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "sam@example.com")
-
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	head := between(t, page, `<div class="gp-group-head">`, "</div>")
-	if link := between(t, head, "<a ", ">"); attr(link, "class") != "small" {
-		t.Fatalf("the group head's link isn't its small link: %s", head)
-	}
-	coarse := strings.Join(mediaBlocks(page, "@media (pointer:coarse)"), "}")
-	if rule, ok := ruleFor(coarse, ".gp-group-head>a"); !ok || !strings.Contains(rule, "min-height:44px") {
-		t.Errorf("on a coarse pointer the group head's link isn't 44px tall: %q", rule)
-	}
-	if rule, ok := ruleFor(between(t, page, ".gp-group-head{", "@media"), ".gp-group-head>a"); ok && strings.Contains(rule, "min-height") {
-		t.Errorf("on a fine pointer the group head's link is made taller: %q", rule)
+	summary := controls["summary"]
+	if c := attrOf(summary, "aria-controls"); c == "" || attrOf(panel, "id") != c {
+		t.Errorf("More filters' summary doesn't name the panel it shows: %s, %s", renderNode(summary), attrOf(panel, "id"))
 	}
 }
 
 // Tab follows the filter bar as it is drawn (WCAG 2.4.3): the markup runs
 // Scope, Health, Lifecycle, Incomplete, More filters' summary, Group by, Apply
 // and Clear, then the search at the row's right, then the open panel's
-// Dimension filters on the line below. No CSS order redraws it (#404).
+// Dimension filters on the line below. No CSS order redraws it
+// (TestGoalFilterBarTabOrderFollowsItsDrawnOrderStyles) (#404).
 func TestGoalFilterBarTabOrderFollowsItsDrawnOrder(t *testing.T) {
 	t.Parallel()
 
@@ -1693,45 +1925,35 @@ func TestGoalFilterBarTabOrderFollowsItsDrawnOrder(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, pillar.Values[0].ID))
-	form := between(t, page, `data-testid="goal-filters"`, `</form>`)
-	at := -1
+	page := getPage(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, pillar.Values[0].ID))
+	form := findByTestID(t, page, "goal-filters")
+	controls := goalFilterBarControlsIn(t, form, "Pillar")
+	var prev *nethtml.Node
 	for _, part := range []string{
-		`data-testid="goal-scope-filter"`,
-		`data-testid="goal-health-filter"`,
-		`data-testid="goal-lifecycle-filter"`,
-		`data-testid="goal-incomplete-filter"`,
-		`<summary`,
-		`<select name="group">`,
-		`<noscript>`,
-		`data-testid="goal-filters-clear"`,
-		`data-testid="goal-search"`,
-		`<legend>Pillar</legend>`,
+		"goal-scope-filter",
+		"goal-health-filter",
+		"goal-lifecycle-filter",
+		"goal-incomplete-filter",
+		"summary",
+		"group",
+		"noscript",
+		"goal-filters-clear",
+		"goal-search",
+		"legend",
 	} {
-		next := strings.Index(form, part)
-		if next <= at {
-			t.Fatalf("the filter bar's markup doesn't hold %s after what is drawn before it:\n%s", part, form)
+		n := controls[part]
+		if n == nil || prev != nil && !precedes(prev, n) {
+			t.Fatalf("the filter bar's markup doesn't hold %s after what is drawn before it:\n%s", part, renderNode(form))
 		}
-		at = next
-	}
-
-	bar := regexp.MustCompile(`\.gl-(filters|bar|more|clear)\b`)
-	order := regexp.MustCompile(`(^|;)\s*order:`)
-	for _, rule := range strings.Split(between(t, page, ".gl-filters{", "</style>"), "}") {
-		at := strings.LastIndex(rule, "{")
-		if at < 0 {
-			continue
-		}
-		if bar.MatchString(rule[:at]) && order.MatchString(rule[at+1:]) {
-			t.Errorf("a filter bar rule redraws it out of markup order: %s}", strings.TrimSpace(rule))
-		}
+		prev = n
 	}
 }
 
-// The Goal list's header strip names the page with the muted count of the
-// Goals it lists, then offers the List / Table switch and New goal, a primary
-// button linking to the New goal page (DESIGN.md § Goal list).
-// The Follow-ups page has replaced the links to the signal pages.
+// The Goal list's header strip names the page with the count of the Goals it
+// lists, then offers the List / Table switch and New goal, linking to the New
+// goal page (DESIGN.md § Goal list); how they look is
+// TestGoalListHeaderOpensProposeFormThatSwapsTheListStyles's. The Follow-ups
+// page has replaced the links to the signal pages.
 func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	t.Parallel()
 
@@ -1740,67 +1962,69 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals")
-	head := between(t, page, `<div data-testid="goals-head"`, "<main")
-	if !strings.Contains(head, `class="page-header gl-ph"`) {
-		t.Errorf("the Goal list's header isn't the page's header strip: %s", head)
+	page := getPage(t, client, ts.URL+"/goals")
+	head := findByTestID(t, page, "goals-head")
+	if h1 := headingNamed(head, "Goals"); h1 == nil || h1.Data != "h1" {
+		t.Errorf("header lacks the h1 Goals: %s", renderNode(head))
 	}
-	for _, want := range []string{"<h1>Goals</h1>", `<span data-testid="goal-count" id="goal-count" class="ph-count">0</span>`, `<nav id="goal-layout" class="gl-seg" aria-label="Layout">`} {
-		if !strings.Contains(head, want) {
-			t.Errorf("header lacks %q: %s", want, head)
-		}
+	if count := findByTestID(t, head, "goal-count"); count.Data != "span" || attrOf(count, "id") != "goal-count" || textOf(count) != "0" {
+		t.Errorf("header's count isn't the goal-count reading 0: %s", renderNode(count))
 	}
-	newGoal := pageElement(t, head, "a", "new-goal")
-	if tag := openTag(newGoal); attr(tag, "href") != "/goals/new" || attr(tag, "class") != "btn primary sm" || !strings.Contains(newGoal, "New goal") {
-		t.Errorf("New goal is not a primary button linking to /goals/new: %s", newGoal)
+	layouts := findAll(head, func(n *nethtml.Node) bool { return n.Data == "nav" && attrOf(n, "aria-label") == "Layout" })
+	if len(layouts) != 1 || attrOf(layouts[0], "id") != "goal-layout" {
+		t.Errorf("header lacks the Layout switch, #goal-layout: %s", renderNode(head))
 	}
-	for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
-		if strings.Contains(page, gone) {
+	newGoal := findByTestID(t, head, "new-goal")
+	if newGoal.Data != "a" || attrOf(newGoal, "href") != "/goals/new" || textOf(newGoal) != "New goal" {
+		t.Errorf("New goal is not a link to /goals/new: %s", renderNode(newGoal))
+	}
+	for _, gone := range []string{"/signals", "/freshness"} {
+		if linkTo(page, gone) != nil {
 			t.Errorf("Goal list still links %s", gone)
 		}
 	}
 }
 
-// The List / Table switch shows its chosen segment by a canvas fill and a
-// strong primary edge, 3:1 on the chip track in light (WCAG 1.4.11), since the
-// fill alone is 1.13:1 (DESIGN.md § Segmented controls). Every segment
-// reserves the edge as a transparent border, as the cadence's do, so choosing
-// one shifts nothing, and its touch height counts the border.
-func TestGoalListLayoutSwitchEdgesTheChosenSegment(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	h.SignIn("sam@example.com")
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "sam@example.com")
-
-	style := between(t, getBody(t, client, ts.URL+"/goals"), ".gl-seg{", "</style>")
-	for sel, want := range map[string][]string{
-		".gl-seg a":                    {"box-sizing:border-box", "border:1px solid transparent"},
-		".gl-seg a[aria-current=page]": {"background:var(--color-canvas)", "border-color:var(--color-primary-strong)", "color:var(--color-ink)"},
-	} {
-		rule, ok := ruleFor(style, sel)
-		if !ok {
-			t.Errorf("the style block has no %s rule", sel)
-		}
-		for _, decl := range want {
-			if !strings.Contains(rule, decl) {
-				t.Errorf("%s declares %q, want %s", sel, rule, decl)
+// goalRailPropertiesIn reads the Goal page rail's label and value rows: each
+// row's label (its <dt>) in order, and the value (its <dd>) under each label.
+func goalRailPropertiesIn(t *testing.T, root *nethtml.Node) (labels []string, values map[string]*nethtml.Node) {
+	t.Helper()
+	values = map[string]*nethtml.Node{}
+	for _, dt := range findAll(findByTestID(t, root, "goal-sidebar"), func(n *nethtml.Node) bool { return n.Data == "dt" }) {
+		label := textOf(dt)
+		labels = append(labels, label)
+		for dd := dt.NextSibling; dd != nil; dd = dd.NextSibling {
+			if dd.Type == nethtml.ElementNode {
+				if dd.Data == "dd" {
+					values[label] = dd
+				}
+				break
 			}
 		}
 	}
-	if rule, _ := ruleFor(style, ".gl-seg a[aria-current=page]"); strings.Contains(rule, "border:") || strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") {
-		t.Errorf("choosing a layout resizes its segment: %s", rule)
+	return labels, values
+}
+
+// goalMilestoneRowsIn reads each of the Goal page's Milestone rows under root,
+// in order, every word of it as elementTexts reads a row.
+func goalMilestoneRowsIn(root *nethtml.Node) []string {
+	var rows []string
+	for _, tr := range findAllByTestID(root, "goal-milestone") {
+		if tr.Data == "tr" {
+			rows = append(rows, strings.Join(nodeWords(tr, tr, nil), " "))
+		}
 	}
+	return rows
 }
 
 // The Goal page's document column opens on its title, then its Why it matters
 // as a lead paragraph. Its properties sit in the rail as label and value rows,
 // in DESIGN.md § Properties rail's order: Health as its pill, Lifecycle, Kind,
-// Owner, Delegates, the cadence, the delivery date with its slips struck
-// (wrapping between dates, never mid-date: #180), Top-level as the level, then
-// the Dimension values. The header strip holds the breadcrumb, with Check in
-// and No change at its right for whoever may check in.
+// Owner, Delegates, the cadence, the delivery date with its slips struck,
+// Top-level as the level, then the Dimension values. The header strip holds
+// the breadcrumb, with Check in and No change at its right for whoever may
+// check in. How the title, the lead, the rail and the dates look is
+// TestGoalPageRailHoldsTheGoalsPropertiesStyles's.
 func TestGoalPageRailHoldsTheGoalsProperties(t *testing.T) {
 	t.Parallel()
 
@@ -1827,95 +2051,87 @@ func TestGoalPageRailHoldsTheGoalsProperties(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	head := pageElement(t, page, "header", "goal-head")
-	title := strings.Index(head, `data-testid="goal-title"`)
-	whyItMatters := strings.Index(head, `data-testid="goal-why-it-matters"`)
-	if title < 0 || whyItMatters < title {
-		t.Errorf("the column should open on the title, then Why it matters; at %d, %d", title, whyItMatters)
+	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	head := findByTestID(t, root, "goal-head")
+	title, whyItMatters := findByTestID(t, head, "goal-title"), findByTestID(t, head, "goal-why-it-matters")
+	if !precedes(title, whyItMatters) {
+		t.Errorf("the column should open on the title, then Why it matters")
 	}
-	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
-		t.Errorf("title: %s", title)
+	if title.Data != "h1" || textOf(title) != "Reduce outages" {
+		t.Errorf("title is <%s> reading %q, want the h1 Reduce outages", title.Data, textOf(title))
 	}
-	if lead := pageElement(t, head, "p", "goal-why-it-matters"); !strings.Contains(lead, "Outages cost trust.") {
-		t.Errorf("Why it matters: %s", lead)
-	}
-	if rule := cssRule(t, page, ".gp-head h1"); !strings.Contains(rule, "font-size:28px") {
-		t.Errorf("the title is not 28px: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-lead"); !strings.Contains(rule, "font-size:16px") {
-		t.Errorf("Why it matters is not a 16px lead: %s", rule)
+	if whyItMatters.Data != "p" || textOf(whyItMatters) != "Outages cost trust." {
+		t.Errorf("Why it matters is <%s> reading %q, want a paragraph", whyItMatters.Data, textOf(whyItMatters))
 	}
 
-	rail := between(t, page, `data-testid="goal-sidebar"`, "</aside>")
-	if strings.Contains(head, "Growth") || !strings.Contains(rail, "Growth") {
+	rail := findByTestID(t, root, "goal-sidebar")
+	if strings.Contains(textOf(head), "Growth") || !strings.Contains(textOf(rail), "Growth") {
 		t.Errorf("the Dimension value isn't in the rail, out of the column's head")
 	}
-	labels := regexp.MustCompile(`<dt>([^<]*)</dt>`).FindAllStringSubmatch(rail, -1)
-	var got []string
-	for _, l := range labels {
-		got = append(got, l[1])
+	labels, props := goalRailPropertiesIn(t, root)
+	if want := []string{"Health", "Lifecycle", "Kind", "Owner", "Cadence", "Delivers", "Level", "Pillar"}; !slices.Equal(labels, want) {
+		t.Errorf("the rail's property rows read %q, want %q", labels, want)
 	}
-	if want := []string{"Health", "Lifecycle", "Kind", "Owner", "Cadence", "Delivers", "Level", "Pillar"}; !slices.Equal(got, want) {
-		t.Errorf("the rail's property rows read %q, want %q", got, want)
-	}
-	props := strings.Join(strings.Fields(rail), " ")
-	// The Health property is a chip with no title beside it: its shape, the
-	// word for a screen reader and as its tooltip.
-	railDoc := parsePage(t, rail)
-	assertHealthChip(t, healthChipIn(t, railDoc), "Yellow")
-	for _, want := range []string{
-		`<dt>Lifecycle</dt><dd><span data-testid="goal-lifecycle">Active</span></dd>`,
-		`<span data-testid="goal-kind"><button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span>`,
-		`<dt>Owner</dt><dd><strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
-		`<dt>Cadence</dt><dd><span data-testid="goal-cadence">every 7 days</span></dd>`,
-		`<dt>Delivers</dt><dd><span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span></dd>`,
-		`<dt>Level</dt><dd><button type="button" class="disclose help" data-testid="goal-top-level"`,
-		`<dt>Pillar</dt><dd><span class="tag" data-testid="goal-dimension-value">Growth</span>`,
-	} {
-		if !strings.Contains(props, want) {
-			t.Errorf("the rail lacks %s:\n%s", want, props)
+	for _, label := range labels {
+		if props[label] == nil {
+			t.Fatalf("the rail's %s row has no value", label)
 		}
 	}
-	owner, delegates, cadence := strings.Index(rail, `data-testid="goal-owner"`), strings.Index(rail, `data-testid="goal-delegates"`), strings.Index(rail, `data-testid="goal-cadence"`)
-	if owner < 0 || delegates < owner || cadence < delegates {
-		t.Errorf("the rail should read Owner, Delegates, cadence in that order; at %d, %d, %d", owner, delegates, cadence)
+	// The Health property is a chip with no title beside it: its shape, the
+	// word for a screen reader and as its tooltip.
+	assertHealthChip(t, healthChipIn(t, props["Health"]), "Yellow")
+	if got := findAllByTestID(props["Lifecycle"], "goal-lifecycle"); len(got) != 1 || textOf(props["Lifecycle"]) != "Active" || textOf(got[0]) != "Active" {
+		t.Errorf("the Lifecycle row reads %q, want Active: %s", textOf(props["Lifecycle"]), renderNode(props["Lifecycle"]))
 	}
-	if !strings.Contains(pageElement(t, rail, "ul", "delegate-list"), shownAs("kim@example.com", "kim")) {
+	kind := findByTestID(t, props["Kind"], "goal-kind")
+	if button := buttonNamed(kind, "Dated"); button == nil ||
+		!flatFrameHasClass(button, "disclose") || !flatFrameHasClass(button, "help") ||
+		attrOf(button, "type") != "button" || attrOf(button, "aria-expanded") != "false" || attrOf(button, "aria-controls") != "kind-help" ||
+		attrOf(button, "title") != "Has a delivery date. Its Health is judged against that date and its Milestones." {
+		t.Errorf("the Kind row isn't a collapsed Dated help button explaining Dated: %s", renderNode(kind))
+	}
+	if owner := findByTestID(t, props["Owner"], "goal-owner"); owner.Data != "strong" || !goalShows(owner, "sam@example.com", "sam") {
+		t.Errorf("the Owner row doesn't show sam, their email a click away, in bold: %s", renderNode(props["Owner"]))
+	}
+	if cadence := findByTestID(t, props["Cadence"], "goal-cadence"); textOf(props["Cadence"]) != "every 7 days" || textOf(cadence) != "every 7 days" {
+		t.Errorf("the Cadence row reads %q, want every 7 days", textOf(props["Cadence"]))
+	}
+	delivers := findByTestID(t, props["Delivers"], "goal-delivery-date")
+	strong := textsOf(findAll(delivers, func(n *nethtml.Node) bool { return n.Data == "strong" }))
+	if struck := struckThrough(delivers); textOf(delivers) != "Jul 2 Jul 16" || !slices.Equal(struck, []string{"Jul 2"}) || !slices.Equal(strong, []string{"Jul 16"}) {
+		t.Errorf("the Delivers row reads %q with %q struck and %q emphasised, want Jul 2 struck before Jul 16 in bold", textOf(delivers), struck, strong)
+	}
+	if level := findByTestID(t, props["Level"], "goal-top-level"); level.Data != "button" || textOf(level) != "Top-level" ||
+		!flatFrameHasClass(level, "disclose") || !flatFrameHasClass(level, "help") || attrOf(level, "type") != "button" {
+		t.Errorf("the Level row isn't the Top-level help button: %s", renderNode(props["Level"]))
+	}
+	if value := findByTestID(t, props["Pillar"], "goal-dimension-value"); value.Data != "span" || textOf(value) != "Growth" {
+		t.Errorf("the Pillar row doesn't hold Growth: %s", renderNode(props["Pillar"]))
+	}
+	owner, delegates, cadence := findByTestID(t, rail, "goal-owner"), findByTestID(t, rail, "goal-delegates"), findByTestID(t, rail, "goal-cadence")
+	if !precedes(owner, delegates) || !precedes(delegates, cadence) {
+		t.Errorf("the rail should read Owner, Delegates, cadence in that order")
+	}
+	if !goalShows(findByTestID(t, rail, "delegate-list"), "kim@example.com", "kim") {
 		t.Errorf("the rail's Delegates row lacks kim")
 	}
-	if rule := cssRule(t, page, ".gp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("the delivery date can break mid-date: .gp-dates>*{%s}", rule)
-	}
-	if rule := cssRule(t, page, ".gp-rail"); !strings.Contains(rule, "border-left:1px solid var(--color-border)") {
-		t.Errorf("the rail has no 1px left edge: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-body"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr) 300px") {
-		t.Errorf("the rail is not 300px beside the column: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-doc"); !strings.Contains(rule, "max-width:860px") {
-		t.Errorf("the document column is not up to 860px: %s", rule)
-	}
-	if phone := strings.Join(mediaBlocks(page, "@media (max-width:900px)"), "\n"); !strings.Contains(phone, ".gp-body{grid-template-columns:minmax(0,1fr)}") {
-		t.Errorf("at 900px and below the rail doesn't stack under the column: %s", phone)
-	}
 
-	strip := pageElement(t, page, "div", "goal-page-header")
-	if !strings.Contains(strip, `data-testid="goal-breadcrumb"`) {
-		t.Errorf("the header strip has no breadcrumb: %s", strip)
+	strip := findByTestID(t, root, "goal-page-header")
+	if !within(findByTestID(t, root, "goal-breadcrumb"), strip) {
+		t.Errorf("the header strip has no breadcrumb: %s", renderNode(strip))
 	}
-	actions := between(t, page, `data-testid="goal-actions"`, `data-testid="goal-more"`)
-	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary sm"`) {
-		t.Errorf("header strip has no primary Check in link: %s", actions)
+	actions, more := findByTestID(t, root, "goal-actions"), findByTestID(t, root, "goal-more")
+	if link := linkTo(actions, fmt.Sprintf("/goals/%d/checkin", goal.ID)); link == nil || !precedes(link, more) || attrOf(link, "data-testid") != "checkin-link" {
+		t.Errorf("header strip has no Check in link before its menu: %s", renderNode(actions))
 	}
-	if !strings.Contains(actions, `data-testid="no-change-checkin"`) {
-		t.Errorf("header strip has no No change button: %s", actions)
+	if noChange := findAllByTestID(actions, "no-change-checkin"); len(noChange) != 1 || !precedes(noChange[0], more) {
+		t.Errorf("header strip has no No change button: %s", renderNode(actions))
 	}
-	if strings.Index(page, `data-testid="goal-actions"`) > strings.Index(page, `data-testid="goal-main"`) {
+	if !precedes(actions, findByTestID(t, root, "goal-main")) {
 		t.Errorf("Check in is not in the header strip above the column")
 	}
-	if strings.Count(page, `data-testid="checkin-link"`) != 1 {
-		t.Errorf("the Check in link should appear once, in the header strip")
+	if n := len(findAllByTestID(root, "checkin-link")); n != 1 {
+		t.Errorf("the Check in link appears %d times, want once, in the header strip", n)
 	}
 }
 
@@ -1930,51 +2146,35 @@ func TestGoalPageRailShowsOnlyWhatTheGoalHas(t *testing.T) {
 	goal := h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything.")
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	meta := strings.Join(strings.Fields(between(t, page, `data-testid="goal-meta"`, `data-testid="goal-dimensions"`)), " ")
-	for _, want := range []string{
-		`<dt>Health</dt><dd><span class="muted">No Health</span></dd>`,
-		`<span data-testid="goal-lifecycle">Proposed</span>`,
-		`<span data-testid="goal-kind">Not yet Dated or Ongoing</span>`,
-		`data-testid="goal-owner"`,
-		`data-testid="goal-cadence"`,
-	} {
-		if !strings.Contains(meta, want) {
-			t.Errorf("the rail lacks %s: %s", want, meta)
+	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	meta := findByTestID(t, root, "goal-meta")
+	_, props := goalRailPropertiesIn(t, root)
+	if health := props["Health"]; health == nil || textOf(health) != "No Health" || !within(health, meta) {
+		t.Errorf("the rail's Health row doesn't read No Health: %s", renderNode(meta))
+	}
+	for testID, want := range map[string]string{"goal-lifecycle": "Proposed", "goal-kind": "Not yet Dated or Ongoing"} {
+		if got := textOf(findByTestID(t, meta, testID)); got != want {
+			t.Errorf("the rail's %s reads %q, want %q", testID, got, want)
 		}
 	}
-	for _, absent := range []string{`class="badge`, "Delivers", `data-testid="goal-delivery-date"`, "Top-level", "<dt>Level</dt>"} {
-		if strings.Contains(meta, absent) {
-			t.Errorf("the rail shows %s for a Proposed, undated, non-Top-level Goal: %s", absent, meta)
+	for _, testID := range []string{"goal-owner", "goal-cadence"} {
+		if !hasTestID(meta, testID) {
+			t.Errorf("the rail lacks %s: %s", testID, renderNode(meta))
 		}
 	}
-}
-
-// At phone width the Goal page's header strip wraps its actions onto their own
-// line rather than squeezing the breadcrumb to nothing, and the breadcrumb's
-// titles end in an ellipsis rather than widening the page. Wrapped, the
-// actions stay flush right: the More menu opens leftward from its button's
-// right edge, and a left-aligned button would push it off-screen (#42).
-func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "A to-ce the API tier", "Callers need one front door.")
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if !hasClass(openTag(pageElement(t, page, "div", "goal-page-header")), "gp-ph") {
-		t.Fatalf("the header strip lacks gp-ph")
+	if badges := findAll(meta, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "badge") }); len(badges) > 0 {
+		t.Errorf("the rail shows a badge for a Proposed Goal: %s", renderNode(badges[0]))
 	}
-	if phone := strings.Join(mediaBlocks(page, "@media (max-width:600px)"), "\n"); !strings.Contains(phone, ".gp-ph{flex-wrap:wrap") {
-		t.Errorf("the header strip doesn't wrap its actions at phone width: %s", phone)
+	for _, testID := range []string{"goal-delivery-date", "goal-top-level"} {
+		if hasTestID(meta, testID) {
+			t.Errorf("the rail shows %s for an undated, non-Top-level Goal: %s", testID, renderNode(meta))
+		}
 	}
-	if rule := cssRule(t, page, ".gp-crumb"); !strings.Contains(rule, "text-overflow:ellipsis") {
-		t.Errorf("a long title in the breadcrumb doesn't end in an ellipsis: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-actions"); !strings.Contains(rule, "margin-left:auto") {
-		t.Errorf("header actions fall to the left when wrapped, so the More menu opens off the left edge; rule: %s", rule)
+	all := strings.Join(nodeWords(meta, meta, nil), " ")
+	for _, absent := range []string{"Delivers", "Top-level", "Level"} {
+		if strings.Contains(all, absent) {
+			t.Errorf("the rail says %s for a Proposed, undated, non-Top-level Goal: %s", absent, all)
+		}
 	}
 }
 
@@ -1988,22 +2188,21 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	section := strings.Join(strings.Fields(pageElement(t, page, "section", "goal-milestones")), " ")
-	for _, want := range []string{
-		`<span data-testid="goal-slip-count">0</span> slips`,
-		`<span data-testid="goal-milestone-churn">0</span> added or removed since Active`,
-		"<table>",
-	} {
-		if !strings.Contains(section, want) {
-			t.Errorf("Milestones lack %s: %s", want, section)
-		}
+	section := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-milestones")
+	slips, churn := findByTestID(t, section, "goal-slip-count"), findByTestID(t, section, "goal-milestone-churn")
+	if textOf(slips) != "0" || textOf(churn) != "0" || slips.Parent != churn.Parent {
+		t.Errorf("Milestones' slip count reads %q and churn %q, want 0 and 0 side by side: %s", textOf(slips), textOf(churn), renderNode(section))
+	} else if got, want := textOf(slips.Parent), "0 slips · 0 added or removed since Active"; got != want {
+		t.Errorf("Milestones are headed %q, want %q", got, want)
 	}
-	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, []string{"Apr 2 Beta"}) {
+	if tables := findAll(section, func(n *nethtml.Node) bool { return n.Data == "table" }); len(tables) != 1 {
+		t.Errorf("Milestones hold %d tables, want 1: %s", len(tables), renderNode(section))
+	}
+	if got := goalMilestoneRowsIn(section); !slices.Equal(got, []string{"Apr 2 Beta"}) {
 		t.Errorf("Milestone rows read %q, want Beta's date and name with no mark", got)
 	}
-	if strings.Contains(section, `data-testid="milestone-mark"`) {
-		t.Errorf("an on-track Milestone carries a mark: %s", section)
+	if hasTestID(section, "milestone-mark") {
+		t.Errorf("an on-track Milestone carries a mark: %s", renderNode(section))
 	}
 }
 
@@ -2022,37 +2221,36 @@ func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) 
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	load := func() (page, beta string) {
+	load := func() (root *nethtml.Node, beta string) {
 		t.Helper()
-		page = getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-		section := strings.Join(strings.Fields(pageElement(t, page, "section", "goal-milestones")), " ")
-		rows := elementTexts(section, "tr", "goal-milestone")
+		root = getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+		rows := goalMilestoneRowsIn(findByTestID(t, root, "goal-milestones"))
 		if len(rows) != 1 {
 			t.Fatalf("Milestone rows read %q, want only Beta's", rows)
 		}
-		return page, rows[0]
+		return root, rows[0]
 	}
 
 	h.Clock.Set(time.Date(2026, 4, 3, 2, 0, 0, 0, time.UTC)) // Apr 2, 7pm in Los Angeles
 	// The session from before the clock moved has ended; sign in again.
 	client = signInClient(t, ts.URL, "sam@example.com")
-	page, beta := load()
+	root, beta := load()
 	if beta != "Apr 2 Beta" {
 		t.Errorf("Beta's row reads %q on its date in the Owner's timezone, want no mark", beta)
 	}
-	if strings.Contains(page, `data-testid="no-change-unavailable"`) && strings.Contains(page, `Milestone &#34;Beta&#34; is overdue`) {
+	if hasTestID(root, "no-change-unavailable") && strings.Contains(strings.Join(nodeWords(root, root, nil), " "), `Milestone "Beta" is overdue`) {
 		t.Errorf("the Goal page refuses No change for Beta on its date in the Owner's timezone")
 	}
-	if !strings.Contains(pageElement(t, page, "div", "goal-actions"), `data-testid="no-change-checkin"`) {
+	if !hasTestID(findByTestID(t, root, "goal-actions"), "no-change-checkin") {
 		t.Errorf("the Goal page doesn't offer No change on Beta's date in the Owner's timezone")
 	}
 
 	h.Clock.Set(time.Date(2026, 4, 3, 8, 0, 0, 0, time.UTC)) // Apr 3, 1am in Los Angeles
-	page, beta = load()
+	root, beta = load()
 	if beta != "Overdue Apr 2 Beta" {
 		t.Errorf("Beta's row reads %q the day after its date in the Owner's timezone, want it marked Overdue", beta)
 	}
-	if strings.Contains(pageElement(t, page, "div", "goal-actions"), `data-testid="no-change-checkin"`) {
+	if hasTestID(findByTestID(t, root, "goal-actions"), "no-change-checkin") {
 		t.Errorf("the Goal page offers No change with Beta overdue in the Owner's timezone")
 	}
 }
@@ -2075,8 +2273,8 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	churn := func(card string) string {
-		return between(t, card, `<span data-testid="goal-milestone-churn">`, "</span>")
+	churn := func(card *nethtml.Node) string {
+		return textOf(findByTestID(t, card, "goal-milestone-churn"))
 	}
 	// Only an addition while Active is Milestone Churn (CONTEXT.md: Milestone
 	// Churn).
@@ -2093,31 +2291,35 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 		{"dana@example.com", onHold, "0", "0"},
 	} {
 		client := signInClient(t, ts.URL, tc.who)
-		card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, tc.goal)), "section", "goal-milestones")
-		if got := churn(card); !strings.HasSuffix(got, ">"+tc.churnBefore) {
+		card := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, tc.goal)), "goal-milestones")
+		if got := churn(card); got != tc.churnBefore {
 			t.Errorf("%s on %s: churn before reads %q, want %s", tc.who, tc.goal.Lifecycle, got, tc.churnBefore)
 		}
-		link := tagAround(t, card, `data-testid="open-milestones"`)
-		page := getBody(t, client, ts.URL+html.UnescapeString(attr(link, "href")))
-		open := openForm(t, page, "milestones")
-		assertOpenIn(t, page, "milestones", `data-testid="goal-milestones"`, `data-testid="goal-draft-highlights"`)
-		for _, want := range []string{fmt.Sprintf(`action="/goals/%d/milestones"`, tc.goal.ID), `name="name"`, `type="date" name="target_date"`} {
-			if !strings.Contains(open, want) {
-				t.Errorf("%s on %s: the Add Milestone form lacks %s: %s", tc.who, tc.goal.Lifecycle, want, open)
-			}
+		link := findByTestID(t, card, "open-milestones")
+		root := getPage(t, client, ts.URL+attrOf(link, "href"))
+		open := goalOpenFormIn(t, root, "milestones")
+		if !within(open, findByTestID(t, root, "goal-milestones")) {
+			t.Errorf("%s on %s: the Add Milestone form doesn't open in the Milestones section", tc.who, tc.goal.Lifecycle)
+		}
+		forms := findAll(open, func(n *nethtml.Node) bool { return n.Data == "form" })
+		if len(forms) != 1 || attrOf(forms[0], "action") != fmt.Sprintf("/goals/%d/milestones", tc.goal.ID) {
+			t.Errorf("%s on %s: the Add Milestone form doesn't post to the Goal's Milestones: %s", tc.who, tc.goal.Lifecycle, renderNode(open))
+		} else if names, dates := formFields(forms[0], "name"), formFields(forms[0], "target_date"); len(names) != 1 || len(dates) != 1 || dates[0].Type != "date" {
+			t.Errorf("%s on %s: the Add Milestone form lacks a name and a target date: %s", tc.who, tc.goal.Lifecycle, renderNode(open))
 		}
 
 		name := "Added by " + tc.who
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, tc.goal.ID), url.Values{"name": {name}, "target_date": {"2026-05-01"}})
-		page = readBody(t, resp)
+		root = parsePage(t, readBody(t, resp))
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", tc.goal.ID) {
 			t.Fatalf("%s on %s: add answered %d at %s, want the Goal page", tc.who, tc.goal.Lifecycle, resp.StatusCode, resp.Request.URL)
 		}
-		rows := elementTexts(pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
+		card = findByTestID(t, root, "goal-milestones")
+		rows := goalMilestoneRowsIn(card)
 		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "May 1 "+name) }) {
 			t.Errorf("%s on %s: Milestones read %q, want %s listed", tc.who, tc.goal.Lifecycle, rows, name)
 		}
-		if got := churn(pageElement(t, page, "section", "goal-milestones")); !strings.HasSuffix(got, ">"+tc.churnAfter) {
+		if got := churn(card); got != tc.churnAfter {
 			t.Errorf("%s on %s: churn after reads %q, want %s", tc.who, tc.goal.Lifecycle, got, tc.churnAfter)
 		}
 	}
@@ -2154,14 +2356,17 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		}
 		return out
 	}
+	offersAddMilestone := func(root *nethtml.Node) bool {
+		return hasTestID(root, "open-milestones") || hasTestID(root, "add-milestone")
+	}
 
 	for _, who := range []string{"pat@example.com", "ada@example.com"} {
 		client := signInClient(t, ts.URL, who)
 		for _, g := range []domain.Goal{proposed, active} {
 			before := rows(g)
 			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
-			body := readBody(t, resp)
-			if resp.StatusCode != http.StatusForbidden || !strings.Contains(html.UnescapeString(body), "only the Owner or a Delegate may change this Goal's Milestones") {
+			body := textOf(parsePage(t, readBody(t, resp)))
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "only the Owner or a Delegate may change this Goal's Milestones") {
 				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, body)
 			}
 			m := onlyMilestone(t, h, g)
@@ -2174,7 +2379,7 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 				t.Errorf("%s changed %s's Milestones: %q, was %q", who, g.Lifecycle, after, before)
 			}
 			for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
-				if page := getBody(t, client, u); strings.Contains(page, `data-testid="open-milestones"`) || strings.Contains(page, `data-testid="add-milestone"`) {
+				if offersAddMilestone(getPage(t, client, u)) {
 					t.Errorf("%s is offered the Add Milestone form at %s", who, u)
 				}
 			}
@@ -2186,13 +2391,13 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		g := h.ActiveGoal(sam, "Ended "+lifecycle, "It mattered.")
 		h.EndGoalInCheckin(sam, g.ID, lifecycle)
 		for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
-			if page := getBody(t, sam2, u); strings.Contains(page, `data-testid="open-milestones"`) || strings.Contains(page, `data-testid="add-milestone"`) {
+			if offersAddMilestone(getPage(t, sam2, u)) {
 				t.Errorf("the Owner of a %s Goal is offered the Add Milestone form at %s", lifecycle, u)
 			}
 		}
 		before := rows(g)
 		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
-		body := html.UnescapeString(readBody(t, resp))
+		body := textOf(parsePage(t, readBody(t, resp)))
 		if want := "A " + lifecycle + " Goal's Milestones can't change."; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
 			t.Errorf("adding to a %s Goal answered %d %q, want 422 saying %q", lifecycle, resp.StatusCode, body, want)
 		}
@@ -2228,8 +2433,12 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 
 	pricing := onlyMilestone(t, h, proposed)
 	sam2 := signInClient(t, ts.URL, "sam@example.com")
-	edit := tagAround(t, pageElement(t, getBody(t, sam2, goalPageURL(ts.URL, proposed)), "section", "goal-milestones"), fmt.Sprintf(`action="/milestones/%d"`, pricing.ID))
-	resp := postForm(t, sam2, ts.URL+attr(edit, "action"), url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
+	section := findByTestID(t, getPage(t, sam2, goalPageURL(ts.URL, proposed)), "goal-milestones")
+	editAction := fmt.Sprintf("/milestones/%d", pricing.ID)
+	if edits := findAll(section, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == editAction }); len(edits) != 1 {
+		t.Fatalf("the Milestones section has %d Edit forms posting to %s, want 1: %s", len(edits), editAction, renderNode(section))
+	}
+	resp := postForm(t, sam2, ts.URL+editAction, url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
 	_ = readBody(t, resp)
 	if got := onlyMilestone(t, h, proposed); resp.StatusCode != http.StatusOK || got.Name != "Pricing page live" || got.TargetDate.Format("2006-01-02") != "2026-04-15" {
 		t.Errorf("the Owner's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
@@ -2278,7 +2487,7 @@ func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing
 
 	rows := func(g domain.Goal) []string {
 		t.Helper()
-		return elementTexts(pageElement(t, getBody(t, client, goalPageURL(ts.URL, g)), "section", "goal-milestones"), "tr", "goal-milestone")
+		return goalMilestoneRowsIn(findByTestID(t, getPage(t, client, goalPageURL(ts.URL, g)), "goal-milestones"))
 	}
 	if got, want := rows(goal), []string{"Apr 2 Beta", "May 1 Runbook", "New May 1 GA"}; !slices.Equal(got, want) {
 		t.Errorf("Milestones read %q, want %q", got, want)
@@ -2318,38 +2527,36 @@ func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 	goal := h.MilestoneMarksGoal(sam)
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
-	section := pageElement(t, page, "section", "goal-milestones")
-	var headings []string
-	for _, th := range regexp.MustCompile(`<th>([^<]*)</th>`).FindAllStringSubmatch(section, -1) {
-		headings = append(headings, th[1])
-	}
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	section := findByTestID(t, doc, "goal-milestones")
+	headings := textsOf(findAll(section, func(n *nethtml.Node) bool { return n.Data == "th" }))
 	if want := []string{"Status", "Date", "Milestone"}; !slices.Equal(headings, want) {
 		t.Errorf("Milestone columns %q, want %q", headings, want)
 	}
-	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, goalMarkedMilestones) {
+	if got := goalMilestoneRowsIn(section); !slices.Equal(got, goalMarkedMilestones) {
 		t.Errorf("Milestones read\n %q\nwant\n %q", got, goalMarkedMilestones)
 	}
-	var vendor string
-	for _, tr := range strings.Split(section, `<tr data-testid="goal-milestone"`) {
-		if strings.Contains(tr, "Vendor sign-off") {
+	var vendor *nethtml.Node
+	for _, tr := range findAllByTestID(section, "goal-milestone") {
+		if strings.Contains(textOf(tr), "Vendor sign-off") {
 			vendor = tr
 		}
 	}
-	if !strings.Contains(vendor, "<del>Mar 20</del>") {
-		t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
+	if vendor == nil {
+		t.Fatalf("no Milestone row reads Vendor sign-off: %s", renderNode(section))
 	}
-	for _, older := range []string{"Mar 1<", "Mar 10"} {
-		if strings.Contains(vendor, older) {
-			t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
+	if struck := struckThrough(vendor); !slices.Contains(struck, "Mar 20") {
+		t.Errorf("Vendor sign-off strikes through %q, want the date it last slipped from, Mar 20: %s", struck, renderNode(vendor))
+	}
+	for _, n := range findAll(vendor, func(*nethtml.Node) bool { return true }) {
+		if text := textOf(n); strings.HasSuffix(text, "Mar 1") || strings.Contains(text, "Mar 10") {
+			t.Errorf("Vendor sign-off still lists an older date, Mar 1 or Mar 10: %s", renderNode(n))
 		}
 	}
-	if !strings.Contains(section, "<del>Launch party</del>") {
-		t.Errorf("the Removed Milestone's name is not struck through:\n%s", section)
+	if struck := struckThrough(section); !slices.Contains(struck, "Launch party") {
+		t.Errorf("the Removed Milestone's name is not struck through: %q struck", struck)
 	}
-	doc := parsePage(t, page)
-	assertMilestoneMarksShowTheirWords(t, findByTestID(t, doc, "goal-milestones"),
-		[]string{"Overdue", "Done", "New", "Slipped", "Slipped", "Removed"})
+	assertMilestoneMarksShowTheirWords(t, section, []string{"Overdue", "Done", "New", "Slipped", "Slipped", "Removed"})
 	for _, testID := range []string{"goal-health", "goal-rollup-health"} {
 		if got := textOf(findByTestID(t, doc, testID)); got != "Yellow" {
 			t.Errorf("Goal page's %s reads %q, want Yellow: the Owner's Yellow and the Rolled-up Health stand whatever the Milestones' marks", testID, got)
@@ -2357,9 +2564,23 @@ func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 	}
 }
 
-// Each Milestone date, the current one and each struck slip, wraps as a whole,
-// never mid-date ("2026-04-" over "02") at phone width, while the breaks between
-// the dates still wrap (#172).
+// goalMilestoneDateCellIn returns row's Date cell, the cell under the
+// Milestones table's Date column in section.
+func goalMilestoneDateCellIn(t *testing.T, section, row *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	i := slices.Index(textsOf(findAll(section, func(n *nethtml.Node) bool { return n.Data == "th" })), "Date")
+	cells := findAll(row, func(n *nethtml.Node) bool { return n.Data == "td" })
+	if i < 0 || i >= len(cells) {
+		t.Fatalf("the Milestone row has no Date cell: %s", renderNode(row))
+	}
+	return cells[i]
+}
+
+// Each Milestone date cell shows the current date with the one it slipped
+// from struck through, each date its own element, so each wraps as a whole,
+// never mid-date ("2026-04-" over "02") at phone width, while the breaks
+// between the dates still wrap (#172): how they wrap is
+// TestGoalPageMilestoneDatesDoNotBreakOverHTTPStyles's.
 func TestGoalPageMilestoneDatesDoNotBreakOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2377,19 +2598,13 @@ func TestGoalPageMilestoneDatesDoNotBreakOverHTTP(t *testing.T) {
 		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"Vendor slipped."},
 	})
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	row := pageElement(t, pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
-	cell := between(t, row, `<td class="num gp-dates">`, "</td>")
-	for _, want := range []string{"<del>" + beta.TargetDate.Format("Jan 2") + "</del>", "<span>" + slipped.Format("Jan 2") + "</span>"} {
-		if !strings.Contains(cell, want) {
-			t.Errorf("the Milestone's date cell lacks %s: %s", want, cell)
-		}
+	section := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-milestones")
+	cell := goalMilestoneDateCellIn(t, section, findByTestID(t, section, "goal-milestone"))
+	if struck := struckThrough(cell); !slices.Equal(struck, []string{beta.TargetDate.Format("Jan 2")}) {
+		t.Errorf("the Milestone's date cell strikes through %q, want %s: %s", struck, beta.TargetDate.Format("Jan 2"), renderNode(cell))
 	}
-	if rule := cssRule(t, page, ".gp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("a Milestone date can break mid-date: .gp-dates>*{%s}", rule)
-	}
-	if rule, ok := ruleFor(page, ".gp-dates"); ok && strings.Contains(rule, "nowrap") {
-		t.Errorf("the whole date cell is kept on one line, so its slips can't wrap: .gp-dates{%s}", rule)
+	if spans := textsOf(findAll(cell, func(n *nethtml.Node) bool { return n.Data == "span" })); !slices.Contains(spans, slipped.Format("Jan 2")) {
+		t.Errorf("the Milestone's date cell doesn't show %s as a date of its own: %s", slipped.Format("Jan 2"), renderNode(cell))
 	}
 }
 
@@ -2411,14 +2626,23 @@ func TestGoalPageMarksADepartedDelegate(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	list := pageElement(t, page, "ul", "delegate-list")
-	departed := between(t, list, "tpm@example.com", "</li>")
-	if !strings.Contains(departed, `data-testid="delegate-departed"`) || !strings.Contains(departed, "departed") {
-		t.Errorf("the Departed Delegate isn't marked departed: %s", departed)
+	list := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "delegate-list")
+	delegate := func(emailAddr string) *nethtml.Node {
+		t.Helper()
+		for _, li := range findAllByTestID(list, "delegate") {
+			if slices.ContainsFunc(goalPeopleShownIn(li), func(p goalShownPerson) bool { return p.Title == emailAddr }) {
+				return li
+			}
+		}
+		t.Fatalf("the Delegates list doesn't list %s: %s", emailAddr, renderNode(list))
+		return nil
 	}
-	if present := between(t, list, "lee@example.com", "</li>"); strings.Contains(present, "departed") {
-		t.Errorf("a present Delegate is marked departed: %s", present)
+	departed := delegate("tpm@example.com")
+	if marks := findAllByTestID(departed, "delegate-departed"); len(marks) != 1 || textOf(marks[0]) != "departed" {
+		t.Errorf("the Departed Delegate isn't marked departed: %s", renderNode(departed))
+	}
+	if present := delegate("lee@example.com"); hasTestID(present, "delegate-departed") || strings.Contains(textOf(present), "departed") {
+		t.Errorf("a present Delegate is marked departed: %s", renderNode(present))
 	}
 }
 
@@ -2438,49 +2662,60 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 	h.Checkin(sam, child.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	crumbs := strings.Join(strings.Fields(pageElement(t, page, "nav", "goal-breadcrumb")), " ")
-	for _, want := range []string{`href="/goals">Goals</a>`, navTo(parent.ID) + `>Grow revenue</a>`, `aria-current="page">Reduce outages</span>`} {
-		if !strings.Contains(crumbs, want) {
-			t.Errorf("breadcrumb lacks %s: %s", want, crumbs)
+	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	crumbs := findByTestID(t, root, "goal-breadcrumb")
+	for href, want := range map[string]string{"/goals": "Goals", goalHref(parent.ID): "Grow revenue"} {
+		if link := linkTo(crumbs, href); link == nil || textOf(link) != want {
+			t.Errorf("breadcrumb lacks a link to %s reading %s: %s", href, want, renderNode(crumbs))
 		}
+	}
+	if here := findAll(crumbs, func(n *nethtml.Node) bool { return attrOf(n, "aria-current") == "page" }); len(here) != 1 || here[0].Data != "span" || textOf(here[0]) != "Reduce outages" {
+		t.Errorf("breadcrumb doesn't end on this Goal as the current page: %s", renderNode(crumbs))
 	}
 
 	for _, tc := range []struct {
 		section string
 		linked  domain.Goal
-		class   string
+		health  string
+		tint    string
 	}{
-		{"goal-parents", parent, "r"},
-		{"goal-children", child, "g"},
+		{"goal-parents", parent, domain.HealthRed, "r"},
+		{"goal-children", child, domain.HealthGreen, "g"},
 	} {
-		section := pageElement(t, page, "section", tc.section)
-		title := linkTo(parsePage(t, section), fmt.Sprintf("/goals/%d", tc.linked.ID))
+		section := findByTestID(t, root, tc.section)
+		title := linkTo(section, goalHref(tc.linked.ID))
 		if title == nil {
-			t.Fatalf("%s doesn't link %s:\n%s", tc.section, tc.linked.Title, section)
+			t.Fatalf("%s doesn't link %s:\n%s", tc.section, tc.linked.Title, renderNode(section))
 		}
-		if chip := healthChipIn(t, title.Parent); !flatFrameHasClass(chip, tc.class) {
-			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, renderNode(title.Parent))
+		chip := healthChipIn(t, title.Parent)
+		assertHealthChip(t, chip, tc.health)
+		if !flatFrameHasClass(chip, tc.tint) {
+			t.Errorf("%s: %s's Health badge isn't in %s's tint: %s", tc.section, tc.linked.Title, tc.health, renderNode(chip))
 		}
-		assertSubmitsAtOnce(t, tc.section+": Remove", section, "/remove")
+		assertSubmitsAtOnce(t, tc.section+": Remove", renderNode(section), "/remove")
 	}
 
 	// Removing the link to the parent from its form unlinks it.
 	client := signInClient(t, ts.URL, "sam@example.com")
-	remove := strings.TrimPrefix(between(t, pageElement(t, page, "section", "goal-parents"), `action="`, `/remove"`), `action="`)
-	if resp := postForm(t, client, ts.URL+remove+"/remove", url.Values{}); resp.StatusCode != http.StatusOK {
+	removes := findAll(findByTestID(t, root, "goal-parents"), func(n *nethtml.Node) bool {
+		return n.Data == "form" && strings.HasSuffix(attrOf(n, "action"), "/remove")
+	})
+	if len(removes) != 1 {
+		t.Fatalf("the parents section has %d Remove forms, want 1", len(removes))
+	}
+	if resp := postForm(t, client, ts.URL+attrOf(removes[0], "action"), url.Values{}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove link: status %d", resp.StatusCode)
 	}
-	page = getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if parents := pageElement(t, page, "section", "goal-parents"); !strings.Contains(parents, `data-testid="no-parents"`) {
-		t.Errorf("the parent is still linked after Remove:\n%s", parents)
+	if parents := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-parents"); !hasTestID(parents, "no-parents") {
+		t.Errorf("the parent is still linked after Remove:\n%s", renderNode(parents))
 	}
 }
 
 // Each Metric is a row: its name over "baseline → target by date", then a
 // sparkline of its readings with a dashed target line, labelled for a screen
-// reader with the trend, then its current value in tabular figures. The Owner
-// edits it in a collapsed section.
+// reader with the trend, then its current value. The Owner edits it in a
+// collapsed section. How the row and its figures look is
+// TestGoalPageMetricRowsShowASparklineStyles's.
 func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	t.Parallel()
 
@@ -2512,46 +2747,65 @@ func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	}
 	ts := newServer(t, h)
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL)
-	card := between(t, page, `data-testid="goal-metric"`, `data-testid="goal-milestones"`)
-	if !hasClass(openTag(card), "gp-metric") {
-		t.Errorf("the Metric is not a row: %s", openTag(card))
-	}
-	if name, spark, current := strings.Index(card, "p95 latency</h3>"), strings.Index(card, "<svg"), strings.Index(card, `data-testid="metric-current"`); name < 0 || spark < name || current < spark {
-		t.Errorf("the Metric row should read name, sparkline, current value in that order; at %d, %d, %d", name, spark, current)
-	}
-	if rule := cssRule(t, getBody(t, http.DefaultClient, ts.URL+"/static/app.css"), "\n.num"); !strings.Contains(rule, "font-variant-numeric:tabular-nums") {
-		t.Errorf("the current value isn't in tabular figures: .num{%s}", rule)
-	}
-	if current := between(t, card, `data-testid="metric-current"`, "</"); !strings.Contains(current, ">800") {
-		t.Errorf("current value is not the latest reading: %s", current)
-	}
-	if !strings.Contains(between(t, card, "<", `data-testid="metric-current"`), "num") {
-		t.Errorf("current value is not set as a number")
-	}
-	if !strings.Contains(card, "1200 → 400 ms by Jun 15") {
-		t.Errorf("card lacks baseline → target by date:\n%s", card)
-	}
-	svg := between(t, card, "<svg", "</svg>")
-	for _, want := range []string{
-		`role="img"`,
-		`aria-label="p95 latency: 2 readings, falling from 1000 to 800 ms, toward the target of 400 ms"`,
-		"<polyline",
-		`stroke-dasharray`,
-	} {
-		if !strings.Contains(svg, want) {
-			t.Errorf("sparkline lacks %s:\n%s", want, svg)
-		}
-	}
-	edit := between(t, card, `<details data-testid="metric-edit"`, "</details>")
-	if strings.Contains(openTag(edit), "open") || !strings.Contains(edit, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
-		t.Errorf("the Owner's edit form is not in a collapsed section: %s", edit)
+	editAction := fmt.Sprintf("/metrics/%d", metric.ID)
+	editForms := func(root *nethtml.Node) []*nethtml.Node {
+		return findAll(root, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == editAction })
 	}
 
-	if other := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalURL); strings.Contains(other, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
+	card := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalURL), "goal-metric")
+	name, current := headingNamed(card, "p95 latency"), findByTestID(t, card, "metric-current")
+	svgs := findAll(card, func(n *nethtml.Node) bool { return n.Data == "svg" })
+	if name == nil || name.Data != "h3" || len(svgs) == 0 || !precedes(name, svgs[0]) || !precedes(svgs[0], current) {
+		t.Fatalf("the Metric row should read its h3 name, sparkline, current value in that order: %s", renderNode(card))
+	}
+	if got := textOf(current); got != "800" {
+		t.Errorf("current value reads %q, want the latest reading, 800", got)
+	}
+	if !strings.Contains(textOf(card), "1200 → 400 ms by Jun 15") {
+		t.Errorf("card lacks baseline → target by date: %s", textOf(card))
+	}
+	svg := svgs[0]
+	if attrOf(svg, "role") != "img" || attrOf(svg, "aria-label") != "p95 latency: 2 readings, falling from 1000 to 800 ms, toward the target of 400 ms" {
+		t.Errorf("sparkline isn't an image labelled with the trend: %s", renderNode(svg))
+	}
+	if len(findAll(svg, func(n *nethtml.Node) bool { return n.Data == "polyline" })) == 0 {
+		t.Errorf("sparkline draws no line of readings: %s", renderNode(svg))
+	}
+	if len(findAll(svg, func(n *nethtml.Node) bool { return hasAttr(n, "stroke-dasharray") })) == 0 {
+		t.Errorf("sparkline draws no dashed target line: %s", renderNode(svg))
+	}
+	edit := findByTestID(t, card, "metric-edit")
+	if edit.Data != "details" || hasAttr(edit, "open") || len(editForms(edit)) != 1 {
+		t.Errorf("the Owner's edit form is not in a collapsed section: %s", renderNode(edit))
+	}
+
+	if len(editForms(getPage(t, signInClient(t, ts.URL, "mel@example.com"), goalURL))) > 0 {
 		t.Errorf("a non-Owner is offered the Metric edit form")
 	}
+}
+
+// goalHistoryChipCountsIn reads the History block's filter chips as each
+// chip's label mapped to the count beside it.
+func goalHistoryChipCountsIn(t *testing.T, history *nethtml.Node) map[string]string {
+	t.Helper()
+	counts := map[string]string{}
+	for _, chip := range findAllByTestID(findByTestID(t, history, "history-chips"), "history-chip") {
+		var label []string
+		var count *nethtml.Node
+		for c := chip.FirstChild; c != nil; c = c.NextSibling {
+			switch c.Type {
+			case nethtml.TextNode:
+				label = append(label, strings.Fields(c.Data)...)
+			case nethtml.ElementNode:
+				count = c
+			}
+		}
+		if count == nil {
+			t.Fatalf("a History chip carries no count: %s", renderNode(chip))
+		}
+		counts[strings.Join(label, " ")] = textOf(count)
+	}
+	return counts
 }
 
 // The Goal page's History — Check-ins, Date Slips, Why it matters revisions,
@@ -2570,12 +2824,11 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	history := historyBlock(t, page)
-	if strings.Contains(history, "<details") {
-		t.Errorf("History sits behind a disclosure:\n%s", history)
+	history := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-history")
+	if disclosures := findAll(history, func(n *nethtml.Node) bool { return n.Data == "details" }); len(disclosures) > 0 {
+		t.Errorf("History sits behind a disclosure: %s", renderNode(disclosures[0]))
 	}
-	chips := historyChips(t, history)
+	chips := goalHistoryChipCountsIn(t, history)
 	for label, count := range map[string]string{
 		"All":            "4",
 		"Check-ins":      "2",
@@ -2584,12 +2837,12 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 		"Ownership":      "0",
 		"Values":         "0",
 	} {
-		if chips[label].count != count {
-			t.Errorf("%q chip counts %q, want %s", label, chips[label].count, count)
+		if chips[label] != count {
+			t.Errorf("%q chip counts %q, want %s", label, chips[label], count)
 		}
 	}
-	if n := len(historyEntries(history)); n != 4 {
-		t.Errorf("History lists %d entries, want 4:\n%s", n, history)
+	if n := len(findAllByTestID(history, "history-entry")); n != 4 {
+		t.Errorf("History lists %d entries, want 4:\n%s", n, renderNode(history))
 	}
 }
 
@@ -2604,17 +2857,22 @@ func TestGoalPageLatestStatusSection(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthYellow, "Wobbling.", "Add a second on-call.", testsupport.Epoch.AddDate(0, 2, 0))
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	status := pageElement(t, page, "section", "goal-checkins")
-	if hasClass(openTag(status), "card") {
-		t.Errorf("Latest status is a card: %s", openTag(status))
+	status := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-checkins")
+	if flatFrameHasClass(status, "card") {
+		t.Errorf("Latest status is a card: %s", attrOf(status, "class"))
 	}
-	for _, want := range []string{"<h2>Latest status</h2>", "Wobbling.", "Add a second on-call.", "sam@example.com", "Jan 2"} {
-		if !strings.Contains(status, want) {
-			t.Errorf("Latest status lacks %q:\n%s", want, status)
+	if heading := headingNamed(status, "Latest status"); heading == nil || heading.Data != "h2" {
+		t.Errorf("Latest status doesn't open with its h2")
+	}
+	for _, want := range []string{"Wobbling.", "Add a second on-call.", "Jan 2"} {
+		if !strings.Contains(textOf(status), want) {
+			t.Errorf("Latest status lacks %q: %s", want, textOf(status))
 		}
 	}
-	if strings.Contains(status, `data-testid="checkin-history"`) {
+	if !slices.ContainsFunc(goalPeopleShownIn(status), func(p goalShownPerson) bool { return p.Title == "sam@example.com" }) {
+		t.Errorf("Latest status doesn't show sam@example.com wrote it: %s", renderNode(status))
+	}
+	if hasTestID(status, "checkin-history") {
 		t.Errorf("Latest status still carries the history")
 	}
 }
@@ -2632,40 +2890,99 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	page := getBody(t, client, goalURL)
+	page := getPage(t, client, goalURL)
 	want := map[string]bool{
 		"Why it matters":                         true,
 		"Owner":                                  true,
 		"Dated with a delivery date, or Ongoing": false,
 		"A Milestone or Metric":                  false,
 	}
-	if got := activationItems(t, page); !maps.Equal(got, want) {
+	if got := goalActivationChecklistIn(t, page); !maps.Equal(got, want) {
 		t.Errorf("bare Proposed Goal checklist = %v, want %v", got, want)
 	}
-	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
-		t.Errorf("Activate is enabled with items missing: %s", button)
+	if button := goalActivateButtonIn(t, page); !hasAttr(button, "disabled") {
+		t.Errorf("Activate is enabled with items missing: %s", renderNode(button))
 	}
 
 	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
-	page = getBody(t, client, goalURL)
-	if got := activationItems(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
+	page = getPage(t, client, goalURL)
+	if got := goalActivationChecklistIn(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
 		t.Errorf("Dated Goal with no Milestone or Metric: checklist = %v", got)
 	}
 	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Beta cut"}, "target_date": {"2026-03-16"}})
-	page = getBody(t, client, goalURL)
-	for item, done := range activationItems(t, page) {
+	page = getPage(t, client, goalURL)
+	for item, done := range goalActivationChecklistIn(t, page) {
 		if !done {
 			t.Errorf("%q still missing once the Goal is ready", item)
 		}
 	}
-	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); strings.Contains(button, "disabled") {
-		t.Errorf("Activate is disabled with every item done: %s", button)
+	if button := goalActivateButtonIn(t, page); hasAttr(button, "disabled") {
+		t.Errorf("Activate is disabled with every item done: %s", renderNode(button))
 	}
+}
+
+// goalActivationChecklistIn reads the activation checklist under root as each
+// item's label mapped to whether it is done. Each item reads as a mark, its
+// label, and "done" or "to do", so it never relies on the mark alone: ✓ for
+// done and a neutral ○ for to do.
+func goalActivationChecklistIn(t *testing.T, root *nethtml.Node) map[string]bool {
+	t.Helper()
+	items := map[string]bool{}
+	for _, li := range goalActivationChecklistItemsIn(t, root) {
+		mark, label, state := goalActivationItemPartsOf(t, li)
+		done := attrOf(li, "data-done") == "true"
+		if want := map[bool]string{true: "done", false: "to do"}[done]; state != want {
+			t.Errorf("checklist item says %q against data-done=%v, want %q: %s", state, done, want, renderNode(li))
+		}
+		if want := map[bool]string{true: "✓", false: "○"}[done]; mark != want {
+			t.Errorf("checklist item is marked %q against data-done=%v, want %q: %s", mark, done, want, renderNode(li))
+		}
+		items[label] = done
+	}
+	return items
+}
+
+// goalActivationChecklistItemsIn returns the activation checklist's items
+// under root, in order.
+func goalActivationChecklistItemsIn(t *testing.T, root *nethtml.Node) []*nethtml.Node {
+	t.Helper()
+	list := findByTestID(t, root, "activation-checklist")
+	return findAll(list, func(n *nethtml.Node) bool { return n.Data == "li" })
+}
+
+// goalActivationItemPartsOf splits what an activation checklist item reads
+// into its mark, its label, and its trailing state, "done" or the two words
+// "to do".
+func goalActivationItemPartsOf(t *testing.T, li *nethtml.Node) (mark, label, state string) {
+	t.Helper()
+	words := strings.Fields(textOf(li))
+	stateWords := 1
+	if n := len(words); n >= 2 && words[n-2] == "to" && words[n-1] == "do" {
+		stateWords = 2
+	}
+	if len(words) < 2+stateWords {
+		t.Fatalf("checklist item has no mark, label and state: %s", renderNode(li))
+	}
+	n := len(words) - stateWords
+	return words[0], strings.Join(words[1:n], " "), strings.Join(words[n:], " ")
+}
+
+// goalActivateButtonIn returns the Activate Goal button of the activate-goal
+// form under root.
+func goalActivateButtonIn(t *testing.T, root *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	form := findByTestID(t, root, "activate-goal")
+	button := buttonNamed(form, "Activate Goal")
+	if button == nil {
+		t.Fatalf("the activate-goal form has no Activate Goal button: %s", renderNode(form))
+	}
+	return button
 }
 
 // A Proposed Goal's checklist marks each item not yet met with a neutral ○
 // "to do", as the New goal form does, never a red ✗ "missing", and each met
-// item ✓ "done".
+// item ✓ "done". How the marks are tinted is pinned in styles_test.go
+// (TestProposedGoalChecklistMarksUnmetItemsToDoStyles).
 func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 	t.Parallel()
 
@@ -2675,31 +2992,22 @@ func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	list := pageElement(t, page, "ul", "activation-checklist")
-	for _, li := range strings.Split(list, "<li ")[1:] {
-		mark, label, state := activationItemParts(t, li)
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	for _, li := range goalActivationChecklistItemsIn(t, page) {
+		mark, label, state := goalActivationItemPartsOf(t, li)
 		want := [2]string{"○", "to do"}
 		if label == "Why it matters" || label == "Owner" {
 			want = [2]string{"✓", "done"}
 		}
 		if got := [2]string{mark, state}; got != want {
-			t.Errorf("%q is marked %q %q, want %q %q: %s", label, mark, state, want[0], want[1], li)
+			t.Errorf("%q is marked %q %q, want %q %q: %s", label, mark, state, want[0], want[1], renderNode(li))
 		}
 	}
+	list := findByTestID(t, page, "activation-checklist")
 	for _, gone := range []string{"✗", "missing"} {
-		if strings.Contains(list, gone) {
-			t.Errorf("the checklist says %q:\n%s", gone, list)
+		if goalMentions(list, gone) {
+			t.Errorf("the checklist says %q: %s", gone, renderNode(list))
 		}
-	}
-	if rule := cssRule(t, page, ".gp-check>span:first-child"); !strings.Contains(rule, "color:var(--color-ink-muted)") {
-		t.Errorf("an unmet item's mark isn't the neutral muted ink: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-check.done>span:first-child"); !strings.Contains(rule, "color:var(--health-g-ink)") {
-		t.Errorf("a met item's mark isn't Green's ink: %s", rule)
-	}
-	if regexp.MustCompile(`\.gp-check[^{}]*\{[^}]*--health-r-ink`).MatchString(page) {
-		t.Errorf("the checklist still uses Red's ink")
 	}
 }
 
@@ -2716,19 +3024,19 @@ func TestDefineCardLinksToFinishDefining(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "section", "define-goal")
+	card := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "define-goal")
 	for _, gone := range []string{"mark-kind", "set-cadence", "edit-why-it-matters", "add-milestone", "add-metric"} {
-		if strings.Contains(card, `data-testid="`+gone+`"`) {
-			t.Errorf("the Define card still holds %s:\n%s", gone, card)
+		if hasTestID(card, gone) {
+			t.Errorf("the Define card still holds %s: %s", gone, renderNode(card))
 		}
 	}
-	if n := strings.Count(card, "<form"); n != 1 || !strings.Contains(card, `data-testid="activate-goal"`) {
-		t.Errorf("the Define card holds %d forms, want only Activate Goal:\n%s", n, card)
+	if forms := findAll(card, func(n *nethtml.Node) bool { return n.Data == "form" }); len(forms) != 1 || attrOf(forms[0], "data-testid") != "activate-goal" {
+		t.Errorf("the Define card holds %d forms, want only Activate Goal: %s", len(forms), renderNode(card))
 	}
-	activationItems(t, card)
-	link := tagAround(t, card, `data-testid="finish-defining"`)
-	if want := fmt.Sprintf("/goals/%d/define", goal.ID); attr(link, "href") != want || !strings.Contains(between(t, card, link, "</a>"), "Finish defining") {
-		t.Errorf("Finish defining doesn't link to %s: %s", want, link)
+	goalActivationChecklistIn(t, card)
+	link := findByTestID(t, card, "finish-defining")
+	if want := fmt.Sprintf("/goals/%d/define", goal.ID); link.Data != "a" || attrOf(link, "href") != want || textOf(link) != "Finish defining" {
+		t.Errorf("Finish defining doesn't link to %s: %s", want, renderNode(link))
 	}
 }
 
@@ -2766,32 +3074,51 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 
 	postForm(t, client, goalURL+"/ongoing", nil)
 	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
-	page := getBody(t, client, goalURL)
-	if done, listed := activationItems(t, page)["A Metric"]; !listed || done {
+	page := getPage(t, client, goalURL)
+	if done, listed := goalActivationChecklistIn(t, page)["A Metric"]; !listed || done {
 		t.Errorf("Ongoing Goal with only a Milestone: A Metric listed=%v done=%v", listed, done)
 	}
-	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
-		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
+	if button := goalActivateButtonIn(t, page); !hasAttr(button, "disabled") {
+		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", renderNode(button))
 	}
 }
 
-// collapsedEmail is a person's email waiting, hidden, in its expansion.
-var collapsedEmail = regexp.MustCompile(`<span class="person-email" hidden>[^<]*</span>`)
+// goalEmailExemptScopes are the Scope selects (scope.templ), on the Goal list
+// and the Follow-ups page: the only selects whose options name people as Name
+// (email). An option can't hold a control to disclose an email (#275).
+var goalEmailExemptScopes = map[string]bool{"goal-scope-filter": true, "follow-ups-scope": true}
 
-// selectOption is a select's option, a form field that can't hold a control to
-// disclose an email, so the Scope select names people as Name (email) (#275).
-var selectOption = regexp.MustCompile(`<option[^>]*>[^<]*</option>`)
+// visibleEmails returns each run of text under root that shows an email as
+// text rather than on hover: every text holding one, but for a person's email
+// waiting, hidden, in its expansion, and a Scope select's option.
+func visibleEmails(root *nethtml.Node) []string {
+	var shown []string
+	for n := range root.Descendants() {
+		if n.Type != nethtml.TextNode || !strings.Contains(n.Data, "@example.com") || goalEmailExempt(n) {
+			continue
+		}
+		shown = append(shown, strings.TrimSpace(n.Data))
+	}
+	return shown
+}
 
-// emailExemptSelect is a Scope select (scope.templ), on the Goal list or the Follow-ups
-// page: the only select whose options name people as Name (email).
-var emailExemptSelect = regexp.MustCompile(`(?s)<select\b[^>]*\bdata-testid="(?:goal-scope-filter|follow-ups-scope)"[^>]*>.*?</select>`)
-
-// visibleEmails returns every email a page shows as text rather than on hover,
-// in a collapsed expansion, or in a Scope select's option.
-func visibleEmails(page string) []string {
-	page = collapsedEmail.ReplaceAllString(page, "")
-	page = emailExemptSelect.ReplaceAllStringFunc(page, func(s string) string { return selectOption.ReplaceAllString(s, "") })
-	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
+// goalEmailExempt reports whether the text n sits in a collapsed email
+// expansion or in a Scope select's option.
+func goalEmailExempt(n *nethtml.Node) bool {
+	for p := n.Parent; p != nil; p = p.Parent {
+		switch {
+		case p.Type != nethtml.ElementNode:
+		case flatFrameHasClass(p, "person-email") && isHiddenElement(p):
+			return true
+		case p.Data == "option":
+			for sel := p.Parent; sel != nil; sel = sel.Parent {
+				if sel.Type == nethtml.ElementNode && sel.Data == "select" {
+					return goalEmailExemptScopes[attrOf(sel, "data-testid")]
+				}
+			}
+		}
+	}
+	return false
 }
 
 // visibleEmails exempts only the Scope selects' options, which name people as
@@ -2803,9 +3130,10 @@ func TestVisibleEmailsExemptsOnlyScopeSelectOptions(t *testing.T) {
 		`<select data-testid="goal-scope-filter" name="org" aria-label="Scope"><option value="all">Everyone</option><optgroup label="Other orgs"><option value="3">Ada Okafor (ada.okafor@example.com)</option></optgroup></select>` +
 		`<select data-testid="follow-ups-scope" name="org" aria-label="Scope"><option value="4" selected>Mei Lin (mei.lin@example.com)</option></select>` +
 		`<select name="parent_id"><option value="5">Owned by tomas.berg@example.com</option></select>` +
+		`<span class="person"><button type="button" class="disclose" aria-expanded="false" title="ada.okafor@example.com">Ada Okafor</button><span class="person-email" hidden>ada.okafor@example.com</span></span>` +
 		`</form>`
-	shown := visibleEmails(page)
-	if want := []string{">Owned by tomas.berg@example.com<"}; !slices.Equal(shown, want) {
+	shown := visibleEmails(parsePage(t, page))
+	if want := []string{"Owned by tomas.berg@example.com"}; !slices.Equal(shown, want) {
 		t.Errorf("visibleEmails = %q, want %q", shown, want)
 	}
 }
@@ -2823,17 +3151,17 @@ func TestGoalPagesShowPeopleByName(t *testing.T) {
 	h.CreateGoal(sam, "Hire a PM", "Nobody owns the roadmap.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	list := getBody(t, client, ts.URL+"/goals?org=all")
-	for _, want := range []string{shownAs("ada.okafor@example.com", "Ada Okafor"), shownAs("sam@example.com", "sam")} {
-		if !strings.Contains(list, want) {
-			t.Errorf("Goal list does not show %s", want)
+	list := getPage(t, client, ts.URL+"/goals?org=all")
+	for _, want := range []struct{ email, label string }{{"ada.okafor@example.com", "Ada Okafor"}, {"sam@example.com", "sam"}} {
+		if !goalShows(list, want.email, want.label) {
+			t.Errorf("Goal list does not show %s as %q with their email a click away", want.email, want.label)
 		}
 	}
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, named.ID))
-	if owner := pageElement(t, page, "strong", "goal-owner"); !strings.Contains(owner, shownAs("ada.okafor@example.com", "Ada Okafor")) {
-		t.Errorf("Goal page Owner reads %s, want Ada Okafor with their email a click away", owner)
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, named.ID))
+	if owner := findByTestID(t, page, "goal-owner"); owner.Data != "strong" || !goalShows(owner, "ada.okafor@example.com", "Ada Okafor") {
+		t.Errorf("Goal page Owner reads %s, want Ada Okafor with their email a click away", renderNode(owner))
 	}
-	for name, p := range map[string]string{"Goal list": list, "Goal page": page} {
+	for name, p := range map[string]*nethtml.Node{"Goal list": list, "Goal page": page} {
 		if shown := visibleEmails(p); len(shown) > 0 {
 			t.Errorf("%s shows emails as text: %q", name, shown)
 		}
@@ -2851,13 +3179,14 @@ func TestPersonExpandsTheirEmailOnActivation(t *testing.T) {
 	ts := newServer(t, h)
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	goal := h.CreateGoal(ada, "Cut checkout latency", "Shoppers abandon slow carts.")
-	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	page := getPage(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
-	owner := pageElement(t, page, "strong", "goal-owner")
-	want := `<button type="button" class="disclose" aria-expanded="false" title="ada.okafor@example.com">Ada Okafor</button>` +
-		`<span class="person-email" hidden>ada.okafor@example.com</span>`
-	if !strings.Contains(owner, want) {
-		t.Errorf("Goal page Owner reads %s, want %s", owner, want)
+	owner := findByTestID(t, page, "goal-owner")
+	if owner.Data != "strong" || !goalShows(owner, "ada.okafor@example.com", "Ada Okafor") {
+		t.Errorf("Goal page Owner reads %s, want Ada Okafor as a collapsed button over their hidden email", renderNode(owner))
+	}
+	if button := buttonNamed(owner, "Ada Okafor"); button == nil || !goalHiddenEmailFollows(button, "ada.okafor@example.com") {
+		t.Errorf("Ada Okafor's hidden email doesn't sit right after their button: %s", renderNode(owner))
 	}
 	script := disclosureScript(t, page)
 	for _, want := range []string{`.disclose`, `aria-expanded`, `hidden`} {
@@ -2867,13 +3196,27 @@ func TestPersonExpandsTheirEmailOnActivation(t *testing.T) {
 	}
 }
 
-// disclosureScript returns the page's script that opens and closes every
-// .disclose control's expansion.
-func disclosureScript(t *testing.T, page string) string {
+// goalHiddenEmailFollows reports whether what comes right after button is the
+// hidden person-email reading emailAddr.
+func goalHiddenEmailFollows(button *nethtml.Node, emailAddr string) bool {
+	next := button.NextSibling
+	return next != nil && next.Type == nethtml.ElementNode && next.Data == "span" && flatFrameHasClass(next, "person-email") &&
+		isHiddenElement(next) && strings.Join(nodeWords(next, next, nil), " ") == emailAddr
+}
+
+// disclosureScript returns the text of the page's script that opens and
+// closes every .disclose control's expansion.
+func disclosureScript(t *testing.T, root *nethtml.Node) string {
 	t.Helper()
-	for _, s := range strings.Split(page, "<script>")[1:] {
-		if body, _, ok := strings.Cut(s, "</script>"); ok && strings.Contains(body, "disclose") {
-			return body
+	for _, s := range findAll(root, func(n *nethtml.Node) bool { return n.Data == "script" && !hasAttr(n, "src") }) {
+		var body strings.Builder
+		for c := s.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == nethtml.TextNode {
+				body.WriteString(c.Data)
+			}
+		}
+		if strings.Contains(body.String(), "disclose") {
+			return body.String()
 		}
 	}
 	t.Fatalf("page has no disclosure script")
@@ -2885,6 +3228,8 @@ func disclosureScript(t *testing.T, page string) string {
 // Space, and reports whether they are open, so neither needs hover. The
 // wording is the one the hover title always carried. The Why it matters shows no
 // heading, but assistive technology still hears it labelled "Why it matters".
+// How the What goes here? button is drawn is pinned in styles_test.go
+// (TestGoalPageExplainsWhyItMattersAndTopLevelOnActivationStyles).
 func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivation(t *testing.T) {
 	t.Parallel()
 
@@ -2892,33 +3237,66 @@ func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivation(t *testing.T) {
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
 	g := h.MarkTopLevel(ada, h.ActiveGoal(ada, "Grow revenue", "It pays for everything."))
-	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
+	page := getPage(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
 
-	for _, tc := range []struct{ label, control, text string }{
-		{"What goes here?", `<button type="button" class="disclose help explain gp-lead-help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
-		{"Top-level", `<button type="button" class="disclose help" data-testid="goal-top-level"`, "One of the company's root outcomes"},
+	topLevel := findByTestID(t, page, "goal-top-level")
+	for _, tc := range []struct {
+		label  string
+		button *nethtml.Node
+		text   string
+	}{
+		{"What goes here?", buttonNamed(page, "What goes here?"), "The customer problem this Goal addresses and what is expected to change when it succeeds."},
+		{"Top-level", topLevel, "One of the company's root outcomes"},
 	} {
-		at := strings.Index(page, tc.control)
-		if at < 0 {
-			t.Errorf("%s is not a disclosure button %s", tc.label, tc.control)
+		button := tc.button
+		if button == nil || button.Data != "button" || attrOf(button, "type") != "button" || !flatFrameHasClass(button, "disclose") || !flatFrameHasClass(button, "help") {
+			t.Errorf("%s is not a disclosure help button", tc.label)
 			continue
 		}
-		button, _, _ := strings.Cut(page[at+strings.Index(tc.control, "<button"):], "</button>")
-		if !strings.HasSuffix(button, ">"+tc.label) || !strings.Contains(openTag(button), `aria-expanded="false"`) {
-			t.Errorf("%s button does not start collapsed: %s", tc.label, button)
+		if textOf(button) != tc.label || attrOf(button, "aria-expanded") != "false" {
+			t.Errorf("%s button does not start collapsed: %s", tc.label, renderNode(button))
 		}
-		id := strings.TrimPrefix(between(t, openTag(button), `aria-controls="`, `" `), `aria-controls="`)
-		if want := `id="` + id + `" class="explain" hidden>` + html.EscapeString(tc.text) + `<`; id == "" || !strings.Contains(page, want) {
-			t.Errorf("%s button controls %q, want the collapsed explanation %s", tc.label, id, want)
+		id := attrOf(button, "aria-controls")
+		explains := findAll(page, func(n *nethtml.Node) bool { return id != "" && attrOf(n, "id") == id })
+		if len(explains) != 1 || attrOf(explains[0], "class") != "explain" || !isHiddenElement(explains[0]) || textOf(explains[0]) != tc.text {
+			t.Errorf("%s button controls %q, want the collapsed explanation, a hidden explain reading %q", tc.label, id, tc.text)
 		}
 	}
-	statement := openTag(pageElement(t, page, "article", "goal"))
-	_, label, _ := strings.Cut(statement, `aria-labelledby="`)
-	label, _, _ = strings.Cut(label, `"`)
-	if want := `id="` + label + `" class="sr-only">Why it matters<`; label == "" || !strings.Contains(page, want) {
-		t.Errorf("the Why it matters is not labelled for assistive technology by a visually hidden %s: %s", want, statement)
+	statement := findByTestID(t, page, "goal")
+	label := attrOf(statement, "aria-labelledby")
+	labels := findAll(page, func(n *nethtml.Node) bool { return label != "" && attrOf(n, "id") == label })
+	if statement.Data != "article" || len(labels) != 1 || attrOf(labels[0], "class") != "sr-only" || textOf(labels[0]) != "Why it matters" {
+		t.Errorf("the Why it matters is not labelled for assistive technology by a visually hidden Why it matters: %s", renderNode(statement))
 	}
 	disclosureScript(t, page)
+}
+
+// assertGoalTermHelpIn checks that within holds a help disclosure for a
+// glossary term, as assertTermHelp does: a disclose help button reading
+// label, starting collapsed, carrying text as its title, and controlling a
+// hidden explain paragraph under root that reads text. It returns the button.
+func assertGoalTermHelpIn(t *testing.T, root, within *nethtml.Node, label, text string) *nethtml.Node {
+	t.Helper()
+	button := buttonNamed(within, label)
+	if button == nil {
+		t.Errorf("no button reads %q", label)
+		return nil
+	}
+	if !flatFrameHasClass(button, "disclose") || !flatFrameHasClass(button, "help") {
+		t.Errorf("%q is not a disclose help button: %s", label, renderNode(button))
+	}
+	if attrOf(button, "type") != "button" || attrOf(button, "aria-expanded") != "false" {
+		t.Errorf("%q button does not start collapsed: %s", label, renderNode(button))
+	}
+	if got := attrOf(button, "title"); got != text {
+		t.Errorf("%q button's title = %q, want %q", label, got, text)
+	}
+	id := attrOf(button, "aria-controls")
+	explains := findAll(root, func(n *nethtml.Node) bool { return id != "" && attrOf(n, "id") == id })
+	if len(explains) != 1 || !termHelpExplains(explains[0], text) {
+		t.Errorf("%q button controls %q, want the collapsed explanation, a hidden explain paragraph reading %q", label, id, text)
+	}
+	return button
 }
 
 // The Goal page explains Dated or Ongoing from the word in its metadata line,
@@ -2940,16 +3318,16 @@ func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
 	client := signInClient(t, ts.URL, ada.Email)
 
 	g := h.ActiveGoal(ada, "Grow revenue", "It pays for everything.")
-	page := getBody(t, client, goalPageURL(ts.URL, g))
-	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Dated", dated); attr(button, "aria-controls") != "kind-help" {
-		t.Errorf("the Dated button controls %q, want kind-help", attr(button, "aria-controls"))
+	page := getPage(t, client, goalPageURL(ts.URL, g))
+	if button := assertGoalTermHelpIn(t, page, goalKindIn(t, page), "Dated", dated); attrOf(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Dated button controls %q, want kind-help", attrOf(button, "aria-controls"))
 	}
 	for _, tc := range []struct{ label, id, text string }{
 		{"What is a Delegate?", "delegate-help", delegate},
 		{"What are Dimension values?", "dimension-values-help", dimension},
 	} {
-		if button := assertTermHelp(t, page, page, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
-			t.Errorf("%q controls %q, want %s", tc.label, attr(button, "aria-controls"), tc.id)
+		if button := assertGoalTermHelpIn(t, page, page, tc.label, tc.text); attrOf(button, "aria-controls") != tc.id {
+			t.Errorf("%q controls %q, want %s", tc.label, attrOf(button, "aria-controls"), tc.id)
 		}
 	}
 	disclosureScript(t, page)
@@ -2958,19 +3336,30 @@ func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
 	if _, err := h.Service.MarkGoalOngoing(context.Background(), o.Owner.ID, o.ID); err != nil {
 		t.Fatalf("MarkGoalOngoing: %v", err)
 	}
-	page = getBody(t, client, goalPageURL(ts.URL, o))
-	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Ongoing", ongoing); attr(button, "aria-controls") != "kind-help" {
-		t.Errorf("the Ongoing button controls %q, want kind-help", attr(button, "aria-controls"))
+	page = getPage(t, client, goalPageURL(ts.URL, o))
+	if button := assertGoalTermHelpIn(t, page, goalKindIn(t, page), "Ongoing", ongoing); attrOf(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Ongoing button controls %q, want kind-help", attrOf(button, "aria-controls"))
 	}
 
 	p := h.CreateGoal(ada, "Find a market", "We need one.")
-	page = getBody(t, client, goalPageURL(ts.URL, p))
-	if kind := pageElement(t, page, "span", "goal-kind"); kind != `<span data-testid="goal-kind">Not yet Dated or Ongoing` {
-		t.Errorf("a Goal with no kind shows %s, want plain Not yet Dated or Ongoing", kind)
+	page = getPage(t, client, goalPageURL(ts.URL, p))
+	kind := goalKindIn(t, page)
+	if elements := findAll(kind, func(n *nethtml.Node) bool { return n != kind }); textOf(kind) != "Not yet Dated or Ongoing" || len(elements) > 0 {
+		t.Errorf("a Goal with no kind shows %s, want plain Not yet Dated or Ongoing", renderNode(kind))
 	}
-	if strings.Contains(page, `id="kind-help"`) {
+	if explains := findAll(page, func(n *nethtml.Node) bool { return attrOf(n, "id") == "kind-help" }); len(explains) > 0 {
 		t.Errorf("a Goal with no kind has a kind explanation")
 	}
+}
+
+// goalKindIn returns the Goal page's word for its kind, the goal-kind span.
+func goalKindIn(t *testing.T, root *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	kind := findByTestID(t, root, "goal-kind")
+	if kind.Data != "span" {
+		t.Fatalf("the Goal's kind isn't a span: %s", renderNode(kind))
+	}
+	return kind
 }
 
 // An Ownerless badge says what Ownerless means on hover, on the Goals list and
@@ -2995,13 +3384,21 @@ func TestOwnerlessBadgesSayWhatOwnerlessMeans(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, boss.Email)
 
-	for _, tc := range []struct{ where, page string }{
-		{"the Goals list", getBody(t, client, ts.URL+"/goals?org=all")},
-		{"the parent's Contributed to by list", getBody(t, client, goalPageURL(ts.URL, parent))},
+	for _, tc := range []struct {
+		where string
+		page  *nethtml.Node
+	}{
+		{"the Goals list", getPage(t, client, ts.URL+"/goals?org=all")},
+		{"the parent's Contributed to by list", getPage(t, client, goalPageURL(ts.URL, parent))},
 	} {
-		badge := tagAround(t, tc.page, `data-testid="ownerless"`)
-		if got, want := attr(badge, "title"), html.EscapeString(ownerless); got != want {
-			t.Errorf("the Ownerless badge on %s has title %q, want %q", tc.where, got, want)
+		badges := findAllByTestID(tc.page, "ownerless")
+		if len(badges) == 0 {
+			t.Errorf("%s shows no Ownerless badge", tc.where)
+		}
+		for _, badge := range badges {
+			if got := attrOf(badge, "title"); got != ownerless {
+				t.Errorf("the Ownerless badge on %s has title %q, want %q", tc.where, got, ownerless)
+			}
 		}
 	}
 }
@@ -3096,27 +3493,74 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 		{adminEmail, reportPath},
 		{adminEmail, pubPath},
 	}
+	fullName := regexp.MustCompile(`^[A-Z][a-z]+ [A-Z][a-z]+$`)
 	for _, p := range pages {
-		page := getBody(t, client(p.as), ts.URL+p.path)
+		body := getBody(t, client(p.as), ts.URL+p.path)
+		page := parsePage(t, body)
 		if shown := visibleEmails(page); len(shown) > 0 {
 			t.Errorf("%s as %s shows emails as text: %q", p.path, p.as, shown)
 		}
-		if nested := nestedControls(page); len(nested) > 0 {
+		if nested := goalNestedControls(body); len(nested) > 0 {
 			t.Errorf("%s as %s nests a control inside another: %q", p.path, p.as, nested)
 		}
-		if !regexp.MustCompile(`<button type="button" class="disclose" aria-expanded="false" title="([^"]+@example\.com)">[A-Z][a-z]+ [A-Z][a-z]+</button><span class="person-email" hidden>[^<]+@example\.com</span>`).MatchString(page) {
+		if !slices.ContainsFunc(goalPeopleShownIn(page), func(s goalShownPerson) bool {
+			return s.Discloses && fullName.MatchString(s.Label) && strings.HasSuffix(s.Title, "@example.com") && strings.HasSuffix(s.Email, "@example.com")
+		}) {
 			t.Errorf("%s as %s shows nobody by Name with their email a click away", p.path, p.as)
 		}
 	}
-	if page := getBody(t, client(owner.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)); !strings.Contains(page, shownAs(owner.Email, owner.Name)) {
-		t.Errorf("Goal page does not show its Owner as %s", shownAs(owner.Email, owner.Name))
+	if page := getPage(t, client(owner.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)); !goalShows(page, owner.Email, owner.Name) {
+		t.Errorf("Goal page does not show its Owner as %s with their email a click away", owner.Name)
 	}
-	printed := getBody(t, client(adminEmail), ts.URL+pubPath+"/print")
-	if want := ">" + owner.Name + " (" + owner.Email + ")<"; !strings.Contains(printed, want) {
+	printed := getPage(t, client(adminEmail), ts.URL+pubPath+"/print")
+	if want := owner.Name + " (" + owner.Email + ")"; !goalHasTextRun(printed, want) {
 		t.Errorf("print page does not introduce the Owner as %s", want)
 	}
-	if strings.Contains(printed, `class="disclose"`) {
-		t.Errorf("print page puts people behind a control")
+	if controls := findAll(printed, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "disclose") }); len(controls) > 0 {
+		t.Errorf("print page puts people behind a control: %s", renderNode(controls[0]))
+	}
+}
+
+// goalHasTextRun reports whether a run of text under root, one text node
+// between two tags, reads exactly s.
+func goalHasTextRun(root *nethtml.Node, s string) bool {
+	for n := range root.Descendants() {
+		if n.Type == nethtml.TextNode && n.Data == s {
+			return true
+		}
+	}
+	return false
+}
+
+// goalNestedControls returns the opening tag of every interactive element, a
+// link, button, label or summary, a page opens inside another one, which HTML
+// forbids. It reads the page's tags as html's tokenizer reads them, not the
+// parsed page, since the parser would close an outer link or button before
+// the nested one opens and so hide the nesting.
+func goalNestedControls(page string) []string {
+	interactive := map[string]bool{"a": true, "button": true, "label": true, "summary": true}
+	var nested []string
+	depth := 0
+	z := nethtml.NewTokenizer(strings.NewReader(page))
+	for {
+		tt := z.Next()
+		if tt == nethtml.ErrorToken {
+			return nested
+		}
+		raw := string(z.Raw())
+		name, _ := z.TagName()
+		if !interactive[string(name)] {
+			continue
+		}
+		switch tt {
+		case nethtml.EndTagToken:
+			depth = max(depth-1, 0)
+		case nethtml.StartTagToken:
+			if depth > 0 {
+				nested = append(nested, raw)
+			}
+			depth++
+		}
 	}
 }
 
@@ -3139,14 +3583,18 @@ func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions")
+	edit := goalOpenFormIn(t, getPage(t, samClient, goalURL+"?open=dimensions"), "dimensions")
+	var adds []string
+	for _, f := range formFields(edit, "new_value") {
+		adds = append(adds, f.Label)
+	}
 	for _, name := range []string{"Customer", "Partner"} {
-		if !strings.Contains(edit, fmt.Sprintf(`name="new_value" aria-label="Add a %s value"`, name)) {
-			t.Errorf("Extendable %s has no add-a-value input:\n%s", name, edit)
+		if !slices.Contains(adds, "Add a "+name+" value") {
+			t.Errorf("Extendable %s has no add-a-value input: %s", name, renderNode(edit))
 		}
 	}
-	if strings.Contains(edit, `aria-label="Add a Pillar value"`) {
-		t.Errorf("Fixed Pillar offers an add-a-value input:\n%s", edit)
+	if labelled := findAll(edit, func(n *nethtml.Node) bool { return attrOf(n, "aria-label") == "Add a Pillar value" }); len(labelled) > 0 {
+		t.Errorf("Fixed Pillar offers an add-a-value input: %s", renderNode(edit))
 	}
 
 	for _, add := range []struct {
@@ -3161,15 +3609,22 @@ func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 			t.Fatalf("adding %s: status %d: %s", add.value, resp.StatusCode, body)
 		}
 	}
-	section := pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
+	shown := goalRailDimensionValuesIn(t, getPage(t, samClient, goalURL))
 	for _, want := range []string{"Globex", "Umbrella", "Hooli"} {
-		if !strings.Contains(section, `data-testid="goal-dimension-value">`+want) {
-			t.Errorf("Goal page doesn't show the added %s:\n%s", want, section)
+		if !slices.Contains(shown, want) {
+			t.Errorf("Goal page doesn't show the added %s: %q", want, shown)
 		}
 	}
 	if got := dimensionValueNames(dimensionByName(t, h, "Partner")); !slices.Equal(got, []string{"Initech", "Umbrella", "Hooli"}) {
 		t.Errorf("Partner list = %v, want [Initech Umbrella Hooli]", got)
 	}
+}
+
+// goalRailDimensionValuesIn is what each Dimension value the Goal page's
+// Dimensions section shows reads, in order.
+func goalRailDimensionValuesIn(t *testing.T, root *nethtml.Node) []string {
+	t.Helper()
+	return textsOf(findAllByTestID(findByTestID(t, root, "goal-dimensions"), "goal-dimension-value"))
 }
 
 func dimensionValueNames(d domain.Dimension) []string {
@@ -3230,7 +3685,7 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 	}
 
 	status, body := add(customer, "hooli")
-	if status != http.StatusUnprocessableEntity || !strings.Contains(body, "Hooli is retired") {
+	if status != http.StatusUnprocessableEntity || !strings.Contains(textOf(parsePage(t, body)), "Hooli is retired") {
 		t.Errorf("adding hooli: status %d body %q, want 422 saying Hooli is retired", status, body)
 	}
 }
@@ -3258,10 +3713,10 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	deeClient := signInClient(t, ts.URL, "dee@example.com")
 	coryClient := signInClient(t, ts.URL, "cory@example.com")
 
-	if page := getBody(t, deeClient, goalURL); menuItems(t, page)["Edit Dimension values"] == "" || !strings.Contains(page, `data-testid="open-dimensions"`) {
-		t.Fatalf("Delegate's Goal page doesn't offer to edit Dimension values:\n%s", page)
+	if page := getPage(t, deeClient, goalURL); goalMenuItemsIn(t, page)["Edit Dimension values"] == "" || !hasTestID(page, "open-dimensions") {
+		t.Fatalf("Delegate's Goal page doesn't offer to edit Dimension values:\n%s", renderNode(page))
 	}
-	openForm(t, getBody(t, deeClient, goalURL+"?open=dimensions"), "dimensions")
+	goalOpenFormIn(t, getPage(t, deeClient, goalURL+"?open=dimensions"), "dimensions")
 	for _, form := range []url.Values{
 		{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}},
 		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Globex"}},
@@ -3271,15 +3726,15 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 			t.Fatalf("Delegate posting %v: status %d: %s", form, resp.StatusCode, body)
 		}
 	}
-	section := pageElement(t, getBody(t, deeClient, goalURL), "section", "goal-dimensions")
+	shown := goalRailDimensionValuesIn(t, getPage(t, deeClient, goalURL))
 	for _, want := range []string{"Reliability", "Globex"} {
-		if !strings.Contains(section, `data-testid="goal-dimension-value">`+want) {
-			t.Errorf("Goal page doesn't show %s set by the Delegate:\n%s", want, section)
+		if !slices.Contains(shown, want) {
+			t.Errorf("Goal page doesn't show %s set by the Delegate: %q", want, shown)
 		}
 	}
 
-	if page := getBody(t, coryClient, goalURL+"?open=dimensions"); openForms(page) > 0 || strings.Contains(page, `data-testid="open-dimensions"`) {
-		t.Errorf("Contributor's Goal page offers Dimension value controls:\n%s", page)
+	if page := getPage(t, coryClient, goalURL+"?open=dimensions"); len(goalOpenFormsIn(page)) > 0 || hasTestID(page, "open-dimensions") {
+		t.Errorf("Contributor's Goal page offers Dimension value controls:\n%s", renderNode(page))
 	}
 	for _, form := range []url.Values{
 		{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}},
@@ -3335,18 +3790,27 @@ func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 		domain.LifecycleDone:      done,
 		domain.LifecycleCancelled: cancelled,
 	} {
-		page := getBody(t, client, goalPageURL(ts.URL, g))
-		if !strings.Contains(page, `data-testid="goal-lifecycle">`+lifecycle+"<") {
+		page := getPage(t, client, goalPageURL(ts.URL, g))
+		if !goalShowsLifecycle(page, lifecycle) {
 			t.Errorf("%s: the page doesn't show its Lifecycle", lifecycle)
 		}
-		if c := goalPageCardClass.FindString(page); c != "" {
-			t.Errorf("a %s Goal's page has a card, %s", lifecycle, c)
+		if cards := goalPageCardsIn(page); len(cards) > 0 {
+			t.Errorf("a %s Goal's page has a card, class=%q", lifecycle, attrOf(cards[0], "class"))
 		}
 	}
 }
 
-// goalPageCardClass matches a class attribute that holds card.
-var goalPageCardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+// goalShowsLifecycle reports whether the Goal page under root shows lifecycle
+// as its Lifecycle.
+func goalShowsLifecycle(root *nethtml.Node, lifecycle string) bool {
+	return slices.Contains(textsOf(findAllByTestID(root, "goal-lifecycle")), lifecycle)
+}
+
+// goalPageCardsIn returns each element under root whose class names card on
+// its own, not as part of another class's name.
+func goalPageCardsIn(root *nethtml.Node) []*nethtml.Node {
+	return findAll(root, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "card") })
+}
 
 // The Goal page stays one flat surface whoever reads it and whatever form is
 // open in place: an Admin's and a stranger's view have no card, as the
@@ -3385,12 +3849,12 @@ func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 	}
 
 	for viewer, client := range clients {
-		page := getBody(t, client, goalPageURL(ts.URL, active))
-		if !strings.Contains(page, `data-testid="goal-lifecycle">Active<`) {
+		page := getPage(t, client, goalPageURL(ts.URL, active))
+		if !goalShowsLifecycle(page, domain.LifecycleActive) {
 			t.Errorf("%s: the page doesn't show the Goal", viewer)
 		}
-		if c := goalPageCardClass.FindString(page); c != "" {
-			t.Errorf("%s's view of the Goal page has a card, %s", viewer, c)
+		if cards := goalPageCardsIn(page); len(cards) > 0 {
+			t.Errorf("%s's view of the Goal page has a card, class=%q", viewer, attrOf(cards[0], "class"))
 		}
 	}
 
@@ -3413,10 +3877,12 @@ func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 		{"draft-highlight", "sam@example.com", active},
 		{"title-why-it-matters", "sam@example.com", active},
 	} {
-		page := getBody(t, clients[tc.viewer], goalPageURL(ts.URL, tc.goal)+"?open="+tc.form)
-		openForm(t, page, tc.form)
-		if c := goalPageCardClass.FindString(page); c != "" {
-			t.Errorf("the Goal page with %s open has a card, %s", tc.form, c)
+		page := getPage(t, clients[tc.viewer], goalPageURL(ts.URL, tc.goal)+"?open="+tc.form)
+		if open := goalOpenFormIn(t, page, tc.form); !hasTestID(open, "cancel-form") {
+			t.Errorf("the open %s form has no Cancel link: %s", tc.form, renderNode(open))
+		}
+		if cards := goalPageCardsIn(page); len(cards) > 0 {
+			t.Errorf("the Goal page with %s open has a card, class=%q", tc.form, attrOf(cards[0], "class"))
 		}
 	}
 }
@@ -3432,99 +3898,84 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 	ts := newServer(t, h)
 	page := goalPageWithEverySection(t, h, ts)
 
-	main := between(t, page, `data-testid="goal-main"`, `data-testid="goal-sidebar"`)
-	at := 0
+	main := findByTestID(t, page, "goal-main")
+	var before *nethtml.Node
 	for _, tc := range []struct{ tag, testID, heading string }{
-		{"section", "goal-checkins", "<h2>Latest status</h2>"},
-		{"section", "goal-metrics", "<h2>Metrics</h2>"},
-		{"section", "goal-milestones", "<h2>Milestones</h2>"},
-		{"section", "goal-highlights", "<h2>Highlights</h2>"},
-		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
-		{"section", "goal-action-items", "<h2>Action Items</h2>"},
-		{"section", "goal-comments", "<h2>Comments</h2>"},
-		{"div", "goal-history", "<h2>History</h2>"},
+		{"section", "goal-checkins", "Latest status"},
+		{"section", "goal-metrics", "Metrics"},
+		{"section", "goal-milestones", "Milestones"},
+		{"section", "goal-highlights", "Highlights"},
+		{"section", "goal-draft-highlights", "Draft Highlights"},
+		{"section", "goal-action-items", "Action Items"},
+		{"section", "goal-comments", "Comments"},
+		{"div", "goal-history", "History"},
 	} {
-		if i := strings.Index(main, `data-testid="`+tc.testID+`"`); i < at {
+		block := assertGoalBlockOpensWith(t, page, tc.tag, tc.testID, "h2", tc.heading)
+		if !within(block, main) || before != nil && !precedes(before, block) {
 			t.Errorf("%s is not in the document column after the section before it", tc.testID)
-		} else {
-			at = i
 		}
-		assertOpensWith(t, page, tc.tag, tc.testID, tc.heading)
+		before = block
 	}
-	sidebar := between(t, page, `data-testid="goal-sidebar"`, "</aside>")
+	sidebar := findByTestID(t, page, "goal-sidebar")
 	for _, tc := range []struct{ testID, heading string }{
-		{"goal-dimensions", "<h3>Dimensions</h3>"},
-		{"goal-field-block", "<h3>Fields</h3>"},
-		{"goal-parents", "<h3>Contributes to</h3>"},
-		{"goal-children", "<h3>Contributed to by</h3>"},
+		{"goal-dimensions", "Dimensions"},
+		{"goal-field-block", "Fields"},
+		{"goal-parents", "Contributes to"},
+		{"goal-children", "Contributed to by"},
 	} {
-		if !strings.Contains(sidebar, `data-testid="`+tc.testID+`"`) {
+		if block := assertGoalBlockOpensWith(t, page, "section", tc.testID, "h3", tc.heading); !within(block, sidebar) {
 			t.Errorf("%s is not in the rail", tc.testID)
 		}
-		assertOpensWith(t, page, "section", tc.testID, tc.heading)
 	}
 }
 
 // goalPageWithEverySection is the Owner's view of an Active Goal whose page
 // shows every section its document column can: a Check-in with a Highlight,
 // and an open Action Item raised on a Report covering it.
-func goalPageWithEverySection(t *testing.T, h *testsupport.Harness, ts *httptest.Server) string {
+func goalPageWithEverySection(t *testing.T, h *testsupport.Harness, ts *httptest.Server) *nethtml.Node {
 	t.Helper()
 	f := newGoalActionItemFixture(h)
 	h.CheckinWithHighlights(f.author, f.goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	f.raise(f.mbrPub, f.sam, "Explain the slip.", 5, f.goal.ID)
-	return getBody(t, signInClient(t, ts.URL, f.author.Email), goalPageURL(ts.URL, f.goal))
+	return getPage(t, signInClient(t, ts.URL, f.author.Email), goalPageURL(ts.URL, f.goal))
 }
 
-// assertOpensWith checks the tag element carrying testID opens with heading,
-// beside the link a group whose form opens in place puts by it.
-func assertOpensWith(t *testing.T, page, tag, testID, heading string) {
+// assertGoalBlockOpensWith checks the tag element under root carrying testID
+// opens with a level heading reading heading: it comes first, or first in the
+// head a group whose form opens in place wraps it in, beside its link. It
+// returns the element.
+func assertGoalBlockOpensWith(t *testing.T, root *nethtml.Node, tag, testID, level, heading string) *nethtml.Node {
 	t.Helper()
-	block := pageElement(t, page, tag, testID)
-	first := strings.TrimPrefix(strings.TrimSpace(block[len(openTag(block))+1:]), `<div class="gp-group-head">`)
-	if !strings.HasPrefix(first, heading) {
-		t.Errorf("%s does not open with %s: %.80s", testID, heading, first)
+	block := findByTestID(t, root, testID)
+	if block.Data != tag {
+		t.Fatalf("%s is a <%s>, want a <%s>", testID, block.Data, tag)
 	}
+	first := goalFirstContentOf(block)
+	if first != nil && first.Type == nethtml.ElementNode && first.Data == "div" {
+		first = goalFirstContentOf(first)
+	}
+	if first == nil || first.Type != nethtml.ElementNode || first.Data != level || textOf(first) != heading {
+		got := "nothing"
+		if first != nil {
+			got = renderNode(first)
+		}
+		t.Errorf("%s does not open with its %s %s: %.80s", testID, level, heading, got)
+	}
+	return block
 }
 
-// Each section of the Goal page's document column is a 13/600 heading over a
-// --color-border hairline, with its rows ruled by hairlines too, and none sits
-// in a box or under a rule of its own: the space between sections groups them
-// (DESIGN.md § Goal page sections).
-func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	page := goalPageWithEverySection(t, h, ts)
-
-	for _, tc := range []struct{ tag, testID string }{
-		{"section", "goal-checkins"},
-		{"section", "goal-metrics"},
-		{"section", "goal-milestones"},
-		{"section", "goal-highlights"},
-		{"section", "goal-draft-highlights"},
-		{"section", "goal-action-items"},
-		{"section", "goal-comments"},
-		{"div", "goal-history"},
-	} {
-		block := openTag(pageElement(t, page, tc.tag, tc.testID))
-		if !hasClass(block, "gp-section") || hasClass(block, "ruled") || hasClass(block, "card") {
-			t.Errorf("%s is not a plain section: %s", tc.testID, block)
+// goalFirstContentOf is n's first child that shows anything: an element, or
+// text that isn't only whitespace.
+func goalFirstContentOf(n *nethtml.Node) *nethtml.Node {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == nethtml.ElementNode:
+			return c
+		case c.Type == nethtml.TextNode && strings.TrimSpace(c.Data) != "":
+			return c
 		}
 	}
-	if rule := cssRule(t, page, ".gp-section>h2,.gp-section>.gp-group-head"); !strings.Contains(rule, "border-bottom:1px solid var(--color-border)") {
-		t.Errorf("a section's heading sits over no hairline: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-doc h2"); !strings.Contains(rule, "font-size:13px") || !strings.Contains(rule, "font-weight:600") {
-		t.Errorf("a section's heading is not 13/600: %s", rule)
-	}
-	if rule := cssRule(t, page, ".gp-rows>li"); !strings.Contains(rule, "border-bottom:1px solid var(--color-border)") {
-		t.Errorf("a section's rows are not ruled by hairlines: %s", rule)
-	}
-	if !hasClass(between(t, pageElement(t, page, "section", "goal-highlights"), "<ul", ">"), "gp-rows") {
-		t.Errorf("the Highlights are not rows")
-	}
+	return nil
 }
 
 // A Retired Dimension isn't offered on the Goal page: it has no control to set
@@ -3553,50 +4004,92 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	page := getBody(t, client, goalURL+"?open=dimensions")
-	shown := between(t, page, `<section data-testid="goal-dimensions"`, `data-open-form="dimensions"`)
-	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
-		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
+	page := getPage(t, client, goalURL+"?open=dimensions")
+	edit := goalOpenFormIn(t, page, "dimensions")
+	section := findByTestID(t, page, "goal-dimensions")
+	shownValues := goalOutside(findAllByTestID(section, "goal-dimension-value"), edit)
+	if !slices.Contains(textsOf(shownValues), "Growth") || len(goalOutside(findAllByTestID(section, "retired"), edit)) == 0 {
+		t.Errorf("Growth isn't shown marked retired: %s", renderNode(section))
 	}
-	for _, listed := range elementTexts(shown, "div", "goal-dimension") {
-		if strings.Contains(listed, "Quarter") {
-			t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+	for _, listed := range goalOutside(findAllByTestID(section, "goal-dimension"), edit) {
+		if strings.Contains(textOf(listed), "Quarter") {
+			t.Errorf("a Retired Dimension the Goal carries no value in is listed: %s", renderNode(listed))
 		}
 	}
-	edit := openForm(t, page, "dimensions")
 	for _, d := range []domain.Dimension{pillar, quarter} {
-		if strings.Contains(edit, d.Name) {
-			t.Errorf("the Retired %s is offered for setting:\n%s", d.Name, edit)
+		if goalMentions(edit, d.Name) {
+			t.Errorf("the Retired %s is offered for setting: %s", d.Name, renderNode(edit))
 		}
 	}
-	if !strings.Contains(edit, "Team") {
-		t.Errorf("the live Team isn't offered for setting:\n%s", edit)
+	if !goalMentions(edit, "Team") {
+		t.Errorf("the live Team isn't offered for setting: %s", renderNode(edit))
 	}
 	childURL := fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, goal.ID)
-	if fits := fitsSection(t, getBody(t, client, childURL)); strings.Contains(fits, fmt.Sprintf(`<option value="%d"`, growth.ID)) {
-		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", fits)
+	fits := findByTestID(t, getPage(t, client, childURL), "goal-form-fits")
+	if options := goalChoicesOf(fits, growth); len(options) > 0 {
+		t.Errorf("a value of a Retired Dimension is offered as a child default: %s", renderNode(fits))
 	}
 
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	page = getBody(t, client, goalURL+"?open=dimensions")
-	shown = between(t, page, `<section data-testid="goal-dimensions"`, `data-open-form="dimensions"`)
-	if strings.Contains(shown, `data-testid="retired"`) {
-		t.Errorf("Growth is still marked retired after Pillar is restored:\n%s", shown)
+	page = getPage(t, client, goalURL+"?open=dimensions")
+	edit = goalOpenFormIn(t, page, "dimensions")
+	if marks := goalOutside(findAllByTestID(findByTestID(t, page, "goal-dimensions"), "retired"), edit); len(marks) > 0 {
+		t.Errorf("Growth is still marked retired after Pillar is restored: %s", renderNode(marks[0].Parent))
 	}
-	if edit := openForm(t, page, "dimensions"); !strings.Contains(edit, `aria-label="Pillar"`) {
-		t.Errorf("the restored Pillar isn't offered for setting:\n%s", edit)
+	if labelled := findAll(edit, func(n *nethtml.Node) bool { return attrOf(n, "aria-label") == "Pillar" }); len(labelled) == 0 {
+		t.Errorf("the restored Pillar isn't offered for setting: %s", renderNode(edit))
 	}
-	if !chosen(t, fitsSection(t, getBody(t, client, childURL)), growth) {
+	fits = findByTestID(t, getPage(t, client, childURL), "goal-form-fits")
+	if choices := goalChoicesOf(fits, growth); len(choices) == 0 || !hasAttr(choices[0], "checked") && !hasAttr(choices[0], "selected") {
 		t.Errorf("Growth isn't offered as a child default once Pillar is restored")
 	}
+}
+
+// goalOutside is nodes less those inside skip.
+func goalOutside(nodes []*nethtml.Node, skip *nethtml.Node) []*nethtml.Node {
+	var out []*nethtml.Node
+	for _, n := range nodes {
+		if !within(n, skip) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// goalChoicesOf returns the options and inputs under root that choose v.
+func goalChoicesOf(root *nethtml.Node, v domain.DimensionValue) []*nethtml.Node {
+	id := strconv.FormatInt(v.ID, 10)
+	return findAll(root, func(n *nethtml.Node) bool {
+		return (n.Data == "option" || n.Data == "input") && attrOf(n, "value") == id
+	})
+}
+
+// goalMentions reports whether anything under root reads or is named s: its
+// text, every option of a select included and hidden text too, or an
+// attribute's value.
+func goalMentions(root *nethtml.Node, s string) bool {
+	nodes := append([]*nethtml.Node{root}, slices.Collect(root.Descendants())...)
+	for _, n := range nodes {
+		if n.Type == nethtml.TextNode && strings.Contains(n.Data, s) {
+			return true
+		}
+		for _, a := range n.Attr {
+			if strings.Contains(a.Val, s) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // A Retired Dimension drops out of the Goal list's filter and grouping, and a
 // stale link filtering or grouping by it is ignored rather than narrowing the
 // list with no control to undo it. A Goal's row still shows its value, marked
 // retired. Restoring the Dimension returns it to both (CONTEXT.md: Retired).
+// How the value is drawn is pinned in styles_test.go
+// (TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTPStyles).
 func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3617,38 +4110,44 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals")
-	filters := between(t, page, `data-testid="goal-filters"`, "</form>")
-	if strings.Contains(filters, "Pillar") || strings.Contains(filters, "Growth") {
-		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", filters)
+	page := getPage(t, client, ts.URL+"/goals")
+	filters := findByTestID(t, page, "goal-filters")
+	if goalMentions(filters, "Pillar") || goalMentions(filters, "Growth") {
+		t.Errorf("the Retired Pillar is offered to filter or group by: %s", renderNode(filters))
 	}
-	if !strings.Contains(filters, "<legend>Team</legend>") || !strings.Contains(filters, ">Team</option>") {
-		t.Errorf("the live Team isn't offered to filter and group by:\n%s", filters)
+	if !goalHasElementReading(filters, "legend", "Team") || !goalHasElementReading(filters, "option", "Team") {
+		t.Errorf("the live Team isn't offered to filter and group by: %s", renderNode(filters))
 	}
-	row := between(t, page, `<tr data-testid="goal-row"`, "</tr>")
-	if !strings.Contains(row, ">Alpha<") || !strings.Contains(row, `data-testid="goal-value-tag" class="tag">Growth`) || !strings.Contains(row, `data-testid="retired"`) {
-		t.Errorf("Alpha's row doesn't show Growth marked retired:\n%s", row)
+	row := goalListRowOf(t, page, alpha)
+	if link := linkTo(row, goalHref(alpha.ID)); link == nil || textOf(link) != "Alpha" ||
+		!slices.Contains(textsOf(findAllByTestID(row, "goal-value-tag")), "Growth") || !hasTestID(row, "retired") {
+		t.Errorf("Alpha's row doesn't show Growth marked retired: %s", renderNode(row))
 	}
 
-	stale := getBody(t, client, fmt.Sprintf("%s/goals?value=%d&group=%d", ts.URL, growth.ID, pillar.ID))
-	if got := rowTitles(goalRows(t, stale), alpha, bravo); !slices.Equal(got, []string{"Alpha", "Bravo"}) {
+	stale := getPage(t, client, fmt.Sprintf("%s/goals?value=%d&group=%d", ts.URL, growth.ID, pillar.ID))
+	if got := goalRowTitlesIn(goalListRowsIn(stale), alpha, bravo); !slices.Equal(got, []string{"Alpha", "Bravo"}) {
 		t.Errorf("a stale link on the Retired Pillar lists %q, want both Goals", got)
 	}
-	if strings.Contains(stale, `data-testid="goal-group"`) {
+	if hasTestID(stale, "goal-group") {
 		t.Errorf("a stale link groups by the Retired Pillar")
 	}
 
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	filters = between(t, getBody(t, client, ts.URL+"/goals"), `data-testid="goal-filters"`, "</form>")
-	if !strings.Contains(filters, "<legend>Pillar</legend>") || !strings.Contains(filters, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
-		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", filters)
+	filters = findByTestID(t, getPage(t, client, ts.URL+"/goals"), "goal-filters")
+	pillarID := strconv.FormatInt(pillar.ID, 10)
+	if !goalHasElementReading(filters, "legend", "Pillar") || len(findAll(filters, func(n *nethtml.Node) bool { return n.Data == "option" && attrOf(n, "value") == pillarID })) == 0 {
+		t.Errorf("the restored Pillar isn't offered to filter and group by: %s", renderNode(filters))
 	}
-	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
-	if !strings.Contains(grouped, `data-testid="goal-group"`) {
+	if grouped := getPage(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID)); !hasTestID(grouped, "goal-group") {
 		t.Errorf("the list doesn't group by the restored Pillar")
 	}
+}
+
+// goalHasElementReading reports whether a tag element under root reads text.
+func goalHasElementReading(root *nethtml.Node, tag, text string) bool {
+	return len(findAll(root, func(n *nethtml.Node) bool { return n.Data == tag && textOf(n) == text })) > 0
 }
 
 // A Field describes a Goal and is never an update: it is offered in neither the
@@ -3668,67 +4167,22 @@ func TestFieldsStayOffTheGoalListControlsAndCheckinForm(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	filters := between(t, getBody(t, client, ts.URL+"/goals"), `data-testid="goal-filters"`, "</form>")
-	if !strings.Contains(filters, "Pillar") {
-		t.Fatalf("the Goal list's controls don't offer the Pillar Dimension:\n%s", filters)
+	filters := findByTestID(t, getPage(t, client, ts.URL+"/goals"), "goal-filters")
+	if !goalMentions(filters, "Pillar") {
+		t.Fatalf("the Goal list's controls don't offer the Pillar Dimension: %s", renderNode(filters))
 	}
 	for _, name := range []string{"Budget", "Rationale"} {
-		if strings.Contains(filters, name) {
-			t.Errorf("the Goal list's filter or grouping offers the %s Field:\n%s", name, filters)
+		if goalMentions(filters, name) {
+			t.Errorf("the Goal list's filter or grouping offers the %s Field: %s", name, renderNode(filters))
 		}
 	}
 
-	form := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	for _, text := range []string{"Budget", "Rationale", "Because outages"} {
-		if strings.Contains(form, text) {
-			t.Errorf("the Check-in form shows %q:\n%s", text, form)
+		if goalMentions(form, text) {
+			t.Errorf("the Check-in form shows %q", text)
 		}
 	}
-}
-
-// tableHeads names the Goal table's columns, in order, by their header text.
-func tableHeads(t *testing.T, page string) []string {
-	t.Helper()
-	return cellTexts(between(t, page, `<thead data-testid="goal-table-head"`, "</thead>"), "th")
-}
-
-// tableRows returns the Goal table's rows in the order they render.
-func tableRows(t *testing.T, page string) []string {
-	t.Helper()
-	tbody := between(t, page, `<table data-testid="goal-table"`, "</table>")
-	var rows []string
-	for _, part := range strings.Split(tbody, `<tr data-testid="goal-table-row"`)[1:] {
-		row, _, ok := strings.Cut(part, "</tr>")
-		if !ok {
-			t.Fatalf("unterminated table row:\n%s", part)
-		}
-		rows = append(rows, row)
-	}
-	return rows
-}
-
-// tableCell is the text of row's cell under the column headed head.
-func tableCell(t *testing.T, page, row, head string) string {
-	t.Helper()
-	i := slices.Index(tableHeads(t, page), head)
-	if i < 0 {
-		t.Fatalf("the Goal table has no %s column", head)
-	}
-	cells := cellTexts(row, "td")
-	if i >= len(cells) {
-		t.Fatalf("row has %d cells, no %s:\n%s", len(cells), head, row)
-	}
-	return cells[i]
-}
-
-// cellTexts is the visible text of each tag cell in html, whitespace collapsed.
-func cellTexts(html, tag string) []string {
-	var texts []string
-	for _, m := range regexp.MustCompile(`(?s)<`+tag+`[\s>].*?</`+tag+`>`).FindAllString(html, -1) {
-		text := regexp.MustCompile(`<[^>]*>`).ReplaceAllString(m, " ")
-		texts = append(texts, strings.Join(strings.Fields(text), " "))
-	}
-	return texts
 }
 
 // The Goal list's table layout has a column for the Goal's Health, which leads
@@ -3764,27 +4218,30 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
 	want := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
-	if got := tableHeads(t, page); !slices.Equal(got, want) {
+	if got := goalTableHeadsIn(t, page); !slices.Equal(got, want) {
 		t.Fatalf("columns = %q, want %q", got, want)
 	}
-	rows := tableRows(t, page)
+	rows := goalTableRowsIn(t, page)
 	if len(rows) != 1 {
 		t.Fatalf("got %d table rows, want 1", len(rows))
 	}
 	row := rows[0]
-	if !strings.Contains(row, navTo(goal.ID)+">Reduce outages<") {
-		t.Errorf("the title doesn't link to the Goal:\n%s", row)
+	title := linkTo(row, goalHref(goal.ID))
+	if title == nil || textOf(title) != "Reduce outages" {
+		t.Errorf("the title doesn't link to the Goal: %s", renderNode(row))
 	}
-	doc := findByTestID(t, parsePage(t, page), "goal-table-row")
-	chip := healthChipIn(t, doc)
+	chip := healthChipIn(t, row)
 	assertHealthChip(t, chip, "Green")
-	if title := linkTo(doc, fmt.Sprintf("/goals/%d", goal.ID)); title == nil || !precedes(chip, title) {
-		t.Errorf("the row's Health doesn't come before its title:\n%s", renderNode(doc))
+	if title == nil || !precedes(chip, title) {
+		t.Errorf("the row's Health doesn't come before its title: %s", renderNode(row))
+	}
+	// The Owner cell shows the Name, its email disclosed on demand.
+	if owner := goalTableCellIn(t, page, row, "Owner"); textOf(owner) != "Sam Ortiz" || !goalShows(owner, "sam@example.com", "Sam Ortiz") {
+		t.Errorf("Owner cell = %q, want Sam Ortiz with their email a click away: %s", textOf(owner), renderNode(owner))
 	}
 	for head, cell := range map[string]string{
-		"Owner":     "Sam Ortiz sam@example.com", // the Name, its email disclosed on demand
 		"Health":    "Green",
 		"Lifecycle": "Active",
 		"Pillar":    "Growth, Trust",
@@ -3792,17 +4249,21 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 		"Area":      "",
 		"Approver":  "",
 	} {
-		if got := tableCell(t, page, row, head); got != cell {
+		if got := textOf(goalTableCellIn(t, page, row, head)); got != cell {
 			t.Errorf("%s cell = %q, want %q", head, got, cell)
 		}
 	}
 }
 
-// linkQuery is the query string of the <a> carrying data-testid on page.
-func linkQuery(t *testing.T, page, testID string) url.Values {
+// goalLayoutLinkQueryIn is the query string of the link carrying data-testid
+// under root, failing the test unless it is one link to the Goal list.
+func goalLayoutLinkQueryIn(t *testing.T, root *nethtml.Node, testID string) url.Values {
 	t.Helper()
-	tag := pageTag(t, page, "a", testID)
-	u, err := url.Parse(html.UnescapeString(attr(tag, "href")))
+	link := findByTestID(t, root, testID)
+	if link.Data != "a" {
+		t.Fatalf("%s isn't a link: %s", testID, renderNode(link))
+	}
+	u, err := url.Parse(attrOf(link, "href"))
 	if err != nil {
 		t.Fatalf("%s href: %v", testID, err)
 	}
@@ -3832,50 +4293,48 @@ func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	list := getBody(t, client, fmt.Sprintf("%s/goals?org=all&q=alpha&value=%d", ts.URL, growth.ID))
-	toTable := linkQuery(t, list, "layout-table")
+	list := getPage(t, client, fmt.Sprintf("%s/goals?org=all&q=alpha&value=%d", ts.URL, growth.ID))
+	toTable := goalLayoutLinkQueryIn(t, list, "layout-table")
 	if toTable.Get("layout") != "table" || toTable.Get("q") != "alpha" || toTable.Get("value") != fmt.Sprint(growth.ID) {
 		t.Fatalf("the Table toggle drops a filter: %v", toTable)
 	}
 
 	// A fresh browser following the shared table link sees the same slice.
-	table := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?"+toTable.Encode())
-	rows := tableRows(t, table)
-	if got := rowTitles(rows, alpha, alphaTrust, bravo); !slices.Equal(got, []string{"Alpha launch"}) {
+	table := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?"+toTable.Encode())
+	if got := goalRowTitlesIn(goalTableRowsIn(t, table), alpha, alphaTrust, bravo); !slices.Equal(got, []string{"Alpha launch"}) {
 		t.Errorf("the shared table lists %q, want only Alpha launch", got)
 	}
-	filters := between(t, table, `data-testid="goal-filters"`, "</form>")
-	if !strings.Contains(filters, `name="layout" value="table"`) {
-		t.Errorf("applying the filter bar leaves the table:\n%s", filters)
+	filters := findByTestID(t, table, "goal-filters")
+	if !slices.ContainsFunc(formFields(filters, "layout"), func(f pageField) bool { return f.Value == "table" }) {
+		t.Errorf("applying the filter bar leaves the table: %s", renderNode(filters))
 	}
-	if !strings.Contains(filters, `value="alpha"`) || !strings.Contains(filters, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
-		t.Errorf("the table's filter bar doesn't show the active filters:\n%s", filters)
+	growthBox := slices.ContainsFunc(formFields(filters, "value"), func(f pageField) bool { return f.Value == fmt.Sprint(growth.ID) && f.Checked })
+	if formField(t, filters, "q").Value != "alpha" || !growthBox {
+		t.Errorf("the table's filter bar doesn't show the active filters: %s", renderNode(filters))
 	}
 
-	toList := linkQuery(t, table, "layout-list")
+	toList := goalLayoutLinkQueryIn(t, table, "layout-list")
 	if toList.Has("layout") || toList.Get("q") != "alpha" || toList.Get("value") != fmt.Sprint(growth.ID) {
 		t.Errorf("the List toggle drops a filter or stays in the table: %v", toList)
 	}
 }
 
-// sortLink is the URL the Goal table's header for the column head links to.
-func sortLink(t *testing.T, page, head string) string {
+// goalTableSortLinkIn is where the Goal table's header for the column head
+// links to, failing the test unless the header is a link.
+func goalTableSortLinkIn(t *testing.T, root *nethtml.Node, head string) string {
 	t.Helper()
-	thead := between(t, page, `<thead data-testid="goal-table-head"`, "</thead>")
-	for _, th := range regexp.MustCompile(`(?s)<th[\s>].*?</th>`).FindAllString(thead, -1) {
-		if cellTexts(th, "th")[0] == head {
-			at := strings.Index(th, "<a ")
-			if at < 0 {
-				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
-			}
-			href := attr(openTag(th[at:]), "href")
-			if href == "" {
-				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
-			}
-			return html.UnescapeString(href)
+	thead := findByTestID(t, root, "goal-table-head")
+	for _, th := range findAll(thead, func(n *nethtml.Node) bool { return n.Data == "th" }) {
+		if textOf(th) != head {
+			continue
 		}
+		links := findAll(th, func(n *nethtml.Node) bool { return n.Data == "a" && attrOf(n, "href") != "" })
+		if len(links) == 0 {
+			t.Fatalf("the %s header doesn't sort: %s", head, renderNode(th))
+		}
+		return attrOf(links[0], "href")
 	}
-	t.Fatalf("the Goal table has no %s header:\n%s", head, thead)
+	t.Fatalf("the Goal table has no %s header: %s", head, renderNode(thead))
 	return ""
 }
 
@@ -3901,59 +4360,58 @@ func TestGoalTableSortsByAColumnWithUnsetValuesLast(t *testing.T) {
 	h.SetGoalField(sam, hundred, budget, "100")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	order := func(page string) []string {
-		return rowTitles(tableRows(t, page), nine, ten, hundred, unset)
+	order := func(page *nethtml.Node) []string {
+		return goalRowTitlesIn(goalTableRowsIn(t, page), nine, ten, hundred, unset)
 	}
 
-	page := getBody(t, client, ts.URL+"/goals?layout=table&q=n")
+	page := getPage(t, client, ts.URL+"/goals?layout=table&q=n")
 	if got, want := order(page), []string{"Unset", "Hundred", "Nine", "Ten"}; !slices.Equal(got, want) {
 		t.Errorf("unsorted order = %q, want the problem-first %q", got, want)
 	}
 
-	up := sortLink(t, page, "Budget")
-	page = getBody(t, client, ts.URL+up)
+	up := goalTableSortLinkIn(t, page, "Budget")
+	page = getPage(t, client, ts.URL+up)
 	if got, want := order(page), []string{"Nine", "Ten", "Hundred", "Unset"}; !slices.Equal(got, want) {
 		t.Errorf("sorted by Budget = %q, want %q", got, want)
 	}
-	if strings.Contains(page, "Excluded") {
+	if strings.Contains(textOf(page), "Excluded") {
 		t.Errorf("sorting dropped the search filter")
 	}
 
-	down := sortLink(t, page, "Budget")
+	down := goalTableSortLinkIn(t, page, "Budget")
 	if down == up {
 		t.Fatalf("sorting by Budget again doesn't reverse it: %s", down)
 	}
-	page = getBody(t, client, ts.URL+down)
+	page = getPage(t, client, ts.URL+down)
 	if got, want := order(page), []string{"Hundred", "Ten", "Nine", "Unset"}; !slices.Equal(got, want) {
 		t.Errorf("reverse-sorted by Budget = %q, want %q", got, want)
 	}
-	if again := sortLink(t, page, "Budget"); again != up {
+	if again := goalTableSortLinkIn(t, page, "Budget"); again != up {
 		t.Errorf("a third click on Budget links to %s, want ascending again %s", again, up)
 	}
 }
 
-// submitColumns submits the Goal table's Columns form as a browser would, with
-// the columns labelled hide unticked and every other column ticked, and returns
-// the page it lands on.
-func submitColumns(t *testing.T, client *http.Client, base, page string, hide ...string) string {
+// goalTableSubmitColumns submits the Goal table's Columns form under page as
+// a browser would, with the columns labelled hide unticked and every other
+// column ticked, and returns the page it lands on.
+func goalTableSubmitColumns(t *testing.T, client *http.Client, base string, page *nethtml.Node, hide ...string) *nethtml.Node {
 	t.Helper()
-	form := between(t, page, `<form data-testid="goal-columns"`, "</form>")
-	if action := attr(openTag(form), "action"); action != "/goals" || attr(openTag(form), "method") != "get" {
-		t.Fatalf("the Columns form doesn't GET /goals:\n%s", form)
+	form := findByTestID(t, page, "goal-columns")
+	if form.Data != "form" || attrOf(form, "action") != "/goals" || attrOf(form, "method") != "get" {
+		t.Fatalf("the Columns form doesn't GET /goals: %s", renderNode(form))
 	}
 	values := url.Values{}
-	for _, m := range regexp.MustCompile(`<input([^>]*)>([^<]*)`).FindAllStringSubmatch(form, -1) {
-		tag, label := "<input"+m[1], strings.TrimSpace(m[2])
-		switch attr(tag, "type") {
+	for _, input := range findAll(form, func(n *nethtml.Node) bool { return n.Data == "input" }) {
+		switch attrOf(input, "type") {
 		case "hidden":
-			values.Add(attr(tag, "name"), html.UnescapeString(attr(tag, "value")))
+			values.Add(attrOf(input, "name"), attrOf(input, "value"))
 		case "checkbox":
-			if !slices.Contains(hide, label) {
-				values.Add(attr(tag, "name"), attr(tag, "value"))
+			if !slices.Contains(hide, fieldLabel(input)) {
+				values.Add(attrOf(input, "name"), attrOf(input, "value"))
 			}
 		}
 	}
-	return getBody(t, client, base+"/goals?"+values.Encode())
+	return getPage(t, client, base+"/goals?"+values.Encode())
 }
 
 // A Columns control hides any Goal table column but Title. It is a plain form,
@@ -3974,45 +4432,46 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	all := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
 
-	page := getBody(t, client, ts.URL+"/goals?layout=table&q=alpha")
-	if got := tableHeads(t, page); !slices.Equal(got, all) {
+	page := getPage(t, client, ts.URL+"/goals?layout=table&q=alpha")
+	if got := goalTableHeadsIn(t, page); !slices.Equal(got, all) {
 		t.Fatalf("columns = %q, want %q", got, all)
 	}
-	if form := between(t, page, `<form data-testid="goal-columns"`, "</form>"); strings.Contains(form, `value="title"`) {
-		t.Errorf("the Columns control offers to hide Title:\n%s", form)
+	form := findByTestID(t, page, "goal-columns")
+	if titles := findAll(form, func(n *nethtml.Node) bool { return attrOf(n, "value") == "title" }); len(titles) > 0 {
+		t.Errorf("the Columns control offers to hide Title: %s", renderNode(form))
 	}
 
-	page = submitColumns(t, client, ts.URL, page, "Owner", "Budget")
+	page = goalTableSubmitColumns(t, client, ts.URL, page, "Owner", "Budget")
 	want := []string{"Health", "Title", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
-	if got := tableHeads(t, page); !slices.Equal(got, want) {
+	if got := goalTableHeadsIn(t, page); !slices.Equal(got, want) {
 		t.Errorf("after hiding Owner and Budget, columns = %q, want %q", got, want)
 	}
-	if strings.Contains(between(t, page, `<table data-testid="goal-table"`, "</table>"), "Bravo") {
+	if strings.Contains(textOf(findByTestID(t, page, "goal-table")), "Bravo") {
 		t.Errorf("hiding columns dropped the search filter")
 	}
 
-	next := getBody(t, client, ts.URL+"/goals?layout=table")
-	if got := tableHeads(t, next); !slices.Equal(got, want) {
+	next := getPage(t, client, ts.URL+"/goals?layout=table")
+	if got := goalTableHeadsIn(t, next); !slices.Equal(got, want) {
 		t.Errorf("on the next visit, columns = %q, want %q", got, want)
 	}
-	if got := tableHeads(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?layout=table")); !slices.Equal(got, all) {
+	if got := goalTableHeadsIn(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?layout=table")); !slices.Equal(got, all) {
 		t.Errorf("another browser's columns = %q, want all of %q", got, all)
 	}
 
-	everything := submitColumns(t, client, ts.URL, next, all...)
-	if got := tableHeads(t, everything); !slices.Equal(got, []string{"Title"}) {
+	everything := goalTableSubmitColumns(t, client, ts.URL, next, all...)
+	if got := goalTableHeadsIn(t, everything); !slices.Equal(got, []string{"Title"}) {
 		t.Errorf("hiding every column leaves %q, want Title alone", got)
 	}
-	restored := submitColumns(t, client, ts.URL, everything)
-	if got := tableHeads(t, restored); !slices.Equal(got, all) {
+	restored := goalTableSubmitColumns(t, client, ts.URL, everything)
+	if got := goalTableHeadsIn(t, restored); !slices.Equal(got, all) {
 		t.Errorf("showing every column again leaves %q, want %q", got, all)
 	}
 }
 
 // The Goal table has no totals row: no sum, count or average of a column,
 // since numbers in a Field are never added up across Goals (ADR 0005). Grouping
-// doesn't apply to it, and on a narrow screen it scrolls sideways inside its
-// own container rather than widening the page.
+// doesn't apply to it. That it scrolls sideways inside its own container on a
+// narrow screen is TestGoalTableHasNoTotalsRowAndIsntGroupedStyles's.
 func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
 	t.Parallel()
 
@@ -4030,30 +4489,44 @@ func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals?layout=table&group=%d", ts.URL, pillar.ID))
-	table := between(t, page, `<table data-testid="goal-table"`, "</table>")
-	if strings.Contains(table, "<tfoot") || strings.Contains(table, `data-testid="goal-group"`) {
-		t.Errorf("the Goal table has a footer or a group:\n%s", table)
+	page := getPage(t, client, fmt.Sprintf("%s/goals?layout=table&group=%d", ts.URL, pillar.ID))
+	table := findByTestID(t, page, "goal-table")
+	if footers := findAll(table, func(n *nethtml.Node) bool { return n.Data == "tfoot" }); len(footers) > 0 || hasTestID(table, "goal-group") {
+		t.Errorf("the Goal table has a footer or a group: %s", renderNode(table))
 	}
-	if rows, trs := len(tableRows(t, page)), strings.Count(table, "<tr"); rows != 2 || trs != 3 {
-		t.Errorf("the Goal table has %d Goal rows among %d rows, want the header and 2 Goals:\n%s", rows, trs, table)
+	if rows, trs := len(goalTableRowsIn(t, page)), len(findAll(table, func(n *nethtml.Node) bool { return n.Data == "tr" })); rows != 2 || trs != 3 {
+		t.Errorf("the Goal table has %d Goal rows among %d rows, want the header and 2 Goals: %s", rows, trs, renderNode(table))
 	}
-	for _, aggregate := range []string{">30<", ">15<", "Total", "Sum", "Average"} {
-		if strings.Contains(table, aggregate) {
-			t.Errorf("the Goal table shows an aggregate %q:\n%s", aggregate, table)
+	for _, sum := range []string{"30", "15"} {
+		if cells := findAll(table, func(n *nethtml.Node) bool { return textOf(n) == sum }); len(cells) > 0 {
+			t.Errorf("the Goal table shows an aggregate %q: %s", sum, renderNode(cells[0]))
 		}
 	}
-	if more := between(t, page, `data-testid="goal-filters"`, "</form>"); strings.Contains(more, "Group by") {
-		t.Errorf("the table offers Group by, which doesn't apply to it:\n%s", more)
+	for _, aggregate := range []string{"Total", "Sum", "Average"} {
+		if strings.Contains(textOf(table), aggregate) {
+			t.Errorf("the Goal table shows an aggregate %q: %s", aggregate, renderNode(table))
+		}
 	}
+	filters := findByTestID(t, page, "goal-filters")
+	groupBy := slices.ContainsFunc(formFields(filters, "group"), func(f pageField) bool { return f.Type == "select" })
+	if groupBy || strings.Contains(textOf(filters), "Group by") {
+		t.Errorf("the table offers Group by, which doesn't apply to it: %s", renderNode(filters))
+	}
+}
 
-	if !regexp.MustCompile(`<div class="table-scroll">\s*<table data-testid="goal-table"`).MatchString(page) {
-		t.Errorf("the Goal table isn't in its own scrolling container")
+// goalValueHistoryIn is the Goal page's History at goalURL listing only what
+// its Values chip lists, newest first, each entry checked to be a value
+// change.
+func goalValueHistoryIn(t *testing.T, client *http.Client, goalURL string) []*nethtml.Node {
+	t.Helper()
+	history := findByTestID(t, getPage(t, client, goalURL+"?history=values&shown=25"), "goal-history")
+	entries := findAllByTestID(history, "history-entry")
+	for _, e := range entries {
+		if kind := attrOf(e, "data-kind"); kind != "value" {
+			t.Errorf("the Values chip lists a %s entry: %s", kind, renderNode(e))
+		}
 	}
-	css := getBody(t, client, ts.URL+"/static/app.css")
-	if rule := cssRule(t, css, ".table-scroll"); !strings.Contains(rule, "overflow-x:auto") {
-		t.Errorf("the table's container doesn't scroll sideways: %s", rule)
-	}
+	return entries
 }
 
 // Every change to a Goal's Dimension values and Fields made through the Goal
@@ -4099,12 +4572,20 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 		t.Fatalf("RenameDimensionValue: %v", err)
 	}
 
-	chips := historyChips(t, historyBlock(t, getBody(t, patClient, goalPageURL(ts.URL, goal))))
-	if chips["Values"].count != "7" {
-		t.Errorf("the Values chip counts %q, want 7", chips["Values"].count)
+	chips := findByTestID(t, findByTestID(t, getPage(t, patClient, goalPageURL(ts.URL, goal)), "goal-history"), "history-chips")
+	values := findAll(chips, func(n *nethtml.Node) bool {
+		return attrOf(n, "data-testid") == "history-chip" && attrOf(n, "data-filter") == "values"
+	})
+	if len(values) != 1 || textOf(values[0]) != "Values 7" {
+		t.Errorf("History's chips don't count 7 under Values: %s", renderNode(chips))
 	}
-	patShown, deeShown := shownAs(pat.Email, "Pat Owner"), shownAs(dee.Email, "Dee Delegate")
-	want := []struct{ change, by, at string }{
+	type person struct{ email, name string }
+	patShown, deeShown := person{pat.Email, "Pat Owner"}, person{dee.Email, "Dee Delegate"}
+	want := []struct {
+		change string
+		by     person
+		at     string
+	}{
 		{"Budget: cleared (was 350)", patShown, "Jan 2, 22:04"},
 		{"Region: added APAC", deeShown, "Jan 2, 21:04"},
 		{"Region: removed EMEA", deeShown, "Jan 2, 21:04"},
@@ -4113,15 +4594,19 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 		{"Budget: 200 → 350", deeShown, "Jan 2, 16:04"},
 		{"Budget: set to 200", patShown, "Jan 2, 15:04"},
 	}
-	entries := valueEntries(t, patClient, goalPageURL(ts.URL, goal))
+	entries := goalValueHistoryIn(t, patClient, goalPageURL(ts.URL, goal))
 	if len(entries) != len(want) {
-		t.Fatalf("History lists %d value changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))
+		t.Fatalf("History lists %d value changes, want %d:\n%s", len(entries), len(want), strings.Join(textsOf(entries), "\n"))
 	}
 	for i, w := range want {
-		for _, part := range []string{w.change, w.by, w.at} {
-			if !strings.Contains(entries[i], html.UnescapeString(part)) {
-				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
+		text := textOf(entries[i])
+		for _, part := range []string{w.change, w.at} {
+			if !strings.Contains(text, part) {
+				t.Errorf("entry %d lacks %q: %s", i, part, text)
 			}
+		}
+		if !goalShows(entries[i], w.by.email, w.by.name) {
+			t.Errorf("entry %d doesn't show %s by Name with their email a click away: %s", i, w.by.name, renderNode(entries[i]))
 		}
 	}
 }
@@ -4146,9 +4631,8 @@ func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := submitColumns(t, client, ts.URL, getBody(t, client, ts.URL+"/goals?layout=table&q=alpha"), "Budget")
-	tag := pageTag(t, page, "a", "goal-table-download")
-	u, err := url.Parse(html.UnescapeString(attr(tag, "href")))
+	page := goalTableSubmitColumns(t, client, ts.URL, getPage(t, client, ts.URL+"/goals?layout=table&q=alpha"), "Budget")
+	u, err := url.Parse(attrOf(findByTestID(t, page, "goal-table-download"), "href"))
 	if err != nil {
 		t.Fatalf("download href: %v", err)
 	}
@@ -4177,44 +4661,23 @@ func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
 	}
 }
 
-// tableCellHTML is the markup of row's cell under the column headed head.
-func tableCellHTML(t *testing.T, page, row, head string) string {
-	t.Helper()
-	i := slices.Index(tableHeads(t, page), head)
-	if i < 0 {
-		t.Fatalf("the Goal table has no %s column", head)
-	}
-	cells := regexp.MustCompile(`(?s)<td[\s>].*?</td>`).FindAllString(row, -1)
-	if i >= len(cells) {
-		t.Fatalf("row has %d cells, no %s:\n%s", len(cells), head, row)
-	}
-	return cells[i]
+// goalTableInputsIn returns the form controls under root a person types or
+// picks a value in: every input, select and textarea but a hidden input.
+func goalTableInputsIn(root *nethtml.Node) []*nethtml.Node {
+	return findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "select" || n.Data == "textarea" || n.Data == "input" && attrOf(n, "type") != "hidden"
+	})
 }
 
-// hasInput reports whether markup holds a form control a person types or picks
-// a value in.
-func hasInput(markup string) bool {
-	return regexp.MustCompile(`<(input|select|textarea)[\s>]`).MatchString(regexp.MustCompile(`<input[^>]*type="hidden"[^>]*>`).ReplaceAllString(markup, ""))
-}
-
-// editTable follows the Goal table's Edit values control from the table at
-// rawURL, returning the table in edit mode.
-func editTable(t *testing.T, client *http.Client, baseURL, rawURL string) string {
+// goalTableEditMode follows the Goal table's Edit values link from the table
+// at rawURL, returning the table in edit mode.
+func goalTableEditMode(t *testing.T, client *http.Client, baseURL, rawURL string) *nethtml.Node {
 	t.Helper()
-	tag := pageTag(t, getBody(t, client, baseURL+rawURL), "a", "goal-table-edit")
-	return getBody(t, client, baseURL+html.UnescapeString(attr(tag, "href")))
-}
-
-// tableRowOf is the Goal table's row for goal.
-func tableRowOf(t *testing.T, page string, goal domain.Goal) string {
-	t.Helper()
-	for _, row := range tableRows(t, page) {
-		if strings.Contains(row, navTo(goal.ID)) {
-			return row
-		}
+	edit := findByTestID(t, getPage(t, client, baseURL+rawURL), "goal-table-edit")
+	if edit.Data != "a" || textOf(edit) != "Edit values" {
+		t.Fatalf("the table's Edit values isn't a link: %s", renderNode(edit))
 	}
-	t.Fatalf("the Goal table has no row for %s", goal.Title)
-	return ""
+	return getPage(t, client, baseURL+attrOf(edit, "href"))
 }
 
 // In edit mode the Goal table is one form with one Save: the rows of the Goals
@@ -4240,44 +4703,31 @@ func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
 	h.AddDelegate(pat, sam, gamma.ID)
 	ts := newServer(t, h)
 
-	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table&org=all")
+	page := goalTableEditMode(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table&org=all")
 
-	form := pageTag(t, page, "form", "goal-table-form")
-	if attr(form, "method") != "post" || !strings.HasPrefix(attr(form, "action"), "/goals/values") {
-		t.Errorf("edit mode isn't a plain form POST to /goals/values: %s", form)
+	form := findByTestID(t, page, "goal-table-form")
+	if form.Data != "form" || attrOf(form, "method") != "post" || !strings.HasPrefix(attrOf(form, "action"), "/goals/values") {
+		t.Errorf("edit mode isn't a plain form POST to /goals/values: %s", renderNode(form))
 	}
-	if n := strings.Count(page, `data-testid="goal-table-save"`); n != 1 {
+	if n := len(findAllByTestID(page, "goal-table-save")); n != 1 {
 		t.Errorf("edit mode has %d Save buttons, want 1", n)
 	}
 	for _, tc := range []struct {
 		goal     domain.Goal
 		editable bool
 	}{{alpha, true}, {beta, false}, {gamma, true}} {
-		row := tableRowOf(t, page, tc.goal)
+		row := goalTableRowOf(t, page, tc.goal)
 		for _, head := range []string{"Pillar", "Tags", "Budget", "Notes"} {
-			if got := hasInput(tableCellHTML(t, page, row, head)); got != tc.editable {
+			if got := len(goalTableInputsIn(goalTableCellIn(t, page, row, head))) > 0; got != tc.editable {
 				t.Errorf("%s's %s cell has an input = %v, want %v", tc.goal.Title, head, got, tc.editable)
 			}
 		}
 		for _, head := range []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in"} {
-			if cell := tableCellHTML(t, page, row, head); hasInput(cell) {
-				t.Errorf("%s's %s cell has an input:\n%s", tc.goal.Title, head, cell)
+			if cell := goalTableCellIn(t, page, row, head); len(goalTableInputsIn(cell)) > 0 {
+				t.Errorf("%s's %s cell has an input: %s", tc.goal.Title, head, renderNode(cell))
 			}
 		}
 	}
-}
-
-// emptyLinks are the links in the Goal table on page with no text to name them.
-func emptyLinks(t *testing.T, page string) []string {
-	t.Helper()
-	table := between(t, page, `<table data-testid="goal-table"`, "</table>")
-	var empty []string
-	for _, m := range regexp.MustCompile(`(?s)<a[\s>].*?</a>`).FindAllString(table, -1) {
-		if strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(m, "")) == "" {
-			empty = append(empty, m)
-		}
-	}
-	return empty
 }
 
 // A Goal with no Health and no delivery date shows nothing in those cells, in
@@ -4292,12 +4742,14 @@ func TestGoalTableHasNoEmptyLinks(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for mode, page := range map[string]string{
-		"table":     getBody(t, client, ts.URL+"/goals?layout=table"),
-		"edit mode": editTable(t, client, ts.URL, "/goals?layout=table"),
+	for mode, page := range map[string]*nethtml.Node{
+		"table":     getPage(t, client, ts.URL+"/goals?layout=table"),
+		"edit mode": goalTableEditMode(t, client, ts.URL, "/goals?layout=table"),
 	} {
-		if empty := emptyLinks(t, page); len(empty) > 0 {
-			t.Errorf("the Goal table in %s has links with no text:\n%s", mode, strings.Join(empty, "\n"))
+		for _, link := range findAll(findByTestID(t, page, "goal-table"), func(n *nethtml.Node) bool { return n.Data == "a" }) {
+			if textOf(link) == "" {
+				t.Errorf("the Goal table in %s has a link with no text: %s", mode, renderNode(link))
+			}
 		}
 	}
 }
@@ -4313,10 +4765,21 @@ func TestGoalTableEditModeOwnerCellIsThePersonControl(t *testing.T) {
 	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
 	ts := newServer(t, h)
 
-	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table")
+	page := goalTableEditMode(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table")
 
-	if cell := tableCellHTML(t, page, tableRowOf(t, page, alpha), "Owner"); cell != "<td>"+shownAs("sam@example.com", "sam")+"</td>" {
-		t.Errorf("Alpha's Owner cell isn't just the person control:\n%s", cell)
+	cell := goalTableCellIn(t, page, goalTableRowOf(t, page, alpha), "Owner")
+	var children []*nethtml.Node
+	for c := cell.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == nethtml.ElementNode {
+			children = append(children, c)
+		}
+	}
+	shown := goalPeopleShownIn(cell)
+	if len(children) != 1 || !flatFrameHasClass(children[0], "person") || len(shown) != 1 || !goalShows(cell, "sam@example.com", "sam") || textOf(cell) != "sam" {
+		t.Errorf("Alpha's Owner cell isn't just the person control: %s", renderNode(cell))
+	}
+	if links := findAll(cell, func(n *nethtml.Node) bool { return n.Data == "a" }); len(links) > 0 {
+		t.Errorf("Alpha's Owner cell is a link: %s", renderNode(cell))
 	}
 }
 
@@ -4335,55 +4798,71 @@ func TestGoalTableRefusedSeveralValuesCellIsAnnounced(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Add a Tags value to Alpha"), "mobile; web")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Add a Tags value to Alpha"), "mobile; web")
 	resp := postForm(t, client, ts.URL+action, form)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
 	}
 
-	cell := tableCellHTML(t, body, tableRowOf(t, body, alpha), "Tags")
-	errorTag := regexp.MustCompile(`<p[^>]*data-testid="cell-error"[^>]*>`).FindString(cell)
-	if errorTag == "" || attr(errorTag, "id") == "" {
-		t.Fatalf("Alpha's Tags has no error message with an id:\n%s", cell)
+	refused := parsePage(t, body)
+	cell := goalTableCellIn(t, refused, goalTableRowOf(t, refused, alpha), "Tags")
+	errs := findAllByTestID(cell, "cell-error")
+	if len(errs) != 1 || errs[0].Data != "p" || attrOf(errs[0], "id") == "" {
+		t.Fatalf("Alpha's Tags has no error message with an id: %s", renderNode(cell))
 	}
-	group := regexp.MustCompile(`<fieldset[^>]*>`).FindString(cell)
-	if !slices.Contains(strings.Fields(attr(group, "aria-describedby")), attr(errorTag, "id")) {
-		t.Errorf("Alpha's Tags group doesn't point at its error message %q: %s", attr(errorTag, "id"), group)
+	errorID := attrOf(errs[0], "id")
+	groups := findAll(cell, func(n *nethtml.Node) bool { return n.Data == "fieldset" })
+	if len(groups) == 0 || !slices.Contains(strings.Fields(attrOf(groups[0], "aria-describedby")), errorID) {
+		t.Errorf("Alpha's Tags group doesn't point at its error message %q: %s", errorID, renderNode(cell))
 	}
-	boxes := regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindAllString(cell, -1)
+	boxes := findAll(cell, func(n *nethtml.Node) bool { return n.Data == "input" && attrOf(n, "type") == "checkbox" })
 	if len(boxes) != 2 {
-		t.Fatalf("Alpha's Tags has %d checkboxes, want 2:\n%s", len(boxes), cell)
+		t.Fatalf("Alpha's Tags has %d checkboxes, want 2: %s", len(boxes), renderNode(cell))
 	}
 	for _, box := range boxes {
-		if attr(box, "aria-invalid") != "true" {
-			t.Errorf("checkbox isn't marked invalid: %s", box)
+		if attrOf(box, "aria-invalid") != "true" {
+			t.Errorf("checkbox isn't marked invalid: %s", renderNode(box))
 		}
 	}
 }
 
-// tableForm is what a browser would post from the Goal table's edit form as
-// page renders it, and where to.
-func tableForm(t *testing.T, page string) (string, url.Values) {
+// goalTableFormIn is what a browser would post from the Goal table's edit
+// form under page as it stands, and where to.
+func goalTableFormIn(t *testing.T, page *nethtml.Node) (string, url.Values) {
 	t.Helper()
-	form := between(t, page, `<form data-testid="goal-table-form"`, "</form>")
-	return html.UnescapeString(attr(openTag(form), "action")), formValues(form)
+	form := findByTestID(t, page, "goal-table-form")
+	if form.Data != "form" {
+		t.Fatalf("the Goal table's edit form isn't a form: %s", renderNode(form))
+	}
+	return attrOf(form, "action"), formSubmission(form)
 }
 
-// controlName is the name of the form control on page labelled label.
-func controlName(t *testing.T, page, label string) string {
+// goalTableControlName is the name of the one form control under page
+// labelled label: an input, select or textarea, or a fieldset of checkboxes,
+// whose boxes share the name.
+func goalTableControlName(t *testing.T, page *nethtml.Node, label string) string {
 	t.Helper()
-	at := regexp.MustCompile(`<(input|select|textarea|fieldset)[^>]*\saria-label="` + regexp.QuoteMeta(html.EscapeString(label)) + `"[^>]*>`).FindStringIndex(page)
-	if at == nil {
-		t.Fatalf("page has no control labelled %q", label)
+	controls := findAll(page, func(n *nethtml.Node) bool {
+		switch n.Data {
+		case "input", "select", "textarea", "fieldset":
+			return attrOf(n, "aria-label") == label
+		}
+		return false
+	})
+	if len(controls) != 1 {
+		t.Fatalf("page has %d controls labelled %q, want 1", len(controls), label)
 	}
-	if name := attr(page[at[0]:at[1]], "name"); name != "" {
-		return name
+	if c := controls[0]; c.Data != "fieldset" {
+		return attrOf(c, "name")
 	}
-	// A fieldset of checkboxes: the name its boxes share.
-	return attr(regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindString(page[at[1]:]), "name")
+	boxes := findAll(controls[0], func(n *nethtml.Node) bool { return n.Data == "input" && attrOf(n, "type") == "checkbox" })
+	if len(boxes) == 0 {
+		t.Fatalf("the %q group holds no checkboxes: %s", label, renderNode(controls[0]))
+	}
+	return attrOf(boxes[0], "name")
 }
 
 // valueID is the form value picking value.
@@ -4416,13 +4895,13 @@ func TestGoalTableSaveUpdatesEveryChangedGoalWithHistory(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table&lifecycle=Proposed")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[0]))
-	form.Add(controlName(t, page, "Tags of Beta"), valueID(tags.Values[1]))
-	form.Set(controlName(t, page, "Add a Tags value to Beta"), "mobile")
-	form.Set(controlName(t, page, "Budget of Gamma"), "1200")
-	form.Set(controlName(t, page, "Notes of Gamma"), "Line one\nLine two")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table&lifecycle=Proposed")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[0]))
+	form.Add(goalTableControlName(t, page, "Tags of Beta"), valueID(tags.Values[1]))
+	form.Set(goalTableControlName(t, page, "Add a Tags value to Beta"), "mobile")
+	form.Set(goalTableControlName(t, page, "Budget of Gamma"), "1200")
+	form.Set(goalTableControlName(t, page, "Notes of Gamma"), "Line one\nLine two")
 	resp := postForm(t, client, ts.URL+action, form)
 	body := readBody(t, resp)
 
@@ -4451,8 +4930,9 @@ func TestGoalTableSaveUpdatesEveryChangedGoalWithHistory(t *testing.T) {
 			t.Errorf("%s's history = %q, want %q", goal, got, want)
 		}
 	}
-	if row := tableRowOf(t, body, beta); tableCell(t, body, row, "Tags") != "ux, mobile" {
-		t.Errorf("Beta's Tags = %q, want ux, mobile", tableCell(t, body, row, "Tags"))
+	saved := parsePage(t, body)
+	if tags := textOf(goalTableCellIn(t, saved, goalTableRowOf(t, saved, beta), "Tags")); tags != "ux, mobile" {
+		t.Errorf("Beta's Tags = %q, want ux, mobile", tags)
 	}
 }
 
@@ -4488,34 +4968,40 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[1]))
-	form.Set(controlName(t, page, "Approver of Alpha"), "Dana & Co")
-	form.Set(controlName(t, page, "Budget of Beta"), "lots")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[1]))
+	form.Set(goalTableControlName(t, page, "Approver of Alpha"), "Dana & Co")
+	form.Set(goalTableControlName(t, page, "Budget of Beta"), "lots")
 	resp := postForm(t, client, ts.URL+action, form)
 	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
 	}
-	if !strings.Contains(pageElement(t, body, "div", "goal-table-errors"), "Nothing was saved") {
+	refused := parsePage(t, body)
+	if !strings.Contains(textOf(findByTestID(t, refused, "goal-table-errors")), "Nothing was saved") {
 		t.Errorf("the refusal doesn't say nothing was saved")
 	}
-	if n := strings.Count(body, `data-testid="cell-error"`); n != 1 {
+	if n := len(findAllByTestID(refused, "cell-error")); n != 1 {
 		t.Fatalf("%d cells are marked bad, want 1", n)
 	}
-	betaBudget := tableCellHTML(t, body, tableRowOf(t, body, beta), "Budget")
-	if !strings.Contains(betaBudget, `data-testid="cell-error"`) || !strings.Contains(betaBudget, "Budget takes a number") ||
-		!strings.Contains(betaBudget, `value="lots"`) || !strings.Contains(betaBudget, `aria-invalid="true"`) {
-		t.Errorf("Beta's Budget isn't marked bad keeping lots:\n%s", betaBudget)
+	betaBudget := goalTableCellIn(t, refused, goalTableRowOf(t, refused, beta), "Budget")
+	inputs := goalTableInputsIn(betaBudget)
+	if !hasTestID(betaBudget, "cell-error") || !strings.Contains(textOf(betaBudget), "Budget takes a number") ||
+		len(inputs) != 1 || attrOf(inputs[0], "value") != "lots" || attrOf(inputs[0], "aria-invalid") != "true" {
+		t.Errorf("Beta's Budget isn't marked bad keeping lots: %s", renderNode(betaBudget))
 	}
-	alphaRow := tableRowOf(t, body, alpha)
-	if cell := tableCellHTML(t, body, alphaRow, "Approver"); !strings.Contains(cell, `value="Dana &amp; Co"`) {
-		t.Errorf("Alpha's Approver lost what was typed:\n%s", cell)
+	alphaRow := goalTableRowOf(t, refused, alpha)
+	if cell := goalTableCellIn(t, refused, alphaRow, "Approver"); !slices.ContainsFunc(goalTableInputsIn(cell), func(n *nethtml.Node) bool {
+		return attrOf(n, "value") == "Dana & Co"
+	}) {
+		t.Errorf("Alpha's Approver lost what was typed: %s", renderNode(cell))
 	}
-	if cell := tableCellHTML(t, body, alphaRow, "Pillar"); !regexp.MustCompile(`<option value="` + valueID(pillar.Values[1]) + `" selected`).MatchString(cell) {
-		t.Errorf("Alpha's Pillar lost the value picked:\n%s", cell)
+	if cell := goalTableCellIn(t, refused, alphaRow, "Pillar"); !slices.ContainsFunc(findAll(cell, func(n *nethtml.Node) bool { return n.Data == "option" }), func(o *nethtml.Node) bool {
+		return attrOf(o, "value") == valueID(pillar.Values[1]) && hasAttr(o, "selected")
+	}) {
+		t.Errorf("Alpha's Pillar lost the value picked: %s", renderNode(cell))
 	}
 
 	for _, g := range []domain.Goal{alpha, beta} {
@@ -4525,8 +5011,8 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	}
 
 	// Fixing the bad cell and saving the form as it came back saves it all.
-	action, form = tableForm(t, body)
-	form.Set(controlName(t, body, "Budget of Beta"), "900")
+	action, form = goalTableFormIn(t, refused)
+	form.Set(goalTableControlName(t, refused, "Budget of Beta"), "900")
 	if resp := postForm(t, client, ts.URL+action, form); resp.StatusCode != http.StatusOK || resp.Request.URL.Query().Has("edit") {
 		t.Fatalf("saving the fixed form: status %d at %s:\n%s", resp.StatusCode, resp.Request.URL, readBody(t, resp))
 	}
@@ -4555,15 +5041,15 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Budget of Mine"), "10")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Budget of Mine"), "10")
 	form.Set(fmt.Sprintf("d.%d.%d", theirs.ID, pillar.ID), valueID(pillar.Values[0]))
 	form.Set(fmt.Sprintf("f.%d.%d", theirs.ID, budget.ID), "99")
 	resp := postForm(t, client, ts.URL+action, form)
 	body := readBody(t, resp)
 
-	if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "Theirs") {
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(textOf(parsePage(t, body)), "Theirs") {
 		t.Errorf("status = %d, want 403 naming Theirs:\n%s", resp.StatusCode, body)
 	}
 	for _, g := range []domain.Goal{mine, theirs} {
@@ -4599,15 +5085,16 @@ func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
-	if cell := tableCell(t, page, tableRowOf(t, page, alpha), "Quarter"); cell != "— Q1 (retired) Q2" {
-		t.Errorf("Alpha's Quarter offers %q, want its Retired Q1 marked", cell)
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	quarterCell := goalTableCellIn(t, page, goalTableRowOf(t, page, alpha), "Quarter")
+	if got, want := textsOf(findAll(quarterCell, func(n *nethtml.Node) bool { return n.Data == "option" })), []string{"—", "Q1 (retired)", "Q2"}; !slices.Equal(got, want) {
+		t.Errorf("Alpha's Quarter offers %q, want %q, its Retired Q1 marked", got, want)
 	}
-	if cell := tableCell(t, page, tableRowOf(t, page, beta), "Tags"); cell != "infra ux" {
+	if cell := textOf(goalTableCellIn(t, page, goalTableRowOf(t, page, beta), "Tags")); cell != "infra ux" {
 		t.Errorf("Beta's Tags offers %q, want no Retired value", cell)
 	}
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Budget of Alpha"), "5")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Budget of Alpha"), "5")
 	resp := postForm(t, client, ts.URL+action, form)
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
@@ -4642,10 +5129,10 @@ func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
 	h.SetGoalField(boss, alpha, budget, "300")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Approver of Alpha"), "Dana")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Approver of Alpha"), "Dana")
 	resp := postForm(t, client, ts.URL+action, form)
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
@@ -4690,7 +5177,7 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	items := activationItems(t, getBody(t, client, goalURL))
+	items := goalActivationChecklistIn(t, getPage(t, client, goalURL))
 	for _, label := range []string{"A value in Pillar", "A value in Budget"} {
 		if done, ok := items[label]; !ok || done {
 			t.Errorf("checklist item %q: listed %v, done %v; want listed and missing (items %v)", label, ok, done, items)
@@ -4698,13 +5185,13 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 	}
 	resp := postForm(t, client, goalURL+"/activate", nil)
 	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "Pillar") || !strings.Contains(body, "Budget") {
+	if text := textOf(parsePage(t, body)); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(text, "Pillar") || !strings.Contains(text, "Budget") {
 		t.Errorf("activate without the values: status %d, body %q; want 422 naming Pillar and Budget", resp.StatusCode, body)
 	}
 
 	h.AssignGoalValue(goal, pillar.Values[0])
 	h.SetGoalField(sam, goal, budget, "100")
-	items = activationItems(t, getBody(t, client, goalURL))
+	items = goalActivationChecklistIn(t, getPage(t, client, goalURL))
 	if !items["A value in Pillar"] || !items["A value in Budget"] {
 		t.Errorf("checklist after setting the values: %v, want both done", items)
 	}
@@ -4714,9 +5201,9 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 }
 
 // An Active Goal lacking a required value shows an Incomplete flag naming what
-// it lacks, in a quieter style than Check-in overdue's; setting the value
-// clears it, and a Goal that isn't Active never shows it (CONTEXT.md:
-// Incomplete).
+// it lacks; setting the value clears it, and a Goal that isn't Active never
+// shows it (CONTEXT.md: Incomplete). That the flag is quieter than Check-in
+// overdue's is TestGoalPageFlagsIncompleteStyles's.
 func TestGoalPageFlagsIncomplete(t *testing.T) {
 	t.Parallel()
 
@@ -4733,22 +5220,19 @@ func TestGoalPageFlagsIncomplete(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	flag := pageElement(t, getBody(t, client, goalURL), "p", "goal-incomplete")
+	flag := findByTestID(t, getPage(t, client, goalURL), "goal-incomplete")
 	for _, want := range []string{"Incomplete", "Pillar", "Budget"} {
-		if !strings.Contains(flag, want) {
-			t.Errorf("Incomplete flag lacks %q: %s", want, flag)
+		if !strings.Contains(textOf(flag), want) {
+			t.Errorf("Incomplete flag lacks %q: %s", want, renderNode(flag))
 		}
 	}
-	if !strings.Contains(openTag(flag), "lc") || strings.Contains(openTag(flag), " st") {
-		t.Errorf("Incomplete flag should be quieter than Check-in overdue: %s", openTag(flag))
-	}
-	if page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, onHold.ID)); strings.Contains(page, `data-testid="goal-incomplete"`) {
+	if hasTestID(getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, onHold.ID)), "goal-incomplete") {
 		t.Errorf("On Hold Goal is flagged Incomplete")
 	}
 
 	h.AssignGoalValue(goal, pillar.Values[0])
 	h.SetGoalField(sam, goal, budget, "100")
-	if page := getBody(t, client, goalURL); strings.Contains(page, `data-testid="goal-incomplete"`) {
+	if hasTestID(getPage(t, client, goalURL), "goal-incomplete") {
 		t.Errorf("Goal with every required value is still flagged Incomplete")
 	}
 }
@@ -4774,32 +5258,32 @@ func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals")
-	rows := goalRows(t, page)
-	if got, want := rowTitles(rows, goals...), []string{"Alpha, incomplete", "Bravo, On Hold", "Charlie, Proposed", "Mike, incomplete", "Zulu, complete"}; !slices.Equal(got, want) {
+	page := getPage(t, client, ts.URL+"/goals")
+	rows := goalListRowsIn(page)
+	if got, want := goalRowTitlesIn(rows, goals...), []string{"Alpha, incomplete", "Bravo, On Hold", "Charlie, Proposed", "Mike, incomplete", "Zulu, complete"}; !slices.Equal(got, want) {
 		t.Errorf("rows = %q, want %q: Incomplete changes no sort order", got, want)
 	}
 	for _, row := range rows {
-		marked := strings.Contains(row, `data-testid="incomplete"`)
-		want := strings.Contains(row, navTo(lacking.ID)) || strings.Contains(row, navTo(lackingToo.ID))
+		marked := hasTestID(row, "incomplete")
+		want := linkTo(row, goalHref(lacking.ID)) != nil || linkTo(row, goalHref(lackingToo.ID)) != nil
 		if marked != want {
-			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, row)
+			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, renderNode(row))
 		}
 	}
-	if box := pageTag(t, page, "input", "goal-incomplete-filter"); strings.Contains(box, "checked") {
-		t.Errorf("Incomplete filter is checked without ?incomplete=1: %s", box)
+	if box := findByTestID(t, page, "goal-incomplete-filter"); hasAttr(box, "checked") {
+		t.Errorf("Incomplete filter is checked without ?incomplete=1: %s", renderNode(box))
 	}
 
-	page = getBody(t, client, ts.URL+"/goals?incomplete=1")
-	if got, want := rowTitles(goalRows(t, page), goals...), []string{"Alpha, incomplete", "Mike, incomplete"}; !slices.Equal(got, want) {
+	page = getPage(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := goalRowTitlesIn(goalListRowsIn(page), goals...), []string{"Alpha, incomplete", "Mike, incomplete"}; !slices.Equal(got, want) {
 		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
 	}
-	if box := pageTag(t, page, "input", "goal-incomplete-filter"); !strings.Contains(box, "checked") {
-		t.Errorf("Incomplete filter lost its check: %s", box)
+	if box := findByTestID(t, page, "goal-incomplete-filter"); !hasAttr(box, "checked") {
+		t.Errorf("Incomplete filter lost its check: %s", renderNode(box))
 	}
-	table := getBody(t, client, ts.URL+"/goals?layout=table&incomplete=1")
+	table := getPage(t, client, ts.URL+"/goals?layout=table&incomplete=1")
 	for _, g := range goals {
-		listed := strings.Contains(table, navTo(g.ID))
+		listed := linkTo(table, goalHref(g.ID)) != nil
 		if want := g.ID == lacking.ID || g.ID == lackingToo.ID; listed != want {
 			t.Errorf("table layout, incomplete=1: %s listed %v, want %v", g.Title, listed, want)
 		}
@@ -4854,25 +5338,33 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
 		"new_value":    {"Globex; Initech"},
 	})
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(openForm(t, body, "dimensions")), reason) {
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(textOf(goalOpenFormIn(t, parsePage(t, body), "dimensions")), reason) {
 		t.Errorf("Goal page: status %d, body %q; want 422 saying why beside the open form", resp.StatusCode, body)
 	}
 
-	page := editTable(t, client, ts.URL, "/goals?layout=table")
-	action, form := tableForm(t, page)
-	form.Set(controlName(t, page, "Add a Customer value to Alpha"), "Hooli;")
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Add a Customer value to Alpha"), "Hooli;")
 	resp = postForm(t, client, ts.URL+action, form)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("table edit: status = %d, want 422:\n%s", resp.StatusCode, body)
 	}
-	if cell := tableCellHTML(t, body, tableRowOf(t, body, goal), "Customer"); !strings.Contains(cell, `data-testid="cell-error"`) || !strings.Contains(html.UnescapeString(cell), reason) {
-		t.Errorf("table edit: Alpha's Customer isn't marked bad saying why:\n%s", cell)
+	refused := parsePage(t, body)
+	if cell := goalTableCellIn(t, refused, goalTableRowOf(t, refused, goal), "Customer"); !hasTestID(cell, "cell-error") || !strings.Contains(textOf(cell), reason) {
+		t.Errorf("table edit: Alpha's Customer isn't marked bad saying why: %s", renderNode(cell))
 	}
 
 	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme"}) {
 		t.Errorf("Customer list = %v, want [Acme] with nothing added", got)
 	}
+}
+
+// goalDimensionValuesShownIn is what each value the Goal page's Dimensions
+// section shows reads, in order.
+func goalDimensionValuesShownIn(t *testing.T, page *nethtml.Node) []string {
+	t.Helper()
+	return textsOf(findAllByTestID(findByTestID(t, page, "goal-dimensions"), "goal-dimension-value"))
 }
 
 // When the Goal's history can't be written, choosing another value on the Goal
@@ -4901,10 +5393,22 @@ func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
 	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("choosing Reliability: status %d, want 500; body:\n%s", resp.StatusCode, body)
 	}
-	section := pageElement(t, getBody(t, client, goalURL), "section", "goal-dimensions")
-	if !strings.Contains(section, `data-testid="goal-dimension-value">Growth<`) || strings.Contains(section, `data-testid="goal-dimension-value">Reliability<`) {
-		t.Errorf("the Goal doesn't keep Growth after a failed change:\n%s", section)
+	if shown := goalDimensionValuesShownIn(t, getPage(t, client, goalURL)); !slices.Contains(shown, "Growth") || slices.Contains(shown, "Reliability") {
+		t.Errorf("the Goal doesn't keep Growth after a failed change: shows %q", shown)
 	}
+}
+
+// goalDimensionSelectIn returns the one-value select labelled dimension in
+// the Goal page's open Edit Dimension values form.
+func goalDimensionSelectIn(t *testing.T, page *nethtml.Node, dimension string) *nethtml.Node {
+	t.Helper()
+	selects := findAll(goalOpenFormIn(t, page, "dimensions"), func(n *nethtml.Node) bool {
+		return n.Data == "select" && attrOf(n, "aria-label") == dimension
+	})
+	if len(selects) != 1 {
+		t.Fatalf("the open Dimensions form has %d selects labelled %s, want 1", len(selects), dimension)
+	}
+	return selects[0]
 }
 
 // A one-value Dimension's select on the Goal page offers "None", and choosing
@@ -4925,14 +5429,20 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := goalPageURL(ts.URL, goal)
 
-	edit := openForm(t, getBody(t, client, goalURL+"?open=dimensions"), "dimensions")
-	form := between(t, edit, "<form", `aria-label="Pillar"`)
-	form = form[strings.LastIndex(form, "<form"):]
-	if !strings.Contains(form, fmt.Sprintf(`name="dimension_id" value="%d"`, pillar.ID)) {
-		t.Errorf("Pillar's select form doesn't name its Dimension:\n%s", form)
+	sel := goalDimensionSelectIn(t, getPage(t, client, goalURL+"?open=dimensions"), "Pillar")
+	var form *nethtml.Node
+	for p := sel.Parent; p != nil && form == nil; p = p.Parent {
+		if p.Data == "form" {
+			form = p
+		}
 	}
-	if sel := between(t, edit, `aria-label="Pillar"`, "</select>"); !strings.Contains(sel, `<option value="">None</option>`) {
-		t.Errorf("Pillar's select doesn't offer None:\n%s", sel)
+	if form == nil || formField(t, form, "dimension_id").Value != fmt.Sprint(pillar.ID) {
+		t.Errorf("Pillar's select form doesn't name its Dimension: %s", renderNode(sel.Parent))
+	}
+	if !slices.ContainsFunc(findAll(sel, func(n *nethtml.Node) bool { return n.Data == "option" }), func(o *nethtml.Node) bool {
+		return hasAttr(o, "value") && attrOf(o, "value") == "" && textOf(o) == "None" && !hasAttr(o, "selected")
+	}) {
+		t.Errorf("Pillar's select doesn't offer None: %s", renderNode(sel))
 	}
 
 	none := url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {""}}
@@ -4943,16 +5453,16 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 		}
 	}
 
-	page := getBody(t, client, goalURL)
-	if !strings.Contains(pageElement(t, page, "section", "goal-dimensions"), `data-testid="goal-dimension-unassigned"`) {
-		t.Errorf("Pillar still has a value after choosing None:\n%s", pageElement(t, page, "section", "goal-dimensions"))
+	page := getPage(t, client, goalURL)
+	if section := findByTestID(t, page, "goal-dimensions"); !hasTestID(section, "goal-dimension-unassigned") {
+		t.Errorf("Pillar still has a value after choosing None: %s", renderNode(section))
 	}
-	entries := valueEntries(t, client, goalURL)
+	entries := textsOf(goalValueHistoryIn(t, client, goalURL))
 	if len(entries) != 2 || !strings.Contains(entries[0], "Pillar: cleared (was Growth)") {
 		t.Errorf("History lists %d value changes, want one cleared entry after the set:\n%s", len(entries), strings.Join(entries, "\n"))
 	}
-	if flag := pageElement(t, page, "p", "goal-incomplete"); !strings.Contains(flag, "Pillar") {
-		t.Errorf("Incomplete flag doesn't name Pillar: %s", flag)
+	if flag := findByTestID(t, page, "goal-incomplete"); !strings.Contains(textOf(flag), "Pillar") {
+		t.Errorf("Incomplete flag doesn't name Pillar: %s", renderNode(flag))
 	}
 }
 
@@ -4973,10 +5483,11 @@ func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	edit := openForm(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?open=dimensions"), "dimensions")
-	sel := between(t, edit, `aria-label="Pillar"`, "</select>")
-	if !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>Growth (retired)</option>`, pillar.Values[0].ID)) {
-		t.Errorf("Pillar's select doesn't keep the retired Growth selected:\n%s", sel)
+	sel := goalDimensionSelectIn(t, getPage(t, client, goalPageURL(ts.URL, goal)+"?open=dimensions"), "Pillar")
+	if !slices.ContainsFunc(findAll(sel, func(n *nethtml.Node) bool { return n.Data == "option" }), func(o *nethtml.Node) bool {
+		return attrOf(o, "value") == valueID(pillar.Values[0]) && hasAttr(o, "selected") && textOf(o) == "Growth (retired)"
+	}) {
+		t.Errorf("Pillar's select doesn't keep the retired Growth selected: %s", renderNode(sel))
 	}
 }
 
@@ -4996,8 +5507,8 @@ func TestGoalListFiltersApplyOnChange(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	for _, layout := range []string{"/goals", "/goals?layout=table"} {
-		page := getBody(t, client, ts.URL+layout)
-		form := tagAround(t, page, `data-testid="goal-filters"`)
+		root := getPage(t, client, ts.URL+layout)
+		form := findByTestID(t, root, "goal-filters")
 		for name, want := range map[string]string{
 			"hx-get":        "/goals",
 			"hx-trigger":    "submit, change[target.type!='search'], input[target.type=='search'] delay:400ms",
@@ -5008,14 +5519,42 @@ func TestGoalListFiltersApplyOnChange(t *testing.T) {
 			"hx-push-url":   "true",
 			"hx-sync":       "this:replace",
 		} {
-			if got := html.UnescapeString(attr(form, name)); got != want {
+			if got := attrOf(form, name); got != want {
 				t.Errorf("%s: filter form %s = %q, want %q", layout, name, got, want)
 			}
 		}
-		if !strings.Contains(page, `hx-history="false"`) {
+		if optedOut := findAll(root, func(n *nethtml.Node) bool { return attrOf(n, "hx-history") == "false" }); len(optedOut) == 0 {
 			t.Errorf("%s: the page keeps htmx's history snapshot, so Back would show stale filters", layout)
 		}
 	}
+}
+
+// goalPageWithoutScript parses page as a browser running no scripts reads it:
+// what a <noscript> holds is part of the page, not text.
+func goalPageWithoutScript(t *testing.T, page string) *nethtml.Node {
+	t.Helper()
+	doc, err := nethtml.ParseWithOptions(strings.NewReader(page), nethtml.ParseOptionEnableScripting(false))
+	if err != nil {
+		t.Fatalf("parse page without script: %v", err)
+	}
+	return doc
+}
+
+// goalApplyButtonsIn returns the submit buttons under root reading Apply.
+func goalApplyButtonsIn(root *nethtml.Node) []*nethtml.Node {
+	return findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "button" && attrOf(n, "type") == "submit" && textOf(n) == "Apply"
+	})
+}
+
+// insideNoscript reports whether n sits in a <noscript>.
+func insideNoscript(n *nethtml.Node) bool {
+	for p := n.Parent; p != nil; p = p.Parent {
+		if p.Type == nethtml.ElementNode && p.Data == "noscript" {
+			return true
+		}
+	}
+	return false
 }
 
 // Without JavaScript the filter bar still works as a plain GET form, so its
@@ -5032,33 +5571,38 @@ func TestGoalListApplyButtonOnlyWithoutJavaScript(t *testing.T) {
 
 	for _, layout := range []string{"/goals", "/goals?layout=table"} {
 		page := getBody(t, client, ts.URL+layout)
-		if form := tagAround(t, page, `data-testid="goal-filters"`); attr(form, "method") != "get" || attr(form, "action") != "/goals" {
-			t.Errorf("%s: without JavaScript the filter bar no longer GETs /goals: %s", layout, form)
+		form := findByTestID(t, parsePage(t, page), "goal-filters")
+		if form.Data != "form" || attrOf(form, "method") != "get" || attrOf(form, "action") != "/goals" {
+			t.Errorf("%s: without JavaScript the filter bar no longer GETs /goals: %s", layout, renderNode(form))
 		}
-		filters := between(t, page, `data-testid="goal-filters"`, "</form>")
-		noscript := between(t, filters, "<noscript>", "</noscript>")
-		if !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) {
-			t.Errorf("%s: the filter bar's <noscript> lacks Apply:\n%s", layout, filters)
+		if buttons := goalApplyButtonsIn(form); len(buttons) != 0 {
+			t.Errorf("%s: a browser running scripts is shown the filter bar's Apply: %s", layout, renderNode(form))
 		}
-		if strings.Count(filters, "Apply") != 1 {
-			t.Errorf("%s: the filter bar shows Apply outside <noscript>:\n%s", layout, filters)
+		noScript := findByTestID(t, goalPageWithoutScript(t, page), "goal-filters")
+		if buttons := goalApplyButtonsIn(noScript); len(buttons) != 1 || !insideNoscript(buttons[0]) {
+			t.Errorf("%s: the filter bar's <noscript> lacks Apply: %s", layout, renderNode(noScript))
+		}
+		if n := strings.Count(textOf(noScript), "Apply"); n != 1 {
+			t.Errorf("%s: the filter bar shows Apply outside <noscript>: %s", layout, renderNode(noScript))
 		}
 	}
-	columns := between(t, getBody(t, client, ts.URL+"/goals?layout=table"), `<form data-testid="goal-columns"`, "</form>")
-	if !strings.Contains(columns, `<button type="submit" class="btn sm">Apply</button>`) || strings.Contains(columns, "<noscript>") {
-		t.Errorf("the Columns form lost its own Apply:\n%s", columns)
+	columns := findByTestID(t, getPage(t, client, ts.URL+"/goals?layout=table"), "goal-columns")
+	noscripts := findAll(columns, func(n *nethtml.Node) bool { return n.Data == "noscript" })
+	if len(goalApplyButtonsIn(columns)) != 1 || len(noscripts) != 0 {
+		t.Errorf("the Columns form lost its own Apply: %s", renderNode(columns))
 	}
 }
 
 // htmxFilter changes the filter bar on page as a person would — set changes
 // one field — and GETs the view the way htmx does, answering the page htmx
-// selects from and the address it pushes.
+// selects from and the address it pushes. It reads what the filter form
+// submits, and where to, from the parsed page.
 func htmxFilter(t *testing.T, client *http.Client, base, page string, set func(url.Values)) (string, string) {
 	t.Helper()
-	form := between(t, page, `data-testid="goal-filters"`, "</form>")
-	values := formValues(form)
+	form := findByTestID(t, parsePage(t, page), "goal-filters")
+	values := formSubmission(form)
 	set(values)
-	address := attr(tagAround(t, page, `data-testid="goal-filters"`), "hx-get") + "?" + values.Encode()
+	address := attrOf(form, "hx-get") + "?" + values.Encode()
 	req, err := http.NewRequest(http.MethodGet, base+address, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
@@ -5077,11 +5621,26 @@ func htmxFilter(t *testing.T, client *http.Client, base, page string, set func(u
 	return body, address
 }
 
-// swappedList is the part of page htmx swaps in for the list: from #goal-list
-// on, which the page ends with.
-func swappedList(t *testing.T, page string) string {
+// goalSwappedListIn is the element htmx swaps in for the list, #goal-list, in
+// page.
+func goalSwappedListIn(t *testing.T, page string) *nethtml.Node {
 	t.Helper()
-	return between(t, page, `<div id="goal-list"`, "")
+	root := parsePage(t, page)
+	lists := findAll(root, func(n *nethtml.Node) bool { return attrOf(n, "id") == "goal-list" })
+	if len(lists) != 1 {
+		t.Fatalf("page has %d #goal-list, want 1:\n%s", len(lists), page)
+	}
+	return lists[0]
+}
+
+// goalTableSortsBy reports whether the Goal table under root is sorted by the
+// column headed head in dir, as its header tells assistive technology, and
+// the header still links to its sort.
+func goalTableSortsBy(root *nethtml.Node, head, dir string) bool {
+	return len(findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "th" && attrOf(n, "aria-sort") == dir && textOf(n) == head &&
+			len(findAll(n, func(a *nethtml.Node) bool { return a.Data == "a" && hasAttr(a, "href") })) == 1
+	})) == 1
 }
 
 // A filter changed under htmx answers the same Goals as its address loaded
@@ -5109,35 +5668,36 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	// The table, sorted by Title descending and carrying a grouping, searched.
 	table := getBody(t, client, ts.URL+"/goals?org=all&layout=table&sort=title&dir=desc&group="+group)
 	body, address := htmxFilter(t, client, ts.URL, table, func(v url.Values) { v.Set("q", "launch") })
-	swapped := swappedList(t, body)
-	if got, want := rowTitles(tableRows(t, swapped), goals...), []string{"Charlie launch", "Bravo launch", "Alpha launch"}; !slices.Equal(got, want) {
+	swapped := goalSwappedListIn(t, body)
+	if got, want := goalRowTitlesIn(goalTableRowsIn(t, swapped), goals...), []string{"Charlie launch", "Bravo launch", "Alpha launch"}; !slices.Equal(got, want) {
 		t.Errorf("table searched under htmx lists %q, want %q", got, want)
 	}
-	direct := swappedList(t, getBody(t, client, ts.URL+address))
-	if got, want := rowTitles(tableRows(t, swapped), goals...), rowTitles(tableRows(t, direct), goals...); !slices.Equal(got, want) {
+	direct := goalSwappedListIn(t, getBody(t, client, ts.URL+address))
+	if got, want := goalRowTitlesIn(goalTableRowsIn(t, swapped), goals...), goalRowTitlesIn(goalTableRowsIn(t, direct), goals...); !slices.Equal(got, want) {
 		t.Errorf("table under htmx lists %q, but %s loaded directly lists %q", got, address, want)
 	}
-	if !regexp.MustCompile(`aria-sort="descending"><a [^>]*>Title</a>`).MatchString(swapped) {
-		t.Errorf("the table under htmx lost its sort:\n%s", swapped)
+	if !goalTableSortsBy(swapped, "Title", "descending") {
+		t.Errorf("the table under htmx lost its sort: %s", renderNode(swapped))
 	}
 	// The List / Table switch sits in the header strip, which the filter form
 	// selects out of band.
-	if toList := linkQuery(t, between(t, body, `<nav id="goal-layout"`, "</nav>"), "layout-list"); toList.Get("group") != group || toList.Get("q") != "launch" {
+	if toList := goalLayoutLinkQueryIn(t, parsePage(t, body), "layout-list"); toList.Get("group") != group || toList.Get("q") != "launch" {
 		t.Errorf("the table under htmx lost its grouping or search: List links to %v", toList)
 	}
 
 	// The list, grouped by Pillar, narrowed to Mine only.
 	list := getBody(t, client, ts.URL+"/goals?org=all&group="+group)
 	body, address = htmxFilter(t, client, ts.URL, list, func(v url.Values) { v.Set("org", "mine") })
-	swapped = swappedList(t, body)
-	if got, want := cellTexts(swapped, "th"), []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Growth 1", "Trust 2"}; !slices.Equal(got, want) {
-		t.Errorf("the list under htmx heads %q, want %q: grouping lost", got, want)
+	swapped = goalSwappedListIn(t, body)
+	heads := textsOf(findAll(swapped, func(n *nethtml.Node) bool { return n.Data == "th" }))
+	if want := []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Growth 1", "Trust 2"}; !slices.Equal(heads, want) {
+		t.Errorf("the list under htmx heads %q, want %q: grouping lost", heads, want)
 	}
-	if got, want := rowTitles(goalRows(t, swapped), goals...), []string{"Alpha launch", "Charlie launch", "Delta audit"}; !slices.Equal(got, want) {
+	if got, want := goalRowTitlesIn(goalListRowsIn(swapped), goals...), []string{"Alpha launch", "Charlie launch", "Delta audit"}; !slices.Equal(got, want) {
 		t.Errorf("Mine only under htmx lists %q, want %q", got, want)
 	}
-	direct = swappedList(t, getBody(t, client, ts.URL+address))
-	if got, want := rowTitles(goalRows(t, swapped), goals...), rowTitles(goalRows(t, direct), goals...); !slices.Equal(got, want) {
+	direct = goalSwappedListIn(t, getBody(t, client, ts.URL+address))
+	if got, want := goalRowTitlesIn(goalListRowsIn(swapped), goals...), goalRowTitlesIn(goalListRowsIn(direct), goals...); !slices.Equal(got, want) {
 		t.Errorf("the list under htmx lists %q, but %s loaded directly lists %q", got, address, want)
 	}
 }
@@ -5158,18 +5718,19 @@ func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
 		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Missed the SLA."},
 	)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	block := pageElement(t, page, "section", "goal-highlights")
-	entries := strings.Split(block, `data-testid="highlight"`)[1:]
+	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	block := findByTestID(t, root, "goal-highlights")
+	entries := findAllByTestID(block, "highlight")
 	if len(entries) != 2 {
-		t.Fatalf("Highlights block lists %d entries, want 2; block:\n%s", len(entries), block)
+		t.Fatalf("Highlights block lists %d entries, want 2; block:\n%s", len(entries), renderNode(block))
 	}
 	for i, want := range []string{"Retries masked the root cause.", "Missed the SLA."} {
-		if !strings.Contains(entries[i], want) {
-			t.Errorf("entry %d = %s, want %q", i+1, entries[i], want)
+		if !strings.Contains(textOf(entries[i]), want) {
+			t.Errorf("entry %d reads %q, want %q", i+1, textOf(entries[i]), want)
 		}
-		if !strings.Contains(entries[i], `title="sam@example.com"`) {
-			t.Errorf("entry %d does not credit the Owner: %s", i+1, entries[i])
+		credited := slices.ContainsFunc(goalPeopleShownIn(entries[i]), func(p goalShownPerson) bool { return p.Title == "sam@example.com" })
+		if !credited {
+			t.Errorf("entry %d does not credit the Owner: %s", i+1, renderNode(entries[i]))
 		}
 	}
 }
@@ -5189,14 +5750,17 @@ func TestGoalPageLeavesOutAnEmptyHighlightsSection(t *testing.T) {
 
 	for _, who := range []string{"sam@example.com", "pat@example.com"} {
 		client := signInClient(t, ts.URL, who)
-		page := getBody(t, client, goalPageURL(ts.URL, quiet))
-		for _, gone := range []string{`data-testid="goal-highlights"`, `data-testid="no-highlights"`, "<h2>Highlights</h2>"} {
-			if strings.Contains(page, gone) {
+		root := getPage(t, client, goalPageURL(ts.URL, quiet))
+		for _, gone := range []string{"goal-highlights", "no-highlights"} {
+			if hasTestID(root, gone) {
 				t.Errorf("%s: a Goal with no Highlights shows %s", who, gone)
 			}
 		}
-		block := pageElement(t, getBody(t, client, goalPageURL(ts.URL, flagged)), "section", "goal-highlights")
-		if got := elementTexts(block, "li", "highlight"); len(got) != 1 || !strings.Contains(got[0], "Retries masked the root cause.") {
+		if heading := headingNamed(root, "Highlights"); heading != nil {
+			t.Errorf("%s: a Goal with no Highlights shows a Highlights heading: %s", who, renderNode(heading))
+		}
+		block := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, flagged)), "goal-highlights")
+		if got := textsOf(findAllByTestID(block, "highlight")); len(got) != 1 || !strings.Contains(got[0], "Retries masked the root cause.") {
 			t.Errorf("%s: the Highlights section lists %q, want the one flagged", who, got)
 		}
 	}
@@ -5226,7 +5790,7 @@ func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *te
 	}
 	history := func() []string {
 		t.Helper()
-		return valueEntries(t, client, goalURL)
+		return textsOf(goalValueHistoryIn(t, client, goalURL))
 	}
 
 	choose(fmt.Sprint(growth.ID))
@@ -5260,22 +5824,16 @@ func TestUnmarkingRequiredClearsTheIncompleteFlagOverHTTP(t *testing.T) {
 	admin := signInClient(t, ts.URL, "boss@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := goalPageURL(ts.URL, goal)
-	listRow := func() string {
+	listRow := func() *nethtml.Node {
 		t.Helper()
-		for _, row := range goalRows(t, getBody(t, client, ts.URL+"/goals")) {
-			if strings.Contains(row, navTo(goal.ID)) {
-				return row
-			}
-		}
-		t.Fatalf("the Goal list has no row for %q", goal.Title)
-		return ""
+		return goalListRowOf(t, getPage(t, client, ts.URL+"/goals"), goal)
 	}
 
-	if page := getBody(t, client, goalURL); !strings.Contains(page, `data-testid="goal-incomplete"`) {
+	if root := getPage(t, client, goalURL); !hasTestID(root, "goal-incomplete") {
 		t.Fatalf("the Goal lacking Pillar and Budget isn't flagged Incomplete")
 	}
-	if row := listRow(); !strings.Contains(row, `data-testid="incomplete"`) {
-		t.Fatalf("the Goal list doesn't mark the Goal Incomplete: %s", row)
+	if row := listRow(); !hasTestID(row, "incomplete") {
+		t.Fatalf("the Goal list doesn't mark the Goal Incomplete: %s", renderNode(row))
 	}
 
 	for _, path := range []string{fmt.Sprintf("/dimensions/%d/required", pillar.ID), fmt.Sprintf("/fields/%d/required", budget.ID)} {
@@ -5284,11 +5842,11 @@ func TestUnmarkingRequiredClearsTheIncompleteFlagOverHTTP(t *testing.T) {
 		}
 	}
 
-	if page := getBody(t, client, goalURL); strings.Contains(page, `data-testid="goal-incomplete"`) {
-		t.Errorf("the Goal page still flags the Goal Incomplete: %s", pageElement(t, page, "p", "goal-incomplete"))
+	if root := getPage(t, client, goalURL); hasTestID(root, "goal-incomplete") {
+		t.Errorf("the Goal page still flags the Goal Incomplete: %s", textsOf(findAllByTestID(root, "goal-incomplete")))
 	}
-	if row := listRow(); strings.Contains(row, `data-testid="incomplete"`) {
-		t.Errorf("the Goal list still marks the Goal Incomplete: %s", row)
+	if row := listRow(); hasTestID(row, "incomplete") {
+		t.Errorf("the Goal list still marks the Goal Incomplete: %s", renderNode(row))
 	}
 }
 
@@ -5328,30 +5886,48 @@ func TestDoneAndCancelledGoalsAreNeverIncompleteOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	if page := getBody(t, client, goalPageURL(ts.URL, active)); !strings.Contains(page, `data-testid="goal-incomplete"`) {
+	if root := getPage(t, client, goalPageURL(ts.URL, active)); !hasTestID(root, "goal-incomplete") {
 		t.Fatalf("the Active Goal lacking Pillar isn't flagged Incomplete")
 	}
 	for _, g := range []domain.Goal{done, cancelled} {
-		if page := getBody(t, client, goalPageURL(ts.URL, g)); strings.Contains(page, `data-testid="goal-incomplete"`) {
-			t.Errorf("the %s Goal is flagged Incomplete: %s", g.Lifecycle, pageElement(t, page, "p", "goal-incomplete"))
+		if root := getPage(t, client, goalPageURL(ts.URL, g)); hasTestID(root, "goal-incomplete") {
+			t.Errorf("the %s Goal is flagged Incomplete: %s", g.Lifecycle, textsOf(findAllByTestID(root, "goal-incomplete")))
 		}
 	}
 
-	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
-	if got, want := rowTitles(rows, goals...), []string{"Alpha, Active", "Bravo, Done", "Charlie, Cancelled"}; !slices.Equal(got, want) {
+	rows := goalListRowsIn(getPage(t, client, ts.URL+"/goals"))
+	if got, want := goalRowTitlesIn(rows, goals...), []string{"Alpha, Active", "Bravo, Done", "Charlie, Cancelled"}; !slices.Equal(got, want) {
 		t.Fatalf("Goal list rows = %q, want %q", got, want)
 	}
 	for _, row := range rows {
-		marked := strings.Contains(row, `data-testid="incomplete"`)
-		if want := strings.Contains(row, navTo(active.ID)); marked != want {
-			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, row)
+		marked := hasTestID(row, "incomplete")
+		if want := linkTo(row, goalHref(active.ID)) != nil; marked != want {
+			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, renderNode(row))
 		}
 	}
 
-	filtered := getBody(t, client, ts.URL+"/goals?incomplete=1")
-	if got, want := rowTitles(goalRows(t, filtered), goals...), []string{"Alpha, Active"}; !slices.Equal(got, want) {
+	filtered := getPage(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := goalRowTitlesIn(goalListRowsIn(filtered), goals...), []string{"Alpha, Active"}; !slices.Equal(got, want) {
 		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
 	}
+}
+
+// goalTableHeadSortHref is where the Goal table's column header reading head
+// links to sort by it.
+func goalTableHeadSortHref(t *testing.T, root *nethtml.Node, head string) string {
+	t.Helper()
+	for _, th := range findAll(findByTestID(t, root, "goal-table-head"), func(n *nethtml.Node) bool { return n.Data == "th" }) {
+		if textOf(th) != head {
+			continue
+		}
+		links := findAll(th, func(n *nethtml.Node) bool { return n.Data == "a" && attrOf(n, "href") != "" })
+		if len(links) == 0 {
+			t.Fatalf("the %s header doesn't sort: %s", head, renderNode(th))
+		}
+		return attrOf(links[0], "href")
+	}
+	t.Fatalf("the Goal table has no %s header", head)
+	return ""
 }
 
 // A date Field column sorts the Goal table by date, earliest first and then
@@ -5374,20 +5950,36 @@ func TestGoalTableSortsADateFieldAsDatesWithUnsetLast(t *testing.T) {
 	h.SetGoalField(sam, charlie, kickoff, "2026-02-01")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	order := func(page string) []string {
-		return rowTitles(tableRows(t, page), alpha, bravo, charlie, unset)
+	order := func(root *nethtml.Node) []string {
+		return goalRowTitlesIn(goalTableRowsIn(t, root), alpha, bravo, charlie, unset)
 	}
 
-	page := getBody(t, client, ts.URL+"/goals?layout=table")
-	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
-	if got, want := order(page), []string{"Charlie", "Alpha", "Bravo", "Delta"}; !slices.Equal(got, want) {
+	root := getPage(t, client, ts.URL+"/goals?layout=table")
+	root = getPage(t, client, ts.URL+goalTableHeadSortHref(t, root, "Kickoff"))
+	if got, want := order(root), []string{"Charlie", "Alpha", "Bravo", "Delta"}; !slices.Equal(got, want) {
 		t.Errorf("sorted by Kickoff = %q, want %q", got, want)
 	}
 
-	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
-	if got, want := order(page), []string{"Bravo", "Alpha", "Charlie", "Delta"}; !slices.Equal(got, want) {
+	root = getPage(t, client, ts.URL+goalTableHeadSortHref(t, root, "Kickoff"))
+	if got, want := order(root), []string{"Bravo", "Alpha", "Charlie", "Delta"}; !slices.Equal(got, want) {
 		t.Errorf("reverse-sorted by Kickoff = %q, want %q", got, want)
 	}
+}
+
+// goalTableEditModeIn follows the Goal table's Edit values link on the page at
+// rawURL and parses the edit mode it opens.
+func goalTableEditModeIn(t *testing.T, client *http.Client, baseURL, rawURL string) *nethtml.Node {
+	t.Helper()
+	edit := findByTestID(t, getPage(t, client, baseURL+rawURL), "goal-table-edit")
+	return getPage(t, client, baseURL+attrOf(edit, "href"))
+}
+
+// goalCellTakesInput reports whether cell holds a control a person types or
+// picks in: an input other than a hidden one, a select or a textarea.
+func goalCellTakesInput(cell *nethtml.Node) bool {
+	return len(findAll(cell, func(n *nethtml.Node) bool {
+		return n.Data == "input" && attrOf(n, "type") != "hidden" || n.Data == "select" || n.Data == "textarea"
+	})) > 0
 }
 
 // An Admin who neither Owns nor Delegates on any Goal gets an input in every
@@ -5412,29 +6004,30 @@ func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testi
 	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
 	ts := newServer(t, h)
 
-	page := editTable(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table&org=all")
+	root := goalTableEditModeIn(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table&org=all")
 
 	for _, g := range []domain.Goal{alpha, beta, gamma} {
-		row := tableRowOf(t, page, g)
+		row := goalTableRowOf(t, root, g)
 		for _, head := range []string{"Pillar", "Tags", "Budget", "Notes"} {
-			if cell := tableCellHTML(t, page, row, head); !hasInput(cell) {
-				t.Errorf("the Admin gets no input in %s's %s cell:\n%s", g.Title, head, cell)
+			if cell := goalTableCellIn(t, root, row, head); !goalCellTakesInput(cell) {
+				t.Errorf("the Admin gets no input in %s's %s cell: %s", g.Title, head, renderNode(cell))
 			}
 		}
 	}
 	for _, g := range []domain.Goal{alpha, beta} {
-		row := tableRowOf(t, page, g)
+		row := goalTableRowOf(t, root, g)
 		for _, head := range []string{"Title", "Health", "Lifecycle", "Delivery date"} {
-			if cell := tableCellHTML(t, page, row, head); !strings.Contains(cell, navTo(g.ID)) {
-				t.Errorf("%s's %s cell doesn't link to the Goal:\n%s", g.Title, head, cell)
+			if cell := goalTableCellIn(t, root, row, head); linkTo(cell, goalHref(g.ID)) == nil {
+				t.Errorf("%s's %s cell doesn't link to the Goal: %s", g.Title, head, renderNode(cell))
 			}
 		}
 	}
 }
 
-// An Owner's header offers Check in as the primary action, No change as a quiet
-// one, and beside them a "More ▾" menu, named and titled "More actions". A signed-in
-// person with no role on the Goal gets neither button, only the menu.
+// An Owner's header offers Check in, a link to the Check-in page, and No
+// change, and beside them a "More ▾" menu, named and titled "More actions". A
+// signed-in person with no role on the Goal gets neither button, only the
+// menu. How Check in and No change look is TestGoalPageHeaderActionsOverHTTPStyles'.
 func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -5445,33 +6038,35 @@ func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
-	actions := pageElement(t, page, "div", "goal-actions")
-	if link := tagAround(t, actions, `data-testid="checkin-link"`); !hasClass(link, "primary") || attr(link, "href") != fmt.Sprintf("/goals/%d/checkin", goal.ID) {
-		t.Errorf("Check in is not a primary link to the Check-in page: %s", link)
+	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	actions := findByTestID(t, root, "goal-actions")
+	if link := findByTestID(t, actions, "checkin-link"); link.Data != "a" || attrOf(link, "href") != fmt.Sprintf("/goals/%d/checkin", goal.ID) {
+		t.Errorf("Check in is not a link to the Check-in page: %s", renderNode(link))
 	}
-	noChange := between(t, pageElement(t, actions, "form", "no-change-checkin"), "<button", ">")
-	if !hasClass(noChange, "quiet") {
-		t.Errorf("No change is not a quiet button: %s", noChange)
+	if buttons := findAll(findByTestID(t, actions, "no-change-checkin"), func(n *nethtml.Node) bool { return n.Data == "button" }); len(buttons) == 0 {
+		t.Errorf("No change is not a button: %s", renderNode(actions))
 	}
-	summary := between(t, actionMenu(t, page), "<summary", "</summary>")
-	open := openTag(summary)
-	if text := strings.TrimSpace(summary[len(open)+1:]); text != "More ▾" {
-		t.Errorf("the menu button reads %q, want %q: %s", text, "More ▾", summary)
+	summaries := findAll(goalActionMenuIn(t, root), func(n *nethtml.Node) bool { return n.Data == "summary" })
+	if len(summaries) != 1 {
+		t.Fatalf("the action menu has %d buttons, want 1", len(summaries))
 	}
-	if attr(open, "aria-label") != "More actions" || attr(open, "title") != "More actions" {
-		t.Errorf("the menu button is not named and titled %q: %s", "More actions", summary)
+	summary := summaries[0]
+	if text := textOf(summary); text != "More ▾" {
+		t.Errorf("the menu button reads %q, want %q: %s", text, "More ▾", renderNode(summary))
+	}
+	if attrOf(summary, "aria-label") != "More actions" || attrOf(summary, "title") != "More actions" {
+		t.Errorf("the menu button is not named and titled %q: %s", "More actions", renderNode(summary))
 	}
 
-	page = getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
-	actions = pageElement(t, page, "div", "goal-actions")
-	for _, button := range []string{`data-testid="checkin-link"`, `data-testid="no-change-checkin"`} {
-		if strings.Contains(actions, button) {
-			t.Errorf("someone with no role on the Goal is offered %s: %s", button, actions)
+	root = getPage(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
+	actions = findByTestID(t, root, "goal-actions")
+	for _, button := range []string{"checkin-link", "no-change-checkin"} {
+		if hasTestID(actions, button) {
+			t.Errorf("someone with no role on the Goal is offered %s: %s", button, renderNode(actions))
 		}
 	}
-	if !strings.Contains(actions, `data-testid="goal-more"`) {
-		t.Errorf("someone with no role on the Goal has no action menu: %s", actions)
+	if !hasTestID(actions, "goal-more") {
+		t.Errorf("someone with no role on the Goal has no action menu: %s", renderNode(actions))
 	}
 }
 
@@ -5489,17 +6084,17 @@ func TestGoalPageHeaderOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	actions := pageElement(t, getBody(t, client, goalPageURL(ts.URL, overdue)), "div", "goal-actions")
-	if !strings.Contains(actions, `data-testid="checkin-link"`) {
-		t.Errorf("the overdue Goal's header has no Check in: %s", actions)
+	actions := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, overdue)), "goal-actions")
+	if !hasTestID(actions, "checkin-link") {
+		t.Errorf("the overdue Goal's header has no Check in: %s", renderNode(actions))
 	}
-	if strings.Contains(actions, `data-testid="no-change-checkin"`) {
-		t.Errorf("the overdue Goal's header offers a No change that would be refused: %s", actions)
+	if hasTestID(actions, "no-change-checkin") {
+		t.Errorf("the overdue Goal's header offers a No change that would be refused: %s", renderNode(actions))
 	}
-	actions = pageElement(t, getBody(t, client, goalPageURL(ts.URL, repeatable)), "div", "goal-actions")
-	for _, want := range []string{`data-testid="checkin-link"`, `data-testid="no-change-checkin"`} {
-		if !strings.Contains(actions, want) {
-			t.Errorf("the repeatable Goal's header lacks %s: %s", want, actions)
+	actions = findByTestID(t, getPage(t, client, goalPageURL(ts.URL, repeatable)), "goal-actions")
+	for _, want := range []string{"checkin-link", "no-change-checkin"} {
+		if !hasTestID(actions, want) {
+			t.Errorf("the repeatable Goal's header lacks %s: %s", want, renderNode(actions))
 		}
 	}
 }
@@ -5576,19 +6171,19 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Add a child Goal": child(goal),
 		}},
 	} {
-		page := getBody(t, signInClient(t, ts.URL, tc.who), goalPageURL(ts.URL, tc.goal))
-		if got := menuItems(t, page); !maps.Equal(got, tc.want) {
+		page := getPage(t, signInClient(t, ts.URL, tc.who), goalPageURL(ts.URL, tc.goal))
+		if got := goalMenuItemsIn(t, page); !maps.Equal(got, tc.want) {
 			t.Errorf("%s on %q: menu is %v, want %v", tc.who, tc.goal.Title, got, tc.want)
 		}
 	}
 }
 
-// lifecycleMenuItems are the action menu's Lifecycle items, label to where
-// each leads.
-func lifecycleMenuItems(t *testing.T, page string) map[string]string {
+// goalLifecycleMenuItemsIn are the action menu's Lifecycle items, label to
+// where each leads.
+func goalLifecycleMenuItemsIn(t *testing.T, root *nethtml.Node) map[string]string {
 	t.Helper()
 	out := map[string]string{}
-	for label, href := range menuItems(t, page) {
+	for label, href := range goalMenuItemsIn(t, root) {
 		switch label {
 		case "Put on hold…", "Mark done…", "Cancel…":
 			out[label] = href
@@ -5641,28 +6236,42 @@ func TestGoalPageActionMenuOffersLifecycleChangesOverHTTP(t *testing.T) {
 			{done, map[string]string{}},
 			{cancelled, map[string]string{}},
 		} {
-			page := getBody(t, client, goalPageURL(ts.URL, tc.goal))
-			if got := lifecycleMenuItems(t, page); !maps.Equal(got, tc.want) {
+			page := getPage(t, client, goalPageURL(ts.URL, tc.goal))
+			if got := goalLifecycleMenuItemsIn(t, page); !maps.Equal(got, tc.want) {
 				t.Errorf("%s on the %s Goal: Lifecycle items are %v, want %v", who, tc.goal.Lifecycle, got, tc.want)
 			}
 		}
 	}
 	for _, who := range []string{"mel@example.com", "ada@example.com"} {
-		page := getBody(t, signInClient(t, ts.URL, who), goalPageURL(ts.URL, active))
-		if got := lifecycleMenuItems(t, page); len(got) > 0 {
+		page := getPage(t, signInClient(t, ts.URL, who), goalPageURL(ts.URL, active))
+		if got := goalLifecycleMenuItemsIn(t, page); len(got) > 0 {
 			t.Errorf("%s, who may not check in, sees Lifecycle items %v", who, got)
 		}
 	}
 
 	// They come last in the menu, in that order.
-	list := between(t, actionMenu(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, active))), "<ul", "</ul>")
-	var labels []string
-	for _, m := range menuLink.FindAllStringSubmatch(list, -1) {
-		labels = append(labels, html.UnescapeString(m[2]))
-	}
+	menu := goalActionMenuIn(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, active)))
+	labels := textsOf(findAll(menu, func(n *nethtml.Node) bool { return n.Data == "a" }))
 	if n := len(labels); n < 4 || !slices.Equal(labels[n-3:], []string{"Put on hold…", "Mark done…", "Cancel…"}) {
 		t.Errorf("the Lifecycle items don't come last: %v", labels)
 	}
+}
+
+// assertGoalFormOpensBetween checks the open form sits in the page's block
+// from the first element carrying data-testid start up to the first carrying
+// next, the part of the page it concerns: it opens after start does, or inside
+// it, and before next.
+func assertGoalFormOpensBetween(t *testing.T, root, open *nethtml.Node, start, next string) {
+	t.Helper()
+	from, to := findAllByTestID(root, start), findAllByTestID(root, next)
+	if len(from) == 0 || len(to) == 0 || !precedes(from[0], open) || !precedes(open, to[0]) {
+		t.Errorf("%q does not open between %s and %s", attrOf(open, "data-open-form"), start, next)
+	}
+}
+
+// goalFormsPostingTo returns the forms under root whose action is action.
+func goalFormsPostingTo(root *nethtml.Node, action string) []*nethtml.Node {
+	return findAll(root, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
 }
 
 // Following an action menu item reloads the Goal page with exactly that form
@@ -5690,13 +6299,13 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		"ada": signInClient(t, ts.URL, "ada@example.com"),
 	}
 	const (
-		head       = `data-testid="goal-head"`
-		latest     = `data-testid="goal-checkins"`
-		parents    = `data-testid="goal-parents"`
-		children   = `data-testid="goal-children"`
-		people     = `data-testid="goal-people"`
-		dimensions = `data-testid="goal-dimensions"`
-		fields     = `data-testid="goal-field-block"`
+		head       = "goal-head"
+		latest     = "goal-checkins"
+		parents    = "goal-parents"
+		children   = "goal-children"
+		people     = "goal-people"
+		dimensions = "goal-dimensions"
+		fields     = "goal-field-block"
 	)
 
 	for _, tc := range []struct {
@@ -5720,25 +6329,25 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		{"ada", "Mark returned…", orphan, "return", fmt.Sprintf("/accounts/%d/return", kim.ID), people, dimensions},
 	} {
 		client := clients[tc.who]
-		plain := getBody(t, client, goalPageURL(ts.URL, tc.goal))
-		if n := openForms(plain); n != 0 {
-			t.Errorf("%s: the plain Goal page shows %d forms open", tc.label, n)
+		plain := getPage(t, client, goalPageURL(ts.URL, tc.goal))
+		if open := goalOpenFormsIn(plain); len(open) != 0 {
+			t.Errorf("%s: the plain Goal page shows %d forms open: %q", tc.label, len(open), open)
 		}
-		page := getBody(t, client, ts.URL+menuItems(t, plain)[tc.label])
-		open := openForm(t, page, tc.form)
-		if !strings.Contains(open, `action="`+tc.action+`"`) {
-			t.Errorf("%s opens no form posting to %s: %s", tc.label, tc.action, open)
+		page := getPage(t, client, ts.URL+goalMenuItemsIn(t, plain)[tc.label])
+		open := goalOpenFormIn(t, page, tc.form)
+		if len(goalFormsPostingTo(open, tc.action)) == 0 {
+			t.Errorf("%s opens no form posting to %s: %s", tc.label, tc.action, renderNode(open))
 		}
-		if n := strings.Count(open, " autofocus"); n != 1 {
-			t.Errorf("%s: open form has %d focused controls, want 1: %s", tc.label, n, open)
+		if n := len(findAll(open, func(n *nethtml.Node) bool { return hasAttr(n, "autofocus") })); n != 1 {
+			t.Errorf("%s: open form has %d focused controls, want 1: %s", tc.label, n, renderNode(open))
 		}
-		assertOpenIn(t, page, tc.form, tc.start, tc.next)
-		cancel := attr(tagAround(t, open, `data-testid="cancel-form"`), "href")
+		assertGoalFormOpensBetween(t, page, open, tc.start, tc.next)
+		cancel := attrOf(findByTestID(t, open, "cancel-form"), "href")
 		if cancel != fmt.Sprintf("/goals/%d", tc.goal.ID) {
 			t.Errorf("%s: Cancel leads to %q, not the plain Goal page", tc.label, cancel)
 		}
-		if n := openForms(getBody(t, client, ts.URL+cancel)); n != 0 {
-			t.Errorf("%s: after Cancel the page shows %d forms open", tc.label, n)
+		if open := goalOpenFormsIn(getPage(t, client, ts.URL+cancel)); len(open) != 0 {
+			t.Errorf("%s: after Cancel the page shows %d forms open: %q", tc.label, len(open), open)
 		}
 	}
 }
@@ -5746,7 +6355,8 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 // Each sidebar group's heading carries a small link, for whoever may use it,
 // that opens the group's form right there: Manage for Delegates and for
 // Contributors, Edit for Dimensions and for Fields, + Add for Contributes to.
-// Nothing on the page jumps to a collapsed section any more.
+// Nothing on the page jumps to a collapsed section any more. How the headings
+// look is TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTPStyles's.
 func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -5760,49 +6370,55 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	ts := newServer(t, h)
 	sam2 := signInClient(t, ts.URL, "sam@example.com")
-	plain := getBody(t, sam2, goalPageURL(ts.URL, goal))
+	plain := getPage(t, sam2, goalPageURL(ts.URL, goal))
 
 	for _, tc := range []struct {
 		group, heading, link, form, action, next string
 	}{
-		{"goal-parents", "<h3>Contributes to</h3>", "+ Add", "parent-link", "/links", `data-testid="goal-children"`},
-		{"goal-delegates", `<h3 class="label">Delegates</h3>`, "Manage", "delegates", "/delegates", `data-testid="goal-contributors"`},
-		{"goal-contributors", `<h3 class="label">Contributors</h3>`, "Manage", "contributors", "/contributors", `data-testid="goal-dimensions"`},
-		{"goal-dimensions", "<h3>Dimensions</h3>", "Edit", "dimensions", "/dimensions", `data-testid="goal-field-block"`},
-		{"goal-field-block", "<h3>Fields</h3>", "Edit", "fields", "/fields", `data-testid="goal-parents"`},
+		{"goal-parents", "Contributes to", "+ Add", "parent-link", "/links", "goal-children"},
+		{"goal-delegates", "Delegates", "Manage", "delegates", "/delegates", "goal-contributors"},
+		{"goal-contributors", "Contributors", "Manage", "contributors", "/contributors", "goal-dimensions"},
+		{"goal-dimensions", "Dimensions", "Edit", "dimensions", "/dimensions", "goal-field-block"},
+		{"goal-field-block", "Fields", "Edit", "fields", "/fields", "goal-parents"},
 	} {
-		head := between(t, plain, `data-testid="`+tc.group+`"`, "</div>")
-		if !strings.Contains(head, tc.heading) {
-			t.Errorf("%s's heading is not %s: %s", tc.group, tc.heading, head)
+		group := findByTestID(t, plain, tc.group)
+		heading := headingNamed(group, tc.heading)
+		if heading == nil || heading.Data != "h3" {
+			t.Errorf("%s's heading is not an h3 reading %s: %s", tc.group, tc.heading, renderNode(group))
 			continue
 		}
-		link := tagAround(t, head, `data-testid="open-`+tc.form+`"`)
-		if text := between(t, head, link, "</a>")[len(link):]; text != html.EscapeString(tc.link) {
+		link := findByTestID(t, group, "open-"+tc.form)
+		if link.Data != "a" || link.Parent != heading.Parent {
+			t.Errorf("%s's link doesn't sit in its heading: %s", tc.group, renderNode(heading.Parent))
+		}
+		if text := textOf(link); text != tc.link {
 			t.Errorf("%s's link reads %q, want %q", tc.group, text, tc.link)
 		}
-		if name := attr(link, "aria-label"); !strings.Contains(name, strings.TrimPrefix(tc.link, "+ ")) {
+		if name := attrOf(link, "aria-label"); !strings.Contains(name, strings.TrimPrefix(tc.link, "+ ")) {
 			t.Errorf("%s's link is named %q, which lacks its text %q", tc.group, name, tc.link)
 		}
-		page := getBody(t, sam2, ts.URL+html.UnescapeString(attr(link, "href")))
-		open := openForm(t, page, tc.form)
-		if !strings.Contains(open, fmt.Sprintf(`action="/goals/%d%s"`, goal.ID, tc.action)) {
-			t.Errorf("%s's link opens no form posting to %s: %s", tc.group, tc.action, open)
+		page := getPage(t, sam2, ts.URL+attrOf(link, "href"))
+		open := goalOpenFormIn(t, page, tc.form)
+		if len(goalFormsPostingTo(open, fmt.Sprintf("/goals/%d%s", goal.ID, tc.action))) == 0 {
+			t.Errorf("%s's link opens no form posting to %s: %s", tc.group, tc.action, renderNode(open))
 		}
-		assertOpenIn(t, page, tc.form, `data-testid="`+tc.group+`"`, tc.next)
-		if strings.Contains(between(t, page, `data-testid="`+tc.group+`"`, "</div>"), `data-testid="open-`+tc.form+`"`) {
+		assertGoalFormOpensBetween(t, page, open, tc.group, tc.next)
+		if hasTestID(findByTestID(t, page, tc.group), "open-"+tc.form) {
 			t.Errorf("%s still offers its link with its form open", tc.group)
 		}
 	}
-	if strings.Contains(plain, `href="#`) {
-		t.Errorf("the Goal page still links to a section further down: %s", between(t, plain, `href="#`, ">"))
+	if jumps := findAll(plain, func(n *nethtml.Node) bool { return n.Data == "a" && strings.HasPrefix(attrOf(n, "href"), "#") }); len(jumps) > 0 {
+		t.Errorf("the Goal page still links to a section further down: %s", renderNode(jumps[0]))
 	}
-	if strings.Contains(between(t, plain, `data-testid="goal-sidebar"`, "</aside>"), "<details") {
-		t.Errorf("the sidebar still folds a form into a collapsed section")
+	if folds := findAll(findByTestID(t, plain, "goal-sidebar"), func(n *nethtml.Node) bool { return n.Data == "details" }); len(folds) > 0 {
+		t.Errorf("the sidebar still folds a form into a collapsed section: %s", renderNode(folds[0]))
 	}
 
-	mel := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
-	if strings.Contains(between(t, mel, `data-testid="goal-sidebar"`, "</aside>"), `data-testid="open-`) {
-		t.Errorf("someone with no role on the Goal is offered a sidebar form")
+	mel := getPage(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
+	if offered := findAll(findByTestID(t, mel, "goal-sidebar"), func(n *nethtml.Node) bool {
+		return strings.HasPrefix(attrOf(n, "data-testid"), "open-")
+	}); len(offered) > 0 {
+		t.Errorf("someone with no role on the Goal is offered a sidebar form: %s", renderNode(offered[0]))
 	}
 }
 
@@ -5836,18 +6452,20 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 	for _, tc := range []struct {
 		who, form, action string
 		sent              url.Values
-		reason, typed     string
+		reason            string
+		// field is the control that keeps what was typed, typed.
+		field, typed string
 	}{
-		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", `value="nobody@example.com"`},
-		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", `value="nobody@example.com"`},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", ">Because.</textarea>"},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", ">Because.</textarea>"},
-		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", `value="nobody@example.com"`},
-		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"not-an-email"}}, `No account with email "not-an-email".`, `value="not-an-email"`},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", `value="2026-05-01"`},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", `value="GA"`},
-		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", `value="  "`},
-		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", `value="lots"`},
+		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", "to_email", "nobody@example.com"},
+		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", "email", "nobody@example.com"},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because."},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", "note", "Because."},
+		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com"},
+		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"not-an-email"}}, `No account with email "not-an-email".`, "email", "not-an-email"},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01"},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA"},
+		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  "},
+		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots"},
 	} {
 		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
 		page := readBody(t, resp)
@@ -5855,9 +6473,9 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 			t.Errorf("%s: refused submit is %d, want %d", tc.form, resp.StatusCode, http.StatusUnprocessableEntity)
 			continue
 		}
-		open := openForm(t, page, tc.form)
-		reason := pageElement(t, open, "p", "form-error")
-		if !strings.Contains(html.UnescapeString(reason), tc.reason) {
+		open := goalOpenFormIn(t, parsePage(t, page), tc.form)
+		reason := textOf(findByTestID(t, open, "form-error"))
+		if !strings.Contains(reason, tc.reason) {
 			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
 		}
 		for _, internal := range []string{"validation failed", "not authorized"} {
@@ -5865,8 +6483,39 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 				t.Errorf("%s: open form's error %q carries the internal %q prefix", tc.form, reason, internal)
 			}
 		}
-		if !strings.Contains(open, tc.typed) {
-			t.Errorf("%s: open form lost what was typed (%s): %s", tc.form, tc.typed, open)
+		if typed := formFields(open, tc.field); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == tc.typed }) {
+			t.Errorf("%s: open form lost what was typed (%s %q): %s", tc.form, tc.field, tc.typed, renderNode(open))
+		}
+	}
+}
+
+// goalPageNestedControls returns every interactive element, a link, button,
+// label or summary, that page opens inside another one, which HTML forbids.
+// It reads the tags as html's tokenizer reads them, since the parser would
+// close the outer element first and hide the nesting.
+func goalPageNestedControls(page string) []string {
+	var nested []string
+	depth := 0
+	z := nethtml.NewTokenizer(strings.NewReader(page))
+	for {
+		tt := z.Next()
+		if tt == nethtml.ErrorToken {
+			return nested
+		}
+		tok := z.Token()
+		switch tok.Data {
+		case "a", "button", "label", "summary":
+		default:
+			continue
+		}
+		switch tt {
+		case nethtml.EndTagToken:
+			depth = max(depth-1, 0)
+		case nethtml.StartTagToken:
+			if depth > 0 {
+				nested = append(nested, tok.String())
+			}
+			depth++
 		}
 	}
 }
@@ -5888,17 +6537,24 @@ func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
 	}
 	ts := newServer(t, h)
 	adaClient := signInClient(t, ts.URL, "ada@example.com")
-	opened := func(g domain.Goal, form string) string {
-		return openForm(t, getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, g.ID, form)), form)
+	opened := func(g domain.Goal, form string) *nethtml.Node {
+		return goalOpenFormIn(t, getPage(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, g.ID, form)), form)
+	}
+	assertConfirmsFirst := func(what string, open *nethtml.Node, action string) {
+		t.Helper()
+		forms := goalFormsPostingTo(open, action)
+		if len(forms) != 1 || !strings.HasPrefix(attrOf(forms[0], "onsubmit"), "return confirm(") {
+			t.Errorf("%s doesn't ask for confirmation: %s", what, renderNode(open))
+		}
 	}
 
-	assertConfirms(t, "Mark departed", tagAround(t, opened(goal, "depart"), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID)))
-	assertConfirms(t, "Mark returned", tagAround(t, opened(orphan, "return"), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID)))
-	assertSubmitsAtOnce(t, "Hand off", opened(goal, "handoff"), "/handoff")
-	assertSubmitsAtOnce(t, "Reassign", opened(orphan, "reassign"), "/reassign")
-	assertSubmitsAtOnce(t, "Top-level", opened(goal, "top-level"), "/top-level")
+	assertConfirmsFirst("Mark departed", opened(goal, "depart"), fmt.Sprintf("/accounts/%d/depart", sam.ID))
+	assertConfirmsFirst("Mark returned", opened(orphan, "return"), fmt.Sprintf("/accounts/%d/return", kim.ID))
+	assertSubmitsAtOnce(t, "Hand off", renderNode(opened(goal, "handoff")), "/handoff")
+	assertSubmitsAtOnce(t, "Reassign", renderNode(opened(orphan, "reassign")), "/reassign")
+	assertSubmitsAtOnce(t, "Top-level", renderNode(opened(goal, "top-level")), "/top-level")
 	for _, form := range []string{"depart", "handoff"} {
-		if nested := nestedControls(getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, goal.ID, form))); len(nested) > 0 {
+		if nested := goalPageNestedControls(getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, goal.ID, form))); len(nested) > 0 {
 			t.Errorf("the Goal page with %s open nests a control inside another: %q", form, nested)
 		}
 	}
@@ -6084,31 +6740,30 @@ func TestEditTitleAndWhyItMattersIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testin
 		h.AddDelegate(sam, tpm, g.ID)
 		for _, who := range []string{"sam@example.com", "ada@example.com"} {
 			client := signInClient(t, ts.URL, who)
-			if got := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; got != titleWhyItMattersOpen(g) {
+			if got := goalMenuItemsIn(t, getPage(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; got != titleWhyItMattersOpen(g) {
 				t.Errorf("%s on %q: Edit title and Why it matters leads to %q, want %q", who, g.Title, got, titleWhyItMattersOpen(g))
 			}
-			open := openForm(t, getBody(t, client, ts.URL+titleWhyItMattersOpen(g)), "title-why-it-matters")
-			if !strings.Contains(open, "Edit title and Why it matters") {
-				t.Errorf("%s on %q: the open form is not labelled Edit title and Why it matters: %s", who, g.Title, open)
+			open := goalOpenFormIn(t, getPage(t, client, ts.URL+titleWhyItMattersOpen(g)), "title-why-it-matters")
+			if headingNamed(open, "Edit title and Why it matters") == nil {
+				t.Errorf("%s on %q: the open form is not labelled Edit title and Why it matters: %s", who, g.Title, renderNode(open))
 			}
-			title := tagAround(t, open, `name="title"`)
-			if attr(title, "type") != "text" || attr(title, "value") != g.Title || !strings.Contains(title, " autofocus") {
-				t.Errorf("%s on %q: the Title input is not a focused text input holding %q: %s", who, g.Title, g.Title, title)
+			if title := formField(t, open, "title"); title.Type != "text" || title.Value != g.Title || !hasAttr(title.Node, "autofocus") {
+				t.Errorf("%s on %q: the Title input is not a focused text input holding %q: %s", who, g.Title, g.Title, renderNode(title.Node))
 			}
-			if !strings.Contains(open, `name="why_it_matters"`) || !strings.Contains(open, ">"+g.WhyItMatters+"</textarea>") {
-				t.Errorf("%s on %q: the Why it matters textarea doesn't hold %q: %s", who, g.Title, g.WhyItMatters, open)
+			if why := formFields(open, "why_it_matters"); len(why) != 1 || why[0].Type != "textarea" || why[0].Value != g.WhyItMatters {
+				t.Errorf("%s on %q: the Why it matters textarea doesn't hold %q: %s", who, g.Title, g.WhyItMatters, renderNode(open))
 			}
-			if !strings.Contains(open, ">Save</button>") {
-				t.Errorf("%s on %q: the form has no Save button: %s", who, g.Title, open)
+			if buttonNamed(open, "Save") == nil {
+				t.Errorf("%s on %q: the form has no Save button: %s", who, g.Title, renderNode(open))
 			}
 		}
 		for _, who := range []string{"tpm@example.com", "mel@example.com"} {
 			client := signInClient(t, ts.URL, who)
-			if got, ok := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; ok {
+			if got, ok := goalMenuItemsIn(t, getPage(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; ok {
 				t.Errorf("%s on %q is offered Edit title and Why it matters, leading to %q", who, g.Title, got)
 			}
-			if n := openForms(getBody(t, client, ts.URL+titleWhyItMattersOpen(g))); n != 0 {
-				t.Errorf("%s on %q: ?open=title-why-it-matters shows %d forms open, want none", who, g.Title, n)
+			if open := goalOpenFormsIn(getPage(t, client, ts.URL+titleWhyItMattersOpen(g))); len(open) != 0 {
+				t.Errorf("%s on %q: ?open=title-why-it-matters shows %d forms open, want none", who, g.Title, len(open))
 			}
 		}
 	}
@@ -6133,31 +6788,31 @@ func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
 			"title":          {"  Halve outages  "},
 			"why_it_matters": {g.WhyItMatters},
 		})
-		page := readBody(t, resp)
+		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) || resp.Request.URL.RawQuery != "" {
 			t.Errorf("%s: save is %d at %s, want 200 on the plain Goal page", who, resp.StatusCode, resp.Request.URL)
 		}
-		if title := pageElement(t, page, "h1", "goal-title"); !strings.HasSuffix(title, ">Halve outages") {
-			t.Errorf("%s: the page's title is %s, want Halve outages", who, title)
+		if title := findByTestID(t, page, "goal-title"); title.Data != "h1" || textOf(title) != "Halve outages" {
+			t.Errorf("%s: the page's title is %s, want Halve outages", who, renderNode(title))
 		}
-		entries := historyEntries(historyBlock(t, page))
-		var titles []string
-		for _, e := range entries {
-			if entryKind(t, e) == "title" {
-				titles = append(titles, between(t, e, "", "</li>"))
+		var titles []*nethtml.Node
+		for _, e := range findAllByTestID(findByTestID(t, page, "goal-history"), "history-entry") {
+			if attrOf(e, "data-kind") == "title" {
+				titles = append(titles, e)
 			}
 		}
 		if len(titles) != 1 {
 			t.Fatalf("%s: History has %d title entries, want 1", who, len(titles))
 		}
-		text := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(titles[0], " "))), " ")
+		text := textOf(titles[0])
 		for _, want := range []string{"Title", "Reduce outages → Halve outages"} {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s: the Title entry %q doesn't say %q", who, text, want)
 			}
 		}
-		if by := "by " + shownAs(who, strings.Split(who, "@")[0]); !strings.Contains(titles[0], by) {
-			t.Errorf("%s: the Title entry doesn't say it is %s: %s", who, by, titles[0])
+		label := strings.Split(who, "@")[0]
+		if by := "by " + label; !strings.Contains(runningText(titles[0]), by) || !goalShows(titles[0], who, label) {
+			t.Errorf("%s: the Title entry doesn't say it is %s, with their email a click away: %s", who, by, renderNode(titles[0]))
 		}
 	}
 }
@@ -6228,12 +6883,12 @@ func TestEditWhyItMattersHasOnlyItsNewRouteOverHTTP(t *testing.T) {
 	resp = postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
 		"title": {"Reduce outages"}, "why_it_matters": {"Outages cost us customers."},
 	})
-	page := readBody(t, resp)
+	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save is %d, want 200", resp.StatusCode)
 	}
-	if !strings.Contains(page, "Outages cost us customers.") {
-		t.Errorf("the Goal page doesn't show the saved Why it matters:\n%s", page)
+	if why := textOf(findByTestID(t, page, "goal-why-it-matters")); why != "Outages cost us customers." {
+		t.Errorf("the Goal page shows the Why it matters %q, want the saved one", why)
 	}
 	got, err := h.Service.ViewGoal(context.Background(), g.ID)
 	if err != nil {
@@ -6263,12 +6918,12 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a blank title is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	open := openForm(t, page, "title-why-it-matters")
-	if reason := pageElement(t, open, "p", "form-error"); !strings.Contains(reason, "A Goal needs a title.") {
+	open := goalOpenFormIn(t, parsePage(t, page), "title-why-it-matters")
+	if reason := textOf(findByTestID(t, open, "form-error")); !strings.Contains(reason, "A Goal needs a title.") {
 		t.Errorf("the open form's error %q doesn't say A Goal needs a title.", reason)
 	}
-	if !strings.Contains(open, ">Outages cost us customers.</textarea>") {
-		t.Errorf("the open form lost the Why it matters as typed: %s", open)
+	if why := formField(t, open, "why_it_matters"); why.Type != "textarea" || why.Value != "Outages cost us customers." {
+		t.Errorf("the open form lost the Why it matters as typed: %s", renderNode(open))
 	}
 	got, err := h.Service.ViewGoal(t.Context(), g.ID)
 	if err != nil {
@@ -6288,8 +6943,8 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a blank Why it matters is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	if open := openForm(t, page, "title-why-it-matters"); !strings.Contains(open, `value="Halve outages"`) {
-		t.Errorf("the open form lost the title as typed: %s", open)
+	if open := goalOpenFormIn(t, parsePage(t, page), "title-why-it-matters"); formField(t, open, "title").Value != "Halve outages" {
+		t.Errorf("the open form lost the title as typed: %s", renderNode(open))
 	}
 	if got, _ := h.Service.ViewGoal(t.Context(), g.ID); got.Title != "Reduce outages" {
 		t.Errorf("a save refused for its Why it matters still changed the title to %q", got.Title)
@@ -6341,6 +6996,19 @@ func TestEditTitleAndWhyItMattersIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 	}
 }
 
+// goalEmphasisedDates is what each date under root shown emphasised reads, in
+// order: a <strong>, as the date a Goal now delivers shows.
+func goalEmphasisedDates(root *nethtml.Node) []string {
+	return textsOf(findAll(root, func(n *nethtml.Node) bool { return n.Data == "strong" }))
+}
+
+// goalPlainDates is what each date under root shown plainly reads, in order:
+// a <span> carrying nothing else, as the date a slipped date now stands at
+// shows before what it slipped from, struck through.
+func goalPlainDates(root *nethtml.Node) []string {
+	return textsOf(findAll(root, func(n *nethtml.Node) bool { return n.Data == "span" && len(n.Attr) == 0 }))
+}
+
 // The Goal page shows its delivery date, the date it slipped from and its
 // Milestone's date as "Jul 16", while the Check-in form's date inputs still
 // hold ISO values (ticket #276).
@@ -6364,19 +7032,23 @@ func TestGoalPageShowsDatesInTheDateFormat(t *testing.T) {
 		t.Fatalf("submit check-in: status %d", resp.StatusCode)
 	}
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if delivery := pageElement(t, page, "span", "goal-delivery-date"); !strings.Contains(delivery, "<del>Jul 2</del> <strong>Jul 16</strong>") {
-		t.Errorf("the delivery date is not shown as ~~Jul 2~~ Jul 16; element:\n%s", delivery)
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	delivery := findByTestID(t, page, "goal-delivery-date")
+	struck, delivers := findAll(delivery, func(n *nethtml.Node) bool { return n.Data == "del" }), findAll(delivery, func(n *nethtml.Node) bool { return n.Data == "strong" })
+	if got, want := struckThrough(delivery), []string{"Jul 2"}; !slices.Equal(got, want) || !slices.Equal(goalEmphasisedDates(delivery), []string{"Jul 16"}) || !precedes(struck[0], delivers[0]) {
+		t.Errorf("the delivery date is not shown as ~~Jul 2~~ Jul 16; element:\n%s", renderNode(delivery))
 	}
-	if milestone := pageElement(t, page, "tr", "goal-milestone"); !strings.Contains(milestone, "<span>Apr 2</span>") {
-		t.Errorf("the Milestone's date is not shown as Apr 2; row:\n%s", milestone)
+	if milestone := findByTestID(t, page, "goal-milestone"); !slices.Contains(goalPlainDates(milestone), "Apr 2") {
+		t.Errorf("the Milestone's date is not shown as Apr 2; row:\n%s", renderNode(milestone))
 	}
 
-	form := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	for _, want := range []string{`name="delivery_date" value="2026-07-16"`, `value="2026-04-02" aria-label="Date of Beta"`} {
-		if !strings.Contains(form, want) {
-			t.Errorf("the Check-in form's date inputs do not hold %s", want)
-		}
+	form := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if got := formField(t, form, "delivery_date").Value; got != "2026-07-16" {
+		t.Errorf("the Check-in form's delivery date input holds %q, want 2026-07-16", got)
+	}
+	beta := findAll(form, func(n *nethtml.Node) bool { return n.Data == "input" && attrOf(n, "aria-label") == "Date of Beta" })
+	if len(beta) != 1 || attrOf(beta[0], "value") != "2026-04-02" {
+		t.Errorf("the Check-in form's Date of Beta input doesn't hold 2026-04-02")
 	}
 }
 
@@ -6416,20 +7088,19 @@ func (f goalActionItemFixture) raise(pub domain.Publication, owner domain.Accoun
 	return item
 }
 
-// goalActionItemRows returns each row of the Goal page's Action Items, in
-// order, or none when the page has no such section.
-func goalActionItemRows(page string) []string {
-	start := strings.Index(page, `<section id="action-items" data-testid="goal-action-items"`)
-	if start < 0 {
+// goalActionItemRowsIn returns each row of the Goal page's Action Items, in
+// order, or none when the page has no such section. The section is the
+// page's #action-items, where a closed Action Item comes back to.
+func goalActionItemRowsIn(t *testing.T, root *nethtml.Node) []*nethtml.Node {
+	t.Helper()
+	sections := findAllByTestID(root, "goal-action-items")
+	if len(sections) == 0 {
 		return nil
 	}
-	section := page[start : start+strings.Index(page[start:], "</section>")]
-	var rows []string
-	for _, part := range strings.Split(section, `<li data-testid="goal-action-item"`)[1:] {
-		row, _, _ := strings.Cut(part, "</li>")
-		rows = append(rows, row)
+	if id := attrOf(sections[0], "id"); id != "action-items" {
+		t.Errorf("the Action Items section's id is %q, want action-items", id)
 	}
-	return rows
+	return findAllByTestID(sections[0], "goal-action-item")
 }
 
 // A Goal's page lists its open Action Items from every Report, after its
@@ -6451,55 +7122,57 @@ func TestGoalPageListsItsOpenActionItems(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "author@example.com")
 
-	page := getBody(t, client, goalPageURL(ts.URL, f.goal))
-	rows := goalActionItemRows(page)
+	page := getPage(t, client, goalPageURL(ts.URL, f.goal))
+	rows := goalActionItemRowsIn(t, page)
 	if len(rows) != 2 {
-		t.Fatalf("Action Items rows = %d, want 2:\n%q", len(rows), rows)
+		t.Fatalf("Action Items rows = %d, want 2:\n%q", len(rows), textsOf(rows))
 	}
-	if !strings.Contains(page, `<h2>Action Items</h2>`) {
+	section := findByTestID(t, page, "goal-action-items")
+	if heading := headingNamed(section, "Action Items"); heading == nil || heading.Data != "h2" {
 		t.Errorf("the Action Items section has no Action Items heading")
 	}
-	if ms, ai := strings.Index(page, `data-testid="goal-milestones"`), strings.Index(page, `data-testid="goal-action-items"`); ai < ms {
+	if !precedes(findByTestID(t, page, "goal-milestones"), section) {
 		t.Errorf("Action Items come before the Milestones")
 	}
 	overdue, later := rows[0], rows[1]
-	for _, want := range []string{
-		"Explain the slip.",
-		shownAs(f.sam.Email, f.sam.Label()),
-		"due Dec 31, 2025",
-		`data-testid="goal-action-item-overdue"`,
-		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.mbr.ID, f.mbrPub.ID),
-		">MBR<",
+	for _, tc := range []struct {
+		row         *nethtml.Node
+		text, due   string
+		report      domain.ReportDefinition
+		publication domain.Publication
+	}{
+		{overdue, "Explain the slip.", "due Dec 31, 2025", f.mbr, f.mbrPub},
+		{later, "Book the venue.", "due Jan 7, 2026", f.qbr, f.qbrPub},
 	} {
-		if !strings.Contains(overdue, want) {
-			t.Errorf("first row lacks %s:\n%s", want, overdue)
+		for _, want := range []string{tc.text, tc.due} {
+			if !strings.Contains(textOf(tc.row), want) {
+				t.Errorf("the %s row lacks %q:\n%s", tc.text, want, renderNode(tc.row))
+			}
+		}
+		if !goalShows(tc.row, f.sam.Email, f.sam.Label()) {
+			t.Errorf("the %s row doesn't show its owner %s:\n%s", tc.text, f.sam.Label(), renderNode(tc.row))
+		}
+		if from := linkTo(tc.row, fmt.Sprintf("/reports/%d/publications/%d#action-items", tc.report.ID, tc.publication.ID)); from == nil || textOf(from) != tc.report.Name {
+			t.Errorf("the %s row doesn't link to %s's Action Items:\n%s", tc.text, tc.report.Name, renderNode(tc.row))
 		}
 	}
-	for _, want := range []string{
-		"Book the venue.",
-		shownAs(f.sam.Email, f.sam.Label()),
-		"due Jan 7, 2026",
-		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.qbr.ID, f.qbrPub.ID),
-		">QBR<",
-	} {
-		if !strings.Contains(later, want) {
-			t.Errorf("second row lacks %s:\n%s", want, later)
-		}
+	if !hasTestID(overdue, "goal-action-item-overdue") {
+		t.Errorf("an overdue Action Item isn't flagged Overdue:\n%s", renderNode(overdue))
 	}
-	if strings.Contains(later, "goal-action-item-overdue") {
-		t.Errorf("an Action Item due in five days is flagged Overdue:\n%s", later)
+	if hasTestID(later, "goal-action-item-overdue") {
+		t.Errorf("an Action Item due in five days is flagged Overdue:\n%s", renderNode(later))
 	}
-	if strings.Contains(strings.Join(rows, ""), "Already handled.") {
+	if strings.Contains(strings.Join(textsOf(rows), " "), "Already handled.") {
 		t.Errorf("a closed Action Item is listed")
 	}
 
 	f.raise(f.mbrPub, f.sam, "Call the vendor.", 0, f.goal.ID)
-	rows = goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, f.goal)))
-	if len(rows) != 3 || !strings.Contains(rows[1], "Call the vendor.") {
-		t.Fatalf("with one due today, rows = %q, want it second of 3", rows)
+	rows = goalActionItemRowsIn(t, getPage(t, client, goalPageURL(ts.URL, f.goal)))
+	if len(rows) != 3 || !strings.Contains(textOf(rows[1]), "Call the vendor.") {
+		t.Fatalf("with one due today, rows = %q, want it second of 3", textsOf(rows))
 	}
-	if strings.Contains(rows[1], "goal-action-item-overdue") {
-		t.Errorf("an Action Item due today is flagged Overdue:\n%s", rows[1])
+	if hasTestID(rows[1], "goal-action-item-overdue") {
+		t.Errorf("an Action Item due today is flagged Overdue:\n%s", renderNode(rows[1]))
 	}
 }
 
@@ -6520,9 +7193,9 @@ func TestGoalPageListsOnlyItsOwnOpenActionItems(t *testing.T) {
 	f.raise(pub, f.sam, "Send the minutes.", 3, 0)
 	client := signInClient(t, ts.URL, "author@example.com")
 
-	rows := goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, f.goal)))
-	if len(rows) != 1 || !strings.Contains(rows[0], "Explain the slip.") {
-		t.Errorf("Launch in EU's Action Items = %q, want only Explain the slip.", rows)
+	rows := goalActionItemRowsIn(t, getPage(t, client, goalPageURL(ts.URL, f.goal)))
+	if len(rows) != 1 || !strings.Contains(textOf(rows[0]), "Explain the slip.") {
+		t.Errorf("Launch in EU's Action Items = %q, want only Explain the slip.", textsOf(rows))
 	}
 
 	quiet := h.ActiveGoal(f.author, "Cut costs", "Margins are thin.")
@@ -6531,10 +7204,10 @@ func TestGoalPageListsOnlyItsOwnOpenActionItems(t *testing.T) {
 	if _, err := h.Service.CloseActionItem(context.Background(), f.sam.ID, closed.ID, "Done."); err != nil {
 		t.Fatalf("CloseActionItem: %v", err)
 	}
-	if rows := goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, other))); len(rows) != 1 || !strings.Contains(rows[0], "Post the job ad.") {
-		t.Errorf("Hire in Berlin's Action Items = %q, want only Post the job ad.", rows)
+	if rows := goalActionItemRowsIn(t, getPage(t, client, goalPageURL(ts.URL, other))); len(rows) != 1 || !strings.Contains(textOf(rows[0]), "Post the job ad.") {
+		t.Errorf("Hire in Berlin's Action Items = %q, want only Post the job ad.", textsOf(rows))
 	}
-	if page := getBody(t, client, goalPageURL(ts.URL, quiet)); strings.Contains(page, `data-testid="goal-action-items"`) {
+	if page := getPage(t, client, goalPageURL(ts.URL, quiet)); hasTestID(page, "goal-action-items") {
 		t.Errorf("a Goal with only a closed Action Item shows an Action Items section")
 	}
 }
@@ -6552,17 +7225,17 @@ func TestGoalPageLetsAnActionItemsOwnerCloseIt(t *testing.T) {
 	author := signInClient(t, ts.URL, "author@example.com")
 	sam := noRedirects(signInClient(t, ts.URL, "sam.smith@example.com"))
 
-	if rows := goalActionItemRows(getBody(t, author, goalPageURL(ts.URL, f.goal))); len(rows) != 1 || strings.Contains(rows[0], `data-testid="close-action-item"`) {
-		t.Errorf("someone who doesn't own the Action Item is offered its Close: %q", rows)
+	if rows := goalActionItemRowsIn(t, getPage(t, author, goalPageURL(ts.URL, f.goal))); len(rows) != 1 || hasTestID(rows[0], "close-action-item") {
+		t.Errorf("someone who doesn't own the Action Item is offered its Close: %q", textsOf(rows))
 	}
-	rows := goalActionItemRows(getBody(t, sam, goalPageURL(ts.URL, f.goal)))
+	rows := goalActionItemRowsIn(t, getPage(t, sam, goalPageURL(ts.URL, f.goal)))
 	if len(rows) != 1 {
 		t.Fatalf("Action Items rows = %d, want 1", len(rows))
 	}
 	back := fmt.Sprintf("/goals/%d#action-items", f.goal.ID)
-	form := rows[0]
-	if !strings.Contains(form, fmt.Sprintf(`action="/action-items/%d/close"`, item.ID)) || !strings.Contains(form, `name="return" value="`+back+`"`) {
-		t.Fatalf("the owner's row has no Close that comes back to %s:\n%s", back, form)
+	forms := goalFormsPostingTo(rows[0], fmt.Sprintf("/action-items/%d/close", item.ID))
+	if len(forms) != 1 || !slices.ContainsFunc(formFields(forms[0], "return"), func(f pageField) bool { return f.Value == back }) {
+		t.Fatalf("the owner's row has no Close that comes back to %s:\n%s", back, renderNode(rows[0]))
 	}
 
 	resp := postForm(t, sam, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{"note": {"Vendor was late."}, "return": {back}})
@@ -6570,7 +7243,7 @@ func TestGoalPageLetsAnActionItemsOwnerCloseIt(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
 		t.Errorf("close: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), back)
 	}
-	if page := getBody(t, author, goalPageURL(ts.URL, f.goal)); strings.Contains(page, `data-testid="goal-action-items"`) {
+	if page := getPage(t, author, goalPageURL(ts.URL, f.goal)); hasTestID(page, "goal-action-items") {
 		t.Errorf("the Goal page still lists the Action Item its owner closed")
 	}
 }
@@ -6589,16 +7262,16 @@ func TestABackToGreenSlipStrikesNoDeliveryDate(t *testing.T) {
 	h.CheckinMovingPath(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate.AddDate(0, 0, 7), "The vendor is out.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, goalPageURL(ts.URL, goal))
-	if delivery := pageElement(t, page, "span", "goal-delivery-date"); strings.Contains(delivery, "<del>") {
-		t.Errorf("the Goal page strikes a delivery date: %s", delivery)
+	page := getPage(t, client, goalPageURL(ts.URL, goal))
+	if delivery := findByTestID(t, page, "goal-delivery-date"); len(struckThrough(delivery)) > 0 {
+		t.Errorf("the Goal page strikes a delivery date: %s", renderNode(delivery))
 	}
-	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
+	rows := goalListRowsIn(getPage(t, client, ts.URL+"/goals"))
 	if len(rows) != 1 {
 		t.Fatalf("Goals list has %d rows, want 1", len(rows))
 	}
-	if due := pageElement(t, rows[0], "td", "goal-row-due"); strings.Contains(due, "<del>") {
-		t.Errorf("the Goals list strikes a delivery date: %s", due)
+	if due := findByTestID(t, rows[0], "goal-row-due"); len(struckThrough(due)) > 0 {
+		t.Errorf("the Goals list strikes a delivery date: %s", renderNode(due))
 	}
 }
 
@@ -6614,10 +7287,10 @@ func TestAPulledInBackToGreenDateStrikesTheDateItDiffersFrom(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
-	cell := func(goal domain.Goal) string {
+	cell := func(goal domain.Goal) *nethtml.Node {
 		t.Helper()
-		cells := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "dl", "goal-status-cells")
-		return between(t, cells, `data-testid="goal-back-to-green-cell"`, "</dd>")
+		cells := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "goal-status-cells")
+		return findByTestID(t, cells, "goal-back-to-green-cell")
 	}
 
 	twice := h.ActiveGoal(sam, "Slipped twice", "It matters.")
@@ -6626,11 +7299,11 @@ func TestAPulledInBackToGreenDateStrikesTheDateItDiffersFrom(t *testing.T) {
 	h.CheckinMovingPath(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(23), "The vendor is still out.")
 	h.Checkin(sam, twice.ID, domain.HealthYellow, "Better.", "Escalate.", jun(16))
 	got := cell(twice)
-	if !strings.Contains(got, "<span>Jun 16</span>") || !strings.Contains(got, "<del>Jun 9</del>") || strings.Contains(got, "<del>Jun 16</del>") {
-		t.Errorf("the cell doesn't read Jun 16 ~~Jun 9~~: %s", got)
+	if !slices.Equal(goalPlainDates(got), []string{"Jun 16"}) || !slices.Equal(struckThrough(got), []string{"Jun 9"}) {
+		t.Errorf("the cell doesn't read Jun 16 ~~Jun 9~~: %s", renderNode(got))
 	}
-	if slips := elementTexts(got, "span", "back-to-green-slips"); !slices.Equal(slips, []string{"(2)"}) {
-		t.Errorf("the slip count = %q, want (2): %s", slips, got)
+	if slips := textsOf(findAllByTestID(got, "back-to-green-slips")); !slices.Equal(slips, []string{"(2)"}) {
+		t.Errorf("the slip count = %q, want (2): %s", slips, renderNode(got))
 	}
 
 	once := h.ActiveGoal(sam, "Slipped once", "It matters.")
@@ -6638,8 +7311,8 @@ func TestAPulledInBackToGreenDateStrikesTheDateItDiffersFrom(t *testing.T) {
 	h.CheckinMovingPath(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(16), "The vendor is out.")
 	h.Checkin(sam, once.ID, domain.HealthYellow, "Better.", "Escalate.", jun(9))
 	got = cell(once)
-	if !strings.Contains(got, "<span>Jun 9</span>") || strings.Contains(got, "<del>") || strings.Contains(got, "back-to-green-slips") {
-		t.Errorf("a date back where it slipped from strikes a date or shows a count: %s", got)
+	if !slices.Equal(goalPlainDates(got), []string{"Jun 9"}) || len(struckThrough(got)) > 0 || hasTestID(got, "back-to-green-slips") {
+		t.Errorf("a date back where it slipped from strikes a date or shows a count: %s", renderNode(got))
 	}
 }
 
@@ -6670,38 +7343,32 @@ func TestAPulledBackDeliveryDateIsNotStruckThrough(t *testing.T) {
 		}
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
-	struck := func(markup string) []string {
-		var out []string
-		for _, m := range regexp.MustCompile(`<del>([^<]*)</del>`).FindAllStringSubmatch(markup, -1) {
-			out = append(out, m[1])
-		}
-		return out
-	}
 
-	delivery := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "span", "goal-delivery-date")
-	if got := struck(delivery); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
-		t.Errorf("the Goal page strikes %q, want Nov 1 and Nov 23: %s", got, delivery)
+	delivery := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "goal-delivery-date")
+	if got := struckThrough(delivery); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
+		t.Errorf("the Goal page strikes %q, want Nov 1 and Nov 23: %s", got, renderNode(delivery))
 	}
-	if !strings.Contains(delivery, "<strong>Nov 9</strong>") {
-		t.Errorf("the Goal page doesn't deliver Nov 9: %s", delivery)
+	if !slices.Contains(goalEmphasisedDates(delivery), "Nov 9") {
+		t.Errorf("the Goal page doesn't deliver Nov 9: %s", renderNode(delivery))
 	}
-	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
+	rows := goalListRowsIn(getPage(t, client, ts.URL+"/goals"))
 	if len(rows) != 1 {
 		t.Fatalf("Goals list has %d rows, want 1", len(rows))
 	}
-	due := pageElement(t, rows[0], "td", "goal-row-due")
-	if got := struck(due); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
-		t.Errorf("the Goals list strikes %q, want Nov 1 and Nov 23: %s", got, due)
+	due := findByTestID(t, rows[0], "goal-row-due")
+	if got := struckThrough(due); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
+		t.Errorf("the Goals list strikes %q, want Nov 1 and Nov 23: %s", got, renderNode(due))
 	}
-	if !strings.Contains(due, "<span>Nov 9</span>") {
-		t.Errorf("the Goals list isn't due Nov 9: %s", due)
+	if !slices.Contains(goalPlainDates(due), "Nov 9") {
+		t.Errorf("the Goals list isn't due Nov 9: %s", renderNode(due))
 	}
 }
 
 // The Goal page lists the Goals a Goal contributes to and those contributing
 // to it with each one's Health first, then its title, on one line: a chip with
 // no word shown, read out and given as its tooltip; or, with no Health, its
-// Lifecycle in words (#453).
+// Lifecycle in words (#453). That the line lays them out side by side is
+// TestGoalPageLinkedGoalsLeadWithTheirHealthStyles's.
 func TestGoalPageLinkedGoalsLeadWithTheirHealth(t *testing.T) {
 	t.Parallel()
 
@@ -6716,7 +7383,7 @@ func TestGoalPageLinkedGoalsLeadWithTheirHealth(t *testing.T) {
 		goal   domain.Goal
 		health string
 	}{{f.yellow, "Yellow"}, {f.green, "Green"}} {
-		title := linkTo(children, fmt.Sprintf("/goals/%d", child.goal.ID))
+		title := linkTo(children, goalHref(child.goal.ID))
 		if title == nil {
 			t.Fatalf("Contributed to by has no link to %s:\n%s", child.goal.Title, renderNode(children))
 		}
@@ -6732,15 +7399,10 @@ func TestGoalPageLinkedGoalsLeadWithTheirHealth(t *testing.T) {
 	}
 
 	parents := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, f.yellow)), "goal-parents")
-	title := linkTo(parents, fmt.Sprintf("/goals/%d", f.parent.ID))
+	title := linkTo(parents, goalHref(f.parent.ID))
 	lifecycle := findAll(parents, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "lc") })
 	if title == nil || len(lifecycle) != 1 || shownTextOf(lifecycle[0]) != "Active" || !precedes(lifecycle[0], title) || lifecycle[0].Parent != title.Parent {
 		t.Errorf("a parent with no Health doesn't lead with its Lifecycle in words:\n%s", renderNode(parents))
-	}
-
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	if rule, _ := ruleFor(css, ".gp-link-head"); !strings.Contains(rule, "display:flex") || strings.Contains(rule, "column") {
-		t.Errorf("a linked Goal's Health and title don't sit on one line: .gp-link-head{%s}", rule)
 	}
 }
 
@@ -6761,7 +7423,7 @@ func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "a Goal needs a title") {
+	if !strings.Contains(textOf(parsePage(t, body)), "a Goal needs a title") {
 		t.Errorf("the refusal doesn't say a Goal needs a title; body:\n%s", body)
 	}
 	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {

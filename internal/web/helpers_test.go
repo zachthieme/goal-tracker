@@ -697,20 +697,10 @@ func scopeSelectIn(t *testing.T, root *html.Node, testID string) *html.Node {
 	return labelled[0]
 }
 
-// scopeChoices reads a Scope select's options in order, each by its label,
+// selectChoices reads a parsed select, or any element holding one, such as a
+// Scope select (CONTEXT.md: Org): its options in order, each by its label,
 // those in a group led by the group's label ("Other orgs: Mia Moss
 // (mia@example.com)"), and the value and label of the one selected, if any.
-func scopeChoices(sel string) (choices []string, selectedValue, selectedLabel string) {
-	doc, err := html.Parse(strings.NewReader(sel))
-	if err != nil {
-		return nil, "", ""
-	}
-	return selectChoices(doc)
-}
-
-// selectChoices is scopeChoices read from a parsed select, or any element
-// holding one: its options in order, each by its label, those in a group led
-// by the group's label, and the value and label of the one selected, if any.
 func selectChoices(sel *html.Node) (choices []string, selectedValue, selectedLabel string) {
 	for n := range sel.Descendants() {
 		if n.Type != html.ElementNode || n.Data != "option" {
@@ -1354,10 +1344,10 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 }
 
 // The string helpers below read a page's markup as a string, for the tests in
-// other areas that still call them (followups_test.go, goalform_test.go,
+// other areas that still call them (drafthighlights_test.go, goalform_test.go,
 // handoffs_test.go, home_test.go, reports_test.go, styles_test.go,
-// suggestions_test.go, drafthighlights_test.go). goals_test.go reads its pages
-// through the parser helpers instead.
+// suggestions_test.go). goals_test.go reads its pages through the parser
+// helpers instead.
 
 // hasClass reports whether an open tag's class attribute holds class.
 func hasClass(openTag, class string) bool {
@@ -1437,38 +1427,6 @@ func activationItemParts(t *testing.T, li string) (mark, label, state string) {
 }
 
 var regexpTags = regexp.MustCompile(`<[^>]*>`)
-
-// formValues is what a browser submits from form as it renders: every input,
-// the ticked checkboxes and radios, each textarea, and each select's chosen (or
-// else first) option.
-func formValues(form string) url.Values {
-	values := url.Values{}
-	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
-		name, value := attr(tag, "name"), html.UnescapeString(attr(tag, "value"))
-		switch attr(tag, "type") {
-		case "checkbox", "radio":
-			if regexp.MustCompile(`\schecked[\s/>]`).MatchString(tag) {
-				values.Add(name, value)
-			}
-		default:
-			values.Add(name, value)
-		}
-	}
-	for _, m := range regexp.MustCompile(`(?s)(<textarea[^>]*>)(.*?)</textarea>`).FindAllStringSubmatch(form, -1) {
-		values.Add(attr(m[1], "name"), html.UnescapeString(m[2]))
-	}
-	for _, m := range regexp.MustCompile(`(?s)(<select[^>]*>)(.*?)</select>`).FindAllStringSubmatch(form, -1) {
-		options := regexp.MustCompile(`<option[^>]*>`).FindAllString(m[2], -1)
-		chosen := options[0]
-		for _, o := range options {
-			if regexp.MustCompile(`\sselected[\s/>]`).MatchString(o) {
-				chosen = o
-			}
-		}
-		values.Add(attr(m[1], "name"), attr(chosen, "value"))
-	}
-	return values
-}
 
 // actionMenu returns the Goal page header strip's action menu: from its
 // <details> to the end of the strip's actions, where it sits last.
