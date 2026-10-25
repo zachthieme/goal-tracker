@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,9 +42,9 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	// The builder offers the Goals to pick.
-	form := getBody(t, client, ts.URL+"/reports/new")
-	if !strings.Contains(pageElement(t, form, "select", "picked-select"), "Grow revenue") {
-		t.Fatalf("the builder does not offer Goals to pick; body:\n%s", form)
+	picker := findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "picked-select")
+	if offered := textsOf(findAll(picker, func(n *nethtml.Node) bool { return n.Data == "option" })); !slices.Contains(offered, "Grow revenue") {
+		t.Fatalf("the builder does not offer Goals to pick: it offers %q", offered)
 	}
 
 	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
@@ -57,27 +56,28 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
 	}
-	draft := readBody(t, resp)
+	draft := parsePage(t, readBody(t, resp))
 	for _, want := range []string{
 		"EU MBR",
 		"Quarterly business review.",
 		"Grow revenue", "Launch in EU", "Cut churn", // selected Goals
-		"boss@example.com",  // Owner
 		domain.HealthYellow, // B's Health
 	} {
-		if !strings.Contains(draft, want) {
-			t.Errorf("live draft missing %q; body:\n%s", want, draft)
+		if !strings.Contains(textOf(draft), want) {
+			t.Errorf("live draft missing %q; page reads:\n%s", want, textOf(draft))
 		}
 	}
+	if owners := reportPersonEmails(draft); !slices.Contains(owners, "boss@example.com") {
+		t.Errorf("live draft doesn't show the Owner, boss@example.com: it shows %q", owners)
+	}
 	// Each selected Goal appears once, as a block or a line.
-	if got := strings.Count(draft, `data-testid="report-exception"`) + strings.Count(draft, `data-testid="selected-goal"`); got != 3 {
-		t.Errorf("draft shows %d selected Goals, want 3; body:\n%s", got, draft)
+	if got := len(findAllByTestID(draft, "report-exception")) + len(findAllByTestID(draft, "selected-goal")); got != 3 {
+		t.Errorf("draft shows %d selected Goals, want 3:\n%s", got, renderNode(draft))
 	}
 
 	// The saved definition shows up on the reports list.
-	list := getBody(t, client, ts.URL+"/reports")
-	if !strings.Contains(list, "EU MBR") {
-		t.Errorf("reports list missing the saved definition; body:\n%s", list)
+	if list := getPage(t, client, ts.URL+"/reports"); !strings.Contains(textOf(list), "EU MBR") {
+		t.Errorf("reports list missing the saved definition; page reads:\n%s", textOf(list))
 	}
 }
 
@@ -116,27 +116,33 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	page := getBody(t, client, reportURL)
-	if !strings.Contains(page, `value="2026-01-12"`) {
-		t.Errorf("page does not offer the default baseline, 30 days ago; body:\n%s", page)
+	page := getPage(t, client, reportURL)
+	if !slices.ContainsFunc(formFields(page, "baseline"), func(f pageField) bool { return f.Value == "2026-01-12" }) {
+		t.Errorf("page does not offer the default baseline, 30 days ago: %+v", formFields(page, "baseline"))
 	}
-	block := pageElement(t, page, "article", "report-exception")
-	for _, want := range []string{"Launch in EU", domain.HealthRed, "Blocked on legal.", "Hire counsel."} {
-		if !strings.Contains(block, want) {
-			t.Errorf("exception block missing %q; block:\n%s", want, block)
+	blocks := findAllByTestID(page, "report-exception")
+	if len(blocks) != 1 {
+		t.Errorf("%d exception blocks, want 1:\n%s", len(blocks), renderNode(page))
+	}
+	if len(blocks) > 0 {
+		for _, want := range []string{"Launch in EU", domain.HealthRed, "Blocked on legal.", "Hire counsel."} {
+			if !strings.Contains(textOf(blocks[0]), want) {
+				t.Errorf("exception block missing %q; block reads %q", want, textOf(blocks[0]))
+			}
 		}
 	}
-	if got := strings.Count(page, `data-testid="report-exception"`); got != 1 {
-		t.Errorf("%d exception blocks, want 1; body:\n%s", got, page)
+	lines := findAllByTestID(page, "selected-goal")
+	if len(lines) == 0 {
+		t.Fatalf("draft has no one-line Goal:\n%s", renderNode(page))
 	}
-	if line := pageElement(t, page, "tr", "selected-goal"); !strings.Contains(line, "Cut churn") {
-		t.Errorf("unchanged Green is not one line; line:\n%s", line)
+	if line := textOf(lines[0]); !strings.Contains(line, "Cut churn") {
+		t.Errorf("unchanged Green is not one line; line reads %q", line)
 	}
 
 	// A baseline before both Goals were created makes both New.
-	page = getBody(t, client, reportURL+"?baseline=2026-01-01")
-	if got := strings.Count(page, `data-testid="report-exception"`); got != 2 {
-		t.Errorf("with an earlier baseline, %d exception blocks, want 2; body:\n%s", got, page)
+	page = getPage(t, client, reportURL+"?baseline=2026-01-01")
+	if got := len(findAllByTestID(page, "report-exception")); got != 2 {
+		t.Errorf("with an earlier baseline, %d exception blocks, want 2:\n%s", got, renderNode(page))
 	}
 
 	resp, err := client.Get(reportURL + "?baseline=not-a-date")
@@ -170,7 +176,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	unpublished := findByTestID(t, parsePage(t, getBody(t, client, reportURL)), "report-history")
+	unpublished := findByTestID(t, getPage(t, client, reportURL), "report-history")
 	if got := textsOf(findAllByTestID(unpublished, "report-history-entry")); !slices.Equal(got, []string{"Created Feb 11, 2026, 15:04 · boss"}) {
 		t.Errorf("an unpublished definition's History reads %q, want only its creation", got)
 	}
@@ -182,49 +188,47 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	if !strings.HasPrefix(pubURL, reportURL+"/publications/") {
 		t.Fatalf("publish redirected to %s, want a publication of the definition", pubURL)
 	}
-	published := readBody(t, resp)
-	if line := pageElement(t, published, "p", "report-published"); !strings.Contains(line, "boss@example.com") {
-		t.Errorf("publication does not say who published it; line:\n%s", line)
+	published := parsePage(t, readBody(t, resp))
+	if line := findByTestID(t, published, "report-published"); !slices.Contains(reportPersonEmails(line), "boss@example.com") {
+		t.Errorf("publication does not say who published it: %s", renderNode(line))
 	}
 	for _, want := range []string{"MBR", "Vendor is late."} {
-		if !strings.Contains(published, want) {
-			t.Errorf("publication missing %q; body:\n%s", want, published)
+		if !strings.Contains(textOf(published), want) {
+			t.Errorf("publication missing %q; page reads:\n%s", want, textOf(published))
 		}
 	}
 
 	h.Clock.Advance(24 * time.Hour)
 	// Two weeks out from a day later moves the back-to-Green date later.
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
-	published = getBody(t, client, pubURL)
-	if !strings.Contains(published, "Vendor is late.") || strings.Contains(published, "Vendor is gone.") {
-		t.Errorf("publication changed after a later Check-in; body:\n%s", published)
+	if read := textOf(getPage(t, client, pubURL)); !strings.Contains(read, "Vendor is late.") || strings.Contains(read, "Vendor is gone.") {
+		t.Errorf("publication changed after a later Check-in; page reads:\n%s", read)
 	}
 
-	draft := getBody(t, client, reportURL)
-	if linkTo(findByTestID(t, parsePage(t, draft), "report-history"), strings.TrimPrefix(pubURL, ts.URL)) == nil {
-		t.Errorf("the draft's History does not link its publication; body:\n%s", draft)
+	draft := getPage(t, client, reportURL)
+	if linkTo(findByTestID(t, draft, "report-history"), strings.TrimPrefix(pubURL, ts.URL)) == nil {
+		t.Errorf("the draft's History does not link its publication: %s", renderNode(findByTestID(t, draft, "report-history")))
 	}
 	// By default publishing reads against the previous publication, so the
 	// publish form carries no baseline.
-	form := pageElement(t, draft, "form", "report-publish")
-	if !strings.Contains(form, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/publications"`) || strings.Contains(form, `name="baseline"`) {
-		t.Errorf("the default publish form carries a baseline; form:\n%s", form)
+	form := findByTestID(t, draft, "report-publish")
+	if attrOf(form, "action") != "/reports/"+strconv.FormatInt(def.ID, 10)+"/publications" || len(formFields(form, "baseline")) > 0 {
+		t.Errorf("the default publish form carries a baseline: %s", renderNode(form))
 	}
 	resp = postForm(t, client, reportURL+"/publications", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since the previous publication, Feb 11, 2026, ") {
-		t.Errorf("publication does not read against the previous publication; line:\n%s", line)
+	if line := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "report-published")); !strings.Contains(line, "changes since the previous publication, Feb 11, 2026, ") {
+		t.Errorf("publication does not read against the previous publication; line reads %q", line)
 	}
 
 	// A date the reader picks lives in the URL and is carried into the
 	// publication on the form's action, not in a hidden input.
-	draft = getBody(t, client, reportURL+"?baseline=2026-01-01")
-	form = pageElement(t, draft, "form", "report-publish")
-	if !strings.Contains(form, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/publications?baseline=2026-01-01"`) || strings.Contains(form, `name="baseline"`) {
-		t.Errorf("publish form does not carry the chosen baseline on its action alone; form:\n%s", form)
+	form = findByTestID(t, getPage(t, client, reportURL+"?baseline=2026-01-01"), "report-publish")
+	if attrOf(form, "action") != "/reports/"+strconv.FormatInt(def.ID, 10)+"/publications?baseline=2026-01-01" || len(formFields(form, "baseline")) > 0 {
+		t.Errorf("publish form does not carry the chosen baseline on its action alone: %s", renderNode(form))
 	}
 	resp = postForm(t, client, reportURL+"/publications?baseline=2026-01-01", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since Jan 1, 2026") {
-		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
+	if line := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "report-published")); !strings.Contains(line, "changes since Jan 1, 2026") {
+		t.Errorf("publication does not read against the chosen baseline; line reads %q", line)
 	}
 
 	// A publication is only found under its own definition.
@@ -260,9 +264,8 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
 
-	page := getBody(t, client, ts.URL+pubPath)
-	if link := pageElement(t, page, "a", "download-markdown"); !strings.Contains(link, pubPath+"/markdown") {
-		t.Errorf("publication page's Download menu does not link its Markdown export; link:\n%s", link)
+	if href := attrOf(findByTestID(t, getPage(t, client, ts.URL+pubPath), "download-markdown"), "href"); href != pubPath+"/markdown" {
+		t.Errorf("publication page's Download menu links %q for Markdown, want its Markdown export %q", href, pubPath+"/markdown")
 	}
 
 	resp, err := client.Get(ts.URL + pubPath + "/markdown")
@@ -321,28 +324,28 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
 
-	page := getBody(t, client, ts.URL+pubPath)
-	if link := pageElement(t, page, "a", "download-pdf"); !strings.Contains(link, pubPath+"/print") {
-		t.Errorf("publication page's Download menu does not link its print page; link:\n%s", link)
+	if href := attrOf(findByTestID(t, getPage(t, client, ts.URL+pubPath), "download-pdf"), "href"); href != pubPath+"/print" {
+		t.Errorf("publication page's Download menu links %q for a PDF, want its print page %q", href, pubPath+"/print")
 	}
 
-	printed := getBody(t, client, ts.URL+pubPath+"/print")
-	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, "boss@example.com") {
-		t.Errorf("print page does not say who published it; line:\n%s", line)
+	printed := getPage(t, client, ts.URL+pubPath+"/print")
+	if line := findByTestID(t, printed, "report-published"); !slices.Contains(reportPersonEmails(line), "boss@example.com") {
+		t.Errorf("print page does not say who published it: %s", renderNode(line))
 	}
-	block := pageElement(t, printed, "article", "report-exception")
+	block := findByTestID(t, printed, "report-exception")
 	for _, want := range []string{"Launch in EU", domain.HealthRed, "Vendor is late.", "Chase the vendor."} {
-		if !strings.Contains(block, want) {
-			t.Errorf("print page's exception block missing %q; block:\n%s", want, block)
+		if !strings.Contains(textOf(block), want) {
+			t.Errorf("print page's exception block missing %q; block reads %q", want, textOf(block))
 		}
 	}
-	if !strings.Contains(printed, "Where the EU launch stands.") {
-		t.Errorf("print page missing the introduction; body:\n%s", printed)
+	if !strings.Contains(textOf(printed), "Where the EU launch stands.") {
+		t.Errorf("print page missing the introduction; page reads:\n%s", textOf(printed))
 	}
-	for _, chrome := range []string{`data-testid="nav-reports"`, `action="/signout"`} {
-		if strings.Contains(printed, chrome) {
-			t.Errorf("print page carries the app's navigation (%s); body:\n%s", chrome, printed)
-		}
+	if hasTestID(printed, "nav-reports") {
+		t.Errorf("print page carries the app's navigation, its Reports link:\n%s", renderNode(printed))
+	}
+	if signOut := findAll(printed, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == "/signout" }); len(signOut) > 0 {
+		t.Errorf("print page carries the app's navigation, its Sign out: %s", renderNode(signOut[0]))
 	}
 
 	resp, err := client.Get(ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/print")
@@ -546,26 +549,16 @@ func TestAFailedPDFRenderIsAServerErrorOverHTTP(t *testing.T) {
 	}
 }
 
-// reportRowNamed returns the Reports page's status-table row for the Report
-// named name, up to its closing tag.
-func reportRowNamed(t *testing.T, page, name string) string {
-	t.Helper()
-	for _, row := range strings.Split(page, `<tr data-testid="report-row"`)[1:] {
-		row, _, _ = strings.Cut(row, "</tr>")
-		if strings.Contains(row, ">"+name+"</a>") {
-			return row
-		}
+// reportPersonEmails is the email of each person shown under root, in order:
+// what each one's name discloses, and gives on hover (CONTEXT.md: Name).
+func reportPersonEmails(root *nethtml.Node) []string {
+	var out []string
+	for _, n := range findAll(root, func(n *nethtml.Node) bool {
+		return hasAttr(n, "title") && (flatFrameHasClass(n, "disclose") || flatFrameHasClass(n, "person"))
+	}) {
+		out = append(out, attrOf(n, "title"))
 	}
-	t.Fatalf("Reports page has no row for %q:\n%s", name, page)
-	return ""
-}
-
-// downloadItem returns the href and text of the Download menu's item carrying
-// testID, failing the test when there's none.
-func downloadItem(t *testing.T, menu, testID string) (href, text string) {
-	t.Helper()
-	item := pageElement(t, menu, "a", testID)
-	return attr(openTag(item), "href"), strings.TrimSpace(item[strings.Index(item, ">")+1:])
+	return out
 }
 
 // Each published Report's row on the Reports page has a Download menu for its
@@ -581,23 +574,22 @@ func TestAPublishedReportsRowDownloadsItsLatestPublicationOverHTTP(t *testing.T)
 	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(&pdfDownloadFake{})))
 	t.Cleanup(ts.Close)
 
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
 
-	row := reportRowNamed(t, page, "EU MBR")
-	menu := between(t, row, `data-testid="download-menu"`, "")
-	if !strings.Contains(menu, ">Download</button>") {
-		t.Errorf("the row's menu isn't opened by a Download button:\n%s", menu)
+	menu := findByTestID(t, reportRowIn(t, page, "EU MBR"), "download-menu")
+	if buttonNamed(menu, "Download") == nil {
+		t.Errorf("the row's menu isn't opened by a Download button: %s", renderNode(menu))
 	}
 	for testID, want := range map[string][2]string{
 		"download-markdown": {latestPath + "/markdown", "Markdown (.md)"},
 		"download-pdf":      {latestPath + "/pdf", "PDF (.pdf)"},
 	} {
-		if href, text := downloadItem(t, menu, testID); href != want[0] || text != want[1] {
+		if href, text := downloadMenuItem(t, menu, testID); href != want[0] || text != want[1] {
 			t.Errorf("%s links %q reading %q, want %q reading %q", testID, href, text, want[0], want[1])
 		}
 	}
-	if never := reportRowNamed(t, page, "WBR"); strings.Contains(never, `data-testid="download-menu"`) {
-		t.Errorf("a never-published Report's row has a Download menu:\n%s", never)
+	if never := reportRowIn(t, page, "WBR"); hasTestID(never, "download-menu") {
+		t.Errorf("a never-published Report's row has a Download menu: %s", renderNode(never))
 	}
 }
 
@@ -610,19 +602,22 @@ func TestThePublicationPageHasTheDownloadMenuOverHTTP(t *testing.T) {
 	ts := httptest.NewServer(web.NewServer(f.h.Service, web.WithPDFRenderer(&pdfDownloadFake{})))
 	t.Cleanup(ts.Close)
 
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+f.pubPath)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+f.pubPath)
 
-	menu := between(t, pageElement(t, page, "div", "report-export"), `data-testid="download-menu"`, "")
-	if href, _ := downloadItem(t, menu, "download-markdown"); href != f.pubPath+"/markdown" {
+	menu := findByTestID(t, findByTestID(t, page, "report-export"), "download-menu")
+	if href, _ := downloadMenuItem(t, menu, "download-markdown"); href != f.pubPath+"/markdown" {
 		t.Errorf("Markdown item links %q, want %q", href, f.pubPath+"/markdown")
 	}
-	if href, _ := downloadItem(t, menu, "download-pdf"); href != f.pubPath+"/pdf" {
+	if href, _ := downloadMenuItem(t, menu, "download-pdf"); href != f.pubPath+"/pdf" {
 		t.Errorf("PDF item links %q, want %q", href, f.pubPath+"/pdf")
 	}
-	for _, gone := range []string{`data-testid="export-markdown"`, `data-testid="export-print"`, "Print / PDF"} {
-		if strings.Contains(page, gone) {
+	for _, gone := range []string{"export-markdown", "export-print"} {
+		if hasTestID(page, gone) {
 			t.Errorf("publication page still carries the old %s", gone)
 		}
+	}
+	if strings.Contains(textOf(page), "Print / PDF") {
+		t.Errorf("publication page still offers the old Print / PDF")
 	}
 }
 
@@ -636,8 +631,11 @@ func TestWithoutARendererThePDFItemIsThePrintPageOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	for _, path := range []string{"/reports", f.pubPath} {
-		menu := between(t, getBody(t, client, ts.URL+path), `data-testid="download-menu"`, "")
-		if href, text := downloadItem(t, menu, "download-pdf"); href != f.pubPath+"/print" || text != "PDF (print from browser)" {
+		menus := findAllByTestID(getPage(t, client, ts.URL+path), "download-menu")
+		if len(menus) == 0 {
+			t.Fatalf("%s has no Download menu", path)
+		}
+		if href, text := downloadMenuItem(t, menus[0], "download-pdf"); href != f.pubPath+"/print" || text != "PDF (print from browser)" {
 			t.Errorf("%s: PDF item links %q reading %q, want %q reading %q", path, href, text, f.pubPath+"/print", "PDF (print from browser)")
 		}
 	}
@@ -678,12 +676,14 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	page := getBody(t, client, reportURL)
-	form := pageElement(t, page, "form", "narrative-curation")
-	for _, want := range []string{"Signed the first EU customer.", "Lost the second customer.", "alice@example.com", "Launch in EU"} {
-		if !strings.Contains(form, want) {
-			t.Errorf("curation form missing %q; form:\n%s", want, form)
+	form := findByTestID(t, getPage(t, client, reportURL), "narrative-curation")
+	for _, want := range []string{"Signed the first EU customer.", "Lost the second customer.", "Launch in EU"} {
+		if !strings.Contains(textOf(form), want) {
+			t.Errorf("curation form missing %q; form reads %q", want, textOf(form))
 		}
+	}
+	if owners := reportPersonEmails(form); !slices.Contains(owners, "alice@example.com") {
+		t.Errorf("curation form doesn't credit the Owner, alice@example.com: it shows %q", owners)
 	}
 
 	resp := postForm(t, client, reportURL+"/narrative", url.Values{
@@ -695,32 +695,38 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
 	}
-	page = readBody(t, resp)
+	page := parsePage(t, readBody(t, resp))
 	// Alice, who may not manage the Report, reads the narrative as it will
 	// be published.
-	narrative := pageElement(t, getBody(t, signInClient(t, ts.URL, "alice@example.com"), reportURL), "section", "report-narrative")
-	for _, want := range []string{"Accomplishments", "EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
-		if !strings.Contains(narrative, want) {
-			t.Errorf("draft narrative missing %q; narrative:\n%s", want, narrative)
+	narrative := findByTestID(t, getPage(t, signInClient(t, ts.URL, "alice@example.com"), reportURL), "report-narrative")
+	for _, want := range []string{"Accomplishments", "EU is open for business.", "Signed the first EU customer."} {
+		if !strings.Contains(textOf(narrative), want) {
+			t.Errorf("draft narrative missing %q; narrative reads %q", want, textOf(narrative))
 		}
 	}
-	if strings.Contains(narrative, "Lost the second customer.") {
-		t.Errorf("draft narrative shows a Highlight the author left out; narrative:\n%s", narrative)
+	if owners := reportPersonEmails(narrative); !slices.Contains(owners, "alice@example.com") {
+		t.Errorf("draft narrative doesn't credit the Owner, alice@example.com: it shows %q", owners)
 	}
-	if form := pageElement(t, page, "form", "narrative-curation"); !strings.Contains(form, "EU is open for business.") {
-		t.Errorf("curation form does not keep the author's text; form:\n%s", form)
+	if strings.Contains(textOf(narrative), "Lost the second customer.") {
+		t.Errorf("draft narrative shows a Highlight the author left out; narrative reads %q", textOf(narrative))
+	}
+	if boxes := reportNoteBoxes(t, findByTestID(t, page, "narrative-curation"), domain.HighlightAccomplishment); !slices.Contains(boxes, "EU is open for business.") {
+		t.Errorf("curation form does not keep the author's text: its Accomplishments boxes hold %q", boxes)
 	}
 
 	resp = postForm(t, client, reportURL+"/publications", url.Values{})
-	published := readBody(t, resp)
-	narrative = pageElement(t, published, "section", "report-narrative")
-	for _, want := range []string{"EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
-		if !strings.Contains(narrative, want) {
-			t.Errorf("published narrative missing %q; narrative:\n%s", want, narrative)
+	published := parsePage(t, readBody(t, resp))
+	narrative = findByTestID(t, published, "report-narrative")
+	for _, want := range []string{"EU is open for business.", "Signed the first EU customer."} {
+		if !strings.Contains(textOf(narrative), want) {
+			t.Errorf("published narrative missing %q; narrative reads %q", want, textOf(narrative))
 		}
 	}
-	if strings.Contains(published, `data-testid="narrative-curation"`) {
-		t.Errorf("publication offers to curate its frozen narrative; body:\n%s", published)
+	if owners := reportPersonEmails(narrative); !slices.Contains(owners, "alice@example.com") {
+		t.Errorf("published narrative doesn't credit the Owner, alice@example.com: it shows %q", owners)
+	}
+	if hasTestID(published, "narrative-curation") {
+		t.Errorf("publication offers to curate its frozen narrative:\n%s", renderNode(published))
 	}
 
 	resp = postForm(t, client, reportURL+"/narrative", url.Values{"include-9999": {"on"}, "pick-9999": {domain.HighlightInsight}})
@@ -756,15 +762,15 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("curate: status %d, want the draft page", resp.StatusCode)
 	}
-	narrative := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), reportURL), "section", "report-narrative")
-	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.HasSuffix(heading, ">Misses") {
-		t.Errorf("narrative's only section %q, want Misses", heading)
+	narrative := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), reportURL), "report-narrative")
+	if headings := textsOf(findAllByTestID(narrative, "narrative-section")); !slices.Equal(headings, []string{"Misses"}) {
+		t.Errorf("narrative's sections %q, want Misses alone", headings)
 	}
-	if !strings.Contains(narrative, "Signed the first EU customer.") {
-		t.Errorf("narrative leaves out the ticked Highlight; narrative:\n%s", narrative)
+	if !strings.Contains(textOf(narrative), "Signed the first EU customer.") {
+		t.Errorf("narrative leaves out the ticked Highlight; narrative reads %q", textOf(narrative))
 	}
-	if strings.Contains(narrative, "Lost the second customer.") || strings.Contains(narrative, "Accomplishments") {
-		t.Errorf("narrative includes a Highlight whose box wasn't ticked; narrative:\n%s", narrative)
+	if read := textOf(narrative); strings.Contains(read, "Lost the second customer.") || strings.Contains(read, "Accomplishments") {
+		t.Errorf("narrative includes a Highlight whose box wasn't ticked; narrative reads %q", read)
 	}
 
 	resp = postForm(t, client, reportURL+"/narrative", url.Values{"include-" + strconv.FormatInt(lost, 10): {"on"}})
@@ -774,9 +780,11 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 }
 
 // On a fresh draft no Highlight is included, and each one's section control
-// starts on its own kind. Once the author saves a Highlight as a Miss, its box
-// is ticked and Miss is selected. The count says how many of the Highlights
-// are in (ticket #155).
+// starts on its own kind, the Highlight showing its kind beside its Goal. Once
+// the author saves a Highlight as a Miss, its box is ticked and Miss is
+// selected. The count says how many of the Highlights are in (ticket #155).
+// How CSS shows the section control only while the box is ticked is
+// TestCurationFormShowsWhatIsIncludedStyles.
 func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -794,29 +802,27 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	page := getBody(t, client, reportURL)
-	if count := pageElement(t, page, "span", "curation-count"); !strings.HasSuffix(count, ">0 of 2 in") {
+	page := getPage(t, client, reportURL)
+	if count := textOf(findByTestID(t, page, "curation-count")); count != "0 of 2 in" {
 		t.Errorf("fresh draft's count %q, want 0 of 2 in", count)
 	}
-	// Without JS the radios stay in the form; CSS shows them only while the box
-	// is ticked, and shows the Highlight's kind as text while it isn't.
-	if rule := cssRule(t, page, ".rp-curate:not(:has(input[name^=include-]:checked)) .rp-sections"); !strings.Contains(rule, "display:none") {
-		t.Errorf("an unticked Highlight's section control is not hidden: {%s}", rule)
+	form := findByTestID(t, page, "narrative-curation")
+	highlights := findAllByTestID(form, "curation-highlight")
+	if len(highlights) == 0 {
+		t.Fatalf("the curation form offers no Highlight: %s", renderNode(form))
 	}
-	if rule := cssRule(t, page, ".rp-curate:has(input[name^=include-]:checked) .rp-kind"); !strings.Contains(rule, "display:none") {
-		t.Errorf("a ticked Highlight still shows its kind as text: {%s}", rule)
-	}
-	form := between(t, page, `<form data-testid="narrative-curation"`, "</form>")
-	if kind := between(t, form, `<span class="rp-kind">`, "</span>"); !strings.Contains(kind, domain.HighlightInsight) {
-		t.Errorf("unticked Highlight does not show its kind: %q", kind)
+	// Without JS the radios stay in the form, so an unticked Highlight says
+	// its kind beside its Goal as well.
+	if line := textOf(highlights[0]); !strings.Contains(line, "· "+domain.HighlightInsight) {
+		t.Errorf("unticked Highlight does not show its kind: %q", line)
 	}
 	for id, kind := range map[string]string{signed: domain.HighlightAccomplishment, euros: domain.HighlightInsight} {
-		if box := formInput(t, form, "include-"+id, "on"); isChecked(box) {
-			t.Errorf("fresh draft includes Highlight %s: %s", id, box)
+		if box := curationChoice(t, form, "include-"+id, "on"); box.Checked {
+			t.Errorf("fresh draft includes Highlight %s: %s", id, renderNode(box.Node))
 		}
 		for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
-			if radio := formInput(t, form, "pick-"+id, section); isChecked(radio) != (section == kind) {
-				t.Errorf("fresh draft, Highlight %s's %s radio: %s; want only its own kind, %s, selected", id, section, radio, kind)
+			if radio := curationChoice(t, form, "pick-"+id, section); radio.Checked != (section == kind) {
+				t.Errorf("fresh draft, Highlight %s's %s radio: %s; want only its own kind, %s, selected", id, section, renderNode(radio.Node), kind)
 			}
 		}
 	}
@@ -825,21 +831,21 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 		"include-" + signed: {"on"},
 		"pick-" + signed:    {domain.HighlightMiss},
 	})
-	page = readBody(t, resp)
-	if count := pageElement(t, page, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 2 in") {
+	page = parsePage(t, readBody(t, resp))
+	if count := textOf(findByTestID(t, page, "curation-count")); count != "1 of 2 in" {
 		t.Errorf("count after saving one Highlight %q, want 1 of 2 in", count)
 	}
-	form = between(t, page, `<form data-testid="narrative-curation"`, "</form>")
-	if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
-		t.Errorf("saved Highlight's box is not ticked: %s", box)
+	form = findByTestID(t, page, "narrative-curation")
+	if box := curationChoice(t, form, "include-"+signed, "on"); !box.Checked {
+		t.Errorf("saved Highlight's box is not ticked: %s", renderNode(box.Node))
 	}
 	for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
-		if radio := formInput(t, form, "pick-"+signed, section); isChecked(radio) != (section == domain.HighlightMiss) {
-			t.Errorf("Highlight saved as a Miss, its %s radio: %s; want only Miss selected", section, radio)
+		if radio := curationChoice(t, form, "pick-"+signed, section); radio.Checked != (section == domain.HighlightMiss) {
+			t.Errorf("Highlight saved as a Miss, its %s radio: %s; want only Miss selected", section, renderNode(radio.Node))
 		}
 	}
-	if box := formInput(t, form, "include-"+euros, "on"); isChecked(box) {
-		t.Errorf("a Highlight left out is ticked: %s", box)
+	if box := curationChoice(t, form, "include-"+euros, "on"); box.Checked {
+		t.Errorf("a Highlight left out is ticked: %s", renderNode(box.Node))
 	}
 }
 
@@ -858,31 +864,31 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
 		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
 	})
-	form := between(t, readBody(t, resp), `<form data-testid="narrative-curation"`, "</form>")
+	form := findByTestID(t, parsePage(t, readBody(t, resp)), "narrative-curation")
 
-	written := pageElement(t, form, "details", "section-text-"+domain.HighlightAccomplishment)
-	if open := tagAround(t, written, `data-testid="section-text-`); !strings.Contains(open, " open") {
-		t.Errorf("section with text is folded: %s", open)
+	written := findByTestID(t, form, "section-text-"+domain.HighlightAccomplishment)
+	if !hasAttr(written, "open") {
+		t.Errorf("section with text is folded: %s", renderNode(written))
 	}
-	if summary := pageElement(t, written, "summary", "section-text-summary"); !strings.Contains(summary, "Accomplishments") || strings.Contains(summary, "+ Add note") {
+	if summary := textOf(findByTestID(t, written, "section-text-summary")); !strings.Contains(summary, "Accomplishments") || strings.Contains(summary, "+ Add note") {
 		t.Errorf("written section's summary %q, want its heading alone", summary)
 	}
-	if !strings.Contains(written, "EU is open for business.") || !strings.Contains(written, `name="text-`+domain.HighlightAccomplishment+`"`) {
-		t.Errorf("written section does not hold its text box; details:\n%s", written)
+	if boxes := reportNoteBoxes(t, form, domain.HighlightAccomplishment); !slices.Contains(boxes, "EU is open for business.") {
+		t.Errorf("written section does not hold its text box: its boxes hold %q", boxes)
 	}
 
-	empty := pageElement(t, form, "details", "section-text-"+domain.HighlightMiss)
-	if open := tagAround(t, empty, `data-testid="section-text-`); strings.Contains(open, " open") {
-		t.Errorf("empty section is unfolded: %s", open)
+	empty := findByTestID(t, form, "section-text-"+domain.HighlightMiss)
+	if hasAttr(empty, "open") {
+		t.Errorf("empty section is unfolded: %s", renderNode(empty))
 	}
-	if summary := pageElement(t, empty, "summary", "section-text-summary"); !strings.Contains(summary, "Misses") || !strings.Contains(summary, "+ Add note") {
+	if summary := textOf(findByTestID(t, empty, "section-text-summary")); !strings.Contains(summary, "Misses") || !strings.Contains(summary, "+ Add note") {
 		t.Errorf("empty section's summary %q, want its heading and + Add note", summary)
 	}
-	if !strings.Contains(empty, `name="text-`+domain.HighlightMiss+`"`) {
-		t.Errorf("empty section has no text box; details:\n%s", empty)
+	if len(formFields(empty, "text-"+domain.HighlightMiss)) == 0 {
+		t.Errorf("empty section has no text box: %s", renderNode(empty))
 	}
-	if save := buttonNamed(parsePage(t, form), "Save narrative"); save == nil || attrOf(save, "type") != "submit" {
-		t.Errorf("curation form has no Save narrative submit button; form:\n%s", form)
+	if save := buttonNamed(form, "Save narrative"); save == nil || attrOf(save, "type") != "submit" {
+		t.Errorf("curation form has no Save narrative submit button: %s", renderNode(form))
 	}
 }
 
@@ -924,7 +930,11 @@ func TestComposerGroupsEachSectionsNotesAndHighlightsOverHTTP(t *testing.T) {
 		}
 		var got []string
 		for _, hl := range findAllByTestID(sec, "curation-highlight") {
-			got = append(got, textOf(findAll(hl, func(n *nethtml.Node) bool { return attrOf(n, "class") == "rp-include" })[0]))
+			boxes := findAll(hl, func(n *nethtml.Node) bool { return n.Data == "input" && attrOf(n, "type") == "checkbox" })
+			if len(boxes) != 1 {
+				t.Fatalf("a Highlight on the %s section has %d boxes to include it, want 1: %s", section, len(boxes), renderNode(hl))
+			}
+			got = append(got, fieldLabel(boxes[0]))
 		}
 		if !slices.Equal(got, want) {
 			t.Errorf("the %s section offers %q, want %q", section, got, want)
@@ -969,27 +979,26 @@ func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
 	}
-	page := readBody(t, resp)
 
-	form := pageElement(t, page, "form", "narrative-curation")
+	form := findByTestID(t, parsePage(t, readBody(t, resp)), "narrative-curation")
 	for section, want := range map[string][]string{
 		domain.HighlightInsight:        {"Pricing drives churn.", "Discounts don't save accounts.", ""},
 		domain.HighlightAccomplishment: {"EU is open for business.", ""},
 		domain.HighlightMiss:           {""},
 	} {
-		if got := sectionNoteBoxes(t, form, section); !slices.Equal(got, want) {
+		if got := reportNoteBoxes(t, form, section); !slices.Equal(got, want) {
 			t.Errorf("%s note boxes %q, want %q", section, got, want)
 		}
 	}
 
 	want := []string{"Pricing drives churn.", "Discounts don't save accounts.", "EU is open for business."}
-	reader := getBody(t, signInClient(t, ts.URL, "sam@example.com"), reportURL)
-	if got := narrativeTexts(pageElement(t, reader, "section", "report-narrative")); !slices.Equal(got, want) {
+	reader := getPage(t, signInClient(t, ts.URL, "sam@example.com"), reportURL)
+	if got := narrativeParagraphs(findByTestID(t, reader, "report-narrative")); !slices.Equal(got, want) {
 		t.Errorf("draft narrative paragraphs %q, want %q", got, want)
 	}
 
-	published := readBody(t, postForm(t, client, reportURL+"/publications", url.Values{}))
-	if got := narrativeTexts(pageElement(t, published, "section", "report-narrative")); !slices.Equal(got, want) {
+	published := parsePage(t, readBody(t, postForm(t, client, reportURL+"/publications", url.Values{})))
+	if got := narrativeParagraphs(findByTestID(t, published, "report-narrative")); !slices.Equal(got, want) {
 		t.Errorf("published narrative paragraphs %q, want %q", got, want)
 	}
 }
@@ -1006,17 +1015,19 @@ func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
-	form := pageElement(t, page, "form", "narrative-curation")
-	if id := attr(openTag(form), "id"); id != "narrative-curation" {
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
+	form := findByTestID(t, page, "narrative-curation")
+	if id := attrOf(form, "id"); id != "narrative-curation" {
 		t.Fatalf("curation form id = %q, want narrative-curation", id)
 	}
-	action := html.UnescapeString(attr(openTag(form), "action"))
+	action := attrOf(form, "action")
 	for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
-		details := pageElement(t, form, "details", "section-text-"+section)
-		button := regexp.MustCompile(`<button[^>]*name="add_note"[^>]*>Add another</button>`).FindString(details)
-		if button == "" {
-			t.Errorf("%s offers no Add another; details:\n%s", section, details)
+		details := findByTestID(t, form, "section-text-"+section)
+		buttons := findAll(details, func(n *nethtml.Node) bool {
+			return n.Data == "button" && attrOf(n, "name") == "add_note" && textOf(n) == "Add another"
+		})
+		if len(buttons) == 0 {
+			t.Errorf("%s offers no Add another: %s", section, renderNode(details))
 			continue
 		}
 		for name, want := range map[string]string{
@@ -1026,7 +1037,7 @@ func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
 			"hx-target": "#report-curation",
 			"hx-swap":   "outerHTML",
 		} {
-			if got := html.UnescapeString(attr(button, name)); got != want {
+			if got := attrOf(buttons[0], name); got != want {
 				t.Errorf("%s Add another %s = %q, want %q", section, name, got, want)
 			}
 		}
@@ -1089,29 +1100,29 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 				t.Fatalf("add another: status %d at %s, want 200 with no redirect; body:\n%s", resp.StatusCode, resp.Request.URL, body)
 			}
 
-			form := between(t, body, `<form data-testid="narrative-curation"`, "</form>")
+			answer := parsePage(t, body)
+			form := findByTestID(t, answer, "narrative-curation")
 			for section, want := range map[string][]string{
 				domain.HighlightInsight:        {"Pricing drives churn.", "", ""},
 				domain.HighlightAccomplishment: {"EU is open for business."},
 				domain.HighlightMiss:           {""},
 			} {
-				if got := sectionNoteBoxes(t, form, section); !slices.Equal(got, want) {
+				if got := reportNoteBoxes(t, form, section); !slices.Equal(got, want) {
 					t.Errorf("%s note boxes %q, want %q", section, got, want)
 				}
 			}
-			if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
-				t.Errorf("the ticked Highlight lost its tick: %s", box)
+			if box := curationChoice(t, form, "include-"+signed, "on"); !box.Checked {
+				t.Errorf("the ticked Highlight lost its tick: %s", renderNode(box.Node))
 			}
-			if radio := formInput(t, form, "pick-"+signed, domain.HighlightInsight); !isChecked(radio) {
-				t.Errorf("the ticked Highlight lost its section: %s", radio)
+			if radio := curationChoice(t, form, "pick-"+signed, domain.HighlightInsight); !radio.Checked {
+				t.Errorf("the ticked Highlight lost its section: %s", renderNode(radio.Node))
 			}
-			if box := formInput(t, form, "include-"+lost, "on"); isChecked(box) {
-				t.Errorf("the unticked Highlight is ticked: %s", box)
+			if box := curationChoice(t, form, "include-"+lost, "on"); box.Checked {
+				t.Errorf("the unticked Highlight is ticked: %s", renderNode(box.Node))
 			}
-			if radio := formInput(t, form, "pick-"+lost, domain.HighlightInsight); !isChecked(radio) {
-				t.Errorf("the unticked Highlight lost the section picked for it: %s", radio)
+			if radio := curationChoice(t, form, "pick-"+lost, domain.HighlightInsight); !radio.Checked {
+				t.Errorf("the unticked Highlight lost the section picked for it: %s", renderNode(radio.Node))
 			}
-			answer := parsePage(t, body)
 			if got := textOf(findByTestID(t, answer, "save-result")); got != "Unsaved changes" {
 				t.Errorf("the save status says %q, want Unsaved changes", got)
 			}
@@ -1192,25 +1203,29 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 			if resp.StatusCode != tc.status {
 				t.Fatalf("refused add another: status %d, want %d; body:\n%s", resp.StatusCode, tc.status, body)
 			}
-			form := between(t, body, `<form data-testid="narrative-curation"`, "</form>")
-			if got, want := sectionNoteBoxes(t, form, domain.HighlightMiss), []string{"Slipped a week.", ""}; !slices.Equal(got, want) {
+			answer := parsePage(t, body)
+			form := findByTestID(t, answer, "narrative-curation")
+			if got, want := reportNoteBoxes(t, form, domain.HighlightMiss), []string{"Slipped a week.", ""}; !slices.Equal(got, want) {
 				t.Errorf("Misses note boxes %q, want %q", got, want)
 			}
-			if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
-				t.Errorf("the ticked Highlight lost its tick: %s", box)
+			if box := curationChoice(t, form, "include-"+signed, "on"); !box.Checked {
+				t.Errorf("the ticked Highlight lost its tick: %s", renderNode(box.Node))
 			}
-			result := pageElement(t, body, "span", "save-result")
-			if !strings.Contains(result, ">Not saved: ") || !strings.Contains(result, "section") {
+			if result := textOf(findByTestID(t, answer, "save-result")); !strings.HasPrefix(result, "Not saved: ") || !strings.Contains(result, "section") {
 				t.Errorf("the save status %q, want Not saved and why", result)
 			}
 			if draft, err := h.Service.DraftReport(context.Background(), def, time.Time{}); err != nil || len(draft.Narrative) != 0 {
 				t.Errorf("narrative after a refusal %+v (err %v), want nothing saved", draft.Narrative, err)
 			}
 			if tc.name == "htmx" {
-				for _, untouched := range []string{`data-testid="report-draft"`, `data-testid="publish-summary"`, "<html"} {
-					if strings.Contains(body, untouched) {
+				for _, untouched := range []string{"report-draft", "publish-summary", "draft-header"} {
+					if hasTestID(answer, untouched) {
 						t.Errorf("refused add another answers %s; body:\n%s", untouched, body)
 					}
+				}
+				// A whole page carries its title; the form alone doesn't.
+				if titles := findAll(answer, func(n *nethtml.Node) bool { return n.Data == "title" }); len(titles) > 0 {
+					t.Errorf("refused add another answers the whole page, titled %q; body:\n%s", textOf(titles[0]), body)
 				}
 			}
 		})
@@ -1271,53 +1286,18 @@ func TestPublicationFromBeforeSeveralNotesShowsItsNoteOverHTTP(t *testing.T) {
 	}
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
-	narrative := pageElement(t, page, "section", "report-narrative")
-	if got := narrativeTexts(narrative); !slices.Equal(got, []string{"EU is open for business."}) {
-		t.Errorf("published notes %q, want the one note frozen before; narrative:\n%s", got, narrative)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+	narrative := findByTestID(t, page, "report-narrative")
+	if got := narrativeParagraphs(narrative); !slices.Equal(got, []string{"EU is open for business."}) {
+		t.Errorf("published notes %q, want the one note frozen before: %s", got, renderNode(narrative))
 	}
-	if note, hl := strings.Index(narrative, "EU is open for business."), strings.Index(narrative, "Signed the first EU customer."); note < 0 || hl < note {
-		t.Errorf("the note does not come before the picked Highlight; narrative:\n%s", narrative)
+	notes := findAllByTestID(narrative, "narrative-text")
+	picked := findAll(narrative, func(n *nethtml.Node) bool {
+		return attrOf(n, "data-testid") == "narrative-highlight" && strings.Contains(textOf(n), "Signed the first EU customer.")
+	})
+	if len(notes) == 0 || len(picked) == 0 || !precedes(notes[0], picked[0]) {
+		t.Errorf("the note does not come before the picked Highlight: %s", renderNode(narrative))
 	}
-}
-
-// sectionNoteBoxes is what each of a narrative section's note boxes on the
-// curation form holds, in order.
-func sectionNoteBoxes(t *testing.T, form, section string) []string {
-	t.Helper()
-	details := pageElement(t, form, "details", "section-text-"+section)
-	var out []string
-	for _, m := range regexp.MustCompile(`<textarea name="text-`+regexp.QuoteMeta(section)+`"[^>]*>([^<]*)</textarea>`).FindAllStringSubmatch(details, -1) {
-		out = append(out, html.UnescapeString(m[1]))
-	}
-	return out
-}
-
-// narrativeTexts is each of the author's notes a Report's narrative shows, as
-// its own paragraph, in order.
-func narrativeTexts(narrative string) []string {
-	var out []string
-	for _, m := range regexp.MustCompile(`<p data-testid="narrative-text">([^<]*)</p>`).FindAllStringSubmatch(narrative, -1) {
-		out = append(out, html.UnescapeString(m[1]))
-	}
-	return out
-}
-
-// formInput is the <input> in form with this name and value.
-func formInput(t *testing.T, form, name, value string) string {
-	t.Helper()
-	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
-		if attr(tag, "name") == name && attr(tag, "value") == value {
-			return tag
-		}
-	}
-	t.Fatalf("form has no input %s=%s; form:\n%s", name, value, form)
-	return ""
-}
-
-// isChecked reports whether an <input> tag carries checked.
-func isChecked(tag string) bool {
-	return regexp.MustCompile(`\schecked[\s>/=]`).MatchString(tag)
 }
 
 // draftHighlightID is the ID of the Highlight with this note in the Report
@@ -1396,11 +1376,12 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	}
 }
 
-// The publication splits the selected Goals in two: exceptions as entries
-// ruled off by hairlines, not cards, under Exceptions, headed by how many there are, each with its Health badge and its
+// The publication splits the selected Goals in two: exceptions under
+// Exceptions, headed by how many there are, each with its Health badge and its
 // Why it matters, Status, and Path to Green — marked Overdue once its target
 // date has passed — and the rest as a table of Health, Goal, Owner, and Due
-// under On track.
+// under On track. That an exception is an entry ruled off by a hairline, not
+// a card, is TestPublicationSplitsExceptionsFromOnTrackStyles.
 func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1417,41 +1398,41 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	doc := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
-	attention := pageElement(t, page, "section", "needs-attention")
-	if heading := between(t, attention, "<h2>", "</h2>"); !strings.HasPrefix(heading, "<h2>Exceptions ") || !strings.HasSuffix(pageElement(t, heading, "span", "needs-attention-count"), ">1") {
-		t.Errorf("Exceptions heading does not count its 1 exception: %s", heading)
+	attention := findByTestID(t, doc, "needs-attention")
+	count := findByTestID(t, attention, "needs-attention-count")
+	if heading := count.Parent; heading.Data != "h2" || textOf(heading) != "Exceptions 1" || textOf(count) != "1" {
+		t.Errorf("Exceptions heading does not count its 1 exception: %s", renderNode(heading))
 	}
-	card := pageElement(t, attention, "article", "report-exception")
-	if tag := openTag(card); hasClass(tag, "card") || !hasClass(tag, "rp-block") || !strings.Contains(card, `class="badge r"`) {
-		t.Errorf("exception is not a hairline entry with a Red badge; card:\n%s", card)
+	card := findByTestID(t, attention, "report-exception")
+	assertHealthChip(t, findByTestID(t, card, "report-health"), domain.HealthRed)
+	if path := findByTestID(t, card, "report-path-box"); !strings.Contains(textOf(path), "Hire counsel.") ||
+		!hasTestID(path, "path-overdue") || textOf(findByTestID(t, path, "path-overdue")) != "Overdue" {
+		t.Errorf("Path to Green box does not mark the missed Path to Green Overdue; box:\n%s", renderNode(path))
 	}
-	if rule := cssRule(t, page, ".rp-block"); !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
-		t.Errorf("an exception isn't ruled off by a hairline: .rp-block{%s}", rule)
-	}
-	if path := pageElement(t, card, "div", "report-path-box"); !strings.Contains(path, "Hire counsel.") ||
-		!strings.Contains(path, `data-testid="path-overdue"`) {
-		t.Errorf("Path to Green box does not mark the missed Path to Green Overdue; box:\n%s", path)
-	}
-	if lead := findByTestID(t, parsePage(t, card), "report-why-it-matters"); textOf(lead) != "Expand the market." || textOf(lead.Parent) != "Why it matters Expand the market." {
+	if lead := findByTestID(t, card, "report-why-it-matters"); textOf(lead) != "Expand the market." || textOf(lead.Parent) != "Why it matters Expand the market." {
 		t.Errorf("exception does not lead with its Why it matters: %s", renderNode(lead.Parent))
 	}
 
-	onTrack := pageElement(t, page, "table", "on-track")
-	row := pageElement(t, onTrack, "tr", "selected-goal")
-	for _, want := range []string{"Cut churn", "boss@example.com", domain.HealthGreen} {
-		if !strings.Contains(row, want) {
-			t.Errorf("On track row missing %q; row:\n%s", want, row)
+	onTrack := findByTestID(t, doc, "on-track")
+	row := findByTestID(t, onTrack, "selected-goal")
+	for _, want := range []string{"Cut churn", domain.HealthGreen} {
+		if !strings.Contains(textOf(row), want) {
+			t.Errorf("On track row missing %q; row:\n%s", want, renderNode(row))
 		}
+	}
+	if !reportShowsPerson(row, "boss@example.com", "boss") {
+		t.Errorf("On track row doesn't show its Owner, boss@example.com; row:\n%s", renderNode(row))
 	}
 }
 
-// A Goal block's only tinted box is its Path to Green, and only on a Red or
-// Yellow Goal, in that Health's tint, with Ask for help beside it in the box: a
-// Green Goal's block, and an exception that is only Check-in overdue, render
-// none. Why it matters and Status read as plain text outside it, on the draft
-// and the publication alike (#475).
+// A Goal block's only box is its Path to Green, and only on a Red or Yellow
+// Goal, with Ask for help beside it in the box: a Green Goal's block, and an
+// exception that is only Check-in overdue, render none. Why it matters and
+// Status read as plain text outside it, on the draft and the publication alike
+// (#475). That the box is tinted in its Health's tint, and nothing else in the
+// block is, is TestReportBlockTintsOnlyAPathToGreenStyles.
 func TestReportBlockTintsOnlyAPathToGreenOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1476,51 +1457,41 @@ func TestReportBlockTintsOnlyAPathToGreenOverHTTP(t *testing.T) {
 		"draft":       reportURL,
 		"publication": reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10),
 	} {
-		page := getBody(t, client, url)
-		styles := between(t, page, "<style>", "</style>")
-		doc := parsePage(t, page)
+		doc := getPage(t, client, url)
 		for _, c := range []struct {
-			goal domain.Goal
-			tint string // the tint class of its one tinted box, or "" for none
-			bg   string
+			goal  domain.Goal
+			boxed bool // whether its block holds a Path to Green box
 		}{
-			{red, "rp-tint-r", "background:var(--health-r-bg)"},
-			{yellow, "rp-tint-y", "background:var(--health-y-bg)"},
-			{green, "", ""},
-			{silent, "", ""},
+			{red, true},
+			{yellow, true},
+			{green, false},
+			{silent, false},
 		} {
 			block := reportBlockOf(t, doc, c.goal)
-			tints := findAll(block, func(n *nethtml.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "rp-tint") })
+			boxes := findAllByTestID(block, "report-path-box")
 			for _, id := range []string{"report-why-it-matters", "report-status"} {
-				for _, box := range tints {
-					if len(findAllByTestID(box, id)) > 0 {
-						t.Errorf("%s: %q's %s sits in a tinted box: %s", name, c.goal.Title, id, renderNode(box))
+				for _, box := range boxes {
+					if hasTestID(box, id) {
+						t.Errorf("%s: %q's %s sits in the Path to Green box: %s", name, c.goal.Title, id, renderNode(box))
 					}
 				}
 			}
-			if c.tint == "" {
-				if len(tints) != 0 {
-					t.Errorf("%s: %q's block has %d tinted boxes, want none:\n%s", name, c.goal.Title, len(tints), renderNode(block))
+			if !c.boxed {
+				if len(boxes) != 0 {
+					t.Errorf("%s: %q's block has %d Path to Green boxes, want none:\n%s", name, c.goal.Title, len(boxes), renderNode(block))
 				}
 				continue
 			}
-			if len(tints) != 1 {
-				t.Fatalf("%s: %q's block has %d tinted boxes, want its Path to Green's:\n%s", name, c.goal.Title, len(tints), renderNode(block))
+			if len(boxes) != 1 {
+				t.Fatalf("%s: %q's block has %d Path to Green boxes, want one:\n%s", name, c.goal.Title, len(boxes), renderNode(block))
 			}
-			box := tints[0]
-			if classes := strings.Fields(attrOf(box, "class")); !slices.Contains(classes, c.tint) {
-				t.Errorf("%s: %q's Path to Green box is %q, want %s", name, c.goal.Title, classes, c.tint)
-			}
-			if decls, ok := ruleFor(styles, "."+c.tint); !ok || !strings.Contains(decls, c.bg) {
-				t.Errorf("%s: .%s{%s} doesn't declare %s", name, c.tint, decls, c.bg)
-			}
-			if len(findAllByTestID(box, "report-path-to-green")) != 1 {
-				t.Errorf("%s: %q's tinted box doesn't hold its Path to Green:\n%s", name, c.goal.Title, renderNode(box))
+			if len(findAllByTestID(boxes[0], "report-path-to-green")) != 1 {
+				t.Errorf("%s: %q's box doesn't hold its Path to Green:\n%s", name, c.goal.Title, renderNode(boxes[0]))
 			}
 		}
 		ask := findByTestID(t, doc, "report-ask-for-help")
-		if box := ask.Parent; !slices.Contains(strings.Fields(attrOf(box, "class")), "rp-tint-r") {
-			t.Errorf("%s: Launch in EU's Ask for help doesn't sit in its Path to Green's box: %s", name, renderNode(box))
+		if box := findByTestID(t, reportBlockOf(t, doc, red), "report-path-box"); ask.Parent != box {
+			t.Errorf("%s: Launch in EU's Ask for help doesn't sit in its Path to Green's box: %s", name, renderNode(ask.Parent))
 		}
 	}
 }
@@ -1538,9 +1509,28 @@ func reportBlockOf(t *testing.T, doc *nethtml.Node, g domain.Goal) *nethtml.Node
 	return nil
 }
 
-// A publication's narrative is a plain section, not a card, each section under
-// its heading (a label on the print page) and each Highlight credited "—
-// owner, Goal".
+// reportShowsPerson reports whether root shows the person emailAddr by label
+// as a control that discloses their email, the email on hover too (shownAs).
+func reportShowsPerson(root *nethtml.Node, emailAddr, label string) bool {
+	for _, p := range findAll(root, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "person") }) {
+		buttons := findAll(p, func(n *nethtml.Node) bool { return n.Data == "button" })
+		emails := findAll(p, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "person-email") })
+		if len(buttons) != 1 || len(emails) != 1 {
+			continue
+		}
+		b := buttons[0]
+		if textOf(b) == label && attrOf(b, "title") == emailAddr && attrOf(b, "type") == "button" &&
+			flatFrameHasClass(b, "disclose") && attrOf(b, "aria-expanded") == "false" &&
+			isHiddenElement(emails[0]) && runningText(emails[0]) == emailAddr {
+			return true
+		}
+	}
+	return false
+}
+
+// A publication's narrative is a plain section, each section under its
+// heading and each Highlight credited "— owner, Goal". That it is no card,
+// and its headings labels, is TestPublicationNarrativeReadsAsProseStyles.
 func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1562,26 +1552,27 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
-	narrative := pageElement(t, page, "section", "report-narrative")
-	if tag := openTag(narrative); hasClass(tag, "card") || !hasClass(tag, "rp-narrative") {
-		t.Errorf("narrative is not a plain section; narrative:\n%s", narrative)
+	narrative := findByTestID(t, doc, "report-narrative")
+	if narrative.Data != "section" {
+		t.Errorf("narrative is not a section; narrative:\n%s", renderNode(narrative))
 	}
-	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
-		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
+	if heading := findAllByTestID(narrative, "narrative-section"); len(heading) == 0 || heading[0].Data != "h3" || textOf(heading[0]) != "Accomplishments" {
+		t.Errorf("narrative section headings %q, want an Accomplishments heading", textsOf(heading))
 	}
-	if credit := between(t, narrative, `data-testid="highlight-credit"`, "</a>"); !strings.Contains(credit, "— "+shownAs("alice@example.com", "alice")+", ") || !strings.Contains(credit, "Launch in EU") {
-		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
+	credit := findByTestID(t, narrative, "highlight-credit")
+	if got := runningText(credit); got != "— alice, Launch in EU" || !reportShowsPerson(credit, "alice@example.com", "alice") || linkTo(credit, fmt.Sprintf("/goals/%d", g.ID)) == nil {
+		t.Errorf("Highlight credit %q, want — owner, Goal: %s", got, renderNode(credit))
 	}
 }
 
-// The draft page keeps Publish in reach: a sticky header strip carries the
+// The draft page keeps Publish in reach: a header strip carries the
 // breadcrumb to the name, the baseline, the save status, the History of
-// publications and Publish — the primary button at the right, saying what it
-// does. The save status sits in the name's block, so at phone width it can
-// stay beside the name (#172); above that the block lets its children into the
-// header's row and the save status is ordered after the chip, beside History.
+// publications and Publish… — saying what it does. The save status sits in the
+// name's block, so at phone width it can stay beside the name (#172). How the
+// header lays them out, Publish… as the primary button, is
+// TestDraftHeaderKeepsPublishInReachStyles.
 func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1591,41 +1582,40 @@ func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	header := between(t, page, `<header data-testid="draft-header"`, "</header>")
-	if tag := openTag(header); !hasClass(tag, "page-header") {
-		t.Errorf("the draft's header isn't the page's header strip: %s", tag)
+	header := findByTestID(t, doc, "draft-header")
+	if header.Data != "header" {
+		t.Errorf("the draft's header isn't a header: %s", renderNode(header))
 	}
-	last := -1
-	for _, part := range []string{`<a class="ph-parent" href="/reports">Reports</a>`, `aria-current="page">MBR<`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
-		at := strings.Index(header, part)
-		if at <= last {
-			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
-		}
-		last = at
+	reports := linkTo(header, "/reports")
+	current := findAll(header, func(n *nethtml.Node) bool { return attrOf(n, "aria-current") == "page" })
+	if reports == nil || textOf(reports) != "Reports" || len(current) != 1 || textOf(current[0]) != "MBR" {
+		t.Fatalf("the header's breadcrumb doesn't lead from Reports to MBR; header:\n%s", renderNode(header))
 	}
-	for selector, want := range map[string]string{
-		".rp-draft-title":         "display:contents",
-		".rp-draft-head .rp-save": "order:1",
-		".rp-head-actions":        "order:1",
-	} {
-		if rule := cssRule(t, page, selector); !strings.Contains(rule, want) {
-			t.Errorf("the header does not show the save status after the chip: %s{%s} lacks %s", selector, rule, want)
+	parts := []*nethtml.Node{reports, current[0]}
+	for _, testID := range []string{"save-status", "baseline-chip", "edit-definition", "publish-confirm"} {
+		parts = append(parts, findByTestID(t, header, testID))
+	}
+	for i := 1; i < len(parts); i++ {
+		if !precedes(parts[i-1], parts[i]) {
+			t.Errorf("%s is out of order in the header, before %s; header:\n%s", renderNode(parts[i]), renderNode(parts[i-1]), renderNode(header))
 		}
 	}
-	if chip := pageElement(t, header, "details", "baseline-chip"); !strings.Contains(chip, `data-testid="report-baseline"`) {
-		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", chip)
+	if chip := findByTestID(t, header, "baseline-chip"); chip.Data != "details" || !hasTestID(chip, "report-baseline") {
+		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", renderNode(chip))
 	}
-	publish := pageElement(t, header, "details", "publish-confirm")
-	if !strings.Contains(publish, `<summary class="btn primary sm">Publish…</summary>`) || !strings.Contains(publish, "Readers can comment on the frozen copy.") {
-		t.Errorf("Publish… is not the primary button with its summary; disclosure:\n%s", publish)
+	publish := findByTestID(t, header, "publish-confirm")
+	summaries := findAll(publish, func(n *nethtml.Node) bool { return n.Data == "summary" })
+	if publish.Data != "details" || len(summaries) != 1 || summaries[0].Parent != publish || textOf(summaries[0]) != "Publish…" ||
+		!strings.Contains(textOf(publish), "Readers can comment on the frozen copy.") {
+		t.Errorf("Publish… does not open its summary; disclosure:\n%s", renderNode(publish))
 	}
-	if strings.Contains(header, `data-testid="report-history"`) {
-		t.Errorf("the header still has a History menu; header:\n%s", header)
+	if hasTestID(header, "report-history") {
+		t.Errorf("the header still has a History menu; header:\n%s", renderNode(header))
 	}
-	if strings.Contains(page, `data-testid="report-publications"`) {
-		t.Errorf("publications are still listed in a sidebar; body:\n%s", page)
+	if hasTestID(doc, "report-publications") {
+		t.Errorf("publications are still listed in a sidebar; body:\n%s", renderNode(doc))
 	}
 }
 
@@ -1644,34 +1634,38 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports")
+	doc := getPage(t, client, ts.URL+"/reports")
 
-	if !strings.Contains(page, "<h1>Reports</h1>") || strings.Contains(page, "Saved Report Definitions") {
-		t.Errorf("the page is not headed Reports alone; body:\n%s", page)
+	h1s := findAll(doc, func(n *nethtml.Node) bool { return n.Data == "h1" })
+	if len(h1s) != 1 || textOf(h1s[0]) != "Reports" || strings.Contains(textOf(doc), "Saved Report Definitions") {
+		t.Errorf("the page is not headed Reports alone: headings %q", textsOf(h1s))
 	}
-	if desc := pageElement(t, page, "p", "reports-description"); !strings.Contains(desc, "Publish a frozen copy") {
-		t.Errorf("the page has no plain description: %s", desc)
+	if desc := findByTestID(t, doc, "reports-description"); !strings.Contains(textOf(desc), "Publish a frozen copy") {
+		t.Errorf("the page has no plain description: %s", renderNode(desc))
 	}
-	if link := pageElement(t, page, "a", "new-report"); !strings.Contains(link, `href="/reports/new"`) || !strings.Contains(link, "New report") {
-		t.Errorf("New report doesn't link to the builder: %s", link)
+	if link := findByTestID(t, doc, "new-report"); link.Data != "a" || attrOf(link, "href") != "/reports/new" || !strings.Contains(textOf(link), "New report") {
+		t.Errorf("New report doesn't link to the builder: %s", renderNode(link))
 	}
-	row := pageElement(t, page, "tr", "report-row")
-	for _, want := range []string{
-		fmt.Sprintf(`href="/reports/%d"`, def.ID), ">MBR</a>",
-		`<span data-testid="report-scope" class="small muted">1 Goal picked by hand</span>`,
-		`<span data-testid="report-goals">1</span>`,
-		`<span data-testid="report-published" class="muted">Never</span>`,
-		`<span data-testid="report-draft" class="muted">Not published</span>`,
+	row := findByTestID(t, doc, "report-row")
+	if name := linkTo(row, fmt.Sprintf("/reports/%d", def.ID)); name == nil || textOf(name) != "MBR" {
+		t.Errorf("row doesn't link MBR to its draft; row:\n%s", renderNode(row))
+	}
+	for testID, want := range map[string]string{
+		"report-scope":     "1 Goal picked by hand",
+		"report-goals":     "1",
+		"report-published": "Never",
+		"report-draft":     "Not published",
 	} {
-		if !strings.Contains(row, want) {
-			t.Errorf("row lacks %s; row:\n%s", want, row)
+		if got := textOf(findByTestID(t, row, testID)); got != want {
+			t.Errorf("row's %s reads %q, want %q", testID, got, want)
 		}
 	}
-	if strings.Contains(row, "rp-bar") {
-		t.Errorf("a report whose Goals have no Health draws a Health bar; row:\n%s", row)
+	if hasTestID(row, "report-health-bar") {
+		t.Errorf("a report whose Goals have no Health draws a Health bar; row:\n%s", renderNode(row))
 	}
-	if strings.Contains(page, "<form") && strings.Contains(page, `action="/reports"`) || strings.Contains(page, `data-testid="create-report"`) {
-		t.Errorf("the reports page still has its own create form; body:\n%s", page)
+	creates := findAll(doc, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == "/reports" })
+	if len(creates) != 0 || hasTestID(doc, "create-report") {
+		t.Errorf("the reports page still has its own create form; body:\n%s", renderNode(doc))
 	}
 	resp := postForm(t, noRedirects(client), ts.URL+"/reports", url.Values{"name": {"Old way"}})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusMethodNotAllowed {
@@ -1681,9 +1675,10 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 
 // A published definition's row dates its last publication in the company's
 // timezone, "Jan 1, 2026" for 03:00 UTC on 2 January in Los Angeles, with who
-// published it; counts its draft's changes since in an amber pill; and draws
-// its Goals that have a Health as a bar labelled for assistive technology,
-// leaving out the three new Goals that have none yet.
+// published it; counts its draft's changes since; and draws its Goals that
+// have a Health as a bar labelled for assistive technology, leaving out the
+// three new Goals that have none yet. The amber pill and the bar's units are
+// TestReportsListRowShowsTheLastPublicationAndChangesStyles.
 func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1714,20 +1709,23 @@ func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 
 	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
 	t.Cleanup(ts.Close)
-	row := pageElement(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "tr", "report-row")
-	row = regexp.MustCompile(`>\s+<`).ReplaceAllString(row, "><")
+	row := findByTestID(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "report-row")
 
-	for _, want := range []string{
-		`<span data-testid="report-scope" class="small muted">Owner: boss</span>`,
-		`<span data-testid="report-goals">5</span>`,
-		`<div data-testid="report-health-bar" class="rp-bar" role="img" aria-label="1 Green, 0 Yellow, 1 Red"><span class="g"></span><span class="r"></span></div>`,
-		`<span data-testid="report-published">Jan 1, 2026</span>`,
-		shownAs("ada.okafor@example.com", "Ada Okafor"),
-		`<span data-testid="report-draft" class="rp-changes-hot">3 changes</span>`,
+	for testID, want := range map[string]string{
+		"report-scope":     "Owner: boss",
+		"report-goals":     "5",
+		"report-published": "Jan 1, 2026",
+		"report-draft":     "3 changes",
 	} {
-		if !strings.Contains(row, want) {
-			t.Errorf("row lacks %s; row:\n%s", want, row)
+		if got := textOf(findByTestID(t, row, testID)); got != want {
+			t.Errorf("row's %s reads %q, want %q", testID, got, want)
 		}
+	}
+	if bar := findByTestID(t, row, "report-health-bar"); attrOf(bar, "role") != "img" || attrOf(bar, "aria-label") != "1 Green, 0 Yellow, 1 Red" {
+		t.Errorf("the Health bar isn't labelled 1 Green, 0 Yellow, 1 Red for assistive technology: %s", renderNode(bar))
+	}
+	if !reportShowsPerson(row, "ada.okafor@example.com", "Ada Okafor") {
+		t.Errorf("row doesn't show Ada Okafor published it; row:\n%s", renderNode(row))
 	}
 }
 
@@ -1766,47 +1764,18 @@ func TestReportsListSortsWhatNeedsPublishingFirstOverHTTP(t *testing.T) {
 	}
 
 	ts := newServer(t, h)
-	table := pageElement(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "table", "report-table")
-	var got []string
-	for _, m := range regexp.MustCompile(`<a href="/reports/\d+">([^<]+)</a>`).FindAllStringSubmatch(table, -1) {
-		got = append(got, m[1])
-	}
+	table := findByTestID(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "report-table")
+	draftPath := regexp.MustCompile(`^/reports/\d+$`)
+	got := textsOf(findAll(table, func(n *nethtml.Node) bool { return n.Data == "a" && draftPath.MatchString(attrOf(n, "href")) }))
 	if want := []string{"Yankee", "Echo", "Beta", "Zulu", "Alpha"}; !slices.Equal(got, want) {
 		t.Errorf("reports listed %q, want %q", got, want)
 	}
 }
 
-// At phone width the status table drops its column headings and each row
-// stacks as a block, its cells one under another, so nothing scrolls the page
-// sideways.
-func TestReportsListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
-
-	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
-	for selector, want := range map[string]string{
-		".rp-table thead": "display:none",
-		".rp-table tr":    "display:block",
-		".rp-table td":    "display:block",
-	} {
-		if rule := cssRule(t, phone, selector); !strings.Contains(rule, want) {
-			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
-		}
-	}
-}
-
 // A Report card's head reads Health first, its "· N wks" and "· was X" straight
 // after it, then the title and its meta line, then the other badges, on the
-// draft and on the print page. At phone width it keeps that order: the badges
-// drop under the Health and title, left-aligned, rather than squeezing the
-// title into a narrow column beside them (#229, #453).
+// draft and on the print page (#229). That it keeps that order at phone width
+// and in a narrow block is TestReportCardHeadLeadsWithItsHealthStyles.
 func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1821,10 +1790,10 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-	printed := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
-	for where, body := range map[string]string{"the draft": page, "the print page": printed} {
-		block := findByTestID(t, parsePage(t, body), "report-exception")
+	page := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	printed := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	for where, doc := range map[string]*nethtml.Node{"the draft": page, "the print page": printed} {
+		block := findByTestID(t, doc, "report-exception")
 		health := findByTestID(t, block, "report-health")
 		run := findByTestID(t, block, "report-run-off-green")
 		title := linkTo(block, fmt.Sprintf("/goals/%d", red.ID))
@@ -1836,35 +1805,7 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 			t.Errorf("%s's card head badge reads %q, want %s", where, textOf(badge), domain.BadgeCheckinOverdue)
 		}
 	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, page), "report-health"), "Red")
-
-	phone := mediaBlock(t, page, "@media (max-width:600px)")
-	cardHead, _ := ruleFor(phone, ".rp-card-head")
-	badges, _ := ruleFor(phone, ".rp-badges")
-	if !strings.Contains(cardHead, "flex-wrap:wrap") || !strings.Contains(badges, "flex-basis:100%") || strings.Contains(cardHead, "column") {
-		t.Errorf("at 600px the card head doesn't keep Health and title on a line with its badges under them: .rp-card-head{%s} .rp-badges{%s}", cardHead, badges)
-	}
-	if !strings.Contains(badges, "justify-content:flex-start") {
-		t.Errorf("at 600px the badges under the title stay right-aligned: .rp-badges{%s}", badges)
-	}
-	// A narrow block, as in the draft's column under 1280px, does the same, so
-	// its title isn't squeezed until its words break.
-	if block, _ := ruleFor(page, ".rp-block"); !strings.Contains(block, "container:rp-block/inline-size") {
-		t.Errorf("a Report block isn't a container its head can fit itself to: .rp-block{%s}", block)
-	}
-	narrow := mediaBlock(t, page, "@container rp-block (max-width:28rem)")
-	narrowHead, _ := ruleFor(narrow, ".rp-card-head")
-	narrowBadges, _ := ruleFor(narrow, ".rp-badges")
-	if !strings.Contains(narrowHead, "flex-wrap:wrap") || !strings.Contains(narrowBadges, "flex-basis:100%") || !strings.Contains(narrowBadges, "justify-content:flex-start") {
-		t.Errorf("a narrow block's head doesn't drop its badges under Health and the title: .rp-card-head{%s} .rp-badges{%s}", narrowHead, narrowBadges)
-	}
-	for _, sel := range []string{".rp-card-head", ".rp-health", ".rp-card-title", ".rp-badges"} {
-		for _, css := range []string{phone, narrow, between(t, printed, "<style>", "</style>")} {
-			if rule, _ := ruleFor(css, sel); strings.Contains(strings.ReplaceAll(rule, " ", ""), "order:") || strings.Contains(rule, "reverse") {
-				t.Errorf("the card head reorders itself: %s{%s}", sel, rule)
-			}
-		}
-	}
+	assertHealthChip(t, findByTestID(t, page, "report-health"), "Red")
 }
 
 // A Goal with no Health yet prints its dash alone: no drawn shape, which the
@@ -1879,20 +1820,19 @@ func TestPrintPageDrawsNoShapeForAGoalWithNoHealthOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	printed := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 
-	badge := findByTestID(t, findByTestID(t, parsePage(t, printed), "report-exception"), "report-health")
+	badge := findByTestID(t, findByTestID(t, printed, "report-exception"), "report-health")
 	dots := findAll(badge, func(n *nethtml.Node) bool { return attrOf(n, "class") == "dot" })
 	if shownTextOf(badge) != "—" || len(dots) != 0 {
 		t.Errorf("a Goal with no Health doesn't print its dash alone: %s", renderNode(badge))
 	}
 }
 
-// The print page sets the Report in the design system's serif, falling back to
-// Georgia, and marks Health with a shape as well as its word, shown, not left
-// to a screen reader as on screen, so it survives black-and-white printing: the screen's drawn shapes, a Red octagon, a Yellow
-// triangle pointing down and a Green circle, in the Health's ink and kept when
-// printed, not ■ ▲ ● characters (#452).
+// The print page marks Health with a shape as well as its word, shown, not
+// left to a screen reader as on screen, so it survives black-and-white
+// printing, and with no ■ ▲ ● characters (#452). Its serif and the shapes it
+// draws are TestPrintPageMarksHealthWithShapesStyles.
 func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1907,18 +1847,14 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 
-	if !strings.Contains(printed, "--print-font: 'Source Serif 4', Georgia, serif") || !strings.Contains(printed, "font-family: var(--print-font)") {
-		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
+	if count := findByTestID(t, doc, "needs-attention-count"); textOf(count) != "1" {
+		t.Errorf("print page's Exceptions does not count its 1 exception: %s", renderNode(count))
 	}
-	if count := pageElement(t, printed, "span", "needs-attention-count"); !strings.HasSuffix(count, ">1") {
-		t.Errorf("print page's Exceptions does not count its 1 exception: %s", count)
+	if strings.ContainsAny(textOf(doc), "■▲●") {
+		t.Errorf("print page still marks Health with ■ ▲ ● characters; body:\n%s", renderNode(doc))
 	}
-	if strings.ContainsAny(printed, "■▲●") {
-		t.Errorf("print page still marks Health with ■ ▲ ● characters; body:\n%s", printed)
-	}
-	doc := parsePage(t, printed)
 	for _, want := range []struct{ in, badge, health string }{
 		{"report-exception", "report-health", "Red"},
 		{"selected-goal", "selected-health", "Green"},
@@ -1930,89 +1866,13 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 			t.Errorf("%s's Health badge doesn't show %s beside one drawn shape: %s", testID, health, renderNode(badge))
 		}
 	}
-
-	style := between(t, printed, "<style>", "</style>")
-	dot := printPageRule(t, style, ".dot")
-	if strings.Contains(dot, "display: none") || !strings.Contains(dot, "background: currentColor") || !strings.Contains(dot, " print-color-adjust: exact;") {
-		t.Errorf("print page doesn't draw the dot in its Health's ink, kept when printed: .dot { %s }", dot)
-	}
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	unspaced := strings.NewReplacer(" ", "", "\n", "", "\t", "")
-	for _, sel := range []string{".r .dot", ".y .dot", ".g .dot"} {
-		screen, _ := ruleFor(css, sel)
-		if print := printPageRule(t, style, sel); unspaced.Replace(print) != unspaced.Replace(screen)+";" && unspaced.Replace(print) != unspaced.Replace(screen) {
-			t.Errorf("print page draws %s { %s }, not the screen's %s{%s}", sel, print, sel, screen)
-		}
-	}
 }
 
-// The print page draws each Health badge in its Health's colour, a tint and
-// an ink of its own for Red, Yellow, Green and No Health yet, and asks the
-// browser to keep that colour when it prints, so a PDF carries it (#389).
-func TestPrintPageColoursHealthBadgesOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
-	pub := h.PublishReport(boss, def)
-
-	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
-	style := between(t, printed, "<style>", "</style>")
-
-	if rule := printPageRule(t, style, ".badge"); !strings.Contains(rule, "-webkit-print-color-adjust: exact;") || !strings.Contains(rule, " print-color-adjust: exact;") {
-		t.Errorf("print page's badges don't keep their colour in print: .badge { %s }", rule)
-	}
-	seen := map[string]string{}
-	for health, class := range map[string]string{"Red": ".r", "Yellow": ".y", "Green": ".g", "No Health": ".lc"} {
-		rule := printPageRule(t, style, class)
-		bg, ink := printPageColour(t, style, rule, "background"), printPageColour(t, style, rule, "color")
-		if bg == ink {
-			t.Errorf("%s badge's ink is its tint, %s: %s { %s }", health, bg, class, rule)
-		}
-		for _, c := range []string{bg, ink} {
-			if other, ok := seen[c]; ok {
-				t.Errorf("%s badge shares %s with %s: %s { %s }", health, c, other, class, rule)
-			}
-			seen[c] = health
-		}
-	}
-}
-
-// The print page keeps the screen's other marks of trouble in colour too: a
-// Check-in overdue badge in its grey with a dashed edge (#389).
-func TestPrintPageColoursOverdueMarksOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	goal := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
-	pub := h.PublishReport(boss, def)
-
-	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
-	style := between(t, printed, "<style>", "</style>")
-
-	red := printPageColour(t, style, printPageRule(t, style, ".r"), "background")
-	overdue := printPageRule(t, style, ".st")
-	if bg, ink := printPageColour(t, style, overdue, "background"), printPageColour(t, style, overdue, "color"); bg == ink || bg == red {
-		t.Errorf("Check-in overdue badge is not its own grey: .st { %s }", overdue)
-	}
-	if !strings.Contains(overdue, "border: 0.5pt dashed var(") {
-		t.Errorf("Check-in overdue badge has no dashed edge: .st { %s }", overdue)
-	}
-}
-
-// The print page lays a Goal block out as the screen does (#475), in its own
-// serif: Why it matters and Status in a label column, and the Path to Green
-// in a box tinted in its Goal's Health, Red or Yellow, kept when printed. An
-// overdue Path to Green keeps its Health's tint and says Overdue in its badge,
-// so an overdue Yellow one prints Yellow, not Red (#478).
+// The print page lays a Goal block out as the screen does (#475): Why it
+// matters and Status as the facts of a description list, and the Path to
+// Green in a box of its own. An overdue Path to Green says Overdue in its
+// badge, and one on time doesn't (#478). The label column, and the box's
+// tint, are TestPrintPageLaysOutTheGoalBlockAsOnScreenStyles.
 func TestPrintPageLaysOutTheGoalBlockAsOnScreenOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2028,202 +1888,33 @@ func TestPrintPageLaysOutTheGoalBlockAsOnScreenOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
-	style := between(t, printed, "<style>", "</style>")
-	doc := parsePage(t, printed)
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 
 	for _, c := range []struct {
 		goal    domain.Goal
-		tint    string
 		overdue bool
 	}{
-		{red, "rp-tint-r", false},
-		{yellow, "rp-tint-y", true},
+		{red, false},
+		{yellow, true},
 	} {
 		block := reportBlockOf(t, doc, c.goal)
 		for _, id := range []string{"report-why-it-matters", "report-status"} {
 			dd := findByTestID(t, block, id)
-			if dl := dd.Parent.Parent; dl == nil || dl.Data != "dl" || !slices.Contains(strings.Fields(attrOf(dl, "class")), "rp-facts") {
-				t.Errorf("%q's %s isn't a row of dl.rp-facts: %s", c.goal.Title, id, renderNode(dd.Parent))
+			if dl := dd.Parent.Parent; dd.Data != "dd" || dl == nil || dl.Data != "dl" {
+				t.Errorf("%q's %s isn't a fact of a description list: %s", c.goal.Title, id, renderNode(dd.Parent))
 			}
 		}
 		box := findByTestID(t, block, "report-path-box")
-		if classes := strings.Fields(attrOf(box, "class")); !slices.Contains(classes, c.tint) {
-			t.Errorf("%q's Path to Green box is %q, want %s", c.goal.Title, classes, c.tint)
-		}
 		if badge := hasTestID(box, "path-overdue"); badge != c.overdue {
 			t.Errorf("%q's Path to Green box shows the Overdue badge %v, want %v: %s", c.goal.Title, badge, c.overdue, renderNode(box))
 		}
 	}
-
-	facts := printPageRule(t, style, ".rp-facts")
-	if !strings.Contains(facts, "display: grid;") || !strings.Contains(facts, "grid-template-columns: 7.5rem") || !strings.Contains(facts, "margin: 0.3rem 0;") {
-		t.Errorf("print page doesn't lay Why it matters and Status out in a label column: .rp-facts { %s }", facts)
-	}
-	if dd := printPageRule(t, style, ".rp-facts dd"); !strings.Contains(dd, "margin: 0;") {
-		t.Errorf("print page indents a fact's value by the browser's dd margin: .rp-facts dd { %s }", dd)
-	}
-	tint := printPageRule(t, style, ".rp-tint")
-	for _, want := range []string{"padding: 0.2rem 0.5rem;", "border-radius: 2pt;", "-webkit-print-color-adjust: exact;", " print-color-adjust: exact;"} {
-		if !strings.Contains(tint, want) {
-			t.Errorf("Path to Green box lacks %q: .rp-tint { %s }", want, tint)
-		}
-	}
-	for tint, health := range map[string]string{".rp-tint-r": ".r", ".rp-tint-y": ".y"} {
-		badge := printPageRule(t, style, health)
-		want, ink := printPageColour(t, style, badge, "background"), printPageColour(t, style, badge, "color")
-		if bg := printPageColour(t, style, printPageRule(t, style, tint), "background"); bg != want {
-			t.Errorf("print page tints %s with %s, not its Health's tint %s", tint, bg, want)
-		}
-		if got := printPageColour(t, style, printPageRule(t, style, tint+" .rp-tint-label"), "color"); got != ink {
-			t.Errorf("print page's %s Path to Green label is %s, not its Health's ink %s", tint, got, ink)
-		}
-	}
-	if _, ok := ruleFor(style, ".rp-tint.overdue"); ok {
-		t.Errorf("print page still tints an overdue Path to Green Red whatever its Health: style:\n%s", style)
-	}
 }
 
-// printPageRule is the declarations of the print page's style rule for
-// selector alone, failing the test when it has none.
-func printPageRule(t *testing.T, style, selector string) string {
-	t.Helper()
-	m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(selector) + `\s*\{([^}]*)\}`).FindStringSubmatch(style)
-	if m == nil {
-		t.Fatalf("print page has no %s rule; style:\n%s", selector, style)
-	}
-	return strings.TrimSpace(m[1])
-}
-
-// printPageColour is the hex colour a print page rule gives property, through
-// the var() token it names, failing the test when it gives none.
-func printPageColour(t *testing.T, style, rule, property string) string {
-	t.Helper()
-	m := regexp.MustCompile(`(?:^|[;\s])` + property + `:\s*([^;]+);`).FindStringSubmatch(rule)
-	if m == nil {
-		t.Fatalf("print page rule sets no %s: %s", property, rule)
-	}
-	value := strings.TrimSpace(m[1])
-	if v := regexp.MustCompile(`^var\((--[\w-]+)\)$`).FindStringSubmatch(value); v != nil {
-		token := regexp.MustCompile(regexp.QuoteMeta(v[1]) + `:\s*([^;]+);`).FindStringSubmatch(printPageRule(t, style, ":root"))
-		if token == nil {
-			t.Fatalf("print page's :root declares no %s", v[1])
-		}
-		value = strings.TrimSpace(token[1])
-	}
-	if !regexp.MustCompile(`^#[0-9A-Fa-f]{3,6}$`).MatchString(value) {
-		t.Fatalf("print page rule's %s is not a colour: %s", property, rule)
-	}
-	return strings.ToUpper(value)
-}
-
-// At phone width the Publish… card is pinned to the viewport's gutters rather
-// than hung off its button's right edge, where it ran off the left of a 390px
-// screen with Cancel beyond reach (#172).
-func TestDraftPublishCardFitsAPhoneOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	rule, ok := ruleFor(mediaBlock(t, page, "@media (max-width:600px)"), ".rp-publish")
-	if !ok {
-		t.Fatalf("at 600px there is no .rp-publish rule")
-	}
-	for _, want := range []string{"position:fixed", "left:16px", "right:16px", "width:auto"} {
-		if !strings.Contains(rule, want) {
-			t.Errorf("at 600px .rp-publish{%s} lacks %s", rule, want)
-		}
-	}
-}
-
-// At phone width the draft header scrolls away with the page instead of
-// sticking over a third of the screen. The name takes its own line with the
-// save status beside it, the baseline chip sits on its own row below, and
-// History, Edit definition and Publish… share the last row: five controls
-// don't fit one row at 390px (#172).
-func TestDraftHeaderStacksAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	header := pageElement(t, page, "header", "draft-header")
-	title := between(t, header, `<div class="rp-draft-title">`, `data-testid="baseline-chip"`)
-	for _, part := range []string{`data-testid="report-breadcrumb"`, `data-testid="save-status"`} {
-		if !strings.Contains(title, part) {
-			t.Errorf("the name block lacks %s; block:\n%s", part, title)
-		}
-	}
-	actions := between(t, header, `<div class="rp-head-actions">`, "")
-	for _, part := range []string{`data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
-		if !strings.Contains(actions, part) {
-			t.Errorf("the actions row lacks %s; row:\n%s", part, actions)
-		}
-	}
-	if strings.Contains(actions, `data-testid="save-status"`) {
-		t.Errorf("the save status is in the actions row, not beside the name; row:\n%s", actions)
-	}
-
-	phone := mediaBlock(t, page, "@media (max-width:600px)")
-	for selector, wants := range map[string][]string{
-		".rp-draft-head":   {"position:static"},
-		".rp-draft-title":  {"display:flex", "flex-basis:100%"},
-		".rp-head-actions": {"flex-basis:100%", "flex-wrap:nowrap", "margin-left:0"},
-	} {
-		rule, ok := ruleFor(phone, selector)
-		if !ok {
-			t.Errorf("at 600px there is no %s rule", selector)
-			continue
-		}
-		for _, want := range wants {
-			if !strings.Contains(rule, want) {
-				t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
-			}
-		}
-	}
-}
-
-// A Due date in the draft's On track table wraps as a whole, never mid-date
-// ("2026-12-" over "14") in a narrow column (#172).
-func TestDraftOnTrackDueDatesDoNotBreakOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	h.Clock.Advance(3 * 24 * time.Hour)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	due := tagAround(t, pageElement(t, page, "table", "on-track"), `data-testid="selected-due"`)
-	if !strings.Contains(due, "rp-date") {
-		t.Fatalf("the On track Due date is not marked rp-date: %s", due)
-	}
-	if rule := cssRule(t, page, ".rp-date"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("a Due date can break mid-date: .rp-date{%s}", rule)
-	}
-}
-
-// At a phone's width each On track row stacks as a block rather than leaving
-// its Due off the side of the card (#180): its Health then the Goal on one
-// line, as at every width, then its Owner and Due under the Goal. The cells
-// run Health, Goal, Owner, Due in the HTML and none is reordered (#453). A
-// publication's discussion row spans the full width.
+// A publication's On track table gives each Goal's discussion a row of its
+// own under the Goal's, its one cell spanning the row's four columns: Health,
+// Goal, Owner and Due. How the rows stack at a phone's width is pinned in
+// styles_test.go (TestOnTrackRowsStackAtPhoneWidthStyles).
 func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2237,49 +1928,25 @@ func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
-	onTrack := between(t, page, `<table data-testid="on-track"`, "</table>")
-	if !strings.HasPrefix(onTrack, `<table data-testid="on-track" class="rp-track">`) {
-		t.Errorf("the On track table has no rp-track class to style: %s", onTrack)
+	onTrack := findByTestID(t, page, "on-track")
+	row := findByTestID(t, onTrack, "selected-goal")
+	talk := findByTestID(t, onTrack, "goal-discussion")
+	cell := talk.Parent
+	if cell.Data != "td" || within(cell, row) || !precedes(row, cell) {
+		t.Fatalf("the Goal's discussion isn't in a cell of its own after the Goal's row: %s", renderNode(onTrack))
 	}
-	row := pageElement(t, onTrack, "tr", "selected-goal")
-	for _, class := range []string{"rp-track-health", "rp-track-goal", "rp-track-owner", "rp-track-due"} {
-		if !strings.Contains(row, `class="`+class+`"`) {
-			t.Errorf("the row has no %s cell to style:\n%s", class, row)
-		}
-	}
-	if !strings.Contains(onTrack, `<td colspan="4" class="rp-track-talk">`) {
-		t.Errorf("the discussion row has no rp-track-talk cell to style:\n%s", onTrack)
-	}
-	phone := mediaBlock(t, page, "@media (max-width:600px)")
-	for selector, wants := range map[string][]string{
-		".rp-track thead":           {"display:none"},
-		".rp-track tr":              {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
-		".rp-track td":              {"display:block"},
-		".rp-track .rp-track-goal":  {"grid-column:2"},
-		".rp-track .rp-track-owner": {"grid-column:2"},
-		".rp-track .rp-track-due":   {"grid-column:2"},
-		".rp-track .rp-track-talk":  {"grid-column:1/-1"},
-	} {
-		if rule, _ := ruleFor(phone, selector); strings.Contains(rule, "order:") {
-			t.Errorf("at 600px %s{%s} reorders the row, which reads Health first", selector, rule)
-		}
-		rule, ok := ruleFor(phone, selector)
-		if !ok {
-			t.Errorf("at 600px there is no %s rule", selector)
-			continue
-		}
-		for _, want := range wants {
-			if !strings.Contains(rule, want) {
-				t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
-			}
-		}
+	if span := attrOf(cell, "colspan"); span != "4" {
+		t.Errorf("the discussion's cell spans %q columns, want all 4: %s", span, renderNode(cell.Parent))
 	}
 }
 
-// An exception card's due date and its Milestones' dates wrap between their
-// struck slips but never mid-date ("2026-07-" over "16") on a phone (#180).
+// An exception card's due date reads as the date it slipped from, struck
+// through, then the date it is now, and a Milestone's dates read as its date
+// then the one it slipped from, struck through (#180). That neither breaks
+// mid-date on a phone is pinned in styles_test.go
+// (TestExceptionCardDatesDoNotBreakStyles).
 func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2304,22 +1971,17 @@ func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	block := pageElement(t, page, "article", "report-exception")
-	due := strings.Join(strings.Fields(between(t, block, `<span data-testid="report-due"`, "</p>")), " ")
-	if want := `<span data-testid="report-due" class="rp-dates"><del>Jul 2, 2026</del> <span>Jul 16, 2026</span></span>`; due != want {
-		t.Errorf("the card's due date is not a wrapper of whole dates:\n got %s\nwant %s", due, want)
+	block := findByTestID(t, page, "report-exception")
+	due := findByTestID(t, block, "report-due")
+	if got, struck := textOf(due), struckThrough(due); got != "Jul 2, 2026 Jul 16, 2026" || !slices.Equal(struck, []string{"Jul 2, 2026"}) {
+		t.Errorf("the card's due date reads %q with %q struck, want Jul 2, 2026 struck then Jul 16, 2026", got, struck)
 	}
-	milestone := strings.Join(strings.Fields(pageElement(t, block, "li", "report-milestone")), " ")
-	if want := `<span class="rp-dates"><span>` + slippedBeta.Format("Jan 2, 2006") + `</span> <del>` + beta.TargetDate.Format("Jan 2, 2006") + `</del> </span>`; !strings.Contains(milestone, want) {
-		t.Errorf("the Milestone's dates are not a wrapper of whole dates:\nwant %s\nin %s", want, milestone)
-	}
-	if rule := cssRule(t, page, ".rp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("a card date can break mid-date: .rp-dates>*{%s}", rule)
-	}
-	if rule, ok := ruleFor(page, ".rp-dates"); ok && strings.Contains(rule, "nowrap") {
-		t.Errorf("the whole wrapper is kept on one line, so its slips can't wrap: .rp-dates{%s}", rule)
+	now, was := slippedBeta.Format("Jan 2, 2006"), beta.TargetDate.Format("Jan 2, 2006")
+	milestone := findByTestID(t, block, "report-milestone")
+	if got, struck := textOf(milestone), struckThrough(milestone); !strings.Contains(got, now+" "+was+" ") || !slices.Equal(struck, []string{was}) {
+		t.Errorf("the Milestone reads %q with %q struck, want %s then %s struck", got, struck, now, was)
 	}
 }
 
@@ -2365,31 +2027,35 @@ func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 		"print":       fmt.Sprintf("%s/reports/%d/publications/%d/print", ts.URL, def.ID, pub.ID),
 	} {
 		t.Run(name, func(t *testing.T) {
-			block := pageElement(t, getBody(t, client, url), "article", "report-exception")
-			if got := elementTexts(block, "li", "report-milestone"); !slices.Equal(got, reportMarkedMilestones) {
+			block := findByTestID(t, getPage(t, client, url), "report-exception")
+			milestones := findAllByTestID(block, "report-milestone")
+			if got := textsOf(milestones); !slices.Equal(got, reportMarkedMilestones) {
 				t.Errorf("Milestones read\n %q\nwant\n %q", got, reportMarkedMilestones)
 			}
-			assertMilestoneMarksShowTheirWords(t, findByTestID(t, parsePage(t, block), "report-milestones"),
+			assertMilestoneMarksShowTheirWords(t, findByTestID(t, block, "report-milestones"),
 				[]string{"Overdue", "Done", "New", "Slipped", "Slipped", "Removed"})
-			vendor := pageElement(t, block, "li", "report-milestone")
-			for _, li := range strings.Split(block, `<li data-testid="report-milestone"`) {
-				if strings.Contains(li, "Vendor sign-off") {
+			var vendor *nethtml.Node
+			for _, li := range milestones {
+				if strings.Contains(textOf(li), "Vendor sign-off") {
 					vendor = li
 				}
 			}
-			if !strings.Contains(vendor, "<del>Mar 20, 2026</del>") {
-				t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
+			if vendor == nil {
+				t.Fatalf("no Milestone reads Vendor sign-off: %s", renderNode(block))
+			}
+			if struck := struckThrough(vendor); !slices.Equal(struck, []string{"Mar 20, 2026"}) {
+				t.Errorf("Vendor sign-off strikes through %q, want the date it last slipped from, Mar 20, 2026", struck)
 			}
 			for _, older := range []string{"Mar 1,", "Mar 10,"} {
-				if strings.Contains(vendor, older) {
-					t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
+				if strings.Contains(textOf(vendor), older) {
+					t.Errorf("Vendor sign-off still lists the older date %s: %q", older, textOf(vendor))
 				}
 			}
-			if !strings.Contains(block, "<del>Launch party</del>") {
-				t.Errorf("the Removed Milestone's name is not struck through:\n%s", block)
+			if !slices.Contains(struckThrough(block), "Launch party") {
+				t.Errorf("the Removed Milestone's name is not struck through: %q struck", struckThrough(block))
 			}
 			for _, want := range []string{"report-health", "rollup-health"} {
-				if health := findByTestID(t, parsePage(t, block), want); !flatFrameHasClass(health, healthClassYellow) || textOf(health) != "Yellow" {
+				if health := findByTestID(t, block, want); !flatFrameHasClass(health, healthClassYellow) || textOf(health) != "Yellow" {
 					t.Errorf("%s is not the Yellow set by the Owner and rolled up from the child: %s", want, renderNode(health))
 				}
 			}
@@ -2417,60 +2083,10 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 	}
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
 	want := []string{"Overdue Dec 20, 2025 Dec 1, 2025 Beta", "New Mar 1, 2026 GA", "Apr 1, 2026 Launch"}
-	if got := elementTexts(pageElement(t, page, "article", "report-exception"), "li", "report-milestone"); !slices.Equal(got, want) {
+	if got := textsOf(findAllByTestID(findByTestID(t, page, "report-exception"), "report-milestone")); !slices.Equal(got, want) {
 		t.Errorf("Milestones read\n %q\nwant\n %q", got, want)
-	}
-}
-
-// The draft's own rules outrank the generic ones they sit inside (#173): a
-// Highlight's section picker is an inline segmented control, not the form's
-// column of fields, and the Highlight list and its items sit flush in its card
-// (the Health summary's row is pinned in styles_test.go). The baseline chip is
-// a pill as tall as the buttons beside it (#180).
-func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-
-	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-
-	// .rp-form fieldset sets display:flex;flex-direction:column, so the
-	// segmented control needs a rule at least that specific.
-	if rule := cssRule(t, page, ".rp-form fieldset.rp-sections"); !strings.Contains(rule, "display:inline-flex") || !strings.Contains(rule, "flex-direction:row") {
-		t.Errorf("the section control is not an inline row: .rp-form fieldset.rp-sections{%s}", rule)
-	}
-	// .rp-block ul indents the exception entries' lists; the Highlight list
-	// isn't in one and stays flush.
-	if rule := cssRule(t, page, ".rp-list"); !strings.Contains(rule, "padding:0") {
-		t.Errorf("the Highlight list is indented: .rp-list{%s}", rule)
-	}
-	// A Highlight lines up with the "Highlights since" heading above it (#180).
-	if rule := cssRule(t, page, ".rp-list>li.rp-curate"); !strings.Contains(rule, "padding-left:0") || !strings.Contains(rule, "padding-right:0") {
-		t.Errorf("a Highlight is indented from its heading: .rp-list>li.rp-curate{%s}", rule)
-	}
-	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 0") {
-		t.Errorf("list rows lost their padding: .rp-list>li{%s}", rule)
-	}
-	// The baseline chip is a bordered pill, as a .tag is.
-	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "border:1px solid") || !strings.Contains(rule, "border-radius:var(--radius-full)") {
-		t.Errorf("the baseline chip is not a bordered pill: .rp-menu.rp-chip>summary{%s}", rule)
-	}
-	// app.css's details>summary is 44px tall; the chip matches the 32px small
-	// buttons beside it in the header strip, its border inside that height
-	// (#180).
-	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "box-sizing:border-box") || !strings.Contains(rule, "min-height:32px") {
-		t.Errorf("the baseline chip is not 32px tall: .rp-menu.rp-chip>summary{%s}", rule)
-	}
-	// On a touch screen app.css raises those buttons to 44px; the chip
-	// follows them (#183).
-	if rule, ok := ruleFor(mediaBlock(t, page, "@media (pointer:coarse)"), ".rp-menu.rp-chip>summary"); !ok || !strings.Contains(rule, "min-height:44px") {
-		t.Errorf("on a coarse pointer the baseline chip is not 44px tall: .rp-menu.rp-chip>summary{%s}", rule)
 	}
 }
 
@@ -2711,17 +2327,43 @@ func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
-	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	printed := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 
-	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, ">boss (boss@example.com)<") {
-		t.Errorf("print page does not introduce the publisher; line:\n%s", line)
+	if line := findByTestID(t, printed, "report-published"); reportTextsReading(line, "boss (boss@example.com)") != 1 {
+		t.Errorf("print page does not introduce the publisher; line: %s", renderNode(line))
 	}
-	if n := strings.Count(printed, ">Ada Okafor (ada.okafor@example.com)<"); n != 1 {
-		t.Errorf("print page introduces Ada %d times, want once; body:\n%s", n, printed)
+	if n := reportTextsReading(printed, "Ada Okafor (ada.okafor@example.com)"); n != 1 {
+		t.Errorf("print page introduces Ada %d times, want once; body:\n%s", n, renderNode(printed))
 	}
-	if n := strings.Count(printed, ">Ada Okafor<"); n != 1 {
-		t.Errorf("print page names Ada alone %d times, want once after her introduction; body:\n%s", n, printed)
+	if n := reportTextsReading(printed, "Ada Okafor"); n != 1 {
+		t.Errorf("print page names Ada alone %d times, want once after her introduction; body:\n%s", n, renderNode(printed))
 	}
+}
+
+// reportTextsReading is how many of the texts under root, each run of text
+// between two tags, read text and nothing more.
+func reportTextsReading(root *nethtml.Node, text string) int {
+	n := 0
+	for c := range root.Descendants() {
+		if c.Type == nethtml.TextNode && c.Data == text {
+			n++
+		}
+	}
+	return n
+}
+
+// reportPageMentions reports whether s shows anywhere on the page under root:
+// in its text, hidden text included, or in a tooltip.
+func reportPageMentions(root *nethtml.Node, s string) bool {
+	for n := range root.Descendants() {
+		switch {
+		case n.Type == nethtml.TextNode && n.Parent != nil && n.Parent.Data != "style" && n.Parent.Data != "script" && strings.Contains(n.Data, s):
+			return true
+		case n.Type == nethtml.ElementNode && strings.Contains(attrOf(n, "title"), s):
+			return true
+		}
+	}
+	return false
 }
 
 // A publication shows each Owner by the Name they had when it was published,
@@ -2752,14 +2394,14 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 		return ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(p.ID, 10)
 	}
 
-	if page := getBody(t, client, pubURL(renamed)); !strings.Contains(page, shownAs("ada.okafor@example.com", "Ada Okafor")) || strings.Contains(page, "Ada Mensah") {
-		t.Errorf("publication does not show Ada as published; body:\n%s", page)
+	if page := getPage(t, client, pubURL(renamed)); !reportShowsPerson(page, "ada.okafor@example.com", "Ada Okafor") || reportPageMentions(page, "Ada Mensah") {
+		t.Errorf("publication does not show Ada as published; body:\n%s", renderNode(page))
 	}
-	if row := pageElement(t, getBody(t, client, pubURL(old)), "td", "selected-owner"); !strings.Contains(row, shownAs("ada.okafor@example.com", "ada.okafor@example.com")) {
-		t.Errorf("pre-Names Owner reads %s, want the email", row)
+	if row := findByTestID(t, getPage(t, client, pubURL(old)), "selected-owner"); !reportShowsPerson(row, "ada.okafor@example.com", "ada.okafor@example.com") {
+		t.Errorf("pre-Names Owner reads %s, want the email", renderNode(row))
 	}
-	if printed := getBody(t, client, pubURL(old)+"/print"); !strings.Contains(printed, ">ada.okafor@example.com<") || strings.Contains(printed, "(ada.okafor@example.com)") {
-		t.Errorf("pre-Names print page does not show Ada by email alone; body:\n%s", printed)
+	if printed := getPage(t, client, pubURL(old)+"/print"); reportTextsReading(printed, "ada.okafor@example.com") == 0 || reportPageMentions(printed, "(ada.okafor@example.com)") {
+		t.Errorf("pre-Names print page does not show Ada by email alone; body:\n%s", renderNode(printed))
 	}
 }
 
@@ -2783,22 +2425,25 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "ada.okafor@example.com")
 	pubURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
 
-	page := getBody(t, client, pubURL)
-	if line := pageElement(t, page, "p", "report-published"); !strings.Contains(line, shownAs("ceo@example.com", "Dana Whitfield")) {
-		t.Errorf("publication byline does not show Dana Whitfield as published; line:\n%s", line)
+	page := getPage(t, client, pubURL)
+	if line := findByTestID(t, page, "report-published"); !reportShowsPerson(line, "ceo@example.com", "Dana Whitfield") {
+		t.Errorf("publication byline does not show Dana Whitfield as published; line: %s", renderNode(line))
 	}
-	printed := getBody(t, client, pubURL+"/print")
-	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, ">Dana Whitfield (ceo@example.com)<") {
-		t.Errorf("print byline does not introduce Dana Whitfield as published; line:\n%s", line)
+	printed := getPage(t, client, pubURL+"/print")
+	if line := findByTestID(t, printed, "report-published"); reportTextsReading(line, "Dana Whitfield (ceo@example.com)") != 1 {
+		t.Errorf("print byline does not introduce Dana Whitfield as published; line: %s", renderNode(line))
 	}
 	md := getBody(t, client, pubURL+"/markdown")
 	if !strings.Contains(md, " by Dana Whitfield (ceo@example.com). ") {
 		t.Errorf("Markdown byline does not introduce Dana Whitfield as published; body:\n%s", md)
 	}
-	for name, body := range map[string]string{"publication": page, "print page": printed, "Markdown": md} {
-		if strings.Contains(body, "Dana Renamed") {
-			t.Errorf("%s shows the Name given after publishing; body:\n%s", name, body)
+	for name, doc := range map[string]*nethtml.Node{"publication": page, "print page": printed} {
+		if reportPageMentions(doc, "Dana Renamed") {
+			t.Errorf("%s shows the Name given after publishing; body:\n%s", name, renderNode(doc))
 		}
+	}
+	if strings.Contains(md, "Dana Renamed") {
+		t.Errorf("Markdown shows the Name given after publishing; body:\n%s", md)
 	}
 }
 
@@ -2828,27 +2473,47 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	rules := pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "section", "report-rules")
-	if strings.Contains(rules, "Pillar") || strings.Contains(rules, "Growth") {
-		t.Errorf("the Retired Pillar is offered for a Report rule:\n%s", rules)
+	rules := findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "report-rules")
+	if offered := reportRuleChoices(rules); strings.Contains(offered, "Pillar") || strings.Contains(offered, "Growth") {
+		t.Errorf("the Retired Pillar is offered for a Report rule: %q", offered)
 	}
-	if !strings.Contains(rules, "Team") {
-		t.Errorf("the live Team isn't offered for a Report rule:\n%s", rules)
+	if offered := reportRuleChoices(rules); !strings.Contains(offered, "Team") {
+		t.Errorf("the live Team isn't offered for a Report rule: %q", offered)
 	}
 
-	draft := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
-	if !strings.Contains(draft, grower.Title) || strings.Contains(draft, truster.Title) {
-		t.Errorf("the saved Growth filter no longer drafts just %q; body:\n%s", grower.Title, draft)
+	draft := getPage(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	if !reportPageMentions(draft, grower.Title) || reportPageMentions(draft, truster.Title) {
+		t.Errorf("the saved Growth filter no longer drafts just %q; body:\n%s", grower.Title, renderNode(draft))
 	}
 
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	rules = pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "section", "report-rules")
+	rules = findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "report-rules")
 	pillarKey := fmt.Sprintf("dimension:%d", pillar.ID)
-	if !strings.Contains(rules, `<option value="`+pillarKey+`">Pillar</option>`) || !strings.Contains(rules, fmt.Sprintf(`value="%s=%d"`, pillarKey, growth.ID)) {
-		t.Errorf("the restored Pillar isn't offered for a Report rule:\n%s", rules)
+	option := func(value string) *nethtml.Node {
+		if found := findAll(rules, func(n *nethtml.Node) bool { return n.Data == "option" && attrOf(n, "value") == value }); len(found) > 0 {
+			return found[0]
+		}
+		return nil
 	}
+	if attribute, value := option(pillarKey), option(fmt.Sprintf("%s=%d", pillarKey, growth.ID)); attribute == nil || textOf(attribute) != "Pillar" || value == nil {
+		t.Errorf("the restored Pillar isn't offered for a Report rule: %s", renderNode(rules))
+	}
+}
+
+// reportRuleChoices is everything the builder's rules offer to pick, each
+// option and each group of them by its label, run together.
+func reportRuleChoices(rules *nethtml.Node) string {
+	var offered []string
+	for _, n := range findAll(rules, func(n *nethtml.Node) bool { return n.Data == "option" || n.Data == "optgroup" }) {
+		if n.Data == "optgroup" {
+			offered = append(offered, attrOf(n, "label"))
+		} else {
+			offered = append(offered, textOf(n))
+		}
+	}
+	return strings.Join(offered, " ")
 }
 
 // The builder offers the Fields still offered (none Retired) to show beside
@@ -2882,14 +2547,16 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	choice := between(t, getBody(t, client, ts.URL+"/reports/new"), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
+	choice := findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "report-field-choice")
 	for _, f := range []domain.Field{budget, notes, sponsor} {
-		if !strings.Contains(choice, f.Name) || !strings.Contains(choice, fmt.Sprintf(`name="field" value="%d"`, f.ID)) {
-			t.Errorf("the form doesn't offer %s to show; fieldset:\n%s", f.Name, choice)
+		if !slices.ContainsFunc(formFields(choice, "field"), func(box pageField) bool {
+			return box.Type == "checkbox" && box.Value == strconv.FormatInt(f.ID, 10) && box.Label == f.Name
+		}) {
+			t.Errorf("the form doesn't offer %s to show; fieldset:\n%s", f.Name, renderNode(choice))
 		}
 	}
-	if strings.Contains(choice, legacy.Name) {
-		t.Errorf("the form offers the Retired %s; fieldset:\n%s", legacy.Name, choice)
+	if strings.Contains(textOf(choice), legacy.Name) {
+		t.Errorf("the form offers the Retired %s; fieldset:\n%s", legacy.Name, renderNode(choice))
 	}
 
 	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
@@ -2901,32 +2568,32 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
 	}
-	draft := readBody(t, resp)
-	card := pageElement(t, pageElement(t, draft, "article", "report-exception"), "dl", "report-fields")
+	draft := parsePage(t, readBody(t, resp))
+	card := findByTestID(t, findByTestID(t, draft, "report-exception"), "report-fields")
 	for _, want := range []string{"Budget", "120", "$", "Notes", "Counsel hired in March."} {
-		if !strings.Contains(card, want) {
-			t.Errorf("exception card's Fields missing %q:\n%s", want, card)
+		if !strings.Contains(textOf(card), want) {
+			t.Errorf("exception card's Fields missing %q: %q", want, textOf(card))
 		}
 	}
-	if strings.Contains(card, "Dana") {
-		t.Errorf("exception card shows the unchosen Sponsor:\n%s", card)
+	if strings.Contains(textOf(card), "Dana") {
+		t.Errorf("exception card shows the unchosen Sponsor: %q", textOf(card))
 	}
-	row := pageElement(t, pageElement(t, draft, "table", "on-track"), "tr", "selected-goal")
-	fields := pageElement(t, row, "dl", "report-fields")
+	row := findByTestID(t, findByTestID(t, draft, "on-track"), "selected-goal")
+	fields := textOf(findByTestID(t, row, "report-fields"))
 	if !strings.Contains(fields, "Budget") || !strings.Contains(fields, "40") || !strings.Contains(fields, "$") {
-		t.Errorf("On track row doesn't show Budget 40 $:\n%s", row)
+		t.Errorf("On track row doesn't show Budget 40 $: %q", fields)
 	}
 	if strings.Contains(fields, "Notes") {
-		t.Errorf("On track row shows Notes, which the Goal has no value in:\n%s", row)
+		t.Errorf("On track row shows Notes, which the Goal has no value in: %q", fields)
 	}
-	if strings.Contains(draft, "160") {
-		t.Errorf("the draft totals Budget across Goals; body:\n%s", draft)
+	if reportPageMentions(draft, "160") {
+		t.Errorf("the draft totals Budget across Goals; body:\n%s", renderNode(draft))
 	}
 
 	plain := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Plain MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
-	page := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, plain.ID))
-	if strings.Contains(page, `data-testid="report-fields"`) || strings.Contains(page, "Counsel hired in March.") {
-		t.Errorf("a definition with no Fields chosen shows Fields; body:\n%s", page)
+	page := getPage(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, plain.ID))
+	if hasTestID(page, "report-fields") || reportPageMentions(page, "Counsel hired in March.") {
+		t.Errorf("a definition with no Fields chosen shows Fields; body:\n%s", renderNode(page))
 	}
 }
 
@@ -2963,20 +2630,20 @@ func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
-	for name, page := range map[string]string{
-		"publication page": getBody(t, client, pubPath),
-		"Print view":       getBody(t, client, pubPath+"/print"),
+	for name, page := range map[string]*nethtml.Node{
+		"publication page": getPage(t, client, pubPath),
+		"Print view":       getPage(t, client, pubPath+"/print"),
 	} {
-		card := pageElement(t, pageElement(t, page, "article", "report-exception"), "dl", "report-fields")
+		card := textOf(findByTestID(t, findByTestID(t, page, "report-exception"), "report-fields"))
 		if !strings.Contains(card, "Budget") || !strings.Contains(card, "120") || !strings.Contains(card, "$") {
-			t.Errorf("%s's exception card doesn't show Budget 120 $ as published:\n%s", name, card)
+			t.Errorf("%s's exception card doesn't show Budget 120 $ as published: %q", name, card)
 		}
-		row := pageElement(t, pageElement(t, page, "table", "on-track"), "tr", "selected-goal")
-		if fields := pageElement(t, row, "dl", "report-fields"); !strings.Contains(fields, "Budget") || !strings.Contains(fields, "40") {
-			t.Errorf("%s's On track row doesn't show Budget 40 $ as published:\n%s", name, row)
+		row := findByTestID(t, findByTestID(t, page, "on-track"), "selected-goal")
+		if fields := textOf(findByTestID(t, row, "report-fields")); !strings.Contains(fields, "Budget") || !strings.Contains(fields, "40") {
+			t.Errorf("%s's On track row doesn't show Budget 40 $ as published: %q", name, fields)
 		}
-		if strings.Contains(page, "8125") || strings.Contains(page, "Spend") || strings.Contains(page, "160") {
-			t.Errorf("%s shows the Field as edited since, or a total; body:\n%s", name, page)
+		if reportPageMentions(page, "8125") || reportPageMentions(page, "Spend") || reportPageMentions(page, "160") {
+			t.Errorf("%s shows the Field as edited since, or a total; body:\n%s", name, renderNode(page))
 		}
 	}
 	md := getBody(t, client, pubPath+"/markdown")
@@ -3024,9 +2691,9 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	form := pageElement(t, getBody(t, client, reportURL), "form", "narrative-curation")
-	if n := strings.Count(form, `data-testid="curation-highlight"`); n != 2 {
-		t.Errorf("pick list has %d entries, want one per Highlight; form:\n%s", n, form)
+	form := findByTestID(t, getPage(t, client, reportURL), "narrative-curation")
+	if n := len(findAllByTestID(form, "curation-highlight")); n != 2 {
+		t.Errorf("pick list has %d entries, want one per Highlight; form:\n%s", n, renderNode(form))
 	}
 
 	postForm(t, client, reportURL+"/narrative", url.Values{
@@ -3035,10 +2702,10 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 		"pick-" + strconv.FormatInt(hired, 10):     {domain.HighlightAccomplishment},
 	})
 	resp := postForm(t, client, reportURL+"/publications", url.Values{})
-	published := readBody(t, resp)
-	narrative := pageElement(t, published, "section", "report-narrative")
-	if !strings.Contains(narrative, "Signed the first EU customer.") || strings.Contains(narrative, "Hired the EU lead.") {
-		t.Errorf("published narrative should show only the Highlight pulled; narrative:\n%s", narrative)
+	published := parsePage(t, readBody(t, resp))
+	narrative := findByTestID(t, published, "report-narrative")
+	if !reportPageMentions(narrative, "Signed the first EU customer.") || reportPageMentions(narrative, "Hired the EU lead.") {
+		t.Errorf("published narrative should show only the Highlight pulled; narrative:\n%s", renderNode(narrative))
 	}
 
 	mdResp, err := client.Get(ts.URL + resp.Request.URL.Path + "/markdown")
@@ -3077,15 +2744,16 @@ func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing
 		"rules[0].op":        {domain.RuleIs},
 		"rules[0].value":     {fmt.Sprintf("%s=%d", dim, globex.ID)},
 	})
-	draft := readBody(t, resp)
+	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("save report: status %d: %s", resp.StatusCode, draft)
+		t.Fatalf("save report: status %d: %s", resp.StatusCode, body)
 	}
-	if !strings.Contains(draft, both.Title) {
-		t.Errorf("the Globex filter doesn't select %q, which carries Acme and Globex; body:\n%s", both.Title, draft)
+	draft := parsePage(t, body)
+	if !reportPageMentions(draft, both.Title) {
+		t.Errorf("the Globex filter doesn't select %q, which carries Acme and Globex; body:\n%s", both.Title, body)
 	}
-	if strings.Contains(draft, other.Title) {
-		t.Errorf("the Globex filter selects %q, which carries only Initech; body:\n%s", other.Title, draft)
+	if reportPageMentions(draft, other.Title) {
+		t.Errorf("the Globex filter selects %q, which carries only Initech; body:\n%s", other.Title, body)
 	}
 }
 
@@ -3212,9 +2880,9 @@ func TestDraftMainColumnIsThePublicationOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, checkinOverdue.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	main := findByTestID(t, parsePage(t, page), "report-draft")
+	main := findByTestID(t, page, "report-draft")
 	summary := findByTestID(t, main, "health-summary")
 	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "checkin-overdue": "1"} {
 		if count := textOf(findByTestID(t, summary, "health-count-"+tile)); count != want {
@@ -3227,7 +2895,7 @@ func TestDraftMainColumnIsThePublicationOverHTTP(t *testing.T) {
 		}
 	}
 	for _, publicationOnly := range []string{"report-export", "publication-action-items"} {
-		if hasTestID(parsePage(t, page), publicationOnly) {
+		if hasTestID(page, publicationOnly) {
 			t.Errorf("the draft carries the publication's %s", publicationOnly)
 		}
 	}
@@ -3260,8 +2928,8 @@ func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	if !strings.HasPrefix(meta, want+" · 2 Goals · ") {
 		t.Errorf("the draft's meta line reads %q, want it to open with %s", meta, want)
 	}
-	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+want+`</span>`) {
-		t.Errorf("the Reports list doesn't read the Org rule as %s:\n%s", want, list)
+	if scopes := textsOf(findAllByTestID(getPage(t, client, ts.URL+"/reports"), "report-scope")); !slices.Contains(scopes, want) {
+		t.Errorf("the Reports list reads its scopes %q, want the Org rule as %s", scopes, want)
 	}
 
 	h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{
@@ -3270,8 +2938,8 @@ func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 		Rules: []domain.ReportRule{{Attribute: domain.RuleOrg, Op: domain.RuleIsNot, Values: []string{strconv.FormatInt(vp.ID, 10)}}},
 	})
 	const notWant = "Owner is not in the org of Priya Raman"
-	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+notWant+`</span>`) {
-		t.Errorf("the Reports list doesn't read the is-not Org rule as %s:\n%s", notWant, list)
+	if scopes := textsOf(findAllByTestID(getPage(t, client, ts.URL+"/reports"), "report-scope")); !slices.Contains(scopes, notWant) {
+		t.Errorf("the Reports list reads its scopes %q, want the is-not Org rule as %s", scopes, notWant)
 	}
 }
 
@@ -3294,9 +2962,9 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 	pubURL := func(p domain.Publication) string { return draftURL + "/publications/" + strconv.FormatInt(p.ID, 10) }
-	for name, page := range map[string]string{"first publication": getBody(t, client, pubURL(first)), "unchanged draft": getBody(t, client, draftURL)} {
-		if strings.Contains(page, `data-testid="membership-changes"`) {
-			t.Errorf("%s with no Goal entering or leaving shows the list:\n%s", name, page)
+	for name, page := range map[string]*nethtml.Node{"first publication": getPage(t, client, pubURL(first)), "unchanged draft": getPage(t, client, draftURL)} {
+		if hasTestID(page, "membership-changes") {
+			t.Errorf("%s with no Goal entering or leaving shows the list:\n%s", name, renderNode(findByTestID(t, page, "membership-changes")))
 		}
 	}
 
@@ -3304,25 +2972,41 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	if _, err := h.DB.Exec(`UPDATE report_definition_goals SET goal_id = ? WHERE report_definition_id = ? AND goal_id = ?`, picked.ID, def.ID, dropped.ID); err != nil {
 		t.Fatalf("change the picked list: %v", err)
 	}
-	draft := getBody(t, client, draftURL)
+	draft := getPage(t, client, draftURL)
 	second := h.PublishReport(boss, def)
-	for name, page := range map[string]string{"draft": renderNode(findByTestID(t, parsePage(t, draft), "report-draft")), "publication": getBody(t, client, pubURL(second))} {
-		list := pageElement(t, page, "section", "membership-changes")
-		if !strings.Contains(list, "Goals that entered or left this report") {
-			t.Errorf("%s list has no heading:\n%s", name, list)
+	for name, page := range map[string]*nethtml.Node{"draft": findByTestID(t, draft, "report-draft"), "publication": getPage(t, client, pubURL(second))} {
+		list := findByTestID(t, page, "membership-changes")
+		if headingNamed(list, "Goals that entered or left this report") == nil {
+			t.Errorf("%s list has no heading:\n%s", name, renderNode(list))
 		}
 		for g, want := range map[domain.Goal][]string{picked: {"Added", "picked by hand"}, dropped: {"Left", "removed by hand"}} {
-			row := between(t, list, fmt.Sprintf(`<tr data-testid="membership-change" id="membership-%d"`, g.ID), "</tr>")
-			for _, w := range append(want, fmt.Sprintf(`href="/goals/%d"`, g.ID), g.Title) {
-				if !strings.Contains(row, w) {
-					t.Errorf("%s: %s's row missing %q:\n%s", name, g.Title, w, row)
+			row := membershipChangeRowOf(t, list, g)
+			for _, w := range append(want, g.Title) {
+				if !strings.Contains(textOf(row), w) {
+					t.Errorf("%s: %s's row missing %q:\n%s", name, g.Title, w, renderNode(row))
 				}
 			}
+			if link := linkTo(row, fmt.Sprintf("/goals/%d", g.ID)); link == nil || textOf(link) != g.Title {
+				t.Errorf("%s: %s's row doesn't link to the Goal:\n%s", name, g.Title, renderNode(row))
+			}
 		}
-		if strings.Contains(list, stays.Title) {
-			t.Errorf("%s lists %s, which stayed in:\n%s", name, stays.Title, list)
+		if strings.Contains(textOf(list), stays.Title) {
+			t.Errorf("%s lists %s, which stayed in:\n%s", name, stays.Title, renderNode(list))
 		}
 	}
+}
+
+// membershipChangeRowOf is g's row in a Report's list of the Goals that
+// entered or left it, failing the test when there's none.
+func membershipChangeRowOf(t *testing.T, list *nethtml.Node, g domain.Goal) *nethtml.Node {
+	t.Helper()
+	for _, row := range findAllByTestID(list, "membership-change") {
+		if attrOf(row, "id") == fmt.Sprintf("membership-%d", g.ID) {
+			return row
+		}
+	}
+	t.Fatalf("the list has no row for %q:\n%s", g.Title, renderNode(list))
+	return nil
 }
 
 // A date the reader picks lives in the draft's URL: the narrative form carries
@@ -3340,9 +3024,9 @@ func TestSavingTheNarrativeKeepsTheChosenBaselineOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	path := "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	form := pageElement(t, getBody(t, client, ts.URL+path+"?baseline=2026-01-01"), "form", "narrative-curation")
-	if !strings.Contains(form, `action="`+path+`/narrative?baseline=2026-01-01"`) || strings.Contains(form, `name="baseline"`) {
-		t.Errorf("narrative form does not carry the chosen baseline on its action alone; form:\n%s", form)
+	form := findByTestID(t, getPage(t, client, ts.URL+path+"?baseline=2026-01-01"), "narrative-curation")
+	if attrOf(form, "action") != path+"/narrative?baseline=2026-01-01" || len(findAll(form, func(n *nethtml.Node) bool { return attrOf(n, "name") == "baseline" })) != 0 {
+		t.Errorf("narrative form does not carry the chosen baseline on its action alone; form:\n%s", renderNode(form))
 	}
 	resp := postForm(t, client, ts.URL+path+"/narrative?baseline=2026-01-01", url.Values{"text-" + domain.HighlightInsight: {"Steady."}})
 	_ = readBody(t, resp)
@@ -3350,9 +3034,9 @@ func TestSavingTheNarrativeKeepsTheChosenBaselineOverHTTP(t *testing.T) {
 		t.Errorf("saving the narrative: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL.RequestURI(), want)
 	}
 
-	form = pageElement(t, getBody(t, client, ts.URL+path), "form", "narrative-curation")
-	if !strings.Contains(form, `action="`+path+`/narrative"`) {
-		t.Errorf("the default narrative form carries a baseline; form:\n%s", form)
+	form = findByTestID(t, getPage(t, client, ts.URL+path), "narrative-curation")
+	if got := attrOf(form, "action"); got != path+"/narrative" {
+		t.Errorf("the default narrative form submits to %q, want %q, with no baseline", got, path+"/narrative")
 	}
 }
 
@@ -3371,30 +3055,32 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	path := "/reports/" + strconv.FormatInt(def.ID, 10)
-	chip := func(query string) string {
+	chip := func(query string) *nethtml.Node {
 		t.Helper()
-		header := pageElement(t, getBody(t, client, ts.URL+path+query), "header", "draft-header")
-		return pageElement(t, header, "details", "baseline-chip")
+		header := findByTestID(t, getPage(t, client, ts.URL+path+query), "draft-header")
+		return findByTestID(t, header, "baseline-chip")
 	}
-	label := func(chip string) string { return chipLabel(t, chip) }
+	label := func(chip *nethtml.Node) string { return baselineChipLabel(t, chip) }
+	href := func(chip *nethtml.Node, testID string) string { return attrOf(findByTestID(t, chip, testID), "href") }
 
 	// Today is 2 Jan 2026, so 30 days ago is 3 Dec 2025.
 	unpublished := chip("")
 	if got := label(unpublished); got != "30 days ago · Dec 3, 2025" {
-		t.Errorf("unpublished chip label %q, want %q; chip:\n%s", got, "30 days ago · Dec 3, 2025", unpublished)
+		t.Errorf("unpublished chip label %q, want %q; chip:\n%s", got, "30 days ago · Dec 3, 2025", renderNode(unpublished))
 	}
-	if !strings.Contains(unpublished, "Changes since <strong") {
-		t.Errorf("chip does not read Changes since …; chip:\n%s", unpublished)
+	summary := findAll(unpublished, func(n *nethtml.Node) bool { return n.Data == "summary" })[0]
+	if bold := findByTestID(t, summary, "baseline-label"); !strings.HasPrefix(textOf(summary), "Changes since "+textOf(bold)) || bold.Data != "strong" {
+		t.Errorf("chip does not read Changes since …, the date in bold; chip:\n%s", renderNode(unpublished))
 	}
-	if strings.Contains(unpublished, `data-testid="baseline-last-publication"`) {
-		t.Errorf("an unpublished Report's chip offers the last publication; chip:\n%s", unpublished)
+	if hasTestID(unpublished, "baseline-last-publication") {
+		t.Errorf("an unpublished Report's chip offers the last publication; chip:\n%s", renderNode(unpublished))
 	}
-	if item := pageElement(t, unpublished, "a", "baseline-30-days"); !strings.Contains(item, `href="`+path+`?baseline=2025-12-03"`) {
-		t.Errorf("30 days ago does not link to 2025-12-03; item:\n%s", item)
+	if got := href(unpublished, "baseline-30-days"); got != path+"?baseline=2025-12-03" {
+		t.Errorf("30 days ago links to %q, want 2025-12-03", got)
 	}
-	pick := pageElement(t, unpublished, "form", "report-baseline")
-	if !strings.Contains(pick, `method="get"`) || !strings.Contains(pick, `type="date" name="baseline"`) || !strings.Contains(pick, "Apply") {
-		t.Errorf("Pick a date… is not a GET date form with Apply; form:\n%s", pick)
+	pick := findByTestID(t, unpublished, "report-baseline")
+	if attrOf(pick, "method") != "get" || formField(t, pick, "baseline").Type != "date" || buttonNamed(pick, "Apply") == nil {
+		t.Errorf("Pick a date… is not a GET date form with Apply; form:\n%s", renderNode(pick))
 	}
 
 	h.Clock.Set(time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC))
@@ -3403,26 +3089,26 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 	// The session from before the clock moved has ended; sign in again.
 	client = signInClient(t, ts.URL, "boss@example.com")
 
-	if page := getBody(t, client, ts.URL+path); strings.Contains(page, "Showing what changed since") || strings.Count(page, `data-testid="report-baseline"`) != 1 {
-		t.Errorf("the draft keeps the old baseline sentence or a baseline form outside the chip; body:\n%s", page)
+	if page := getPage(t, client, ts.URL+path); strings.Contains(textOf(page), "Showing what changed since") || len(findAllByTestID(page, "report-baseline")) != 1 {
+		t.Errorf("the draft keeps the old baseline sentence or a baseline form outside the chip; body:\n%s", renderNode(page))
 	}
 	published := chip("")
 	if got := label(published); got != "last publication · Sep 22, 2026" {
-		t.Errorf("published chip label %q, want %q; chip:\n%s", got, "last publication · Sep 22, 2026", published)
+		t.Errorf("published chip label %q, want %q; chip:\n%s", got, "last publication · Sep 22, 2026", renderNode(published))
 	}
-	if item := pageElement(t, published, "a", "baseline-last-publication"); !strings.Contains(item, `href="`+path+`"`) {
-		t.Errorf("Last publication does not link to the draft with no baseline; item:\n%s", item)
+	if got := href(published, "baseline-last-publication"); got != path {
+		t.Errorf("Last publication links to %q, want the draft with no baseline", got)
 	}
-	if item := pageElement(t, published, "a", "baseline-30-days"); !strings.Contains(item, `href="`+path+`?baseline=2026-09-04"`) {
-		t.Errorf("30 days ago does not link to 2026-09-04; item:\n%s", item)
+	if got := href(published, "baseline-30-days"); got != path+"?baseline=2026-09-04" {
+		t.Errorf("30 days ago links to %q, want 2026-09-04", got)
 	}
 
 	chosen := chip("?baseline=2026-01-01")
 	if got := label(chosen); got != "Jan 1, 2026" {
-		t.Errorf("chosen chip label %q, want %q; chip:\n%s", got, "Jan 1, 2026", chosen)
+		t.Errorf("chosen chip label %q, want %q; chip:\n%s", got, "Jan 1, 2026", renderNode(chosen))
 	}
-	if !strings.Contains(chosen, `data-testid="baseline-last-publication"`) {
-		t.Errorf("after a chosen date the chip no longer offers the last publication; chip:\n%s", chosen)
+	if !hasTestID(chosen, "baseline-last-publication") {
+		t.Errorf("after a chosen date the chip no longer offers the last publication; chip:\n%s", renderNode(chosen))
 	}
 }
 
@@ -3444,11 +3130,11 @@ func TestBaselineChipDatesThePublicationInTheOrgsTimezoneOverHTTP(t *testing.T) 
 
 	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
 	t.Cleanup(ts.Close)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
-	chip := pageElement(t, pageElement(t, page, "header", "draft-header"), "details", "baseline-chip")
-	if got := chipLabel(t, chip); got != "last publication · Mar 1, 2026" {
-		t.Errorf("chip label %q, want %q; chip:\n%s", got, "last publication · Mar 1, 2026", chip)
+	chip := findByTestID(t, findByTestID(t, page, "draft-header"), "baseline-chip")
+	if got := baselineChipLabel(t, chip); got != "last publication · Mar 1, 2026" {
+		t.Errorf("chip label %q, want %q; chip:\n%s", got, "last publication · Mar 1, 2026", renderNode(chip))
 	}
 }
 
@@ -3472,18 +3158,10 @@ func TestClosingAnActionItemFromTheDraftKeepsTheBaselineOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	path := "/reports/" + strconv.FormatInt(def.ID, 10) + "?baseline=2026-01-01"
 
-	form := pageElement(t, getBody(t, client, ts.URL+path), "form", "close-action-item")
-	if want := `name="return" value="` + path + `"`; !strings.Contains(form, want) {
-		t.Errorf("close form does not return to %s; form:\n%s", path, form)
+	form := findByTestID(t, getPage(t, client, ts.URL+path), "close-action-item")
+	if got := formField(t, form, "return").Value; got != path {
+		t.Errorf("close form returns to %q, want %s", got, path)
 	}
-}
-
-// chipLabel is the bold part of the baseline chip: what it says the draft
-// reads changes since.
-func chipLabel(t *testing.T, chip string) string {
-	t.Helper()
-	const start = `data-testid="baseline-label">`
-	return strings.TrimPrefix(between(t, chip, start, "</strong>"), start)
 }
 
 // Publish… opens a confirmation in the draft header: what is about to be
@@ -3531,42 +3209,45 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 		"pick-" + strconv.FormatInt(halved, 10):    {domain.HighlightAccomplishment},
 	}))
 
-	page := getBody(t, client, ts.URL+path)
-	if n := strings.Count(page, `action="`+path+`/publications`); n != 1 {
-		t.Errorf("the draft has %d forms publishing, want 1; body:\n%s", n, page)
+	page := getPage(t, client, ts.URL+path)
+	publishing := findAll(page, func(n *nethtml.Node) bool {
+		return strings.HasPrefix(attrOf(n, "action"), path+"/publications") || strings.HasPrefix(attrOf(n, "formaction"), path+"/publications")
+	})
+	if len(publishing) != 1 {
+		t.Errorf("the draft has %d forms publishing, want 1; body:\n%s", len(publishing), renderNode(page))
 	}
-	header := pageElement(t, page, "header", "draft-header")
-	confirm := pageElement(t, header, "details", "publish-confirm")
-	if summary := between(t, confirm, "<summary", "</summary>"); !strings.Contains(summary, "Publish…") {
-		t.Errorf("the disclosure does not open on Publish…; summary:\n%s", summary)
+	header := findByTestID(t, page, "draft-header")
+	confirm := findByTestID(t, header, "publish-confirm")
+	if summary := findAll(confirm, func(n *nethtml.Node) bool { return n.Data == "summary" })[0]; !strings.Contains(textOf(summary), "Publish…") {
+		t.Errorf("the disclosure does not open on Publish…; summary:\n%s", renderNode(summary))
 	}
-	if !strings.Contains(confirm, "Publish Platform MBR?") {
-		t.Errorf("the confirmation does not name the Report; disclosure:\n%s", confirm)
+	if headingNamed(confirm, "Publish Platform MBR?") == nil {
+		t.Errorf("the confirmation does not name the Report; disclosure:\n%s", renderNode(confirm))
 	}
 	const want = "4 Goals · 2 exceptions · 1 Highlight · changes since last publication · Sep 22, 2026. Readers can comment on the frozen copy."
-	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.HasSuffix(got, ">"+want) {
+	if got := textOf(findByTestID(t, confirm, "publish-summary")); got != want {
 		t.Errorf("publish summary %q, want %q", got, want)
 	}
-	form := pageElement(t, confirm, "form", "report-publish")
-	if !strings.Contains(form, `method="post"`) || !strings.Contains(form, `action="`+path+`/publications"`) || !strings.Contains(form, `class="btn primary"`) {
-		t.Errorf("the default publish form is not a POST to the publications with no baseline; form:\n%s", form)
+	form := findByTestID(t, confirm, "report-publish")
+	if attrOf(form, "method") != "post" || attrOf(form, "action") != path+"/publications" || buttonNamed(form, "Publish") == nil {
+		t.Errorf("the default publish form is not a POST to the publications with no baseline; form:\n%s", renderNode(form))
 	}
-	if cancel := pageElement(t, confirm, "a", "publish-cancel"); !strings.Contains(cancel, `href="`+path+`"`) || !strings.HasSuffix(cancel, ">Cancel") {
-		t.Errorf("Cancel does not reload the draft; link:\n%s", cancel)
+	if cancel := findByTestID(t, confirm, "publish-cancel"); attrOf(cancel, "href") != path || textOf(cancel) != "Cancel" {
+		t.Errorf("Cancel does not reload the draft; link:\n%s", renderNode(cancel))
 	}
 
-	confirm = pageElement(t, getBody(t, client, ts.URL+path+"?baseline=2026-01-01"), "details", "publish-confirm")
-	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.Contains(got, "· changes since Jan 1, 2026.") {
+	confirm = findByTestID(t, getPage(t, client, ts.URL+path+"?baseline=2026-01-01"), "publish-confirm")
+	if got := textOf(findByTestID(t, confirm, "publish-summary")); !strings.Contains(got, "· changes since Jan 1, 2026.") {
 		t.Errorf("publish summary %q does not read against the chosen date", got)
 	}
-	if form := pageElement(t, confirm, "form", "report-publish"); !strings.Contains(form, `action="`+path+`/publications?baseline=2026-01-01"`) {
-		t.Errorf("the publish form does not carry the chosen baseline; form:\n%s", form)
+	if got := attrOf(findByTestID(t, confirm, "report-publish"), "action"); got != path+"/publications?baseline=2026-01-01" {
+		t.Errorf("the publish form submits to %q, want it to carry the chosen baseline", got)
 	}
-	if cancel := pageElement(t, confirm, "a", "publish-cancel"); !strings.Contains(cancel, `href="`+path+`?baseline=2026-01-01"`) {
-		t.Errorf("Cancel does not keep the chosen baseline; link:\n%s", cancel)
+	if got := attrOf(findByTestID(t, confirm, "publish-cancel"), "href"); got != path+"?baseline=2026-01-01" {
+		t.Errorf("Cancel links to %q, want it to keep the chosen baseline", got)
 	}
 	resp := postForm(t, client, ts.URL+path+"/publications?baseline=2026-01-01", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since Jan 1, 2026") {
+	if line := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "report-published")); !strings.Contains(line, "changes since Jan 1, 2026") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
 }
@@ -3864,19 +3545,22 @@ func TestEditDefinitionChangesOnlyTheDraftOverHTTP(t *testing.T) {
 		t.Fatalf("edit: status %d to %q, want 303 to %s", resp.StatusCode, resp.Header.Get("Location"), draftPath)
 	}
 	draft := getBody(t, client, ts.URL+draftPath)
-	if name := pageElement(t, draft, "h1", "report-name"); !strings.Contains(name, "Web MBR") {
-		t.Errorf("the draft is named %s, want Web MBR", name)
+	if name := findByTestID(t, parsePage(t, draft), "report-name"); name.Data != "h1" || !strings.Contains(textOf(name), "Web MBR") {
+		t.Errorf("the draft is named %s, want Web MBR", renderNode(name))
 	}
 	if got, want := draftGoalTitles(t, draft), []string{redesign.Title}; !slices.Equal(got, want) {
 		t.Errorf("the edited draft selects %q, want %q", got, want)
 	}
 
-	published := getBody(t, client, ts.URL+draftPath+"/publications/"+strconv.FormatInt(pub.ID, 10))
-	if name := pageElement(t, published, "h1", "report-name"); !strings.Contains(name, "Platform MBR") {
-		t.Errorf("the publication is named %s, want the old Platform MBR", name)
+	published := getPage(t, client, ts.URL+draftPath+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	if name := findByTestID(t, published, "report-name"); name.Data != "h1" || !strings.Contains(textOf(name), "Platform MBR") {
+		t.Errorf("the publication is named %s, want the old Platform MBR", renderNode(name))
 	}
-	if !strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, reliability.ID)) || strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, redesign.ID)) {
-		t.Errorf("the publication doesn't keep its old Goals; body:\n%s", published)
+	holds := func(g domain.Goal) bool {
+		return len(findAll(published, func(n *nethtml.Node) bool { return attrOf(n, "id") == fmt.Sprintf("goal-%d", g.ID) })) > 0
+	}
+	if !holds(reliability) || holds(redesign) {
+		t.Errorf("the publication doesn't keep its old Goals; body:\n%s", renderNode(published))
 	}
 }
 
@@ -3912,40 +3596,81 @@ func TestEditDefinitionShowsTheSavedValuesOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	dim := "dimension:" + id(team.ID)
 
-	page := getBody(t, client, ts.URL+"/reports/"+id(rules.ID)+"/edit")
-	builder := pageElement(t, page, "form", "report-builder")
-	for _, want := range []string{
-		`action="/reports/` + id(rules.ID) + `/edit"`,
-		`<input type="hidden" name="id" value="` + id(rules.ID) + `">`,
-		`name="name" value="Platform MBR"`,
-		`name="introduction">Where Platform stands.</textarea>`,
-		`value="rules" checked`,
-		`<option value="` + dim + `" selected>Team</option>`,
-		`<option value="` + dim + "=" + id(platform.ID) + `" selected>Platform</option>`,
-		`<option value="lifecycle" selected>Lifecycle</option>`,
-		`<option value="is not" selected>is not</option>`,
-		`<option value="lifecycle=` + domain.LifecycleOnHold + `" selected>`,
-		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
-		`<input type="hidden" name="exclude" value="` + id(sso.ID) + `">`,
-		`name="field" value="` + id(budget.ID) + `" checked`,
-	} {
-		if !strings.Contains(builder, want) {
-			t.Errorf("the edit page lacks %s:\n%s", want, builder)
+	page := getPage(t, client, ts.URL+"/reports/"+id(rules.ID)+"/edit")
+	builder := findByTestID(t, page, "report-builder")
+	if got := attrOf(builder, "action"); got != "/reports/"+id(rules.ID)+"/edit" {
+		t.Errorf("the edit page posts to %q, want /reports/%s/edit", got, id(rules.ID))
+	}
+	if f := formField(t, builder, "id"); f.Type != "hidden" || f.Value != id(rules.ID) {
+		t.Errorf("the edit page carries id %q (%s), want %s hidden", f.Value, f.Type, id(rules.ID))
+	}
+	if got := formField(t, builder, "name").Value; got != "Platform MBR" {
+		t.Errorf("the edit page's name is %q, want Platform MBR", got)
+	}
+	if f := formField(t, builder, "introduction"); f.Type != "textarea" || f.Value != "Where Platform stands." {
+		t.Errorf("the edit page's introduction is %q, want Where Platform stands.", f.Value)
+	}
+	for name, value := range map[string]string{"mode": "rules", "field": id(budget.ID)} {
+		if !reportBuilderTicks(builder, name, value) {
+			t.Errorf("the edit page doesn't tick %s=%s", name, value)
 		}
 	}
-	if !strings.Contains(page, "Edit report") {
-		t.Errorf("the edit page isn't titled Edit report; body:\n%s", page)
+	for value, label := range map[string]string{
+		dim:                                   "Team",
+		dim + "=" + id(platform.ID):           "Platform",
+		"lifecycle":                           "Lifecycle",
+		"is not":                              "is not",
+		"lifecycle=" + domain.LifecycleOnHold: "",
+	} {
+		if opt := reportBuilderSelected(builder, value); opt == nil || label != "" && textOf(opt) != label {
+			t.Errorf("the edit page doesn't choose %s (%s)", value, label)
+		}
+	}
+	for name, want := range map[string]string{"include": id(sdk.ID), "exclude": id(sso.ID)} {
+		if got := reportBuilderHeld(builder, name); !slices.Contains(got, want) {
+			t.Errorf("the edit page's %s holds %q, want %s", name, got, want)
+		}
+	}
+	if !strings.Contains(textOf(page), "Edit report") {
+		t.Errorf("the edit page isn't titled Edit report; body:\n%s", renderNode(page))
 	}
 
-	builder = pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(picked.ID)+"/edit"), "form", "report-builder")
-	for _, want := range []string{
-		`value="picked" checked`,
-		`<input type="hidden" name="picked" value="` + id(sso.ID) + `">`,
-	} {
-		if !strings.Contains(builder, want) {
-			t.Errorf("the picked edit page lacks %s:\n%s", want, builder)
+	builder = findByTestID(t, getPage(t, client, ts.URL+"/reports/"+id(picked.ID)+"/edit"), "report-builder")
+	if !reportBuilderTicks(builder, "mode", "picked") {
+		t.Errorf("the picked edit page doesn't tick mode=picked:\n%s", renderNode(builder))
+	}
+	if got := reportBuilderHeld(builder, "picked"); !slices.Contains(got, id(sso.ID)) {
+		t.Errorf("the picked edit page holds %q, want %s", got, id(sso.ID))
+	}
+}
+
+// reportBuilderTicks reports whether the builder's checkbox or radio named
+// name with this value is ticked.
+func reportBuilderTicks(builder *nethtml.Node, name, value string) bool {
+	return slices.ContainsFunc(formFields(builder, name), func(f pageField) bool { return f.Value == value && f.Checked })
+}
+
+// reportBuilderSelected is the option under root with this value that is
+// chosen, or nil.
+func reportBuilderSelected(root *nethtml.Node, value string) *nethtml.Node {
+	if opts := findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "option" && attrOf(n, "value") == value && hasAttr(n, "selected")
+	}); len(opts) > 0 {
+		return opts[0]
+	}
+	return nil
+}
+
+// reportBuilderHeld is the value of each hidden field named name under the
+// builder, the Goals a picker's chips hold, in order.
+func reportBuilderHeld(builder *nethtml.Node, name string) []string {
+	var out []string
+	for _, f := range formFields(builder, name) {
+		if f.Type == "hidden" {
+			out = append(out, f.Value)
 		}
 	}
+	return out
 }
 
 // A refused edit answers 422 with the builder as typed, still posting to the
@@ -3974,22 +3699,25 @@ func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused edit: status %d, want 422; body:\n%s", resp.StatusCode, page)
 	}
-	builder := pageElement(t, page, "form", "report-builder")
-	for _, want := range []string{
-		`action="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`,
-		`name="introduction">Now by rules.</textarea>`,
-		`value="rules" checked`,
-		`<option value="lifecycle" selected>Lifecycle</option>`,
-	} {
-		if !strings.Contains(builder, want) {
-			t.Errorf("the refused edit lost %s:\n%s", want, builder)
-		}
+	editPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	builder := findByTestID(t, parsePage(t, page), "report-builder")
+	if got := attrOf(builder, "action"); got != editPath {
+		t.Errorf("the refused edit posts to %q, want %s", got, editPath)
 	}
-	if nameField := between(t, builder, `<span>Name</span>`, `</label>`); !strings.Contains(nameField, `id="name-error"`) {
-		t.Errorf("the blank name's error isn't beside it:\n%s", nameField)
+	if got := formField(t, builder, "introduction").Value; got != "Now by rules." {
+		t.Errorf("the refused edit's introduction is %q, want Now by rules.", got)
 	}
-	if row := between(t, builder, `data-testid="report-rule"`, `data-testid="rules-hint"`); !strings.Contains(row, `id="rules[0]-error"`) {
-		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", row)
+	if !reportBuilderTicks(builder, "mode", "rules") {
+		t.Errorf("the refused edit lost mode=rules")
+	}
+	if opt := reportBuilderSelected(builder, "lifecycle"); opt == nil || textOf(opt) != "Lifecycle" {
+		t.Errorf("the refused edit lost its Lifecycle rule")
+	}
+	if label := reportBuilderLabelOf(formField(t, builder, "name").Node); label == nil || !reportBuilderHasID(label, "name-error") {
+		t.Errorf("the blank name's error isn't beside it:\n%s", renderNode(builder))
+	}
+	if rows := findAllByTestID(builder, "report-rule"); len(rows) == 0 || !reportBuilderHasID(rows[0], "rules[0]-error") {
+		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", renderNode(builder))
 	}
 	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" || got.Mode != domain.ReportModePicked {
 		t.Errorf("a refused edit changed the definition to %q, %s", got.Name, got.Mode)
@@ -4001,13 +3729,29 @@ func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule on the edit page: status %d, want 200; body:\n%s", resp.StatusCode, page)
 	}
-	builder = pageElement(t, page, "form", "report-builder")
-	if !strings.Contains(builder, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/edit"`) || strings.Count(builder, `data-testid="report-rule"`) != 2 {
-		t.Errorf("Add rule didn't come back to the edit page with two rule rows:\n%s", builder)
+	builder = findByTestID(t, parsePage(t, page), "report-builder")
+	if attrOf(builder, "action") != editPath || len(findAllByTestID(builder, "report-rule")) != 2 {
+		t.Errorf("Add rule didn't come back to the edit page with two rule rows:\n%s", renderNode(builder))
 	}
 	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" {
 		t.Errorf("Add rule saved the edit: name %q", got.Name)
 	}
+}
+
+// reportBuilderLabelOf is the label around n, or nil.
+func reportBuilderLabelOf(n *nethtml.Node) *nethtml.Node {
+	for p := n.Parent; p != nil; p = p.Parent {
+		if p.Type == nethtml.ElementNode && p.Data == "label" {
+			return p
+		}
+	}
+	return nil
+}
+
+// reportBuilderHasID reports whether an element under root, root included,
+// carries id.
+func reportBuilderHasID(root *nethtml.Node, id string) bool {
+	return len(findAll(root, func(n *nethtml.Node) bool { return attrOf(n, "id") == id })) > 0
 }
 
 // Only the definition's creator, a Report Delegate or an Admin may edit it:
@@ -4123,27 +3867,27 @@ func TestEditDefinitionKeepsARuleOnARetiredDimensionOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pillarKey, teamKey := "dimension:"+id(pillar.ID), "dimension:"+id(team.ID)
 
-	builder := pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(def.ID)+"/edit"), "form", "report-builder")
-	rows := strings.Split(builder, `data-testid="report-rule"`)[1:]
+	builder := findByTestID(t, getPage(t, client, ts.URL+"/reports/"+id(def.ID)+"/edit"), "report-builder")
+	rows := findAllByTestID(builder, "report-rule")
 	if len(rows) != 2 {
-		t.Fatalf("the edit page shows %d rule rows, want 2:\n%s", len(rows), builder)
+		t.Fatalf("the edit page shows %d rule rows, want 2:\n%s", len(rows), renderNode(builder))
 	}
-	for _, want := range []string{
-		`<option value="` + pillarKey + `" selected>Pillar</option>`,
-		`<option value="` + pillarKey + "=" + id(growth.ID) + `" selected>Growth</option>`,
-	} {
-		if !strings.Contains(rows[0], want) {
-			t.Errorf("the rule on the Retired Pillar lacks %s:\n%s", want, rows[0])
+	for value, label := range map[string]string{pillarKey: "Pillar", pillarKey + "=" + id(growth.ID): "Growth"} {
+		if opt := reportBuilderSelected(rows[0], value); opt == nil || textOf(opt) != label {
+			t.Errorf("the rule on the Retired Pillar doesn't choose %s (%s):\n%s", value, label, renderNode(rows[0]))
 		}
 	}
-	if want := `<option value="` + teamKey + "=" + id(core.ID) + `" selected>Core</option>`; !strings.Contains(rows[1], want) {
-		t.Errorf("the rule on the Retired Core lacks %s:\n%s", want, rows[1])
+	if opt := reportBuilderSelected(rows[1], teamKey+"="+id(core.ID)); opt == nil || textOf(opt) != "Core" {
+		t.Errorf("the rule on the Retired Core doesn't choose it:\n%s", renderNode(rows[1]))
 	}
-	if strings.Contains(rows[1], `value="`+pillarKey+`"`) {
-		t.Errorf("the Retired Pillar is offered to a rule that doesn't test it:\n%s", rows[1])
+	offers := func(row *nethtml.Node, value string) bool {
+		return len(findAll(row, func(n *nethtml.Node) bool { return attrOf(n, "value") == value })) > 0
 	}
-	if strings.Contains(rows[0], `value="`+teamKey+"="+id(core.ID)+`"`) {
-		t.Errorf("the Retired Core is offered to a rule that doesn't test it:\n%s", rows[0])
+	if offers(rows[1], pillarKey) {
+		t.Errorf("the Retired Pillar is offered to a rule that doesn't test it:\n%s", renderNode(rows[1]))
+	}
+	if offers(rows[0], teamKey+"="+id(core.ID)) {
+		t.Errorf("the Retired Core is offered to a rule that doesn't test it:\n%s", renderNode(rows[0]))
 	}
 }
 
@@ -4173,17 +3917,15 @@ func TestEditDefinitionKeepsARetiredFieldOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	id := func(n int64) string { return strconv.FormatInt(n, 10) }
 	editURL := ts.URL + "/reports/" + id(def.ID) + "/edit"
-	ticked := `name="field" value="` + id(legacy.ID) + `" checked`
-
-	choice := between(t, getBody(t, client, editURL), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
-	if !strings.Contains(choice, legacy.Name) || !strings.Contains(choice, ticked) {
-		t.Errorf("the edit page doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, choice)
+	choice := findByTestID(t, getPage(t, client, editURL), "report-field-choice")
+	if !strings.Contains(textOf(choice), legacy.Name) || !reportBuilderTicks(choice, "field", id(legacy.ID)) {
+		t.Errorf("the edit page doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, renderNode(choice))
 	}
-	if !strings.Contains(choice, `name="field" value="`+id(budget.ID)+`"`) {
-		t.Errorf("the edit page doesn't offer %s; fieldset:\n%s", budget.Name, choice)
+	if !slices.ContainsFunc(formFields(choice, "field"), func(f pageField) bool { return f.Value == id(budget.ID) }) {
+		t.Errorf("the edit page doesn't offer %s; fieldset:\n%s", budget.Name, renderNode(choice))
 	}
-	if strings.Contains(choice, sunset.Name) {
-		t.Errorf("the edit page offers the Retired %s, which the definition doesn't show; fieldset:\n%s", sunset.Name, choice)
+	if strings.Contains(textOf(choice), sunset.Name) {
+		t.Errorf("the edit page offers the Retired %s, which the definition doesn't show; fieldset:\n%s", sunset.Name, renderNode(choice))
 	}
 
 	form := url.Values{
@@ -4196,15 +3938,15 @@ func TestEditDefinitionKeepsARetiredFieldOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("save with no name: status %d, want 422", resp.StatusCode)
 	}
-	choice = between(t, readBody(t, resp), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
-	if !strings.Contains(choice, ticked) {
-		t.Errorf("the refused save doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, choice)
+	choice = findByTestID(t, parsePage(t, readBody(t, resp)), "report-field-choice")
+	if !reportBuilderTicks(choice, "field", id(legacy.ID)) {
+		t.Errorf("the refused save doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, renderNode(choice))
 	}
 
 	form.Set("name", "MBR renamed")
 	form["field"] = []string{id(legacy.ID), id(sunset.ID)}
 	resp = postForm(t, noRedirects(client), editURL, form)
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "Sunset code is retired") {
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(textOf(parsePage(t, body)), "Sunset code is retired") {
 		t.Errorf("adding the Retired %s: status %d, want 422 naming it", sunset.Name, resp.StatusCode)
 	}
 
@@ -4259,7 +4001,7 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	page := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
 	for _, tc := range []struct {
 		g     domain.Goal
@@ -4270,7 +4012,7 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 		{staysRed, "Red · 1 wk"},
 		{created, "Yellow · 1 wk"},
 	} {
-		block := parsePage(t, reportBlockFor(t, page, tc.g))
+		block := reportBlockOf(t, page, tc.g)
 		health := findByTestID(t, block, "report-health")
 		// The Health, its Run off Green and its earlier Health are one group,
 		// so a marker can't wrap onto a line of its own.
@@ -4284,26 +4026,11 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 			}
 		}
 	}
-	if rule := cssRule(t, page, ".rp-health"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("a Health badge and its earlier Health can break apart: .rp-health{%s}", rule)
-	}
 
-	row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row")
-	if want := "3 changes"; !strings.Contains(row, want) {
-		t.Errorf("row lacks %q, counting the worsened, the recovered, and the created Goal; row:\n%s", want, row)
+	row := findByTestID(t, getPage(t, client, ts.URL+"/reports"), "report-row")
+	if want := "3 changes"; !strings.Contains(textOf(row), want) {
+		t.Errorf("row lacks %q, counting the worsened, the recovered, and the created Goal; row:\n%s", want, renderNode(row))
 	}
-}
-
-// reportBlockFor is g's exception block on a Report page, failing the test
-// when g has none.
-func reportBlockFor(t *testing.T, page string, g domain.Goal) string {
-	t.Helper()
-	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="rp-block" id="goal-%d"`, g.ID))
-	if start < 0 {
-		t.Fatalf("%s has no exception block", g.Title)
-	}
-	end := strings.Index(page[start:], "</article>")
-	return page[start : start+end]
 }
 
 // A Red exception block shows its Run off Green beside its Health, before the
@@ -4345,18 +4072,18 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 		"publication": {pubURL, "· 2 wks"},
 		"print page":  {pubURL + "/print", "· 2 wks"},
 	} {
-		block := reportBlockFor(t, getBody(t, client, tc.url), g)
-		if got := elementTexts(block, "span", "report-run-off-green"); !slices.Equal(got, []string{tc.reads}) {
+		block := reportBlockOf(t, getPage(t, client, tc.url), g)
+		runs := findAllByTestID(block, "report-run-off-green")
+		if got := textsOf(runs); !slices.Equal(got, []string{tc.reads}) {
 			t.Errorf("%s's Run off Green reads %q, want %q", name, got, tc.reads)
 		}
-		run, prior := strings.Index(block, `data-testid="report-run-off-green"`), strings.Index(block, `data-testid="report-prior-health"`)
-		if run < 0 || prior < 0 || run > prior {
-			t.Errorf("%s does not show the Run off Green before the earlier Health; block:\n%s", name, block)
+		if priors := findAllByTestID(block, "report-prior-health"); len(runs) == 0 || len(priors) == 0 || !precedes(runs[0], priors[0]) {
+			t.Errorf("%s does not show the Run off Green before the earlier Health; block:\n%s", name, renderNode(block))
 		}
 	}
-	block := reportBlockFor(t, getBody(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, old.ID)), g)
-	if !strings.Contains(block, "Blocked.") || strings.Contains(block, `data-testid="report-run-off-green"`) {
-		t.Errorf("a publication from before the Run off Green does not render as published; block:\n%s", block)
+	block := reportBlockOf(t, getPage(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, old.ID)), g)
+	if !strings.Contains(textOf(block), "Blocked.") || hasTestID(block, "report-run-off-green") {
+		t.Errorf("a publication from before the Run off Green does not render as published; block:\n%s", renderNode(block))
 	}
 }
 
@@ -4387,15 +4114,15 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	publication := func(p domain.Publication) string {
-		return getBody(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, p.ID))
+	publication := func(p domain.Publication) *nethtml.Node {
+		return getPage(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, p.ID))
 	}
-	if got := elementTexts(reportBlockFor(t, publication(marked), g), "span", "report-prior-health"); !slices.Equal(got, []string{"· was Green"}) {
+	if got := textsOf(findAllByTestID(reportBlockOf(t, publication(marked), g), "report-prior-health")); !slices.Equal(got, []string{"· was Green"}) {
 		t.Errorf("the publication's earlier Health reads %q, want the Green it was when published", got)
 	}
-	block := reportBlockFor(t, publication(before), g)
-	if !strings.Contains(block, "Vendor is late.") || strings.Contains(block, `data-testid="report-prior-health"`) {
-		t.Errorf("the older publication does not render its block as published; block:\n%s", block)
+	block := reportBlockOf(t, publication(before), g)
+	if !strings.Contains(textOf(block), "Vendor is late.") || hasTestID(block, "report-prior-health") {
+		t.Errorf("the older publication does not render its block as published; block:\n%s", renderNode(block))
 	}
 }
 
@@ -4420,14 +4147,16 @@ func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
 
-	if line := pageElement(t, getBody(t, client, pubPath), "p", "report-published"); !strings.Contains(line, "Published Jan 3, 2026, 00:04 by ") || strings.Contains(line, "UTC") {
-		t.Errorf("the byline doesn't read Published Jan 3, 2026, 00:04, with no UTC:\n%s", line)
+	if line := textOf(findByTestID(t, getPage(t, client, pubPath), "report-published")); !strings.Contains(line, "Published Jan 3, 2026, 00:04 by ") || strings.Contains(line, "UTC") {
+		t.Errorf("the byline doesn't read Published Jan 3, 2026, 00:04, with no UTC: %q", line)
 	}
-	if title := between(t, getBody(t, client, pubPath+"/print"), "<title>", "</title>"); !strings.Contains(title, "Jan 3, 2026, 00:04") || strings.Contains(title, "UTC") {
+	titles := findAll(getPage(t, client, pubPath+"/print"), func(n *nethtml.Node) bool { return n.Data == "title" })
+	if title := textsOf(titles); len(title) != 1 || !strings.Contains(title[0], "Jan 3, 2026, 00:04") || strings.Contains(title[0], "UTC") {
 		t.Errorf("the Print view's title is %q, want it dated Jan 3, 2026, 00:04", title)
 	}
-	if row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row"); !strings.Contains(row, `<span data-testid="report-published">Jan 3, 2026</span>`) || strings.Contains(row, "UTC") {
-		t.Errorf("the Reports list doesn't date the publication Jan 3, 2026:\n%s", row)
+	row := findByTestID(t, getPage(t, client, ts.URL+"/reports"), "report-row")
+	if published := findByTestID(t, row, "report-published"); textOf(published) != "Jan 3, 2026" || strings.Contains(textOf(row), "UTC") {
+		t.Errorf("the Reports list doesn't date the publication Jan 3, 2026:\n%s", renderNode(row))
 	}
 }
 
@@ -4471,62 +4200,69 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)
 	mostUrgentFirst := []string{"Turned Red", "Stays Red", "Recovered"}
-	exceptions := func(page string) []string {
+	exceptions := func(page *nethtml.Node) []string {
 		var out []string
-		for _, block := range findAllByTestID(parsePage(t, page), "report-exception") {
+		for _, block := range findAllByTestID(page, "report-exception") {
 			out = append(out, textOf(findAll(block, func(n *nethtml.Node) bool { return n.Data == "h3" })[0]))
 		}
 		return out
 	}
+	movementOf := func(page *nethtml.Node) []string { return textsOf(findAllByTestID(page, "report-movement")) }
+	// comesUnder reports whether the page's first element carrying under
+	// opens after its first carrying over.
+	comesUnder := func(page *nethtml.Node, under, over string) bool {
+		u, o := findAllByTestID(page, under), findAllByTestID(page, over)
+		return len(u) > 0 && len(o) > 0 && precedes(o[0], u[0])
+	}
 	movement := "Since the previous publication: 1 turned Red · 1 back to Green"
 
-	draft := getBody(t, client, reportURL)
-	if got := elementTexts(draft, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+	draft := getPage(t, client, reportURL)
+	if got := movementOf(draft); !slices.Equal(got, []string{movement}) {
 		t.Errorf("the draft's movement line reads %q, want %q", got, movement)
 	}
-	if tiles, line := strings.Index(draft, `data-testid="health-summary"`), strings.Index(draft, `data-testid="report-movement"`); tiles < 0 || line < tiles {
+	if !comesUnder(draft, "report-movement", "health-summary") {
 		t.Errorf("the draft's movement line doesn't come under its Health summary")
 	}
 	if got := exceptions(draft); !slices.Equal(got, mostUrgentFirst) {
 		t.Errorf("the draft's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
-	if got := elementTexts(reportBlockFor(t, draft, turnedRed), "p", "report-changes"); !slices.Equal(got, []string{"Changed: Turned Red"}) {
+	if got := textsOf(findAllByTestID(reportBlockOf(t, draft, turnedRed), "report-changes")); !slices.Equal(got, []string{"Changed: Turned Red"}) {
 		t.Errorf("the changed block's line reads %q, want [Changed: Turned Red]", got)
 	}
-	if got := elementTexts(reportBlockFor(t, draft, recovered), "span", "report-change"); !slices.Equal(got, []string{"Back to Green"}) {
+	if got := textsOf(findAllByTestID(reportBlockOf(t, draft, recovered), "report-change")); !slices.Equal(got, []string{"Back to Green"}) {
 		t.Errorf("the recovered block's changes read %q, want [Back to Green]", got)
 	}
-	if block := reportBlockFor(t, draft, staysRed); strings.Contains(block, `data-testid="report-changes"`) {
-		t.Errorf("the standing Red block says something changed; block:\n%s", block)
+	if block := reportBlockOf(t, draft, staysRed); hasTestID(block, "report-changes") {
+		t.Errorf("the standing Red block says something changed; block:\n%s", renderNode(block))
 	}
 
-	againstDate := getBody(t, client, reportURL+"?baseline=2026-01-03")
-	if want := "Since Jan 3, 2026: 1 turned Red · 1 back to Green"; !slices.Equal(elementTexts(againstDate, "p", "report-movement"), []string{want}) {
-		t.Errorf("the draft against a date's movement line reads %q, want %q", elementTexts(againstDate, "p", "report-movement"), want)
+	againstDate := movementOf(getPage(t, client, reportURL+"?baseline=2026-01-03"))
+	if want := "Since Jan 3, 2026: 1 turned Red · 1 back to Green"; !slices.Equal(againstDate, []string{want}) {
+		t.Errorf("the draft against a date's movement line reads %q, want %q", againstDate, want)
 	}
 
 	pub := h.PublishReport(boss, def)
 	pubURL := fmt.Sprintf("%s/publications/%d", reportURL, pub.ID)
-	publication := getBody(t, client, pubURL)
-	if got := elementTexts(publication, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+	publication := getPage(t, client, pubURL)
+	if got := movementOf(publication); !slices.Equal(got, []string{movement}) {
 		t.Errorf("the publication's movement line reads %q, want %q", got, movement)
 	}
 	if got := exceptions(publication); !slices.Equal(got, mostUrgentFirst) {
 		t.Errorf("the publication's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
-	print := getBody(t, client, pubURL+"/print")
-	if got := elementTexts(print, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+	print := getPage(t, client, pubURL+"/print")
+	if got := movementOf(print); !slices.Equal(got, []string{movement}) {
 		t.Errorf("the Print page's movement line reads %q, want %q", got, movement)
 	}
-	if byline, line := strings.Index(print, `data-testid="report-published"`), strings.Index(print, `data-testid="report-movement"`); byline < 0 || line < byline {
+	if !comesUnder(print, "report-movement", "report-published") {
 		t.Errorf("the Print page's movement line doesn't come under its byline")
 	}
 	if got := exceptions(print); !slices.Equal(got, mostUrgentFirst) {
 		t.Errorf("the Print page's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
 
-	if want := "No movement since the previous publication."; !slices.Equal(elementTexts(getBody(t, client, reportURL), "p", "report-movement"), []string{want}) {
-		t.Errorf("with nothing changed since, the draft's movement line reads %q, want %q", elementTexts(getBody(t, client, reportURL), "p", "report-movement"), want)
+	if want, got := "No movement since the previous publication.", movementOf(getPage(t, client, reportURL)); !slices.Equal(got, []string{want}) {
+		t.Errorf("with nothing changed since, the draft's movement line reads %q, want %q", got, want)
 	}
 }
 
@@ -4549,11 +4285,11 @@ func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
-	for name, page := range map[string]string{"publication": getBody(t, client, pubURL), "Print page": getBody(t, client, pubURL+"/print")} {
-		if strings.Contains(page, `data-testid="report-movement"`) || strings.Contains(page, `data-testid="report-changes"`) {
+	for name, page := range map[string]*nethtml.Node{"publication": getPage(t, client, pubURL), "Print page": getPage(t, client, pubURL+"/print")} {
+		if hasTestID(page, "report-movement") || hasTestID(page, "report-changes") {
 			t.Errorf("the older %s shows a movement or a changes line it never had", name)
 		}
-		if !strings.Contains(reportBlockFor(t, page, g), "Vendor is gone.") {
+		if !strings.Contains(textOf(reportBlockOf(t, page, g)), "Vendor is gone.") {
 			t.Errorf("the older %s does not render its block as published", name)
 		}
 	}
@@ -4588,26 +4324,25 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 		return ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(p.ID, 10)
 	}
 	for name, url := range map[string]string{"publication page": pubPath(pub), "print page": pubPath(pub) + "/print"} {
-		page := getBody(t, client, url)
-		line := pageElement(t, page, "p", "report-selection")
-		if want := ">Selection: Owner: Dana Okafor · Active"; !strings.Contains(line, want) {
-			t.Errorf("%s's selection line %q, want it to read %q", name, line, want)
-		}
-		published := strings.Index(page, `data-testid="report-published"`)
-		selection := strings.Index(page, `data-testid="report-selection"`)
-		if published < 0 {
+		page := getPage(t, client, url)
+		published := findAllByTestID(page, "report-published")
+		selection := findAllByTestID(page, "report-selection")
+		if len(published) == 0 {
 			t.Errorf("%s has no report-published line", name)
 		}
-		if selection < 0 {
+		if len(selection) == 0 {
 			t.Errorf("%s has no report-selection line", name)
 		}
-		if published < 0 || selection < 0 {
+		if len(published) == 0 || len(selection) == 0 {
 			continue
 		}
-		if selection < published {
+		if line, want := textOf(selection[0]), "Selection: Owner: Dana Okafor · Active"; !strings.HasPrefix(line, want) {
+			t.Errorf("%s's selection line %q, want it to read %q", name, line, want)
+		}
+		if precedes(selection[0], published[0]) {
 			t.Errorf("%s shows the selection line before the published line", name)
 		}
-		if movement := strings.Index(page, `data-testid="report-movement"`); movement >= 0 && movement < selection {
+		if movement := findAllByTestID(page, "report-movement"); len(movement) > 0 && precedes(movement[0], selection[0]) {
 			t.Errorf("%s shows the movement line before the selection line", name)
 		}
 	}
@@ -4616,39 +4351,21 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 		"old print page":       pubPath(old) + "/print",
 		"draft":                ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10),
 	} {
-		if page := getBody(t, client, url); strings.Contains(page, `data-testid="report-selection"`) {
+		if hasTestID(getPage(t, client, url), "report-selection") {
 			t.Errorf("%s has a selection line", name)
 		}
 	}
 }
 
-// linkedBlockOf is the exception block a Report page gives g, up to its
-// close.
-func linkedBlockOf(t *testing.T, page string, g domain.Goal) string {
-	t.Helper()
-	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="rp-block" id="goal-%d">`, g.ID))
-	if start < 0 {
-		t.Fatalf("page has no exception block for %q; body:\n%s", g.Title, page)
+// reportLinkedGoalTo is the linked Goal under root that links to href, or
+// nil when there is none.
+func reportLinkedGoalTo(root *nethtml.Node, href string) *nethtml.Node {
+	if links := findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "a" && attrOf(n, "data-testid") == "report-linked-goal" && attrOf(n, "href") == href
+	}); len(links) > 0 {
+		return links[0]
 	}
-	end := strings.Index(page[start:], "</article>")
-	if end < 0 {
-		t.Fatalf("exception block for %q is not closed", g.Title)
-	}
-	return page[start : start+end]
-}
-
-// linkedGoalLink is the report-linked-goal link in s to href with its text
-// and what follows it up to the next entry, or "" when there is none.
-func linkedGoalLink(s, href string) string {
-	start := strings.Index(s, `<a data-testid="report-linked-goal" href="`+href+`">`)
-	if start < 0 {
-		return ""
-	}
-	rest := s[start:]
-	if next := strings.Index(rest[1:], `<a data-testid="report-linked-goal"`); next >= 0 {
-		rest = rest[:next+1]
-	}
-	return rest
+	return nil
 }
 
 // An exception block counts the Red, Yellow and Check-in overdue children
@@ -4673,21 +4390,21 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 		{"publication", pubURL},
 		{"print", pubURL + "/print"},
 	} {
-		body := getBody(t, client, page.url)
-		referral := linkedBlockOf(t, body, s.Referral)
-		if got := elementTexts(referral, "span", "report-rollup-count"); !slices.Equal(got, []string{"2 of 5 Red · 1 Yellow"}) {
+		body := getPage(t, client, page.url)
+		referral := reportBlockOf(t, body, s.Referral)
+		if got := textsOf(findAllByTestID(referral, "report-rollup-count")); !slices.Equal(got, []string{"2 of 5 Red · 1 Yellow"}) {
 			t.Errorf("%s: Referral program count %q, want 2 of 5 Red · 1 Yellow", page.name, got)
 		}
-		behind := pageElement(t, referral, "dd", "report-behind-it")
+		behind := findByTestID(t, referral, "report-behind-it")
 		// A linked Goal reads [Health] Title: on screen its chip, printed its
 		// shape and word.
-		alpha := linkTo(parsePage(t, behind), fmt.Sprintf("#goal-%d", s.Alpha.ID))
+		alpha := reportLinkedGoalTo(behind, fmt.Sprintf("#goal-%d", s.Alpha.ID))
 		if alpha == nil || textOf(alpha) != "Alpha ledger ↓" {
-			t.Fatalf("%s: Supported by does not link Alpha ledger ↓ to its block; line:\n%s", page.name, behind)
+			t.Fatalf("%s: Supported by does not link Alpha ledger ↓ to its block; line:\n%s", page.name, renderNode(behind))
 		}
 		alphaHealth := healthChipIn(t, alpha.Parent)
 		if !precedes(alphaHealth, alpha) {
-			t.Errorf("%s: Supported by doesn't read Alpha ledger's Health before its title; line:\n%s", page.name, behind)
+			t.Errorf("%s: Supported by doesn't read Alpha ledger's Health before its title; line:\n%s", page.name, renderNode(behind))
 		}
 		if page.name == "print" {
 			if shown := shownTextOf(alphaHealth); shown != "Red" {
@@ -4696,26 +4413,28 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 		} else {
 			assertHealthChip(t, alphaHealth, "Red")
 		}
-		if beta := linkedGoalLink(behind, fmt.Sprintf("/goals/%d", s.Beta.ID)); !strings.HasPrefix(beta, fmt.Sprintf(`<a data-testid="report-linked-goal" href="/goals/%d">Beta payouts</a>`, s.Beta.ID)) {
-			t.Errorf("%s: Supported by does not link Beta payouts to its Goal page; line:\n%s", page.name, behind)
+		if beta := reportLinkedGoalTo(behind, fmt.Sprintf("/goals/%d", s.Beta.ID)); beta == nil || textOf(beta) != "Beta payouts" {
+			t.Errorf("%s: Supported by does not link Beta payouts to its Goal page; line:\n%s", page.name, renderNode(behind))
 		}
 		epsilon := fmt.Sprintf("#goal-%d", s.Epsilon.ID)
-		if linkedGoalLink(behind, epsilon) == "" {
-			t.Errorf("%s: Supported by does not link Epsilon signup to its line; line:\n%s", page.name, behind)
+		if reportLinkedGoalTo(behind, epsilon) == nil {
+			t.Errorf("%s: Supported by does not link Epsilon signup to its line; line:\n%s", page.name, renderNode(behind))
 		}
-		if !strings.Contains(body, fmt.Sprintf(`<tr data-testid="selected-goal" id="goal-%d">`, s.Epsilon.ID)) {
+		if lines := findAll(body, func(n *nethtml.Node) bool {
+			return n.Data == "tr" && attrOf(n, "data-testid") == "selected-goal" && attrOf(n, "id") == strings.TrimPrefix(epsilon, "#")
+		}); len(lines) != 1 {
 			t.Errorf("%s: %s does not resolve to Epsilon signup's on-track line", page.name, epsilon)
 		}
-		if strings.Contains(behind, "Delta copy") {
-			t.Errorf("%s: Supported by names the Green Delta copy outside the Report; line:\n%s", page.name, behind)
+		if strings.Contains(textOf(behind), "Delta copy") {
+			t.Errorf("%s: Supported by names the Green Delta copy outside the Report; line:\n%s", page.name, renderNode(behind))
 		}
-		contributes := pageElement(t, referral, "p", "report-contributes-to")
-		if growth := linkedGoalLink(contributes, fmt.Sprintf("#goal-%d", s.Growth.ID)); !strings.HasPrefix(growth, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Growth ↓</a>`, s.Growth.ID)) {
-			t.Errorf("%s: Contributes to does not link Growth ↓ to its block; line:\n%s", page.name, contributes)
+		contributes := findByTestID(t, referral, "report-contributes-to")
+		if growth := reportLinkedGoalTo(contributes, fmt.Sprintf("#goal-%d", s.Growth.ID)); growth == nil || textOf(growth) != "Growth ↓" {
+			t.Errorf("%s: Contributes to does not link Growth ↓ to its block; line:\n%s", page.name, renderNode(contributes))
 		}
-		alphaContributes := pageElement(t, linkedBlockOf(t, body, s.Alpha), "p", "report-contributes-to")
-		if linkedGoalLink(alphaContributes, fmt.Sprintf("#goal-%d", s.Referral.ID)) == "" {
-			t.Errorf("%s: Alpha ledger's Contributes to does not link Referral program; line:\n%s", page.name, alphaContributes)
+		alphaContributes := findByTestID(t, reportBlockOf(t, body, s.Alpha), "report-contributes-to")
+		if reportLinkedGoalTo(alphaContributes, fmt.Sprintf("#goal-%d", s.Referral.ID)) == nil {
+			t.Errorf("%s: Alpha ledger's Contributes to does not link Referral program; line:\n%s", page.name, renderNode(alphaContributes))
 		}
 	}
 }
@@ -4734,14 +4453,14 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
-	referral := linkedBlockOf(t, page, s.Referral)
-	if got := elementTexts(referral, "dd", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
+	page := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	referral := reportBlockOf(t, page, s.Referral)
+	if got := textsOf(findAllByTestID(referral, "report-rollup")); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
 		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 overdue", got)
 	}
 	for _, testID := range []string{"report-behind-it", "report-contributes-to"} {
-		if strings.Contains(page, `data-testid="`+testID+`"`) {
-			t.Errorf("publication from before linked Goals shows %s; body:\n%s", testID, page)
+		if hasTestID(page, testID) {
+			t.Errorf("publication from before linked Goals shows %s; body:\n%s", testID, renderNode(page))
 		}
 	}
 }
@@ -4803,26 +4522,22 @@ func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
 		"publication": {pubURL, "Asks for help of Mia Chen mia@example.com"},
 		"print":       {pubURL + "/print", "Asks for help of Mia Chen (mia@example.com)"},
 	} {
-		page := getBody(t, client, tc.url)
+		page := getPage(t, client, tc.url)
 		want := map[string]string{
 			asking.Title: tc.of,
 			alone.Title:  "Asks for help · no one above the Owner",
 			quiet.Title:  "",
 		}
-		var blocks []string
-		for _, block := range strings.Split(page, `<article data-testid="report-exception"`)[1:] {
-			block, _, _ = strings.Cut(block, "</article>")
-			blocks = append(blocks, block)
-		}
+		blocks := findAllByTestID(page, "report-exception")
 		if len(blocks) != len(want) {
-			t.Fatalf("%s: %d exception blocks, want %d:\n%s", name, len(blocks), len(want), page)
+			t.Fatalf("%s: %d exception blocks, want %d:\n%s", name, len(blocks), len(want), renderNode(page))
 		}
 		for _, block := range blocks {
 			for title, ask := range want {
-				if !strings.Contains(block, title) {
+				if !strings.Contains(textOf(block), title) {
 					continue
 				}
-				asks := elementTexts(block, "p", "report-ask-for-help")
+				asks := reportTextsKeepingHidden(block, "report-ask-for-help")
 				if ask == "" && len(asks) != 0 {
 					t.Errorf("%s: %q, which doesn't ask, shows %q", name, title, asks)
 				}
@@ -4831,13 +4546,34 @@ func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
 				}
 			}
 		}
-		if n := strings.Count(page, `<p data-testid="report-ask-for-help"><strong>Asks for help</strong>`); n != 2 {
-			t.Errorf("%s: %d asks for help open with a strong Asks for help, want 2:\n%s", name, n, page)
+		asks := findAllByTestID(page, "report-ask-for-help")
+		var strong int
+		for _, ask := range asks {
+			if lead := ask.FirstChild; lead != nil && lead.Type == nethtml.ElementNode && lead.Data == "strong" && textOf(lead) == "Asks for help" {
+				strong++
+			}
 		}
-		if path, ask := strings.Index(page, "Need counsel budget."), strings.Index(page, `data-testid="report-ask-for-help"`); path < 0 || ask < path {
-			t.Errorf("%s: the ask doesn't follow the Path to Green:\n%s", name, page)
+		if strong != 2 {
+			t.Errorf("%s: %d asks for help open with a strong Asks for help, want 2:\n%s", name, strong, renderNode(page))
+		}
+		paths := findAll(page, func(n *nethtml.Node) bool {
+			return attrOf(n, "data-testid") == "report-path-to-green" && strings.Contains(textOf(n), "Need counsel budget.")
+		})
+		if len(paths) == 0 || len(asks) == 0 || !precedes(paths[0], asks[0]) {
+			t.Errorf("%s: the ask doesn't follow the Path to Green:\n%s", name, renderNode(page))
 		}
 	}
+}
+
+// reportTextsKeepingHidden is what each element under root carrying testID
+// reads, as textOf reads it but with hidden elements' text kept: a person's
+// email, behind the control that discloses it, included.
+func reportTextsKeepingHidden(root *nethtml.Node, testID string) []string {
+	var out []string
+	for _, n := range findAllByTestID(root, testID) {
+		out = append(out, strings.Join(nodeWords(n, n, nil), " "))
+	}
+	return out
 }
 
 // reportTimezoneGoal arranges an Active Goal owned by someone in tz ("" for no
@@ -4860,19 +4596,19 @@ func reportTimezoneGoal(t *testing.T, tz string) (*testsupport.Harness, domain.A
 
 // assertReportBlockOverdue checks the page's exception block marks Beta Overdue and
 // its Path to Green Overdue when want is true, and neither when it is false.
-func assertReportBlockOverdue(t *testing.T, page string, want bool) {
+func assertReportBlockOverdue(t *testing.T, page *nethtml.Node, want bool) {
 	t.Helper()
-	block := pageElement(t, page, "article", "report-exception")
-	beta := pageElement(t, block, "li", "report-milestone")
-	if overdue := strings.Contains(beta, `data-testid="milestone-mark"`) && strings.Contains(beta, ">Overdue</span>"); overdue != want {
-		t.Errorf("Beta marked Overdue %v, want %v:\n%s", overdue, want, beta)
+	block := findByTestID(t, page, "report-exception")
+	beta := findAllByTestID(block, "report-milestone")[0]
+	if overdue := slices.Contains(textsOf(findAllByTestID(beta, "milestone-mark")), "Overdue"); overdue != want {
+		t.Errorf("Beta marked Overdue %v, want %v:\n%s", overdue, want, renderNode(beta))
 	}
-	path := pageElement(t, block, "div", "report-path-box")
-	if overdue := slices.Contains(strings.Fields(attr(openTag(path), "class")), "overdue"); overdue != want {
-		t.Errorf("Path to Green box has class overdue %v, want %v:\n%s", overdue, want, openTag(path))
+	path := findByTestID(t, block, "report-path-box")
+	if overdue := flatFrameHasClass(path, "overdue"); overdue != want {
+		t.Errorf("Path to Green box has class overdue %v, want %v: class %q", overdue, want, attrOf(path, "class"))
 	}
-	if badge := strings.Contains(path, `data-testid="path-overdue"`); badge != want {
-		t.Errorf("Path to Green box shows the Overdue badge %v, want %v:\n%s", badge, want, path)
+	if badge := hasTestID(path, "path-overdue"); badge != want {
+		t.Errorf("Path to Green box shows the Overdue badge %v, want %v:\n%s", badge, want, renderNode(path))
 	}
 }
 
@@ -4894,7 +4630,7 @@ func TestReportJudgesOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
 			h, _, def := reportTimezoneGoal(t, tc.tz)
 			ts := newServer(t, h)
 			client := signInClient(t, ts.URL, "boss@example.com")
-			assertReportBlockOverdue(t, getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)), tc.overdue)
+			assertReportBlockOverdue(t, getPage(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)), tc.overdue)
 		})
 	}
 }
@@ -4914,7 +4650,7 @@ func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
-	assertReportBlockOverdue(t, getBody(t, client, pubPath), true)
+	assertReportBlockOverdue(t, getPage(t, client, pubPath), true)
 	if md := getBody(t, client, pubPath+"/markdown"); !strings.Contains(md, "- **[Overdue]** 2026-04-02 Beta\n") {
 		t.Errorf("Markdown export does not mark Beta Overdue:\n%s", md)
 	}
@@ -4960,15 +4696,15 @@ func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T)
 				"publication": pubURL,
 				"print page":  pubURL + "/print",
 			} {
-				path := pageElement(t, reportBlockFor(t, getBody(t, client, url), g), "p", "report-path-to-green")
-				if got := elementTexts(path, "del", "report-back-to-green-prior"); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
-					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), path)
+				path := findByTestID(t, reportBlockOf(t, getPage(t, client, url), g), "report-path-to-green")
+				if got := struckThrough(path); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
+					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), renderNode(path))
 				}
-				if got := elementTexts(path, "span", "report-back-to-green-slips"); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
-					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), path)
+				if got := textsOf(findAllByTestID(path, "report-back-to-green-slips")); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
+					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), renderNode(path))
 				}
-				if !strings.HasSuffix(strings.TrimSpace(path), ")") {
-					t.Errorf("%s's back-to-Green date does not close its parenthesis; path:\n%s", name, path)
+				if !strings.HasSuffix(runningText(path), ")") {
+					t.Errorf("%s's back-to-Green date does not close its parenthesis: %q", name, runningText(path))
 				}
 			}
 		})
@@ -5017,12 +4753,12 @@ func TestReportBlockStrikesNoBackToGreenDateEqualToItsOwnOverHTTP(t *testing.T) 
 				"publication": pubURL,
 				"print page":  pubURL + "/print",
 			} {
-				path := pageElement(t, reportBlockFor(t, getBody(t, client, url), g), "p", "report-path-to-green")
-				if got := elementTexts(path, "del", "report-back-to-green-prior"); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
-					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), path)
+				path := findByTestID(t, reportBlockOf(t, getPage(t, client, url), g), "report-path-to-green")
+				if got := struckThrough(path); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
+					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), renderNode(path))
 				}
-				if got := elementTexts(path, "span", "report-back-to-green-slips"); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
-					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), path)
+				if got := textsOf(findAllByTestID(path, "report-back-to-green-slips")); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
+					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), renderNode(path))
 				}
 			}
 		})
@@ -5050,16 +4786,16 @@ func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffers
 	}
 
 	ts := newServer(t, h)
-	block := reportBlockFor(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
-	path := pageElement(t, block, "p", "report-path-to-green")
-	if got, want := elementTexts(path, "del", "report-back-to-green-prior"), []string{"Jun 9, 2026"}; !slices.Equal(got, want) {
-		t.Errorf("the publication strikes through %q, want %q; path:\n%s", got, want, path)
+	block := reportBlockOf(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
+	path := findByTestID(t, block, "report-path-to-green")
+	if got, want := struckThrough(path), []string{"Jun 9, 2026"}; !slices.Equal(got, want) {
+		t.Errorf("the publication strikes through %q, want %q; path:\n%s", got, want, renderNode(path))
 	}
-	if got, want := elementTexts(path, "span", "report-back-to-green-slips"), []string{"(2)"}; !slices.Equal(got, want) {
-		t.Errorf("the publication counts the slips as %q, want %q; path:\n%s", got, want, path)
+	if got, want := textsOf(findAllByTestID(path, "report-back-to-green-slips")), []string{"(2)"}; !slices.Equal(got, want) {
+		t.Errorf("the publication counts the slips as %q, want %q; path:\n%s", got, want, renderNode(path))
 	}
-	if want := `by Jun 16, 2026 <del data-testid="report-back-to-green-prior">Jun 9, 2026</del> <span data-testid="report-back-to-green-slips">(2)</span>)`; !strings.Contains(path, want) {
-		t.Errorf("the path doesn't read %s; path:\n%s", want, path)
+	if want := "by Jun 16, 2026 Jun 9, 2026 (2))"; !strings.Contains(runningText(path), want) {
+		t.Errorf("the path doesn't read %s: %q", want, runningText(path))
 	}
 }
 
@@ -5092,27 +4828,31 @@ func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T)
 	}
 
 	ts := newServer(t, h)
-	block := reportBlockFor(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
-	path := pageElement(t, block, "p", "report-path-to-green")
-	if got, want := elementTexts(block, "p", "report-path-to-green"), []string{"Path to Green: Hire counsel. (back to Green by Mar 13, 2026)"}; !slices.Equal(got, want) {
+	block := reportBlockOf(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
+	path := findByTestID(t, block, "report-path-to-green")
+	if got, want := textsOf(findAllByTestID(block, "report-path-to-green")), []string{"Path to Green: Hire counsel. (back to Green by Mar 13, 2026)"}; !slices.Equal(got, want) {
 		t.Errorf("an older publication's Path to Green reads %q, want %q", got, want)
 	}
-	if strings.Contains(path, "<del") {
-		t.Errorf("an older publication strikes a back-to-Green date through; path:\n%s", path)
+	if struck := struckThrough(path); len(struck) != 0 {
+		t.Errorf("an older publication strikes a back-to-Green date through, %q; path:\n%s", struck, renderNode(path))
 	}
 }
 
-// reportsActionItemRows returns the rows of one group of the Reports page's
-// Open Action Items, in order: testID names the group's list.
-func reportsActionItemRows(t *testing.T, page, testID string) []string {
+// reportsActionItemRowsIn returns the rows of one group of the Reports
+// page's Open Action Items, in order: testID names the group's list.
+func reportsActionItemRowsIn(t *testing.T, page *nethtml.Node, testID string) []*nethtml.Node {
 	t.Helper()
-	list := pageElement(t, page, "ul", testID)
-	var rows []string
-	for _, part := range strings.Split(list, `<li data-testid="reports-action-item"`)[1:] {
-		row, _, _ := strings.Cut(part, "</li>")
-		rows = append(rows, row)
+	return findAllByTestID(findByTestID(t, page, testID), "reports-action-item")
+}
+
+// assertReportsShowsPerson fails unless root shows the person as a page shows
+// one, by label: a control reading it that expands their email inline beside
+// it, with the email on hover too (CONTEXT.md: Name).
+func assertReportsShowsPerson(t *testing.T, root *nethtml.Node, emailAddr, label string) {
+	t.Helper()
+	if !reportShowsPerson(root, emailAddr, label) {
+		t.Errorf("%s isn't shown as %q with their email to expand:\n%s", emailAddr, label, renderNode(root))
 	}
-	return rows
 }
 
 // The Reports page lists, above its table, the open Action Items its viewer
@@ -5147,68 +4887,81 @@ func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
 	raise(outsider, "Ops review", 0, stranger, "Nobody's to chase.", 3)
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "viewer@example.com"), ts.URL+"/reports")
+	page := getPage(t, signInClient(t, ts.URL, "viewer@example.com"), ts.URL+"/reports")
 
-	section := strings.Index(page, `<section data-testid="reports-action-items"`)
-	table := strings.Index(page, `data-testid="report-table"`)
-	if section < 0 || table < 0 || section > table {
-		t.Fatalf("Open Action Items at %d, Reports table at %d; want the section above the table:\n%s", section, table, page)
+	section := findByTestID(t, page, "reports-action-items")
+	table := findByTestID(t, page, "report-table")
+	if !precedes(section, table) || within(table, section) {
+		t.Fatalf("Open Action Items comes after the Reports table; want the section above it:\n%s", renderNode(page))
 	}
-	if !strings.Contains(page[section:table], "<h2>Open Action Items</h2>") {
-		t.Errorf("the section is not headed Open Action Items:\n%s", page[section:table])
+	if heading := headingNamed(section, "Open Action Items"); heading == nil || heading.Data != "h2" {
+		t.Errorf("the section is not headed Open Action Items:\n%s", renderNode(section))
 	}
 	// Open Action Items and the Reports table are plain sections on the
 	// canvas, neither a card (DESIGN.md § System: One surface).
-	if tag := openTag(page[section:]); hasClass(tag, "card") {
-		t.Errorf("Open Action Items is a card: %s", tag)
+	if flatFrameHasClass(section, "card") {
+		t.Errorf("Open Action Items is a card: class %q", attrOf(section, "class"))
 	}
-	if tag := openTag(page[strings.LastIndex(page[:table], "<div"):]); hasClass(tag, "card") {
-		t.Errorf("the Reports table's container is a card: %s", tag)
+	if container := table.Parent; flatFrameHasClass(container, "card") {
+		t.Errorf("the Reports table's container is a card: class %q", attrOf(container, "class"))
 	}
-	if strings.Contains(page, "Nobody's to chase.") {
+	if strings.Contains(textOf(page), "Nobody's to chase.") {
 		t.Errorf("the page lists an item nobody in the viewer's Org is party to")
 	}
 
-	yours := reportsActionItemRows(t, page, "reports-action-items-yours")
-	org := reportsActionItemRows(t, page, "reports-action-items-org")
+	yours := reportsActionItemRowsIn(t, page, "reports-action-items-yours")
+	org := reportsActionItemRowsIn(t, page, "reports-action-items-org")
 	if len(yours) != 1 || len(org) != 1 {
-		t.Fatalf("Yours lists %d, My org %d; want one each:\n%s", len(yours), len(org), page[section:table])
+		t.Fatalf("Yours lists %d, My org %d; want one each:\n%s", len(yours), len(org), renderNode(section))
 	}
 	// Each group opens with a header row naming it and counting its items.
-	for _, want := range []string{`<h3 class="rp-group">Yours<span class="rp-group-count">1</span></h3>`, `<h3 class="rp-group">My org<span class="rp-group-count">1</span></h3>`} {
-		if !strings.Contains(page[section:table], want) {
-			t.Errorf("Open Action Items lacks the group heading %s", want)
+	for _, group := range []string{"Yours", "My org"} {
+		heading := headingNamed(section, group+" 1")
+		if heading == nil || heading.Data != "h3" {
+			t.Errorf("Open Action Items lacks the group heading %s, counting 1", group)
+			continue
+		}
+		if counts := textsOf(findAll(heading, func(n *nethtml.Node) bool { return n.Data == "span" })); !slices.Equal(counts, []string{"1"}) {
+			t.Errorf("the %s heading's count reads %q, want 1 set apart from its name", group, counts)
 		}
 	}
 	for _, want := range []string{
 		"Explain the slip.",
-		fmt.Sprintf(`href="/goals/%d#action-items"`, goal.ID),
-		`<span data-testid="reports-action-item-overdue" class="badge r">Overdue</span>`,
 		"MBR · Launch in EU · due " + h.Clock.Now().AddDate(0, 0, -2).Format("Jan 2, 2006"),
-		shownAs("outsider@example.com", "outsider"),
 	} {
-		if !strings.Contains(yours[0], want) {
-			t.Errorf("Yours row lacks %s:\n%s", want, yours[0])
+		if !strings.Contains(textOf(yours[0]), want) {
+			t.Errorf("Yours row lacks %s: %q", want, textOf(yours[0]))
 		}
 	}
+	if linkTo(yours[0], fmt.Sprintf("/goals/%d#action-items", goal.ID)) == nil {
+		t.Errorf("Yours row doesn't link to the Goal's Action Items:\n%s", renderNode(yours[0]))
+	}
+	if overdue := findAllByTestID(yours[0], "reports-action-item-overdue"); len(overdue) != 1 || overdue[0].Data != "span" || textOf(overdue[0]) != "Overdue" {
+		t.Errorf("Yours row isn't flagged Overdue:\n%s", renderNode(yours[0]))
+	}
+	assertReportsShowsPerson(t, yours[0], "outsider@example.com", "outsider")
 	for _, want := range []string{
 		"Send the vendor plan.",
-		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, orgs.DefinitionID, orgs.PublicationID),
 		"QBR · due " + h.Clock.Now().AddDate(0, 0, 7).Format("Jan 2, 2006"),
-		shownAs("mid@example.com", "mid"),
 	} {
-		if !strings.Contains(org[0], want) {
-			t.Errorf("My org row lacks %s:\n%s", want, org[0])
+		if !strings.Contains(textOf(org[0]), want) {
+			t.Errorf("My org row lacks %s: %q", want, textOf(org[0]))
 		}
 	}
-	if strings.Contains(org[0], "reports-action-item-overdue") {
-		t.Errorf("an item due next week is flagged Overdue:\n%s", org[0])
+	if linkTo(org[0], fmt.Sprintf("/reports/%d/publications/%d#action-items", orgs.DefinitionID, orgs.PublicationID)) == nil {
+		t.Errorf("My org row doesn't link to its publication's Action Items:\n%s", renderNode(org[0]))
 	}
-	if strings.Contains(page[section:table], "<form") {
-		t.Errorf("Open Action Items offers a form; Close and Reassign stay on the publication and Home:\n%s", page[section:table])
+	assertReportsShowsPerson(t, org[0], "mid@example.com", "mid")
+	if hasTestID(org[0], "reports-action-item-overdue") {
+		t.Errorf("an item due next week is flagged Overdue:\n%s", renderNode(org[0]))
 	}
-	if nav := pageElement(t, page, "a", "nav-reports"); strings.Contains(nav, `class="count"`) {
-		t.Errorf("the Reports nav item carries a count: %s", nav)
+	if forms := findAll(section, func(n *nethtml.Node) bool { return n.Data == "form" }); len(forms) != 0 {
+		t.Errorf("Open Action Items offers a form; Close and Reassign stay on the publication and Home:\n%s", renderNode(section))
+	}
+	for _, nav := range findAllByTestID(page, "nav-reports") {
+		if counts := findAll(nav, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "count") }); len(counts) != 0 {
+			t.Errorf("the Reports nav item carries a count: %s", renderNode(nav))
+		}
 	}
 }
 
@@ -5231,12 +4984,15 @@ func TestReportsPageWithoutActionItemsToChaseHasNoSection(t *testing.T) {
 	}
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "reader@example.com"), ts.URL+"/reports")
-	if !strings.Contains(page, `data-testid="report-table"`) {
-		t.Fatalf("the Reports page has no table:\n%s", page)
+	page := getPage(t, signInClient(t, ts.URL, "reader@example.com"), ts.URL+"/reports")
+	if !hasTestID(page, "report-table") {
+		t.Fatalf("the Reports page has no table:\n%s", renderNode(page))
 	}
-	for _, absent := range []string{"reports-action-items", "Open Action Items", "Send the vendor plan."} {
-		if strings.Contains(page, absent) {
+	if groups := findAll(page, func(n *nethtml.Node) bool { return strings.HasPrefix(attrOf(n, "data-testid"), "reports-action-items") }); len(groups) != 0 {
+		t.Errorf("a viewer with nothing to chase sees Open Action Items on the Reports page: %s", renderNode(groups[0]))
+	}
+	for _, absent := range []string{"Open Action Items", "Send the vendor plan."} {
+		if strings.Contains(textOf(page), absent) {
 			t.Errorf("a viewer with nothing to chase sees %q on the Reports page", absent)
 		}
 	}
@@ -5281,20 +5037,18 @@ func TestReportsPagesHaveNoCardsOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
 	for _, tc := range []struct{ page, path, shows string }{
-		{"the Reports list", "/reports", `data-testid="reports-action-item"`},
-		{"a draft", draftPath, `data-testid="open-action-item"`},
-		{"a publication", draftPath + "/publications/" + strconv.FormatInt(pub.ID, 10), `data-testid="comment-thread"`},
-		{"the new builder", "/reports/new", `data-testid="report-matches"`},
-		{"the edit builder", draftPath + "/edit", `data-testid="report-matches"`},
+		{"the Reports list", "/reports", "reports-action-item"},
+		{"a draft", draftPath, "open-action-item"},
+		{"a publication", draftPath + "/publications/" + strconv.FormatInt(pub.ID, 10), "comment-thread"},
+		{"the new builder", "/reports/new", "report-matches"},
+		{"the edit builder", draftPath + "/edit", "report-matches"},
 	} {
-		page := getBody(t, client, ts.URL+tc.path)
-		if !strings.Contains(page, tc.shows) {
-			t.Fatalf("%s doesn't show what it should be checked with (%s):\n%s", tc.page, tc.shows, page)
+		page := getPage(t, client, ts.URL+tc.path)
+		if !hasTestID(page, tc.shows) {
+			t.Fatalf("%s doesn't show what it should be checked with (%s):\n%s", tc.page, tc.shows, renderNode(page))
 		}
-		for _, m := range regexp.MustCompile(`<[a-z]+[^>]* class="([^"]*)"`).FindAllStringSubmatch(page, -1) {
-			if slices.Contains(strings.Fields(m[1]), "card") {
-				t.Errorf("%s has a card: %s", tc.page, openTag(m[0]+">"))
-			}
+		for _, card := range findAll(page, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "card") }) {
+			t.Errorf("%s has a card: <%s class=%q>", tc.page, card.Data, attrOf(card, "class"))
 		}
 	}
 }
@@ -5379,8 +5133,8 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	ts := newServer(t, h)
 	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	delegates := func(page string) []string {
-		return elementTexts(page, "li", "report-delegate")
+	delegates := func(page *nethtml.Node) []string {
+		return reportTextsKeepingHidden(page, "report-delegate")
 	}
 
 	creator := signInClient(t, ts.URL, "alice@example.com")
@@ -5392,7 +5146,7 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 		t.Fatalf("the creator is not offered Add Delegate; body:\n%s", renderNode(draft))
 	}
 	resp := postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"dana@example.com"}})
-	page := readBody(t, resp)
+	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != draftURL {
 		t.Fatalf("adding Dana: status %d at %s, want the draft", resp.StatusCode, resp.Request.URL)
 	}
@@ -5401,11 +5155,10 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	}
 
 	resp = postForm(t, creator, draftURL+"/delegates", url.Values{"email": {"nobody@example.com"}})
-	page = readBody(t, resp)
+	refusedPage := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("adding an unknown email: status %d, want 422", resp.StatusCode)
 	}
-	refusedPage := parsePage(t, page)
 	if refused := textOf(findByTestID(t, refusedPage, "report-delegate-refused")); !strings.Contains(refused, "nobody@example.com") {
 		t.Errorf("refusal %q doesn't name the email", refused)
 	}
@@ -5414,11 +5167,11 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	}
 
 	client := signInClient(t, ts.URL, "dana@example.com")
-	page = getBody(t, client, draftURL)
+	page = getPage(t, client, draftURL)
 	if got := delegates(page); len(got) != 1 {
 		t.Errorf("Dana's draft lists Report Delegates %q, want Dana", got)
 	}
-	if delegatePage := parsePage(t, page); hasTestID(delegatePage, "add-report-delegate") || hasTestID(delegatePage, "remove-report-delegate") {
+	if hasTestID(page, "add-report-delegate") || hasTestID(page, "remove-report-delegate") {
 		t.Errorf("Dana, a Report Delegate, is offered to add or remove Report Delegates")
 	}
 	for path, form := range map[string]url.Values{
@@ -5432,7 +5185,7 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	}
 
 	resp = postForm(t, creator, draftURL+"/delegates/remove", url.Values{"account": {strconv.FormatInt(dana.ID, 10)}})
-	page = readBody(t, resp)
+	page = parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != draftURL {
 		t.Fatalf("removing Dana: status %d at %s, want the draft", resp.StatusCode, resp.Request.URL)
 	}
@@ -5530,4 +5283,67 @@ func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
 	if last := textOf(rest[len(rest)-1]); !strings.HasPrefix(last, "Created") {
 		t.Errorf("the oldest entry reads %q, want Created", last)
 	}
+}
+
+// The helpers below read a Report page through the parser (helpers_test.go),
+// as a person meets it.
+
+// reportRowIn is the Reports page's status-table row for the Report named
+// name: the row whose link reads it.
+func reportRowIn(t *testing.T, root *nethtml.Node, name string) *nethtml.Node {
+	t.Helper()
+	for _, row := range findAllByTestID(root, "report-row") {
+		if slices.ContainsFunc(findAll(row, func(n *nethtml.Node) bool { return n.Data == "a" }), func(a *nethtml.Node) bool { return textOf(a) == name }) {
+			return row
+		}
+	}
+	t.Fatalf("Reports page has no row for %q:\n%s", name, renderNode(root))
+	return nil
+}
+
+// downloadMenuItem is where the Download menu's item carrying testID goes and
+// what it reads, failing the test when there's none.
+func downloadMenuItem(t *testing.T, menu *nethtml.Node, testID string) (href, text string) {
+	t.Helper()
+	item := findByTestID(t, menu, testID)
+	return attrOf(item, "href"), textOf(item)
+}
+
+// reportNoteBoxes is what each of a narrative section's note boxes on the
+// curation form holds, in order.
+func reportNoteBoxes(t *testing.T, form *nethtml.Node, section string) []string {
+	t.Helper()
+	var out []string
+	for _, f := range formFields(findByTestID(t, form, "section-text-"+section), "text-"+section) {
+		if f.Type == "textarea" {
+			out = append(out, f.Value)
+		}
+	}
+	return out
+}
+
+// narrativeParagraphs is each of the author's notes a Report's narrative
+// shows, as its own paragraph, in order.
+func narrativeParagraphs(narrative *nethtml.Node) []string {
+	return textsOf(findAllByTestID(narrative, "narrative-text"))
+}
+
+// curationChoice is the box or radio on the curation form named name with
+// this value, failing the test when there's none.
+func curationChoice(t *testing.T, form *nethtml.Node, name, value string) pageField {
+	t.Helper()
+	for _, f := range formFields(form, name) {
+		if f.Value == value {
+			return f
+		}
+	}
+	t.Fatalf("form has no field %s=%s:\n%s", name, value, renderNode(form))
+	return pageField{}
+}
+
+// baselineChipLabel is the bold part of the baseline chip: what it says the
+// draft reads changes since.
+func baselineChipLabel(t *testing.T, chip *nethtml.Node) string {
+	t.Helper()
+	return textOf(findByTestID(t, chip, "baseline-label"))
 }
