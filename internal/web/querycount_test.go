@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // queryCountAdmin is the Admin the query-count fixture signs in as.
@@ -178,9 +181,14 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 }
 
 // assertGolden compares got with the golden file testdata/name, rewriting it
-// instead when UPDATE_GOLDEN is set.
+// instead when UPDATE_GOLDEN is set. An HTML golden is compared, and stored, in
+// normalised form (see normaliseGoldenHTML), so a change to styling alone leaves
+// it as it was; any other golden is compared byte for byte.
 func assertGolden(t *testing.T, name, got string) {
 	t.Helper()
+	if filepath.Ext(name) == ".html" {
+		got = normaliseGoldenHTML(t, got)
+	}
 	path := filepath.Join("testdata", name)
 	if os.Getenv("UPDATE_GOLDEN") != "" {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
@@ -198,6 +206,49 @@ func assertGolden(t *testing.T, name, got string) {
 	if got != string(want) {
 		t.Errorf("%s differs from what was rendered; the page changed for the seeded data", path)
 	}
+}
+
+// normaliseGoldenHTML keeps only what a page says and offers: it drops every
+// inline <style> element, every class attribute, and the ?v= fingerprint on
+// static asset URLs, so a golden doesn't change when only styling does.
+// Styling is covered by styles_test.go instead.
+func normaliseGoldenHTML(t *testing.T, page string) string {
+	t.Helper()
+	// With scripting off, <noscript> holds elements rather than raw text, so
+	// the classes inside it are stripped too.
+	doc, err := html.ParseWithOptions(strings.NewReader(page), html.ParseOptionEnableScripting(false))
+	if err != nil {
+		t.Fatalf("parse page for golden: %v", err)
+	}
+	var strip func(n *html.Node)
+	strip = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; {
+			next := c.NextSibling
+			if c.Type == html.ElementNode && c.DataAtom == atom.Style {
+				n.RemoveChild(c)
+			} else {
+				strip(c)
+			}
+			c = next
+		}
+		kept := n.Attr[:0]
+		for _, a := range n.Attr {
+			if a.Namespace == "" && a.Key == "class" {
+				continue
+			}
+			if (a.Key == "href" || a.Key == "src") && strings.HasPrefix(a.Val, "/static/") {
+				a.Val, _, _ = strings.Cut(a.Val, "?v=")
+			}
+			kept = append(kept, a)
+		}
+		n.Attr = kept
+	}
+	strip(doc)
+	var b strings.Builder
+	if err := html.Render(&b, doc); err != nil {
+		t.Fatalf("render normalised page: %v", err)
+	}
+	return b.String()
 }
 
 // The Goal list and a Report render the same for the seeded Goals as they did
@@ -398,4 +449,54 @@ func countStatements(statements []string) map[string]int {
 		out[s]++
 	}
 	return out
+}
+
+// Pages that differ only in their styling normalise to the same golden, and
+// pages that differ in what they say or link to don't (#515).
+func TestNormaliseGoldenHTMLKeepsOnlyContent(t *testing.T) {
+	t.Parallel()
+	const page = `<!DOCTYPE html><html><head>` +
+		`<link rel="stylesheet" href="/static/app.css?v=34454f35">` +
+		`<script src="/static/htmx.min.js?v=491955cd"></script>` +
+		`<style>.goal { color: red; }</style></head>` +
+		`<body><main class="goal wide"><h1 class="title">Ship it</h1>` +
+		`<a class="link" href="/goals/1">Open</a>` +
+		`<form action="/goals/1/archive" method="post"><button class="danger" data-testid="archive">Archive</button></form>` +
+		`<noscript><button class="btn" type="submit">Apply</button></noscript>` +
+		`<script>document.body.dataset.ready = "1";</script></main></body></html>`
+
+	sameContent := map[string]string{
+		"a different inline style": strings.Replace(page, "color: red;", "color: blue; margin: 0;", 1),
+		"no inline style":          strings.Replace(page, "<style>.goal { color: red; }</style>", "", 1),
+		"different class values":   strings.NewReplacer(`class="goal wide"`, `class="goal-page"`, `class="danger"`, `class="button button--danger"`, `class="btn"`, `class="btn-primary"`).Replace(page),
+		"no class attributes":      strings.NewReplacer(` class="goal wide"`, "", ` class="title"`, "", ` class="link"`, "", ` class="danger"`, "", ` class="btn"`, "").Replace(page),
+		"new asset fingerprints":   strings.NewReplacer("?v=34454f35", "?v=deadbeef", "?v=491955cd", "?v=0badf00d").Replace(page),
+	}
+	want := normaliseGoldenHTML(t, page)
+	for name, variant := range sameContent {
+		if got := normaliseGoldenHTML(t, variant); got != want {
+			t.Errorf("a page with %s normalised differently:\n got %s\nwant %s", name, got, want)
+		}
+	}
+
+	differentContent := map[string]string{
+		"different text":         strings.Replace(page, "Ship it", "Ship it later", 1),
+		"a different href":       strings.Replace(page, `href="/goals/1"`, `href="/goals/2"`, 1),
+		"a different action":     strings.Replace(page, `action="/goals/1/archive"`, `action="/goals/1/delete"`, 1),
+		"a different test id":    strings.Replace(page, `data-testid="archive"`, `data-testid="delete"`, 1),
+		"a different script":     strings.Replace(page, `dataset.ready = "1"`, `dataset.ready = "2"`, 1),
+		"a different stylesheet": strings.Replace(page, "/static/app.css", "/static/print.css", 1),
+		"a different noscript":   strings.Replace(page, ">Apply<", ">Filter<", 1),
+	}
+	for name, variant := range differentContent {
+		if got := normaliseGoldenHTML(t, variant); got == want {
+			t.Errorf("a page with %s normalised the same as the original:\n%s", name, got)
+		}
+	}
+
+	for _, gone := range []string{"<style", `class="`, "?v="} {
+		if strings.Contains(want, gone) {
+			t.Errorf("normalised page still contains %q:\n%s", gone, want)
+		}
+	}
 }
