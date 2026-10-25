@@ -375,10 +375,26 @@ func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, di
 
 // pickParents splits the Goals the Goal goalID could contribute to into the
 // parents picked by ids, in that order, each once, and the candidates left
+// over, as splitParents does, with each picked parent's Health and whom
+// picking it asks.
+func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []int64, goalID int64) ([]parentChoice, []domain.Goal, error) {
+	parents, candidates, err := s.splitParents(ctx, ids, goalID)
+	if err != nil {
+		return nil, nil, err
+	}
+	picked, err := s.parentChoices(ctx, current, parents)
+	if err != nil {
+		return nil, nil, err
+	}
+	return picked, candidates, nil
+}
+
+// splitParents splits the Goals the Goal goalID could contribute to into the
+// parents picked by ids, in that order, each once, and the candidates left
 // over. An id that is no such Goal picks nothing. A brand-new Goal, goalID 0,
 // has no children or parents, so it could contribute to every Goal; a saved
 // one to its domain.ParentCandidates.
-func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []int64, goalID int64) ([]parentChoice, []domain.Goal, error) {
+func (s *Server) splitParents(ctx context.Context, ids []int64, goalID int64) ([]domain.Goal, []domain.Goal, error) {
 	var all []domain.Goal
 	var err error
 	if goalID == 0 {
@@ -393,18 +409,14 @@ func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []
 	for _, g := range all {
 		byID[g.ID] = g
 	}
-	var picked []parentChoice
+	var picked []domain.Goal
 	for _, id := range ids {
 		g, ok := byID[id]
 		if !ok {
 			continue
 		}
 		delete(byID, id)
-		p, err := s.parentChoice(ctx, current, g)
-		if err != nil {
-			return nil, nil, err
-		}
-		picked = append(picked, p)
+		picked = append(picked, g)
 	}
 	var candidates []domain.Goal
 	for _, g := range all {
@@ -415,25 +427,33 @@ func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []
 	return picked, candidates, nil
 }
 
-// parentChoice is g offered to current to contribute to: its Health, read as
-// the Goal page's sidebar reads a linked Goal's, from an Active Goal's latest
-// Check-in, and whom picking it asks.
-func (s *Server) parentChoice(ctx context.Context, current domain.Account, g domain.Goal) (parentChoice, error) {
-	p := parentChoice{Goal: g}
-	if g.Owner.ID != current.ID {
-		p.Asks = g.Owner.Label()
+// parentChoices are goals offered to current to contribute to, in order: each
+// one's Health, read as the Goal page's sidebar reads a linked Goal's, from an
+// Active Goal's latest Check-in, and whom picking it asks. The Active Goals'
+// latest Check-ins are read in one query, however many goals there are.
+func (s *Server) parentChoices(ctx context.Context, current domain.Account, goals []domain.Goal) ([]parentChoice, error) {
+	var active []int64
+	for _, g := range goals {
+		if g.Lifecycle == domain.LifecycleActive {
+			active = append(active, g.ID)
+		}
 	}
-	if g.Lifecycle != domain.LifecycleActive {
-		return p, nil
-	}
-	c, ok, err := s.svc.LatestCheckin(ctx, g.ID)
+	latest, err := s.svc.LatestCheckinsByGoal(ctx, active)
 	if err != nil {
-		return parentChoice{}, fmt.Errorf("load parent goal's check-in: %w", err)
+		return nil, fmt.Errorf("load parent goals' check-ins: %w", err)
 	}
-	if ok {
-		p.Health = c.Health
+	var out []parentChoice
+	for _, g := range goals {
+		p := parentChoice{Goal: g}
+		if g.Owner.ID != current.ID {
+			p.Asks = g.Owner.Label()
+		}
+		if c, ok := latest[g.ID]; ok {
+			p.Health = c.Health
+		}
+		out = append(out, p)
 	}
-	return p, nil
+	return out, nil
 }
 
 // inputParentID is the Contributes to field's name, posted once per parent
@@ -495,11 +515,15 @@ const (
 	cadenceCustom    = "custom"
 )
 
+// goalSearchLimit is the most matches the Contributes to search answers.
+const goalSearchLimit = 20
+
 // handleSearchGoals answers the Contributes to search as it is typed: each
 // candidate whose title contains q, ignoring case, less the parents already
-// picked, which come along as parent_id. On the define page goal names the
-// Goal being finished, and the candidates are those it could contribute to.
-// Each result carries the chip picking it adds.
+// picked, which come along as parent_id, the first goalSearchLimit of them.
+// On the define page goal names the Goal being finished, and the candidates
+// are those it could contribute to. Each result carries the chip picking it
+// adds.
 func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	var picked []int64
 	for _, value := range r.URL.Query()[inputParentID] {
@@ -508,23 +532,25 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 		}
 	}
 	goalID, _ := strconv.ParseInt(r.URL.Query().Get(searchGoal), 10, 64)
-	_, candidates, err := s.pickParents(r.Context(), current, picked, goalID)
+	_, candidates, err := s.splitParents(r.Context(), picked, goalID)
 	if err != nil {
 		s.serverError(w, r, "could not search goals", err)
 		return
 	}
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
-	var matches []parentChoice
+	var found []domain.Goal
 	for _, g := range candidates {
-		if !strings.Contains(strings.ToLower(g.Title), q) {
-			continue
+		if len(found) == goalSearchLimit {
+			break
 		}
-		p, err := s.parentChoice(r.Context(), current, g)
-		if err != nil {
-			s.serverError(w, r, "could not search goals", err)
-			return
+		if strings.Contains(strings.ToLower(g.Title), q) {
+			found = append(found, g)
 		}
-		matches = append(matches, p)
+	}
+	matches, err := s.parentChoices(r.Context(), current, found)
+	if err != nil {
+		s.serverError(w, r, "could not search goals", err)
+		return
 	}
 	render(w, r, http.StatusOK, goalSearchResults(matches))
 }
