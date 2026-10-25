@@ -53,6 +53,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The domain checks the Admin itself behind a set-password link (`IssuePasswordLink` takes the actor; the command line uses `IssueOperatorPasswordLink`) and behind Sync now (`SyncDirectoryAsAdmin`, `directory.Sync.RunForAdmin`), refusing anyone else with `ErrNotAuthorized` before creating or reading anything (#495).
 - [ops] Served over https (`GOAL_TRACKER_BASE_URL` starts with `https://`), every response now carries `Strict-Transport-Security: max-age=31536000`, so a browser that has reached the app over https comes back only over https; the reverse proxy needn't add it, as the install guide's proxy step now says (#491).
 - [ops] Every response's `Content-Security-Policy` now also refuses plugins and `<base>` tags (`object-src 'none'; base-uri 'none'`), so injected markup can't load either or point the page's links elsewhere (#491).
+- [ops] A `POST /imports` from someone who isn't signed in is held to the 1 MiB cap every other request has, so it can no longer make the server read or buffer up to 5 MiB before it is turned away; only a signed-in import gets the 5 MiB cap (#492).
 
 **Infrastructure:**
 - [ops] The `Dockerfile` pins its base images by digest beside their tags (`golang:1.27.3-bookworm@sha256:…`, `debian:bookworm-slim@sha256:…`), so a rebuild uses the same images until the digests are moved on purpose. Its apt packages, Chromium included, stay unpinned (#510).
@@ -76,6 +77,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The Goal list, Goal page and Goal table HTTP tests in `goals_test.go` read their pages through the parser helpers instead of matching markup, and their style-rule checks move to `styles_test.go`, each pinning the class on the element and the property its rule sets. The helpers other areas call move unchanged to `helpers_test.go`, and the Goal list's group mark and filter bar gain a `data-testid` (#521).
 - [internal] HTML golden files in `internal/web/testdata/` now hold only a page's structure and content: `assertGolden` strips inline `<style>` blocks, `class` attributes and static asset `?v=` fingerprints before comparing or writing, so a styling-only change no longer regenerates them. Styling stays covered by `styles_test.go`; the CSV golden is still compared byte for byte (#515).
 - [internal] `TestConcurrentRequestsAreEachCounted` requests a static file rather than `/healthz`, so it no longer fails when a busy machine makes the health check's database ping outlast its one-second timeout and answer 503 (#515).
+- [internal] The test that requests are each counted when answered at once asks for a static file rather than `/healthz`, whose database ping could run past its 1-second timeout under the whole suite with `-race` and answer 503, failing the test now and then (#492).
 
 **Code quality:**
 - [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
