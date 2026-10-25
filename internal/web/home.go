@@ -43,7 +43,7 @@ type homeView struct {
 	Due []domain.PersonalGoal
 	// NoChangeRefused marks, by Goal ID, the due Goals with a Check-in on which
 	// a No change would be refused, so their row offers only Check in. Only
-	// Home's own handler fills it, not the sidebar's count.
+	// Home's own handler fills it.
 	NoChangeRefused map[int64]bool
 	// Asks are the open Asks for help addressed to the person, Red first,
 	// then Yellow, then by Goal title (CONTEXT.md: Ask for help).
@@ -64,7 +64,7 @@ type homeView struct {
 	// Org is the My org section, nil for someone with no one under them.
 	Org *homeOrg
 	// Dates is the clock the page title's date is read from. Only Home's own
-	// handler fills it, not the sidebar's count.
+	// handler fills it.
 	Dates displayDates
 	// Toast, when set, offers Undo for the request just rejected, or the
 	// suggestion just declined, from Home.
@@ -110,7 +110,8 @@ func fromField(from string) []toastField {
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, the
 // Asks for help to answer, the Action Items to close, and the link requests,
-// Handoffs and Parent suggestions to decide.
+// Handoffs and Parent suggestions to decide. The sidebar counts the same
+// things through domain.Sidebar's NeedsYou.
 func (v homeView) NeedsYou() int {
 	return len(v.Due) + len(v.Asks) + len(v.ActionItems) + len(v.Requests)
 }

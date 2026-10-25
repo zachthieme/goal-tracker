@@ -193,7 +193,8 @@ func TestGoalPageRendersAsGolden(t *testing.T) {
 // The Goal page loads through one page loader that reads each thing once
 // (ADR 0010): Service.GoalPage runs no query twice for Goal 04 shown to its
 // Owner, who is offered everything, and runs as many for 50 Goals as for 10.
-// The page around it adds only the session and the sidebar's reads.
+// The page around it adds only the session and the sidebar's reads, which
+// repeat none of the loader's but the ones both need.
 func TestGoalPageReadsEachThingOnce(t *testing.T) {
 	t.Parallel()
 	// goalPageLoaderMax is what Service.GoalPage reads for Goal 04: the Goal,
@@ -204,8 +205,13 @@ func TestGoalPageReadsEachThingOnce(t *testing.T) {
 	// it one, adding that read).
 	const goalPageLoaderMax = 36
 	// goalPageMax is the whole page: the loader's reads, plus the session's
-	// and the sidebar's, which every signed-in page makes.
-	const goalPageMax = 65
+	// and the sidebar's (Service.Sidebar), which every signed-in page makes.
+	const goalPageMax = 49
+	// goalPageSharedReads are the queries both the loader and the sidebar
+	// need, so the whole page runs each twice: every Account, which the
+	// loader walks the Ask for help up and the sidebar finds the viewer's Org
+	// and their Asks for help in. No other query runs twice.
+	goalPageSharedReads := map[string]bool{"ListAskWalkAccounts": true}
 	type counts struct{ loader, page int }
 	countFor := func(n int) counts {
 		h := testsupport.New(t, queryCountAdmin)
@@ -223,7 +229,17 @@ func TestGoalPageReadsEachThingOnce(t *testing.T) {
 			}
 		}
 		getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, fx.red.ID))
-		return counts{loader: len(loader), page: len(queries.take())}
+		page := queries.take()
+		for name, times := range countQueryNames(page) {
+			want := 1
+			if goalPageSharedReads[name] {
+				want = 2
+			}
+			if times > want {
+				t.Errorf("the Goal page ran %s %d times for %d Goals; want it at most %d", name, times, n, want)
+			}
+		}
+		return counts{loader: len(loader), page: len(page)}
 	}
 	ten, fifty := countFor(10), countFor(50)
 	if ten.loader > goalPageLoaderMax {

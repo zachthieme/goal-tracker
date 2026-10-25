@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
 // Org returns the people in personID's Org: the person first, then everyone
@@ -78,14 +80,20 @@ func (s *Service) DirectlyUnder(ctx context.Context, personID int64) ([]Account,
 	if err != nil {
 		return nil, fmt.Errorf("list org: %w", err)
 	}
+	return directlyUnderAmong(personID, under), nil
+}
+
+// directlyUnderAmong is DirectlyUnder over accounts, which hold at least
+// everyone whose Manager is personID.
+func directlyUnderAmong(personID int64, accounts []db.Account) []Account {
 	var out []Account
-	for _, row := range under {
-		if row.ID != personID {
+	for _, row := range accounts {
+		if row.ManagerID != nil && *row.ManagerID == personID && row.ID != personID {
 			out = append(out, accountFromRow(row))
 		}
 	}
 	slices.SortFunc(out, func(a, b Account) int {
 		return cmp.Or(cmp.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label())), cmp.Compare(a.ID, b.ID))
 	})
-	return out, nil
+	return out
 }
