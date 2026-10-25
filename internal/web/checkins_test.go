@@ -1400,6 +1400,57 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 	}
 }
 
+// Add another answers as the Check-in page does: the Owner and a Delegate get
+// the form back with one more Highlight row, and anyone else gets 403 (#528).
+func TestCheckinAddAnotherForOwnerAndDelegatesOnly(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("eve@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	submitURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	addAnother := url.Values{
+		"health":         {domain.HealthYellow},
+		"highlight_kind": {domain.HighlightMiss},
+		"highlight_note": {"The runbook was a week late."},
+		"add_highlight":  {"1"},
+	}
+
+	for _, tc := range []struct {
+		name string
+		post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
+	}{
+		{"htmx", postFormHX},
+		{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
+			resp := postForm(t, client, rawURL, form)
+			defer func() { _ = resp.Body.Close() }()
+			return readBody(t, resp), resp.StatusCode
+		}},
+	} {
+		for _, who := range []string{"sam@example.com", "tpm@example.com"} {
+			body, status := tc.post(t, signInClient(t, ts.URL, who), submitURL, addAnother)
+			if status != http.StatusOK {
+				t.Fatalf("%s, %s: add another: status %d, want 200", tc.name, who, status)
+			}
+			if rows := highlightRows(t, parsePage(t, body)); len(rows) != 2 {
+				t.Errorf("%s, %s: form shows %d Highlight rows, want 2", tc.name, who, len(rows))
+			}
+		}
+
+		if _, status := tc.post(t, signInClient(t, ts.URL, "eve@example.com"), submitURL, addAnother); status != http.StatusForbidden {
+			t.Errorf("%s: someone neither Owner nor Delegate got status %d for Add another, want 403", tc.name, status)
+		}
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("checkins = %d, want none recorded by Add another", len(history))
+	}
+}
+
 // The Check-in has its own page, for the Owner or a Delegate: titled "Check in",
 // with a breadcrumb back to the Goal and the form. Anyone else gets 403.
 func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
