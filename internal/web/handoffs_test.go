@@ -342,6 +342,56 @@ func TestNonAdminCannotMarkReturned(t *testing.T) {
 	}
 }
 
+// Marking someone Departed returns the Admin to the page the Referer names,
+// but only as a path on this app: a Referer from another origin keeps just its
+// path and query, and one with no usable path goes to /goals.
+func TestDepartRedirectsBackOnlyWithinTheApp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	h.SignIn("boss@example.com")
+	bossClient := noRedirects(signInClient(t, ts.URL, "boss@example.com"))
+
+	for i, tc := range []struct {
+		name, referer, want string
+	}{
+		{"the app's own page", ts.URL + "/admin", "/admin"},
+		{"another origin", "https://evil.example/goals/5?x=1", "/goals/5?x=1"},
+		{"a path starting //", "https://app.example//evil.example/x", "/goals"},
+		{"a Referer that doesn't parse", "http://%zz/goals/5", "/goals"},
+		{"an empty path", "https://evil.example", "/goals"},
+		{"no Referer", "", "/goals"},
+	} {
+		who := h.SignIn(fmt.Sprintf("leaver%d@example.com", i))
+		if got := departWithReferer(t, bossClient, ts.URL, who, tc.referer); got != tc.want {
+			t.Errorf("depart with %s (Referer %q) redirected to %q, want %q", tc.name, tc.referer, got, tc.want)
+		}
+	}
+}
+
+// departWithReferer marks who Departed as client, sending referer as the
+// Referer (none when empty), and returns where the response redirects.
+func departWithReferer(t *testing.T, client *http.Client, baseURL string, who domain.Account, referer string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/accounts/%d/depart", baseURL, who.ID), nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if referer != "" {
+		req.Header.Set("Referer", referer)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST depart: %v", err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("depart %s: status %d, want 303", who.Email, resp.StatusCode)
+	}
+	return resp.Header.Get("Location")
+}
+
 // The accept form on the pending Handoffs page lists the Goal's Delegates who
 // aren't Departed, each with a keep checkbox checked by default; accepting with
 // one unchecked removes exactly that Delegate, as a plain form POST, and the
