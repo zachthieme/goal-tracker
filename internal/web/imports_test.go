@@ -369,3 +369,32 @@ func TestAnImportFileOfExactlyItsCapIsReadOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// A spreadsheet missing required columns is refused whole, 422, with a flash
+// naming the columns it lacks, plainly, and nothing is imported.
+func TestImportMissingRequiredColumnsFlashesThemOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	const noOwnerOrWhy = "Title,Kind,Delivery Date\nParent goal,Ongoing,\n"
+	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", noOwnerOrWhy, "commit")
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", resp.StatusCode)
+	}
+	flash := textOf(findByTestID(t, page, "import-flash"))
+	for _, column := range []string{"Owner", "Why it matters"} {
+		if !strings.Contains(flash, column) {
+			t.Errorf("import flash %q doesn't name the missing %s column", flash, column)
+		}
+	}
+	if strings.HasPrefix(flash, "validation failed") {
+		t.Errorf("import flash %q shows the internal validation prefix", flash)
+	}
+	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
+		t.Errorf("ListGoals = %d Goals, %v after a refused import, want none", len(goals), err)
+	}
+}

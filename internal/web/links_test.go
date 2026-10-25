@@ -695,3 +695,49 @@ func TestRefusedLinkRemovalWithoutAGoalLinksBackHome(t *testing.T) {
 		}
 	}
 }
+
+// Only the parent Goal's Owner may decide a link request: anyone else's
+// Accept or Reject, the requester's included, is refused as Forbidden, and a
+// decision on a link that isn't there is Not found. Neither changes the
+// request, which still waits Pending.
+func TestARefusedLinkDecisionLeavesTheRequestPending(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com") // owns the parent
+	sam := h.SignIn("sam@example.com") // owns the child
+	h.SignIn("lee@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	const missing = 999999
+
+	decisions := []struct {
+		who    string
+		linkID int64
+		want   int
+	}{
+		{"lee@example.com", link.ID, http.StatusForbidden},
+		{"sam@example.com", link.ID, http.StatusForbidden},
+		{"pat@example.com", missing, http.StatusNotFound},
+	}
+	for _, d := range decisions {
+		client := signInClient(t, ts.URL, d.who)
+		for _, decision := range []string{"accept", "reject"} {
+			resp := postForm(t, client, fmt.Sprintf("%s/links/%d/%s", ts.URL, d.linkID, decision), url.Values{})
+			_ = readBody(t, resp)
+			if resp.StatusCode != d.want {
+				t.Errorf("%s by %s on link %d: status %d, want %d", decision, d.who, d.linkID, resp.StatusCode, d.want)
+			}
+		}
+	}
+
+	pending, err := h.Service.PendingLinkRequests(context.Background(), pat.ID)
+	if err != nil || len(pending) != 1 || pending[0].ID != link.ID {
+		t.Errorf("PendingLinkRequests(pat) = %+v, %v after refused decisions; want link %d still pending", pending, err, link.ID)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after refused decisions, want none", got)
+	}
+}
