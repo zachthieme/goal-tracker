@@ -282,6 +282,47 @@ func TestOutboxLogsASendErrorWithoutTheAddressItQuotes(t *testing.T) {
 	}
 }
 
+// quotedAddressSender fails every send with an error quoting an address whose
+// local part is quoted, as a mail server may, space and all.
+type quotedAddressSender struct{}
+
+func (quotedAddressSender) Send(context.Context, email.Message) error {
+	return errors.New(`550 5.1.1 <"john doe"@example.com>: Recipient address rejected (to "j.\"q\".doe"@example.com)`)
+}
+
+// A send error quoting an address with a quoted local part is logged with
+// none of that address: not its domain, nor the name in its quotes (ticket
+// #545).
+func TestOutboxLogsASendErrorWithoutAQuotedLocalPart(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	svc := domain.NewService(h.DB, h.Clock, quotedAddressSender{}, nil, domain.WithEmailDeliveredOnCommit(), domain.WithEmailOutboxLogger(logger))
+	owner := h.SignIn("owner@example.com")
+	reader := h.SignIn("reader@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+
+	if _, err := svc.AddGoalComment(ctx, reader.ID, g.ID, "Why?"); err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	if err := svc.DeliverEmail(ctx); err != nil {
+		t.Fatalf("DeliverEmail: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(log.String()), "\n")
+	if len(lines) != 1 || !strings.Contains(lines[0], "Recipient address rejected") {
+		t.Fatalf("logged %q, want one line carrying the send's error", lines)
+	}
+	for _, part := range []string{"john", "doe", "example.com", "@"} {
+		if strings.Contains(lines[0], part) {
+			t.Errorf("line %q carries %q, part of a quoted address", lines[0], part)
+		}
+	}
+}
+
 // The outbox, run in the background, sends a command's email once the
 // command commits, without waiting for its next round, and stops when its
 // context is done.
