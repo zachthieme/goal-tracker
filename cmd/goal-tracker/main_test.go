@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1378,5 +1379,114 @@ func TestTheHealthcheckCommandTimesOutWhenTheAppNeverAnswers(t *testing.T) {
 	}
 	if waited := time.Since(start); waited > 2*time.Second {
 		t.Errorf("healthcheck waited %v, want about its 200ms timeout", waited)
+	}
+}
+
+// GOAL_TRACKER_LOG_FORMAT=json logs one JSON object a line, for a log
+// collector to parse; text logs slog's key=value lines. Either is read
+// whatever its case, and with the space around it trimmed.
+func TestTheLogFormatIsJSONOrText(t *testing.T) {
+	t.Parallel()
+
+	for _, format := range []string{"json", " JSON "} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, "", format)
+		if err != nil {
+			t.Fatalf("newLogger with format %q: %v", format, err)
+		}
+		logger.Info("hello", "who", "ops")
+		var rec map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+			t.Fatalf("format %q logged %q, want a JSON line: %v", format, buf.String(), err)
+		}
+		if rec["msg"] != "hello" || rec["level"] != "INFO" || rec["who"] != "ops" {
+			t.Errorf("format %q logged %v, want an INFO hello from ops", format, rec)
+		}
+	}
+
+	for _, format := range []string{"text", "Text"} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, "", format)
+		if err != nil {
+			t.Fatalf("newLogger with format %q: %v", format, err)
+		}
+		logger.Info("hello", "who", "ops")
+		if line := buf.String(); !strings.Contains(line, "level=INFO msg=hello who=ops\n") || json.Valid(buf.Bytes()) {
+			t.Errorf("format %q logged %q, want a text line", format, line)
+		}
+	}
+}
+
+// GOAL_TRACKER_LOG_LEVEL is the least severe record logged: at warn, an INFO
+// record is dropped and a WARN kept. It is read whatever its case, and with
+// the space around it trimmed.
+func TestTheLogLevelDropsLessSevereRecords(t *testing.T) {
+	t.Parallel()
+
+	for _, level := range []string{"warn", " WARN "} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, level, "")
+		if err != nil {
+			t.Fatalf("newLogger at level %q: %v", level, err)
+		}
+		logger.Info("routine")
+		logger.Warn("worrying")
+		if log := buf.String(); strings.Contains(log, "routine") || !strings.Contains(log, "level=WARN msg=worrying") {
+			t.Errorf("at level %q logged %q, want only the WARN", level, log)
+		}
+	}
+	for level, want := range map[string]slog.Level{"debug": slog.LevelDebug, "info": slog.LevelInfo, "error": slog.LevelError} {
+		logger, err := newLogger(io.Discard, level, "")
+		if err != nil {
+			t.Fatalf("newLogger at level %q: %v", level, err)
+		}
+		if !logger.Enabled(t.Context(), want) || logger.Enabled(t.Context(), want-1) {
+			t.Errorf("at level %q, logs from %v up isn't so", level, want)
+		}
+	}
+}
+
+// Unset, the log is text at INFO, as it always was: an INFO record is logged,
+// a DEBUG one isn't.
+func TestTheLogDefaultsToTextAtInfo(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger, err := newLogger(&buf, " ", "")
+	if err != nil {
+		t.Fatalf("newLogger with nothing set: %v", err)
+	}
+	logger.Debug("detail")
+	logger.Info("routine")
+	if log := buf.String(); strings.Contains(log, "detail") || !strings.Contains(log, "level=INFO msg=routine\n") {
+		t.Errorf("with nothing set logged %q, want only the INFO, as text", log)
+	}
+}
+
+// A log level or format the app doesn't know stops startup with an error
+// naming the variable and the values it takes.
+func TestABadLogSettingIsNamed(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		level, format string
+		want          []string
+	}{
+		"level":  {"loud", "", []string{"GOAL_TRACKER_LOG_LEVEL", "debug, info, warn, error", `"loud"`}},
+		"format": {"", "xml", []string{"GOAL_TRACKER_LOG_FORMAT", "text, json", `"xml"`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := newLogger(io.Discard, tc.level, tc.format)
+			if err == nil {
+				t.Fatalf("newLogger accepted level %q, format %q", tc.level, tc.format)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q doesn't name %s", err, want)
+				}
+			}
+		})
 	}
 }

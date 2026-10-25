@@ -38,9 +38,14 @@ import (
 // email and exits; with healthcheck, it checks the app serving here is healthy
 // and exits non-zero if it isn't.
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	// Read before anything logs, healthcheck included.
+	logger, err := newLogger(os.Stderr, os.Getenv("GOAL_TRACKER_LOG_LEVEL"), os.Getenv("GOAL_TRACKER_LOG_FORMAT"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "goal-tracker failed:", err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := run(ctx, logger, os.Args[1:], os.Stdout)
+	err = run(ctx, logger, os.Args[1:], os.Stdout)
 	stop()
 	if err != nil {
 		logger.Error("goal-tracker failed", "err", err)
@@ -252,6 +257,48 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+}
+
+// The log formats GOAL_TRACKER_LOG_FORMAT accepts: slog's key=value text
+// lines, or one JSON object a line, for a log collector to parse.
+const (
+	logFormatText = "text"
+	logFormatJSON = "json"
+)
+
+var logFormats = []string{logFormatText, logFormatJSON}
+
+// logLevels are the levels GOAL_TRACKER_LOG_LEVEL accepts, each the least
+// severe record logged.
+var logLevels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
+// newLogger is the app's logger, writing to w at level
+// (GOAL_TRACKER_LOG_LEVEL) in format (GOAL_TRACKER_LOG_FORMAT). Each is read
+// whatever its case, with the space around it trimmed, and defaults, unset,
+// to info and text. Any other value is an error naming its variable and the
+// values it takes.
+func newLogger(w io.Writer, level, format string) (*slog.Logger, error) {
+	lvl, ok := slog.LevelInfo, true
+	if level = strings.TrimSpace(level); level != "" {
+		lvl, ok = logLevels[strings.ToLower(level)]
+	}
+	if !ok {
+		return nil, fmt.Errorf("GOAL_TRACKER_LOG_LEVEL must be one of debug, info, warn, error; got %q", level)
+	}
+	opts := &slog.HandlerOptions{Level: lvl}
+	format = strings.TrimSpace(format)
+	switch strings.ToLower(format) {
+	case "", logFormatText:
+		return slog.New(slog.NewTextHandler(w, opts)), nil
+	case logFormatJSON:
+		return slog.New(slog.NewJSONHandler(w, opts)), nil
+	}
+	return nil, fmt.Errorf("GOAL_TRACKER_LOG_FORMAT must be one of %s; got %q", strings.Join(logFormats, ", "), format)
 }
 
 // healthcheckTimeout is how long the healthcheck command waits for /healthz
