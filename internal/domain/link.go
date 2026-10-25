@@ -81,19 +81,6 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 		return Link{}, fmt.Errorf("%w: only the child's Owner may request a link", ErrNotAuthorized)
 	}
 
-	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-		ChildID:  in.ChildID,
-		ParentID: in.ParentID,
-	}); err == nil {
-		return Link{}, fmt.Errorf("%w: a link between these Goals already exists", ErrValidation)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return Link{}, fmt.Errorf("look up existing link: %w", err)
-	}
-
-	if err := s.ensureNoCycle(ctx, in.ChildID, in.ParentID); err != nil {
-		return Link{}, err
-	}
-
 	status := LinkPending
 	if parent.Goal.OwnerID == in.RequesterID {
 		status = LinkAccepted
@@ -102,6 +89,12 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 	now := s.clock.Now()
 	var row db.Link
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		// The duplicate and cycle checks read inside the transaction that
+		// writes the link, so two requests sent together (A→B and B→A) can't
+		// both pass them (ADR-0001).
+		if err := tx.ensureNewAcyclicLink(ctx, in.ChildID, in.ParentID); err != nil {
+			return err
+		}
 		row, err = tx.queries.CreateLink(ctx, db.CreateLinkParams{
 			ChildID:     in.ChildID,
 			ParentID:    in.ParentID,
@@ -167,22 +160,12 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 		return Link{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 
-	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-		ChildID:  childID,
-		ParentID: parentID,
-	}); err == nil {
-		return Link{}, fmt.Errorf("%w: a link between these Goals already exists", ErrValidation)
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return Link{}, fmt.Errorf("look up existing link: %w", err)
-	}
-
-	if err := s.ensureNoCycle(ctx, childID, parentID); err != nil {
-		return Link{}, err
-	}
-
 	now := s.clock.Now()
 	var row db.Link
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.ensureNewAcyclicLink(ctx, childID, parentID); err != nil {
+			return err
+		}
 		row, err = tx.queries.CreateLink(ctx, db.CreateLinkParams{
 			ChildID:     childID,
 			ParentID:    parentID,
@@ -214,23 +197,25 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 
 // AcceptLink accepts a pending request. The actor must own the parent Goal. The
 // cycle check is repeated because another accepted link may have appeared since
-// the request was made (ADR-0001).
+// the request was made (ADR-0001). Every check reads inside the transaction
+// that accepts the link, so two requests accepted together (A→B and B→A)
+// can't both pass, and a request rejected meanwhile isn't accepted.
 func (s *Service) AcceptLink(ctx context.Context, linkID, actorID int64) (Link, error) {
-	row, err := s.getPendingLink(ctx, linkID)
-	if err != nil {
-		return Link{}, err
-	}
-	parent, err := s.queries.GetGoal(ctx, row.ParentID)
-	if err != nil {
-		return Link{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-	if parent.Goal.OwnerID != actorID {
-		return Link{}, fmt.Errorf("%w: only the parent's Owner may accept a link", ErrNotAuthorized)
-	}
-	if err := s.ensureNoCycle(ctx, row.ChildID, row.ParentID); err != nil {
-		return Link{}, err
-	}
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.getPendingLink(ctx, linkID)
+		if err != nil {
+			return err
+		}
+		parent, err := tx.queries.GetGoal(ctx, row.ParentID)
+		if err != nil {
+			return fmt.Errorf("look up parent goal: %w", err)
+		}
+		if parent.Goal.OwnerID != actorID {
+			return fmt.Errorf("%w: only the parent's Owner may accept a link", ErrNotAuthorized)
+		}
+		if err := tx.ensureNoCycle(ctx, row.ChildID, row.ParentID); err != nil {
+			return err
+		}
 		if err := tx.queries.SetLinkStatus(ctx, db.SetLinkStatusParams{
 			Status: LinkAccepted,
 			ID:     linkID,
@@ -839,6 +824,22 @@ func (s *Service) getPendingLink(ctx context.Context, linkID int64) (db.Link, er
 		return db.Link{}, fmt.Errorf("%w: link %d is not pending", ErrNotFound, linkID)
 	}
 	return row, nil
+}
+
+// ensureNewAcyclicLink refuses a link from childID to parentID when one
+// between them already exists (ErrValidation) or when it would close a cycle
+// (ErrCycle, ADR-0001). Called inside the transaction that creates the link, so
+// the checks see every link committed before it.
+func (s *Service) ensureNewAcyclicLink(ctx context.Context, childID, parentID int64) error {
+	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+		ChildID:  childID,
+		ParentID: parentID,
+	}); err == nil {
+		return fmt.Errorf("%w: a link between these Goals already exists", ErrValidation)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("look up existing link: %w", err)
+	}
+	return s.ensureNoCycle(ctx, childID, parentID)
 }
 
 // loadLink loads a link with both endpoint Goals resolved.

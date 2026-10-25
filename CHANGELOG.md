@@ -22,6 +22,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A published Report, its print page and the draft as read by someone who may not manage it now head the narrative with a "Narrative" section heading and rule, as the other sections are headed (#479).
 
 **Bug fixes:**
+- [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
 - [user] A Report's draft keeps Delegates and History beside the Report at a 1280px window, stacking them under it only at 960px of content width and under, as the approved design does (#477).
 - [user] A Report's print page and PDF lay each Goal out as the screen does: Why it matters, Status and the other facts in a label column, and the Path to Green in its Health's tint, so an overdue Yellow one prints Yellow, not Red (#478).
 

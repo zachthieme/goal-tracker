@@ -3,6 +3,8 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,6 +240,77 @@ func TestAcceptLinkRejectsACycleThatAppearedSinceTheRequest(t *testing.T) {
 	if _, err := h.Service.AcceptLink(context.Background(), ca.ID, a1.ID); !errors.Is(err, domain.ErrCycle) {
 		t.Errorf("err = %v, want ErrCycle at accept time", err)
 	}
+}
+
+// raceLinks runs a and b at the same moment, many times over fresh pairs of
+// Goals, and fails if both ever succeed: that would leave the two Goals each
+// contributing to the other (ADR-0001).
+func raceLinks(t *testing.T, round func(i int) (a, b func() error)) {
+	t.Helper()
+	for i := range 30 {
+		a, b := round(i)
+		var errA, errB error
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; errA = a() }()
+		go func() { defer wg.Done(); <-start; errB = b() }()
+		close(start)
+		wg.Wait()
+		if errA == nil && errB == nil {
+			t.Fatalf("round %d: both links were made, a cycle", i)
+		}
+		for _, err := range []error{errA, errB} {
+			if err != nil && !errors.Is(err, domain.ErrCycle) {
+				t.Fatalf("round %d: err = %v, want ErrCycle for the link that lost", i, err)
+			}
+		}
+	}
+}
+
+// Two links sent at the same moment in opposite directions, by an Owner of
+// both Goals, so each is accepted at once: only one is made.
+func TestOppositeLinkRequestsSentTogetherNeverMakeACycle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	raceLinks(t, func(i int) (func() error, func() error) {
+		a := h.CreateGoal(owner, fmt.Sprintf("A%d", i), "why a")
+		b := h.CreateGoal(owner, fmt.Sprintf("B%d", i), "why b")
+		link := func(child, parent domain.Goal) func() error {
+			return func() error {
+				_, err := h.Service.RequestLink(ctx, domain.RequestLinkInput{ChildID: child.ID, ParentID: parent.ID, RequesterID: owner.ID})
+				return err
+			}
+		}
+		return link(a, b), link(b, a)
+	})
+}
+
+// Two pending requests in opposite directions, accepted at the same moment by
+// each parent's Owner: only one is accepted.
+func TestOppositeLinksAcceptedTogetherNeverMakeACycle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ana := h.SignIn("ana@example.com")
+	ben := h.SignIn("ben@example.com")
+	ctx := context.Background()
+	raceLinks(t, func(i int) (func() error, func() error) {
+		a := h.CreateGoal(ana, fmt.Sprintf("A%d", i), "why a")
+		b := h.CreateGoal(ben, fmt.Sprintf("B%d", i), "why b")
+		ab := h.RequestLink(ana, a, b, "")
+		ba := h.RequestLink(ben, b, a, "")
+		accept := func(linkID, actorID int64) func() error {
+			return func() error {
+				_, err := h.Service.AcceptLink(ctx, linkID, actorID)
+				return err
+			}
+		}
+		return accept(ab.ID, ben.ID), accept(ba.ID, ana.ID)
+	})
 }
 
 // A Goal may have many parents and many children.
