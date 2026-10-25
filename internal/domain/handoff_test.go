@@ -346,6 +346,15 @@ func TestReassignAndAcceptTogetherHaveOneOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ViewGoal: %v", err)
 		}
+		// The loser is told why: a Handoff already accepted is no longer
+		// there to accept, and a Goal whose Owner has taken it no longer
+		// needs reassigning.
+		if errReassign == nil && !errors.Is(errAccept, domain.ErrNotFound) {
+			t.Fatalf("round %d: Reassign won and the losing Accept got %v, want ErrNotFound", i, errAccept)
+		}
+		if errAccept == nil && !errors.Is(errReassign, domain.ErrValidation) {
+			t.Fatalf("round %d: Accept won and the losing Reassign got %v, want ErrValidation", i, errReassign)
+		}
 		if errReassign == nil {
 			if len(history) != 2 || history[0].Status != domain.HandoffCancelled || history[1].Status != domain.HandoffReassigned {
 				t.Fatalf("round %d: history = %+v, want the Handoff cancelled then the Reassign", i, history)

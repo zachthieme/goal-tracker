@@ -1,8 +1,13 @@
 package notify_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -201,6 +206,87 @@ func TestSchedulerRetriesAFailedRunAtTheNextPoll(t *testing.T) {
 	tick(sched, mondayAt9(1))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
 		t.Errorf("sent %d emails at the next slot, want 2", got)
+	}
+}
+
+// A run that keeps failing is still tried at every poll, but logged at its
+// first failure and then after a backoff that doubles from a minute to at
+// most an hour, each line naming the job and the slot; its recovery is logged
+// once. A later failure is logged at once again (ticket #545).
+func TestSchedulerLogsAFailingRunWithABackoff(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	when := mondays9am(t)
+	failing, tries := true, 0
+	sched := notify.NewScheduler(h.Service, notify.WeeklyJob, when, func(context.Context, time.Time) error {
+		tries++
+		if failing {
+			return errors.New("database is locked")
+		}
+		return nil
+	})
+	var log bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&log, nil))
+	// poll sets the clock to at and polls sched, returning the lines it logged.
+	poll := func(at time.Time) []map[string]any {
+		t.Helper()
+		h.Clock.Set(at)
+		log.Reset()
+		sched.Poll(context.Background(), logger)
+		var lines []map[string]any
+		for _, line := range strings.Split(strings.TrimSpace(log.String()), "\n") {
+			if line == "" {
+				continue
+			}
+			var rec map[string]any
+			if err := json.Unmarshal([]byte(line), &rec); err != nil {
+				t.Fatalf("log line %q: %v", line, err)
+			}
+			lines = append(lines, rec)
+		}
+		return lines
+	}
+	// isFor reports whether rec is at level and names the weekly emails job and
+	// slot.
+	isFor := func(rec map[string]any, level string, slot time.Time) bool {
+		return rec["level"] == level && rec["job"] == notify.WeeklyJob && rec["slot"] == slot.Format(time.RFC3339)
+	}
+
+	if got := poll(mondayAt9(0).Add(-time.Minute)); len(got) != 0 {
+		t.Fatalf("logged %v before the slot, want nothing", got)
+	}
+	var loggedAt []int
+	for minute := range 184 {
+		for _, rec := range poll(mondayAt9(0).Add(time.Duration(minute) * time.Minute)) {
+			if !isFor(rec, "ERROR", mondayAt9(0)) {
+				t.Fatalf("minute %d logged %v, want an ERROR naming the job and Monday's slot", minute, rec)
+			}
+			loggedAt = append(loggedAt, minute)
+		}
+	}
+	if tries != 184 {
+		t.Errorf("tried the run %d times over 184 polls, want every poll", tries)
+	}
+	// Each wait doubles from a minute until it reaches the hour: 1, 2, 4, 8, 16,
+	// 32, 60, 60 minutes.
+	if want := []int{0, 1, 3, 7, 15, 31, 63, 123, 183}; !slices.Equal(loggedAt, want) {
+		t.Errorf("logged the failure at minutes %v, want %v", loggedAt, want)
+	}
+
+	failing = false
+	got := poll(mondayAt9(0).Add(184 * time.Minute))
+	if len(got) != 1 || !isFor(got[0], "INFO", mondayAt9(0)) {
+		t.Fatalf("logged %v on recovering, want one INFO naming the job and Monday's slot", got)
+	}
+	if got := poll(mondayAt9(0).Add(185 * time.Minute)); len(got) != 0 {
+		t.Errorf("logged %v after recovering, want nothing more", got)
+	}
+
+	failing = true
+	got = poll(mondayAt9(1))
+	if len(got) != 1 || !isFor(got[0], "ERROR", mondayAt9(1)) {
+		t.Errorf("logged %v on next week's first failure, want an ERROR at once naming its slot", got)
 	}
 }
 
