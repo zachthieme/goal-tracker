@@ -299,28 +299,73 @@ func TestDimensionAndFieldNamedTogetherOnlyOneIsMade(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	ctx := context.Background()
+	assertNamedTogetherOnlyOneIsMade(t, func(i int) error {
+		_, err := h.Service.CreateDimension(context.Background(), boss.ID, fmt.Sprintf("Region %d", i), []string{"EMEA"})
+		return err
+	}, func(i int) error {
+		_, err := h.Service.CreateField(context.Background(), boss.ID, fmt.Sprintf("region %d", i), domain.FieldShortText, "")
+		return err
+	})
+}
+
+// Two Dimensions defined at the same moment with one name, differing only in
+// case: only one is made, the other refused as it would be sent after (#537).
+func TestTwoDimensionsNamedTogetherOnlyOneIsMade(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	assertNamedTogetherOnlyOneIsMade(t, func(i int) error {
+		_, err := h.Service.CreateDimension(context.Background(), boss.ID, fmt.Sprintf("Region %d", i), []string{"EMEA"})
+		return err
+	}, func(i int) error {
+		_, err := h.Service.CreateDimension(context.Background(), boss.ID, fmt.Sprintf("region %d", i), []string{"APAC"})
+		return err
+	})
+}
+
+// Two Fields created at the same moment with one name, differing only in
+// case: only one is made, the other refused as it would be sent after (#537).
+func TestTwoFieldsNamedTogetherOnlyOneIsMade(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	assertNamedTogetherOnlyOneIsMade(t, func(i int) error {
+		_, err := h.Service.CreateField(context.Background(), boss.ID, fmt.Sprintf("Budget %d", i), domain.FieldNumber, "USD")
+		return err
+	}, func(i int) error {
+		_, err := h.Service.CreateField(context.Background(), boss.ID, fmt.Sprintf("budget %d", i), domain.FieldShortText, "")
+		return err
+	})
+}
+
+// assertNamedTogetherOnlyOneIsMade runs first and second at the same moment,
+// round after round, each given the round, and fails unless in every round
+// exactly one succeeds and the other is refused with ErrValidation.
+func assertNamedTogetherOnlyOneIsMade(t *testing.T, first, second func(round int) error) {
+	t.Helper()
 	for i := range 30 {
-		var errDim, errField error
+		var errFirst, errSecond error
 		var wg sync.WaitGroup
 		start := make(chan struct{})
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			<-start
-			_, errDim = h.Service.CreateDimension(ctx, boss.ID, fmt.Sprintf("Region %d", i), []string{"EMEA"})
+			errFirst = first(i)
 		}()
 		go func() {
 			defer wg.Done()
 			<-start
-			_, errField = h.Service.CreateField(ctx, boss.ID, fmt.Sprintf("region %d", i), domain.FieldShortText, "")
+			errSecond = second(i)
 		}()
 		close(start)
 		wg.Wait()
-		if (errDim == nil) == (errField == nil) {
-			t.Fatalf("round %d: Dimension err = %v, Field err = %v; want exactly one made", i, errDim, errField)
+		if (errFirst == nil) == (errSecond == nil) {
+			t.Fatalf("round %d: first err = %v, second err = %v; want exactly one made", i, errFirst, errSecond)
 		}
-		for _, err := range []error{errDim, errField} {
+		for _, err := range []error{errFirst, errSecond} {
 			if err != nil && !errors.Is(err, domain.ErrValidation) {
 				t.Fatalf("round %d: err = %v, want ErrValidation for the one refused", i, err)
 			}
