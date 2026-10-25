@@ -77,7 +77,7 @@ func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInpu
 	}
 	if _, err := s.queries.GetGoal(ctx, in.GoalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Metric{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Metric{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return Metric{}, fmt.Errorf("look up goal: %w", err)
 	}
@@ -198,16 +198,16 @@ func (s *Service) metricsByGoal(ctx context.Context, goalIDs []int64) (map[int64
 
 func validateMetric(name, unit, direction string, targetDate time.Time) error {
 	if name == "" {
-		return fmt.Errorf("%w: a Metric needs a name", ErrValidation)
+		return Refuse(ErrValidation, "a Metric needs a name")
 	}
 	if unit == "" {
-		return fmt.Errorf("%w: a Metric needs a unit", ErrValidation)
+		return Refuse(ErrValidation, "a Metric needs a unit")
 	}
 	if !validDirection(direction) {
-		return fmt.Errorf("%w: a Metric needs a direction of %q or %q", ErrValidation, MetricUp, MetricDown)
+		return Refuse(ErrValidation, "a Metric needs a direction of %q or %q", MetricUp, MetricDown)
 	}
 	if targetDate.IsZero() {
-		return fmt.Errorf("%w: a Metric needs a target date", ErrValidation)
+		return Refuse(ErrValidation, "a Metric needs a target date")
 	}
 	return nil
 }

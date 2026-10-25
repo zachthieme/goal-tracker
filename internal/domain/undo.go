@@ -25,7 +25,7 @@ const (
 )
 
 // errUndoUnavailable refuses a token that has expired or been used.
-var errUndoUnavailable = fmt.Errorf("%w: this Undo is no longer available", ErrValidation)
+var errUndoUnavailable = Refuse(ErrValidation, "this Undo is no longer available")
 
 // issueUndo records a fresh one-time token that lets accountID undo the kind
 // of action done to subjectID, and returns it. detail is what the Undo must
@@ -56,7 +56,7 @@ func (s *Service) issueUndo(ctx context.Context, kind string, subjectID, account
 // the token's detail. A missing token, or one for another action or person, is
 // ErrNotAuthorized; an expired or used one is ErrValidation.
 func (s *Service) spendUndo(ctx context.Context, token, kind string, subjectID, actorID int64) (string, error) {
-	notYours := fmt.Errorf("%w: this Undo isn't yours to use", ErrNotAuthorized)
+	notYours := Refuse(ErrNotAuthorized, "this Undo isn't yours to use")
 	if token == "" {
 		return "", notYours
 	}
@@ -132,7 +132,7 @@ func (s *Service) UndoRetireDimensionValue(ctx context.Context, actorID, valueID
 			return err
 		}
 		if !dimensionValueFromRow(val).Retired || val.Value != name {
-			return fmt.Errorf("%w: this value has changed since it was retired, so there is nothing to undo", ErrValidation)
+			return Refuse(ErrValidation, "this value has changed since it was retired, so there is nothing to undo")
 		}
 		return tx.RestoreDimensionValue(ctx, actorID, valueID)
 	})

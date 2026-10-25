@@ -57,10 +57,10 @@ const (
 // within the bounds.
 func checkPasswordRules(password string) error {
 	if utf8.RuneCountInString(password) < passwordMinRunes {
-		return fmt.Errorf("%w: A password needs at least %d characters", ErrPasswordRules, passwordMinRunes)
+		return Refuse(ErrPasswordRules, "A password needs at least %d characters", passwordMinRunes)
 	}
 	if len(password) > passwordMaxBytes {
-		return fmt.Errorf("%w: A password can be at most %d bytes", ErrPasswordRules, passwordMaxBytes)
+		return Refuse(ErrPasswordRules, "A password can be at most %d bytes", passwordMaxBytes)
 	}
 	return nil
 }

@@ -474,24 +474,26 @@ func (s *Server) noChangeReason(err error) string {
 	return strings.Join(missed, " ") + " To keep Green, submit a Check-in that confirms it, or update the Health."
 }
 
-// plainReason is a domain validation or authorization message without its
-// internal "validation failed:" or "not authorized:" prefix.
+// plainReason is why a domain refusal refused, as a page shows it, without its
+// internal "validation failed:" or "not authorized:" kind (domain.Reason).
 func plainReason(err error) string {
-	msg := err.Error()
-	for _, kind := range []error{domain.ErrValidation, domain.ErrNotAuthorized} {
-		msg = strings.TrimPrefix(msg, kind.Error()+": ")
-	}
-	return msg
+	return domain.Reason(err)
 }
 
-// plainReasonShown is plainReason with an overdue Milestone's due date, which
-// the domain gives as ISO text, shown as the page shows dates.
+// plainReasonShown is plainReason, but an overdue Milestone's refusal is
+// composed from the Milestone and what its missed date rules out, with its due
+// date as the page shows dates.
 func plainReasonShown(err error, shown displayDates) string {
-	msg := plainReason(err)
 	var overdue *domain.MilestoneOverdueError
-	if errors.As(err, &overdue) {
-		due := overdue.Milestone.TargetDate
-		msg = strings.Replace(msg, "(due "+due.Format(dateLayout)+")", "(due "+shown.date(due)+")", 1)
+	if !errors.As(err, &overdue) {
+		return plainReason(err)
+	}
+	msg := fmt.Sprintf("Milestone %q is overdue (due %s)", overdue.Milestone.Name, shown.date(overdue.Milestone.TargetDate))
+	switch overdue.RulesOut {
+	case domain.OverdueRulesOutGreen:
+		msg += ", so the Goal can't be Green"
+	case domain.OverdueRulesOutNoChange:
+		msg += ": submit a Check-in to move its date, mark it Done or remove it"
 	}
 	return msg
 }

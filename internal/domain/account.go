@@ -206,7 +206,7 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -236,7 +236,7 @@ func (s *Service) MarkReturned(ctx context.Context, actorID, accountID int64) er
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -298,7 +298,7 @@ func (s *Service) MakeAdmin(ctx context.Context, actorID int64, emailAddr string
 	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Account{}, fmt.Errorf("%w: no one with that email has an account", ErrValidation)
+			return Account{}, Refuse(ErrValidation, "no one with that email has an account")
 		}
 		return Account{}, fmt.Errorf("look up account: %w", err)
 	}
@@ -325,12 +325,12 @@ func (s *Service) RemoveAdmin(ctx context.Context, actorID, accountID int64) err
 		return err
 	}
 	if accountID == actorID {
-		return fmt.Errorf("%w: you can't remove your own Admin role", ErrValidation)
+		return Refuse(ErrValidation, "you can't remove your own Admin role")
 	}
 	row, err := s.queries.GetAccount(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -348,7 +348,7 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 	actor, err := s.queries.GetAccount(ctx, actorID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: not an Admin", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "not an Admin")
 		}
 		return fmt.Errorf("look up actor: %w", err)
 	}
@@ -358,7 +358,7 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 // adminRefusal is requireAdmin's rule for actor, an Account that exists.
 func adminRefusal(actor Account) error {
 	if !actor.IsAdmin {
-		return fmt.Errorf("%w: only an Admin may do this", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only an Admin may do this")
 	}
 	return nil
 }

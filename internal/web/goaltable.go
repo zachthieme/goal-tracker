@@ -532,7 +532,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 			view.Table.Bad[cellNameOf(c.GoalID, c.DimensionID, c.FieldID)] = c.Message
 		}
 	} else {
-		view.Table.Refusal = strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")
+		view.Table.Refusal = domain.Reason(err)
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalsPage(&current, view))
 }

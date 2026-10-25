@@ -25,19 +25,19 @@ func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID in
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Refuse(ErrValidation, "goal does not exist")
 		}
 		return fmt.Errorf("look up goal: %w", err)
 	}
 	if actorID != goal.Goal.OwnerID {
-		return fmt.Errorf("%w: only the Owner may authorize a Delegate", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Owner may authorize a Delegate")
 	}
 	if accountID == goal.Goal.OwnerID {
-		return fmt.Errorf("%w: the Owner already writes this Goal's Check-ins", ErrValidation)
+		return Refuse(ErrValidation, "the Owner already writes this Goal's Check-ins")
 	}
 	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -45,7 +45,7 @@ func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID in
 		GoalID:    goalID,
 		AccountID: accountID,
 	}); err == nil {
-		return fmt.Errorf("%w: already a Delegate", ErrValidation)
+		return Refuse(ErrValidation, "already a Delegate")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("look up delegate: %w", err)
 	}
@@ -68,7 +68,7 @@ func (s *Service) AddDelegateByEmail(ctx context.Context, actorID, goalID int64,
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
@@ -83,12 +83,12 @@ func (s *Service) RemoveDelegate(ctx context.Context, actorID, goalID, accountID
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Refuse(ErrValidation, "goal does not exist")
 		}
 		return fmt.Errorf("look up goal: %w", err)
 	}
 	if actorID != goal.Goal.OwnerID {
-		return fmt.Errorf("%w: only the Owner may remove a Delegate", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the Owner may remove a Delegate")
 	}
 	if err := s.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
 		GoalID:    goalID,
@@ -106,7 +106,7 @@ func (s *Service) RemoveDelegateByEmail(ctx context.Context, actorID, goalID int
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}

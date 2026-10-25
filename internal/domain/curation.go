@@ -162,7 +162,7 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 func (s *Service) checkCuratedNarrative(ctx context.Context, def ReportDefinition, in CurateNarrativeInput) (map[string][]string, error) {
 	for section := range in.Notes {
 		if !validHighlightKind(section) {
-			return nil, fmt.Errorf("%w: %q is not a narrative section", ErrValidation, section)
+			return nil, Refuse(ErrValidation, "%q is not a narrative section", section)
 		}
 	}
 	inScope, err := s.definitionHighlights(ctx, def)
@@ -172,13 +172,13 @@ func (s *Service) checkCuratedNarrative(ctx context.Context, def ReportDefinitio
 	picked := make(map[int64]bool, len(in.Picks))
 	for _, p := range in.Picks {
 		if !validHighlightKind(p.Section) {
-			return nil, fmt.Errorf("%w: %q is not a narrative section", ErrValidation, p.Section)
+			return nil, Refuse(ErrValidation, "%q is not a narrative section", p.Section)
 		}
 		if !inScope[p.HighlightID] {
-			return nil, fmt.Errorf("%w: Highlight %d is not on a Goal this Report selects", ErrValidation, p.HighlightID)
+			return nil, Refuse(ErrValidation, "Highlight %d is not on a Goal this Report selects", p.HighlightID)
 		}
 		if picked[p.HighlightID] {
-			return nil, fmt.Errorf("%w: Highlight %d is picked twice", ErrValidation, p.HighlightID)
+			return nil, Refuse(ErrValidation, "Highlight %d is picked twice", p.HighlightID)
 		}
 		picked[p.HighlightID] = true
 	}

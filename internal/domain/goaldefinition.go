@@ -147,10 +147,10 @@ func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in Defi
 			return err
 		}
 		if current.Owner.ID != actorID {
-			return fmt.Errorf("%w: only the Goal's Owner may define it", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "only the Goal's Owner may define it")
 		}
 		if current.Lifecycle != LifecycleProposed {
-			return fmt.Errorf("%w: %s is %s, so it is no longer defined here", ErrValidation, current.Title, current.Lifecycle)
+			return Refuse(ErrValidation, "%s is %s, so it is no longer defined here", current.Title, current.Lifecycle)
 		}
 		carried, err := tx.GoalValues(ctx, goalID)
 		if err != nil {
@@ -507,7 +507,7 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 		if field.Retired {
 			refuse(input, "%s is retired, so it can't be set", field.Name)
 		} else if err := field.Check(value); err != nil {
-			refuse(input, "%s", validationMessage(err))
+			refuse(input, "%s", Reason(err))
 		}
 	}
 	given := map[int64]bool{}
@@ -566,7 +566,7 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 		case val.Retired != 0:
 			refuse(input, "%s is retired and cannot be newly assigned", val.Value)
 		case dim.Retired:
-			refuse(input, "%s", validationMessage(retiredDimensionError(dim)))
+			refuse(input, "%s", Reason(retiredDimensionError(dim)))
 		default:
 			given(dim, input)
 		}
@@ -586,7 +586,7 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 		}
 		dim := dimensionFromRow(dimRow)
 		if dim.Retired {
-			refuse(input, "%s", validationMessage(retiredDimensionError(dim)))
+			refuse(input, "%s", Reason(retiredDimensionError(dim)))
 			continue
 		}
 		if !dim.Extendable() {
@@ -594,11 +594,11 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 			continue
 		}
 		if err := checkValueName(name); err != nil {
-			refuse(input, "%s", validationMessage(err))
+			refuse(input, "%s", Reason(err))
 			continue
 		}
 		if _, _, err := s.matchingValue(ctx, dimID, name); errors.Is(err, ErrValidation) {
-			refuse(input, "%s", validationMessage(err))
+			refuse(input, "%s", Reason(err))
 			continue
 		} else if err != nil {
 			return nil, err
@@ -628,7 +628,7 @@ func (s *Service) activateDefinedGoal(ctx context.Context, actorID, goalID int64
 		if !errors.Is(r, ErrValidation) {
 			return Goal{}, err
 		}
-		problems = append(problems, inputError(InputActivate, "%s", validationMessage(r)))
+		problems = append(problems, inputError(InputActivate, "%s", Reason(r)))
 	}
 	return Goal{}, errors.Join(problems...)
 }
@@ -668,14 +668,10 @@ func (e *InputError) Unwrap() []error {
 	return []error{ErrValidation, e.Err}
 }
 
+func (e *InputError) shownReason() string { return e.Message }
+
 func inputError(input, format string, args ...any) *InputError {
 	return &InputError{Input: input, Message: fmt.Sprintf(format, args...)}
-}
-
-// validationMessage is a validation error's reason without the ErrValidation
-// prefix, as an InputError carries it.
-func validationMessage(err error) string {
-	return strings.TrimPrefix(err.Error(), ErrValidation.Error()+": ")
 }
 
 // MilestoneInput names one part ("name", "date") of the i-th Milestone.

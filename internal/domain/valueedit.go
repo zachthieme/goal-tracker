@@ -70,7 +70,7 @@ func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []Val
 			if err != nil {
 				return fmt.Errorf("load goal: %w", err)
 			}
-			return fmt.Errorf("%w: only its Owner, a Delegate or an Admin may set the values of %s", ErrNotAuthorized, goal.Goal.Title)
+			return Refuse(ErrNotAuthorized, "only its Owner, a Delegate or an Admin may set the values of %s", goal.Goal.Title)
 		} else if err != nil {
 			return err
 		}
@@ -83,12 +83,11 @@ func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []Val
 			err := tx.applyValueEdit(ctx, actorID, e)
 			switch {
 			case errors.Is(err, ErrValidation), errors.Is(err, ErrNotAuthorized):
-				message := strings.TrimPrefix(err.Error(), ErrValidation.Error()+": ")
 				refusal.Cells = append(refusal.Cells, CellError{
 					GoalID:      e.GoalID,
 					DimensionID: e.DimensionID,
 					FieldID:     e.FieldID,
-					Message:     strings.TrimPrefix(message, ErrNotAuthorized.Error()+": "),
+					Message:     Reason(err),
 				})
 			case err != nil:
 				return err
@@ -112,7 +111,7 @@ func (s *Service) applyValueEdit(ctx context.Context, actorID int64, e ValueEdit
 	}
 	dim, err := s.queries.GetDimension(ctx, e.DimensionID)
 	if err != nil {
-		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		return Refuse(ErrValidation, "dimension does not exist")
 	}
 	if dimensionFromRow(dim).TakesSeveral() {
 		if err := s.SetGoalValues(ctx, actorID, e.GoalID, e.DimensionID, e.ValueIDs); err != nil {

@@ -57,32 +57,32 @@ func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID i
 		return ParentSuggestion{}, fmt.Errorf("look up goal: %w", err)
 	}
 	if goal.Goal.OwnerID == actorID {
-		return ParentSuggestion{}, fmt.Errorf("%w: the Goal's Owner links it to a parent rather than suggesting one", ErrNotAuthorized)
+		return ParentSuggestion{}, Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
 	}
 	if !suggestable(goal.Goal.Lifecycle) {
-		return ParentSuggestion{}, fmt.Errorf("%w: a parent can only be suggested for an Active or Proposed Goal", ErrValidation)
+		return ParentSuggestion{}, Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")
 	}
 	if parentID == goalID {
-		return ParentSuggestion{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
+		return ParentSuggestion{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
 	parent, err := s.queries.GetGoal(ctx, parentID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ParentSuggestion{}, fmt.Errorf("%w: parent goal does not exist", ErrValidation)
+			return ParentSuggestion{}, Refuse(ErrValidation, "parent goal does not exist")
 		}
 		return ParentSuggestion{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if !suggestable(parent.Goal.Lifecycle) {
-		return ParentSuggestion{}, fmt.Errorf("%w: only an Active or Proposed Goal can be suggested as a parent", ErrValidation)
+		return ParentSuggestion{}, Refuse(ErrValidation, "only an Active or Proposed Goal can be suggested as a parent")
 	}
 	if link, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
 		ChildID:  goalID,
 		ParentID: parentID,
 	}); err == nil {
 		if link.Status == LinkPending {
-			return ParentSuggestion{}, fmt.Errorf("%w: the Goal's Owner has already asked to link it to that parent", ErrValidation)
+			return ParentSuggestion{}, Refuse(ErrValidation, "the Goal's Owner has already asked to link it to that parent")
 		}
-		return ParentSuggestion{}, fmt.Errorf("%w: the Goal already contributes to that parent", ErrValidation)
+		return ParentSuggestion{}, Refuse(ErrValidation, "the Goal already contributes to that parent")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ParentSuggestion{}, fmt.Errorf("look up existing link: %w", err)
 	}
@@ -90,7 +90,7 @@ func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID i
 		GoalID:   goalID,
 		ParentID: parentID,
 	}); err == nil {
-		return ParentSuggestion{}, fmt.Errorf("%w: %s has already suggested that parent", ErrValidation, accountFromRow(open.Account).Label())
+		return ParentSuggestion{}, Refuse(ErrValidation, "%s has already suggested that parent", accountFromRow(open.Account).Label())
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ParentSuggestion{}, fmt.Errorf("look up open suggestion: %w", err)
 	}
@@ -184,7 +184,7 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 		return err
 	}
 	if p.Status != SuggestionDeclined {
-		return fmt.Errorf("%w: this suggestion is no longer declined", ErrValidation)
+		return Refuse(ErrValidation, "this suggestion is no longer declined")
 	}
 	if _, err := s.spendUndo(ctx, token, undoSuggestionDecline, suggestionID, actorID); err != nil {
 		return err
@@ -202,13 +202,13 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 			return err
 		}
 		if !suggestable(goal.Lifecycle) || !suggestable(parent.Lifecycle) {
-			return fmt.Errorf("%w: the Goal or its suggested parent is no longer Active or Proposed", ErrValidation)
+			return Refuse(ErrValidation, "the Goal or its suggested parent is no longer Active or Proposed")
 		}
 		if open, err := tx.queries.GetOpenParentSuggestionFor(ctx, db.GetOpenParentSuggestionForParams{
 			GoalID:   p.Goal.ID,
 			ParentID: p.Parent.ID,
 		}); err == nil {
-			return fmt.Errorf("%w: %s has suggested that parent again since", ErrValidation, accountFromRow(open.Account).Label())
+			return Refuse(ErrValidation, "%s has suggested that parent again since", accountFromRow(open.Account).Label())
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("look up open suggestion: %w", err)
 		}
@@ -217,7 +217,7 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 			return fmt.Errorf("reopen parent suggestion: %w", err)
 		}
 		if n == 0 {
-			return fmt.Errorf("%w: this suggestion is no longer declined", ErrValidation)
+			return Refuse(ErrValidation, "this suggestion is no longer declined")
 		}
 		return nil
 	})
@@ -229,7 +229,7 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 // suggestion is open its link doesn't exist, so any rejection or removal no
 // earlier than the decline is of a request made since.)
 func (s *Service) ensureNotLinkedSinceDecline(ctx context.Context, p ParentSuggestion) error {
-	since := fmt.Errorf("%w: this link has been requested since the suggestion was declined", ErrValidation)
+	since := Refuse(ErrValidation, "this link has been requested since the suggestion was declined")
 	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
 		ChildID:  p.Goal.ID,
 		ParentID: p.Parent.ID,
@@ -268,7 +268,7 @@ func (s *Service) WithdrawParentSuggestion(ctx context.Context, actorID, suggest
 		return err
 	}
 	if p.SuggestedBy.ID != actorID {
-		return fmt.Errorf("%w: only the person who made a suggestion may withdraw it", ErrNotAuthorized)
+		return Refuse(ErrNotAuthorized, "only the person who made a suggestion may withdraw it")
 	}
 	return s.closeSuggestion(ctx, suggestionID, SuggestionWithdrawn)
 }
@@ -281,7 +281,7 @@ func (s *Service) openSuggestionForOwner(ctx context.Context, actorID, suggestio
 		return ParentSuggestion{}, err
 	}
 	if p.Goal.Owner.ID != actorID {
-		return ParentSuggestion{}, fmt.Errorf("%w: only the Goal's Owner may decide a parent suggestion", ErrNotAuthorized)
+		return ParentSuggestion{}, Refuse(ErrNotAuthorized, "only the Goal's Owner may decide a parent suggestion")
 	}
 	if p.Status != SuggestionOpen {
 		return ParentSuggestion{}, errSuggestionClosed
@@ -291,7 +291,7 @@ func (s *Service) openSuggestionForOwner(ctx context.Context, actorID, suggestio
 
 // errSuggestionClosed refuses to act on a suggestion that already has its
 // outcome.
-var errSuggestionClosed = fmt.Errorf("%w: this suggestion has already been decided", ErrValidation)
+var errSuggestionClosed = Refuse(ErrValidation, "this suggestion has already been decided")
 
 // closeSuggestion gives the open suggestion its outcome now, refusing one that
 // already has one.

@@ -441,6 +441,7 @@ func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 		t.Fatalf("Green with an overdue Milestone: err = %v, want ErrValidation", err)
 	}
 	assertMilestoneOverdueError(t, err, beta)
+	assertOverdueRulesOut(t, err, domain.OverdueRulesOutGreen)
 	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), so the Goal can't be Green`; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
@@ -501,8 +502,22 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	}
 	assertOverdueNoChangeRefusal(t, err)
 	assertMilestoneOverdueError(t, err, beta)
+	assertOverdueRulesOut(t, err, domain.OverdueRulesOutNoChange)
 	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `): submit a Check-in to move its date, mark it Done or remove it`; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
+	}
+}
+
+// assertOverdueRulesOut checks err is a refusal for an overdue Milestone that
+// says what the missed date rules out, so a page can compose its message.
+func assertOverdueRulesOut(t *testing.T, err error, want domain.OverdueRulesOut) {
+	t.Helper()
+	var overdue *domain.MilestoneOverdueError
+	if !errors.As(err, &overdue) {
+		t.Fatalf("err = %v, want a *MilestoneOverdueError", err)
+	}
+	if overdue.RulesOut != want {
+		t.Errorf("overdue RulesOut = %v, want %v", overdue.RulesOut, want)
 	}
 }
 

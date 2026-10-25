@@ -48,7 +48,7 @@ func (s *Service) requireReportManager(ctx context.Context, actorID int64, def R
 		return lerr
 	}
 	if err != nil || !CanManageReport(accountFromRow(actor), def, delegates) {
-		return fmt.Errorf("%w: only its creator, a Report Delegate or an Admin may %s %s", ErrNotAuthorized, doing, def.Name)
+		return Refuse(ErrNotAuthorized, "only its creator, a Report Delegate or an Admin may %s %s", doing, def.Name)
 	}
 	return nil
 }
@@ -65,7 +65,7 @@ func (s *Service) reportDelegatesDefinition(ctx context.Context, actorID, defID 
 		return ReportDefinition{}, fmt.Errorf("look up actor: %w", err)
 	}
 	if err != nil || !CanManageReportDelegates(accountFromRow(actor), def) {
-		return ReportDefinition{}, fmt.Errorf("%w: only its creator or an Admin may change who are Report Delegates on %s", ErrNotAuthorized, def.Name)
+		return ReportDefinition{}, Refuse(ErrNotAuthorized, "only its creator or an Admin may change who are Report Delegates on %s", def.Name)
 	}
 	return def, nil
 }
@@ -81,24 +81,24 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 		return err
 	}
 	if accountID == def.CreatedBy {
-		return fmt.Errorf("%w: the creator already manages %s", ErrValidation, def.Name)
+		return Refuse(ErrValidation, "the creator already manages %s", def.Name)
 	}
 	acc, err := s.queries.GetAccount(ctx, accountID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: account does not exist", ErrValidation)
+			return Refuse(ErrValidation, "account does not exist")
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
 	if acc.Departed != 0 {
-		return fmt.Errorf("%w: %s has left the company", ErrValidation, acc.Email)
+		return Refuse(ErrValidation, "%s has left the company", acc.Email)
 	}
 	delegates, err := s.ListReportDelegates(ctx, defID)
 	if err != nil {
 		return err
 	}
 	if isReportDelegate(delegates, accountID) {
-		return fmt.Errorf("%w: %s is already a Report Delegate", ErrValidation, acc.Email)
+		return Refuse(ErrValidation, "%s is already a Report Delegate", acc.Email)
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
 		if err := tx.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
@@ -119,7 +119,7 @@ func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID i
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}

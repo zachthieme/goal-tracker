@@ -75,7 +75,7 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Handoff{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Handoff{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return Handoff{}, fmt.Errorf("look up goal: %w", err)
 	}
@@ -85,25 +85,25 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, fmt.Errorf("look up actor: %w", err)
 	}
 	if goal.Goal.OwnerID != in.ActorID && actor.IsAdmin == 0 {
-		return Handoff{}, fmt.Errorf("%w: only the Owner or an Admin may start a Handoff", ErrNotAuthorized)
+		return Handoff{}, Refuse(ErrNotAuthorized, "only the Owner or an Admin may start a Handoff")
 	}
 
 	if in.ToOwnerID == goal.Goal.OwnerID {
-		return Handoff{}, fmt.Errorf("%w: the Goal is already owned by that person", ErrValidation)
+		return Handoff{}, Refuse(ErrValidation, "the Goal is already owned by that person")
 	}
 	newOwner, err := s.queries.GetAccount(ctx, in.ToOwnerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Handoff{}, fmt.Errorf("%w: the new Owner does not exist", ErrValidation)
+			return Handoff{}, Refuse(ErrValidation, "the new Owner does not exist")
 		}
 		return Handoff{}, fmt.Errorf("look up new owner: %w", err)
 	}
 	if newOwner.Departed != 0 {
-		return Handoff{}, fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
+		return Handoff{}, Refuse(ErrValidation, "the new Owner has left the company")
 	}
 
 	if _, err := s.queries.GetPendingHandoffForGoal(ctx, in.GoalID); err == nil {
-		return Handoff{}, fmt.Errorf("%w: a Handoff for this Goal is already pending", ErrValidation)
+		return Handoff{}, Refuse(ErrValidation, "a Handoff for this Goal is already pending")
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Handoff{}, fmt.Errorf("look up pending handoff: %w", err)
 	}
@@ -139,7 +139,7 @@ func (s *Service) StartHandoffByEmail(ctx context.Context, goalID int64, toEmail
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(toEmail))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Handoff{}, fmt.Errorf("%w: no account with email %q", ErrValidation, toEmail)
+			return Handoff{}, Refuse(ErrValidation, "no account with email %q", toEmail)
 		}
 		return Handoff{}, fmt.Errorf("look up new owner: %w", err)
 	}
@@ -153,7 +153,7 @@ func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(newOwnerEmail))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: no account with email %q", ErrValidation, newOwnerEmail)
+			return Goal{}, Refuse(ErrValidation, "no account with email %q", newOwnerEmail)
 		}
 		return Goal{}, fmt.Errorf("look up new owner: %w", err)
 	}
@@ -176,14 +176,14 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 			return err
 		}
 		if row.ToOwner != actorID {
-			return fmt.Errorf("%w: only the new Owner may accept a Handoff", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "only the new Owner may accept a Handoff")
 		}
 		goal, err := tx.queries.GetGoal(ctx, row.GoalID)
 		if err != nil {
 			return fmt.Errorf("look up goal: %w", err)
 		}
 		if goal.Goal.OwnerID != row.FromOwner {
-			return fmt.Errorf("%w: the Goal has changed hands since this Handoff was started", ErrValidation)
+			return Refuse(ErrValidation, "the Goal has changed hands since this Handoff was started")
 		}
 		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
 			OwnerID: row.ToOwner,
@@ -228,7 +228,7 @@ func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) (
 			return err
 		}
 		if row.ToOwner != actorID {
-			return fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
+			return Refuse(ErrNotAuthorized, "only the new Owner may reject a Handoff")
 		}
 		if err := tx.decidePendingHandoff(ctx, handoffID, HandoffRejected); err != nil {
 			return err
@@ -261,9 +261,9 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 		return Handoff{}, fmt.Errorf("look up handoff: %w", err)
 	}
 	if row.ToOwner != actorID {
-		return Handoff{}, fmt.Errorf("%w: only the person who rejected a Handoff may undo it", ErrNotAuthorized)
+		return Handoff{}, Refuse(ErrNotAuthorized, "only the person who rejected a Handoff may undo it")
 	}
-	notRejected := fmt.Errorf("%w: this Handoff isn't rejected, so there is nothing to undo", ErrValidation)
+	notRejected := Refuse(ErrValidation, "this Handoff isn't rejected, so there is nothing to undo")
 	if row.Status != HandoffRejected {
 		return Handoff{}, notRejected
 	}
@@ -272,7 +272,7 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		if _, err := tx.queries.GetPendingHandoffForGoal(ctx, row.GoalID); err == nil {
-			return fmt.Errorf("%w: another Handoff of this Goal is pending", ErrValidation)
+			return Refuse(ErrValidation, "another Handoff of this Goal is pending")
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("look up pending handoff: %w", err)
 		}
@@ -281,21 +281,21 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 			return fmt.Errorf("look up goal: %w", err)
 		}
 		if goal.Goal.OwnerID != row.FromOwner {
-			return fmt.Errorf("%w: the Goal has changed hands since this Handoff was rejected", ErrValidation)
+			return Refuse(ErrValidation, "the Goal has changed hands since this Handoff was rejected")
 		}
 		later, err := tx.queries.CountLaterHandoffs(ctx, db.CountLaterHandoffsParams{GoalID: row.GoalID, ID: handoffID})
 		if err != nil {
 			return fmt.Errorf("look up later handoffs: %w", err)
 		}
 		if later > 0 {
-			return fmt.Errorf("%w: the Goal has been handed off again since this Handoff was rejected", ErrValidation)
+			return Refuse(ErrValidation, "the Goal has been handed off again since this Handoff was rejected")
 		}
 		to, err := tx.queries.GetAccount(ctx, row.ToOwner)
 		if err != nil {
 			return fmt.Errorf("look up new owner: %w", err)
 		}
 		if to.Departed != 0 {
-			return fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
+			return Refuse(ErrValidation, "the new Owner has left the company")
 		}
 		n, err := tx.queries.ReopenRejectedHandoff(ctx, handoffID)
 		if err != nil {
@@ -395,22 +395,22 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+			return Goal{}, Refuse(ErrValidation, "goal does not exist")
 		}
 		return Goal{}, fmt.Errorf("look up goal: %w", err)
 	}
 	if goal.Account.Departed == 0 {
-		return Goal{}, fmt.Errorf("%w: only an Ownerless Goal is reassigned; hand off a Goal with a present Owner", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "only an Ownerless Goal is reassigned; hand off a Goal with a present Owner")
 	}
 	newOwner, err := s.queries.GetAccount(ctx, newOwnerID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, fmt.Errorf("%w: the new Owner does not exist", ErrValidation)
+			return Goal{}, Refuse(ErrValidation, "the new Owner does not exist")
 		}
 		return Goal{}, fmt.Errorf("look up new owner: %w", err)
 	}
 	if newOwner.Departed != 0 {
-		return Goal{}, fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
+		return Goal{}, Refuse(ErrValidation, "the new Owner has left the company")
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		pending, err := tx.queries.GetPendingHandoffForGoal(ctx, goalID)

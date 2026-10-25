@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -31,8 +30,7 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 		render(w, r, http.StatusForbidden, nudgeRefusedPage(&current, "Can't nudge", sentence(plainReason(err))))
 	case errors.Is(err, domain.ErrNudgeNotSent):
 		// The Nudge stands; only the mail server failed it.
-		reason := strings.TrimPrefix(err.Error(), domain.ErrNudgeNotSent.Error()+": ")
-		render(w, r, http.StatusBadGateway, nudgeRefusedPage(&current, "Nudge not emailed", sentence(reason)))
+		render(w, r, http.StatusBadGateway, nudgeRefusedPage(&current, "Nudge not emailed", sentence(domain.Reason(err))))
 	default:
 		s.logServerError(r, err)
 		render(w, r, http.StatusInternalServerError, nudgeRefusedPage(&current, "Can't nudge", "The Nudge couldn't be sent, so nothing changed. Try again."))
