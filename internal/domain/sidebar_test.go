@@ -166,3 +166,51 @@ func TestSidebarListsThePeopleDirectlyUnderSomeone(t *testing.T) {
 		}
 	}
 }
+
+// A failed read leaves out only what it feeds: Sidebar reports the error and
+// still returns, as it read them, the parts the read doesn't feed. The
+// Handoffs feed only the needs-you count, the overdue Milestones only the
+// Follow-ups count, the Delegate Goals both counts, and every Account all
+// three.
+func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		table                          string
+		needsYou, followUps, underRead bool
+	}{
+		{"handoffs", false, true, true},
+		{"milestones", true, false, true},
+		{"delegates", false, false, true},
+		{"accounts", false, false, false},
+	} {
+		t.Run(c.table, func(t *testing.T) {
+			t.Parallel()
+			fx := seedSidebarFixture(t)
+			if _, err := fx.h.DB.Exec(`ALTER TABLE ` + c.table + ` RENAME TO gone`); err != nil {
+				t.Fatalf("rename %s away: %v", c.table, err)
+			}
+
+			sb, err := fx.h.Service.Sidebar(context.Background(), fx.lead.ID)
+			if err == nil {
+				t.Error("Sidebar: no error, want the failed read's")
+			}
+			if sb.NeedsYouRead != c.needsYou || (c.needsYou && sb.NeedsYou != 7) {
+				t.Errorf("Sidebar.NeedsYou = %d (read %t), want read %t, 7 when read", sb.NeedsYou, sb.NeedsYouRead, c.needsYou)
+			}
+			if sb.FollowUpsRead != c.followUps || (c.followUps && sb.FollowUps != 4) {
+				t.Errorf("Sidebar.FollowUps = %d (read %t), want read %t, 4 when read", sb.FollowUps, sb.FollowUpsRead, c.followUps)
+			}
+			var under []string
+			for _, a := range sb.DirectlyUnder {
+				under = append(under, a.Email)
+			}
+			var wantUnder []string
+			if c.underRead {
+				wantUnder = []string{"rep@example.com"}
+			}
+			if sb.DirectlyUnderRead != c.underRead || !slices.Equal(under, wantUnder) {
+				t.Errorf("Sidebar.DirectlyUnder = %q (read %t), want %q, read %t", under, sb.DirectlyUnderRead, wantUnder, c.underRead)
+			}
+		})
+	}
+}

@@ -2,13 +2,15 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
 // Sidebar is what the sidebar on every signed-in page shows one person, read
-// by Service.Sidebar (ADR 0010).
+// by Service.Sidebar (ADR 0010). Each part is marked by whether it was read,
+// so a failed read leaves out only the parts it feeds.
 type Sidebar struct {
 	// NeedsYou counts what is waiting on the person, as Home lists it: the
 	// Goals they Own or are a Delegate on whose Check-in is due before the
@@ -23,22 +25,29 @@ type Sidebar struct {
 	// DirectlyUnder are the people whose Manager is the person, for My org,
 	// as DirectlyUnder lists them.
 	DirectlyUnder []Account
+	// NeedsYouRead, FollowUpsRead and DirectlyUnderRead are whether
+	// NeedsYou, FollowUps and DirectlyUnder were read; one that wasn't holds
+	// its zero value and is left out.
+	NeedsYouRead, FollowUpsRead, DirectlyUnderRead bool
 }
 
 // Sidebar reads accountID's sidebar, reading each thing once and only what
-// the sidebar shows (ADR 0010).
+// the sidebar shows (ADR 0010). When a read fails it returns, along with the
+// error, the parts that read doesn't feed: every Account feeds all three, the
+// Delegate Goals and Active Goals both counts, and the rest one count each.
 func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error) {
 	accounts, err := s.queries.ListAskWalkAccounts(ctx)
 	if err != nil {
 		return Sidebar{}, fmt.Errorf("list accounts: %w", err)
 	}
+	sb := Sidebar{DirectlyUnder: directlyUnderAmong(accountID, accounts), DirectlyUnderRead: true}
 	byID := make(map[int64]Account, len(accounts))
 	for _, a := range accounts {
 		byID[a.ID] = accountFromRow(a)
 	}
 	delegated, err := s.queries.ListDelegatedGoals(ctx, accountID)
 	if err != nil {
-		return Sidebar{}, fmt.Errorf("list delegated goals: %w", err)
+		return sb, fmt.Errorf("list delegated goals: %w", err)
 	}
 	isDelegate := make(map[int64]bool, len(delegated))
 	for _, r := range delegated {
@@ -46,16 +55,17 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 	}
 	active, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
-		return Sidebar{}, fmt.Errorf("list active goals: %w", err)
+		return sb, fmt.Errorf("list active goals: %w", err)
 	}
-	sb := Sidebar{DirectlyUnder: directlyUnderAmong(accountID, accounts)}
-	if sb.NeedsYou, err = s.sidebarNeedsYou(ctx, accountID, s.personalGoalsAmong(active, accountID, isDelegate), byID); err != nil {
-		return Sidebar{}, err
+	needsYou, needsErr := s.sidebarNeedsYou(ctx, accountID, s.personalGoalsAmong(active, accountID, isDelegate), byID)
+	if needsErr == nil {
+		sb.NeedsYou, sb.NeedsYouRead = needsYou, true
 	}
-	if sb.FollowUps, err = s.sidebarFollowUps(ctx, accountID, active, isDelegate, byID); err != nil {
-		return Sidebar{}, err
+	followUps, followErr := s.sidebarFollowUps(ctx, accountID, active, isDelegate, byID)
+	if followErr == nil {
+		sb.FollowUps, sb.FollowUpsRead = followUps, true
 	}
-	return sb, nil
+	return sb, errors.Join(needsErr, followErr)
 }
 
 // sidebarFollowUps counts the Goals the Follow-ups page flags in accountID's

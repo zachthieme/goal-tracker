@@ -286,16 +286,24 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 // withSidebar returns r with what the sidebar shows read into its context,
 // once per request through its page loader (ADR 0010): what needs acc, the
 // Goals Follow-ups flags in acc's default scope, and the people directly
-// under acc for My org. When it can't be read it is left out rather than
-// failing the page.
+// under acc for My org. A part that can't be read is left out rather than
+// failing the page, and the failure is logged at Warn.
 func (s *Server) withSidebar(r *http.Request, acc domain.Account) *http.Request {
 	sb, err := s.svc.Sidebar(r.Context(), acc.ID)
 	if err != nil {
-		return r
+		s.requestLog(r).WarnContext(r.Context(), "sidebar read failed", "method", r.Method, "path", r.URL.Path, "err", err)
 	}
-	ctx := withNeedsYou(r.Context(), sb.NeedsYou)
-	ctx = withFollowUps(ctx, sb.FollowUps)
-	return r.WithContext(withOrgPeople(ctx, sb.DirectlyUnder))
+	ctx := r.Context()
+	if sb.NeedsYouRead {
+		ctx = withNeedsYou(ctx, sb.NeedsYou)
+	}
+	if sb.FollowUpsRead {
+		ctx = withFollowUps(ctx, sb.FollowUps)
+	}
+	if sb.DirectlyUnderRead {
+		ctx = withOrgPeople(ctx, sb.DirectlyUnder)
+	}
+	return r.WithContext(ctx)
 }
 
 // render writes a templ component with the given status. It puts the request
