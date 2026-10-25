@@ -30,7 +30,7 @@ next `start`.
 
 Takes a base URL and a list of shots. It saves a PNG for each shot and prints
 the facts a reviewer checks without opening the image: the theme pin,
-horizontal overflow, the focused element, any toast, and any dialog that
+whether the pointer is a touch screen's coarse one, horizontal overflow, the focused element, any toast, and any dialog that
 opened (a native `confirm()` or an in-page dialog). It drives the Chromium
 already on the machine over the DevTools protocol, so there's nothing to
 install. It drives `$CHROME` if that's set, else the first Chrome-family
@@ -53,6 +53,7 @@ node scripts/shots.mjs "$(scripts/scratch-app url)" '[
   shot:     /dimensions as admin@example.com, OS light, 1280px, after the action
   page:     /dimensions (HTTP 200) "Dimensions · Goal Tracker"
   theme:    not pinned, follows the OS (light); body background rgb(246, 246, 243)
+  pointer:  fine
   overflow: none
   focus:    nothing (body)
   toast:    "Retired Platform from Team. Undo"
@@ -66,6 +67,10 @@ A shot has a `path` and can also set:
 - `pin`: a Theme menu choice to pin.
 - `width` and `height`.
 - `full`: `false` captures only the window.
+- `touch`: `true` emulates a touch screen, as on a tablet. The page's
+  `(pointer:coarse)` rules apply, so it takes the touch type scale, and the
+  shot's facts print `pointer:  coarse`. The default is `false`, a mouse, and
+  the PNG's default name ends in `-touch` when it's `true`.
 - `action`: JavaScript to run in the page first. See below.
 - `dialog`: `accept` or `dismiss` a native dialog. The default is `dismiss`.
 - `status`: the HTTP status the page should end on, such as `404`.
@@ -110,13 +115,14 @@ runs Chromium without one.
 
 `node --test scripts/*.test.mjs` (or `make test-scripts`, which also runs
 `contrast.py`'s self-test) runs the tests of the parts that don't need
-a browser: checking the shots, including the examples above, wrapping
+a browser: checking the shots, including the examples above and `touch`, wrapping
 actions, the status and overflow checks, the part of the page captured, and
 the printed facts. Where Chromium is found, it also takes a `"full": false`
 shot after an action scrolls a page, and checks the shot shows where the
 window scrolled to. It also checks that a shot fails on an element the
 page's clip or a clipping box cuts off, and not on one inside a box that
-scrolls sideways. Without Chromium those tests are skipped.
+scrolls sideways, and that a `touch` shot's page matches `(pointer:coarse)`
+and one without `touch` doesn't. Without Chromium those tests are skipped.
 
 ## `contrast.py`: WCAG contrast of the colour tokens
 
