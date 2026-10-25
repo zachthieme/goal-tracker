@@ -311,7 +311,9 @@ proxy that sends its own `X-Request-ID` of 1 to 64 letters, digits, `_` and
 
 The proxy terminates TLS and forwards to `127.0.0.1:8080`. Nothing special is
 needed: no websockets, no long requests, no path prefix (the app must be served
-at the root of its host name).
+at the root of its host name). Nor does the proxy need to add
+`Strict-Transport-Security`: the app sends it itself, with a one-year
+`max-age`, when `GOAL_TRACKER_BASE_URL` is an https address.
 
 Caddy (gets its own certificate):
 

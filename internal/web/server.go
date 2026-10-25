@@ -34,8 +34,8 @@ type Server struct {
 	app http.Handler
 	// sessions signs and checks the session cookie.
 	sessions sessionCodec
-	// secureCookies marks the session cookie Secure, for an app served over
-	// https.
+	// secureCookies marks the session cookie Secure, and has every response
+	// carry Strict-Transport-Security, for an app served over https.
 	secureCookies bool
 	// oidc, when set, is the org's provider people sign in through; the
 	// development email form is off.
@@ -78,7 +78,9 @@ func WithSessionKey(key []byte) Option {
 }
 
 // WithSecureCookies marks the session cookie Secure, so browsers send it only
-// over https. Set it when the app is served over https.
+// over https, and has every response carry Strict-Transport-Security, so a
+// browser that has reached the app over https comes back only over https. Set
+// it when the app is served over https.
 func WithSecureCookies(secure bool) Option {
 	return func(s *Server) {
 		s.secureCookies = secure
@@ -144,9 +146,10 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 // refuses, with a 403, a request other than GET, HEAD or OPTIONS that a
 // browser says came from another origin, so a page elsewhere can't act as
 // whoever is signed in, and, with a 413, one whose body is over its cap (see
-// requestBodyCap). Every response carries securityHeaders. A handler that
-// panics is answered 500, unless it already wrote a status, and its panic is
-// logged (see recoverHandlerPanic).
+// requestBodyCap). Every response carries securityHeaders, and, when the app
+// is served over https (WithSecureCookies), Strict-Transport-Security. A
+// handler that panics is answered 500, unless it already wrote a status, and
+// its panic is logged (see recoverHandlerPanic).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	id := requestIDFor(r)
@@ -187,6 +190,10 @@ func recoverHandlerPanic(w *accessWriter, r *http.Request, l *slog.Logger, p any
 func (s *Server) serveChecked(w *accessWriter, r *http.Request) {
 	for name, value := range securityHeaders {
 		w.Header().Set(name, value)
+	}
+	if s.secureCookies {
+		// Served over https: have the browser come back only over https.
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 	}
 	limit := requestBodyCap(r)
 	if r.ContentLength > limit {
@@ -235,11 +242,12 @@ func requestBodyCap(r *http.Request) int64 {
 // securityHeaders are set on every response before its handler runs, so a
 // handler that sets one of its own, as the set-password page does with
 // Referrer-Policy, has the last word. They keep the app out of other sites'
-// frames, so a click there can't land on one of its buttons; stop the browser
-// guessing a response's content type; and send the app's addresses as Referer
-// only to the app itself.
+// frames, so a click there can't land on one of its buttons; refuse plugins
+// and any <base> tag, so injected markup can't load either or point the page's
+// relative links elsewhere; stop the browser guessing a response's content
+// type; and send the app's addresses as Referer only to the app itself.
 var securityHeaders = map[string]string{
-	"Content-Security-Policy": "frame-ancestors 'none'",
+	"Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
 	"X-Content-Type-Options":  "nosniff",
 	"Referrer-Policy":         "same-origin",
 }

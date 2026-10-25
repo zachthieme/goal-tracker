@@ -1,12 +1,16 @@
 package web_test
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // postSignInFetchedFrom posts the development sign-in form as a browser would
@@ -51,19 +55,12 @@ func TestACrossSitePostIsRefusedWith403(t *testing.T) {
 	}
 }
 
-// Every response — a page, a static file, a 404, a refused cross-site POST —
-// tells the browser not to show it in a frame on any site, not to guess its
-// content type, and to send its address only to the app itself (#415).
-func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	want := map[string]string{
-		"Content-Security-Policy": "frame-ancestors 'none'",
-		"X-Content-Type-Options":  "nosniff",
-		"Referrer-Policy":         "same-origin",
-	}
+// eachSecurityHeadersResponse requests, from the app at base, a response of
+// each kind the security headers must be on — a page, a static file, a 404, a
+// redirect to sign-in, a refused cross-site POST — and calls check on each,
+// with what it is and its body already read.
+func eachSecurityHeadersResponse(t *testing.T, base string, check func(what string, resp *http.Response)) {
+	t.Helper()
 	for _, c := range []struct{ what, method, path, site string }{
 		{"the sign-in page", http.MethodGet, "/signin", ""},
 		{"a static file", http.MethodGet, "/static/app.css", ""},
@@ -71,7 +68,7 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 		{"a page that needs sign-in", http.MethodGet, "/home", ""},
 		{"a refused cross-site POST", http.MethodPost, "/signin", "cross-site"},
 	} {
-		req, err := http.NewRequestWithContext(t.Context(), c.method, ts.URL+c.path, nil)
+		req, err := http.NewRequestWithContext(t.Context(), c.method, base+c.path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -83,10 +80,49 @@ func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
 			t.Fatalf("%s %s: %v", c.method, c.path, err)
 		}
 		_ = readBody(t, resp)
+		check(fmt.Sprintf("%s (%s %s, status %d)", c.what, c.method, c.path, resp.StatusCode), resp)
+	}
+}
+
+// Every response tells the browser not to show it in a frame on any site, not
+// to load plugins or let a <base> tag move its relative links, not to guess its
+// content type, and to send its address only to the app itself (#415, #491).
+func TestEveryResponseCarriesTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	want := map[string]string{
+		"Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+		"X-Content-Type-Options":  "nosniff",
+		"Referrer-Policy":         "same-origin",
+	}
+	eachSecurityHeadersResponse(t, ts.URL, func(what string, resp *http.Response) {
 		for name, value := range want {
 			if got := resp.Header.Values(name); len(got) != 1 || got[0] != value {
-				t.Errorf("%s (%s %s, status %d): %s is %q, want %q", c.what, c.method, c.path, resp.StatusCode, name, got, value)
+				t.Errorf("%s: %s is %q, want %q", what, name, got, value)
 			}
 		}
+	})
+}
+
+// Served over https, every response tells the browser to reach the app only
+// over https for the next year; served over plain http, none does, since a
+// browser ignores it there and the app may never get https (#491).
+func TestEveryResponseOverHTTPSCarriesStrictTransportSecurity(t *testing.T) {
+	t.Parallel()
+
+	for secure, want := range map[bool][]string{
+		true:  {"max-age=31536000"},
+		false: nil,
+	} {
+		h := testsupport.New(t)
+		ts := httptest.NewServer(web.NewServer(h.Service, web.WithSecureCookies(secure)))
+		t.Cleanup(ts.Close)
+		eachSecurityHeadersResponse(t, ts.URL, func(what string, resp *http.Response) {
+			if got := resp.Header.Values("Strict-Transport-Security"); !slices.Equal(got, want) {
+				t.Errorf("WithSecureCookies(%v), %s: Strict-Transport-Security is %q, want %q", secure, what, got, want)
+			}
+		})
 	}
 }
