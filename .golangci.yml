@@ -30,12 +30,24 @@ linters:
       # generated components take theirs in one: a component's closures read
       # it from templruntime.GeneratedComponentInput.Context, which holds the
       # ctx its Render was given (render passes the request's). So a chain
-      # into a component's closures (page->page$1->...) is reported as
-      # dropping the context, though nothing there makes a new one.
+      # into a component's closures is reported as dropping the context,
+      # though nothing there makes a new one.
+      #
+      # This matches a chain that ends in a component's own closure: a
+      # function, then its first closure (the one templ hands
+      # GeneratedTemplate), then optionally that closure's own closure (a
+      # children block), as in `page->page$1->layout->layout$1->layout$1$2`.
+      # Whatever comes before that end isn't checked. A chain that ends
+      # anywhere else is still reported, such as a closure that calls a
+      # function which passes context.Background() on
+      # (`helper->helper$1->drop`). The text alone can't tell templ's
+      # functions from hand-written ones, so a hand-written chain of the same
+      # shape, a function whose first closure drops the context itself
+      # (`helper->helper$1`), is hidden too.
       - path: ^internal/web/
         linters:
           - contextcheck
-        text: "Function `(\\w+->)*\\w+->\\w+\\$1"
+        text: "^Function `([\\w$]+->)*\\w+->\\w+\\$1(->\\w+\\$1\\$\\d+)?` "
 # Fail on hand-written Go code that isn't gofmt-formatted (simplify is on by
 # default). golangci-lint skips generated files here; make generate-check
 # guards those by regenerating them and diffing against what is committed.
