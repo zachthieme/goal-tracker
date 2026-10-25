@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bufio"
 	"cmp"
 	"fmt"
 	"net/http"
@@ -116,28 +115,28 @@ func (m *RequestMetrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	slices.Sort(routes)
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	out := bufio.NewWriter(w)
-	fmt.Fprintln(out, "# HELP goal_tracker_http_requests_total HTTP requests answered, by method, route pattern and status.")
-	fmt.Fprintln(out, "# TYPE goal_tracker_http_requests_total counter")
+	var out []byte
+	out = append(out, "# HELP goal_tracker_http_requests_total HTTP requests answered, by method, route pattern and status.\n"...)
+	out = append(out, "# TYPE goal_tracker_http_requests_total counter\n"...)
 	for _, k := range requests {
-		fmt.Fprintf(out, "goal_tracker_http_requests_total{method=%s,route=%s,status=\"%d\"} %d\n",
+		out = fmt.Appendf(out, "goal_tracker_http_requests_total{method=%s,route=%s,status=\"%d\"} %d\n",
 			promLabelValue(k.method), promLabelValue(k.route), k.status, counts[k])
 	}
-	fmt.Fprintln(out, "# HELP goal_tracker_http_request_duration_seconds How long HTTP requests took to answer, by route pattern.")
-	fmt.Fprintln(out, "# TYPE goal_tracker_http_request_duration_seconds histogram")
+	out = append(out, "# HELP goal_tracker_http_request_duration_seconds How long HTTP requests took to answer, by route pattern.\n"...)
+	out = append(out, "# TYPE goal_tracker_http_request_duration_seconds histogram\n"...)
 	for _, route := range routes {
 		d, r := durations[route], promLabelValue(route)
 		var cumulative uint64
 		for i, le := range requestDurationBuckets {
 			cumulative += d.buckets[i]
-			fmt.Fprintf(out, "goal_tracker_http_request_duration_seconds_bucket{route=%s,le=\"%s\"} %d\n",
+			out = fmt.Appendf(out, "goal_tracker_http_request_duration_seconds_bucket{route=%s,le=\"%s\"} %d\n",
 				r, strconv.FormatFloat(le, 'g', -1, 64), cumulative)
 		}
-		fmt.Fprintf(out, "goal_tracker_http_request_duration_seconds_bucket{route=%s,le=\"+Inf\"} %d\n", r, d.count)
-		fmt.Fprintf(out, "goal_tracker_http_request_duration_seconds_sum{route=%s} %s\n", r, strconv.FormatFloat(d.sum, 'g', -1, 64))
-		fmt.Fprintf(out, "goal_tracker_http_request_duration_seconds_count{route=%s} %d\n", r, d.count)
+		out = fmt.Appendf(out, "goal_tracker_http_request_duration_seconds_bucket{route=%s,le=\"+Inf\"} %d\n", r, d.count)
+		out = fmt.Appendf(out, "goal_tracker_http_request_duration_seconds_sum{route=%s} %s\n", r, strconv.FormatFloat(d.sum, 'g', -1, 64))
+		out = fmt.Appendf(out, "goal_tracker_http_request_duration_seconds_count{route=%s} %d\n", r, d.count)
 	}
-	_ = out.Flush()
+	_, _ = w.Write(out)
 }
 
 // promLabelValue is v quoted as a label value in the Prometheus text format:
