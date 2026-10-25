@@ -33,9 +33,10 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// main serves the app until SIGINT or SIGTERM asks it to stop, or with the
-// arguments password-link <email>, prints a set-password link for that email
-// and exits.
+// main serves the app until SIGINT or SIGTERM asks it to stop. With the
+// arguments password-link <email>, it prints a set-password link for that
+// email and exits; with healthcheck, it checks the app serving here is healthy
+// and exits non-zero if it isn't.
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -52,12 +53,21 @@ func main() {
 // the first Admin a password.
 const passwordLinkCommand = "password-link"
 
+// healthcheckCommand is the argument that has run check the app's /healthz
+// instead of serving: the image's HEALTHCHECK, which has no curl to do it.
+const healthcheckCommand = "healthcheck"
+
 // run serves the app, configured from the environment, until ctx is done. It
 // then shuts down (see serve), stops the email outbox, the weekly emails and
 // the directory sync, and closes the database. With args password-link <email>, it instead issues
 // a set-password link for the email, creating the Account if there is none,
-// writes it to stdout, and returns. Any other args are ignored.
+// writes it to stdout, and returns. With args healthcheck, it reads only
+// GOAL_TRACKER_ADDR and returns checkHealth's verdict on the app serving
+// there. Any other args are ignored.
 func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == healthcheckCommand {
+		return checkHealth(ctx, addrFromEnv())
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -242,6 +252,34 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
+// healthcheckTimeout is how long checkHealth waits for /healthz to answer.
+const healthcheckTimeout = 3 * time.Second
+
+// checkHealth GETs /healthz from the app listening on addr, through the
+// loopback whatever host addr names, and returns nil on a 200. Any other
+// status, or no answer within healthcheckTimeout, is an error saying which.
+func checkHealth(ctx context.Context, addr string) error {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("%s: GOAL_TRACKER_ADDR: %w", healthcheckCommand, err)
+	}
+	url := "http://" + net.JoinHostPort("127.0.0.1", port) + "/healthz"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("%s: %w", healthcheckCommand, err)
+	}
+	resp, err := (&http.Client{Timeout: healthcheckTimeout}).Do(req)
+	if err != nil {
+		return fmt.Errorf("%s: %w", healthcheckCommand, err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%s: GET %s: %s", healthcheckCommand, url, resp.Status)
+	}
+	return nil
+}
+
 // startDirectorySync syncs from dir now and hourly, in background, until ctx
 // is done, and gives the web app the sync for the Admin page's Sync now.
 func startDirectorySync(ctx context.Context, background *sync.WaitGroup, svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
@@ -335,7 +373,7 @@ type directoryConfig struct {
 
 func loadConfig() (config, error) {
 	cfg := config{
-		addr:         envOr("GOAL_TRACKER_ADDR", ":8080"),
+		addr:         addrFromEnv(),
 		dbPath:       envOr("GOAL_TRACKER_DB", "goal-tracker.db"),
 		timezone:     envOr("GOAL_TRACKER_TIMEZONE", "UTC"),
 		reminderDay:  envOr("GOAL_TRACKER_REMINDER_DAY", "Monday"),
@@ -507,6 +545,11 @@ func parseTrustedProxies(v string) ([]netip.Prefix, error) {
 // it, so one of only whitespace reads as unset.
 func trimmedEnv(key string) string {
 	return strings.TrimSpace(os.Getenv(key))
+}
+
+// addrFromEnv is the address the app listens on: GOAL_TRACKER_ADDR, or :8080.
+func addrFromEnv() string {
+	return envOr("GOAL_TRACKER_ADDR", ":8080")
 }
 
 func envOr(key, fallback string) string {

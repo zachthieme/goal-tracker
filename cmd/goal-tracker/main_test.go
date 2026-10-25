@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"net/url"
 	"os"
@@ -1119,5 +1120,103 @@ func TestARequestOutlastingTheGraceIsCutOff(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Error("the request outlasting the grace is still open 10s on")
+	}
+}
+
+// healthzServer is a stand-in for the app on the loopback, answering
+// GET /healthz with status, and the port it listens on.
+func healthzServer(t *testing.T, status int) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/healthz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(srv.Close)
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
+// goal-tracker healthcheck, with the app answering /healthz with a 200,
+// succeeds and prints nothing. It reads no configuration but
+// GOAL_TRACKER_ADDR, so it runs without what serving needs (a sign-in method,
+// a named timezone), and opens no database.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestTheHealthcheckCommandPassesOnA200(t *testing.T) {
+	clearAuthEnv(t)
+	t.Setenv("GOAL_TRACKER_TIMEZONE", "Local")
+	dbPath := filepath.Join(t.TempDir(), "goal-tracker.db")
+	t.Setenv("GOAL_TRACKER_DB", dbPath)
+	t.Setenv("GOAL_TRACKER_ADDR", ":"+healthzServer(t, http.StatusOK))
+
+	var out bytes.Buffer
+	if err := run(t.Context(), discardLogger(), []string{"healthcheck"}, &out); err != nil {
+		t.Fatalf("healthcheck against a 200: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("healthcheck printed %q", out.String())
+	}
+	if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("healthcheck touched the database at GOAL_TRACKER_DB (stat: %v)", err)
+	}
+}
+
+// goal-tracker healthcheck fails, saying why, when the app answers /healthz
+// with anything but a 200, or when nothing is listening on its port.
+//
+//nolint:paralleltest // sets the process environment
+func TestTheHealthcheckCommandFailsWhenTheAppIsntHealthy(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, closedPort, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ln.Close()
+
+	for name, tc := range map[string]struct{ port, want string }{
+		"503":               {healthzServer(t, http.StatusServiceUnavailable), "503"},
+		"nothing listening": {closedPort, "connection refused"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOAL_TRACKER_ADDR", ":"+tc.port)
+
+			var out bytes.Buffer
+			err := run(t.Context(), discardLogger(), []string{"healthcheck"}, &out)
+			if err == nil {
+				t.Fatal("healthcheck passed")
+			}
+			if !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), "\n") {
+				t.Errorf("healthcheck: %q, want one line saying %q", err, tc.want)
+			}
+			if out.Len() != 0 {
+				t.Errorf("healthcheck printed %q", out.String())
+			}
+		})
+	}
+}
+
+// goal-tracker healthcheck checks the port GOAL_TRACKER_ADDR names, on the
+// loopback, whatever host it names: the app listens there in each case.
+//
+//nolint:paralleltest // sets the process environment
+func TestTheHealthcheckCommandChecksTheLoopbackAtGOAL_TRACKER_ADDRsPort(t *testing.T) {
+	port := healthzServer(t, http.StatusOK)
+	for _, addr := range []string{":" + port, "0.0.0.0:" + port, "goals.example.invalid:" + port} {
+		t.Run(addr, func(t *testing.T) {
+			t.Setenv("GOAL_TRACKER_ADDR", addr)
+
+			if err := run(t.Context(), discardLogger(), []string{"healthcheck"}, io.Discard); err != nil {
+				t.Errorf("healthcheck with GOAL_TRACKER_ADDR=%s: %v", addr, err)
+			}
+		})
 	}
 }

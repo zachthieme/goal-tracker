@@ -45,4 +45,7 @@ ENV GOAL_TRACKER_ADDR=:8080 \
     GOAL_TRACKER_CHROME=/usr/bin/chromium
 VOLUME /data
 EXPOSE 8080
+# The runtime has no curl, so the binary checks its own /healthz on the
+# loopback, at GOAL_TRACKER_ADDR's port.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/usr/local/bin/goal-tracker", "healthcheck"]
 ENTRYPOINT ["/usr/local/bin/goal-tracker"]
