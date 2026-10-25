@@ -196,8 +196,10 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	// go stale.
 	background.Go(func() { svc.RunPrune(ctx, pruneInterval, logger) })
 
-	notifier := notify.New(svc, sender, cfg.baseURL, loc)
-	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
+	// The weekly emails are queued in the outbox for each week's slot. A slot
+	// missed while the app was down is sent once, late, when it next starts.
+	notifier := notify.New(svc, cfg.baseURL, loc)
+	scheduler := notify.NewScheduler(svc, notify.WeeklyJob, weekly, notifier.SendWeekly)
 	background.Go(func() { scheduler.Run(ctx, time.Minute, logger) })
 
 	// Both listeners are open before either serves, so one that can't listen

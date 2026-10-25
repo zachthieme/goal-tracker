@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/notify"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -22,29 +23,171 @@ func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
 		t.Fatalf("ParseWeekly: %v", err)
 	}
 	// The harness clock starts on Friday 2026-01-02.
-	sched := notify.NewScheduler(h.Clock, when, newNotifier(h).SendWeekly)
-	ctx := context.Background()
-
-	tick := func(at time.Time) {
-		t.Helper()
-		h.Clock.Set(at)
-		if err := sched.Tick(ctx); err != nil {
-			t.Fatalf("Tick at %v: %v", at, err)
-		}
-	}
-	tick(time.Date(2026, 1, 5, 8, 59, 0, 0, time.UTC))
+	sched := weeklyScheduler(h, when)
+	tick := ticker(t, h)
+	tick(sched, time.Date(2026, 1, 5, 8, 59, 0, 0, time.UTC))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 0 {
 		t.Fatalf("sent %d emails before Monday 09:00, want none", got)
 	}
-	tick(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
-	tick(time.Date(2026, 1, 5, 9, 1, 0, 0, time.UTC))
+	tick(sched, time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
+	tick(sched, time.Date(2026, 1, 5, 9, 1, 0, 0, time.UTC))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
 		t.Fatalf("sent %d emails on Monday 09:00, want the one reminder", got)
 	}
-	tick(time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC))
+	tick(sched, time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
 		t.Fatalf("sent %d emails by the next Monday 09:00, want 2", got)
 	}
+}
+
+// weeklyScheduler schedules the weekly emails over the harness's Service, as
+// the app does: a Scheduler built on the same database again is the app
+// restarted.
+func weeklyScheduler(h *testsupport.Harness, when notify.Weekly) *notify.Scheduler {
+	return notify.NewScheduler(h.Service, notify.WeeklyJob, when, newNotifier(h).SendWeekly)
+}
+
+// ticker returns a func that sets the harness clock to at and ticks sched,
+// failing the test on error.
+func ticker(t *testing.T, h *testsupport.Harness) func(sched *notify.Scheduler, at time.Time) {
+	return func(sched *notify.Scheduler, at time.Time) {
+		t.Helper()
+		h.Clock.Set(at)
+		if err := sched.Tick(context.Background()); err != nil {
+			t.Fatalf("Tick at %v: %v", at, err)
+		}
+	}
+}
+
+// mondayAt9 is Monday 09:00 UTC weeks weeks after 2026-01-05.
+func mondayAt9(weeks int) time.Time {
+	return time.Date(2026, 1, 5+7*weeks, 9, 0, 0, 0, time.UTC)
+}
+
+// mondays9am is the weekly emails' slot in the tests: Monday 09:00 UTC.
+func mondays9am(t *testing.T) notify.Weekly {
+	t.Helper()
+	when, err := notify.ParseWeekly("Monday", "09:00", time.UTC)
+	if err != nil {
+		t.Fatalf("ParseWeekly: %v", err)
+	}
+	return when
+}
+
+// Restarted 20 seconds after Monday's 09:00 slot, the app sends that week's
+// emails once at its first tick, late, rather than waiting a week, and nothing
+// more until the next slot.
+func TestSchedulerRestartedJustAfterASlotSendsItsEmailsLate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	when := mondays9am(t)
+	tick := ticker(t, h)
+	before := weeklyScheduler(h, when)
+	tick(before, mondayAt9(0).Add(-time.Minute))
+	tick(before, mondayAt9(0))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
+		t.Fatalf("sent %d emails at the first Monday's slot, want the one reminder", got)
+	}
+
+	restarted := weeklyScheduler(h, when)
+	tick(restarted, mondayAt9(1).Add(20*time.Second))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
+		t.Fatalf("sent %d emails on the first tick after the restart, want the week's reminder: 2 in all", got)
+	}
+	for _, at := range []time.Time{mondayAt9(1).Add(time.Minute), mondayAt9(1).Add(time.Hour), mondayAt9(2).Add(-time.Minute)} {
+		tick(restarted, at)
+	}
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
+		t.Errorf("sent %d emails before the next slot, want no more than 2", got)
+	}
+	tick(restarted, mondayAt9(2))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 3 {
+		t.Errorf("sent %d emails at the next slot, want 3", got)
+	}
+}
+
+// Down for three weeks, the app sends the weekly emails once when it starts,
+// not once for each week it missed.
+func TestSchedulerRestartedWeeksLaterSendsOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	when := mondays9am(t)
+	tick := ticker(t, h)
+	before := weeklyScheduler(h, when)
+	tick(before, mondayAt9(0).Add(-time.Minute))
+	tick(before, mondayAt9(0))
+
+	restarted := weeklyScheduler(h, when)
+	tick(restarted, mondayAt9(3).Add(2*time.Hour))
+	tick(restarted, mondayAt9(3).Add(3*time.Hour))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
+		t.Errorf("sent %d emails after three weeks down, want one more run: 2 in all", got)
+	}
+}
+
+// The app started for the first time, just after a slot, sends nothing until
+// the next slot: installing it emails no one by surprise.
+func TestSchedulerFirstStartedJustAfterASlotWaitsForTheNext(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	when := mondays9am(t)
+	tick := ticker(t, h)
+	sched := weeklyScheduler(h, when)
+	tick(sched, mondayAt9(0).Add(20*time.Second))
+	tick(sched, mondayAt9(1).Add(-time.Minute))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 0 {
+		t.Fatalf("sent %d emails before the next slot, want none", got)
+	}
+	// Restarted, too, it still waits.
+	tick(weeklyScheduler(h, when), mondayAt9(1).Add(-time.Minute))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 0 {
+		t.Fatalf("sent %d emails restarted before the next slot, want none", got)
+	}
+	tick(sched, mondayAt9(1))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
+		t.Errorf("sent %d emails at the next slot, want the one reminder", got)
+	}
+}
+
+// Two Schedulers on one database, such as two copies of the app, both run
+// Monday's slot, and each of its emails is queued once.
+func TestSchedulerRunningASlotTwiceQueuesItsEmailsOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, dee, g.ID)
+	when := mondays9am(t)
+	tick := ticker(t, h)
+	one, two := weeklyScheduler(h, when), weeklyScheduler(h, when)
+	tick(one, mondayAt9(0).Add(-time.Minute))
+	tick(two, mondayAt9(0).Add(-time.Minute))
+	tick(one, mondayAt9(0))
+	tick(two, mondayAt9(0))
+
+	if got := recipientsOf(h.Email.Sent()); len(got) != 2 || got[0] != "sam@example.com" || got[1] != "dee@example.com" {
+		t.Errorf("sent to %v, want the Owner's and the Delegate's reminders once each", got)
+	}
+}
+
+// recipientsOf lists who the messages went to, in order.
+func recipientsOf(msgs []email.Message) []string {
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, m.To)
+	}
+	return out
 }
 
 // The day and time are on the company's calendar: Monday 09:00 in Los Angeles
@@ -62,7 +205,7 @@ func TestSchedulerReadsTheTimeInTheOrgsTimezone(t *testing.T) {
 		t.Fatalf("ParseWeekly: %v", err)
 	}
 	runs := 0
-	sched := notify.NewScheduler(h.Clock, when, func(context.Context) error { runs++; return nil })
+	sched := notify.NewScheduler(h.Service, "counting", when, func(context.Context, time.Time) error { runs++; return nil })
 
 	h.Clock.Set(time.Date(2026, 1, 5, 16, 59, 0, 0, time.UTC))
 	if err := sched.Tick(context.Background()); err != nil {

@@ -44,6 +44,20 @@ func WithEmailOutboxLogger(logger *slog.Logger) Option {
 	return func(s *Service) { s.outbox.logger = logger }
 }
 
+// QueueEmails queues msgs in the email outbox together, in the transaction s
+// is bound to or else one of their own, to be sent once it commits and tried
+// again while a send fails.
+func (s *Service) QueueEmails(ctx context.Context, msgs []email.Message) error {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		for _, msg := range msgs {
+			if err := tx.queueEmail(ctx, msg); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // queueEmail queues msg in the email outbox, to be sent once the transaction
 // s is bound to commits, or at once when s is bound to none.
 func (s *Service) queueEmail(ctx context.Context, msg email.Message) error {
