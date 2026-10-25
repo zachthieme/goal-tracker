@@ -17,12 +17,14 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Breaking changes:**
 - [ops] **Sessions**: the session cookie is now signed with its purpose (`session:`) in front of its payload, and the OIDC sign-in flow cookie with its own (`oidc-flow:`), so a signature made for one can't pass as the other. Existing sessions are signed out once and everyone signs in again (#496).
+- [ops] **Configuration**: `GOAL_TRACKER_BASE_URL` is now required with `GOAL_TRACKER_SIGNIN=oidc` and `password`. Without it the app and `goal-tracker password-link` refuse to start ("GOAL_TRACKER_SIGNIN=password needs GOAL_TRACKER_BASE_URL: …"), as they already did without `GOAL_TRACKER_SESSION_KEY`. Until now it fell back to localhost, so an operator behind a TLS proxy who left it out got localhost links in emails and set-password links, an OIDC callback on localhost, and session cookies without `Secure`, with no warning. Set it to where people reach the app, such as `https://goals.example.com`. With `dev` it still defaults from `GOAL_TRACKER_ADDR` (#501).
 
 **New features:**
 - [ops] `goal-tracker healthcheck` GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port, waiting up to 3 seconds, and exits 0 on a 200, or non-zero with one line on stderr saying why. It reads no other setting and opens no database, and the image's new `HEALTHCHECK` runs it every 30 seconds (#476).
 
 **Improvements:**
 - [user] A published Report, its print page and the draft as read by someone who may not manage it now head the narrative with a "Narrative" section heading and rule, as the other sections are headed (#479).
+- [user] A Report's Health summary, on the draft and the publication, is now one compact row headed "Health" that reads "2 Red · 1 Yellow · 3 Green · 6 Check-in overdue", each count with its word beside its chip, instead of four wide tiles with no words; it wraps between counts on a phone (#512).
 
 **Bug fixes:**
 - [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
@@ -35,6 +37,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Done and a Cancelled Check-in sent at the same moment on one Goal, say by its Owner and a Delegate or a double-submit, no longer both go through: the Check-in now reads the Goal inside the transaction that writes it and only changes the Lifecycle it planned from, so the second is refused as if sent after. A No change sent while the Goal is being Cancelled is likewise refused rather than recorded after the Cancel (#487).
 - [user] A Dimension and a Field (or two of either) created at the same moment with one name are no longer both made: the name check now runs inside the transaction that creates the name, so the second is refused (#487).
 - [ops] `/healthz` now reads a table from the database file, so a database file that is missing, unmounted, replaced or unreadable answers `503` rather than `200` (#503).
+- [user] The New goal form's Contributes to search answers at most 20 matches, and reads their Health in one query rather than one per match, so it stays quick as Goals grow (#499).
 
 **Security:**
 - [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
@@ -52,6 +55,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The Goal page's goldens now cover an off-target Metric with its readings, an overdue and a slipped Milestone, an open Ask for help that walks past a Departed Manager, a pending Handoff, an open Parent suggestion and a Nudge, plus the Red Goal's whole History, so a change to how the page loader reads any of them shows in a golden (#466).
 - [internal] The Follow-ups page's HTTP tests read the page through the parser helpers rather than matching its markup: a row is the `follow-up-row` whose Goal cell opens with a link to the Goal, chips, cards, Fixes, popovers and the scope form are read as elements, their attributes with `attrOf`, and a group card's count by a new `follow-up-group-count` test ID. The page's style checks moved to `styles_test.go`, each asserting the class on the element and the property its rule sets. The string row helpers the Nudge and Suggest a parent tests still call moved, unchanged, to `helpers_test.go` (#514).
 - [internal] The PDF test of a render killed for time polls TMPDIR and the working directory against a deadline instead of sleeping a fixed second, and new HTTP tests cover refusing a Goal with a blank title (422), refused link decisions (403, 404) and an import's missing-column flash (#516).
+- [internal] `assertSubmitsAtOnce`, the guard that a form submits without a confirmation dialog, now refuses htmx's `data-hx-confirm` and a `data-hx-on*` handler that calls `confirm(` as it does their `hx-` forms. It picks its form by the parsed `action` value, which must end in the marker, instead of by raw tag text, so a lookalike in another attribute can't send it to the wrong form. It also fails when the form's `</form>` isn't in the page (#482).
 
 **Code quality:**
 - [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
@@ -59,6 +63,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [internal] The e2e gate's comment in `vetinari/config.mts` and `e2e/README.md` say that its `when` pattern only scopes it on a branch: after each wave, vetinari's merged-base gate runs every gate, `make e2e` included, whatever the wave changed (#481).
 - [internal] `CLAUDE.md` gives the measured gate times (`make check` about 3½ minutes, `internal/web` about 3 of it) and asks for a tool timeout of at least 5 minutes, and lists everything `internal/domain/domain.go` holds (#511).
+- [user] The code is licensed under MIT: anyone may use, copy, modify and distribute it, keeping the copyright notice. `LICENSE` holds the text, and the README says so (#524).
 
 ### Collected changes — October 24, 2026
 
