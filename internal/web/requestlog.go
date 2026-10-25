@@ -73,23 +73,33 @@ func (a *accessWriter) Unwrap() http.ResponseWriter {
 }
 
 // logAccess writes the request's access line to l, the request's logger: its
-// method, the route it matched (ServeHTTP fills in the one a refused request
-// was aimed at; "unmatched" only if none could be found), the status it was
-// answered with, the bytes sent, and how long it took since start.
-func (a *accessWriter) logAccess(ctx context.Context, l *slog.Logger, method string, start time.Time) {
-	route := a.route
-	if route == "" {
-		route = "unmatched"
-	}
-	status := a.status
-	if status == 0 {
-		status = http.StatusOK
-	}
+// method, the route it matched (see routeOrUnmatched), the status it was
+// answered with, the bytes sent, and how long it took, elapsed.
+func (a *accessWriter) logAccess(ctx context.Context, l *slog.Logger, method string, elapsed time.Duration) {
 	l.LogAttrs(ctx, slog.LevelInfo, "request",
 		slog.String("method", method),
-		slog.String("route", route),
-		slog.Int("status", status),
+		slog.String("route", a.routeOrUnmatched()),
+		slog.Int("status", a.statusOr200()),
 		slog.Int64("bytes", a.bytes),
-		slog.Float64("duration_ms", float64(time.Since(start))/float64(time.Millisecond)),
+		slog.Float64("duration_ms", float64(elapsed)/float64(time.Millisecond)),
 	)
+}
+
+// routeOrUnmatched is the route the request matched (ServeHTTP fills in the
+// one a refused request was aimed at), or "unmatched" only if none could be
+// found.
+func (a *accessWriter) routeOrUnmatched() string {
+	if a.route == "" {
+		return "unmatched"
+	}
+	return a.route
+}
+
+// statusOr200 is the status the request was answered with: 200 when the
+// handler wrote none.
+func (a *accessWriter) statusOr200() int {
+	if a.status == 0 {
+		return http.StatusOK
+	}
+	return a.status
 }

@@ -54,6 +54,9 @@ type Server struct {
 	// download (see WithPDFRenderer); without it, a PDF download is the print
 	// page, printed from the browser.
 	pdf *pdfDownloads
+	// metrics, when set, counts and times every request answered (see
+	// WithRequestMetrics).
+	metrics *RequestMetrics
 }
 
 // Option configures a Server as NewServer builds it.
@@ -149,7 +152,8 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 // requestBodyCap). Every response carries securityHeaders, and, when the app
 // is served over https (WithSecureCookies), Strict-Transport-Security. A
 // handler that panics is answered 500, unless it already wrote a status, and
-// its panic is logged (see recoverHandlerPanic).
+// its panic is logged (see recoverHandlerPanic). With WithRequestMetrics, each
+// request is recorded there, once, under its access line's route and status.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	id := requestIDFor(r)
@@ -166,7 +170,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// the route it was aimed at.
 			_, aw.route = s.mux.Handler(r)
 		}
-		aw.logAccess(r.Context(), l, r.Method, start)
+		elapsed := time.Since(start)
+		aw.logAccess(r.Context(), l, r.Method, elapsed)
+		if s.metrics != nil {
+			s.metrics.record(r.Method, aw.routeOrUnmatched(), aw.statusOr200(), elapsed)
+		}
 		if p == http.ErrAbortHandler {
 			// net/http aborts the response without logging it.
 			panic(p)
