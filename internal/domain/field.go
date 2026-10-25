@@ -54,11 +54,13 @@ func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldTyp
 	default:
 		return Field{}, fmt.Errorf("%w: a Field holds a number, a short text, a long text or a date", ErrValidation)
 	}
-	if err := s.requireFreeAttributeName(ctx, name); err != nil {
-		return Field{}, err
-	}
 	var field Field
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		// The name is checked in the transaction that creates the Field, so
+		// a Dimension or Field given the name meanwhile is seen.
+		if err := tx.requireFreeAttributeName(ctx, name); err != nil {
+			return err
+		}
 		row, err := tx.queries.CreateField(ctx, db.CreateFieldParams{
 			Name:      name,
 			Type:      fieldType,

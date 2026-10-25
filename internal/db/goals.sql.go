@@ -1028,33 +1028,26 @@ func (q *Queries) SetGoalKind(ctx context.Context, arg SetGoalKindParams) (Goal,
 	return i, err
 }
 
-const setGoalLifecycle = `-- name: SetGoalLifecycle :one
-UPDATE goals SET lifecycle = ? WHERE id = ?
-RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+const setGoalLifecycle = `-- name: SetGoalLifecycle :execrows
+UPDATE goals SET lifecycle = ?1
+WHERE id = ?2 AND lifecycle = ?3
 `
 
 type SetGoalLifecycleParams struct {
-	Lifecycle string
-	ID        int64
+	Lifecycle     string
+	ID            int64
+	FromLifecycle string
 }
 
-func (q *Queries) SetGoalLifecycle(ctx context.Context, arg SetGoalLifecycleParams) (Goal, error) {
-	row := q.db.QueryRowContext(ctx, setGoalLifecycle, arg.Lifecycle, arg.ID)
-	var i Goal
-	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.WhyItMatters,
-		&i.OwnerID,
-		&i.Lifecycle,
-		&i.CreatedAt,
-		&i.Kind,
-		&i.DeliveryDate,
-		&i.CadenceDays,
-		&i.TopLevel,
-		&i.ActivatedAt,
-	)
-	return i, err
+// Move a Goal from_lifecycle to lifecycle; no row changes when it is no
+// longer in from_lifecycle, so a change planned from a Lifecycle another
+// Check-in has since left isn't made.
+func (q *Queries) SetGoalLifecycle(ctx context.Context, arg SetGoalLifecycleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setGoalLifecycle, arg.Lifecycle, arg.ID, arg.FromLifecycle)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setGoalTitle = `-- name: SetGoalTitle :one
