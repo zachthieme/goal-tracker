@@ -499,6 +499,93 @@ func ruleFor(block, sel string) (string, bool) {
 
 var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
+// The Follow-ups row helpers below read a row's markup as a string, for the
+// Nudge and Suggest a parent tests that reach a row from the Follow-ups page
+// (nudges_test.go, suggestions_test.go). followups_test.go reads its rows
+// through the parser instead (followUpRowIn).
+
+// followUpRows returns every row of the Follow-ups page's table.
+func followUpRows(page string) []string {
+	var rows []string
+	for rest := page; ; {
+		start := strings.Index(rest, `<tr data-testid="follow-up-row"`)
+		if start < 0 {
+			return rows
+		}
+		end := strings.Index(rest[start:], "</tr>")
+		if end < 0 {
+			return append(rows, rest[start:])
+		}
+		rows = append(rows, rest[start:start+end])
+		rest = rest[start+end:]
+	}
+}
+
+// followUpRowOf returns the Follow-ups page's one row for g, failing the test unless
+// the table holds exactly one row linking to it.
+func followUpRowOf(t *testing.T, page string, g domain.Goal) string {
+	t.Helper()
+	var found []string
+	for _, row := range followUpRows(page) {
+		if isFollowUpRowOf(row, g) {
+			found = append(found, row)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("the Follow-ups table has %d rows for %q, want 1:\n%s", len(found), g.Title, page)
+	}
+	return found[0]
+}
+
+// isFollowUpRowOf reports whether a Follow-ups table row is g's: its Goal cell links
+// to g.
+func isFollowUpRowOf(row string, g domain.Goal) bool {
+	return strings.Contains(row, `<td data-testid="follow-up-goal" class="rk-goal">`+`<a `+navTo(g.ID)+`>`)
+}
+
+// followUpChip returns a row's chip for one signal kind.
+func followUpChip(t *testing.T, row, kind string) string {
+	t.Helper()
+	start := strings.Index(row, `<span data-testid="follow-up-signal" data-kind="`+kind+`"`)
+	if start < 0 {
+		t.Fatalf("row has no %s chip:\n%s", kind, row)
+	}
+	end := strings.Index(row[start:], "</span>")
+	if end < 0 {
+		t.Fatalf("the %s chip is not closed:\n%s", kind, row)
+	}
+	return row[start : start+end]
+}
+
+// followUpFix returns a row's one Fix: its label, its address (a form's action,
+// for a Fix that posts, and "" for a disabled one), and whether it is the
+// primary button, failing the test unless the fix cell holds exactly one link,
+// one form or one button.
+func followUpFix(t *testing.T, row string) (label, href string, primary bool) {
+	t.Helper()
+	cell := pageElement(t, row, "td", "follow-up-fix")
+	links, forms, buttons := strings.Count(cell, "<a "), strings.Count(cell, "<form "), strings.Count(cell, "<button ")
+	if links+buttons != 1 || forms > buttons {
+		t.Fatalf("fix cell has %d links, %d forms and %d buttons, want one Fix: %s", links, forms, buttons, cell)
+	}
+	if buttons == 1 {
+		_, button, _ := strings.Cut(cell, "<button ")
+		tag := openTag("<button " + button)
+		label, _, _ = strings.Cut(button[len(tag)-len("<button ")+1:], "</button>")
+		if _, form, ok := strings.Cut(cell, "<form "); ok {
+			href = html.UnescapeString(attr(openTag("<form "+form)+">", "action"))
+		}
+		return label, href, strings.Contains(tag, "primary")
+	}
+	_, link, _ := strings.Cut(cell, "<a ")
+	link = "<a " + link
+	tag := openTag(link)
+	_, rest, _ := strings.Cut(tag, `href="`)
+	href, _, _ = strings.Cut(rest, `"`)
+	label, _, _ = strings.Cut(link[len(tag)+1:], "</a>")
+	return label, html.UnescapeString(href), strings.Contains(tag, "primary")
+}
+
 // noRedirects stops client following redirects, so a test sees where a
 // response sends the person.
 func noRedirects(client *http.Client) *http.Client {
@@ -583,14 +670,23 @@ func scopeOrgURL(base, path string, who domain.Account) string {
 // the select carrying testID.
 func scopeSelect(t *testing.T, page, testID string) string {
 	t.Helper()
-	labelled := findAll(parsePage(t, page), func(n *html.Node) bool { return attrOf(n, "aria-label") == "Scope" })
+	scopeSelectIn(t, parsePage(t, page), testID)
+	return pageElement(t, page, "select", testID)
+}
+
+// scopeSelectIn is scopeSelect read from a parsed page: the page's one Scope
+// select, failing the test unless the page has exactly one control labelled
+// Scope and it is the select carrying testID.
+func scopeSelectIn(t *testing.T, root *html.Node, testID string) *html.Node {
+	t.Helper()
+	labelled := findAll(root, func(n *html.Node) bool { return attrOf(n, "aria-label") == "Scope" })
 	if len(labelled) != 1 {
 		t.Fatalf("page has %d controls labelled Scope, want 1", len(labelled))
 	}
 	if n := labelled[0]; n.Data != "select" || attrOf(n, "data-testid") != testID {
 		t.Fatalf("the control labelled Scope isn't the %s select: %s", testID, renderNode(n))
 	}
-	return pageElement(t, page, "select", testID)
+	return labelled[0]
 }
 
 // scopeChoices reads a Scope select's options in order, each by its label,
@@ -601,7 +697,14 @@ func scopeChoices(sel string) (choices []string, selectedValue, selectedLabel st
 	if err != nil {
 		return nil, "", ""
 	}
-	for n := range doc.Descendants() {
+	return selectChoices(doc)
+}
+
+// selectChoices is scopeChoices read from a parsed select, or any element
+// holding one: its options in order, each by its label, those in a group led
+// by the group's label, and the value and label of the one selected, if any.
+func selectChoices(sel *html.Node) (choices []string, selectedValue, selectedLabel string) {
+	for n := range sel.Descendants() {
 		if n.Type != html.ElementNode || n.Data != "option" {
 			continue
 		}

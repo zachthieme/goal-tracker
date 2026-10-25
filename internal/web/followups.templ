@@ -152,7 +152,7 @@ templ followUpCardView(c followUpCard) {
 templ followUpCardLink(c followUpCard) {
 	<a data-testid={ "follow-ups-group-" + c.Key } href={ c.Href } class="rk-group" { c.Attrs()... }>
 		<span class="rk-group-name">{ c.Name }</span>
-		<span class="num">{ strconv.Itoa(c.Count) }</span>
+		<span data-testid="follow-up-group-count" class="num">{ strconv.Itoa(c.Count) }</span>
 		<span class="rk-chips">
 			for _, sig := range c.Signals {
 				<span data-testid="follow-up-signal" data-kind={ sig.Anchor } class={ followUpChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
