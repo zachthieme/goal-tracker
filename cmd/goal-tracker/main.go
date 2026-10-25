@@ -38,9 +38,14 @@ import (
 // email and exits; with healthcheck, it checks the app serving here is healthy
 // and exits non-zero if it isn't.
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	// Read before anything logs, healthcheck included.
+	logger, err := newLogger(os.Stderr, os.Getenv("GOAL_TRACKER_LOG_LEVEL"), os.Getenv("GOAL_TRACKER_LOG_FORMAT"))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "goal-tracker failed:", err)
+		os.Exit(1)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := run(ctx, logger, os.Args[1:], os.Stdout)
+	err = run(ctx, logger, os.Args[1:], os.Stdout)
 	stop()
 	if err != nil {
 		logger.Error("goal-tracker failed", "err", err)
@@ -57,8 +62,10 @@ const passwordLinkCommand = "password-link"
 // instead of serving: the image's HEALTHCHECK, which has no curl to do it.
 const healthcheckCommand = "healthcheck"
 
-// run serves the app, configured from the environment, until ctx is done. It
-// then shuts down (see serve), stops the email outbox, the weekly emails and
+// run serves the app, configured from the environment, until ctx is done,
+// and, with GOAL_TRACKER_METRICS_ADDR set, the app's request metrics on a
+// second listener there (see newMetricsServer). It then shuts both down (see
+// serve), stops the email outbox, the weekly emails and
 // the directory sync, and closes the database. With args password-link <email>, it instead issues
 // a set-password link for the email, creating the Account if there is none,
 // writes it to stdout, and returns. With args healthcheck, it reads only
@@ -170,6 +177,11 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 		webOpts = append(webOpts, startDirectorySync(ctx, &background, svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
 	}
+	var metrics *web.RequestMetrics
+	if cfg.metricsAddr != "" {
+		metrics = web.NewRequestMetrics()
+		webOpts = append(webOpts, web.WithRequestMetrics(metrics))
+	}
 	pdfOpt, err := pdfDownloads(cfg.chrome, logger)
 	if err != nil {
 		return err
@@ -185,13 +197,46 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
 	background.Go(func() { scheduler.Run(ctx, time.Minute, logger) })
 
+	// Both listeners are open before either serves, so one that can't listen
+	// stops startup.
+	var metricsLn net.Listener
+	if metrics != nil {
+		metricsLn, err = net.Listen("tcp", cfg.metricsAddr)
+		if err != nil {
+			return fmt.Errorf("GOAL_TRACKER_METRICS_ADDR: %w", err)
+		}
+		defer func() { _ = metricsLn.Close() }()
+	}
 	ln, err := net.Listen("tcp", cfg.addr)
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
+	if metricsLn != nil {
+		logger.Info("goal-tracker serving metrics", "addr", metricsLn.Addr().String(), "path", "/metrics")
+	}
 	logger.Info("goal-tracker listening", "addr", ln.Addr().String(), "db", cfg.dbPath, "timezone", loc.String(),
 		"weekly_emails", fmt.Sprintf("%s %02d:%02d", weekly.Day, weekly.Hour, weekly.Minute))
-	if err := serve(ctx, newHTTPServer(cfg.addr, srv), ln, shutdownTimeout); err != nil {
+
+	// The metrics listener serves until the app's does, and the app's until
+	// the metrics listener stops on its own.
+	serveCtx, stopServing := context.WithCancel(ctx)
+	defer stopServing()
+	metricsServed := make(chan error, 1)
+	if metricsLn != nil {
+		go func() {
+			err := serve(serveCtx, newMetricsServer(cfg.metricsAddr, metrics), metricsLn, shutdownTimeout)
+			if err != nil {
+				err = fmt.Errorf("metrics: %w", err)
+			}
+			stopServing()
+			metricsServed <- err
+		}()
+	} else {
+		metricsServed <- nil
+	}
+	err = serve(serveCtx, newHTTPServer(cfg.addr, srv), ln, shutdownTimeout)
+	stopServing()
+	if err := errors.Join(err, <-metricsServed); err != nil {
 		return err
 	}
 	logger.Info("goal-tracker stopped serving: every request in flight finished")
@@ -252,6 +297,57 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 	}
+}
+
+// The log formats GOAL_TRACKER_LOG_FORMAT accepts: slog's key=value text
+// lines, or one JSON object a line, for a log collector to parse.
+const (
+	logFormatText = "text"
+	logFormatJSON = "json"
+)
+
+var logFormats = []string{logFormatText, logFormatJSON}
+
+// logLevels are the levels GOAL_TRACKER_LOG_LEVEL accepts, each the least
+// severe record logged.
+var logLevels = map[string]slog.Level{
+	"debug": slog.LevelDebug,
+	"info":  slog.LevelInfo,
+	"warn":  slog.LevelWarn,
+	"error": slog.LevelError,
+}
+
+// newLogger is the app's logger, writing to w at level
+// (GOAL_TRACKER_LOG_LEVEL) in format (GOAL_TRACKER_LOG_FORMAT). Each is read
+// whatever its case, with the space around it trimmed, and defaults, unset,
+// to info and text. Any other value is an error naming its variable and the
+// values it takes.
+func newLogger(w io.Writer, level, format string) (*slog.Logger, error) {
+	lvl, ok := slog.LevelInfo, true
+	if level = strings.TrimSpace(level); level != "" {
+		lvl, ok = logLevels[strings.ToLower(level)]
+	}
+	if !ok {
+		return nil, fmt.Errorf("GOAL_TRACKER_LOG_LEVEL must be one of debug, info, warn, error; got %q", level)
+	}
+	opts := &slog.HandlerOptions{Level: lvl}
+	format = strings.TrimSpace(format)
+	switch strings.ToLower(format) {
+	case "", logFormatText:
+		return slog.New(slog.NewTextHandler(w, opts)), nil
+	case logFormatJSON:
+		return slog.New(slog.NewJSONHandler(w, opts)), nil
+	}
+	return nil, fmt.Errorf("GOAL_TRACKER_LOG_FORMAT must be one of %s; got %q", strings.Join(logFormats, ", "), format)
+}
+
+// newMetricsServer is the HTTP server for GOAL_TRACKER_METRICS_ADDR, addr: it
+// answers GET /metrics with what metrics has recorded, in the Prometheus text
+// format, and anything else 404, with the app's own server's timeouts.
+func newMetricsServer(addr string, metrics *web.RequestMetrics) *http.Server {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics)
+	return newHTTPServer(addr, mux)
 }
 
 // healthcheckTimeout is how long the healthcheck command waits for /healthz
@@ -354,6 +450,10 @@ type config struct {
 	// password sign-in throttle counts a request against; none when it's
 	// unset, and the throttle counts each against the address it came from.
 	trustedProxies []netip.Prefix
+	// metricsAddr, from GOAL_TRACKER_METRICS_ADDR, is where a second listener
+	// serves GET /metrics; "" when it's unset, and no metrics are recorded or
+	// served.
+	metricsAddr string
 }
 
 // The sign-in methods GOAL_TRACKER_SIGNIN accepts: the org's OpenID Connect
@@ -384,6 +484,7 @@ func loadConfig() (config, error) {
 		reminderDay:  envOr("GOAL_TRACKER_REMINDER_DAY", "Monday"),
 		reminderTime: envOr("GOAL_TRACKER_REMINDER_TIME", "09:00"),
 		startAt:      os.Getenv("GOAL_TRACKER_START_AT"),
+		metricsAddr:  trimmedEnv("GOAL_TRACKER_METRICS_ADDR"),
 	}
 	if cfg.timezone == "Local" {
 		return config{}, errors.New("GOAL_TRACKER_TIMEZONE=Local is the host's zone, not an IANA name: set the company's timezone by name, such as America/Los_Angeles")

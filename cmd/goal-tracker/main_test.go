@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1094,15 +1095,22 @@ func serveEnv(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
 	t.Setenv("GOAL_TRACKER_ADDR", "127.0.0.1:0")
+	t.Setenv(metricsAddrVar, "")
 }
 
 // startRun runs the app until ctx is done, returning the address it listens
 // on and where run's error arrives.
 func startRun(t *testing.T, ctx context.Context) (string, <-chan error) {
 	t.Helper()
+	return startRunLogging(t, ctx, slog.DiscardHandler)
+}
+
+// startRunLogging is startRun with what run logs also sent to also.
+func startRunLogging(t *testing.T, ctx context.Context, also slog.Handler) (string, <-chan error) {
+	t.Helper()
 	listening := make(listenAddrs, 1)
 	done := make(chan error, 1)
-	go func() { done <- run(ctx, slog.New(listening), nil, io.Discard) }()
+	go func() { done <- run(ctx, slog.New(slog.NewMultiHandler(listening, also)), nil, io.Discard) }()
 	select {
 	case addr := <-listening:
 		return addr, done
@@ -1378,5 +1386,259 @@ func TestTheHealthcheckCommandTimesOutWhenTheAppNeverAnswers(t *testing.T) {
 	}
 	if waited := time.Since(start); waited > 2*time.Second {
 		t.Errorf("healthcheck waited %v, want about its 200ms timeout", waited)
+	}
+}
+
+// GOAL_TRACKER_LOG_FORMAT=json logs one JSON object a line, for a log
+// collector to parse; text logs slog's key=value lines. Either is read
+// whatever its case, and with the space around it trimmed.
+func TestTheLogFormatIsJSONOrText(t *testing.T) {
+	t.Parallel()
+
+	for _, format := range []string{"json", " JSON "} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, "", format)
+		if err != nil {
+			t.Fatalf("newLogger with format %q: %v", format, err)
+		}
+		logger.Info("hello", "who", "ops")
+		var rec map[string]any
+		if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+			t.Fatalf("format %q logged %q, want a JSON line: %v", format, buf.String(), err)
+		}
+		if rec["msg"] != "hello" || rec["level"] != "INFO" || rec["who"] != "ops" {
+			t.Errorf("format %q logged %v, want an INFO hello from ops", format, rec)
+		}
+	}
+
+	for _, format := range []string{"text", "Text"} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, "", format)
+		if err != nil {
+			t.Fatalf("newLogger with format %q: %v", format, err)
+		}
+		logger.Info("hello", "who", "ops")
+		if line := buf.String(); !strings.Contains(line, "level=INFO msg=hello who=ops\n") || json.Valid(buf.Bytes()) {
+			t.Errorf("format %q logged %q, want a text line", format, line)
+		}
+	}
+}
+
+// GOAL_TRACKER_LOG_LEVEL is the least severe record logged: at warn, an INFO
+// record is dropped and a WARN kept. It is read whatever its case, and with
+// the space around it trimmed.
+func TestTheLogLevelDropsLessSevereRecords(t *testing.T) {
+	t.Parallel()
+
+	for _, level := range []string{"warn", " WARN "} {
+		var buf bytes.Buffer
+		logger, err := newLogger(&buf, level, "")
+		if err != nil {
+			t.Fatalf("newLogger at level %q: %v", level, err)
+		}
+		logger.Info("routine")
+		logger.Warn("worrying")
+		if log := buf.String(); strings.Contains(log, "routine") || !strings.Contains(log, "level=WARN msg=worrying") {
+			t.Errorf("at level %q logged %q, want only the WARN", level, log)
+		}
+	}
+	for level, want := range map[string]slog.Level{"debug": slog.LevelDebug, "info": slog.LevelInfo, "error": slog.LevelError} {
+		logger, err := newLogger(io.Discard, level, "")
+		if err != nil {
+			t.Fatalf("newLogger at level %q: %v", level, err)
+		}
+		if !logger.Enabled(t.Context(), want) || logger.Enabled(t.Context(), want-1) {
+			t.Errorf("at level %q, logs from %v up isn't so", level, want)
+		}
+	}
+}
+
+// Unset, the log is text at INFO, as it always was: an INFO record is logged,
+// a DEBUG one isn't.
+func TestTheLogDefaultsToTextAtInfo(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	logger, err := newLogger(&buf, " ", "")
+	if err != nil {
+		t.Fatalf("newLogger with nothing set: %v", err)
+	}
+	logger.Debug("detail")
+	logger.Info("routine")
+	if log := buf.String(); strings.Contains(log, "detail") || !strings.Contains(log, "level=INFO msg=routine\n") {
+		t.Errorf("with nothing set logged %q, want only the INFO, as text", log)
+	}
+}
+
+// A log level or format the app doesn't know stops startup with an error
+// naming the variable and the values it takes.
+func TestABadLogSettingIsNamed(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		level, format string
+		want          []string
+	}{
+		"level":  {"loud", "", []string{"GOAL_TRACKER_LOG_LEVEL", "debug, info, warn, error", `"loud"`}},
+		"format": {"", "xml", []string{"GOAL_TRACKER_LOG_FORMAT", "text, json", `"xml"`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := newLogger(io.Discard, tc.level, tc.format)
+			if err == nil {
+				t.Fatalf("newLogger accepted level %q, format %q", tc.level, tc.format)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q doesn't name %s", err, want)
+				}
+			}
+		})
+	}
+}
+
+// metricsAddrVar is where the metrics listener listens; unset, there's none.
+const metricsAddrVar = "GOAL_TRACKER_METRICS_ADDR"
+
+// metricsListening is a log handler that sends the address each "goal-tracker
+// serving metrics" record names, so a test learns the port run bound for
+// /metrics.
+type metricsListening chan string
+
+func (l metricsListening) Enabled(context.Context, slog.Level) bool { return true }
+func (l metricsListening) WithAttrs([]slog.Attr) slog.Handler       { return l }
+func (l metricsListening) WithGroup(string) slog.Handler            { return l }
+
+func (l metricsListening) Handle(_ context.Context, r slog.Record) error {
+	if r.Message != "goal-tracker serving metrics" {
+		return nil
+	}
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "addr" {
+			l <- a.Value.String()
+			return false
+		}
+		return true
+	})
+	return nil
+}
+
+// get GETs url and returns the response's status, Content-Type and body.
+func get(t *testing.T, url string) (int, string, string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	return resp.StatusCode, resp.Header.Get("Content-Type"), string(body)
+}
+
+// With GOAL_TRACKER_METRICS_ADDR set, run serves GET /metrics at that address,
+// logging it at startup, counting the requests the app answers; the app's own
+// listener doesn't serve it. Asked to stop, both listeners stop and run
+// returns nil.
+//
+//nolint:paralleltest // sets the process environment, through serveEnv
+func TestMetricsAreServedAtGOAL_TRACKER_METRICS_ADDR(t *testing.T) {
+	serveEnv(t)
+	t.Setenv(metricsAddrVar, "127.0.0.1:0")
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	metrics := make(metricsListening, 1)
+	addr, done := startRunLogging(t, ctx, metrics)
+	var metricsAddr string
+	select {
+	case metricsAddr = <-metrics:
+	default:
+		t.Fatal("run started listening without logging where it serves metrics")
+	}
+
+	if status, _, _ := get(t, "http://"+addr+"/healthz"); status != http.StatusOK {
+		t.Fatalf("GET /healthz: status %d", status)
+	}
+	if status, _, body := get(t, "http://"+addr+"/metrics"); status != http.StatusNotFound || strings.Contains(body, "goal_tracker_http") {
+		t.Errorf("the app's own listener answered GET /metrics %d with %q, want its 404", status, body)
+	}
+	status, contentType, body := get(t, "http://"+metricsAddr+"/metrics")
+	if status != http.StatusOK || contentType != "text/plain; version=0.0.4; charset=utf-8" {
+		t.Errorf("GET /metrics at %s: status %d, Content-Type %q, want 200 in Prometheus text", metricsAddrVar, status, contentType)
+	}
+	if want := `goal_tracker_http_requests_total{method="GET",route="GET /healthz",status="200"} 1` + "\n"; !strings.Contains(body, want) {
+		t.Errorf("GET /metrics at %s:\n%s\nwant the app's GET /healthz counted: %s", metricsAddrVar, body, want)
+	}
+	if status, _, _ := get(t, "http://"+metricsAddr+"/goals"); status != http.StatusNotFound {
+		t.Errorf("the metrics listener answered GET /goals %d, want 404: it serves only /metrics", status)
+	}
+
+	stop()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("run, asked to stop: %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run didn't return within 10s of being asked to stop")
+	}
+	if conn, err := net.Dial("tcp", metricsAddr); err == nil {
+		_ = conn.Close()
+		t.Errorf("the metrics listener still takes connections once run has returned")
+	}
+}
+
+// Unset, GOAL_TRACKER_METRICS_ADDR leaves metrics off: startup logs no
+// metrics address, and the app's listener answers /metrics 404.
+//
+//nolint:paralleltest // sets the process environment, through serveEnv
+func TestMetricsAreOffWithoutGOAL_TRACKER_METRICS_ADDR(t *testing.T) {
+	serveEnv(t)
+	t.Setenv(metricsAddrVar, " ")
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if cfg.metricsAddr != "" {
+		t.Errorf("with %s blank, metrics listen at %q, want nowhere", metricsAddrVar, cfg.metricsAddr)
+	}
+
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	metrics := make(metricsListening, 1)
+	addr, done := startRunLogging(t, ctx, metrics)
+	select {
+	case metricsAddr := <-metrics:
+		t.Errorf("with %s blank, run serves metrics at %s", metricsAddrVar, metricsAddr)
+	default:
+	}
+	if status, _, _ := get(t, "http://"+addr+"/metrics"); status != http.StatusNotFound {
+		t.Errorf("GET /metrics from the app: status %d, want 404", status)
+	}
+	stop()
+	if err := <-done; err != nil {
+		t.Errorf("run, asked to stop: %v, want nil", err)
+	}
+}
+
+// When the metrics listener can't listen at GOAL_TRACKER_METRICS_ADDR, as when
+// something else holds the port, startup stops with an error naming it.
+//
+//nolint:paralleltest // sets the process environment, through serveEnv
+func TestAMetricsAddressInUseStopsStartup(t *testing.T) {
+	serveEnv(t)
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	t.Setenv(metricsAddrVar, taken.Addr().String())
+
+	err = run(t.Context(), discardLogger(), nil, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), metricsAddrVar) {
+		t.Errorf("run with %s in use: %v, want an error naming %s", taken.Addr(), err, metricsAddrVar)
 	}
 }

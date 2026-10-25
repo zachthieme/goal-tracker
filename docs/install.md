@@ -167,6 +167,16 @@ GOAL_TRACKER_REMINDER_TIME=09:00
 # the proxy connect from (see step 7). Unset, X-Forwarded-For is ignored.
 GOAL_TRACKER_TRUSTED_PROXIES=127.0.0.1
 
+# Logs go to stderr, which systemd's journal keeps. The least severe record
+# written (debug, info, warn or error), and text or json lines.
+# GOAL_TRACKER_LOG_LEVEL=info
+# GOAL_TRACKER_LOG_FORMAT=text
+
+# Where Prometheus scrapes GET /metrics, on a listener of its own. Unset, there
+# are no metrics. It has no sign-in, so keep it on a private address (see
+# § Logs and metrics).
+# GOAL_TRACKER_METRICS_ADDR=127.0.0.1:9090
+
 # With GOAL_TRACKER_SIGNIN=oidc, also:
 # GOAL_TRACKER_OIDC_ISSUER=https://login.example.com/
 # GOAL_TRACKER_OIDC_CLIENT_ID=
@@ -179,7 +189,9 @@ with `password`, a missing OIDC variable with `oidc`, or a
 `GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
 `GOAL_TRACKER_CHROME` that isn't there or can't run, a
 `GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP (or is
-an IPv4-mapped CIDR, `::ffff:a.b.c.d/n`, wider than `/96`), or, with
+an IPv4-mapped CIDR, `::ffff:a.b.c.d/n`, wider than `/96`), a
+`GOAL_TRACKER_LOG_LEVEL` or `GOAL_TRACKER_LOG_FORMAT` it doesn't know, a
+`GOAL_TRACKER_METRICS_ADDR` it can't listen on, or, with
 a Chromium, a `TMPDIR` too long for it (see § PDF downloads). Never set
 `GOAL_TRACKER_START_AT`; it's for tests.
 
@@ -208,6 +220,40 @@ bytes, renders still work, but one killed for time may leave
 `org.chromium.Chromium.*` in `TMPDIR`, and startup logs a `WARN` saying so.
 Longer, Chromium can't render at all, and startup stops with an error naming
 `TMPDIR`.
+
+### Logs and metrics
+
+The app logs to stderr: under systemd, `journalctl -u goal-tracker` reads it.
+`GOAL_TRACKER_LOG_LEVEL` sets the least severe record written, `debug`,
+`info` (the default), `warn` or `error`, and `GOAL_TRACKER_LOG_FORMAT` how
+records are written: `text` (the default), slog's `key=value` lines, or
+`json`, one JSON object a line, for a log collector to parse. Either is read
+in any case. Each request gets one `INFO` access line, `msg=request`, with
+its method, route pattern, status, bytes and `duration_ms`, so `warn` leaves
+them out.
+
+Metrics are off unless `GOAL_TRACKER_METRICS_ADDR` is set. With it, say
+`127.0.0.1:9090`, the app serves `GET /metrics` there, on a listener of its
+own, in Prometheus's text format, and startup logs `goal-tracker serving
+metrics` with the address. It exposes two metrics about the requests the app
+answers:
+
+- `goal_tracker_http_requests_total{method, route, status}`, a counter of
+  requests answered;
+- `goal_tracker_http_request_duration_seconds{route}`, a histogram of how long
+  they took, with buckets from 5 ms to 10 s.
+
+`route` is the route's pattern, such as `GET /goals/{id}`, never the path, so
+IDs don't add series; a path no route serves is counted under the catch-all
+that answers it 404 (`GET /`, or `/` for other methods). A method other than
+the standard ones is counted as `OTHER`. The counts start at zero each time
+the app starts.
+
+`/metrics` has no authentication, and the app's own address never serves it.
+Listen on a private address the reverse proxy doesn't forward to, such as the
+loopback for a Prometheus on the same host. In Docker, set it to
+`0.0.0.0:9090` inside the container and publish it only to the host's loopback
+or a private network (`-p 127.0.0.1:9090:9090`).
 
 ## 5. The CSV file
 
@@ -461,6 +507,7 @@ passwords, their passwords still work.
 | OIDC: the provider says the redirect URI doesn't match | `GOAL_TRACKER_BASE_URL` + `/auth/callback` must match what's registered exactly. |
 | Signed out on every request, over https | `GOAL_TRACKER_BASE_URL` is `https`, so cookies are `Secure`; the browser must reach the app over https too. |
 | A Report's PDF download opens its print page, not a file | No Chromium was found: startup logs `PDF downloads fall back to the print page`. Install one, or set `GOAL_TRACKER_CHROME`. |
+| `GOAL_TRACKER_METRICS_ADDR: listen tcp …: bind: address already in use` | Something else listens on the metrics address: pick another port, or stop it. |
 | `GOAL_TRACKER_CHROME: … can't run` | The path is wrong, or the file isn't executable by the service's user. |
 | Nobody has a Manager | The sync failed (Admin page, and `ERROR` in the log), or `GOAL_TRACKER_DIRECTORY_FILE` is unset. |
 | Someone who should be an Admin isn't | They were created before being listed in `GOAL_TRACKER_ADMINS`. An Admin can make them one on the Admin page; see [above](#making-someone-an-admin-later). |
