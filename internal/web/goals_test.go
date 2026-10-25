@@ -6895,3 +6895,28 @@ func TestGoalPageLinkedGoalsLeadWithTheirHealth(t *testing.T) {
 		t.Errorf("a linked Goal's Health and title don't sit on one line: .gp-link-head{%s}", rule)
 	}
 }
+
+// Creating a Goal the domain refuses, with a blank title, answers 422 naming
+// the reason, and creates no Goal.
+func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, boss, ts.URL+"/goals", url.Values{
+		"title":          {"   "},
+		"why_it_matters": {"Shoppers abandon slow carts."},
+	})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "a Goal needs a title") {
+		t.Errorf("the refusal doesn't say a Goal needs a title; body:\n%s", body)
+	}
+	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
+		t.Errorf("ListGoals = %d Goals, %v after a refused create, want none", len(goals), err)
+	}
+}
