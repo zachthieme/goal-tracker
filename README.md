@@ -93,7 +93,9 @@ like.
   a typo like `ada` or `Ada <ada@example.com>` is refused and creates nothing;
   a Departed person can't be issued one either. A link
   works once and expires after 72 hours, and issuing a new one for a person
-  replaces their old one.
+  replaces their old one. Each link issued is logged at INFO with who issued
+  it (the Admin, or `issuer=command-line` for `password-link`), the person it's
+  for and when it expires; the link and its token are never logged.
 - **Setting and resetting.** The link opens a page showing the person's email
   and two password fields. A password is at least 12 characters and at most
   1024 bytes; nothing else is required. Setting it signs the person out of
@@ -179,7 +181,7 @@ WARN. The sync never marks anyone Departed, and someone the directory stops
 listing keeps their last Manager and their last timezone. A sync that fails changes nothing, logs
 the cause at ERROR, and the next one tries again; Manager cycles are kept and
 logged at WARN. The Admin page shows when it last ran and how it went, with
-**Sync now** to run it at once.
+**Sync now** to run it at once; each press is logged at INFO naming the Admin.
 
 With neither source set, there is no sync, and no one has a Manager.
 

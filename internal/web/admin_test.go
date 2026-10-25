@@ -1010,6 +1010,50 @@ func TestNonAdminCantMakeOrRemoveAnAdmin(t *testing.T) {
 	}
 }
 
+// Sync now is logged at INFO with the request's ID, naming the Admin who
+// asked for it.
+func TestSyncNowLogsTheAdminWhoAsked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	sync := directory.NewSync(h.Service, &adminDirectoryFake{}, slog.New(slog.DiscardHandler))
+	srv := web.NewServer(h.Service, web.WithLogger(logger), web.WithDirectorySync(sync))
+
+	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
+	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	signedIn := httptest.NewRecorder()
+	srv.ServeHTTP(signedIn, signIn)
+	buf.Reset()
+
+	w := postWithCookies(srv, "/admin/directory-sync", url.Values{}, signedIn.Result().Cookies())
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("Sync now: status %d, want 303:\n%s", w.Code, w.Body)
+	}
+	var asked []map[string]any
+	for _, rec := range logRecords(t, &buf) {
+		if rec["msg"] == "an Admin asked for a directory sync" {
+			asked = append(asked, rec)
+		}
+	}
+	if len(asked) != 1 {
+		t.Fatalf("logged %d lines of an Admin asking for a sync, want 1:\n%s", len(asked), &buf)
+	}
+	want := map[string]any{
+		"level":       "INFO",
+		"request_id":  w.Header().Get("X-Request-ID"),
+		"admin_id":    float64(ada.ID),
+		"admin_email": "ada@example.com",
+	}
+	for key, value := range want {
+		if asked[0][key] != value {
+			t.Errorf("the line's %s is %v, want %v:\n%v", key, asked[0][key], value, asked[0])
+		}
+	}
+}
+
 // A Sync now whose directory fails logs its ERROR with the request's ID, the
 // same one its access line carries, so an operator can tie the failure to the
 // Admin's press (ticket #436).

@@ -237,16 +237,23 @@ var syncingScript = templ.JSUnsafeFuncCall("this.setAttribute('aria-busy', 'true
 	"const button = this.querySelector('button'); button.disabled = true; button.textContent = 'Syncing…'; " +
 	"return true")
 
-// handleDirectorySyncNow runs the directory sync at once, then brings the Admin
-// back to the Admin page showing how it went. Only an Admin may.
+// handleDirectorySyncNow runs the directory sync at once, logging which Admin
+// asked, then brings the Admin back to the Admin page showing how it went.
+// Only an Admin may.
 func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
 		return
 	}
+	logger := requestLogger(r.Context())
+	logger.Info("an Admin asked for a directory sync", "admin_id", current.ID, "admin_email", current.Email)
 	// The sync is all-or-nothing, so it runs to the end even if the Admin
 	// leaves the page. It logs with the request's ID.
-	s.directorySync.RunWith(context.WithoutCancel(r.Context()), requestLogger(r.Context()))
+	out := s.directorySync.RunForAdmin(context.WithoutCancel(r.Context()), logger, current.ID)
+	if errors.Is(out.Err, domain.ErrNotAuthorized) {
+		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
+		return
+	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 

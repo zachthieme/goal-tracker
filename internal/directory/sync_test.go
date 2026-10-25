@@ -3,8 +3,10 @@ package directory_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -138,5 +140,74 @@ func TestRunWithLogsToTheLoggerItIsGiven(t *testing.T) {
 	}
 	if own.Len() != 0 {
 		t.Errorf("RunWith logged %q to NewSync's logger, want nothing", own.String())
+	}
+}
+
+// listDirectory lists whoever it's been set to, and counts how often it's
+// been read.
+type listDirectory struct {
+	mu     sync.Mutex
+	people []domain.DirectoryPerson
+	reads  int
+}
+
+func (d *listDirectory) People(context.Context) ([]domain.DirectoryPerson, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.reads++
+	return d.people, nil
+}
+
+func (d *listDirectory) set(people ...domain.DirectoryPerson) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.people = people
+}
+
+func (d *listDirectory) readCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.reads
+}
+
+// A sync on an Admin's behalf, like Sync now, is refused for anyone else with
+// ErrNotAuthorized: the directory isn't read, no Account changes, and Last
+// still reports the run before. An Admin's runs as any other does.
+func TestRunForAdminRefusesANonAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	dir := &listDirectory{}
+	dir.set(domain.DirectoryPerson{Email: "ceo@example.com"})
+	s := directory.NewSync(h.Service, dir, slog.New(slog.DiscardHandler))
+	before := s.Run(t.Context())
+	h.Clock.Advance(time.Hour)
+
+	dir.set(domain.DirectoryPerson{Email: "new.hire@example.com", ManagerEmail: "ceo@example.com"})
+	refused := s.RunForAdmin(t.Context(), slog.New(slog.DiscardHandler), sam.ID)
+	if !errors.Is(refused.Err, domain.ErrNotAuthorized) {
+		t.Errorf("a non-Admin's sync: %+v, want ErrNotAuthorized", refused)
+	}
+	if got := dir.readCount(); got != 1 {
+		t.Errorf("the directory was read %d times, want once, before the refused sync", got)
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "new.hire@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a non-Admin's sync made an Account for the new hire (err %v)", err)
+	}
+	if last, ok := s.Last(); !ok || last != before {
+		t.Errorf("Last after a refused sync: %+v, want the run before, %+v", last, before)
+	}
+
+	ran := s.RunForAdmin(t.Context(), slog.New(slog.DiscardHandler), ada.ID)
+	if ran.Err != nil || ran.People != 1 {
+		t.Errorf("an Admin's sync: %+v, want 1 person read", ran)
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "new.hire@example.com"); err != nil {
+		t.Errorf("an Admin's sync made no Account for the new hire: %v", err)
+	}
+	if last, _ := s.Last(); last != ran {
+		t.Errorf("Last after an Admin's sync: %+v, want %+v", last, ran)
 	}
 }
