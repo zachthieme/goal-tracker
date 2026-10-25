@@ -160,9 +160,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(requestIDHeader, id)
 	l := s.log.With("request_id", id)
 	aw := &accessWriter{ResponseWriter: w}
-	defer func() {
+	defer func() { //nolint:contextcheck // false positive: the closure passes r.Context(), the caller's context, through the captured r
 		p := recover()
-		if p != nil && p != http.ErrAbortHandler {
+		if p != nil && p != http.ErrAbortHandler { //nolint:errorlint // net/http panics with the sentinel itself, never wrapped, and compares it with == too
 			recoverHandlerPanic(aw, r, l, p)
 		}
 		if aw.route == "" {
@@ -175,7 +175,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if s.metrics != nil {
 			s.metrics.record(r.Method, aw.routeOrUnmatched(), aw.statusOr200(), elapsed)
 		}
-		if p == http.ErrAbortHandler {
+		if p == http.ErrAbortHandler { //nolint:errorlint // net/http panics with the sentinel itself, never wrapped, and compares it with == too
 			// net/http aborts the response without logging it.
 			panic(p)
 		}

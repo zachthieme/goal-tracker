@@ -26,7 +26,7 @@ func rootElement(t *testing.T, page string) string {
 // getWithTheme fetches rawURL with the theme cookie set to value.
 func getWithTheme(t *testing.T, client *http.Client, rawURL, value string) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, rawURL, http.NoBody)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, http.NoBody)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -35,6 +35,7 @@ func getWithTheme(t *testing.T, client *http.Client, rawURL, value string) strin
 	if err != nil {
 		t.Fatalf("GET %s: %v", rawURL, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: status %d", rawURL, resp.StatusCode)
 	}
@@ -106,6 +107,7 @@ func TestChoosingAThemePinsItAndSystemClearsIt(t *testing.T) {
 
 	for _, choice := range []string{"dark", "light"} {
 		resp := chooseTheme(t, client, ts.URL, choice, "/home")
+		defer func() { _ = resp.Body.Close() }()
 		c := themeCookieIn(resp)
 		if c == nil || c.Value != choice {
 			t.Fatalf("choosing %s: cookie %v, want %s", choice, c, choice)
@@ -122,6 +124,7 @@ func TestChoosingAThemePinsItAndSystemClearsIt(t *testing.T) {
 	}
 
 	resp := chooseTheme(t, client, ts.URL, "system", "/home")
+	defer func() { _ = resp.Body.Close() }()
 	if c := themeCookieIn(resp); c == nil || c.MaxAge >= 0 {
 		t.Errorf("choosing system does not clear the cookie: %v", c)
 	}
@@ -152,6 +155,7 @@ func TestChoosingAThemeReturnsToThePage(t *testing.T) {
 		{"javascript:alert(1)", "/home"},
 	} {
 		resp := chooseTheme(t, client, ts.URL, "dark", tc.back)
+		defer func() { _ = resp.Body.Close() }()
 		if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != tc.want {
 			t.Errorf("choosing from %q: status %d to %q, want 303 to %q", tc.back, resp.StatusCode, loc, tc.want)
 		}
@@ -171,21 +175,23 @@ func TestThemeChoiceOutlivesTheSession(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar}
 
-	if resp := chooseTheme(t, client, ts.URL, "dark", "/signin"); resp.StatusCode != http.StatusSeeOther {
+	resp := chooseTheme(t, client, ts.URL, "dark", "/signin")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("choosing before sign-in: status %d, want 303", resp.StatusCode)
 	}
 	if root := rootElement(t, getBody(t, client, ts.URL+"/signin")); !strings.Contains(root, `data-theme="dark"`) {
 		t.Errorf("sign-in page after choosing dark: root %s", root)
 	}
-	_ = readBody(t, postForm(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}}))
+	_ = postFormBody(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
 	if root := rootElement(t, getBody(t, client, ts.URL+"/home")); !strings.Contains(root, `data-theme="dark"`) {
 		t.Errorf("Home after signing in: root %s", root)
 	}
-	_ = readBody(t, postForm(t, client, ts.URL+"/signout", nil))
+	_ = postFormBody(t, client, ts.URL+"/signout", nil)
 	if root := rootElement(t, getBody(t, client, ts.URL+"/signin")); !strings.Contains(root, `data-theme="dark"`) {
 		t.Errorf("sign-in page after signing out: root %s", root)
 	}
-	_ = readBody(t, postForm(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}}))
+	_ = postFormBody(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
 	if root := rootElement(t, getBody(t, client, ts.URL+"/home")); !strings.Contains(root, `data-theme="dark"`) {
 		t.Errorf("Home after signing in again: root %s", root)
 	}
@@ -333,7 +339,9 @@ func TestThemeCookieIsHTTPOnlyAndSameSiteLax(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, choice := range []string{"dark", "light", "system"} {
-		c := themeCookieIn(chooseTheme(t, client, ts.URL, choice, "/home"))
+		resp := chooseTheme(t, client, ts.URL, choice, "/home")
+		defer func() { _ = resp.Body.Close() }()
+		c := themeCookieIn(resp)
 		if c == nil {
 			t.Fatalf("choosing %s sets no theme cookie", choice)
 		}

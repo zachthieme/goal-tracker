@@ -277,7 +277,6 @@ func TestDeclineParentSuggestionAndUndo(t *testing.T) {
 func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	for _, c := range []struct {
 		name   string
 		change func(h *testsupport.Harness, sam, pat domain.Account, goal, parent domain.Goal)
@@ -287,7 +286,7 @@ func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
 		}},
 		{"the link requested and rejected", func(h *testsupport.Harness, sam, pat domain.Account, goal, parent domain.Goal) {
 			link := h.RequestLink(sam, goal, parent, "")
-			if _, err := h.Service.RejectLink(ctx, link.ID, pat.ID); err != nil {
+			if _, err := h.Service.RejectLink(t.Context(), link.ID, pat.ID); err != nil {
 				t.Fatalf("RejectLink: %v", err)
 			}
 		}},
@@ -295,7 +294,7 @@ func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
 			endGoal(t, h, pat, parent, domain.LifecycleDone)
 		}},
 		{"the Goal On Hold", func(h *testsupport.Harness, sam, _ domain.Account, goal, _ domain.Goal) {
-			if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
 				GoalID: goal.ID, AuthorID: sam.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget.",
 			}); err != nil {
 				t.Fatalf("SubmitCheckin: %v", err)
@@ -309,20 +308,20 @@ func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
 			pat := h.SignIn("pat@example.com")
 			goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
 			parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
-			s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+			s, err := h.Service.SuggestParent(t.Context(), pat.ID, goal.ID, parent.ID, "")
 			if err != nil {
 				t.Fatalf("SuggestParent: %v", err)
 			}
-			token, err := h.Service.DeclineParentSuggestion(ctx, sam.ID, s.ID)
+			token, err := h.Service.DeclineParentSuggestion(t.Context(), sam.ID, s.ID)
 			if err != nil {
 				t.Fatalf("DeclineParentSuggestion: %v", err)
 			}
 			h.Clock.Advance(time.Minute)
 			c.change(h, sam, pat, goal, parent)
-			if err := h.Service.UndoDeclineParentSuggestion(ctx, sam.ID, s.ID, token); !errors.Is(err, domain.ErrValidation) {
+			if err := h.Service.UndoDeclineParentSuggestion(t.Context(), sam.ID, s.ID, token); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("err = %v, want ErrValidation", err)
 			}
-			if got, _ := h.Service.ParentSuggestion(ctx, s.ID); got.Status != domain.SuggestionDeclined {
+			if got, _ := h.Service.ParentSuggestion(t.Context(), s.ID); got.Status != domain.SuggestionDeclined {
 				t.Errorf("Status = %q, want still declined", got.Status)
 			}
 		})
@@ -366,7 +365,6 @@ func TestWithdrawParentSuggestion(t *testing.T) {
 func TestParentSuggestionNoLongerApplies(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	for _, c := range []struct {
 		name string
 		// before runs ahead of the suggestion, after once it's made; kim owns
@@ -388,7 +386,7 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 		}, true},
 		{"the parent On Hold", func(h *testsupport.Harness, _, kim domain.Account, _, parent domain.Goal) func() {
 			return func() {
-				if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+				if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
 					GoalID: parent.ID, AuthorID: kim.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget.",
 				}); err != nil {
 					t.Fatalf("SubmitCheckin: %v", err)
@@ -407,27 +405,27 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 		}, true},
 		{"a rejected request restored", func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func() {
 			link := h.RequestLink(sam, goal, parent, "")
-			rejection, err := h.Service.RejectLink(ctx, link.ID, kim.ID)
+			rejection, err := h.Service.RejectLink(t.Context(), link.ID, kim.ID)
 			if err != nil {
 				t.Fatalf("RejectLink: %v", err)
 			}
 			return func() {
-				if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, kim.ID, rejection.UndoToken); err != nil {
+				if _, err := h.Service.RestoreLinkRequest(t.Context(), rejection.ID, kim.ID, rejection.UndoToken); err != nil {
 					t.Fatalf("RestoreLinkRequest: %v", err)
 				}
 			}
 		}, true},
 		{"a removed link restored", func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func() {
 			link := h.RequestLink(sam, goal, parent, "")
-			if _, err := h.Service.AcceptLink(ctx, link.ID, kim.ID); err != nil {
+			if _, err := h.Service.AcceptLink(t.Context(), link.ID, kim.ID); err != nil {
 				t.Fatalf("AcceptLink: %v", err)
 			}
-			removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+			removal, err := h.Service.RemoveLink(t.Context(), link.ID, sam.ID)
 			if err != nil {
 				t.Fatalf("RemoveLink: %v", err)
 			}
 			return func() {
-				if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken); err != nil {
+				if _, err := h.Service.RestoreLink(t.Context(), removal.ID, sam.ID, removal.UndoToken); err != nil {
 					t.Fatalf("RestoreLink: %v", err)
 				}
 			}
@@ -442,14 +440,14 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 			goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
 			parent := h.ActiveGoal(kim, "Reduce outages", "Outages cost trust.")
 			after := c.before(h, sam, kim, goal, parent)
-			s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+			s, err := h.Service.SuggestParent(t.Context(), pat.ID, goal.ID, parent.ID, "")
 			if err != nil {
 				t.Fatalf("SuggestParent: %v", err)
 			}
 			h.Clock.Advance(time.Minute)
 			after()
 
-			got, err := h.Service.ParentSuggestion(ctx, s.ID)
+			got, err := h.Service.ParentSuggestion(t.Context(), s.ID)
 			if err != nil {
 				t.Fatalf("ParentSuggestion: %v", err)
 			}

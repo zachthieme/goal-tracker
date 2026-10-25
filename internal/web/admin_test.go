@@ -32,10 +32,11 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 	h.SignIn("ada@example.com")
 	h.SignIn("sam@example.com")
 
-	resp, err := signInClient(t, ts.URL, "sam@example.com").Get(ts.URL + "/admin")
+	resp, err := ctxGet(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/admin")
 	if err != nil {
 		t.Fatalf("GET /admin: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin GET /admin: status %d, want 403; body:\n%s", resp.StatusCode, body)
 	}
@@ -219,10 +220,11 @@ func TestAdminPageListsDepartedPeople(t *testing.T) {
 		t.Errorf("Departed list's confirmation speaks of an Owner, but not everyone listed owns a Goal:\n%s", list)
 	}
 
-	resp, err := signInClient(t, ts.URL, "pat@example.com").Get(ts.URL + "/admin")
+	resp, err := ctxGet(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/admin")
 	if err != nil {
 		t.Fatalf("GET /admin: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-departed") {
 		t.Errorf("non-Admin GET /admin: status %d, want 403 without the list", resp.StatusCode)
 	}
@@ -245,7 +247,7 @@ func TestAdminMarksDepartedPersonReturnedFromAdminPage(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/accounts/%d/return", ts.URL, kim.ID), nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("%s/accounts/%d/return", ts.URL, kim.ID), nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -254,6 +256,7 @@ func TestAdminMarksDepartedPersonReturnedFromAdminPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST return: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/admin" {
 		t.Fatalf("after Mark returned: status %d at %s, want 200 at /admin", resp.StatusCode, resp.Request.URL.Path)
@@ -311,6 +314,7 @@ func pressSyncNow(t *testing.T, client *http.Client, base string) string {
 		t.Fatalf("the sync has no Sync now button posting to /admin/directory-sync:\n%s", section)
 	}
 	resp := postForm(t, client, base+"/admin/directory-sync", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/admin" {
 		t.Fatalf("after Sync now: status %d at %s, want 200 at /admin:\n%s", resp.StatusCode, resp.Request.URL.Path, body)
@@ -405,11 +409,12 @@ func TestNonAdminCantSeeOrRunTheDirectorySync(t *testing.T) {
 		var resp *http.Response
 		if req.method == http.MethodGet {
 			var err error
-			if resp, err = sam.Get(ts.URL + req.path); err != nil {
+			if resp, err = ctxGet(t, sam, ts.URL+req.path); err != nil {
 				t.Fatal(err)
 			}
 		} else {
 			resp = postForm(t, sam, ts.URL+req.path, url.Values{})
+			defer func() { _ = resp.Body.Close() }()
 		}
 		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-directory-sync") {
 			t.Errorf("non-Admin %s %s: status %d, want 403 without the sync", req.method, req.path, resp.StatusCode)
@@ -443,6 +448,7 @@ func TestAdminPageHasNoDirectorySyncWhenUnconfigured(t *testing.T) {
 		}
 	}
 	resp := postForm(t, noRedirects(client), ts.URL+"/admin/directory-sync", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("POST /admin/directory-sync unconfigured: status %d, want 404:\n%s", resp.StatusCode, body)
 	}
@@ -481,6 +487,7 @@ func issuePasswordLink(t *testing.T, client *http.Client, base, emailAddr string
 		t.Fatalf("the card has no email field and Issue link button posting to /admin/password-links:\n%s", section)
 	}
 	resp := postForm(t, noRedirects(client), base+"/admin/password-links", url.Values{"email": {emailAddr}})
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode, readBody(t, resp)
 }
 
@@ -631,7 +638,7 @@ func passwordLogServer(t *testing.T, h *testsupport.Harness, emailAddr string, o
 	srv := web.NewServer(h.Service, append([]web.Option{web.WithPasswordSignIn(), web.WithLogger(logger)}, opts...)...)
 	const password = "a password for tests"
 	givePassword(t, h, emailAddr, password)
-	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {emailAddr}, "password": {password}}.Encode()))
+	signIn := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {emailAddr}, "password": {password}}.Encode()))
 	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	signedIn := httptest.NewRecorder()
 	srv.ServeHTTP(signedIn, signIn)
@@ -643,8 +650,9 @@ func passwordLogServer(t *testing.T, h *testsupport.Harness, emailAddr string, o
 }
 
 // postWithCookies serves a form POST to path, with cookies, through srv.
-func postWithCookies(srv *web.Server, path string, form url.Values, cookies []*http.Cookie) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+func postWithCookies(t *testing.T, srv *web.Server, path string, form url.Values, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	for _, c := range cookies {
 		r.AddCookie(c)
@@ -664,7 +672,7 @@ func TestIssuingASetPasswordLinkIsLogged(t *testing.T) {
 	ada := h.SignIn("ada@example.com")
 	srv, buf, cookies := passwordLogServer(t, h, "ada@example.com")
 
-	w := postWithCookies(srv, "/admin/password-links", url.Values{"email": {"kim@example.com"}}, cookies)
+	w := postWithCookies(t, srv, "/admin/password-links", url.Values{"email": {"kim@example.com"}}, cookies)
 	if w.Code != http.StatusOK {
 		t.Fatalf("Issue link: status %d, want 200:\n%s", w.Code, w.Body)
 	}
@@ -718,6 +726,7 @@ func TestNonAdminCantIssueASetPasswordLink(t *testing.T) {
 	sam := passwordSignInClient(t, h, ts.URL, "sam@example.com")
 
 	resp := postForm(t, noRedirects(sam), ts.URL+"/admin/password-links", url.Values{"email": {"kim@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "/set-password?token=") {
 		t.Errorf("non-Admin POST /admin/password-links: status %d, want 403 with no link:\n%s", resp.StatusCode, body)
 	}
@@ -743,6 +752,7 @@ func TestAdminPageHasNoSetPasswordLinksWithoutPasswordSignIn(t *testing.T) {
 		}
 	}
 	resp := postForm(t, noRedirects(client), ts.URL+"/admin/password-links", url.Values{"email": {"kim@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("POST /admin/password-links without password sign-in: status %d, want 404:\n%s", resp.StatusCode, body)
 	}
@@ -841,10 +851,11 @@ func makeAdmin(t *testing.T, client *http.Client, base, emailAddr string) *http.
 // adminPageStatus is the status client gets opening the Admin page.
 func adminPageStatus(t *testing.T, client *http.Client, base string) int {
 	t.Helper()
-	resp, err := client.Get(base + "/admin")
+	resp, err := ctxGet(t, client, base+"/admin")
 	if err != nil {
 		t.Fatalf("GET /admin: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	return resp.StatusCode
 }
@@ -866,6 +877,7 @@ func TestAdminMakesSomeoneAnAdminFromTheAdminPage(t *testing.T) {
 	}
 
 	resp := makeAdmin(t, ada, ts.URL, " Sam@Example.com ")
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/admin#admin-admins" {
 		t.Errorf("Make Admin: status %d to %q, want 303 to /admin#admin-admins", resp.StatusCode, resp.Header.Get("Location"))
@@ -899,6 +911,7 @@ func TestAdminCantMakeAnAdminOfSomeoneWithoutAnAccount(t *testing.T) {
 		{"  ", "", "Enter the person's email."},
 	} {
 		resp := makeAdmin(t, client, ts.URL, tc.typed)
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("Make Admin %q: status %d, want 422", tc.typed, resp.StatusCode)
@@ -941,6 +954,7 @@ func TestAdminRemovesAnotherAdminFromTheAdminPage(t *testing.T) {
 	kimClient := signInClient(t, ts.URL, "kim@example.com")
 
 	resp := removeAdmin(t, ada, ts.URL, fmt.Sprint(kim.ID))
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/admin#admin-admins" {
 		t.Errorf("Remove Admin: status %d to %q, want 303 to /admin#admin-admins", resp.StatusCode, resp.Header.Get("Location"))
@@ -965,6 +979,7 @@ func TestAdminCantRemoveTheirOwnAdminRole(t *testing.T) {
 	client := signInClient(t, ts.URL, "ada@example.com")
 
 	resp := removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID))
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("Remove Admin of yourself: status %d, want 422", resp.StatusCode)
@@ -977,6 +992,7 @@ func TestAdminCantRemoveTheirOwnAdminRole(t *testing.T) {
 
 	for _, id := range []string{fmt.Sprint(ada.ID + 1000), "nobody"} {
 		resp := removeAdmin(t, client, ts.URL, id)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("Remove Admin of %q: status %d, want 404:\n%s", id, resp.StatusCode, body)
 		}
@@ -995,11 +1011,13 @@ func TestNonAdminCantMakeOrRemoveAnAdmin(t *testing.T) {
 	h.SignIn("kim@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for what, resp := range map[string]*http.Response{
-		"Make Admin":               makeAdmin(t, client, ts.URL, "kim@example.com"),
-		"Remove Admin of an Admin": removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID)),
-		"Remove Admin of yourself": removeAdmin(t, client, ts.URL, fmt.Sprint(sam.ID)),
+	for what, press := range map[string]func() *http.Response{
+		"Make Admin":               func() *http.Response { return makeAdmin(t, client, ts.URL, "kim@example.com") },
+		"Remove Admin of an Admin": func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID)) },
+		"Remove Admin of yourself": func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(sam.ID)) },
 	} {
+		resp := press()
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-admins") {
 			t.Errorf("non-Admin %s: status %d, want 403 without the Admin page:\n%s", what, resp.StatusCode, body)
 		}
@@ -1022,13 +1040,13 @@ func TestSyncNowLogsTheAdminWhoAsked(t *testing.T) {
 	sync := directory.NewSync(h.Service, &adminDirectoryFake{}, slog.New(slog.DiscardHandler))
 	srv := web.NewServer(h.Service, web.WithLogger(logger), web.WithDirectorySync(sync))
 
-	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
+	signIn := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
 	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	signedIn := httptest.NewRecorder()
 	srv.ServeHTTP(signedIn, signIn)
 	buf.Reset()
 
-	w := postWithCookies(srv, "/admin/directory-sync", url.Values{}, signedIn.Result().Cookies())
+	w := postWithCookies(t, srv, "/admin/directory-sync", url.Values{}, signedIn.Result().Cookies())
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("Sync now: status %d, want 303:\n%s", w.Code, w.Body)
 	}
@@ -1067,13 +1085,13 @@ func TestSyncNowLogsItsFailureWithTheRequestsID(t *testing.T) {
 	sync := directory.NewSync(h.Service, dir, logger)
 	srv := web.NewServer(h.Service, web.WithLogger(logger), web.WithDirectorySync(sync))
 
-	signIn := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
+	signIn := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signin", strings.NewReader(url.Values{"email": {"ada@example.com"}}.Encode()))
 	signIn.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	signedIn := httptest.NewRecorder()
 	srv.ServeHTTP(signedIn, signIn)
 	buf.Reset()
 
-	r := httptest.NewRequest(http.MethodPost, "/admin/directory-sync", strings.NewReader(""))
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/directory-sync", strings.NewReader(""))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	for _, c := range signedIn.Result().Cookies() {
 		r.AddCookie(c)

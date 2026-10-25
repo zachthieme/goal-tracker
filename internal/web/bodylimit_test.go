@@ -25,6 +25,7 @@ func TestAFormOverOneMiBIsTooLarge(t *testing.T) {
 	sam := signInClient(t, ts.URL, "sam@example.com")
 
 	resp := postForm(t, sam, ts.URL+"/goals", url.Values{"title": {strings.Repeat("x", 1<<20)}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("POST /goals with a body over 1 MiB: status %d, want 413", resp.StatusCode)
@@ -58,6 +59,7 @@ func TestAnImportOverItsCapIsTooLarge(t *testing.T) {
 
 	csv := webImportCSV + strings.Repeat("\n", 6<<20)
 	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", csv, "dry-run")
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("POST /imports with a 6 MiB file: status %d, want 413", resp.StatusCode)
@@ -82,6 +84,7 @@ func TestAChunkedFormOverOneMiBIsTooLarge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /goals: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("POST /goals with a chunked body over 1 MiB: status %d, want 413", resp.StatusCode)
@@ -147,6 +150,7 @@ func TestASignedOutImportOverOneMiBIsTooLarge(t *testing.T) {
 
 	csv := webImportCSV + strings.Repeat("\n", 2<<20)
 	resp := postImportRaw(t, noRedirects(http.DefaultClient), ts.URL+"/imports", "goals.csv", csv, "dry-run")
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Errorf("signed-out POST /imports with a 2 MiB file: status %d, want 413", resp.StatusCode)
@@ -180,10 +184,11 @@ func TestASignedInChunkedImportIsRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Wrapped so the client can't tell its length and sends it in chunks.
-		resp, err := admin.Post(ts.URL+"/imports", mw.FormDataContentType(), io.NopCloser(&buf))
+		resp, err := ctxPost(t, admin, ts.URL+"/imports", mw.FormDataContentType(), io.NopCloser(&buf))
 		if err != nil {
 			t.Fatalf("%s: POST /imports: %v", name, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			_ = readBody(t, resp)
 			t.Errorf("%s chunked import: status %d, want 200", name, resp.StatusCode)

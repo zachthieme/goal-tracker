@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -11,7 +9,7 @@ import (
 // test needs.
 func (h *Harness) CreateDimension(admin domain.Account, name string, values ...string) domain.Dimension {
 	h.T.Helper()
-	dim, err := h.Service.CreateDimension(context.Background(), admin.ID, name, values)
+	dim, err := h.Service.CreateDimension(h.T.Context(), admin.ID, name, values)
 	if err != nil {
 		h.T.Fatalf("CreateDimension: %v", err)
 	}
@@ -22,7 +20,7 @@ func (h *Harness) CreateDimension(admin domain.Account, name string, values ...s
 // failing the test on error.
 func (h *Harness) AssignGoalValue(goal domain.Goal, value domain.DimensionValue) {
 	h.T.Helper()
-	if err := h.Service.AssignGoalValue(context.Background(), goal.Owner.ID, goal.ID, value.ID); err != nil {
+	if err := h.Service.AssignGoalValue(h.T.Context(), goal.Owner.ID, goal.ID, value.ID); err != nil {
 		h.T.Fatalf("AssignGoalValue: %v", err)
 	}
 }
@@ -32,7 +30,7 @@ func (h *Harness) AssignGoalValue(goal domain.Goal, value domain.DimensionValue)
 func (h *Harness) CreateSeveralValuesDimension(admin domain.Account, name string, values ...string) domain.Dimension {
 	h.T.Helper()
 	dim := h.CreateDimension(admin, name, values...)
-	if err := h.Service.SetDimensionSelection(context.Background(), admin.ID, dim.ID, domain.SelectionSeveral); err != nil {
+	if err := h.Service.SetDimensionSelection(h.T.Context(), admin.ID, dim.ID, domain.SelectionSeveral); err != nil {
 		h.T.Fatalf("SetDimensionSelection: %v", err)
 	}
 	dim.Selection = domain.SelectionSeveral
@@ -44,7 +42,7 @@ func (h *Harness) CreateSeveralValuesDimension(admin domain.Account, name string
 func (h *Harness) CreateExtendableDimension(admin domain.Account, name string, values ...string) domain.Dimension {
 	h.T.Helper()
 	dim := h.CreateDimension(admin, name, values...)
-	if err := h.Service.SetDimensionList(context.Background(), admin.ID, dim.ID, domain.ListExtendable); err != nil {
+	if err := h.Service.SetDimensionList(h.T.Context(), admin.ID, dim.ID, domain.ListExtendable); err != nil {
 		h.T.Fatalf("SetDimensionList: %v", err)
 	}
 	dim.List = domain.ListExtendable
@@ -55,7 +53,7 @@ func (h *Harness) CreateExtendableDimension(admin domain.Account, name string, v
 // several, on behalf of admin, failing the test on error.
 func (h *Harness) SetDimensionSelection(admin domain.Account, dim domain.Dimension, selection string) {
 	h.T.Helper()
-	if err := h.Service.SetDimensionSelection(context.Background(), admin.ID, dim.ID, selection); err != nil {
+	if err := h.Service.SetDimensionSelection(h.T.Context(), admin.ID, dim.ID, selection); err != nil {
 		h.T.Fatalf("SetDimensionSelection: %v", err)
 	}
 }
@@ -64,7 +62,7 @@ func (h *Harness) SetDimensionSelection(admin domain.Account, dim domain.Dimensi
 // failing the test on error.
 func (h *Harness) SetDimensionRequired(admin domain.Account, dim domain.Dimension, required bool) {
 	h.T.Helper()
-	if err := h.Service.SetDimensionRequired(context.Background(), admin.ID, dim.ID, required); err != nil {
+	if err := h.Service.SetDimensionRequired(h.T.Context(), admin.ID, dim.ID, required); err != nil {
 		h.T.Fatalf("SetDimensionRequired: %v", err)
 	}
 }
@@ -74,7 +72,7 @@ func (h *Harness) SetDimensionRequired(admin domain.Account, dim domain.Dimensio
 // semicolon before the service refused one (#101).
 func (h *Harness) NameValueWithSemicolon(value domain.DimensionValue, name string) domain.DimensionValue {
 	h.T.Helper()
-	if _, err := h.DB.Exec(`UPDATE dimension_values SET value = ? WHERE id = ?`, name, value.ID); err != nil {
+	if _, err := h.DB.ExecContext(h.T.Context(), `UPDATE dimension_values SET value = ? WHERE id = ?`, name, value.ID); err != nil {
 		h.T.Fatalf("name value %q: %v", name, err)
 	}
 	value.Value = name

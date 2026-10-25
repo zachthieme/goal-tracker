@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -11,7 +9,7 @@ import (
 // (CONTEXT.md: Departed), such as a Manager an Ask for help walks past.
 func (h *Harness) MarkDeparted(admin, person domain.Account) {
 	h.T.Helper()
-	if err := h.Service.MarkDeparted(context.Background(), admin.ID, person.ID); err != nil {
+	if err := h.Service.MarkDeparted(h.T.Context(), admin.ID, person.ID); err != nil {
 		h.T.Fatalf("MarkDeparted(%s): %v", person.Email, err)
 	}
 }

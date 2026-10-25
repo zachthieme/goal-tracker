@@ -42,8 +42,8 @@ func TestEachRequestGetsOneAccessLine(t *testing.T) {
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
 
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/goals/42", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/goals/42", nil))
 
 	lines := accessLines(t, buf)
 	if len(lines) != 2 {
@@ -71,7 +71,7 @@ func TestACrossSiteRefusalIsLoggedUnderItsRoute(t *testing.T) {
 	t.Parallel()
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
-	r := httptest.NewRequest(http.MethodPost, "/goals", strings.NewReader("title=x"))
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/goals", strings.NewReader("title=x"))
 	r.Header.Set("Sec-Fetch-Site", "cross-site")
 	srv.ServeHTTP(httptest.NewRecorder(), r)
 
@@ -90,7 +90,7 @@ func TestAnOversizeRefusalIsLoggedUnderItsRoute(t *testing.T) {
 	t.Parallel()
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
-	r := httptest.NewRequest(http.MethodPost, "/goals", strings.NewReader("title="+strings.Repeat("x", 1<<20)))
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/goals", strings.NewReader("title="+strings.Repeat("x", 1<<20)))
 	srv.ServeHTTP(httptest.NewRecorder(), r)
 
 	lines := accessLines(t, buf)
@@ -108,7 +108,7 @@ func TestAnUnknownPathIsLoggedUnderTheCatchAll(t *testing.T) {
 	t.Parallel()
 
 	srv, buf := requestLogServer(t, testsupport.New(t))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/no-such-page", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/no-such-page", nil))
 
 	lines := accessLines(t, buf)
 	if len(lines) != 1 {
@@ -132,7 +132,7 @@ func TestAnErrorLoggedInAHandlerCarriesItsRequestsID(t *testing.T) {
 	}
 
 	form := url.Values{"email": {"sam@example.com"}}
-	r := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(form.Encode()))
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/signin", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, r)
@@ -161,7 +161,7 @@ func TestAValidIncomingRequestIDIsReused(t *testing.T) {
 
 	for _, id := range []string{"a", "req_42-AbC", strings.Repeat("z", 64)} {
 		srv, buf := requestLogServer(t, testsupport.New(t))
-		r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 		r.Header.Set("X-Request-ID", id)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, r)
@@ -182,7 +182,7 @@ func TestAnInvalidIncomingRequestIDIsReplaced(t *testing.T) {
 
 	for _, id := range []string{strings.Repeat("z", 65), strings.Repeat("a", 200), "abc\ndef", "a b", "id;drop", "é"} {
 		srv, buf := requestLogServer(t, testsupport.New(t))
-		r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 		r.Header.Set("X-Request-ID", id)
 		w := httptest.NewRecorder()
 		srv.ServeHTTP(w, r)
@@ -206,7 +206,7 @@ func TestAPanickingHandlerIsAnswered500AndLoggedUnderItsRequestsID(t *testing.T)
 	var buf bytes.Buffer
 	srv := web.NewServer(nil, web.WithLogger(slog.New(slog.NewJSONHandler(&buf, nil))))
 	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	srv.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("answered %d, want 500", w.Code)
@@ -236,7 +236,7 @@ func TestAHandlerThatPanicsAfterAnsweringKeepsItsStatus(t *testing.T) {
 		panic("boom")
 	})
 	w := httptest.NewRecorder()
-	srv.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/panics-after-ok", nil))
+	srv.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/panics-after-ok", nil))
 
 	if w.Code != http.StatusOK || w.Body.String() != "partial" {
 		t.Errorf("answered %d %q, want the handler's own 200 %q", w.Code, w.Body, "partial")
@@ -267,11 +267,11 @@ func TestAnAbortedHandlerIsLoggedAndStillAborts(t *testing.T) {
 	})
 	func() {
 		defer func() {
-			if p := recover(); p != http.ErrAbortHandler {
+			if p := recover(); p != http.ErrAbortHandler { //nolint:errorlint // the sentinel itself must be passed on, unwrapped, as net/http compares it with ==
 				t.Errorf("ServeHTTP panicked with %v, want http.ErrAbortHandler passed on", p)
 			}
 		}()
-		srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/aborts", nil))
+		srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/aborts", nil))
 	}()
 
 	if errs := logRecords(t, buf); len(errs) != 0 {

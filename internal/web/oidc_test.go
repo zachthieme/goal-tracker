@@ -269,7 +269,7 @@ func signInThroughProvider(t *testing.T, appURL string) (*http.Client, *http.Res
 	if !strings.Contains(button, "Sign in with your organization") {
 		t.Fatalf("the sign-in button reads %s", button)
 	}
-	resp, err := client.Get(appURL + html.UnescapeString(attr(openTag(button), "href")))
+	resp, err := ctxGet(t, client, appURL+html.UnescapeString(attr(openTag(button), "href")))
 	if err != nil {
 		t.Fatalf("sign in through the provider: %v", err)
 	}
@@ -286,6 +286,7 @@ func TestANewPersonSignsInThroughTheProvider(t *testing.T) {
 	ts := newOIDCServer(t, h, p)
 
 	_, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
 		t.Fatalf("signing in ended at %s with status %d, want Home:\n%s", resp.Request.URL, resp.StatusCode, page)
 	}
@@ -312,6 +313,7 @@ func TestAReturningPersonIsMatchedByEmailAndRenamed(t *testing.T) {
 	ts := newOIDCServer(t, h, p)
 
 	_, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("signing in ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
@@ -339,7 +341,9 @@ func TestNoNameClaimLeavesTheNameAlone(t *testing.T) {
 	p := newFakeProvider(t, map[string]any{"email": "noor.haddad@example.com", "email_verified": true})
 	ts := newOIDCServer(t, h, p)
 
-	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+	_, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("signing in ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
 	if got, _ := h.Service.Account(t.Context(), noor.ID); got.Name != "Noor Haddad" {
@@ -389,6 +393,7 @@ func TestTheProvidersAnswerIsRefusedUnlessItProvesAVerifiedEmail(t *testing.T) {
 			ts := newOIDCServer(t, h, p)
 
 			client, resp, page := signInThroughProvider(t, ts.URL)
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode >= 500 || !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
 				t.Fatalf("status %d, %s, want the sign-in page:\n%s", resp.StatusCode, resp.Header.Get("Content-Type"), page)
 			}
@@ -398,10 +403,11 @@ func TestTheProvidersAnswerIsRefusedUnlessItProvesAVerifiedEmail(t *testing.T) {
 			if button := pageElement(t, page, "a", "signin-org"); !strings.Contains(button, "Try again") {
 				t.Errorf("the sign-in page's button is %s, want Try again", button)
 			}
-			home, err := noRedirects(client).Get(ts.URL + "/home")
+			home, err := ctxGet(t, noRedirects(client), ts.URL+"/home")
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer func() { _ = home.Body.Close() }()
 			_ = readBody(t, home)
 			if home.StatusCode != http.StatusSeeOther {
 				t.Errorf("after a refused sign-in, /home answers %d, want a redirect to sign-in", home.StatusCode)
@@ -420,12 +426,15 @@ func TestALinkedPersonIsMatchedBySubjectAfterTheirEmailChanges(t *testing.T) {
 	noor := h.SignIn("noor.haddad@example.com")
 	p := newFakeProvider(t, map[string]any{"sub": "noor-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Noor Haddad"})
 	ts := newOIDCServer(t, h, p)
-	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+	_, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("Noor's first sign-in ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
 
 	p.signsInAs(map[string]any{"sub": "noor-subject", "email": "noor.okafor@example.com", "email_verified": true, "name": "Noor Okafor"})
-	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+	_, resp, page = signInThroughProvider(t, ts.URL)
+	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("signing in under Noor's new email ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
 	got, err := h.Service.Account(t.Context(), noor.ID)
@@ -450,12 +459,15 @@ func TestAReassignedEmailCantSignInAsTheAccountLinkedToAnotherSubject(t *testing
 	h := testsupport.New(t)
 	p := newFakeProvider(t, map[string]any{"sub": "noor-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Noor Haddad"})
 	ts := newOIDCServer(t, h, p)
-	if _, resp, page := signInThroughProvider(t, ts.URL); resp.Request.URL.Path != "/home" {
+	_, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("Noor's first sign-in ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
 
 	p.signsInAs(map[string]any{"sub": "new-hire-subject", "email": "noor.haddad@example.com", "email_verified": true, "name": "Pat Newhire"})
 	client, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("the new hire's sign-in answered %d, want 403", resp.StatusCode)
 	}
@@ -496,6 +508,7 @@ func TestTheDevelopmentFormIsOffWithOIDC(t *testing.T) {
 	}
 
 	resp := postForm(t, noRedirects(http.DefaultClient), ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST /signin with OIDC on: status %d, want 404 or 405", resp.StatusCode)
@@ -528,6 +541,7 @@ func TestAStalledTokenEndpointFailsTheSignInInsteadOfHanging(t *testing.T) {
 	go func() {
 		defer close(done)
 		_, resp, page = signInThroughProvider(t, ts.URL)
+		defer func() { _ = resp.Body.Close() }()
 	}()
 	select {
 	case <-done:
@@ -604,6 +618,7 @@ func TestNewOIDCGivesUpOnAnIssuerThatNeverAnswers(t *testing.T) {
 func signOut(t *testing.T, client *http.Client, appURL string) *url.URL {
 	t.Helper()
 	resp := postForm(t, noRedirects(client), appURL+"/signout", nil)
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("sign out: status %d, want 303", resp.StatusCode)
@@ -627,6 +642,7 @@ func TestSigningOutAlsoSignsOutOfTheProvider(t *testing.T) {
 	p.endSession = true
 	ts := newOIDCServer(t, h, p)
 	client, resp, page := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.Request.URL.Path != "/home" {
 		t.Fatalf("signing in ended at %s, want Home:\n%s", resp.Request.URL, page)
 	}
@@ -648,10 +664,11 @@ func TestSigningOutAlsoSignsOutOfTheProvider(t *testing.T) {
 	if q.Get("client_id") != oidcClientID {
 		t.Errorf("client_id = %q, want %q", q.Get("client_id"), oidcClientID)
 	}
-	home, err := noRedirects(client).Get(ts.URL + "/home")
+	home, err := ctxGet(t, noRedirects(client), ts.URL+"/home")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = home.Body.Close() }()
 	_ = readBody(t, home)
 	if home.StatusCode != http.StatusSeeOther {
 		t.Errorf("after signing out, /home answers %d, want a redirect to sign-in", home.StatusCode)
@@ -666,7 +683,8 @@ func TestSigningOutStaysLocalWithoutProviderLogout(t *testing.T) {
 	h := testsupport.New(t)
 	p := newFakeProvider(t, map[string]any{"email": "cpo@example.com", "email_verified": true})
 	ts := newOIDCServer(t, h, p)
-	client, _, _ := signInThroughProvider(t, ts.URL)
+	client, resp, _ := signInThroughProvider(t, ts.URL)
+	defer func() { _ = resp.Body.Close() }()
 
 	if loc := signOut(t, client, ts.URL); loc.String() != "/signin" && loc.String() != ts.URL+"/signin" {
 		t.Errorf("sign out sends the browser to %s, want /signin", loc)

@@ -22,7 +22,7 @@ func TestOpenSetsBusyTimeout(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	var ms int
-	if err := sqlDB.QueryRow(`PRAGMA busy_timeout`).Scan(&ms); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA busy_timeout`).Scan(&ms); err != nil {
 		t.Fatalf("read busy_timeout: %v", err)
 	}
 	if ms != 5000 {
@@ -42,14 +42,14 @@ func TestOpenRunsInWALMode(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	var mode string
-	if err := sqlDB.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA journal_mode`).Scan(&mode); err != nil {
 		t.Fatalf("read journal_mode: %v", err)
 	}
 	if mode != "wal" {
 		t.Errorf("journal_mode = %q, want wal", mode)
 	}
 	var sync int
-	if err := sqlDB.QueryRow(`PRAGMA synchronous`).Scan(&sync); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA synchronous`).Scan(&sync); err != nil {
 		t.Fatalf("read synchronous: %v", err)
 	}
 	if sync != 1 {
@@ -69,28 +69,28 @@ func TestOpenForBulkLoadTurnsOnlySynchronousOff(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	var sync int
-	if err := sqlDB.QueryRow(`PRAGMA synchronous`).Scan(&sync); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA synchronous`).Scan(&sync); err != nil {
 		t.Fatalf("read synchronous: %v", err)
 	}
 	if sync != 0 {
 		t.Errorf("synchronous = %d, want 0 (OFF)", sync)
 	}
 	var foreignKeys int
-	if err := sqlDB.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
 		t.Fatalf("read foreign_keys: %v", err)
 	}
 	if foreignKeys != 1 {
 		t.Errorf("foreign_keys = %d, want 1", foreignKeys)
 	}
 	var mode string
-	if err := sqlDB.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA journal_mode`).Scan(&mode); err != nil {
 		t.Fatalf("read journal_mode: %v", err)
 	}
 	if mode != "wal" {
 		t.Errorf("journal_mode = %q, want wal", mode)
 	}
 	var ms int
-	if err := sqlDB.QueryRow(`PRAGMA busy_timeout`).Scan(&ms); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA busy_timeout`).Scan(&ms); err != nil {
 		t.Fatalf("read busy_timeout: %v", err)
 	}
 	if ms != 5000 {
@@ -124,14 +124,14 @@ func TestOpenEnforcesForeignKeys(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := sqlDB.Exec(`INSERT INTO accounts (id, email, created_at) VALUES (1, 'owner@example.com', '2026-01-02T15:04:05Z')`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO accounts (id, email, created_at) VALUES (1, 'owner@example.com', '2026-01-02T15:04:05Z')`); err != nil {
 		t.Fatalf("insert account: %v", err)
 	}
 
-	_, err = sqlDB.Exec(`INSERT INTO contributors (goal_id, account_id, created_at) VALUES (999, 1, '2026-01-02T15:04:05Z')`)
+	_, err = sqlDB.ExecContext(t.Context(), `INSERT INTO contributors (goal_id, account_id, created_at) VALUES (999, 1, '2026-01-02T15:04:05Z')`)
 	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
 		t.Fatalf("insert Contributor for missing Goal: err = %v, want a foreign-key error", err)
 	}
@@ -146,7 +146,7 @@ func openTally(t *testing.T) *sql.DB {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if _, err := sqlDB.Exec(`CREATE TABLE tally (n INTEGER NOT NULL)`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `CREATE TABLE tally (n INTEGER NOT NULL)`); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
 	return sqlDB
@@ -184,11 +184,11 @@ func TestOpenLetsReadsAndWritesOverlap(t *testing.T) {
 	// 20 writers and 20 readers. Without the busy timeout nearly all fail.
 	concurrently(t, 40, func(worker int) error {
 		if worker%2 == 0 {
-			_, err := sqlDB.Exec(`INSERT INTO tally (n) VALUES (?)`, worker)
+			_, err := sqlDB.ExecContext(t.Context(), `INSERT INTO tally (n) VALUES (?)`, worker)
 			return err
 		}
 		var count int
-		return sqlDB.QueryRow(`SELECT count(*) FROM tally`).Scan(&count)
+		return sqlDB.QueryRowContext(t.Context(), `SELECT count(*) FROM tally`).Scan(&count)
 	})
 }
 
@@ -199,16 +199,16 @@ func TestOpenQueuesTransactionsThatReadThenWrite(t *testing.T) {
 
 	// Without immediate transactions most fail, even with the busy timeout.
 	concurrently(t, 20, func(int) error {
-		tx, err := sqlDB.Begin()
+		tx, err := sqlDB.BeginTx(t.Context(), nil)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = tx.Rollback() }()
 		var count int
-		if err := tx.QueryRow(`SELECT count(*) FROM tally`).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(t.Context(), `SELECT count(*) FROM tally`).Scan(&count); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO tally (n) VALUES (?)`, count); err != nil {
+		if _, err := tx.ExecContext(t.Context(), `INSERT INTO tally (n) VALUES (?)`, count); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -224,7 +224,7 @@ func TestOpenLetsAReadRunWhileAWriteIsHeld(t *testing.T) {
 
 	sqlDB := openTally(t)
 	ctx := context.Background()
-	if _, err := sqlDB.Exec(`INSERT INTO tally (n) VALUES (1)`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO tally (n) VALUES (1)`); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 
@@ -244,10 +244,10 @@ func TestOpenLetsAReadRunWhileAWriteIsHeld(t *testing.T) {
 		t.Fatalf("begin write: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`CREATE TABLE bulk (b BLOB NOT NULL)`); err != nil {
+	if _, err := tx.ExecContext(t.Context(), `CREATE TABLE bulk (b BLOB NOT NULL)`); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
-	if _, err := tx.Exec(`WITH RECURSIVE mb(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM mb WHERE i < 4) INSERT INTO bulk (b) SELECT zeroblob(1 << 20) FROM mb`); err != nil {
+	if _, err := tx.ExecContext(t.Context(), `WITH RECURSIVE mb(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM mb WHERE i < 4) INSERT INTO bulk (b) SELECT zeroblob(1 << 20) FROM mb`); err != nil {
 		t.Fatalf("write past the page cache: %v", err)
 	}
 
@@ -292,11 +292,11 @@ func TestDSNOpensWhatOpenOpens(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = viaDSN.Close() })
 
-			if _, err := viaDSN.Exec(`CREATE TABLE tally (n INTEGER NOT NULL)`); err != nil {
+			if _, err := viaDSN.ExecContext(t.Context(), `CREATE TABLE tally (n INTEGER NOT NULL)`); err != nil {
 				t.Fatalf("create table through DSN: %v", err)
 			}
 			var tables int
-			if err := viaOpen.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'tally'`).Scan(&tables); err != nil {
+			if err := viaOpen.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master WHERE name = 'tally'`).Scan(&tables); err != nil {
 				t.Fatalf("read schema through Open: %v", err)
 			}
 			if tables != 1 {
@@ -305,10 +305,10 @@ func TestDSNOpensWhatOpenOpens(t *testing.T) {
 
 			for _, pragma := range []string{"busy_timeout", "foreign_keys", "journal_mode", "synchronous"} {
 				var fromOpen, fromDSN string
-				if err := viaOpen.QueryRow(`PRAGMA ` + pragma).Scan(&fromOpen); err != nil {
+				if err := viaOpen.QueryRowContext(t.Context(), `PRAGMA `+pragma).Scan(&fromOpen); err != nil {
 					t.Fatalf("read %s through Open: %v", pragma, err)
 				}
-				if err := viaDSN.QueryRow(`PRAGMA ` + pragma).Scan(&fromDSN); err != nil {
+				if err := viaDSN.QueryRowContext(t.Context(), `PRAGMA `+pragma).Scan(&fromDSN); err != nil {
 					t.Fatalf("read %s through DSN: %v", pragma, err)
 				}
 				if fromDSN != fromOpen {

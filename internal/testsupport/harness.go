@@ -117,7 +117,9 @@ func buildTemplate() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	if err := db.Migrate(sqlDB); err != nil {
+	// Built once per test binary, for every test, so no one test's context
+	// is the caller's.
+	if err := db.Migrate(context.Background(), sqlDB); err != nil {
 		_ = sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
@@ -137,7 +139,7 @@ func buildTemplate() ([]byte, error) {
 // through another Service, which leaves its email queued.
 func (h *Harness) DeliverEmail() {
 	h.T.Helper()
-	if err := h.Service.DeliverEmail(context.Background()); err != nil {
+	if err := h.Service.DeliverEmail(h.T.Context()); err != nil {
 		h.T.Fatalf("DeliverEmail: %v", err)
 	}
 }
@@ -146,7 +148,7 @@ func (h *Harness) DeliverEmail() {
 // error. It is a scenario builder: use it to arrange the Owner a Goal needs.
 func (h *Harness) SignIn(emailAddr string) domain.Account {
 	h.T.Helper()
-	acc, err := h.Service.SignIn(context.Background(), emailAddr)
+	acc, err := h.Service.SignIn(h.T.Context(), emailAddr)
 	if err != nil {
 		h.T.Fatalf("SignIn(%q): %v", emailAddr, err)
 	}
@@ -158,7 +160,7 @@ func (h *Harness) SignIn(emailAddr string) domain.Account {
 func (h *Harness) SignInNamed(emailAddr, name string) domain.Account {
 	h.T.Helper()
 	acc := h.SignIn(emailAddr)
-	if err := h.Service.SetName(context.Background(), acc.ID, name); err != nil {
+	if err := h.Service.SetName(h.T.Context(), acc.ID, name); err != nil {
 		h.T.Fatalf("SetName(%q): %v", emailAddr, err)
 	}
 	acc.Name = name
@@ -167,16 +169,16 @@ func (h *Harness) SignInNamed(emailAddr, name string) domain.Account {
 
 // WriteLockHeld reports whether a transaction holds the database's write lock,
 // by trying to take it from a connection of its own that won't wait for it. A
-// test's email sender calls it to prove no email is sent while a transaction is
-// open.
-func (h *Harness) WriteLockHeld() bool {
+// test's email sender calls it, under the context it sends with, to prove no
+// email is sent while a transaction is open.
+func (h *Harness) WriteLockHeld(ctx context.Context) bool {
 	h.T.Helper()
 	probe, err := sql.Open("sqlite", "file:"+(&url.URL{Path: h.path}).EscapedPath()+"?_pragma=busy_timeout(0)&_txlock=immediate")
 	if err != nil {
 		h.T.Fatalf("open the write-lock probe: %v", err)
 	}
 	defer func() { _ = probe.Close() }()
-	tx, err := probe.Begin()
+	tx, err := probe.BeginTx(ctx, nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "SQLITE_BUSY") || strings.Contains(err.Error(), "database is locked") {
 			return true

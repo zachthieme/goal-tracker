@@ -275,13 +275,12 @@ func TestOppositeLinkRequestsSentTogetherNeverMakeACycle(t *testing.T) {
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
-	ctx := context.Background()
 	raceLinks(t, func(i int) (func() error, func() error) {
 		a := h.CreateGoal(owner, fmt.Sprintf("A%d", i), "why a")
 		b := h.CreateGoal(owner, fmt.Sprintf("B%d", i), "why b")
 		link := func(child, parent domain.Goal) func() error {
 			return func() error {
-				_, err := h.Service.RequestLink(ctx, domain.RequestLinkInput{ChildID: child.ID, ParentID: parent.ID, RequesterID: owner.ID})
+				_, err := h.Service.RequestLink(t.Context(), domain.RequestLinkInput{ChildID: child.ID, ParentID: parent.ID, RequesterID: owner.ID})
 				return err
 			}
 		}
@@ -297,7 +296,6 @@ func TestOppositeLinksAcceptedTogetherNeverMakeACycle(t *testing.T) {
 	h := testsupport.New(t)
 	ana := h.SignIn("ana@example.com")
 	ben := h.SignIn("ben@example.com")
-	ctx := context.Background()
 	raceLinks(t, func(i int) (func() error, func() error) {
 		a := h.CreateGoal(ana, fmt.Sprintf("A%d", i), "why a")
 		b := h.CreateGoal(ben, fmt.Sprintf("B%d", i), "why b")
@@ -305,7 +303,7 @@ func TestOppositeLinksAcceptedTogetherNeverMakeACycle(t *testing.T) {
 		ba := h.RequestLink(ben, b, a, "")
 		accept := func(linkID, actorID int64) func() error {
 			return func() error {
-				_, err := h.Service.AcceptLink(ctx, linkID, actorID)
+				_, err := h.Service.AcceptLink(t.Context(), linkID, actorID)
 				return err
 			}
 		}

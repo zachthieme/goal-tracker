@@ -296,7 +296,7 @@ func TestGoalListAndReportQueriesDontGrowWithGoals(t *testing.T) {
 func newQueryCountingServer(t *testing.T, h *testsupport.Harness) (*httptest.Server, *domain.Service, *queryLog) {
 	t.Helper()
 	var path string
-	if err := h.DB.QueryRow("SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&path); err != nil {
+	if err := h.DB.QueryRowContext(t.Context(), "SELECT file FROM pragma_database_list WHERE name = 'main'").Scan(&path); err != nil {
 		t.Fatalf("read the database's path: %v", err)
 	}
 	queries := new(queryLog)

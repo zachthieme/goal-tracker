@@ -41,6 +41,7 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 
 	// Sign in — the account is created on first sign-in.
 	resp := postForm(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after sign-in: status %d", resp.StatusCode)
 	}
@@ -64,10 +65,11 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 
 	// Find the Goal's own page and confirm it renders the full Goal.
 	goalPath := attrOf(link, "href")
-	resp, err = client.Get(ts.URL + goalPath)
+	resp, err = ctxGet(t, client, ts.URL+goalPath)
 	if err != nil {
 		t.Fatalf("GET %s: %v", goalPath, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	goalPage := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("goal page status %d", resp.StatusCode)
@@ -118,21 +120,22 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar}
 
-	postForm(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
+	postFormStatus(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
 
 	resp := postForm(t, client, ts.URL+"/goals", url.Values{
 		"title":          {"Cut checkout latency"},
 		"why_it_matters": {"Shoppers abandon slow carts."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	goalPath := attrOf(findGoalLink(t, parsePage(t, readBody(t, resp))), "href")
 	goalURL := ts.URL + goalPath
 
-	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
-	postForm(t, client, goalURL+"/milestones", url.Values{
+	postFormStatus(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	postFormStatus(t, client, goalURL+"/milestones", url.Values{
 		"name":        {"Beta cut"},
 		"target_date": {"2026-03-16"},
 	})
-	postForm(t, client, goalURL+"/metrics", url.Values{
+	postFormStatus(t, client, goalURL+"/metrics", url.Values{
 		"name":        {"p95 checkout latency"},
 		"unit":        {"ms"},
 		"direction":   {"down"},
@@ -140,9 +143,9 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		"target":      {"400"},
 		"target_date": {"2026-06-15"},
 	})
-	postForm(t, client, goalURL+"/cadence", url.Values{"cadence_days": {"14"}})
-	postForm(t, client, goalURL+"/why-it-matters", url.Values{"why_it_matters": {"Faster checkout lifts conversion."}})
-	postForm(t, client, goalURL+"/contributors", url.Values{"email": {"dana@example.com"}})
+	postFormStatus(t, client, goalURL+"/cadence", url.Values{"cadence_days": {"14"}})
+	postFormStatus(t, client, goalURL+"/why-it-matters", url.Values{"why_it_matters": {"Faster checkout lifts conversion."}})
+	postFormStatus(t, client, goalURL+"/contributors", url.Values{"email": {"dana@example.com"}})
 
 	resp = postForm(t, client, goalURL+"/activate", nil)
 	if resp.StatusCode != http.StatusOK {
@@ -178,12 +181,13 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar}
-	postForm(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
+	postFormStatus(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
 
 	resp := postForm(t, client, ts.URL+"/goals", url.Values{
 		"title":          {"Bare goal"},
 		"why_it_matters": {"Some reason."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	goalPath := attrOf(findGoalLink(t, parsePage(t, readBody(t, resp))), "href")
 
 	resp = postForm(t, client, ts.URL+goalPath+"/activate", nil)
@@ -219,11 +223,11 @@ func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
 	// Assign Growth, then replace it with Reliability.
-	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}})
+	postFormStatus(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}})
 	if got := goalDimensionValuesIn(getPage(t, samClient, goalURL)); !slices.Contains(got, "Growth") {
 		t.Fatalf("Goal page shows values %q, missing assigned Growth", got)
 	}
-	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}})
+	postFormStatus(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}})
 	got := goalDimensionValuesIn(getPage(t, samClient, goalURL))
 	if !slices.Contains(got, "Reliability") {
 		t.Errorf("Goal page shows values %q, want Reliability after reassignment", got)
@@ -291,7 +295,7 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 	}
 
 	dimID := fmt.Sprintf("%d", teams.ID)
-	postForm(t, samClient, goalURL+"/dimensions", url.Values{
+	postFormStatus(t, samClient, goalURL+"/dimensions", url.Values{
 		"dimension_id": {dimID},
 		"value_id":     {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", infra.ID)},
 	})
@@ -306,7 +310,7 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 		t.Errorf("Core's checkbox isn't checked: %s", renderNode(edit))
 	}
 
-	postForm(t, samClient, goalURL+"/dimensions", url.Values{
+	postFormStatus(t, samClient, goalURL+"/dimensions", url.Values{
 		"dimension_id": {dimID},
 		"value_id":     {fmt.Sprintf("%d", infra.ID)},
 	})
@@ -318,7 +322,7 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 		t.Errorf("Infra lost when Core was removed: %q", got)
 	}
 
-	postForm(t, samClient, goalURL+"/dimensions", url.Values{"dimension_id": {dimID}})
+	postFormStatus(t, samClient, goalURL+"/dimensions", url.Values{"dimension_id": {dimID}})
 	values, err := h.Service.GoalValues(context.Background(), goal.ID)
 	if err != nil {
 		t.Fatalf("GoalValues: %v", err)
@@ -346,6 +350,7 @@ func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
 	otherClient := signInClient(t, ts.URL, "other@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 	resp := postForm(t, otherClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", quarter.Values[0].ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Owner assign status = %d, want 403", resp.StatusCode)
@@ -511,6 +516,7 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 		"parent_id":      {fmt.Sprint(parent.ID)},
 		"value_id":       {fmt.Sprintf("%d", growth.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	childPage := parsePage(t, readBody(t, resp))
 	if got := goalDimensionValuesIn(childPage); !slices.Contains(got, "Growth") {
 		t.Errorf("kept default not assigned to the child, which shows values %q", got)
@@ -562,6 +568,7 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 		"parent_id":      {fmt.Sprint(parent.ID)},
 		"value_id":       {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
@@ -1744,7 +1751,7 @@ func goalListFilterChangeUnderHTMX(t *testing.T, client *http.Client, base strin
 	values := formSubmission(form)
 	set(values)
 	address := attrOf(form, "hx-get") + "?" + values.Encode()
-	req, err := http.NewRequest(http.MethodGet, base+address, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+address, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -1755,6 +1762,7 @@ func goalListFilterChangeUnderHTMX(t *testing.T, client *http.Client, base strin
 	if err != nil {
 		t.Fatalf("GET %s: %v", address, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: status %d:\n%s", address, resp.StatusCode, body)
@@ -2310,6 +2318,7 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 
 		name := "Added by " + tc.who
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, tc.goal.ID), url.Values{"name": {name}, "target_date": {"2026-05-01"}})
+		defer func() { _ = resp.Body.Close() }()
 		root = parsePage(t, readBody(t, resp))
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", tc.goal.ID) {
 			t.Fatalf("%s on %s: add answered %d at %s, want the Goal page", tc.who, tc.goal.Lifecycle, resp.StatusCode, resp.Request.URL)
@@ -2365,6 +2374,7 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		for _, g := range []domain.Goal{proposed, active} {
 			before := rows(g)
 			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
+			defer func() { _ = resp.Body.Close() }()
 			body := textOf(parsePage(t, readBody(t, resp)))
 			if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "only the Owner or a Delegate may change this Goal's Milestones") {
 				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, body)
@@ -2397,6 +2407,7 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		}
 		before := rows(g)
 		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
+		defer func() { _ = resp.Body.Close() }()
 		body := textOf(parsePage(t, readBody(t, resp)))
 		if want := "A " + lifecycle + " Goal's Milestones can't change."; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
 			t.Errorf("adding to a %s Goal answered %d %q, want 422 saying %q", lifecycle, resp.StatusCode, body, want)
@@ -2439,6 +2450,7 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 		t.Fatalf("the Milestones section has %d Edit forms posting to %s, want 1: %s", len(edits), editAction, renderNode(section))
 	}
 	resp := postForm(t, sam2, ts.URL+editAction, url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if got := onlyMilestone(t, h, proposed); resp.StatusCode != http.StatusOK || got.Name != "Pricing page live" || got.TargetDate.Format("2006-01-02") != "2026-04-15" {
 		t.Errorf("the Owner's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
@@ -2475,6 +2487,7 @@ func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing
 		t.Helper()
 		h.Clock.Advance(time.Hour)
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {name}, "target_date": {"2026-05-01"}})
+		defer func() { _ = resp.Body.Close() }()
 		if _ = readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("adding %s answered %d", name, resp.StatusCode)
 		}
@@ -2591,7 +2604,7 @@ func TestGoalPageMilestoneDatesDoNotBreakOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 	slipped := beta.TargetDate.AddDate(0, 0, 10)
-	postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+	postFormStatus(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health": {domain.HealthGreen},
 		"status": {"Beta moves."},
 		fmt.Sprintf("milestone_date_%d", beta.ID):        {slipped.Format("2006-01-02")},
@@ -2703,8 +2716,8 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 	if len(removes) != 1 {
 		t.Fatalf("the parents section has %d Remove forms, want 1", len(removes))
 	}
-	if resp := postForm(t, client, ts.URL+attrOf(removes[0], "action"), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("remove link: status %d", resp.StatusCode)
+	if status := postFormStatus(t, client, ts.URL+attrOf(removes[0], "action"), url.Values{}); status != http.StatusOK {
+		t.Fatalf("remove link: status %d", status)
 	}
 	if parents := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-parents"); !hasTestID(parents, "no-parents") {
 		t.Errorf("the parent is still linked after Remove:\n%s", renderNode(parents))
@@ -2904,12 +2917,12 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 		t.Errorf("Activate is enabled with items missing: %s", renderNode(button))
 	}
 
-	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	postFormStatus(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
 	page = getPage(t, client, goalURL)
 	if got := goalActivationChecklistIn(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
 		t.Errorf("Dated Goal with no Milestone or Metric: checklist = %v", got)
 	}
-	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Beta cut"}, "target_date": {"2026-03-16"}})
+	postFormStatus(t, client, goalURL+"/milestones", url.Values{"name": {"Beta cut"}, "target_date": {"2026-03-16"}})
 	page = getPage(t, client, goalURL)
 	for item, done := range goalActivationChecklistIn(t, page) {
 		if !done {
@@ -3051,6 +3064,7 @@ func TestCreateChildGoalRouteIsGone(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/children", ts.URL, goal.ID), url.Values{"title": {"Child"}, "why_it_matters": {"It matters."}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST /goals/%d/children answered %d, want it gone", goal.ID, resp.StatusCode)
@@ -3072,8 +3086,8 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	postForm(t, client, goalURL+"/ongoing", nil)
-	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
+	postFormStatus(t, client, goalURL+"/ongoing", nil)
+	postFormStatus(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
 	page := getPage(t, client, goalURL)
 	if done, listed := goalActivationChecklistIn(t, page)["A Metric"]; !listed || done {
 		t.Errorf("Ongoing Goal with only a Milestone: A Metric listed=%v done=%v", listed, done)
@@ -3605,6 +3619,7 @@ func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 			"dimension_id": {fmt.Sprintf("%d", add.dim.ID)},
 			"new_value":    {add.value},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("adding %s: status %d: %s", add.value, resp.StatusCode, body)
 		}
@@ -3659,6 +3674,7 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 			"dimension_id": {fmt.Sprintf("%d", dim.ID)},
 			"new_value":    {value},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		return resp.StatusCode, body
 	}
@@ -3722,6 +3738,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Globex"}},
 	} {
 		resp := postForm(t, deeClient, goalURL+"/dimensions", form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("Delegate posting %v: status %d: %s", form, resp.StatusCode, body)
 		}
@@ -3741,6 +3758,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Initech"}},
 	} {
 		resp := postForm(t, coryClient, goalURL+"/dimensions", form)
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("Contributor posting %v: status %d, want 403", form, resp.StatusCode)
@@ -4553,6 +4571,7 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 	post := func(client *http.Client, path string, form url.Values) {
 		t.Helper()
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/%s", ts.URL, goal.ID, path), form)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("POST %s %v: status %d; body:\n%s", path, form, resp.StatusCode, body)
 		}
@@ -4640,10 +4659,11 @@ func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
 		t.Fatalf("Download CSV links to %s, want /goals/download keeping q=alpha", u)
 	}
 
-	resp, err := client.Get(ts.URL + u.String())
+	resp, err := ctxGet(t, client, ts.URL+u.String())
 	if err != nil {
 		t.Fatalf("GET download: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("download status %d: %s", resp.StatusCode, body)
@@ -4802,6 +4822,7 @@ func TestGoalTableRefusedSeveralValuesCellIsAnnounced(t *testing.T) {
 	action, form := goalTableFormIn(t, page)
 	form.Set(goalTableControlName(t, page, "Add a Tags value to Alpha"), "mobile; web")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
@@ -4903,6 +4924,7 @@ func TestGoalTableSaveUpdatesEveryChangedGoalWithHistory(t *testing.T) {
 	form.Set(goalTableControlName(t, page, "Budget of Gamma"), "1200")
 	form.Set(goalTableControlName(t, page, "Notes of Gamma"), "Line one\nLine two")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/goals" {
@@ -4974,6 +4996,7 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	form.Set(goalTableControlName(t, page, "Approver of Alpha"), "Dana & Co")
 	form.Set(goalTableControlName(t, page, "Budget of Beta"), "lots")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -5013,7 +5036,8 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	// Fixing the bad cell and saving the form as it came back saves it all.
 	action, form = goalTableFormIn(t, refused)
 	form.Set(goalTableControlName(t, refused, "Budget of Beta"), "900")
-	if resp := postForm(t, client, ts.URL+action, form); resp.StatusCode != http.StatusOK || resp.Request.URL.Query().Has("edit") {
+	resp = postForm(t, client, ts.URL+action, form)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Query().Has("edit") {
 		t.Fatalf("saving the fixed form: status %d at %s:\n%s", resp.StatusCode, resp.Request.URL, readBody(t, resp))
 	}
 	for g, want := range map[int64]int{alpha.ID: 2, beta.ID: 1} {
@@ -5047,6 +5071,7 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 	form.Set(fmt.Sprintf("d.%d.%d", theirs.ID, pillar.ID), valueID(pillar.Values[0]))
 	form.Set(fmt.Sprintf("f.%d.%d", theirs.ID, budget.ID), "99")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusForbidden || !strings.Contains(textOf(parsePage(t, body)), "Theirs") {
@@ -5096,6 +5121,7 @@ func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
 	action, form := goalTableFormIn(t, page)
 	form.Set(goalTableControlName(t, page, "Budget of Alpha"), "5")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
 	}
@@ -5134,6 +5160,7 @@ func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
 	action, form := goalTableFormIn(t, page)
 	form.Set(goalTableControlName(t, page, "Approver of Alpha"), "Dana")
 	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
 	}
@@ -5184,6 +5211,7 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 		}
 	}
 	resp := postForm(t, client, goalURL+"/activate", nil)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if text := textOf(parsePage(t, body)); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(text, "Pillar") || !strings.Contains(text, "Budget") {
 		t.Errorf("activate without the values: status %d, body %q; want 422 naming Pillar and Budget", resp.StatusCode, body)
@@ -5195,7 +5223,8 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 	if !items["A value in Pillar"] || !items["A value in Budget"] {
 		t.Errorf("checklist after setting the values: %v, want both done", items)
 	}
-	if resp := postForm(t, client, goalURL+"/activate", nil); resp.StatusCode != http.StatusOK {
+	resp = postForm(t, client, goalURL+"/activate", nil)
+	if resp.StatusCode != http.StatusOK {
 		t.Errorf("activate with the values: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
 	}
 }
@@ -5304,10 +5333,11 @@ func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp, err := client.Get(ts.URL + "/goals/download?layout=table")
+	resp, err := ctxGet(t, client, ts.URL+"/goals/download?layout=table")
 	if err != nil {
 		t.Fatalf("GET download: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("download status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
@@ -5338,6 +5368,7 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
 		"new_value":    {"Globex; Initech"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(textOf(goalOpenFormIn(t, parsePage(t, body), "dimensions")), reason) {
 		t.Errorf("Goal page: status %d, body %q; want 422 saying why beside the open form", resp.StatusCode, body)
 	}
@@ -5378,7 +5409,7 @@ func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AssignGoalValue(goal, pillar.Values[0])
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -5390,6 +5421,7 @@ func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
 		"dimension_id": {fmt.Sprint(pillar.ID)},
 		"value_id":     {fmt.Sprint(pillar.Values[1].ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("choosing Reliability: status %d, want 500; body:\n%s", resp.StatusCode, body)
 	}
@@ -5448,6 +5480,7 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 	none := url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {""}}
 	for range 2 {
 		resp := postForm(t, client, goalURL+"/dimensions", none)
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("choosing None: status %d; body:\n%s", resp.StatusCode, body)
 		}
@@ -5603,7 +5636,7 @@ func htmxFilter(t *testing.T, client *http.Client, base, page string, set func(u
 	values := formSubmission(form)
 	set(values)
 	address := attrOf(form, "hx-get") + "?" + values.Encode()
-	req, err := http.NewRequest(http.MethodGet, base+address, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+address, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -5614,6 +5647,7 @@ func htmxFilter(t *testing.T, client *http.Client, base, page string, set func(u
 	if err != nil {
 		t.Fatalf("GET %s: %v", address, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: status %d:\n%s", address, resp.StatusCode, body)
@@ -5784,6 +5818,7 @@ func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *te
 	choose := func(valueID string) {
 		t.Helper()
 		resp := postForm(t, client, goalURL+"/dimensions", url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {valueID}})
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("choose %q: status %d; body:\n%s", valueID, resp.StatusCode, body)
 		}
@@ -5837,8 +5872,8 @@ func TestUnmarkingRequiredClearsTheIncompleteFlagOverHTTP(t *testing.T) {
 	}
 
 	for _, path := range []string{fmt.Sprintf("/dimensions/%d/required", pillar.ID), fmt.Sprintf("/fields/%d/required", budget.ID)} {
-		if resp := postForm(t, admin, ts.URL+path, url.Values{"required": {"0"}}); resp.StatusCode != http.StatusOK {
-			t.Fatalf("unmark %s: status %d", path, resp.StatusCode)
+		if status := postFormStatus(t, admin, ts.URL+path, url.Values{"required": {"0"}}); status != http.StatusOK {
+			t.Fatalf("unmark %s: status %d", path, status)
 		}
 	}
 
@@ -6543,6 +6578,7 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots"},
 	} {
 		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("%s: refused submit is %d, want %d", tc.form, resp.StatusCode, http.StatusUnprocessableEntity)
@@ -6732,6 +6768,7 @@ func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
 		before := ownerOnlyGoalState(t, h, g.ID)
 		for who, client := range clients {
 			resp := postForm(t, client, ts.URL+route.path(g.ID, metricID), route.form)
+			defer func() { _ = resp.Body.Close() }()
 			_ = readBody(t, resp)
 			if resp.StatusCode != http.StatusForbidden {
 				t.Errorf("%s by %s: status = %d, want 403", route.name, who, resp.StatusCode)
@@ -6757,6 +6794,7 @@ func TestOwnerStillSetsUpTheirGoalOverHTTP(t *testing.T) {
 		g, metricID := ownerOnlyGoal(t, h, owner)
 		before := ownerOnlyGoalState(t, h, g.ID)
 		resp := postForm(t, client, ts.URL+route.path(g.ID, metricID), route.form)
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) {
 			t.Errorf("%s by the Owner: status = %d at %s, want 200 back on the Goal", route.name, resp.StatusCode, resp.Request.URL.Path)
@@ -6780,6 +6818,7 @@ func TestOwnerOnlyRoutesNotFoundForAMissingGoal(t *testing.T) {
 	for _, route := range ownerOnlyRoutes() {
 		for _, form := range []url.Values{route.form, nil} {
 			resp := postForm(t, client, ts.URL+route.path(999, 999), form)
+			defer func() { _ = resp.Body.Close() }()
 			_ = readBody(t, resp)
 			if resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s on a missing id with form %v: status = %d, want 404", route.name, form, resp.StatusCode)
@@ -6863,6 +6902,7 @@ func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
 			"title":          {"  Halve outages  "},
 			"why_it_matters": {g.WhyItMatters},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) || resp.Request.URL.RawQuery != "" {
 			t.Errorf("%s: save is %d at %s, want 200 on the plain Goal page", who, resp.StatusCode, resp.Request.URL)
@@ -6919,18 +6959,18 @@ func TestEditTitleAndWhyItMattersRecordsOnlyWhatChangedOverHTTP(t *testing.T) {
 
 	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	whyItMattersRevisions, titles := titleWhyItMattersHistory(t, h, g.ID)
-	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+	_ = postFormBody(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
 		"title": {"Reduce outages"}, "why_it_matters": {"Outages cost us customers."},
-	}))
+	})
 	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions+1 || ti != titles {
 		t.Errorf("only the Why it matters changed: %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions+1, titles)
 	}
 
 	g = h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	whyItMattersRevisions, titles = titleWhyItMattersHistory(t, h, g.ID)
-	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+	_ = postFormBody(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
 		"title": {"Grow revenue 20%"}, "why_it_matters": {" Revenue funds the rest. "},
-	}))
+	})
 	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions || ti != titles+1 {
 		t.Errorf("only the title changed: %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles+1)
 	}
@@ -6950,6 +6990,7 @@ func TestEditWhyItMattersHasOnlyItsNewRouteOverHTTP(t *testing.T) {
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
 		"title": {"Reduce outages"}, "so_what": {"Outages cost us customers."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("the old route answers %d, want 404 or 405", resp.StatusCode)
@@ -6989,6 +7030,7 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
 		"title": {"   "}, "why_it_matters": {"Outages cost us customers."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a blank title is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
@@ -7049,6 +7091,7 @@ func TestEditTitleAndWhyItMattersIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 		resp := postForm(t, signInClient(t, ts.URL, who), goalURL, url.Values{
 			"title": {"Halve outages"}, "why_it_matters": {"Outages cost us customers."},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s: status = %d, want 403", who, resp.StatusCode)
@@ -7062,9 +7105,9 @@ func TestEditTitleAndWhyItMattersIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 		}
 	}
 
-	_ = readBody(t, postForm(t, signInClient(t, ts.URL, "sam@example.com"), goalURL, url.Values{
+	_ = postFormBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL, url.Values{
 		"why_it_matters": {"Outages cost us customers."},
-	}))
+	})
 	got, _ := h.Service.ViewGoal(t.Context(), g.ID)
 	if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost us customers." {
 		t.Errorf("a post with only a Why it matters left the Goal at %q / %q, want the title kept and the Why it matters changed", got.Title, got.WhyItMatters)
@@ -7103,6 +7146,7 @@ func TestGoalPageShowsDatesInTheDateFormat(t *testing.T) {
 		"delivery_date":        {"2026-07-16"},
 		"delivery_date_reason": {"Vendor API delayed two weeks."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit check-in: status %d", resp.StatusCode)
 	}
@@ -7314,6 +7358,7 @@ func TestGoalPageLetsAnActionItemsOwnerCloseIt(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{"note": {"Vendor was late."}, "return": {back}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
 		t.Errorf("close: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), back)
@@ -7494,6 +7539,7 @@ func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
 		"title":          {"   "},
 		"why_it_matters": {"Shoppers abandon slow carts."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)

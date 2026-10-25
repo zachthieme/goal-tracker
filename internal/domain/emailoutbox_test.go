@@ -26,8 +26,8 @@ type lockCheckingSender struct {
 	inLocked []email.Message
 }
 
-func (s *lockCheckingSender) Send(_ context.Context, msg email.Message) error {
-	locked := s.h.WriteLockHeld()
+func (s *lockCheckingSender) Send(ctx context.Context, msg email.Message) error {
+	locked := s.h.WriteLockHeld(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if locked {

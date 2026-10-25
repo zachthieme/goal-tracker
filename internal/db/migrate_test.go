@@ -32,10 +32,10 @@ func migratedExcept(t *testing.T, version string) *sql.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	res, err := sqlDB.Exec(`DELETE FROM schema_migrations WHERE version = ?`, version)
+	res, err := sqlDB.ExecContext(t.Context(), `DELETE FROM schema_migrations WHERE version = ?`, version)
 	if err != nil {
 		t.Fatalf("forget %s: %v", version, err)
 	}
@@ -50,7 +50,7 @@ func migratedExcept(t *testing.T, version string) *sql.DB {
 // foreign key: Migrate refuses a database that holds an orphan.
 func arrangeUpgradeAccountsAndGoals(t *testing.T, sqlDB *sql.DB) {
 	t.Helper()
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO accounts (id, email, created_at) VALUES
 			(7, 'pat@example.com', '2026-01-02T00:00:00Z'),
 			(8, 'sam@example.com', '2026-01-02T00:00:00Z');
@@ -67,18 +67,18 @@ func TestMigrationLowercasesAndTrimsExistingEmails(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := migratedExcept(t, "migrations/0020_lowercase_account_emails.sql")
-	if _, err := sqlDB.Exec(
+	if _, err := sqlDB.ExecContext(t.Context(),
 		`INSERT INTO accounts (email, created_at) VALUES (' Freya.Nilsen@Example.com ', '2026-01-02T00:00:00Z')`,
 	); err != nil {
 		t.Fatalf("insert account: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
 	var email string
-	if err := sqlDB.QueryRow(`SELECT email FROM accounts`).Scan(&email); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT email FROM accounts`).Scan(&email); err != nil {
 		t.Fatalf("read email: %v", err)
 	}
 	if email != "freya.nilsen@example.com" {
@@ -92,18 +92,18 @@ func TestMigrationFailsOnAccountsDifferingOnlyByCase(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := migratedExcept(t, "migrations/0020_lowercase_account_emails.sql")
-	if _, err := sqlDB.Exec(`INSERT INTO accounts (email, created_at) VALUES
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO accounts (email, created_at) VALUES
 		('sam@example.com', '2026-01-02T00:00:00Z'),
 		('Sam@Example.com', '2026-01-02T00:00:00Z')`); err != nil {
 		t.Fatalf("insert accounts: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err == nil {
+	if err := db.Migrate(t.Context(), sqlDB); err == nil {
 		t.Fatal("migrate: want an error for emails that collide once lowercased")
 	}
 
 	var mixed int
-	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM accounts WHERE email = 'Sam@Example.com'`).Scan(&mixed); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM accounts WHERE email = 'Sam@Example.com'`).Scan(&mixed); err != nil {
 		t.Fatalf("count accounts: %v", err)
 	}
 	if mixed != 1 {
@@ -117,10 +117,10 @@ func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := migratedExcept(t, "migrations/0023_dimension_value_order.sql")
-	if _, err := sqlDB.Exec(`ALTER TABLE dimension_values DROP COLUMN position`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `ALTER TABLE dimension_values DROP COLUMN position`); err != nil {
 		t.Fatalf("undo 0023: %v", err)
 	}
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO dimensions (id, name, created_at) VALUES (1, 'Pillar', '2026-01-02T00:00:00Z'), (2, 'Quarter', '2026-01-02T00:00:00Z');
 		INSERT INTO dimension_values (dimension_id, value, created_at) VALUES
 			(1, 'Reliability', '2026-01-02T00:00:00Z'),
@@ -131,11 +131,11 @@ func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
 		t.Fatalf("insert values: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT value FROM dimension_values ORDER BY dimension_id, position`)
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT value FROM dimension_values ORDER BY dimension_id, position`)
 	if err != nil {
 		t.Fatalf("read values: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 
 	sqlDB := migratedExcept(t, "migrations/0031_several_highlights.sql")
 	// Put back the table as 0010 made it: one Highlight per Check-in.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP TABLE highlights;
 		CREATE TABLE highlights (
 			id         INTEGER PRIMARY KEY,
@@ -175,7 +175,7 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 		t.Fatalf("undo 0031: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
 			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-02T00:00:00Z'),
 			(11, 1, 7, 7, 'Red', 'Missed.', '2026-01-09T00:00:00Z');
@@ -185,11 +185,11 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 		t.Fatalf("arrange 0010 highlights: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT id, checkin_id, kind, note, created_at FROM highlights ORDER BY id`)
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT id, checkin_id, kind, note, created_at FROM highlights ORDER BY id`)
 	if err != nil {
 		t.Fatalf("read highlights: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 		t.Errorf("highlights = %v, want %v", got, want)
 	}
 
-	if _, err := sqlDB.Exec(`INSERT INTO highlights (checkin_id, kind, note, created_at)
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO highlights (checkin_id, kind, note, created_at)
 		VALUES (10, 'Accomplishment', 'Cut MTTR in half.', '2026-01-02T00:00:00Z')`); err != nil {
 		t.Errorf("a second Highlight on the same Check-in: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 
 	sqlDB := migratedExcept(t, "migrations/0049_goal_comments.sql")
 	// Put back the table as 0016 made it: every Comment on a publication.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP TABLE comments;
 		CREATE TABLE comments (
 			id             INTEGER PRIMARY KEY,
@@ -240,7 +240,7 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 		t.Fatalf("undo 0049: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO report_definitions (id, name, introduction, created_by, created_at) VALUES
 			(1, 'MBR', '', 7, '2026-01-02T00:00:00Z');
 		INSERT INTO report_publications (id, report_definition_id, published_by, published_at, snapshot) VALUES
@@ -251,11 +251,11 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 		t.Fatalf("arrange 0016 comments: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT id, publication_id, goal_id, parent_id, author_id, body, created_at
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT id, publication_id, goal_id, parent_id, author_id, body, created_at
 		FROM comments ORDER BY id`)
 	if err != nil {
 		t.Fatalf("read comments: %v", err)
@@ -280,7 +280,7 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 	}
 
 	var schema string
-	if err := sqlDB.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'comments'`).Scan(&schema); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'comments'`).Scan(&schema); err != nil {
 		t.Fatalf("read comments schema: %v", err)
 	}
 	if strings.Contains(schema, "REFERENCES report_publications") {
@@ -288,7 +288,7 @@ func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
 	}
 	for _, index := range []string{"idx_comments_publication", "idx_comments_goal"} {
 		var n int
-		if err := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master
+		if err := sqlDB.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master
 			WHERE type = 'index' AND name = ? AND tbl_name = 'comments'`, index).Scan(&n); err != nil {
 			t.Fatalf("look up %s: %v", index, err)
 		}
@@ -305,11 +305,11 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 
 	sqlDB := migratedExcept(t, "migrations/0035_milestone_change_names.sql")
 	// Put back the table as 0034 made it: no name.
-	if _, err := sqlDB.Exec(`ALTER TABLE milestone_changes DROP COLUMN name`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `ALTER TABLE milestone_changes DROP COLUMN name`); err != nil {
 		t.Fatalf("undo 0035: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
 			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-09T00:00:00Z'),
 			(11, 1, 7, 7, 'Yellow', 'Slipping.', '2026-01-16T00:00:00Z');
@@ -323,11 +323,11 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 		t.Fatalf("arrange 0034 milestone changes: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT id, kind, name FROM milestone_changes ORDER BY id`)
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT id, kind, name FROM milestone_changes ORDER BY id`)
 	if err != nil {
 		t.Fatalf("read milestone changes: %v", err)
 	}
@@ -356,14 +356,14 @@ func TestMigrationGivesExistingActionItemsTheirCommentsGoal(t *testing.T) {
 	sqlDB := migratedExcept(t, "migrations/0047_action_item_goals.sql")
 	// Put back the table as 0046 left it: no Goal. SQLite won't drop an
 	// indexed column, so the indexes go first.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP INDEX idx_action_items_goal;
 		DROP INDEX idx_action_items_owner;
 		ALTER TABLE action_items DROP COLUMN goal_id`); err != nil {
 		t.Fatalf("undo 0047: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO report_definitions (id, name, introduction, created_by, created_at) VALUES
 			(1, 'MBR', '', 7, '2026-01-02T00:00:00Z');
 		INSERT INTO report_publications (id, report_definition_id, published_by, published_at, snapshot) VALUES
@@ -376,11 +376,11 @@ func TestMigrationGivesExistingActionItemsTheirCommentsGoal(t *testing.T) {
 		t.Fatalf("arrange 0046 action items: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT id, goal_id FROM action_items ORDER BY id`)
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT id, goal_id FROM action_items ORDER BY id`)
 	if err != nil {
 		t.Fatalf("read action items: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 	sqlDB := migratedExcept(t, "migrations/0042_milestone_changes_outside_checkins.sql")
 	// Put back the table as 0034 and 0035 made it: every change in a Check-in,
 	// with no author of its own.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP TABLE milestone_changes;
 		CREATE TABLE milestone_changes (
 			id           INTEGER PRIMARY KEY,
@@ -423,7 +423,7 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 		t.Fatalf("undo 0042: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO milestones (id, goal_id, name, target_date, created_at) VALUES
 			(1, 1, 'Beta', '2026-03-16', '2026-01-02T00:00:00Z'),
 			(2, 1, 'GA', '2026-04-20', '2026-01-02T00:00:00Z');
@@ -437,11 +437,11 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 		t.Fatalf("arrange 0035 milestone changes: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	rows, err := sqlDB.Query(`SELECT id, checkin_id, milestone_id, kind, reason, created_at, name, author_id
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT id, checkin_id, milestone_id, kind, reason, created_at, name, author_id
 		FROM milestone_changes ORDER BY id`)
 	if err != nil {
 		t.Fatalf("read milestone changes: %v", err)
@@ -470,7 +470,7 @@ func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
 		t.Errorf("milestone changes = %v, want %v", got, want)
 	}
 
-	if _, err := sqlDB.Exec(`INSERT INTO milestone_changes (milestone_id, kind, name, author_id, created_at)
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO milestone_changes (milestone_id, kind, name, author_id, created_at)
 		VALUES (1, 'Added', 'Launch', 7, '2026-01-30T00:00:00Z')`); err != nil {
 		t.Errorf("a Milestone change with no Check-in: %v", err)
 	}
@@ -485,7 +485,7 @@ func TestMigrationBackfillsLinkEvents(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := migratedExcept(t, "migrations/0038_link_events.sql")
-	if _, err := sqlDB.Exec(`DROP TABLE link_events`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `DROP TABLE link_events`); err != nil {
 		t.Fatalf("undo 0038: %v", err)
 	}
 	h := &testsupport.Harness{T: t, DB: sqlDB, Clock: clock.NewFixed(testsupport.Epoch), Email: email.NewRecorder()}
@@ -499,7 +499,7 @@ func TestMigrationBackfillsLinkEvents(t *testing.T) {
 	unrejected := h.CreateGoal(sam, "Rejected, then undone", "why")
 	removed := h.CreateGoal(sam, "Removed", "why")
 	unremoved := h.CreateGoal(sam, "Removed, then undone", "why")
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO links (child_id, parent_id, status, note, requested_by, created_at) VALUES
 			(?3, ?1, 'accepted', '', ?9, '2026-01-02T09:00:00Z'),
 			(?4, ?1, 'pending', '', ?9, '2026-01-03T09:00:00Z'),
@@ -516,7 +516,7 @@ func TestMigrationBackfillsLinkEvents(t *testing.T) {
 		t.Fatalf("arrange links: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -574,7 +574,7 @@ func TestMigrationConvertsReportDefinitionsToRulesAndPickedGoals(t *testing.T) {
 	sqlDB := migratedExcept(t, "migrations/0039_report_rules.sql")
 	// Put back what 0039 replaces: 0008's roots, filters, depth and Owner
 	// filter.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP TABLE report_definition_goals;
 		DROP TABLE report_rule_values;
 		DROP TABLE report_rules;
@@ -640,7 +640,7 @@ func TestMigrationConvertsReportDefinitionsToRulesAndPickedGoals(t *testing.T) {
 	}
 	h.Clock.Advance(40 * 24 * time.Hour)
 
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO report_definitions (id, name, introduction, depth, owner_filter_id, created_by, created_at) VALUES
 			(1, 'Filters only', '', 0, ?1, ?1, '2026-01-02T00:00:00Z'),
 			(2, 'Depth 0', '', 0, ?1, ?1, '2026-01-02T00:00:00Z'),
@@ -660,7 +660,7 @@ func TestMigrationConvertsReportDefinitionsToRulesAndPickedGoals(t *testing.T) {
 		t.Fatalf("arrange report definitions: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -707,13 +707,13 @@ func TestMigrationConvertsReportDefinitionsToRulesAndPickedGoals(t *testing.T) {
 
 	for _, gone := range []string{"report_definition_roots", "report_definition_filters"} {
 		var n int
-		if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, gone).Scan(&n); err != nil || n != 0 {
+		if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, gone).Scan(&n); err != nil || n != 0 {
 			t.Errorf("table %s is still there (%v)", gone, err)
 		}
 	}
 	for _, gone := range []string{"depth", "owner_filter_id"} {
 		var n int
-		if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('report_definitions') WHERE name = ?`, gone).Scan(&n); err != nil || n != 0 {
+		if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM pragma_table_info('report_definitions') WHERE name = ?`, gone).Scan(&n); err != nil || n != 0 {
 			t.Errorf("column report_definitions.%s is still there (%v)", gone, err)
 		}
 	}
@@ -750,7 +750,7 @@ func TestMigrationKeepsDraftNotesAndAllowsSeveralPerSection(t *testing.T) {
 
 	sqlDB := migratedExcept(t, "migrations/0040_several_narrative_notes.sql")
 	// Put back the table as 0018 made it: one note per Definition and section.
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP TABLE narrative_texts;
 		CREATE TABLE narrative_texts (
 			report_definition_id INTEGER NOT NULL REFERENCES report_definitions(id),
@@ -766,14 +766,14 @@ func TestMigrationKeepsDraftNotesAndAllowsSeveralPerSection(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "why")
 	mbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	qbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "QBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	if _, err := sqlDB.Exec(`INSERT INTO narrative_texts (report_definition_id, section, text) VALUES
+	if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO narrative_texts (report_definition_id, section, text) VALUES
 		(?1, 'Miss', 'Slipped a week.'),
 		(?1, 'Insight', 'Pricing drives churn.'),
 		(?2, 'Accomplishment', 'EU is open for business.')`, mbr.ID, qbr.ID); err != nil {
 		t.Fatalf("arrange 0018 notes: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -818,7 +818,7 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 	t.Parallel()
 
 	sqlDB := migratedExcept(t, "migrations/0053_why_it_matters.sql")
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		DROP INDEX idx_why_it_matters_revisions_goal;
 		ALTER TABLE why_it_matters_revisions RENAME COLUMN why_it_matters TO so_what;
 		ALTER TABLE why_it_matters_revisions RENAME TO so_what_revisions;
@@ -826,7 +826,7 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 		ALTER TABLE goals RENAME COLUMN why_it_matters TO so_what;`); err != nil {
 		t.Fatalf("undo 0053: %v", err)
 	}
-	if _, err := sqlDB.Exec(`
+	if _, err := sqlDB.ExecContext(t.Context(), `
 		INSERT INTO accounts (id, email, created_at) VALUES (1, 'priya@example.com', '2026-01-02T00:00:00Z');
 		INSERT INTO goals (id, title, so_what, owner_id, lifecycle, created_at)
 			VALUES (1, 'Launch in EU', 'EU shoppers can buy from us.', 1, 'Proposed', '2026-01-02T00:00:00Z');
@@ -836,18 +836,18 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 		t.Fatalf("arrange rows under the old names: %v", err)
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
 	var lead string
-	if err := sqlDB.QueryRow(`SELECT why_it_matters FROM goals WHERE id = 1`).Scan(&lead); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT why_it_matters FROM goals WHERE id = 1`).Scan(&lead); err != nil {
 		t.Fatalf("read why_it_matters: %v", err)
 	}
 	if lead != "EU shoppers can buy from us." {
 		t.Errorf("why_it_matters = %q, want the lead text it had", lead)
 	}
-	rows, err := sqlDB.Query(`SELECT why_it_matters FROM why_it_matters_revisions WHERE goal_id = 1 ORDER BY created_at`)
+	rows, err := sqlDB.QueryContext(t.Context(), `SELECT why_it_matters FROM why_it_matters_revisions WHERE goal_id = 1 ORDER BY created_at`)
 	if err != nil {
 		t.Fatalf("read revisions: %v", err)
 	}
@@ -867,7 +867,7 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 		t.Errorf("revisions = %q, want %q", revisions, want)
 	}
 	var indexes int
-	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_why_it_matters_revisions_goal'`).Scan(&indexes); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_why_it_matters_revisions_goal'`).Scan(&indexes); err != nil {
 		t.Fatalf("read index: %v", err)
 	}
 	if indexes != 1 {
@@ -880,7 +880,7 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 func arrangeHandoffs(t *testing.T, sqlDB *sql.DB, statuses ...string) error {
 	t.Helper()
 	for _, status := range statuses {
-		if _, err := sqlDB.Exec(`INSERT INTO handoffs (goal_id, from_owner, to_owner, status, initiated_by, created_at)
+		if _, err := sqlDB.ExecContext(t.Context(), `INSERT INTO handoffs (goal_id, from_owner, to_owner, status, initiated_by, created_at)
 			VALUES (1, 7, 8, ?, 7, '2026-01-02T00:00:00Z')`, status); err != nil {
 			return err
 		}
@@ -896,7 +896,7 @@ func TestMigrationFailsOnTwoPendingHandoffsOfOneGoal(t *testing.T) {
 
 	sqlDB := migratedExcept(t, "migrations/0059_one_pending_handoff.sql")
 	// Back to the schema before 0059, which held no index on pending Handoffs.
-	if _, err := sqlDB.Exec(`DROP INDEX idx_handoffs_one_pending`); err != nil {
+	if _, err := sqlDB.ExecContext(t.Context(), `DROP INDEX idx_handoffs_one_pending`); err != nil {
 		t.Fatalf("drop index: %v", err)
 	}
 	arrangeUpgradeAccountsAndGoals(t, sqlDB)
@@ -904,7 +904,7 @@ func TestMigrationFailsOnTwoPendingHandoffsOfOneGoal(t *testing.T) {
 		t.Fatalf("arrange handoffs: %v", err)
 	}
 
-	err := db.Migrate(sqlDB)
+	err := db.Migrate(t.Context(), sqlDB)
 	if err == nil {
 		t.Fatal("Migrate succeeded on a database with two pending Handoffs of one Goal")
 	}
@@ -912,7 +912,7 @@ func TestMigrationFailsOnTwoPendingHandoffsOfOneGoal(t *testing.T) {
 		t.Errorf("Migrate error %q doesn't name the handoffs table", err)
 	}
 	var pending int
-	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM handoffs WHERE status = 'pending'`).Scan(&pending); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM handoffs WHERE status = 'pending'`).Scan(&pending); err != nil {
 		t.Fatalf("count handoffs: %v", err)
 	}
 	if pending != 2 {
@@ -1004,7 +1004,7 @@ func TestMigrationFailsOnADuplicateTheUniqueIndexesRefuse(t *testing.T) {
 			t.Parallel()
 			sqlDB := migratedExcept(t, "migrations/0060_unique_indexes.sql")
 			// Back to the schema before 0060, which held none of its indexes.
-			if _, err := sqlDB.Exec(`
+			if _, err := sqlDB.ExecContext(t.Context(), `
 				DROP INDEX idx_metric_readings_unique_metric;
 				CREATE INDEX idx_metric_readings_checkin ON metric_readings (checkin_id);
 				DROP INDEX idx_report_definition_fields_unique_field;
@@ -1017,12 +1017,12 @@ func TestMigrationFailsOnADuplicateTheUniqueIndexesRefuse(t *testing.T) {
 			}
 			arrangeUpgradeAccountsAndGoals(t, sqlDB)
 			for _, stmt := range []string{tc.arrange, tc.first, tc.duplicate} {
-				if _, err := sqlDB.Exec(stmt); err != nil {
+				if _, err := sqlDB.ExecContext(t.Context(), stmt); err != nil {
 					t.Fatalf("arrange %s: %v", tc.table, err)
 				}
 			}
 
-			err := db.Migrate(sqlDB)
+			err := db.Migrate(t.Context(), sqlDB)
 			if err == nil {
 				t.Fatalf("Migrate succeeded on a database with a duplicate in %s", tc.table)
 			}
@@ -1030,7 +1030,7 @@ func TestMigrationFailsOnADuplicateTheUniqueIndexesRefuse(t *testing.T) {
 				t.Errorf("Migrate error %q doesn't name the %s table", err, tc.table)
 			}
 			var rows int
-			if err := sqlDB.QueryRow(tc.count).Scan(&rows); err != nil {
+			if err := sqlDB.QueryRowContext(t.Context(), tc.count).Scan(&rows); err != nil {
 				t.Fatalf("count %s: %v", tc.table, err)
 			}
 			if rows != 2 {
@@ -1052,15 +1052,15 @@ func TestTheUniqueIndexesRefuseADuplicate(t *testing.T) {
 			sqlDB := openMigratedForFKCheck(t)
 			arrangeUpgradeAccountsAndGoals(t, sqlDB)
 			for _, stmt := range []string{tc.arrange, tc.first} {
-				if _, err := sqlDB.Exec(stmt); err != nil {
+				if _, err := sqlDB.ExecContext(t.Context(), stmt); err != nil {
 					t.Fatalf("arrange %s: %v", tc.table, err)
 				}
 			}
 
-			if _, err := sqlDB.Exec(tc.duplicate); err == nil {
+			if _, err := sqlDB.ExecContext(t.Context(), tc.duplicate); err == nil {
 				t.Errorf("a duplicate was stored in %s", tc.table)
 			}
-			if _, err := sqlDB.Exec(tc.distinct); err != nil {
+			if _, err := sqlDB.ExecContext(t.Context(), tc.distinct); err != nil {
 				t.Errorf("a row repeating nothing was refused by %s: %v", tc.table, err)
 			}
 		})
@@ -1076,7 +1076,7 @@ func openMigratedForFKCheck(t *testing.T) *sql.DB {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return sqlDB
@@ -1116,7 +1116,7 @@ func TestMigrateRefusesADatabaseWithAnOrphanedRow(t *testing.T) {
 	sqlDB := openMigratedForFKCheck(t)
 	insertOrphanedContributors(t, sqlDB, 1)
 
-	err := db.Migrate(sqlDB)
+	err := db.Migrate(t.Context(), sqlDB)
 	if err == nil {
 		t.Fatal("Migrate succeeded on a database with an orphaned Contributor")
 	}
@@ -1134,7 +1134,7 @@ func TestMigrateNamesAtMostTwentyOrphanedRows(t *testing.T) {
 	sqlDB := openMigratedForFKCheck(t)
 	insertOrphanedContributors(t, sqlDB, 25)
 
-	err := db.Migrate(sqlDB)
+	err := db.Migrate(t.Context(), sqlDB)
 	if err == nil {
 		t.Fatal("Migrate succeeded on a database with orphaned Contributors")
 	}
@@ -1157,12 +1157,12 @@ func TestMigrateLeavesForeignKeysOnForTheConnectionItRanOn(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	// One connection, so the one Migrate ran on is the one read next.
 	sqlDB.SetMaxOpenConns(1)
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
 	var on int
-	if err := sqlDB.QueryRow(`PRAGMA foreign_keys`).Scan(&on); err != nil {
+	if err := sqlDB.QueryRowContext(t.Context(), `PRAGMA foreign_keys`).Scan(&on); err != nil {
 		t.Fatalf("read foreign_keys: %v", err)
 	}
 	if on != 1 {
@@ -1248,7 +1248,7 @@ func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
 			testsupport.ArrangeEnumCheckRows(t, sqlDB)
 			execIgnoringChecks(t, sqlDB, tc.arrange)
 
-			err := db.Migrate(sqlDB)
+			err := db.Migrate(t.Context(), sqlDB)
 			if err == nil {
 				t.Fatalf("Migrate succeeded on a database breaking %s", tc.constraint)
 			}
@@ -1256,7 +1256,7 @@ func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
 				t.Errorf("Migrate error %q doesn't name %s", err, tc.constraint)
 			}
 			var got string
-			if err := sqlDB.QueryRow(tc.read).Scan(&got); err != nil {
+			if err := sqlDB.QueryRowContext(t.Context(), tc.read).Scan(&got); err != nil {
 				t.Fatalf("read the row back: %v", err)
 			}
 			if got != tc.want {
@@ -1270,7 +1270,7 @@ func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
 // " | ", in the order q reads them.
 func queryStrings(t *testing.T, sqlDB *sql.DB, q string, args ...any) []string {
 	t.Helper()
-	rows, err := sqlDB.Query(q, args...)
+	rows, err := sqlDB.QueryContext(t.Context(), q, args...)
 	if err != nil {
 		t.Fatalf("%s: %v", q, err)
 	}
@@ -1316,7 +1316,7 @@ func TestMigrationKeepsEveryRowOfTheTablesItGivesEnumChecks(t *testing.T) {
 		}
 	}
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -1357,11 +1357,11 @@ func applyMigrationFile(t *testing.T, sqlDB *sql.DB, path string) {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	tx, err := sqlDB.Begin()
+	tx, err := sqlDB.BeginTx(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("begin %s: %v", path, err)
 	}
-	if _, err := tx.Exec(string(body)); err != nil {
+	if _, err := tx.ExecContext(t.Context(), string(body)); err != nil {
 		_ = tx.Rollback()
 		t.Fatalf("apply %s: %v", path, err)
 	}
@@ -1383,7 +1383,7 @@ func schemaShape(t *testing.T, sqlDB *sql.DB) map[string][]string {
 	}
 	var tables []string
 	if err := func() error {
-		rows, err := sqlDB.Query(`SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name`)
+		rows, err := sqlDB.QueryContext(t.Context(), `SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name`)
 		if err != nil {
 			return err
 		}

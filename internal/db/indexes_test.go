@@ -44,7 +44,7 @@ func fkIndexMigratedDB(t *testing.T) *sql.DB {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := Migrate(sqlDB); err != nil {
+	if err := Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return sqlDB
@@ -55,7 +55,7 @@ func fkIndexMigratedDB(t *testing.T) *sql.DB {
 // one an index has to lead with.
 func fkIndexColumns(t *testing.T, sqlDB *sql.DB) []string {
 	t.Helper()
-	rows, err := sqlDB.Query(`
+	rows, err := sqlDB.QueryContext(t.Context(), `
 		SELECT DISTINCT m.name || '.' || fk."from"
 		FROM sqlite_schema AS m, pragma_foreign_key_list(m.name) AS fk
 		WHERE m.type = 'table' AND fk.seq = 0
@@ -73,7 +73,7 @@ func fkIndexColumns(t *testing.T, sqlDB *sql.DB) []string {
 // can't serve every query.
 func fkIndexLeadingColumns(t *testing.T, sqlDB *sql.DB) map[string]bool {
 	t.Helper()
-	rows, err := sqlDB.Query(`
+	rows, err := sqlDB.QueryContext(t.Context(), `
 		SELECT m.name || '.' || ii.name
 		FROM sqlite_schema AS m,
 			pragma_index_list(m.name) AS il,
@@ -174,7 +174,7 @@ var fkIndexScanDetail = regexp.MustCompile(`^SCAN (\S+)(?: USING (?:COVERING )?I
 // a hot query may scan it.
 func fkIndexPartialIndexes(t *testing.T, sqlDB *sql.DB) map[string]bool {
 	t.Helper()
-	rows, err := sqlDB.Query(`
+	rows, err := sqlDB.QueryContext(t.Context(), `
 		SELECT il.name
 		FROM sqlite_schema AS m, pragma_index_list(m.name) AS il
 		WHERE m.type = 'table' AND il.partial = 1`)
@@ -240,7 +240,7 @@ type fkIndexPlanStep struct {
 // of its parameters.
 func fkIndexPlanSteps(t *testing.T, sqlDB *sql.DB, query string) []fkIndexPlanStep {
 	t.Helper()
-	rows, err := sqlDB.Query("EXPLAIN QUERY PLAN "+query, make([]any, fkIndexParams(query))...)
+	rows, err := sqlDB.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+query, make([]any, fkIndexParams(query))...)
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}

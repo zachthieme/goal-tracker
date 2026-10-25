@@ -22,7 +22,7 @@ func TestSeedOpensTheDatabaseTheWayTheAppDoes(t *testing.T) {
 	}
 	dbPath := filepath.Join(dir, "goal-tracker.db")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := run(logger, []string{"-db", dbPath, "-end", "2026-10-01"}); err != nil {
+	if err := run(t.Context(), logger, []string{"-db", dbPath, "-end", "2026-10-01"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	if _, err := os.Stat(dbPath); err != nil {

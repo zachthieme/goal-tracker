@@ -29,8 +29,7 @@ var migrationsFS embed.FS
 // and foreign keys are set back as they were before it is returned. Once the
 // schema is current, Migrate checks every foreign key and fails if any row
 // breaks one, so the app refuses to start on a database holding an orphan.
-func Migrate(sqlDB *sql.DB) (err error) {
-	ctx := context.Background()
+func Migrate(ctx context.Context, sqlDB *sql.DB) (err error) {
 	conn, err := sqlDB.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("take a connection: %w", err)
@@ -93,11 +92,11 @@ func applyMigrations(ctx context.Context, conn *sql.Conn) error {
 		if err != nil {
 			return fmt.Errorf("begin migration %s: %w", version, err)
 		}
-		if _, err := tx.Exec(string(body)); err != nil {
+		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", version, err)
 		}
-		if _, err := tx.Exec(
+		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
 			version, time.Now().UTC().Format(time.RFC3339Nano),
 		); err != nil {

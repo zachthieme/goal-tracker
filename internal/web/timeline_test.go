@@ -995,7 +995,7 @@ func TestGoalHistoryCheckinWithoutRecordedChangesRendersAsBefore(t *testing.T) {
 		t.Fatal("the replanning Check-in shows no Milestone changes before they are deleted")
 	}
 
-	if _, err := h.DB.Exec(`DELETE FROM milestone_changes WHERE checkin_id IN (SELECT id FROM checkins WHERE goal_id = ?)`, older.ID); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `DELETE FROM milestone_changes WHERE checkin_id IN (SELECT id FROM checkins WHERE goal_id = ?)`, older.ID); err != nil {
 		t.Fatalf("delete milestone changes: %v", err)
 	}
 	if got, want := checkinEntry(older), checkinEntry(twin); got != want {
@@ -1042,7 +1042,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 		return between(t, page, `data-testid="goal-milestone-churn">`, "<")[len(`data-testid="goal-milestone-churn">`):]
 	}
 
-	postForm(t, client, checkinURL, form)
+	postFormStatus(t, client, checkinURL, form)
 	page := getBody(t, client, goalPageURL(ts.URL, goal))
 	if strings.Contains(historyBlock(t, page), `data-testid="milestone-change"`) {
 		t.Errorf("a rejected Check-in shows Milestone changes:\n%s", historyBlock(t, page))
@@ -1052,8 +1052,8 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 	}
 
 	form.Set("health", domain.HealthGreen)
-	if resp := postForm(t, client, checkinURL, form); resp.StatusCode != http.StatusOK {
-		t.Fatalf("valid Check-in: status %d", resp.StatusCode)
+	if status := postFormStatus(t, client, checkinURL, form); status != http.StatusOK {
+		t.Fatalf("valid Check-in: status %d", status)
 	}
 	page = getBody(t, client, goalPageURL(ts.URL, goal))
 	entries := historyEntries(historyBlock(t, page))
@@ -1067,7 +1067,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 		t.Errorf("churn = %s, want 3 (Rollout to 50%% and GA added, Rollout to 50%% removed)", got)
 	}
 
-	if _, err := h.DB.Exec(`DELETE FROM milestone_changes`); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `DELETE FROM milestone_changes`); err != nil {
 		t.Fatalf("delete milestone changes: %v", err)
 	}
 	if got := churn(getBody(t, client, goalPageURL(ts.URL, goal))); got != "3" {
@@ -1081,14 +1081,13 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignInNamed("pat@example.com", "Pat Lee")
 	goal := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
 	suggest := func(title string) domain.ParentSuggestion {
 		t.Helper()
-		s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, h.CreateGoal(pat, title, "It matters.").ID, "")
+		s, err := h.Service.SuggestParent(t.Context(), pat.ID, goal.ID, h.CreateGoal(pat, title, "It matters.").ID, "")
 		if err != nil {
 			t.Fatalf("SuggestParent: %v", err)
 		}
@@ -1096,12 +1095,12 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	}
 	declined := suggest("Reduce outages")
 	h.Clock.Advance(24 * time.Hour) // Sat 3 Jan
-	if _, err := h.Service.DeclineParentSuggestion(ctx, sam.ID, declined.ID); err != nil {
+	if _, err := h.Service.DeclineParentSuggestion(t.Context(), sam.ID, declined.ID); err != nil {
 		t.Fatalf("DeclineParentSuggestion: %v", err)
 	}
 	accepted := suggest("Cut costs")
 	h.Clock.Advance(24 * time.Hour) // Sun 4 Jan
-	if _, err := h.Service.AcceptParentSuggestion(ctx, sam.ID, accepted.ID); err != nil {
+	if _, err := h.Service.AcceptParentSuggestion(t.Context(), sam.ID, accepted.ID); err != nil {
 		t.Fatalf("AcceptParentSuggestion: %v", err)
 	}
 	open := suggest("Grow revenue")
@@ -1210,28 +1209,29 @@ func TestGoalHistoryShowsLinkChangesOnBothGoals(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	h.Clock.Advance(time.Hour)
-	if resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
+	if status := postFormStatus(t, samClient, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
 		"parent_id": {fmt.Sprint(parent.ID)},
-	}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("request link: status %d", resp.StatusCode)
+	}); status != http.StatusOK {
+		t.Fatalf("request link: status %d", status)
 	}
 	pending, err := h.Service.PendingLinkRequests(context.Background(), pat.ID)
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("PendingLinkRequests = %+v, %v", pending, err)
 	}
 	h.Clock.Advance(time.Hour)
-	if resp := postForm(t, patClient, fmt.Sprintf("%s/links/%d/accept", ts.URL, pending[0].ID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("accept link: status %d", resp.StatusCode)
+	if status := postFormStatus(t, patClient, fmt.Sprintf("%s/links/%d/accept", ts.URL, pending[0].ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("accept link: status %d", status)
 	}
 	h.Clock.Advance(time.Hour)
 	resp := postForm(t, patClient, fmt.Sprintf("%s/links/%d/remove", ts.URL, pending[0].ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove link: status %d", resp.StatusCode)
 	}
 	landed := readBody(t, resp)
 	h.Clock.Advance(time.Minute)
-	if resp := postForm(t, patClient, ts.URL+undoAction(t, landed), toastFields(t, landed)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("undo removal: status %d", resp.StatusCode)
+	if status := postFormStatus(t, patClient, ts.URL+undoAction(t, landed), toastFields(t, landed)); status != http.StatusOK {
+		t.Fatalf("undo removal: status %d", status)
 	}
 
 	for _, side := range []struct {
@@ -1454,10 +1454,10 @@ func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
 	h.AddDelegate(sam, dana, goal.ID)
 	h.Clock.Advance(3 * 24 * time.Hour)
 	ts := newServer(t, h)
-	postForm(t, signInClient(t, ts.URL, "dana@example.com"), fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID),
+	postFormStatus(t, signInClient(t, ts.URL, "dana@example.com"), fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID),
 		url.Values{"name": {"GA"}, "target_date": {"2026-05-01"}})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, proposed.ID),
+	postFormStatus(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, proposed.ID),
 		url.Values{"name": {"Pricing page"}, "target_date": {"2026-04-01"}})
 
 	milestonesUnder := func(g domain.Goal, filter string) []string {
@@ -1515,6 +1515,7 @@ func TestDefiningAGoalLeavesNoMilestoneHistoryOverHTTP(t *testing.T) {
 		"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."},
 		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	created := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("New goal answered %d", resp.StatusCode)

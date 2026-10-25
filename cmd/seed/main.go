@@ -23,13 +23,13 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(logger, os.Args[1:]); err != nil {
+	if err := run(context.Background(), logger, os.Args[1:]); err != nil {
 		logger.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger, args []string) error {
+func run(ctx context.Context, logger *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("seed", flag.ContinueOnError)
 	dbPath := fs.String("db", envOr("GOAL_TRACKER_DB", "goal-tracker.db"), "SQLite database to seed; it must have no Goals yet")
 	seedValue := fs.Uint64("seed", seed.DefaultSeed, "random seed; the same seed builds the same company")
@@ -56,13 +56,13 @@ func run(logger *slog.Logger, args []string) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() { _ = sqlDB.Close() }()
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(ctx, sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	clk := clock.NewFixed(end)
 	svc := domain.NewService(sqlDB, clk, email.LogSender{Logger: logger}, []string{*adminEmail})
-	sum, err := seed.Run(context.Background(), svc, clk, seed.Options{Seed: *seedValue, Admin: *adminEmail})
+	sum, err := seed.Run(ctx, svc, clk, seed.Options{Seed: *seedValue, Admin: *adminEmail})
 	if err != nil {
 		return err
 	}

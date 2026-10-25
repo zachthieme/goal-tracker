@@ -72,6 +72,7 @@ func TestAnUnexpectedServerErrorIsLoggedWithItsCause(t *testing.T) {
 	}
 
 	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
@@ -176,6 +177,7 @@ func TestARefusalIsNotLoggedAsAServerError(t *testing.T) {
 	}
 
 	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want 403", resp.StatusCode)
@@ -204,6 +206,7 @@ func TestANilLoggerLogsToTheDefault(t *testing.T) {
 	buf.Reset()
 
 	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
@@ -246,7 +249,7 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
 	h.Clock.Advance(10 * day)
 	pat := signInClient(t, ts.URL, "pat@example.com")
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_nudge BEFORE INSERT ON nudges
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_nudge BEFORE INSERT ON nudges
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -254,6 +257,7 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 
 	path := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"
 	resp := postForm(t, pat, ts.URL+path, url.Values{"return": {"/follow-ups"}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
@@ -272,13 +276,14 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.Exec(`ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
 		t.Fatalf("rename milestones: %v", err)
 	}
 	before := len(logRecords(t, buf))
 
 	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
 	resp, page := postNoChange(t, client, ts.URL+path, false)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
@@ -302,7 +307,7 @@ func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -310,6 +315,7 @@ func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 
 	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
 	resp, page := postNoChange(t, client, ts.URL+path, false)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
@@ -325,12 +331,13 @@ func TestAFailedImportIsLoggedWithItsCause(t *testing.T) {
 	h := testsupport.New(t, "admin@example.com")
 	ts, buf := loggedServer(t, h)
 	admin := signInClient(t, ts.URL, "admin@example.com")
-	if _, err := h.DB.Exec(`ALTER TABLE fields RENAME TO gone_fields`); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE fields RENAME TO gone_fields`); err != nil {
 		t.Fatalf("rename fields: %v", err)
 	}
 	before := len(logRecords(t, buf))
 
 	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", webImportCSV, "dry-run")
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
@@ -348,7 +355,7 @@ func TestAFailedUndoIsLoggedWithItsCause(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
 			ts, buf := loggedServer(t, h)
 			client, landed := tc.act(t, h, ts)
-			if _, err := h.DB.Exec(`CREATE TRIGGER fail_undo BEFORE ` + tc.writes + `
+			if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_undo BEFORE `+tc.writes+`
 				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 				t.Fatalf("install failing trigger: %v", err)
 			}
@@ -356,6 +363,7 @@ func TestAFailedUndoIsLoggedWithItsCause(t *testing.T) {
 
 			path := undoAction(t, landed)
 			resp := postForm(t, client, ts.URL+path, toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			_ = readBody(t, resp)
 			if resp.StatusCode != http.StatusInternalServerError {
 				t.Errorf("status %d, want 500", resp.StatusCode)
@@ -377,6 +385,7 @@ func TestAnUndoWithNothingToUndoIsNotLogged(t *testing.T) {
 	before := len(logRecords(t, buf))
 
 	resp := postForm(t, client, ts.URL+"/link-removals/x/undo", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status %d, want 404", resp.StatusCode)

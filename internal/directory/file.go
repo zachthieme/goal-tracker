@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -61,7 +62,7 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	cr := csv.NewReader(r)
 	cr.LazyQuotes = true
 	header, err := cr.Read()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("directory file %s is empty; its first row must be the header %s,%s,%s", f.path, fileEmailColumn, fileNameColumn, fileManagerColumn)
 	}
 	if err != nil {
@@ -96,7 +97,7 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 		// Read returns a ragged row's fields along with its error, so the
 		// error comes first.
 		rec, err := cr.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

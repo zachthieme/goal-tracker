@@ -88,7 +88,7 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 		env = append(env, "TMPDIR="+dir)
 	}
 
-	pageURL, stop, err := servePage(html, app)
+	pageURL, stop, err := servePage(ctx, html, app)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +194,7 @@ func runningWith(env string) bool {
 
 // servePage serves html at a URL on the loopback interface, and every other
 // path from the app, until stop is called.
-func servePage(html []byte, app *url.URL) (pageURL string, stop func(), err error) {
+func servePage(ctx context.Context, html []byte, app *url.URL) (pageURL string, stop func(), err error) {
 	secret := make([]byte, 16)
 	_, _ = rand.Read(secret)
 	pagePath := "/" + hex.EncodeToString(secret)
@@ -216,7 +216,8 @@ func servePage(html []byte, app *url.URL) (pageURL string, stop func(), err erro
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return "", nil, err
 	}

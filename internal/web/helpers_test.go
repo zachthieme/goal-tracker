@@ -37,6 +37,7 @@ func signInClient(t *testing.T, baseURL, emailAddr string) *http.Client {
 	}
 	client := &http.Client{Jar: jar}
 	resp := postForm(t, client, baseURL+"/signin", url.Values{"email": {emailAddr}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("sign in %q: status %d", emailAddr, resp.StatusCode)
 	}
@@ -53,10 +54,11 @@ func navTo(goalID int64) string {
 
 func getBody(t *testing.T, client *http.Client, rawURL string) string {
 	t.Helper()
-	resp, err := client.Get(rawURL)
+	resp, err := ctxGet(t, client, rawURL)
 	if err != nil {
 		t.Fatalf("GET %s: %v", rawURL, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET %s: status %d", rawURL, resp.StatusCode)
 	}
@@ -143,13 +145,60 @@ func between(t *testing.T, s, start, end string) string {
 	return s[:upTo]
 }
 
+// ctxGet is client.Get(rawURL), made under the test's context.
+func ctxGet(t *testing.T, client *http.Client, rawURL string) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
+// ctxPost is client.Post(rawURL, contentType, body), made under the test's
+// context.
+func ctxPost(t *testing.T, client *http.Client, rawURL, contentType string, body io.Reader) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	return client.Do(req)
+}
+
+// ctxPostForm is client.PostForm(rawURL, form), made under the test's
+// context.
+func ctxPostForm(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, error) {
+	t.Helper()
+	return ctxPost(t, client, rawURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+}
+
 func postForm(t *testing.T, client *http.Client, rawURL string, form url.Values) *http.Response {
 	t.Helper()
-	resp, err := client.PostForm(rawURL, form)
+	resp, err := ctxPostForm(t, client, rawURL, form)
 	if err != nil {
 		t.Fatalf("POST %s: %v", rawURL, err)
 	}
 	return resp
+}
+
+// postFormStatus posts form to rawURL, as postForm does, and returns the
+// response's status, closing its body unread.
+func postFormStatus(t *testing.T, client *http.Client, rawURL string, form url.Values) int {
+	t.Helper()
+	resp := postForm(t, client, rawURL, form)
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+// postFormBody posts form to rawURL, as postForm does, and returns the
+// response's body, whatever its status.
+func postFormBody(t *testing.T, client *http.Client, rawURL string, form url.Values) string {
+	t.Helper()
+	resp := postForm(t, client, rawURL, form)
+	defer func() { _ = resp.Body.Close() }()
+	return readBody(t, resp)
 }
 
 func readBody(t *testing.T, resp *http.Response) string {
@@ -247,7 +296,7 @@ func markupTags(page string) iter.Seq[markupTag] {
 // returns the body and status without following redirects or asserting 200.
 func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -759,6 +808,7 @@ func passwordSignInClient(t *testing.T, h *testsupport.Harness, baseURL, emailAd
 	}
 	client := &http.Client{Jar: jar}
 	resp := postForm(t, client, baseURL+"/signin", url.Values{"email": {emailAddr}, "password": {password}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
 		t.Fatalf("password sign-in as %q: status %d at %s:\n%s", emailAddr, resp.StatusCode, resp.Request.URL.Path, body)
 	}
@@ -1311,6 +1361,7 @@ func renderNode(n *html.Node) string {
 func postImport(t *testing.T, client *http.Client, rawURL, filename, content, action string) string {
 	t.Helper()
 	resp := postImportRaw(t, client, rawURL, filename, content, action)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST %s: status %d", rawURL, resp.StatusCode)
 	}
@@ -1336,7 +1387,7 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 	if err := mw.Close(); err != nil {
 		t.Fatalf("close multipart writer: %v", err)
 	}
-	resp, err := client.Post(rawURL, mw.FormDataContentType(), &buf)
+	resp, err := ctxPost(t, client, rawURL, mw.FormDataContentType(), &buf)
 	if err != nil {
 		t.Fatalf("POST %s: %v", rawURL, err)
 	}
@@ -1571,7 +1622,7 @@ func TestMarkupHelpersAssertSubmitsAtOnceFailsAConfirmDialog(t *testing.T) {
 				assertSubmitsAtOnce(t, "Reject", `<p>Reject</p>`+tc.form, "/links/1/reject")
 				return
 			}
-			cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1")
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1")
 			cmd.Env = append(os.Environ(), "ASSERT_SUBMITS_AT_ONCE_CHILD=1")
 			out, err := cmd.CombinedOutput()
 			if err == nil || !strings.Contains(string(out), tc.want) {

@@ -226,13 +226,16 @@ func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
 			client, landed := tc.act(t, h, ts)
 			action, fields := undoAction(t, landed), toastFields(t, landed)
 
-			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
-				t.Fatalf("Undo: status %d %s", resp.StatusCode, readBody(t, resp))
+			undone := postForm(t, client, ts.URL+action, fields)
+			defer func() { _ = undone.Body.Close() }()
+			if undone.StatusCode != http.StatusOK {
+				t.Fatalf("Undo: status %d %s", undone.StatusCode, readBody(t, undone))
 			}
 			if !tc.restored(t, h) {
 				t.Fatal("not restored by the Undo")
 			}
 			resp := postForm(t, client, ts.URL+action, fields)
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, tc.again, tc.back(t, h))
 		})
 	}
@@ -252,6 +255,7 @@ func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
 			h.Clock.Advance(15*time.Minute + time.Second)
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, "This Undo is no longer available.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by a late Undo")
@@ -289,14 +293,15 @@ func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
 			for name, form := range map[string]url.Values{"missing": missing, "forged": forged} {
 				t.Run(name, func(t *testing.T) {
 					resp := postForm(t, client, ts.URL+action, form)
+					defer func() { _ = resp.Body.Close() }()
 					assertUndoRefused(t, resp, http.StatusForbidden, "This Undo isn't yours to use.", tc.back(t, h))
 				})
 			}
 			if tc.restored(t, h) {
 				t.Fatal("restored by an Undo without its token")
 			}
-			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
-				t.Errorf("Undo with its token after refused ones: status %d", resp.StatusCode)
+			if status := postFormStatus(t, client, ts.URL+action, fields); status != http.StatusOK {
+				t.Errorf("Undo with its token after refused ones: status %d", status)
 			}
 		})
 	}
@@ -329,6 +334,7 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 	} {
 		t.Run(tc.path+"?"+tc.form.Encode(), func(t *testing.T) {
 			resp := postForm(t, sam, ts.URL+tc.path, tc.form)
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusNotFound, "There's nothing here to undo.", tc.back)
 		})
 	}
@@ -352,6 +358,7 @@ func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 			}
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusConflict, "Restoring it now would make a cycle.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by an Undo that would make a cycle")
@@ -370,12 +377,13 @@ func TestAnUndoThatFailsSaysNothingChanged(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
 			ts := newServer(t, h)
 			client, landed := tc.act(t, h, ts)
-			if _, err := h.DB.Exec(`CREATE TRIGGER fail_undo BEFORE ` + tc.writes + `
+			if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_undo BEFORE `+tc.writes+`
 				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 				t.Fatalf("install failing trigger: %v", err)
 			}
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusInternalServerError, "The Undo couldn't be done, so nothing changed. Try again.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by a failed Undo")
@@ -400,12 +408,13 @@ func TestSomeoneElsesUndoIsRefused(t *testing.T) {
 			lee := signInClient(t, ts.URL, "lee@example.com")
 
 			resp := postForm(t, lee, ts.URL+action, fields)
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusForbidden, tc.notYours, tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Fatal("restored by someone else's Undo")
 			}
-			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
-				t.Errorf("Undo by its own person after someone else's: status %d", resp.StatusCode)
+			if status := postFormStatus(t, client, ts.URL+action, fields); status != http.StatusOK {
+				t.Errorf("Undo by its own person after someone else's: status %d", status)
 			}
 		})
 	}
@@ -460,6 +469,7 @@ func TestAnUndoThatNoLongerFitsSaysWhatChanged(t *testing.T) {
 			tc.since(t, h)
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, tc.reason, tc.undo.back(t, h))
 		})
 	}

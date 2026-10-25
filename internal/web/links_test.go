@@ -32,6 +32,7 @@ func TestLinkGoalsAutoAcceptNavigateAndRemove(t *testing.T) {
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
 		"parent_id": {fmt.Sprint(parent.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("request link: status %d", resp.StatusCode)
 	}
@@ -82,6 +83,7 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 		"parent_id": {fmt.Sprint(parent.ID)},
 		"note":      {"displays cause a third of outages"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("request link: status %d", resp.StatusCode)
 	}
@@ -138,7 +140,7 @@ func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
 	assertAcceptReject(t, row, base)
 
 	client := signInClient(t, ts.URL, "pat@example.com")
-	if page := readBody(t, postForm(t, client, ts.URL+base+"/reject", url.Values{})); !strings.Contains(page, `data-testid="no-pending-links"`) {
+	if page := postFormBody(t, client, ts.URL+base+"/reject", url.Values{}); !strings.Contains(page, `data-testid="no-pending-links"`) {
 		t.Errorf("the link request is still pending after Reject:\n%s", page)
 	}
 }
@@ -210,6 +212,7 @@ func removeAcrossOwners(t *testing.T, h *testsupport.Harness, ts *httptest.Serve
 	resp := postForm(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{
 		"goal_id": {fmt.Sprint(child.ID)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove link: status %d", resp.StatusCode)
 	}
@@ -246,6 +249,7 @@ func TestRemovingALinkOffersUndoOnce(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("undo: status %d", resp.StatusCode)
 	}
@@ -277,6 +281,7 @@ func TestRemoveReturnsToTheGoalPageItCameFrom(t *testing.T) {
 	}
 
 	resp := postForm(t, client, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", parent.ID) {
 		t.Errorf("remove landed on %s, want the parent's Goal page", resp.Request.URL.Path)
 	}
@@ -296,6 +301,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 	pat := signInClient(t, ts.URL, "pat@example.com")
 
 	resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo by the parent's Owner: status %d, want 403", resp.StatusCode)
@@ -304,15 +310,15 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("ParentsOf(child) = %+v after a refused Undo, want none", got)
 	}
 
-	if resp := postForm(t, sam, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("Undo by the remover: status %d", resp.StatusCode)
+	if status := postFormStatus(t, sam, ts.URL+action, toastFields(t, landed)); status != http.StatusOK {
+		t.Fatalf("Undo by the remover: status %d", status)
 	}
 	links, err := h.Service.ParentLinks(context.Background(), child.ID)
 	if err != nil || len(links) != 1 {
 		t.Fatalf("ParentLinks = %+v, %v", links, err)
 	}
-	if resp := postForm(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, links[0].LinkID), url.Values{}); resp.StatusCode != http.StatusOK {
-		t.Fatalf("remove again: status %d", resp.StatusCode)
+	if status := postFormStatus(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, links[0].LinkID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("remove again: status %d", status)
 	}
 	resp = postForm(t, sam, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
@@ -350,6 +356,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItWouldCreateACycle(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
 		t.Errorf("Undo closing a cycle: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
 	}
@@ -403,6 +410,7 @@ func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 		form.Set("from", "home")
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/reject", ts.URL, link.ID), form)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reject: status %d", resp.StatusCode)
 	}
@@ -441,6 +449,7 @@ func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
 			}
 
 			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("undo: status %d", resp.StatusCode)
 			}
@@ -480,6 +489,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo by the requester: status %d, want 403", resp.StatusCode)
@@ -497,8 +507,8 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("pending = %d after a crafted Undo, want 0", n)
 	}
 
-	if resp := postForm(t, pat, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
-		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
+	if status := postFormStatus(t, pat, ts.URL+action, toastFields(t, landed)); status != http.StatusOK {
+		t.Fatalf("Undo by the rejecter: status %d", status)
 	}
 	resp = postForm(t, pat, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
@@ -522,6 +532,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 		h.RequestLink(h.SignIn("sam@example.com"), child, parent, "second try")
 
 		resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "requested again") {
 			t.Errorf("Undo: status %d %q, want 422 saying it was requested again", resp.StatusCode, body)
 		}
@@ -543,6 +554,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 		}
 
 		resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
 			t.Errorf("Undo: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
 		}
@@ -571,6 +583,7 @@ func TestALinkRemovalUndoCantBeReplayedOverALaterRemoval(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+undoAction(t, landed), toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "requested again") {
 		t.Errorf("replayed Undo: status %d %q, want 422 saying the link was requested again", resp.StatusCode, body)
 	}
@@ -641,6 +654,7 @@ func TestRefusedLinkRemovalShowsAPageSayingWhy(t *testing.T) {
 	lee := signInClient(t, ts.URL, "lee@example.com")
 
 	resp := postForm(t, lee, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("remove by a non-Owner: status %d, want 403", resp.StatusCode)
@@ -677,6 +691,7 @@ func TestRefusedLinkRemovalWithoutAGoalLinksBackHome(t *testing.T) {
 		"goal_id=abc": {"goal_id": {"abc"}},
 	} {
 		resp := postForm(t, lee, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), form)
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s: status %d, want 403", name, resp.StatusCode)
@@ -717,6 +732,7 @@ func TestARefusedLinkDecisionLeavesTheRequestPending(t *testing.T) {
 		client := signInClient(t, ts.URL, d.who)
 		for _, decision := range []string{"accept", "reject"} {
 			resp := postForm(t, client, fmt.Sprintf("%s/links/%d/%s", ts.URL, d.linkID, decision), url.Values{})
+			defer func() { _ = resp.Body.Close() }()
 			_ = readBody(t, resp)
 			if resp.StatusCode != d.want {
 				t.Errorf("%s by %s on link %d: status %d, want %d", decision, d.who, d.linkID, resp.StatusCode, d.want)

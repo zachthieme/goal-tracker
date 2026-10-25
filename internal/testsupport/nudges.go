@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -12,7 +10,7 @@ import (
 // sender someone who can't check in on it.
 func (h *Harness) Nudge(sender domain.Account, goalID int64) domain.Nudge {
 	h.T.Helper()
-	n, err := h.Service.Nudge(context.Background(), sender.ID, goalID)
+	n, err := h.Service.Nudge(h.T.Context(), sender.ID, goalID)
 	if err != nil {
 		h.T.Fatalf("Nudge: %v", err)
 	}

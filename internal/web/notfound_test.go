@@ -23,7 +23,7 @@ func assertNotFoundPage(t *testing.T, client *http.Client, rawURL, back string) 
 // and returns the page.
 func assertNotFoundPageFor(t *testing.T, client *http.Client, method, rawURL, back string) string {
 	t.Helper()
-	req, err := http.NewRequest(method, rawURL, nil)
+	req, err := http.NewRequestWithContext(t.Context(), method, rawURL, nil)
 	if err != nil {
 		t.Fatalf("new %s request: %v", method, err)
 	}
@@ -31,6 +31,7 @@ func assertNotFoundPageFor(t *testing.T, client *http.Client, method, rawURL, ba
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, rawURL, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("%s %s: status %d, want 404", method, rawURL, resp.StatusCode)
@@ -160,10 +161,11 @@ func TestNotFoundPageIsPlainCentredText(t *testing.T) {
 	}
 
 	for who, client := range map[string]*http.Client{"signed in": signInClient(t, ts.URL, "pat@example.com"), "signed out": http.DefaultClient} {
-		resp, err := client.Get(ts.URL + "/no-such-page")
+		resp, err := ctxGet(t, client, ts.URL+"/no-such-page")
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		page := readBody(t, resp)
 		if tag := tagAround(t, page, `class="message-page nf-message"`); !strings.HasPrefix(tag, "<div") {
 			t.Errorf("%s, the Not found message isn't its own block: %s", who, tag)
@@ -239,10 +241,11 @@ func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp, err := client.Post(ts.URL+"/follow-ups", "application/x-www-form-urlencoded", nil)
+	resp, err := ctxPost(t, client, ts.URL+"/follow-ups", "application/x-www-form-urlencoded", nil)
 	if err != nil {
 		t.Fatalf("POST /follow-ups: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
 		t.Errorf("POST /follow-ups: status %d, Allow %q; want 405, %q", resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")

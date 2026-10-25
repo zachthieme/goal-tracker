@@ -37,7 +37,7 @@ func TestAPDFDownloadWithEveryRenderBusyIsUnavailable(t *testing.T) {
 		s.pdf.slots <- struct{}{}
 	}
 
-	req := httptest.NewRequest(http.MethodGet, publicationPath(pub)+"/pdf", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, publicationPath(pub)+"/pdf", nil)
 	req.SetPathValue("id", strconv.FormatInt(def.ID, 10))
 	req.SetPathValue("pub", strconv.FormatInt(pub.ID, 10))
 	w := httptest.NewRecorder()

@@ -125,15 +125,16 @@ func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
 	h.ActiveGoal(lead, "Cut churn", "Customers leave.")
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "lead@example.com")
-	if _, err := h.DB.Exec(`DROP TABLE handoffs`); err != nil {
+	if _, err := h.DB.ExecContext(t.Context(), `DROP TABLE handoffs`); err != nil {
 		t.Fatalf("drop handoffs: %v", err)
 	}
 	buf.Reset()
 
-	resp, err := client.Get(ts.URL + "/goals")
+	resp, err := ctxGet(t, client, ts.URL+"/goals")
 	if err != nil {
 		t.Fatalf("GET /goals: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("GET /goals: status %d, want 200", resp.StatusCode)

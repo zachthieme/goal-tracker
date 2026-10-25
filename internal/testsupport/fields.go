@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"context"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -10,7 +8,7 @@ import (
 // test on error. unit only sticks to a number Field.
 func (h *Harness) CreateField(admin domain.Account, name, fieldType, unit string) domain.Field {
 	h.T.Helper()
-	f, err := h.Service.CreateField(context.Background(), admin.ID, name, fieldType, unit)
+	f, err := h.Service.CreateField(h.T.Context(), admin.ID, name, fieldType, unit)
 	if err != nil {
 		h.T.Fatalf("CreateField: %v", err)
 	}
@@ -21,7 +19,7 @@ func (h *Harness) CreateField(admin domain.Account, name, fieldType, unit string
 // test on error.
 func (h *Harness) SetGoalField(actor domain.Account, goal domain.Goal, field domain.Field, value string) {
 	h.T.Helper()
-	if err := h.Service.SetGoalField(context.Background(), actor.ID, goal.ID, field.ID, value); err != nil {
+	if err := h.Service.SetGoalField(h.T.Context(), actor.ID, goal.ID, field.ID, value); err != nil {
 		h.T.Fatalf("SetGoalField: %v", err)
 	}
 }
@@ -30,7 +28,7 @@ func (h *Harness) SetGoalField(actor domain.Account, goal domain.Goal, field dom
 // failing the test on error.
 func (h *Harness) SetFieldRequired(admin domain.Account, field domain.Field, required bool) {
 	h.T.Helper()
-	if err := h.Service.SetFieldRequired(context.Background(), admin.ID, field.ID, required); err != nil {
+	if err := h.Service.SetFieldRequired(h.T.Context(), admin.ID, field.ID, required); err != nil {
 		h.T.Fatalf("SetFieldRequired: %v", err)
 	}
 }

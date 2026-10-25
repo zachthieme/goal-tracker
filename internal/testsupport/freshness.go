@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -10,7 +9,7 @@ import (
 // Freshness returns goalID's freshness signals, failing the test on error.
 func (h *Harness) Freshness(goalID int64) domain.Freshness {
 	h.T.Helper()
-	f, err := h.Service.Freshness(context.Background(), goalID)
+	f, err := h.Service.Freshness(h.T.Context(), goalID)
 	if err != nil {
 		h.T.Fatalf("Freshness: %v", err)
 	}
@@ -25,7 +24,7 @@ func (h *Harness) Freshness(goalID int64) domain.Freshness {
 func (h *Harness) GreenGoalWithOverdueMilestone(owner domain.Account, title string) (domain.Goal, domain.Milestone) {
 	h.T.Helper()
 	g := h.ActiveGoal(owner, title, "It matters.")
-	milestones, err := h.Service.ListMilestones(context.Background(), g.ID)
+	milestones, err := h.Service.ListMilestones(h.T.Context(), g.ID)
 	if err != nil || len(milestones) != 1 {
 		h.T.Fatalf("ListMilestones = %+v, %v; want just Beta", milestones, err)
 	}

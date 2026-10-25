@@ -20,7 +20,7 @@ func TestACancelledFailureOnALiveRequestIsLoggedAtError(t *testing.T) {
 
 	var buf bytes.Buffer
 	s := &Server{log: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))}
-	r := httptest.NewRequest(http.MethodPost, "/goals/new/checklist", nil)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/goals/new/checklist", nil)
 	s.logServerError(r, fmt.Errorf("load fields: %w", context.Canceled))
 
 	var rec map[string]any

@@ -25,6 +25,7 @@ func TestDefiningADimensionOverHTTPWritesOneEntry(t *testing.T) {
 	resp := postForm(t, boss, ts.URL+"/dimensions", url.Values{
 		"name": {"Customer"}, "values": {"Acme, Globex"}, "selection": {"several"}, "list": {"extendable"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("define Customer: status %d; body:\n%s", resp.StatusCode, body)
 	}
@@ -70,6 +71,7 @@ func TestANonAdminReadsTheLogNewestFirst(t *testing.T) {
 		{fmt.Sprintf("/dimension-values/%d/merge", scale.ID), "into", fmt.Sprint(growth.ID)},
 	} {
 		resp := postForm(t, boss, ts.URL+step.path, url.Values{step.field: {step.value}})
+		defer func() { _ = resp.Body.Close() }()
 		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 			t.Fatalf("POST %s: status %d; body:\n%s", step.path, resp.StatusCode, body)
 		}
@@ -134,10 +136,11 @@ func TestTheLogNarrowsToOneDimensionOrFieldOverHTTP(t *testing.T) {
 	}
 
 	for _, about := range []string{"dimension:999", "field:999", "goal:1", "dimension:x"} {
-		resp, err := pat.Get(ts.URL + "/definition-log?about=" + url.QueryEscape(about))
+		resp, err := ctxGet(t, pat, ts.URL+"/definition-log?about="+url.QueryEscape(about))
 		if err != nil {
 			t.Fatalf("GET about=%s: %v", about, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if _ = readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("about=%s: status %d, want %d", about, resp.StatusCode, http.StatusNotFound)
 		}
@@ -154,7 +157,7 @@ func TestNobodyCanEditTheLog(t *testing.T) {
 	boss := signInClient(t, ts.URL, "boss@example.com")
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
-		req, err := http.NewRequest(method, ts.URL+"/definition-log", strings.NewReader("summary=Nothing+happened"))
+		req, err := http.NewRequestWithContext(t.Context(), method, ts.URL+"/definition-log", strings.NewReader("summary=Nothing+happened"))
 		if err != nil {
 			t.Fatalf("new %s request: %v", method, err)
 		}
@@ -163,6 +166,7 @@ func TestNobodyCanEditTheLog(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s /definition-log: %v", method, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		if _ = readBody(t, resp); resp.StatusCode != http.StatusMethodNotAllowed {
 			t.Errorf("%s /definition-log: status %d, want %d", method, resp.StatusCode, http.StatusMethodNotAllowed)
 		}
@@ -190,6 +194,7 @@ func TestAnOwnersAdditionIsLoggedAndARefusedChangeIsNotOverHTTP(t *testing.T) {
 	resp := postForm(t, pat, fmt.Sprintf("%s/goals/%d/dimensions", ts.URL, goal.ID), url.Values{
 		"dimension_id": {fmt.Sprint(customer.ID)}, "new_value": {"Globex"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("add Globex: status %d; body:\n%s", resp.StatusCode, body)
 	}
@@ -267,10 +272,11 @@ func TestTheWholeLogPagesThroughOlderChangesOverHTTP(t *testing.T) {
 		t.Errorf("the oldest page links to older changes")
 	}
 
-	resp, err := pat.Get(ts.URL + "/definition-log?before=x")
+	resp, err := ctxGet(t, pat, ts.URL+"/definition-log?before=x")
 	if err != nil {
 		t.Fatalf("GET before=x: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if _ = readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("before=x: status %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}

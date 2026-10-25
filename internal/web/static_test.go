@@ -21,10 +21,11 @@ func TestStylesheetIsServedAsCSS(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
-	resp, err := http.Get(ts.URL + "/static/app.css")
+	resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/static/app.css")
 	if err != nil {
 		t.Fatalf("GET /static/app.css: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d, want 200", resp.StatusCode)
 	}
@@ -49,10 +50,11 @@ func TestHtmxIsServedFromTheApp(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
-	resp, err := http.Get(ts.URL + "/static/htmx.min.js")
+	resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/static/htmx.min.js")
 	if err != nil {
 		t.Fatalf("GET /static/htmx.min.js: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d, want 200", resp.StatusCode)
 	}
@@ -83,10 +85,11 @@ func TestFontsAreServedFromTheApp(t *testing.T) {
 		"source-serif-4-latin-wght-italic.woff2",
 		"source-serif-4-latin-ext-wght-italic.woff2",
 	} {
-		resp, err := http.Get(ts.URL + "/static/fonts/" + name)
+		resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/static/fonts/"+name)
 		if err != nil {
 			t.Fatalf("GET %s: %v", name, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("%s: status %d, want 200", name, resp.StatusCode)
@@ -115,10 +118,11 @@ func TestRetiredFontsAreGone(t *testing.T) {
 		"jetbrains-mono-latin-500-normal.woff2",
 		"jetbrains-mono-latin-ext-500-normal.woff2",
 	} {
-		resp, err := http.Get(ts.URL + "/static/fonts/" + name)
+		resp, err := ctxGet(t, http.DefaultClient, ts.URL+"/static/fonts/"+name)
 		if err != nil {
 			t.Fatalf("GET %s: %v", name, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		readBody(t, resp)
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404", name, resp.StatusCode)
@@ -137,10 +141,11 @@ func TestStaticServesFilesOnly(t *testing.T) {
 	client := noRedirects(http.DefaultClient)
 
 	for _, p := range []string{"/static/", "/static/fonts/", "/static/fonts", "/static/nope.js"} {
-		resp, err := client.Get(ts.URL + p)
+		resp, err := ctxGet(t, client, ts.URL+p)
 		if err != nil {
 			t.Fatalf("GET %s: %v", p, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: status %d, want 404; Location %q; body:\n%s", p, resp.StatusCode, resp.Header.Get("Location"), body)
@@ -221,10 +226,11 @@ func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
 				t.Errorf("%s declares %s from somewhere other than the app's fonts: %s", where, m[1], face)
 				continue
 			}
-			resp, err := http.Get(ts.URL + u[1])
+			resp, err := ctxGet(t, http.DefaultClient, ts.URL+u[1])
 			if err != nil {
 				t.Fatalf("GET %s: %v", u[1], err)
 			}
+			defer func() { _ = resp.Body.Close() }()
 			readBody(t, resp)
 			if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "font/woff2" {
 				t.Errorf("%s's %s points at %s, which serves %d %q", where, m[1], u[1], resp.StatusCode, resp.Header.Get("Content-Type"))
@@ -299,6 +305,7 @@ func TestSidebarMarksTheSectionOfANestedPage(t *testing.T) {
 		"mode":   {domain.ReportModePicked},
 		"picked": {strconv.FormatInt(root.ID, 10)},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d; body:\n%s", resp.StatusCode, page)

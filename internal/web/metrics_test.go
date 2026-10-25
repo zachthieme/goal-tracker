@@ -37,7 +37,7 @@ type promSample struct {
 func scrape(t *testing.T, m *web.RequestMetrics) []promSample {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	m.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	m.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /metrics: status %d, want 200", rec.Code)
 	}
@@ -236,9 +236,9 @@ func TestRequestsAreCountedAndTimedByRouteAndStatus(t *testing.T) {
 	t.Parallel()
 
 	srv, m := metricsServer(t, testsupport.New(t))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/no-such-page", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/no-such-page", nil))
 
 	samples := scrape(t, m)
 	const requests, duration = "goal_tracker_http_requests_total", "goal_tracker_http_request_duration_seconds"
@@ -293,8 +293,8 @@ func TestTheScrapeIsPrometheusTextFormat(t *testing.T) {
 
 	const odd = `GET /say/"hi"\there`
 	srv.HandleForPanicTest(odd, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, `/say/%22hi%22%5Cthere`, nil))
-	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("BREW", "/healthz", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, `/say/%22hi%22%5Cthere`, nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), "BREW", "/healthz", nil))
 
 	samples := scrape(t, m)
 	if n := sampleValue(t, samples, "goal_tracker_http_requests_total", "method", "GET", "route", odd, "status", "418"); n != 1 {
@@ -324,13 +324,13 @@ func TestConcurrentRequestsAreEachCounted(t *testing.T) {
 	for range workers {
 		wg.Go(func() {
 			for range each {
-				srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/static/app.css", nil))
+				srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/static/app.css", nil))
 			}
 		})
 	}
 	wg.Go(func() {
 		for range each {
-			m.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			m.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 		}
 	})
 	wg.Wait()

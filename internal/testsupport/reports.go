@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
@@ -13,7 +12,7 @@ import (
 // needs.
 func (h *Harness) SaveReportDefinition(actor domain.Account, in domain.SaveReportDefinitionInput) domain.ReportDefinition {
 	h.T.Helper()
-	def, err := h.Service.SaveReportDefinition(context.Background(), actor.ID, in)
+	def, err := h.Service.SaveReportDefinition(h.T.Context(), actor.ID, in)
 	if err != nil {
 		h.T.Fatalf("SaveReportDefinition: %v", err)
 	}
@@ -24,7 +23,7 @@ func (h *Harness) SaveReportDefinition(actor domain.Account, in domain.SaveRepor
 // its default baseline, failing the test on error.
 func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinition) domain.Publication {
 	h.T.Helper()
-	pub, err := h.Service.PublishReport(context.Background(), actor.ID, def.ID, time.Time{})
+	pub, err := h.Service.PublishReport(h.T.Context(), actor.ID, def.ID, time.Time{})
 	if err != nil {
 		h.T.Fatalf("PublishReport: %v", err)
 	}
@@ -36,7 +35,7 @@ func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinitio
 // and its snapshot names no publisher. It fails the test on error.
 func (h *Harness) PublishBeforeTheReportLog(actor domain.Account, def domain.ReportDefinition) domain.Publication {
 	h.T.Helper()
-	ctx := context.Background()
+	ctx := h.T.Context()
 	report, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
 		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
@@ -45,7 +44,7 @@ func (h *Harness) PublishBeforeTheReportLog(actor domain.Account, def domain.Rep
 	if err != nil {
 		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
 	}
-	if _, err := h.DB.Exec(`INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot) VALUES (?, ?, ?, ?)`,
+	if _, err := h.DB.ExecContext(h.T.Context(), `INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot) VALUES (?, ?, ?, ?)`,
 		def.ID, actor.ID, h.Clock.Now().Format(time.RFC3339Nano), string(frozen)); err != nil {
 		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
 	}
@@ -61,7 +60,7 @@ func (h *Harness) PublishBeforeTheReportLog(actor domain.Account, def domain.Rep
 // (CONTEXT.md: Report Delegate).
 func (h *Harness) AddReportDelegate(actor, delegate domain.Account, def domain.ReportDefinition) {
 	h.T.Helper()
-	if err := h.Service.AddReportDelegate(context.Background(), actor.ID, def.ID, delegate.ID); err != nil {
+	if err := h.Service.AddReportDelegate(h.T.Context(), actor.ID, def.ID, delegate.ID); err != nil {
 		h.T.Fatalf("AddReportDelegate: %v", err)
 	}
 }

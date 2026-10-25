@@ -56,7 +56,7 @@ func TestAFlowCookieVerifiesOnlyWithTheFlowPurpose(t *testing.T) {
 	s := &Server{sessions: sessionCodec{key: purposeTestKey}}
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(`{"s":"state-1","n":"nonce-1","v":"verifier-1"}`))
 	readWith := func(sig string) (signInFlow, bool) {
-		r := httptest.NewRequest(http.MethodGet, "/auth/callback", nil)
+		r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/auth/callback", nil)
 		r.AddCookie(&http.Cookie{Name: flowCookie, Value: encoded + "." + sig})
 		return s.readFlow(r)
 	}

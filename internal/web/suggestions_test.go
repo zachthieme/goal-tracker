@@ -69,6 +69,7 @@ func TestSuggestingAParentFromTheGoalMenu(t *testing.T) {
 	}
 
 	resp := postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(active.ID)}, "note": {"outages start here"}})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
 		t.Fatalf("suggesting landed on %s (status %d), want the Goal page", resp.Request.URL.Path, resp.StatusCode)
@@ -121,7 +122,7 @@ func TestSuggestAParentPageIsInTheFlatFrame(t *testing.T) {
 	client := signInClient(t, ts.URL, "pat@example.com")
 
 	assertInFlatFrame(t, getBody(t, client, ts.URL+suggestPath(goal)), "Suggest a parent")
-	assertInFlatFrame(t, readBody(t, postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(goal.ID)}})), "Suggest a parent")
+	assertInFlatFrame(t, postFormBody(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(goal.ID)}}), "Suggest a parent")
 }
 
 // A refused suggestion comes back as the form with the reason, as sent, and
@@ -142,6 +143,7 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 
 	client := signInClient(t, ts.URL, "kim@example.com")
 	resp := postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(parent.ID)}, "note": {"me too"}})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
@@ -178,6 +180,7 @@ func TestSuggestingAParentFromTheFollowUpsFix(t *testing.T) {
 	form := pageElement(t, getBody(t, client, ts.URL+href), "form", "suggest-parent")
 	action := html.UnescapeString(attr(openTag(form)+">", "action"))
 	resp := postForm(t, client, ts.URL+action, url.Values{"parent_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", loner.ID) {
 		t.Errorf("suggesting landed on %s, want the Goal page", resp.Request.URL.Path)
@@ -238,6 +241,7 @@ func TestGoalPageListsSuggestedParents(t *testing.T) {
 	}
 
 	resp := postForm(t, sam, ts.URL+base+"/accept", toastFormOf(t, list, base+"/accept"))
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
 		t.Errorf("accepting landed on %s, want the Goal page", resp.Request.URL.Path)
@@ -265,6 +269,7 @@ func TestWithdrawingASuggestionFromTheGoalPage(t *testing.T) {
 
 	pat := signInClient(t, ts.URL, "pat@example.com")
 	resp := postForm(t, pat, fmt.Sprintf("%s/parent-suggestions/%d/withdraw", ts.URL, s.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
 		t.Errorf("withdrawing landed on %s, want the Goal page", resp.Request.URL.Path)
@@ -308,6 +313,7 @@ func TestDecliningASuggestionOffersUndoOnce(t *testing.T) {
 			sam := signInClient(t, ts.URL, "sam@example.com")
 			decline := fmt.Sprintf("/parent-suggestions/%d/decline", s.ID)
 			resp := postForm(t, sam, ts.URL+decline, toastFormOf(t, getBody(t, sam, ts.URL+page), decline))
+			defer func() { _ = resp.Body.Close() }()
 			landed := readBody(t, resp)
 			if resp.Request.URL.Path != page {
 				t.Fatalf("declining landed on %s, want %s", resp.Request.URL.Path, page)
@@ -347,6 +353,7 @@ func TestUndoingADeclineIsRefusedOnceTheLinkWasRequested(t *testing.T) {
 	goal, parent, s := suggestionScene(t, h)
 	sam := signInClient(t, ts.URL, "sam@example.com")
 	resp := postForm(t, sam, fmt.Sprintf("%s/parent-suggestions/%d/decline", ts.URL, s.ID), url.Values{"from": {"home"}})
+	defer func() { _ = resp.Body.Close() }()
 	landed := readBody(t, resp)
 	h.RequestLink(h.SignIn("sam@example.com"), goal, parent, "")
 

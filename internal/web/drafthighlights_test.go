@@ -157,6 +157,7 @@ func TestLogDraftHighlightFromTheGoalPage(t *testing.T) {
 	} {
 		client := signInClient(t, ts.URL, tc.who)
 		resp := postForm(t, noRedirects(client), logURL, url.Values{"kind": {tc.kind}, "note": {tc.note}})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != fmt.Sprintf("/goals/%d", goal.ID) {
 			t.Errorf("%s logging: status %d to %q, want 303 to the Goal page", tc.who, resp.StatusCode, resp.Header.Get("Location"))
@@ -174,6 +175,7 @@ func TestLogDraftHighlightFromTheGoalPage(t *testing.T) {
 	}
 
 	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), logURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"  "}})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("blank note: status %d, want 422", resp.StatusCode)
@@ -213,6 +215,7 @@ func TestDraftHighlightRoutesRefuseAnyoneElse(t *testing.T) {
 	for _, who := range []string{"pat@example.com", "ada@example.com"} {
 		client := noRedirects(signInClient(t, ts.URL, who))
 		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/draft-highlights", ts.URL, goal.ID), url.Values{"note": {"Mine."}})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s logging: status %d, want 403", who, resp.StatusCode)
@@ -265,6 +268,7 @@ func TestLogDraftHighlightRefusedOnAnEndedGoal(t *testing.T) {
 		}
 
 		resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/draft-highlights", ts.URL, goal.ID), url.Values{"note": {"Too late."}})
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("logging on a %s Goal: status %d, want 422", lifecycle, resp.StatusCode)
@@ -307,6 +311,7 @@ func TestEditDraftHighlightRefusedOnAnEndedGoal(t *testing.T) {
 		editURL := fmt.Sprintf("%s/draft-highlights/%d", ts.URL, draft.ID)
 		edit := url.Values{"kind": {domain.HighlightInsight}, "note": {"Too late."}}
 		resp := postForm(t, noRedirects(samClient), editURL, edit)
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("editing on a %s Goal: status %d, want 422", lifecycle, resp.StatusCode)
@@ -343,6 +348,7 @@ func TestDeleteDraftHighlightFromTheGoalPage(t *testing.T) {
 	}
 
 	resp := postForm(t, noRedirects(samClient), ts.URL+attr(form, "action"), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != fmt.Sprintf("/goals/%d", goal.ID) {
 		t.Errorf("delete: status %d to %q, want 303 to the Goal page", resp.StatusCode, resp.Header.Get("Location"))
@@ -373,6 +379,7 @@ func TestEditDraftHighlightFromTheGoalPage(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	resp := postForm(t, noRedirects(samClient), editURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"Vendor raised prices 20%."}})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != fmt.Sprintf("/goals/%d", goal.ID) {
 		t.Errorf("plain edit: status %d to %q, want 303 to the Goal page", resp.StatusCode, resp.Header.Get("Location"))

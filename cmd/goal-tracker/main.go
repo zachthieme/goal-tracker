@@ -122,7 +122,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 		background.Wait()
 	}()
 
-	if err := db.Migrate(sqlDB); err != nil {
+	if err := db.Migrate(ctx, sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -204,15 +204,16 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 
 	// Both listeners are open before either serves, so one that can't listen
 	// stops startup.
+	var lc net.ListenConfig
 	var metricsLn net.Listener
 	if metrics != nil {
-		metricsLn, err = net.Listen("tcp", cfg.metricsAddr)
+		metricsLn, err = lc.Listen(ctx, "tcp", cfg.metricsAddr)
 		if err != nil {
 			return fmt.Errorf("GOAL_TRACKER_METRICS_ADDR: %w", err)
 		}
 		defer func() { _ = metricsLn.Close() }()
 	}
-	ln, err := net.Listen("tcp", cfg.addr)
+	ln, err := lc.Listen(ctx, "tcp", cfg.addr)
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}

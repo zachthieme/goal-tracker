@@ -590,7 +590,6 @@ func TestYellowCheckinMayLeaveMilestoneOverdue(t *testing.T) {
 // refusal SubmitNoChangeCheckin gives.
 func TestNoChangeRefusal(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 
 	t.Run("allowed", func(t *testing.T) {
 		t.Parallel()
@@ -599,7 +598,7 @@ func TestNoChangeRefusal(t *testing.T) {
 		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 		h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-		if err := h.Service.NoChangeRefusal(ctx, goal.ID); err != nil {
+		if err := h.Service.NoChangeRefusal(t.Context(), goal.ID); err != nil {
 			t.Fatalf("NoChangeRefusal = %v, want nil", err)
 		}
 	})
@@ -609,7 +608,7 @@ func TestNoChangeRefusal(t *testing.T) {
 		sam := h.SignIn("sam@example.com")
 		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 
-		if err := h.Service.NoChangeRefusal(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.NoChangeRefusal(t.Context(), goal.ID); !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
 		}
 	})
@@ -619,7 +618,7 @@ func TestNoChangeRefusal(t *testing.T) {
 		sam := h.SignIn("sam@example.com")
 		goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on the vendor.")
 
-		if err := h.Service.NoChangeRefusal(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+		if err := h.Service.NoChangeRefusal(t.Context(), goal.ID); !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
 		}
 	})
@@ -632,7 +631,7 @@ func TestNoChangeRefusal(t *testing.T) {
 		h.Checkin(sam, goal.ID, domain.HealthRed, "Behind.", "Add a second reviewer.", beta.TargetDate.AddDate(0, 1, 0))
 
 		h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
-		err := h.Service.NoChangeRefusal(ctx, goal.ID)
+		err := h.Service.NoChangeRefusal(t.Context(), goal.ID)
 		if !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
 		}
@@ -644,7 +643,7 @@ func TestNoChangeRefusal(t *testing.T) {
 		sam := h.SignIn("sam@example.com")
 		goal, _ := offTargetMetricGoal(t, h, sam)
 
-		err := h.Service.NoChangeRefusal(ctx, goal.ID)
+		err := h.Service.NoChangeRefusal(t.Context(), goal.ID)
 		if !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
 		}

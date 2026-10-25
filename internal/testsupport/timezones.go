@@ -8,7 +8,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // (CONTEXT.md: Timezone).
 func (h *Harness) SetTimezone(person domain.Account, tz string) {
 	h.T.Helper()
-	if _, err := h.DB.Exec(`UPDATE accounts SET timezone = ? WHERE id = ?`, tz, person.ID); err != nil {
+	if _, err := h.DB.ExecContext(h.T.Context(), `UPDATE accounts SET timezone = ? WHERE id = ?`, tz, person.ID); err != nil {
 		h.T.Fatalf("SetTimezone(%s, %q): %v", person.Email, tz, err)
 	}
 }

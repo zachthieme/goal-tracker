@@ -78,9 +78,11 @@ func TestSmokeNoChangeCheckinButton(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"On track."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit first check-in: status %d", resp.StatusCode)
 	}
+	_ = resp.Body.Close()
 
 	// Click "no change".
 	resp = postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
@@ -139,6 +141,7 @@ func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
 		"highlight_kind":                     {domain.HighlightAccomplishment},
 		"highlight_note":                     {"Shipped the caching layer."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit check-in: status %d", resp.StatusCode)
 	}
@@ -191,6 +194,7 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 		"delivery_date":        {goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")},
 		"delivery_date_reason": {"Vendor API delayed two weeks."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit check-in: status %d", resp.StatusCode)
 	}
@@ -397,6 +401,7 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 		"new_milestone_name": {"Docs"},
 		"new_milestone_date": {"2026-05-01"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("first check-in: status %d", resp.StatusCode)
 	}
@@ -414,6 +419,7 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 	// Second Check-in slips Beta and removes Docs.
 	oldBeta := beta.TargetDate.Format("Jan 2")
 	newBeta := beta.TargetDate.AddDate(0, 0, 10).Format("Jan 2")
+	_ = resp.Body.Close()
 	resp = postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health": {domain.HealthGreen},
 		"status": {"Beta moves; launch holds."},
@@ -467,6 +473,7 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 		"lifecycle":        {domain.LifecycleOnHold},
 		"lifecycle_reason": {"Team moved to the payments incident."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("put On Hold: status %d", resp.StatusCode)
 	}
@@ -488,6 +495,7 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	if hasTestID(page, "no-change-checkin") {
 		t.Errorf("On Hold Goal offers the no-change Check-in")
 	}
+	_ = resp.Body.Close()
 
 	resp = postForm(t, samClient, goalURL+"/checkins", url.Values{
 		"health":    {domain.HealthGreen},
@@ -563,6 +571,7 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 
 	done.Set(fmt.Sprintf("reading_%d", metric.ID), "380")
 	resp := postForm(t, samClient, goalURL+"/checkins", done)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("mark Done: status %d", resp.StatusCode)
 	}
@@ -689,6 +698,7 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 			"status":                              {"On track."},
 			fmt.Sprintf("reading_%d", signups.ID): {reading},
 		})
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("submit check-in: status %d", resp.StatusCode)
 		}
@@ -1263,6 +1273,7 @@ func TestCheckinAddAnotherHighlightKeepsTypedAndRecordsNothing(t *testing.T) {
 		{"htmx", postFormHX},
 		{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
 			resp := postForm(t, client, rawURL, form)
+			defer func() { _ = resp.Body.Close() }()
 			return readBody(t, resp), resp.StatusCode
 		}},
 	} {
@@ -1417,10 +1428,11 @@ func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
 		}
 	}
 
-	resp, err := signInClient(t, ts.URL, "eve@example.com").Get(checkinURL)
+	resp, err := ctxGet(t, signInClient(t, ts.URL, "eve@example.com"), checkinURL)
 	if err != nil {
 		t.Fatalf("GET %s: %v", checkinURL, err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("someone neither Owner nor Delegate got status %d, want 403", resp.StatusCode)
@@ -1658,8 +1670,8 @@ func TestCheckinFromPutOnHoldMenuItemIsStillACheckin(t *testing.T) {
 	}
 
 	form.Set("lifecycle_reason", "Team moved to the payments incident.")
-	if resp := postForm(t, samClient, goalURL+"/checkins", form); resp.StatusCode != http.StatusOK {
-		t.Fatalf("put On Hold: status %d", resp.StatusCode)
+	if status := postFormStatus(t, samClient, goalURL+"/checkins", form); status != http.StatusOK {
+		t.Fatalf("put On Hold: status %d", status)
 	}
 	page = getPage(t, samClient, goalURL)
 	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleOnHold {
@@ -1778,6 +1790,7 @@ func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -1815,7 +1828,7 @@ func assertNoChangeRefusalOnForm(t *testing.T, page, reason string) {
 // htmx does when hx is set, and returns the response with its body read.
 func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*http.Response, string) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(""))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, strings.NewReader(""))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -1868,7 +1881,8 @@ func TestNoChangeOverdueRefusalReadsTheSameOnCardAndForm(t *testing.T) {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}
 
-	_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	resp, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 	if got := formTopError(t, parsePage(t, refused)); got != want {
 		t.Errorf("the form's top error = %q, want %q", got, want)
 	}
@@ -1895,7 +1909,8 @@ func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
 			goal := overdueGoal(h, sam, tc.health)
 			client := signInClient(t, ts.URL, "sam@example.com")
 
-			_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+			resp, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+			defer func() { _ = resp.Body.Close() }()
 			for name, page := range map[string]*html.Node{
 				"Check-in page":     getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)),
 				"refused No change": parsePage(t, refused),
@@ -1952,7 +1967,8 @@ func TestCheckinPageNoChangeCardSaysWhyNoChangeIsUnavailable(t *testing.T) {
 		t.Errorf("the card's reason = %q, want the overdue Milestone named, as a sentence", reason)
 	}
 
-	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, overdue.ID), false)
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, overdue.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 	doc := parsePage(t, page)
 	if c := findByTestID(t, doc, "no-change-card"); hasTestID(c, "no-change-unavailable") {
 		t.Errorf("after a refused No change, the card repeats the form's error: %q", textOf(c))
@@ -1984,6 +2000,7 @@ func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("htmx status = %d, want 200 so htmx swaps the page in", resp.StatusCode)
@@ -2012,6 +2029,7 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, parent.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
@@ -2037,7 +2055,8 @@ func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, hx := range []bool{false, true} {
-		_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		defer func() { _ = resp.Body.Close() }()
 		assertNoChangeRefusalOnForm(t, page, "There is no previous Check-in to repeat.")
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
@@ -2062,6 +2081,7 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 	for _, hx := range []bool{false, true} {
 		for _, goal := range []domain.Goal{onHold, cancelled} {
 			resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+			defer func() { _ = resp.Body.Close() }()
 			want, push := http.StatusUnprocessableEntity, ""
 			if hx {
 				want, push = http.StatusOK, fmt.Sprintf("/goals/%d/checkin", goal.ID)
@@ -2110,6 +2130,7 @@ func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
 
 	for _, hx := range []bool{false, true} {
 		resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("hx=%v: status = %d, want 403", hx, resp.StatusCode)
 		}
@@ -2131,6 +2152,7 @@ func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp, page := postNoChange(t, client, ts.URL+"/goals/9999/checkins/no-change", false)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
@@ -2164,6 +2186,7 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	}
 
 	resp, page := postNoChange(t, signInClient(t, ts.URL, "kim@example.com"), fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("forbidden: status = %d, want 403", resp.StatusCode)
 	}
@@ -2186,7 +2209,7 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
+	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
 		t.Fatalf("install failing trigger: %v", err)
 	}
@@ -2194,6 +2217,7 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 
 	for _, hx := range []bool{false, true} {
 		resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusInternalServerError {
 			t.Errorf("hx=%v: status = %d, want 500", hx, resp.StatusCode)
 		}
@@ -2232,6 +2256,7 @@ func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp, _ := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
@@ -2586,6 +2611,7 @@ func TestNoChangeCheckinLeavesDraftHighlightsPendingOverHTTP(t *testing.T) {
 	h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Waiting for a real Check-in.")
 
 	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "sam@example.com")), fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("No change: status %d, want 303", resp.StatusCode)
@@ -2737,11 +2763,13 @@ func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
 
 	htmxBody, _ := postFormHX(t, samClient, checkinsURL, typed)
 	plainResp := postForm(t, samClient, checkinsURL, typed)
+	defer func() { _ = plainResp.Body.Close() }()
 	if plainResp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("plain refused post status = %d, want 422", plainResp.StatusCode)
 	}
 	htmxAgain, _ := postFormHX(t, samClient, checkinsURL, addAnother)
 	plainAgain := postForm(t, samClient, checkinsURL, addAnother)
+	defer func() { _ = plainAgain.Body.Close() }()
 	for how, body := range map[string]string{
 		"htmx refused":      htmxBody,
 		"plain refused":     readBody(t, plainResp),
@@ -2816,6 +2844,7 @@ func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
 		"status":     {"Still scaling to plan."},
 		blankReading: {""},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit check-in: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
 	}
@@ -2938,6 +2967,7 @@ func TestCheckinSaveAsGreenAnywayRecordsGreen(t *testing.T) {
 		"status":             {"Missed by a little; the trend is right."},
 		"confirm_off_target": {"1"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 
 	if resp.StatusCode != http.StatusSeeOther {
@@ -2965,6 +2995,7 @@ func TestNoChangeRefusedWhileMetricOffTargetLandsOnCheckinForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
@@ -3104,6 +3135,7 @@ func TestCheckinSaveAsGreenAnywayRecordsGreenWhateverHealthIsPicked(t *testing.T
 		"path_target_date":   {"2026-03-01"},
 		"confirm_off_target": {"1"},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 
 	if resp.StatusCode != http.StatusSeeOther {
@@ -3257,6 +3289,7 @@ func TestCheckinPostOpensAndClosesAnAsk(t *testing.T) {
 	post := func(form url.Values) {
 		t.Helper()
 		resp := postForm(t, noRedirects(f.client), fmt.Sprintf("%s/goals/%d/checkins", f.ts, f.goal.ID), form)
+		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusSeeOther {
 			t.Fatalf("POST check-in = %d, want 303", resp.StatusCode)
@@ -3310,6 +3343,7 @@ func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
 		"health": {domain.HealthYellow},
 		"status": {"Still short."},
 	})
+	defer func() { _ = resp.Body.Close() }()
 	doc := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused plain submit = %d, want 422", resp.StatusCode)
@@ -3432,6 +3466,7 @@ func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) 
 	}
 
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
@@ -3547,7 +3582,8 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}
 
-	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
 	assertNoChangeRefusalOnForm(t, page, want)
 }
 

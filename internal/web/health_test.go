@@ -17,10 +17,11 @@ func TestHealthzAnswersOKSignedOut(t *testing.T) {
 
 	ts := newServer(t, testsupport.New(t))
 
-	resp, err := noRedirects(http.DefaultClient).Get(ts.URL + "/healthz")
+	resp, err := ctxGet(t, noRedirects(http.DefaultClient), ts.URL+"/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status %d, want 200", resp.StatusCode)
@@ -41,10 +42,11 @@ func TestHealthzAnswersUnavailableWhenTheDatabaseIsClosed(t *testing.T) {
 		t.Fatalf("close database: %v", err)
 	}
 
-	resp, err := noRedirects(http.DefaultClient).Get(ts.URL + "/healthz")
+	resp, err := ctxGet(t, noRedirects(http.DefaultClient), ts.URL+"/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", resp.StatusCode)
@@ -60,7 +62,7 @@ func TestHealthzAnswersUnavailableWhenTheDatabaseFileIsReplaced(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	var path string
-	if err := h.DB.QueryRow(`SELECT file FROM pragma_database_list WHERE name = 'main'`).Scan(&path); err != nil {
+	if err := h.DB.QueryRowContext(t.Context(), `SELECT file FROM pragma_database_list WHERE name = 'main'`).Scan(&path); err != nil {
 		t.Fatalf("find database file: %v", err)
 	}
 	h.DB.SetMaxIdleConns(0)
@@ -70,10 +72,11 @@ func TestHealthzAnswersUnavailableWhenTheDatabaseFileIsReplaced(t *testing.T) {
 		}
 	}
 
-	resp, err := noRedirects(http.DefaultClient).Get(ts.URL + "/healthz")
+	resp, err := ctxGet(t, noRedirects(http.DefaultClient), ts.URL+"/healthz")
 	if err != nil {
 		t.Fatalf("GET /healthz: %v", err)
 	}
+	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("status %d, want 503", resp.StatusCode)

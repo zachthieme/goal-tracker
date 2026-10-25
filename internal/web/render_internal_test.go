@@ -52,7 +52,7 @@ func renderLogged(t *testing.T, r *http.Request, c templ.Component) ([]map[strin
 func TestAPageThatFailsToDrawIsLoggedAtError(t *testing.T) {
 	t.Parallel()
 
-	records, w := renderLogged(t, httptest.NewRequest(http.MethodGet, "/goals/7", nil), failingPage)
+	records, w := renderLogged(t, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/goals/7", nil), failingPage)
 
 	if len(records) != 1 {
 		t.Fatalf("got %d log records, want 1: %v", len(records), records)
@@ -73,7 +73,7 @@ func TestAPageCutShortByADisconnectIsLoggedAtWarn(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	r := httptest.NewRequest(http.MethodPost, "/checkins", nil).WithContext(ctx)
+	r := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/checkins", nil).WithContext(ctx)
 	records, _ := renderLogged(t, r, failingPage)
 
 	if len(records) != 1 {
@@ -93,7 +93,7 @@ func TestAPageThatDrawsLogsNothing(t *testing.T) {
 		_, err := io.WriteString(w, "<p>whole</p>")
 		return err
 	})
-	records, w := renderLogged(t, httptest.NewRequest(http.MethodGet, "/goals", nil), page)
+	records, w := renderLogged(t, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/goals", nil), page)
 
 	if len(records) != 0 {
 		t.Errorf("got log records %v, want none", records)
@@ -109,7 +109,7 @@ func TestRenderWithoutALoggerInTheRequestStillDraws(t *testing.T) {
 	t.Parallel()
 
 	w := httptest.NewRecorder()
-	render(w, httptest.NewRequest(http.MethodGet, "/goals/7", nil), http.StatusOK, failingPage)
+	render(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/goals/7", nil), http.StatusOK, failingPage)
 
 	if w.Code != http.StatusOK || w.Body.String() != "<p>half" {
 		t.Errorf("response %d %q, want 200 %q", w.Code, w.Body.String(), "<p>half")
@@ -130,7 +130,7 @@ func TestServeHTTPCarriesTheServersLogger(t *testing.T) {
 		requestLogger(r.Context()).Info("probe")
 	})
 
-	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/probe/logger", nil))
+	s.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/probe/logger", nil))
 
 	if !strings.Contains(buf.String(), `"msg":"probe"`) {
 		t.Errorf("the request logger's record isn't in the Server's log:\n%s", &buf)
