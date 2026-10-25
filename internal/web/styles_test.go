@@ -877,10 +877,10 @@ func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
 
 // The draft's body is two columns, the Report's main column at most 780px
 // beside a 300px one for its Delegates and History, 56px apart, in a page
-// wide enough to hold them. Under 1100px of the page's content width — a
+// wide enough to hold them. Under 960px of the page's content width — a
 // container query on the page body, so the sidebar counts — the narrow column
-// moves under the main one at full width (#473).
-func TestReportDraftColumnsStackUnder1100pxStyles(t *testing.T) {
+// moves under the main one at full width (#473), so a 1280px window keeps them side by side (#477).
+func TestReportDraftColumnsStackUnder960pxStyles(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -913,9 +913,9 @@ func TestReportDraftColumnsStackUnder1100pxStyles(t *testing.T) {
 			}
 		}
 	}
-	narrow := mediaBlock(t, styles, "@container rp-draft (max-width:1100px)")
+	narrow := mediaBlock(t, styles, "@container rp-draft (max-width:960px)")
 	if decls, ok := ruleFor(narrow, ".rp-draft-page"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
-		t.Errorf("under 1100px .rp-draft-page{%s} isn't one full-width column", decls)
+		t.Errorf("under 960px .rp-draft-page{%s} isn't one full-width column", decls)
 	}
 }
 

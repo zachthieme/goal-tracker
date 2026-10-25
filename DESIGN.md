@@ -1748,10 +1748,11 @@ and so on).
     spans the window less 16px each side.
   - **Columns (`.rp-draft-page`):** the main column, at most 780px, then
     56px, then the narrow column, 300px, both from the top. The page widens
-    to 1200px for them (`.page:has(>.rp-draft-page)`). Under 1100px of the
-    page's content width — a container query on the page body (`rp-draft`),
-    so the sidebar counts — they stack, the narrow column under the main one
-    at full width, 40px apart. Each shrinks to the window rather than to its
+    to 1200px for them (`.page:has(>.rp-draft-page)`). At 960px of the
+    page's content width and under — a container query on the page body
+    (`rp-draft`), so the sidebar counts — they stack, the narrow column under
+    the main one at full width, 40px apart. A 1280px window leaves about
+    1040px of content, so it keeps both columns, the main one about 680px. Each shrinks to the window rather than to its
     widest content, so at 390px nothing scrolls sideways.
   - **Main column (`report-draft`):** the Report as readers get it, top to
     bottom:

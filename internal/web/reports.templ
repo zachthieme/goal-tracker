@@ -1597,7 +1597,7 @@ func hasNotes(notes []string) bool {
 // Type scale), the Health tiles, the exception blocks with their label column
 // and the Path to Green's Health tint, the discussion footer, the scrolling root-Goal
 // picker, and the draft's header and its two columns, the Report beside its
-// Delegates and Report log, which stack into one under 1100px of the page's
+// Delegates and Report log, which stack into one under 960px of the page's
 // content width and shrink to a phone's width rather than to the On track
 // table's. At a phone's width the header stops
 // sticking and stacks into rows — the name with its save status, the chip, then
@@ -1770,7 +1770,7 @@ templ reportStyles() {
 		.page:has(>.rp-draft-page){max-width:1200px;container:rp-draft/inline-size}
 		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:56px;align-items:start}
 		.rp-draft-page>*{min-width:0}
-		@container rp-draft (max-width:1100px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
+		@container rp-draft (max-width:960px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
 		.rp-intro{margin:0;font-size:15px;line-height:1.7;color:var(--color-ink)}
 		.rp-compose-section{display:flex;flex-direction:column}
 		.rp-compose-section:last-of-type{border-bottom:1px solid var(--color-border)}
