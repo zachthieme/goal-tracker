@@ -9,8 +9,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
@@ -48,6 +50,9 @@ type Service struct {
 	// transaction has queued email, for the outbox to send once it commits;
 	// it is shared by every copy of the Service bound to it. Nil outside one.
 	queuedEmail *bool
+	// dbFile is the database file Ping first found on disk, for later checks
+	// to tell the path no longer names it; shared by every copy.
+	dbFile *databaseFile
 }
 
 // Option configures a Service at construction.
@@ -84,6 +89,7 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 		loc:     time.UTC,
 		hashes:  newHashLimiter(runtime.GOMAXPROCS(0)),
 		outbox:  &emailOutbox{wake: make(chan struct{}, 1)},
+		dbFile:  &databaseFile{},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -125,6 +131,7 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		goalImport:  s.goalImport,
 		outbox:      s.outbox,
 		queuedEmail: new(bool),
+		dbFile:      s.dbFile,
 	}
 	if err := fn(txSvc); err != nil {
 		return err
@@ -156,8 +163,44 @@ func (s *Service) Timezone() *time.Location {
 // Ping checks the database answers within ctx, for a health check. It reads
 // schema_migrations rather than running a bare ping, which SQLite answers
 // without touching the file: a missing, replaced or unreadable database file
-// fails the read, even where SQLite has opened an empty one in its place.
+// fails the read on a fresh connection, even where SQLite has opened an empty
+// one in its place. A pooled connection keeps reading the file it opened after
+// that file is deleted or replaced, so Ping also checks the path still names
+// the file it found there on its first check, and fails once it is gone or is
+// another file.
 func (s *Service) Ping(ctx context.Context) error {
+	var path string
 	var n int
-	return s.db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n)
+	if err := s.db.QueryRowContext(ctx, `SELECT (SELECT file FROM pragma_database_list WHERE name = 'main'), count(*) FROM schema_migrations`).Scan(&path, &n); err != nil {
+		return err
+	}
+	if path == "" { // an in-memory database has no file
+		return nil
+	}
+	return s.dbFile.check(path)
+}
+
+// databaseFile is the database file Ping first found at the database's path.
+type databaseFile struct {
+	mu   sync.Mutex
+	info os.FileInfo
+}
+
+// check fails when path names no file, or a file other than the one the first
+// check found there, which it records.
+func (f *databaseFile) check(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("database file: %w", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.info == nil {
+		f.info = info
+		return nil
+	}
+	if !os.SameFile(f.info, info) {
+		return fmt.Errorf("database file %s was replaced since the first health check", path)
+	}
+	return nil
 }
