@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"testing"
 	"time"
@@ -126,10 +127,10 @@ func seedSidebarCountsExtras(t *testing.T, h *testsupport.Harness, adminEmail st
 
 // The sidebar's counts are the pages they summarise (#465): over the seeded
 // company, some of its Owners Departed, with what seedSidebarCountsExtras
-// adds, at its end and 3 and 10 days on, each
-// person's Needs you count is what their Home lists, and their Follow-ups
-// count is how many Goals a bare Follow-ups page lists them. So the badges
-// can't drift from either page's definition.
+// adds, at its end and 3 and 10 days on, each person's Needs you count is
+// what their Home lists, and their Follow-ups count is how many Goals a bare
+// Follow-ups page lists them. So the badges can't drift from either page's
+// definition. Each day's people are read in parallel, the clock still.
 func TestSidebarCountsWhatHomeAndFollowUpsList(t *testing.T) {
 	t.Parallel()
 
@@ -152,33 +153,40 @@ func TestSidebarCountsWhatHomeAndFollowUpsList(t *testing.T) {
 	for _, days := range []int{0, 3, 10} {
 		h.Clock.Advance(time.Duration(days-daysOn) * day)
 		daysOn = days
-		for _, row := range rows {
-			current, err := h.Service.Account(ctx, row.ID)
-			if err != nil {
-				t.Fatalf("Account(%d): %v", row.ID, err)
+		// t.Run returns once every person's parallel subtest has, so the
+		// clock moves on only after the day is read.
+		t.Run(fmt.Sprintf("%d days on", days), func(t *testing.T) {
+			for _, row := range rows {
+				t.Run(row.Email, func(t *testing.T) {
+					t.Parallel()
+					current, err := h.Service.Account(ctx, row.ID)
+					if err != nil {
+						t.Fatalf("Account(%d): %v", row.ID, err)
+					}
+					sb, err := h.Service.Sidebar(ctx, current.ID)
+					if err != nil {
+						t.Fatalf("Sidebar for %s, %d days on: %v", current.Email, days, err)
+					}
+					home, err := s.loadHome(ctx, current.ID)
+					if err != nil {
+						t.Fatalf("loadHome for %s, %d days on: %v", current.Email, days, err)
+					}
+					if !sb.NeedsYouRead || sb.NeedsYou != home.NeedsYou() {
+						t.Errorf("%s, %d days on: the sidebar's Needs you counts %d (read: %v), Home lists %d", current.Email, days, sb.NeedsYou, sb.NeedsYouRead, home.NeedsYou())
+					}
+					page, err := s.loadFollowUpsPage(ctx, url.Values{}, current)
+					if err != nil {
+						t.Fatalf("loadFollowUpsPage for %s, %d days on: %v", current.Email, days, err)
+					}
+					listed := map[int64]bool{}
+					for _, r := range page.Rows {
+						listed[r.Goal.ID] = true
+					}
+					if !sb.FollowUpsRead || sb.FollowUps != len(listed) {
+						t.Errorf("%s, %d days on: the sidebar's Follow-ups counts %d (read: %v), a bare Follow-ups page lists %d Goals", current.Email, days, sb.FollowUps, sb.FollowUpsRead, len(listed))
+					}
+				})
 			}
-			sb, err := h.Service.Sidebar(ctx, current.ID)
-			if err != nil {
-				t.Fatalf("Sidebar for %s, %d days on: %v", current.Email, days, err)
-			}
-			home, err := s.loadHome(ctx, current.ID)
-			if err != nil {
-				t.Fatalf("loadHome for %s, %d days on: %v", current.Email, days, err)
-			}
-			if !sb.NeedsYouRead || sb.NeedsYou != home.NeedsYou() {
-				t.Errorf("%s, %d days on: the sidebar's Needs you counts %d (read: %v), Home lists %d", current.Email, days, sb.NeedsYou, sb.NeedsYouRead, home.NeedsYou())
-			}
-			page, err := s.loadFollowUpsPage(ctx, url.Values{}, current)
-			if err != nil {
-				t.Fatalf("loadFollowUpsPage for %s, %d days on: %v", current.Email, days, err)
-			}
-			listed := map[int64]bool{}
-			for _, r := range page.Rows {
-				listed[r.Goal.ID] = true
-			}
-			if !sb.FollowUpsRead || sb.FollowUps != len(listed) {
-				t.Errorf("%s, %d days on: the sidebar's Follow-ups counts %d (read: %v), a bare Follow-ups page lists %d Goals", current.Email, days, sb.FollowUps, sb.FollowUpsRead, len(listed))
-			}
-		}
+		})
 	}
 }
