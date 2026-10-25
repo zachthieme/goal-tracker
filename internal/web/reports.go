@@ -215,8 +215,8 @@ func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	s.submitReportBuilder(w, r, current, def, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
-		return tx.UpdateReportDefinition(r.Context(), current.ID, def.ID, in)
+	s.submitReportBuilder(w, r, current, def, func(in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+		return s.svc.UpdateReportDefinition(r.Context(), current.ID, def.ID, in)
 	})
 }
 

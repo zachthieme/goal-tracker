@@ -63,6 +63,40 @@ func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, aut
 	return s.loadGoal(ctx, goalID)
 }
 
+// EditTitleAndWhyItMatters saves the Edit title and Why it matters form, for
+// the Goal's Owner or an Admin (ErrNotAuthorized). It changes the title, unless
+// title is nil (the form sent none), and the Why it matters, each only when it
+// differs from what the Goal has, all or nothing: an unchanged field records no
+// revision, and a refused save changes neither. Each field is checked as
+// EditTitle and EditWhyItMatters check it.
+func (s *Service) EditTitleAndWhyItMatters(ctx context.Context, actorID, goalID int64, title *string, whyItMatters string) (Goal, error) {
+	if err := s.RequireGoalOwnerOrAdmin(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
+	var g Goal
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		if g, err = tx.loadGoal(ctx, goalID); err != nil {
+			return err
+		}
+		if title != nil {
+			if g, err = tx.EditTitle(ctx, goalID, *title, actorID); err != nil {
+				return err
+			}
+		}
+		if strings.TrimSpace(whyItMatters) != g.WhyItMatters {
+			if g, err = tx.EditWhyItMatters(ctx, goalID, whyItMatters, actorID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Goal{}, err
+	}
+	return g, nil
+}
+
 // ListTitleRevisions returns every change to a Goal's title, newest first, each
 // with its author resolved.
 func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]TitleRevision, error) {
