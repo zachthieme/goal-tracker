@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -1054,6 +1055,11 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
 	pub := h.PublishReport(boss, def)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -1075,6 +1081,15 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 		if heading := findByTestID(t, findByTestID(t, column[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
 			t.Errorf("%s: the Exceptions heading isn't its section's own h2: %s", name, renderNode(heading))
 		}
+		// The manager composes the draft's narrative under the composer's
+		// own h2; the publication reads it under the same level-2 heading,
+		// so .rp-read h2 and .rp-read section>h2 give it 18px and a rule.
+		if name == "publication" {
+			narrative := findByTestID(t, column[0], "report-narrative")
+			if heading := headingNamed(narrative, "Narrative"); heading == nil || heading.Data != "h2" || heading.Parent != narrative || narrative.Data != "section" {
+				t.Errorf("publication: the Narrative heading isn't its section's own h2: %s", renderNode(narrative))
+			}
+		}
 		// The Report's sections sit .rp-body's 24px apart on both pages; a
 		// section wrapping them would take .rp-body section's 12px instead.
 		if snapshot := findByTestID(t, column[0], "report-snapshot"); snapshot.Data == "section" && slices.Contains(strings.Fields(attrOf(snapshot.Parent, "class")), "rp-body") {
@@ -1094,6 +1109,7 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 			".rp-exceptions>h2+.rp-block":  {"border-top:none"},
 			".rp-card-head h3":             {"font-size:16px", "font-weight:600"},
 			".rp-narrative h3.label":       {"font-size:15px", "font-weight:600"},
+			".rp-narrative>h2+.label":      {"margin-top:0"},
 			".rp-section-text>summary":     {"font-size:15px", "font-weight:600"},
 		} {
 			decls, ok := ruleFor(styles, sel)

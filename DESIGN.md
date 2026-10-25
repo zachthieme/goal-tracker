@@ -1869,13 +1869,15 @@ and so on).
       <Goal>", **[Closed since]** on one closed since, then Close and Reassign.
     - **Introduction and narrative (`.rp-intro`, `.rp-narrative`):** the
       introduction, then the narrative, both in 15/1.7 `--color-ink`, a touch
-      larger than the body text: Insights,
+      larger than the body text: under its "Narrative" heading, Insights,
       Accomplishments and Misses, each a 15px, 600 heading over the author's
       notes and the picked Highlights as a bulleted list, each credited in
-      muted 13px " — <Owner>, <Goal>". A section with neither is left out.
+      muted 13px " — <Owner>, <Goal>". A section with neither is left out,
+      and an empty narrative is left out whole, heading and all. The print
+      page heads it with its own `h2`, as it does Exceptions.
     - **Section headings:** each section of the Report (Open Action Items,
-      Exceptions, On track, Goals that entered or left, and the draft's
-      Narrative) opens with an 18px, 650 `h2` under a full-width 1px
+      Narrative, Exceptions, On track, and Goals that entered or left, on
+      the draft and the publication alike) opens with an 18px, 650 `h2` under a full-width 1px
       `--color-border` rule, 20px above it and 20px of margin over it, so
       with the column's 24px gap it stands about 44px below what comes before.
     - **Exceptions N:** the count beside the heading, 14px muted. Each
