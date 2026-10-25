@@ -127,7 +127,8 @@ Whatever the method, the session cookie is signed with
 `https`. It also carries the person's session generation, so all of their
 sessions can be ended at once: moving the generation on signs every browser
 they're signed in on out, and their next sign-in works as usual. Signing out
-does that, as does a password reset.
+does that, as do a password reset and being marked Departed, so marking someone
+returned doesn't revive a session from before they left.
 
 A session ends 30 days after sign-in, or after 7 days without a request. A
 request more than a day after the cookie was last issued re-issues it, so the

@@ -237,6 +237,54 @@ func TestDepartedDelegateCannotCheckIn(t *testing.T) {
 	}
 }
 
+// Marking someone Departed ends their sessions, so marking them returned
+// doesn't bring a session from before the departure back: the old one is
+// treated as signed out, and only a fresh sign-in works (CONTEXT.md: Departed).
+func TestReturningDoesNotReviveASessionFromBeforeDeparture(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	before := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if err := h.Service.MarkReturned(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkReturned: %v", err)
+	}
+
+	checkinsURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	resp := postForm(t, before, checkinsURL, url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Back from before."},
+	})
+	_ = readBody(t, resp)
+	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
+		t.Errorf("Check-in POST on a session from before the departure: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
+	}
+	if _, ok, err := h.Service.LatestCheckin(t.Context(), goal.ID); err != nil || ok {
+		t.Errorf("the pre-departure session's Check-in was recorded (ok=%v, err=%v)", ok, err)
+	}
+
+	after := signInClient(t, ts.URL, "sam@example.com")
+	resp = postForm(t, after, checkinsURL, url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Back again."},
+	})
+	_ = readBody(t, resp)
+	latest, ok, err := h.Service.LatestCheckin(t.Context(), goal.ID)
+	if err != nil || !ok {
+		t.Fatalf("signing in again after the return didn't record sam's Check-in (status %d, ok=%v, err=%v)", resp.StatusCode, ok, err)
+	}
+	if latest.Status != "Back again." {
+		t.Errorf("latest Check-in status = %q, want %q", latest.Status, "Back again.")
+	}
+}
+
 // sessionCookieOf signs emailAddr in through the form and returns the session
 // cookie the server issued.
 func sessionCookieOf(t *testing.T, baseURL, emailAddr string) *http.Cookie {
