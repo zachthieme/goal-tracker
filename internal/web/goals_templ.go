@@ -204,7 +204,7 @@ func goalFilters(view goalsListData) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<form method=\"get\" action=\"/goals\" data-testid=\"goal-filters\" class=\"gl-filters\" hx-get=\"/goals\" hx-trigger=\"submit, change[target.type!='search'], input[target.type=='search'] delay:400ms\" hx-target=\"#goal-list\" hx-select=\"#goal-list\" hx-select-oob=\"#goal-count,#goal-layout\" hx-swap=\"outerHTML\" hx-push-url=\"true\" hx-sync=\"this:replace\" hx-history=\"false\"><div class=\"gl-bar\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<form method=\"get\" action=\"/goals\" data-testid=\"goal-filters\" class=\"gl-filters\" hx-get=\"/goals\" hx-trigger=\"submit, change[target.type!='search'], input[target.type=='search'] delay:400ms\" hx-target=\"#goal-list\" hx-select=\"#goal-list\" hx-select-oob=\"#goal-count,#goal-layout\" hx-swap=\"outerHTML\" hx-push-url=\"true\" hx-sync=\"this:replace\" hx-history=\"false\"><div data-testid=\"goal-filter-bar\" class=\"gl-bar\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -757,7 +757,7 @@ func goalListLayout(view goalsListData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<span class=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<span data-testid=\"goal-group-mark\" class=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

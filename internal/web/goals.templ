@@ -84,7 +84,7 @@ templ goalFilters(view goalsListData) {
 		hx-sync="this:replace"
 		hx-history="false"
 	>
-		<div class="gl-bar">
+		<div data-testid="goal-filter-bar" class="gl-bar">
 			@pageScopeChip("goal-scope-filter", view.Org)
 			<label class="filter-chip">
 				<span class="chip-key chip-key-set" aria-hidden="true">Health:</span>
@@ -241,7 +241,7 @@ templ goalListLayout(view goalsListData) {
 					<tbody data-testid="goal-health-group">
 						<tr data-testid="goal-group-head" class="gl-group">
 							<th colspan="5" scope="colgroup">
-								<span class={ "gl-mark", healthMarkClass(grp.Health) } aria-hidden="true">
+								<span data-testid="goal-group-mark" class={ "gl-mark", healthMarkClass(grp.Health) } aria-hidden="true">
 									@goalHealthDot(grp.Health)
 								</span>
 								@goalGroupLabel(grp.name(), len(grp.Rows))
