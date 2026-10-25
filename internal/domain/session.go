@@ -23,8 +23,8 @@ func (s *Service) SessionGeneration(ctx context.Context, accountID int64) (int64
 
 // EndSessions ends every session accountID has: it moves their session
 // generation on, so each cookie issued before stops working and the next
-// sign-in issues one for the new generation. Signing out and a password reset
-// call it.
+// sign-in issues one for the new generation. Signing out, a password reset and
+// MarkDeparted call it.
 func (s *Service) EndSessions(ctx context.Context, accountID int64) error {
 	if err := s.queries.EndAccountSessions(ctx, accountID); err != nil {
 		return fmt.Errorf("end sessions: %w", err)

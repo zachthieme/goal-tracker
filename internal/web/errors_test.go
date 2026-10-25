@@ -283,7 +283,12 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
 	assertCheckinUnavailable(t, page, "The Goal couldn&#39;t be loaded, so nothing was recorded. Try again.")
-	assertLoggedOnce(t, buf, before, http.MethodPost, path, "load milestones: list milestones: SQL logic error: no such table: milestones")
+	// The sidebar reads the overdue Milestones too, so first it says at WARN
+	// that it left out its Follow-ups count (#483).
+	if records := logRecords(t, buf); len(records) <= before || records[before]["level"] != "WARN" || records[before]["msg"] != "sidebar read failed" {
+		t.Fatalf("the sidebar's failed Milestones read wasn't logged at WARN first:\n%s", buf)
+	}
+	assertLoggedOnce(t, buf, before+1, http.MethodPost, path, "load milestones: list milestones: SQL logic error: no such table: milestones")
 }
 
 // A No change that fails to be recorded answers 500 inside the page, and its

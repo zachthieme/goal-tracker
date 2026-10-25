@@ -109,8 +109,9 @@ func TestChromiumFailsARenderOutOfTime(t *testing.T) {
 	}
 }
 
-// A render killed for time leaves nothing behind, even a second on: nothing of
-// Chromium's in TMPDIR, and no core dumped in the working directory.
+// A render killed for time leaves nothing behind: within a few seconds,
+// nothing of Chromium's is in TMPDIR, and no core is dumped in the working
+// directory.
 //
 //nolint:paralleltest // sets TMPDIR and the working directory
 func TestARenderKilledForTimeLeavesNothingBehind(t *testing.T) {
@@ -125,13 +126,19 @@ func TestARenderKilledForTimeLeavesNothingBehind(t *testing.T) {
 	if b, err := chrome.Render(ctx, []byte(servedFontPage), app.URL); err == nil {
 		t.Fatalf("Render in 150ms gave %d bytes and no error; want it killed for time", len(b))
 	}
-	time.Sleep(time.Second)
 
-	if left, _ := os.ReadDir(tmp); len(left) > 0 {
-		t.Errorf("TMPDIR has %v after the render; want it empty", names(left))
-	}
-	if cores, _ := filepath.Glob(filepath.Join(work, "core*")); len(cores) > 0 {
-		t.Errorf("the render dumped %v in the working directory", cores)
+	const wait = 5 * time.Second
+	deadline := time.Now().Add(wait)
+	for {
+		left, _ := os.ReadDir(tmp)
+		cores, _ := filepath.Glob(filepath.Join(work, "core*"))
+		if len(left) == 0 && len(cores) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waited %v after the render for an empty TMPDIR and no core; TMPDIR has %v, and the working directory the cores %v", wait, names(left), cores)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

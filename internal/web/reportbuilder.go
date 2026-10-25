@@ -198,8 +198,8 @@ func (s *Server) newReportStartingRule(r *http.Request, author domain.Account) (
 // handleNewReport saves the builder's new Report Definition and lands on its
 // draft, as submitReportBuilder answers.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	s.submitReportBuilder(w, r, current, domain.ReportDefinition{}, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
-		return tx.SaveReportDefinition(r.Context(), current.ID, in)
+	s.submitReportBuilder(w, r, current, domain.ReportDefinition{}, func(in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+		return s.svc.SaveReportDefinition(r.Context(), current.ID, in)
 	})
 }
 
@@ -210,7 +210,7 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 // save nothing: the builder comes back as typed with a blank row added,
 // without that row, or as it is, its rail listing the Goals as typed.
 func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, saved domain.ReportDefinition,
-	save func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
+	save func(in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
 ) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
@@ -234,12 +234,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
 		return
 	}
-	var def domain.ReportDefinition
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		var err error
-		def, err = save(tx, in)
-		return err
-	})
+	def, err := save(in)
 	if err == nil {
 		http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
 		return

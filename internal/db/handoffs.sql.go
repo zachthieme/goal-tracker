@@ -295,8 +295,8 @@ func (q *Queries) SetGoalOwner(ctx context.Context, arg SetGoalOwnerParams) erro
 	return err
 }
 
-const setHandoffStatus = `-- name: SetHandoffStatus :exec
-UPDATE handoffs SET status = ? WHERE id = ?
+const setHandoffStatus = `-- name: SetHandoffStatus :execrows
+UPDATE handoffs SET status = ? WHERE id = ? AND status = 'pending'
 `
 
 type SetHandoffStatusParams struct {
@@ -304,7 +304,12 @@ type SetHandoffStatusParams struct {
 	ID     int64
 }
 
-func (q *Queries) SetHandoffStatus(ctx context.Context, arg SetHandoffStatusParams) error {
-	_, err := q.db.ExecContext(ctx, setHandoffStatus, arg.Status, arg.ID)
-	return err
+// Records a pending Handoff's outcome, only if it is still pending, so of two
+// commands deciding it together only one changes it.
+func (q *Queries) SetHandoffStatus(ctx context.Context, arg SetHandoffStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setHandoffStatus, arg.Status, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

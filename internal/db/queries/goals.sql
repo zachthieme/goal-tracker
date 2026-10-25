@@ -39,9 +39,12 @@ RETURNING *;
 UPDATE goals SET title = ? WHERE id = ?
 RETURNING *;
 
--- name: SetGoalLifecycle :one
-UPDATE goals SET lifecycle = ? WHERE id = ?
-RETURNING *;
+-- name: SetGoalLifecycle :execrows
+-- Move a Goal from_lifecycle to lifecycle; no row changes when it is no
+-- longer in from_lifecycle, so a change planned from a Lifecycle another
+-- Check-in has since left isn't made.
+UPDATE goals SET lifecycle = sqlc.arg(lifecycle)
+WHERE id = sqlc.arg(id) AND lifecycle = sqlc.arg(from_lifecycle);
 
 -- name: ActivateGoal :exec
 -- Move a Proposed Goal to Active, recording when (CONTEXT.md: Check-in overdue

@@ -874,6 +874,69 @@ func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
 	}
 }
 
+// arrangeHandoffs adds Handoffs of Goal 1 from Account 7 to Account 8, one per
+// status, to a database arranged by arrangeUpgradeAccountsAndGoals.
+func arrangeHandoffs(t *testing.T, sqlDB *sql.DB, statuses ...string) error {
+	t.Helper()
+	for _, status := range statuses {
+		if _, err := sqlDB.Exec(`INSERT INTO handoffs (goal_id, from_owner, to_owner, status, initiated_by, created_at)
+			VALUES (1, 7, 8, ?, 7, '2026-01-02T00:00:00Z')`, status); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// A database holding two pending Handoffs of one Goal, as two started together
+// could leave, won't migrate: the error names the handoffs table and both
+// Handoffs are kept, so an operator can settle which stays by hand.
+func TestMigrationFailsOnTwoPendingHandoffsOfOneGoal(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0059_one_pending_handoff.sql")
+	// Back to the schema before 0059, which held no index on pending Handoffs.
+	if _, err := sqlDB.Exec(`DROP INDEX idx_handoffs_one_pending`); err != nil {
+		t.Fatalf("drop index: %v", err)
+	}
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
+	if err := arrangeHandoffs(t, sqlDB, "pending", "pending"); err != nil {
+		t.Fatalf("arrange handoffs: %v", err)
+	}
+
+	err := db.Migrate(sqlDB)
+	if err == nil {
+		t.Fatal("Migrate succeeded on a database with two pending Handoffs of one Goal")
+	}
+	if !strings.Contains(err.Error(), "handoffs") {
+		t.Errorf("Migrate error %q doesn't name the handoffs table", err)
+	}
+	var pending int
+	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM handoffs WHERE status = 'pending'`).Scan(&pending); err != nil {
+		t.Fatalf("count handoffs: %v", err)
+	}
+	if pending != 2 {
+		t.Errorf("%d pending Handoffs after the failed migration, want both kept", pending)
+	}
+}
+
+// Once migrated, a Goal has at most one pending Handoff, alongside any number
+// with another outcome.
+func TestOnlyOneHandoffOfAGoalIsPending(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := openMigratedForFKCheck(t)
+	arrangeUpgradeAccountsAndGoals(t, sqlDB)
+	if err := arrangeHandoffs(t, sqlDB, "pending"); err != nil {
+		t.Fatalf("arrange the first pending Handoff: %v", err)
+	}
+	if err := arrangeHandoffs(t, sqlDB, "pending"); err == nil {
+		t.Error("a second pending Handoff of the Goal was stored")
+	}
+	if err := arrangeHandoffs(t, sqlDB, "accepted", "rejected", "cancelled", "reassigned", "rejected"); err != nil {
+		t.Errorf("a Handoff with another outcome was refused: %v", err)
+	}
+}
+
 // openMigratedForFKCheck opens a database through db.Open, as the app does, and
 // migrates it.
 func openMigratedForFKCheck(t *testing.T) *sql.DB {

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -172,9 +171,8 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleEditWhyItMatters saves the Edit title and Why it matters form, for the Goal's Owner
-// or an Admin. It changes the title, when the form sends one, and the Why it matters,
-// each only when it differs from what the Goal has, all or nothing: an
-// unchanged field records no revision, and a refused save changes neither.
+// or an Admin, as EditTitleAndWhyItMatters does: the title only when the form
+// sends one.
 func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -184,27 +182,12 @@ func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	if err := s.svc.RequireGoalOwnerOrAdmin(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
+	var title *string
+	if _, sent := r.PostForm["title"]; sent {
+		t := r.PostFormValue("title")
+		title = &t
 	}
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		g, err := tx.ViewGoal(r.Context(), id)
-		if err != nil {
-			return err
-		}
-		if _, sent := r.PostForm["title"]; sent {
-			if _, err := tx.EditTitle(r.Context(), id, r.PostFormValue("title"), current.ID); err != nil {
-				return err
-			}
-		}
-		if whyItMatters := r.PostFormValue("why_it_matters"); strings.TrimSpace(whyItMatters) != g.WhyItMatters {
-			if _, err := tx.EditWhyItMatters(r.Context(), id, whyItMatters, current.ID); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	_, err := s.svc.EditTitleAndWhyItMatters(r.Context(), current.ID, id, title, r.PostFormValue("why_it_matters"))
 	s.writeFormResult(w, r, id, current, formTitleWhyItMatters, err)
 }
 

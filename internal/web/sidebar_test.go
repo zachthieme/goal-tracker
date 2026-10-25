@@ -2,8 +2,12 @@ package web_test
 
 import (
 	"fmt"
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -96,5 +100,67 @@ func TestSidebarMyOrgListsThePeopleDirectlyUnderTheViewer(t *testing.T) {
 		if page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/goals"); strings.Contains(page, `data-testid="sidebar-org"`) {
 			t.Errorf("%s has no one under them but gets My org:\n%s", who, sidebar(t, page))
 		}
+	}
+}
+
+// sidebarNavCountsIn is the counts shown under root, Home's needs-you pill and
+// every nav item's plain count, as their text.
+func sidebarNavCountsIn(root *html.Node) []string {
+	return textsOf(findAll(root, func(n *html.Node) bool {
+		return slices.Contains(strings.Fields(attrOf(n, "class")), "count")
+	}))
+}
+
+// When a read only the needs-you count uses fails, here the Handoffs, the
+// page still answers 200 and leaves out only Home's count: the Follow-ups
+// count and My org still show. The failure is logged once, at WARN, with its
+// cause.
+func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	lead := h.SignInNamed("lead@example.com", "Lee Lead")
+	h.SetManager(h.SignInNamed("ben@example.com", "Ben"), lead)
+	h.ActiveGoal(lead, "Cut churn", "Customers leave.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "lead@example.com")
+	if _, err := h.DB.Exec(`DROP TABLE handoffs`); err != nil {
+		t.Fatalf("drop handoffs: %v", err)
+	}
+	buf.Reset()
+
+	resp, err := client.Get(ts.URL + "/goals")
+	if err != nil {
+		t.Fatalf("GET /goals: %v", err)
+	}
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /goals: status %d, want 200", resp.StatusCode)
+	}
+	if got := sidebarNavCountsIn(findByTestID(t, page, "nav-follow-ups")); !slices.Equal(got, []string{"1"}) {
+		t.Errorf("the Follow-ups item counts %q, want [1]", got)
+	}
+	if got := sidebarNavCountsIn(findByTestID(t, page, "nav-home")); len(got) != 0 {
+		t.Errorf("Home counts %q though what needs the viewer wasn't read, want no count", got)
+	}
+	if strip := findAll(page, func(n *html.Node) bool { return attrOf(n, "class") == "sb-strip-home" }); len(strip) != 0 {
+		t.Errorf("the phone strip shows Home's count %q though it wasn't read", textsOf(strip))
+	}
+	if got := textsOf(findAllByTestID(findByTestID(t, page, "sidebar-org"), "sidebar-org-person")); !slices.Equal(got, []string{"Ben"}) {
+		t.Errorf("My org lists %q, want [Ben]", got)
+	}
+
+	var warns []map[string]any
+	for _, rec := range logRecords(t, buf) {
+		if rec["level"] == "WARN" {
+			warns = append(warns, rec)
+		}
+	}
+	if len(warns) != 1 {
+		t.Fatalf("logged %d WARN records, want 1:\n%s", len(warns), buf)
+	}
+	if cause, _ := warns[0]["err"].(string); !strings.Contains(cause, "handoffs") {
+		t.Errorf("WARN record err %q, want the Handoffs read's error", cause)
 	}
 }

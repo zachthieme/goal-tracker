@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1632,5 +1634,160 @@ func assertNamesInput(t *testing.T, err error, input string) {
 	}
 	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != input {
 		t.Errorf("InputErrors(%v) = %+v, want one naming %q", err, problems, input)
+	}
+}
+
+// raceCheckinPair runs a and b at the same moment and returns their errors.
+func raceCheckinPair(a, b func() error) (errA, errB error) {
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	wg.Add(2)
+	go func() { defer wg.Done(); <-start; errA = a() }()
+	go func() { defer wg.Done(); <-start; errB = b() }()
+	close(start)
+	wg.Wait()
+	return errA, errB
+}
+
+// closingCheckin returns a Check-in by author that ends goal in lifecycle, Done
+// or Cancelled.
+func closingCheckin(h *testsupport.Harness, author domain.Account, goal domain.Goal, lifecycle string) func() error {
+	return func() error {
+		_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+			GoalID:          goal.ID,
+			AuthorID:        author.ID,
+			Status:          "Wrapping this up.",
+			Lifecycle:       lifecycle,
+			LifecycleReason: "No longer needed.",
+			Outcome:         "It shipped.",
+		})
+		return err
+	}
+}
+
+// A Done and a Cancelled Check-in sent at the same moment on one Active Goal,
+// by its Owner and a Delegate: only one is accepted, the other is refused as it
+// would be sent after, and the Goal ends in the accepted one's Lifecycle
+// (CONTEXT.md: Lifecycle — Done and Cancelled are end states).
+func TestDoneAndCancelledCheckinsSentTogetherCloseTheGoalOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	ctx := context.Background()
+	for i := range 30 {
+		goal := h.ActiveGoal(sam, fmt.Sprintf("Ship v%d", i), "Customers wait too long.")
+		h.AddDelegate(sam, dee, goal.ID)
+		errDone, errCancelled := raceCheckinPair(
+			closingCheckin(h, sam, goal, domain.LifecycleDone),
+			closingCheckin(h, dee, goal, domain.LifecycleCancelled),
+		)
+		if (errDone == nil) == (errCancelled == nil) {
+			t.Fatalf("round %d: Done err = %v, Cancelled err = %v; want exactly one accepted", i, errDone, errCancelled)
+		}
+		for _, err := range []error{errDone, errCancelled} {
+			if err != nil && !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("round %d: err = %v, want ErrValidation for the Check-in refused", i, err)
+			}
+		}
+		history, err := h.Service.ListCheckins(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("ListCheckins: %v", err)
+		}
+		var changes []domain.LifecycleChange
+		for _, c := range history {
+			if c.LifecycleChange.Changed() {
+				changes = append(changes, c.LifecycleChange)
+			}
+		}
+		if len(changes) != 1 {
+			t.Fatalf("round %d: lifecycle changes = %+v, want exactly one", i, changes)
+		}
+		want := domain.LifecycleDone
+		if errDone != nil {
+			want = domain.LifecycleCancelled
+		}
+		if changes[0].To != want {
+			t.Errorf("round %d: recorded change to %q, want %q", i, changes[0].To, want)
+		}
+		got, err := h.Service.ViewGoal(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("ViewGoal: %v", err)
+		}
+		if got.Lifecycle != want {
+			t.Fatalf("round %d: Lifecycle = %q, want %q", i, got.Lifecycle, want)
+		}
+	}
+}
+
+// Two Check-ins that leave the Goal Active, sent at the same moment by its
+// Owner and a Delegate, are both recorded: only a Lifecycle change is decided
+// by which lands first.
+func TestOrdinaryCheckinsSentTogetherAreBothAccepted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	ctx := context.Background()
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.AddDelegate(sam, dee, goal.ID)
+	green := func(author domain.Account, status string) func() error {
+		return func() error {
+			_, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+				GoalID: goal.ID, AuthorID: author.ID, Health: domain.HealthGreen, Status: status,
+			})
+			return err
+		}
+	}
+	errSam, errDee := raceCheckinPair(green(sam, "On track."), green(dee, "Still on track."))
+	if errSam != nil || errDee != nil {
+		t.Fatalf("Owner's err = %v, Delegate's err = %v; want both accepted", errSam, errDee)
+	}
+	history, err := h.Service.ListCheckins(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("ListCheckins: %v", err)
+	}
+	if len(history) != 2 {
+		t.Errorf("Check-ins = %d, want 2", len(history))
+	}
+}
+
+// A No change and a Cancelled Check-in sent at the same moment on one Active
+// Goal: a No change is never recorded on the Goal after it is Cancelled.
+func TestNoChangeSentWithACancelNeverLandsOnTheCancelledGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	ctx := context.Background()
+	for i := range 30 {
+		goal := h.ActiveGoal(sam, fmt.Sprintf("Ship v%d", i), "Customers wait too long.")
+		h.AddDelegate(sam, dee, goal.ID)
+		h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+		errNoChange, errCancel := raceCheckinPair(
+			func() error {
+				_, err := h.Service.SubmitNoChangeCheckin(ctx, goal.ID, dee.ID)
+				return err
+			},
+			closingCheckin(h, sam, goal, domain.LifecycleCancelled),
+		)
+		if errCancel != nil {
+			t.Fatalf("round %d: Cancel err = %v, want accepted", i, errCancel)
+		}
+		if errNoChange != nil && !errors.Is(errNoChange, domain.ErrValidation) {
+			t.Fatalf("round %d: No change err = %v, want ErrValidation when refused", i, errNoChange)
+		}
+		history, err := h.Service.ListCheckins(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("ListCheckins: %v", err)
+		}
+		// Newest first: the Cancel must be the latest Check-in, with nothing
+		// recorded after it.
+		if len(history) == 0 || history[0].LifecycleChange.To != domain.LifecycleCancelled {
+			t.Fatalf("round %d: history = %+v, want the Cancel latest", i, history)
+		}
 	}
 }

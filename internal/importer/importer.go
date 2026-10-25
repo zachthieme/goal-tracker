@@ -961,13 +961,13 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 		return nil, fmt.Errorf("%w: the workbook has no worksheets", domain.ErrValidation)
 	}
 	sheet := sheets[0]
-	rows, err := f.GetRows(sheet)
+	rows, err := readXLSXRows(f, sheet)
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+		return nil, err
 	}
-	raw, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
+	raw, err := readXLSXRows(f, sheet, excelize.Options{RawCellValue: true})
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+		return nil, err
 	}
 	props, err := f.GetWorkbookProps()
 	if err != nil {
@@ -994,6 +994,52 @@ func parseXLSX(data []byte) ([]sheetRow, error) {
 		grid[i] = sheetRow{number: i + 1, cells: row}
 	}
 	return grid, nil
+}
+
+// xlsxMaxRowNumber is the highest row number an XLSX import's worksheet may
+// have: far more rows than a real Goal sheet has, and well under Excel's
+// 1,048,576. It counts row numbers, not rows that hold data (#489).
+const xlsxMaxRowNumber = 10_000
+
+// readXLSXRows reads a worksheet's rows of cells as excelize's GetRows does,
+// but refuses the sheet at its first row numbered past xlsxMaxRowNumber. GetRows
+// steps through every missing row number up to the next row's, unchecked, so a
+// tiny sheet with a row numbered in the billions would read for minutes
+// (GO-2026-6685); the iterator here steps the same way and stops at the cap.
+func readXLSXRows(f *excelize.File, sheet string, opts ...excelize.Options) ([][]string, error) {
+	it, err := f.Rows(sheet)
+	if err != nil {
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+	}
+	defer func() { _ = it.Close() }()
+	tooMany := fmt.Errorf("%w: the spreadsheet has more than 10,000 rows; split it and import each part", domain.ErrValidation)
+	var rows [][]string
+	number, last := 0, 0
+	for it.Next() {
+		number++
+		if number > xlsxMaxRowNumber {
+			return nil, tooMany
+		}
+		row, err := it.Columns(opts...)
+		if err != nil {
+			break // as GetRows does: the rows read so far are the sheet
+		}
+		if len(row) > 0 {
+			for ; last < number-1; last++ {
+				rows = append(rows, nil)
+			}
+			rows = append(rows, row)
+			last = number
+		}
+	}
+	// The iterator refuses a row numbered past Excel's last outright.
+	if errors.Is(it.Error(), excelize.ErrMaxRows) {
+		return nil, tooMany
+	}
+	if err := it.Error(); err != nil {
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+	}
+	return rows, nil
 }
 
 // dateCell reports the date held by the cell at (col, row), whose raw value is

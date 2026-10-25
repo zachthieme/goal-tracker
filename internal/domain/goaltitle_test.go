@@ -140,3 +140,106 @@ func TestRequireGoalOwnerOrAdminAllowsOnlyTheOwnerAndAnAdmin(t *testing.T) {
 		}
 	}
 }
+
+// The Edit title and Why it matters form saves both fields at once, each only
+// when it differs, all or nothing (#520).
+
+func TestEditTitleAndWhyItMattersRevisesOnlyTheChangedField(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(owner, "Reduce outages", "Outages cost trust.")
+
+	title := "Reduce outages"
+	got, err := h.Service.EditTitleAndWhyItMatters(ctx, owner.ID, g.ID, &title, "  Outages cost customers.  ")
+	if err != nil {
+		t.Fatalf("EditTitleAndWhyItMatters: %v", err)
+	}
+	if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost customers." {
+		t.Errorf("returned Goal = %q / %q, want %q / %q", got.Title, got.WhyItMatters, "Reduce outages", "Outages cost customers.")
+	}
+	if revisions, _ := h.Service.ListTitleRevisions(ctx, g.ID); len(revisions) != 0 {
+		t.Errorf("an unchanged title recorded %d title revisions: %+v", len(revisions), revisions)
+	}
+	whyRevisions, _ := h.Service.ListWhyItMattersRevisions(ctx, g.ID)
+	whyBefore := len(whyRevisions)
+
+	title = "Halve outages"
+	if _, err := h.Service.EditTitleAndWhyItMatters(ctx, owner.ID, g.ID, &title, "Outages cost customers."); err != nil {
+		t.Fatalf("EditTitleAndWhyItMatters: %v", err)
+	}
+	if revisions, _ := h.Service.ListTitleRevisions(ctx, g.ID); len(revisions) != 1 || revisions[0].NewTitle != "Halve outages" {
+		t.Errorf("title revisions = %+v, want the one change to %q", revisions, "Halve outages")
+	}
+	if whyRevisions, _ := h.Service.ListWhyItMattersRevisions(ctx, g.ID); len(whyRevisions) != whyBefore {
+		t.Errorf("an unchanged Why it matters went from %d revisions to %d", whyBefore, len(whyRevisions))
+	}
+}
+
+func TestEditTitleAndWhyItMattersRefusingABlankTitleKeepsTheWhyItMattersToo(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(owner, "Reduce outages", "Outages cost trust.")
+	whyBefore, _ := h.Service.ListWhyItMattersRevisions(ctx, g.ID)
+
+	blank := "   "
+	_, err := h.Service.EditTitleAndWhyItMatters(ctx, owner.ID, g.ID, &blank, "Outages cost customers.")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("EditTitleAndWhyItMatters with a blank title: err = %v, want ErrValidation", err)
+	}
+	viewed, _ := h.Service.ViewGoal(ctx, g.ID)
+	if viewed.Title != "Reduce outages" || viewed.WhyItMatters != "Outages cost trust." {
+		t.Errorf("Goal = %q / %q after a refused save, want both unchanged", viewed.Title, viewed.WhyItMatters)
+	}
+	if revisions, _ := h.Service.ListTitleRevisions(ctx, g.ID); len(revisions) != 0 {
+		t.Errorf("a refused save recorded %d title revisions", len(revisions))
+	}
+	if whyAfter, _ := h.Service.ListWhyItMattersRevisions(ctx, g.ID); len(whyAfter) != len(whyBefore) {
+		t.Errorf("a refused save went from %d Why it matters revisions to %d", len(whyBefore), len(whyAfter))
+	}
+}
+
+func TestEditTitleAndWhyItMattersRefusesAReader(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	reader := h.SignIn("mel@example.com")
+	g := h.ActiveGoal(owner, "Reduce outages", "Outages cost trust.")
+
+	title := "Halve outages"
+	_, err := h.Service.EditTitleAndWhyItMatters(ctx, reader.ID, g.ID, &title, "Outages cost customers.")
+	if !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Fatalf("EditTitleAndWhyItMatters by a reader: err = %v, want ErrNotAuthorized", err)
+	}
+	if viewed, _ := h.Service.ViewGoal(ctx, g.ID); viewed.Title != "Reduce outages" || viewed.WhyItMatters != "Outages cost trust." {
+		t.Errorf("Goal = %q / %q after a refused save, want both unchanged", viewed.Title, viewed.WhyItMatters)
+	}
+}
+
+func TestEditTitleAndWhyItMattersRefusingABlankWhyItMattersKeepsTheTitleToo(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(owner, "Reduce outages", "Outages cost trust.")
+
+	title := "Halve outages"
+	_, err := h.Service.EditTitleAndWhyItMatters(ctx, owner.ID, g.ID, &title, "   ")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("EditTitleAndWhyItMatters with a blank Why it matters: err = %v, want ErrValidation", err)
+	}
+	if viewed, _ := h.Service.ViewGoal(ctx, g.ID); viewed.Title != "Reduce outages" {
+		t.Errorf("Title = %q after a refused save, want it unchanged", viewed.Title)
+	}
+	if revisions, _ := h.Service.ListTitleRevisions(ctx, g.ID); len(revisions) != 0 {
+		t.Errorf("a refused save recorded %d title revisions", len(revisions))
+	}
+}

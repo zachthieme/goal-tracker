@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -177,12 +178,20 @@ func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goa
 }
 
 // redirectBack returns to wherever an action was triggered, usually a Goal page.
+// It keeps only the Referer's path and query, and only when localPath accepts
+// them, so it never leaves the app; otherwise it goes to /goals.
 func redirectBack(w http.ResponseWriter, r *http.Request) {
-	if ref := r.Header.Get("Referer"); ref != "" {
-		http.Redirect(w, r, ref, http.StatusSeeOther)
-		return
+	target := "/goals"
+	if ref, err := url.Parse(r.Header.Get("Referer")); err == nil {
+		back := ref.EscapedPath()
+		if ref.RawQuery != "" {
+			back += "?" + ref.RawQuery
+		}
+		if localPath(back) {
+			target = back
+		}
 	}
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
