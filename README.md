@@ -28,7 +28,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). `Local` is refused: name the zone. It is used for company-wide dates (a Report's baseline, the weekly emails' schedule, History's weeks, a Nudge's once a day), and for a Goal whose Owner has no timezone in the directory or which is Ownerless. A Goal's own dates are judged in its Owner's timezone: when its Check-in goes overdue, when a Path to Green goes overdue, when a Metric misses its target, when a Milestone passes its date. The pages show dates and times in the company's timezone. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
-| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails, comment alerts, and Action Item emails) point here. |
+| `GOAL_TRACKER_BASE_URL` | _(required for `oidc` and `password`)_ | Where people reach the app, such as `https://goals.example.com`. Links in emails (the weekly emails, comment alerts, and Action Item emails) and set-password links point here, and the OIDC callback is under it. Required for `GOAL_TRACKER_SIGNIN=oidc` and `password`: startup stops without it. With `dev` it defaults from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080`. |
 | `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. Required, with the client ID and secret below, for `GOAL_TRACKER_SIGNIN=oidc`, and refused with `password` and `dev` (see [Sign-in](#sign-in)). |
 | `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
@@ -49,10 +49,11 @@ can never open the app to everyone.
 
 People sign in through the company's OpenID Connect provider: the sign-in page
 has one button, "Sign in with your organization". It needs the three
-`GOAL_TRACKER_OIDC_*` variables and `GOAL_TRACKER_SESSION_KEY`; startup stops,
-naming what's missing, without them, or if the issuer can't be discovered.
-Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by default
-`http://localhost:8080/auth/callback`) as the redirect URI, and allow the
+`GOAL_TRACKER_OIDC_*` variables, `GOAL_TRACKER_BASE_URL` and
+`GOAL_TRACKER_SESSION_KEY`; startup stops, naming what's missing, without them,
+or if the issuer can't be discovered. Register `GOAL_TRACKER_BASE_URL` +
+`/auth/callback` (such as `https://goals.example.com/auth/callback`) as the
+redirect URI, and allow the
 authorization code grant with the scopes `openid email profile`. The provider
 must send a verified `email`; its `name` claim becomes the person's Name.
 Signing out of the app also signs the person out of the provider when it offers
@@ -68,7 +69,7 @@ For a company without an SSO provider. People sign in with their email and a
 password, hashed with argon2id. Nobody chooses their own way in: a password can
 only be set through a one-time set-password link that an Admin hands to the
 person, so each person reaches only their own account. It needs
-`GOAL_TRACKER_SESSION_KEY`, and setting any `GOAL_TRACKER_OIDC_*` variable with
+`GOAL_TRACKER_BASE_URL` and `GOAL_TRACKER_SESSION_KEY`, and setting any `GOAL_TRACKER_OIDC_*` variable with
 it stops startup. Nothing is emailed; the Admin sends the link however they
 like.
 
@@ -78,14 +79,14 @@ like.
 
   ```sh
   GOAL_TRACKER_SIGNIN=password GOAL_TRACKER_SESSION_KEY=... GOAL_TRACKER_ADMINS=ada@example.com \
-    goal-tracker password-link ada@example.com
+    GOAL_TRACKER_BASE_URL=https://goals.example.com goal-tracker password-link ada@example.com
   ```
 
   It runs the migrations, creates the account if there's none (so
   `GOAL_TRACKER_ADMINS` applies to it), prints
   `GOAL_TRACKER_BASE_URL/set-password?token=...` and exits. It refuses unless
-  `GOAL_TRACKER_SIGNIN=password`, and refuses anything that isn't an email
-  address, creating no account.
+  `GOAL_TRACKER_SIGNIN=password` and `GOAL_TRACKER_BASE_URL` is set, and
+  refuses anything that isn't an email address, creating no account.
 - **Issuing links.** On the Admin page, the **Set-password links** card takes
   an email and shows the whole link once. Issuing one for an email with no
   account creates the account. A link is only issued for an email address, so

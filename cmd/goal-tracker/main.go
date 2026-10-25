@@ -321,7 +321,9 @@ type config struct {
 	// reminders and parent digests go out.
 	reminderDay  string
 	reminderTime string
-	// baseURL is where people reach the web app, for the links in emails.
+	// baseURL is where people reach the web app, for the links in emails:
+	// GOAL_TRACKER_BASE_URL, required except with the development form, which
+	// falls back to this machine's address.
 	baseURL string
 	// startAt, when set, is the RFC 3339 instant the app's clock starts at
 	// instead of the wall clock. For testing only: the e2e suite runs against
@@ -383,7 +385,6 @@ func loadConfig() (config, error) {
 	if cfg.timezone == "Local" {
 		return config{}, errors.New("GOAL_TRACKER_TIMEZONE=Local is the host's zone, not an IANA name: set the company's timezone by name, such as America/Los_Angeles")
 	}
-	cfg.baseURL = envOr("GOAL_TRACKER_BASE_URL", defaultBaseURL(cfg.addr))
 	for _, e := range strings.Split(os.Getenv("GOAL_TRACKER_ADMINS"), ",") {
 		if e = strings.TrimSpace(e); e != "" {
 			cfg.adminEmails = append(cfg.adminEmails, e)
@@ -393,6 +394,17 @@ func loadConfig() (config, error) {
 	cfg.signIn = os.Getenv("GOAL_TRACKER_SIGNIN")
 	if !slices.Contains(signInMethods, cfg.signIn) {
 		return config{}, fmt.Errorf("GOAL_TRACKER_SIGNIN must be one of %s; got %q", strings.Join(signInMethods, ", "), cfg.signIn)
+	}
+
+	// Only the development form falls back to this machine's address: behind
+	// a proxy, a localhost base URL would put dead links in emails and leave
+	// session cookies without Secure.
+	cfg.baseURL = trimmedEnv("GOAL_TRACKER_BASE_URL")
+	if cfg.baseURL == "" {
+		if cfg.signIn != signInDev {
+			return config{}, fmt.Errorf("GOAL_TRACKER_SIGNIN=%s needs GOAL_TRACKER_BASE_URL: where people reach the app, such as https://goals.example.com", cfg.signIn)
+		}
+		cfg.baseURL = defaultBaseURL(cfg.addr)
 	}
 
 	oidc, err := oidcConfig(cfg.signIn, cfg.baseURL)

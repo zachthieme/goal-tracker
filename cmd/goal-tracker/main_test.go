@@ -109,12 +109,13 @@ func devEnv(t *testing.T) {
 }
 
 // oidcEnv is clearAuthEnv with organization sign-in chosen and a session key
-// set, as it requires; the OIDC variables are left to the test.
+// and base URL set, as it requires; the OIDC variables are left to the test.
 func oidcEnv(t *testing.T) {
 	t.Helper()
 	clearAuthEnv(t)
 	t.Setenv("GOAL_TRACKER_SIGNIN", "oidc")
 	t.Setenv("GOAL_TRACKER_SESSION_KEY", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com")
 }
 
 func TestPartialOIDCConfigNamesWhatsMissing(t *testing.T) {
@@ -278,6 +279,23 @@ func TestDevSignInLeavesTheDevelopmentForm(t *testing.T) {
 	}
 	if cfg.oidc != nil {
 		t.Errorf("OIDC is on with the development form chosen: %+v", cfg.oidc)
+	}
+}
+
+// With the development form chosen, an unset base URL falls back to this
+// machine's address on GOAL_TRACKER_ADDR.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDevSignInDefaultsTheBaseURLToLocalhost(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_ADDR", ":9090")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.baseURL, "http://localhost:9090"; got != want {
+		t.Errorf("base URL %q, want %q", got, want)
 	}
 }
 
@@ -479,12 +497,13 @@ func TestTheDirectoryFileIsTrimmed(t *testing.T) {
 }
 
 // passwordEnv is clearAuthEnv with password sign-in chosen and a session key
-// set, as it requires.
+// and base URL set, as it requires.
 func passwordEnv(t *testing.T) {
 	t.Helper()
 	clearAuthEnv(t)
 	t.Setenv("GOAL_TRACKER_SIGNIN", "password")
 	t.Setenv("GOAL_TRACKER_SESSION_KEY", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com")
 }
 
 //nolint:paralleltest // sets the process environment, through clearAuthEnv
@@ -516,6 +535,36 @@ func TestPasswordSignInNeedsASessionKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "GOAL_TRACKER_SESSION_KEY") {
 		t.Errorf("error %q doesn't name GOAL_TRACKER_SESSION_KEY", err)
+	}
+}
+
+// Password and organization sign-in need a base URL, so links in emails and
+// the OIDC callback don't point at localhost and cookies get Secure behind
+// TLS.
+func TestPasswordAndOIDCSignInNeedABaseURL(t *testing.T) {
+	for _, tc := range []struct {
+		signIn string
+		env    func(*testing.T)
+	}{
+		{"password", passwordEnv},
+		{"oidc", func(t *testing.T) { t.Helper(); oidcEnv(t); setOIDCVars(t) }},
+	} {
+		for name, value := range map[string]string{"unset": "", "blank": " \t"} {
+			t.Run(tc.signIn+"/"+name, func(t *testing.T) {
+				tc.env(t)
+				t.Setenv("GOAL_TRACKER_BASE_URL", value)
+
+				_, err := loadConfig()
+				if err == nil {
+					t.Fatalf("loadConfig accepted GOAL_TRACKER_SIGNIN=%s with GOAL_TRACKER_BASE_URL=%q", tc.signIn, value)
+				}
+				for _, want := range []string{"GOAL_TRACKER_BASE_URL", "GOAL_TRACKER_SIGNIN=" + tc.signIn} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error %q doesn't name %s", err, want)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -576,6 +625,28 @@ func TestThePasswordLinkCommandPrintsALink(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^https://goals\.example\.com/set-password\?token=[A-Za-z0-9_-]{43}\n$`).MatchString(out.String()) {
 		t.Errorf("password-link printed %q, want the link alone on a line", out.String())
+	}
+}
+
+// The password-link command refuses without a base URL, as the app does, and
+// prints nothing rather than a link to localhost.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestThePasswordLinkCommandNeedsABaseURL(t *testing.T) {
+	passwordEnv(t)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+	t.Setenv("GOAL_TRACKER_BASE_URL", "")
+
+	var out bytes.Buffer
+	err := run(t.Context(), discardLogger(), []string{"password-link", "first.admin@example.com"}, &out)
+	if err == nil {
+		t.Fatal("password-link ran without GOAL_TRACKER_BASE_URL")
+	}
+	if !strings.Contains(err.Error(), "GOAL_TRACKER_BASE_URL") {
+		t.Errorf("error %q doesn't name GOAL_TRACKER_BASE_URL", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("password-link printed %q", out.String())
 	}
 }
 
