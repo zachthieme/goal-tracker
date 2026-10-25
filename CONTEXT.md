@@ -63,7 +63,7 @@ One of a small set of people who define Dimensions and Fields, reassign Ownerles
 _Avoid_: moderator, superuser
 
 **Contributor**:
-A person listed on a Goal for information only; carries no update duty.
+A person listed on a Goal for information only; carries no update duty. Because the listing is for information only, the Owner can list a Contributor in any Lifecycle, not just while the Goal is Proposed.
 _Avoid_: member, assignee
 
 **Metric**:

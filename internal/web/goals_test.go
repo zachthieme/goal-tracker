@@ -6422,6 +6422,81 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	}
 }
 
+// A Contributor is listed for information only, so the Owner can add one in
+// any Lifecycle: on an Active, On Hold, Done or Cancelled Goal the Owner's
+// Contributors block offers Manage, which opens the Add a Contributor form, and
+// the email posted there is listed. A Delegate and a reader are offered
+// neither, even asking for the form by its URL (CONTEXT.md: Contributor).
+func TestGoalPageOffersAddContributorInEveryLifecycleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	h.SignIn("dana@example.com")
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, active.ID)
+	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
+	done := h.ActiveGoal(sam, "Ship v1", "Customers asked for it.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	cancelled := h.ActiveGoal(sam, "Rewrite billing", "Billing is brittle.")
+	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
+	ts := newServer(t, h)
+	owner := signInClient(t, ts.URL, "sam@example.com")
+
+	for lifecycle, goal := range map[string]domain.Goal{
+		domain.LifecycleActive:    active,
+		domain.LifecycleOnHold:    onHold,
+		domain.LifecycleDone:      done,
+		domain.LifecycleCancelled: cancelled,
+	} {
+		page := getPage(t, owner, goalPageURL(ts.URL, goal))
+		if !goalShowsLifecycle(page, lifecycle) {
+			t.Errorf("%s: the page doesn't show the Goal %s", lifecycle, lifecycle)
+		}
+		openURL := fmt.Sprintf("/goals/%d?open=contributors", goal.ID)
+		link := linkTo(findByTestID(t, page, "goal-contributors"), openURL)
+		if link == nil || attrOf(link, "aria-label") != "Manage Contributors" {
+			t.Errorf("%s: the Owner's Contributors block offers no Manage Contributors link: %s", lifecycle, renderNode(findByTestID(t, page, "goal-contributors")))
+			continue
+		}
+		form := findByTestID(t, getPage(t, owner, ts.URL+attrOf(link, "href")), "add-contributor")
+		if field := formField(t, form, "email"); field.Label != "Contributor email" {
+			t.Errorf("%s: the Add a Contributor form's email field is labelled %q", lifecycle, field.Label)
+		}
+		if buttonNamed(form, "Add Contributor") == nil {
+			t.Errorf("%s: the Add a Contributor form has no Add Contributor button: %s", lifecycle, renderNode(form))
+		}
+		resp := postForm(t, owner, ts.URL+attrOf(form, "action"), url.Values{"email": {"dana@example.com"}})
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: adding a Contributor: status %d, want 200: %s", lifecycle, resp.StatusCode, readBody(t, resp))
+			continue
+		}
+		_ = resp.Body.Close()
+		after := getPage(t, owner, goalPageURL(ts.URL, goal))
+		if contributors := findByTestID(t, after, "goal-contributors"); !goalShows(contributors, "dana@example.com", "dana") {
+			t.Errorf("%s: the Goal page doesn't list dana@example.com as a Contributor: %s", lifecycle, renderNode(contributors))
+		}
+	}
+
+	openURL := fmt.Sprintf("/goals/%d?open=contributors", active.ID)
+	for _, viewer := range []string{"tpm@example.com", "mel@example.com"} {
+		client := signInClient(t, ts.URL, viewer)
+		for _, page := range []*nethtml.Node{
+			getPage(t, client, goalPageURL(ts.URL, active)),
+			getPage(t, client, ts.URL+openURL),
+		} {
+			if link := linkTo(page, openURL); link != nil {
+				t.Errorf("%s is offered the Manage Contributors link: %s", viewer, renderNode(link))
+			}
+			if hasTestID(page, "add-contributor") {
+				t.Errorf("%s is shown the Add a Contributor form", viewer)
+			}
+		}
+	}
+}
+
 // A refused submit from a form opened in place comes back as the Goal page
 // with that same form open, the reason beside it as a sentence without the
 // internal "validation failed:" prefix (#192), and what was typed still in it,
