@@ -95,7 +95,8 @@ func NewScheduler(svc *domain.Service, job string, when Weekly, run func(ctx con
 // Tick runs the job if its slot has come, for the slot most recently due,
 // then schedules the next run for the slot after. A job missed while the
 // process was asleep, or down (see NewScheduler), runs once, late, not once
-// per missed week.
+// per missed week. A run that fails is tried again at the next Tick, for the
+// slot then most recently due.
 func (s *Scheduler) Tick(ctx context.Context) error {
 	now := s.svc.Now()
 	if s.next.IsZero() {
@@ -108,8 +109,11 @@ func (s *Scheduler) Tick(ctx context.Context) error {
 	if now.Before(s.next) {
 		return nil
 	}
+	if err := s.run(ctx, s.when.Prev(now)); err != nil {
+		return err
+	}
 	s.next = s.when.Next(now)
-	return s.run(ctx, s.when.Prev(now))
+	return nil
 }
 
 // start is when the job first runs: now, when a slot has passed since its last

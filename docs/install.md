@@ -35,6 +35,10 @@ Read these first; some may decide whether the install goes ahead now.
   that passed while it was down, the server sends that week's emails once,
   within a minute of starting, however many weeks it missed. On the very first
   start it sends none until the next slot.
+- **A weekly run that fails is tried again a minute later.** A run that fails,
+  such as on a database error, is logged at ERROR and queues none of its
+  emails. The server tries it again at each minute's poll until it succeeds,
+  without waiting for a restart or the next week's slot.
 
 ## Requirements
 

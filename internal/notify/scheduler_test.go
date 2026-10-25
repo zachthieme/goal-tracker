@@ -2,6 +2,7 @@ package notify_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -155,6 +156,51 @@ func TestSchedulerFirstStartedJustAfterASlotWaitsForTheNext(t *testing.T) {
 	tick(sched, mondayAt9(1))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
 		t.Errorf("sent %d emails at the next slot, want the one reminder", got)
+	}
+}
+
+// A run that fails, such as on a database error, is tried again at the next
+// poll rather than a week later, and once it succeeds the slot isn't run
+// again.
+func TestSchedulerRetriesAFailedRunAtTheNextPoll(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	when := mondays9am(t)
+	send := newNotifier(h).SendWeekly
+	failures := 1
+	sched := notify.NewScheduler(h.Service, notify.WeeklyJob, when, func(ctx context.Context, slot time.Time) error {
+		if failures > 0 {
+			failures--
+			return errors.New("database is locked")
+		}
+		return send(ctx, slot)
+	})
+	tick := ticker(t, h)
+	tick(sched, mondayAt9(0).Add(-time.Minute))
+	h.Clock.Set(mondayAt9(0))
+	if err := sched.Tick(context.Background()); err == nil {
+		t.Fatalf("Tick at the slot succeeded, want the run's error")
+	}
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 0 {
+		t.Fatalf("sent %d emails from the failed run, want none", got)
+	}
+
+	tick(sched, mondayAt9(0).Add(time.Minute))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
+		t.Fatalf("sent %d emails at the poll after the failed run, want the one reminder", got)
+	}
+	for _, at := range []time.Time{mondayAt9(0).Add(2 * time.Minute), mondayAt9(1).Add(-time.Minute)} {
+		tick(sched, at)
+	}
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
+		t.Errorf("sent %d emails before the next slot, want no more than 1", got)
+	}
+	tick(sched, mondayAt9(1))
+	if got := len(sentTo(h.Email, "sam@example.com")); got != 2 {
+		t.Errorf("sent %d emails at the next slot, want 2", got)
 	}
 }
 
