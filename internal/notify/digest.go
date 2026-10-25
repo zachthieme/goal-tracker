@@ -370,7 +370,7 @@ func (n *Notifier) digestBody(entries []digestEntry) string {
 // were first seen, so each person gets one email however many items they have.
 // It never collects for someone who has left the company.
 type outbox[T any] struct {
-	order []string
+	order []domain.Account
 	items map[string][]T
 }
 
@@ -382,7 +382,7 @@ func (o *outbox[T]) add(to domain.Account, item T) {
 		o.items = map[string][]T{}
 	}
 	if _, ok := o.items[to.Email]; !ok {
-		o.order = append(o.order, to.Email)
+		o.order = append(o.order, to)
 	}
 	o.items[to.Email] = append(o.items[to.Email], item)
 }
@@ -392,14 +392,16 @@ func (o *outbox[T]) add(to domain.Account, item T) {
 // together.
 func (o *outbox[T]) send(ctx context.Context, sender email.Sender, subjectOf, body func([]T) string) error {
 	var errs []error
-	for _, addr := range o.order {
-		subject := subjectOf(o.items[addr])
+	for _, to := range o.order {
+		items := o.items[to.Email]
+		subject := subjectOf(items)
 		if err := sender.Send(ctx, email.Message{
-			To:      addr,
-			Subject: subject,
-			Body:    body(o.items[addr]),
+			To:        to.Email,
+			AccountID: to.ID,
+			Subject:   subject,
+			Body:      body(items),
 		}); err != nil {
-			errs = append(errs, fmt.Errorf("send %q to %s: %w", subject, addr, err))
+			errs = append(errs, fmt.Errorf("send %q to %s: %w", subject, to.Email, err))
 		}
 	}
 	return errors.Join(errs...)

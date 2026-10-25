@@ -49,7 +49,7 @@ func WithEmailOutboxLogger(logger *slog.Logger) Option {
 func (s *Service) queueEmail(ctx context.Context, msg email.Message) error {
 	now := s.clock.Now().Format(timeFormat)
 	if err := s.queries.QueueEmail(ctx, db.QueueEmailParams{
-		Recipient: msg.To, Subject: msg.Subject, Body: msg.Body,
+		Recipient: msg.To, AccountID: msg.AccountID, Subject: msg.Subject, Body: msg.Body,
 		CreatedAt: now, NextAttemptAt: now,
 	}); err != nil {
 		return fmt.Errorf("queue email: %w", err)
@@ -111,12 +111,24 @@ func (s *Service) DeliverEmail(ctx context.Context) error {
 		now := s.clock.Now()
 		due, err := time.Parse(timeFormat, row.NextAttemptAt)
 		if err != nil {
-			return fmt.Errorf("email %d: next attempt at %q: %w", row.ID, row.NextAttemptAt, err)
+			// One unreadable row mustn't hold up the rest: give up on it.
+			parseErr := fmt.Errorf("next attempt at %q: %w", row.NextAttemptAt, err)
+			if err := s.queries.RecordEmailFailure(ctx, db.RecordEmailFailureParams{
+				Attempts:      emailMaxAttempts,
+				LastError:     parseErr.Error(),
+				NextAttemptAt: now.Format(timeFormat),
+				ID:            row.ID,
+			}); err != nil {
+				return fmt.Errorf("give up on email %d: %w", row.ID, err)
+			}
+			s.outbox.log().Error("email not sent: giving up, its next attempt time can't be read",
+				"email_outbox_id", row.ID, "account_id", row.AccountID, "subject", row.Subject, "err", parseErr)
+			continue
 		}
 		if due.After(now) {
 			continue
 		}
-		sendErr := s.email.Send(ctx, email.Message{To: row.Recipient, Subject: row.Subject, Body: row.Body})
+		sendErr := s.email.Send(ctx, email.Message{To: row.Recipient, AccountID: row.AccountID, Subject: row.Subject, Body: row.Body})
 		if sendErr == nil {
 			sentAt := now.Format(timeFormat)
 			if err := s.queries.MarkEmailSent(ctx, db.MarkEmailSentParams{SentAt: &sentAt, ID: row.ID}); err != nil {
@@ -134,7 +146,7 @@ func (s *Service) DeliverEmail(ctx context.Context) error {
 		}); err != nil {
 			return fmt.Errorf("record email %d failed: %w", row.ID, err)
 		}
-		attrs := []any{"email_outbox_id", row.ID, "to", row.Recipient, "subject", row.Subject, "attempts", attempts, "err", sendErr}
+		attrs := []any{"email_outbox_id", row.ID, "account_id", row.AccountID, "subject", row.Subject, "attempts", attempts, "err", sendErr}
 		if attempts >= emailMaxAttempts {
 			s.outbox.log().Error("email not sent: giving up after its last attempt failed", attrs...)
 		} else {

@@ -11,11 +11,13 @@ import (
 	"sync"
 )
 
-// Message is a single outbound email.
+// Message is a single outbound email. AccountID is the Account whose address
+// To is: a log line names the recipient by it, never by their address.
 type Message struct {
-	To      string
-	Subject string
-	Body    string
+	To        string
+	AccountID int64
+	Subject   string
+	Body      string
 }
 
 // Sender delivers outbound email. The domain sends a command's email through
@@ -30,14 +32,15 @@ type Sender interface {
 // sender: no real mail transport exists yet, but sends are observable.
 type LogSender struct{ Logger *slog.Logger }
 
-// Send logs msg at info level.
+// Send logs msg at info level: its recipient's Account ID and its subject,
+// never their address.
 func (l LogSender) Send(_ context.Context, msg Message) error {
 	logger := l.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	logger.Info("email send (development, not delivered)",
-		"to", msg.To, "subject", msg.Subject)
+		"account_id", msg.AccountID, "subject", msg.Subject)
 	return nil
 }
 

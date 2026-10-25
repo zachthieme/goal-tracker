@@ -24,3 +24,7 @@ SELECT rejected_at FROM rejected_link_requests WHERE child_id = ? AND parent_id 
 -- name: CountLaterHandoffs :one
 -- How many Handoffs of a Goal came after this one.
 SELECT COUNT(*) FROM handoffs WHERE goal_id = @goal_id AND id > @id;
+
+-- name: DeleteUndoTokensIssuedBefore :execrows
+-- Deletes the tokens issued before cutoff, compared as times.
+DELETE FROM undo_tokens WHERE julianday(issued_at) < julianday(CAST(sqlc.arg(cutoff) AS TEXT));

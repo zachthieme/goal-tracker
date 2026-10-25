@@ -53,6 +53,9 @@ func TestNudgeOfACheckinOverdueGoalEmailsItsOwnerAndDelegates(t *testing.T) {
 	if got := recipients(sent); !slices.Equal(got, []string{"sam@example.com", "dee@example.com"}) {
 		t.Fatalf("emailed %v, want the Owner then the Delegate", got)
 	}
+	if sent[0].AccountID != sam.ID || sent[1].AccountID != dee.ID {
+		t.Errorf("emailed Accounts %d and %d, want the Owner's %d then the Delegate's %d", sent[0].AccountID, sent[1].AccountID, sam.ID, dee.ID)
+	}
 	for _, m := range sent {
 		if m.Subject != "Check-in requested: Silent work" {
 			t.Errorf("subject to %s = %q", m.To, m.Subject)

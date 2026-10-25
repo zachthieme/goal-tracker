@@ -112,9 +112,9 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() { _ = sqlDB.Close() }()
-	// The email outbox, the weekly emails and the directory sync run until ctx
-	// is done, or run returns, and the database closes only once they have
-	// stopped.
+	// The email outbox, the prune, the weekly emails and the directory sync
+	// run until ctx is done, or run returns, and the database closes only once
+	// they have stopped.
 	ctx, stopBackground := context.WithCancel(ctx)
 	var background sync.WaitGroup
 	defer func() {
@@ -192,6 +192,9 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	// The email commands queue, such as comment alerts, is sent once each
 	// command commits, and retried while it fails.
 	background.Go(func() { svc.RunEmailOutbox(ctx, emailOutboxInterval) })
+	// Sent and given-up email, and expired Undo tokens, are deleted as they
+	// go stale.
+	background.Go(func() { svc.RunPrune(ctx, pruneInterval, logger) })
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
@@ -246,6 +249,10 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 // emailOutboxInterval is how often the email outbox looks for email due to be
 // tried again; email a command queues is sent as soon as it commits.
 const emailOutboxInterval = 15 * time.Second
+
+// pruneInterval is how often stale rows are pruned (Service.PruneStale), as
+// well as once at startup.
+const pruneInterval = time.Hour
 
 // shutdownTimeout is how long, asked to stop, the app gives the requests in
 // flight to finish.
