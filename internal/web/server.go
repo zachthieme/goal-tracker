@@ -203,7 +203,7 @@ func (s *Server) serveChecked(w *accessWriter, r *http.Request) {
 		// Served over https: have the browser come back only over https.
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 	}
-	limit := requestBodyCap(r)
+	limit := s.requestBodyCap(r)
 	if r.ContentLength > limit {
 		bodyTooLarge(w)
 		return
@@ -239,10 +239,15 @@ func bodyTooLarge(w http.ResponseWriter) {
 const maxRequestBytes = 1 << 20 // 1 MiB
 
 // requestBodyCap is the most r's body may carry: maxImportRequestBytes for an
-// import's upload, maxRequestBytes for anything else.
-func requestBodyCap(r *http.Request) int64 {
+// import's upload whose session signs someone in, maxRequestBytes for anything
+// else. The session is checked first, so a signed-out POST /imports can't have
+// the server read, or buffer if it's sent in chunks, more than an ordinary
+// request.
+func (s *Server) requestBodyCap(r *http.Request) int64 {
 	if r.Method == http.MethodPost && r.URL.Path == "/imports" {
-		return maxImportRequestBytes
+		if _, _, ok := s.openSession(r); ok {
+			return maxImportRequestBytes
+		}
 	}
 	return maxRequestBytes
 }
