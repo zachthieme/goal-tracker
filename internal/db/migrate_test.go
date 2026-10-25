@@ -1200,3 +1200,67 @@ func TestMigrationsDoNotShareANumber(t *testing.T) {
 		t.Errorf("migrations %s share the number %s; give the newest the next free number", strings.Join(names, ", "), number)
 	}
 }
+
+// enumChecksMigration is the migration that rebuilt each enum and 0/1 flag
+// column's table with a CHECK on it.
+const enumChecksMigration = "migrations/0064_enum_checks.sql"
+
+// execIgnoringChecks runs stmt on one connection with CHECK constraints off, as
+// a database written before migration 0064 added them could hold its rows.
+func execIgnoringChecks(t *testing.T, sqlDB *sql.DB, stmt string) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatalf("conn: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	for _, s := range []string{`PRAGMA ignore_check_constraints = ON`, stmt, `PRAGMA ignore_check_constraints = OFF`} {
+		if _, err := conn.ExecContext(ctx, s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+}
+
+// A database already holding a value outside an enum or flag column's CHECK
+// won't migrate: the error names the table and column, and the value is kept,
+// so an operator settles it by hand.
+func TestMigrationFailsOnAValueTheEnumChecksRefuse(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ constraint, arrange, read, want string }{
+		{
+			constraint: "goals_lifecycle_valid",
+			arrange:    `UPDATE goals SET lifecycle = 'Archived' WHERE id = 1`,
+			read:       `SELECT lifecycle FROM goals WHERE id = 1`,
+			want:       "Archived",
+		},
+		{
+			constraint: "accounts_is_admin_valid",
+			arrange:    `UPDATE accounts SET is_admin = 2 WHERE id = 1`,
+			read:       `SELECT is_admin FROM accounts WHERE id = 1`,
+			want:       "2",
+		},
+	} {
+		t.Run(tc.constraint, func(t *testing.T) {
+			t.Parallel()
+			sqlDB := migratedExcept(t, enumChecksMigration)
+			testsupport.ArrangeEnumCheckRows(t, sqlDB)
+			execIgnoringChecks(t, sqlDB, tc.arrange)
+
+			err := db.Migrate(sqlDB)
+			if err == nil {
+				t.Fatalf("Migrate succeeded on a database breaking %s", tc.constraint)
+			}
+			if !strings.Contains(err.Error(), tc.constraint) {
+				t.Errorf("Migrate error %q doesn't name %s", err, tc.constraint)
+			}
+			var got string
+			if err := sqlDB.QueryRow(tc.read).Scan(&got); err != nil {
+				t.Fatalf("read the row back: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("%s = %q after the failed migration, want %q kept", tc.read, got, tc.want)
+			}
+		})
+	}
+}
