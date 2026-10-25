@@ -350,6 +350,14 @@ passwords, 15 minutes) is unaffected.
 
 For a health check, `GET /healthz` needs no sign-in. It returns `200` with
 `ok` while the database answers within a second, and `503` when it doesn't.
+`goal-tracker healthcheck` checks it from the app's own host, where there may
+be no curl: it GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port,
+waits up to 3 seconds, and exits `0` on a `200`; otherwise it exits non-zero
+with one line on stderr saying why. It reads no other setting and opens no
+database. It checks the loopback whatever host `GOAL_TRACKER_ADDR` names, so
+an app listening only on another address fails it. The image's `HEALTHCHECK`
+runs it every 30 seconds, so `docker ps` shows the container as `healthy` or
+`unhealthy`.
 
 ## 8. The first sign-in
 
