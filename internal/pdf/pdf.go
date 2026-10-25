@@ -97,7 +97,13 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 	out := filepath.Join(dir, "page.pdf")
 	cmd := exec.CommandContext(ctx, c.Path,
 		"--headless",
+		// The app runs Chromium as a non-root user in a container, where
+		// Chromium's sandbox can't start without a seccomp profile that allows
+		// it, and setting one up is the operator's work.
 		"--no-sandbox",
+		// The print page needs no script, and without JavaScript no markup
+		// that ever reached it unescaped can run.
+		"--disable-javascript",
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--no-pdf-header-footer",
