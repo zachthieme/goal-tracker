@@ -96,7 +96,8 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 // in one transaction). The transaction commits when fn returns nil and rolls
 // back when it returns an error, which WithinTx then returns unchanged — so a
 // caller can force a rollback (e.g. a dry run, or an import that found row
-// errors) by returning a sentinel error and recognising it on the way out.
+// errors) by returning a sentinel error and recognising it on the way out. It
+// rolls back too when fn panics, and lets the panic carry on up (#504).
 // Called on a Service already bound to a transaction, it runs fn within that
 // one, so a command and the commands it is built from commit together.
 func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) error {
@@ -107,6 +108,10 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
+	// Rolled back however fn ends, a panic included, so the transaction never
+	// outlives WithinTx holding the write lock: on a background context nothing
+	// else would end it. After a commit it is a no-op (sql.ErrTxDone).
+	defer func() { _ = sqlTx.Rollback() }()
 	txSvc := &Service{
 		db:          s.db,
 		queries:     s.queries.WithTx(sqlTx),
@@ -122,7 +127,6 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		queuedEmail: new(bool),
 	}
 	if err := fn(txSvc); err != nil {
-		_ = sqlTx.Rollback()
 		return err
 	}
 	if err := sqlTx.Commit(); err != nil {
