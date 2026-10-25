@@ -9,8 +9,10 @@ SELECT * FROM handoffs WHERE id = ? LIMIT 1;
 -- name: GetPendingHandoffForGoal :one
 SELECT * FROM handoffs WHERE goal_id = ? AND status = 'pending' LIMIT 1;
 
--- name: SetHandoffStatus :exec
-UPDATE handoffs SET status = ? WHERE id = ?;
+-- name: SetHandoffStatus :execrows
+-- Records a pending Handoff's outcome, only if it is still pending, so of two
+-- commands deciding it together only one changes it.
+UPDATE handoffs SET status = ? WHERE id = ? AND status = 'pending';
 
 -- name: ListHandoffsForGoal :many
 -- A Goal's ownership history: every Handoff and Admin Reassign, oldest first,

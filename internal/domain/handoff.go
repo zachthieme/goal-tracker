@@ -56,6 +56,22 @@ type StartHandoffInput struct {
 // Goal to its current Owner, or starting a second Handoff while one is pending,
 // is rejected.
 func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Handoff, error) {
+	// Every check reads inside the transaction that writes the Handoff, so two
+	// started together (a double-submit) can't both find none pending.
+	var ho Handoff
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		ho, err = tx.startHandoff(ctx, in)
+		return err
+	})
+	if err != nil {
+		return Handoff{}, err
+	}
+	return ho, nil
+}
+
+// startHandoff is StartHandoff's checks and insert, run inside its transaction.
+func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Handoff, error) {
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -151,16 +167,17 @@ func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64
 // removed, except a Departed one, who was never offered and stays. The new Owner
 // is never kept as their own Delegate, since the Owner already writes the Goal's
 // Check-ins. A Handoff whose from-Owner no longer owns the Goal is refused. The
-// ownership change, the removals and the outcome are one transaction.
+// checks, the ownership change, the removals and the outcome are one
+// transaction, so a Handoff rejected meanwhile isn't also accepted.
 func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, keep []int64) (Handoff, error) {
-	row, err := s.getPendingHandoff(ctx, handoffID)
-	if err != nil {
-		return Handoff{}, err
-	}
-	if row.ToOwner != actorID {
-		return Handoff{}, fmt.Errorf("%w: only the new Owner may accept a Handoff", ErrNotAuthorized)
-	}
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.getPendingHandoff(ctx, handoffID)
+		if err != nil {
+			return err
+		}
+		if row.ToOwner != actorID {
+			return fmt.Errorf("%w: only the new Owner may accept a Handoff", ErrNotAuthorized)
+		}
 		goal, err := tx.queries.GetGoal(ctx, row.GoalID)
 		if err != nil {
 			return fmt.Errorf("look up goal: %w", err)
@@ -190,13 +207,7 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 				return fmt.Errorf("remove delegate: %w", err)
 			}
 		}
-		if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
-			Status: HandoffAccepted,
-			ID:     handoffID,
-		}); err != nil {
-			return fmt.Errorf("accept handoff: %w", err)
-		}
-		return nil
+		return tx.decidePendingHandoff(ctx, handoffID, HandoffAccepted)
 	})
 	if err != nil {
 		return Handoff{}, err
@@ -207,21 +218,20 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 // RejectHandoff declines a pending Handoff, keeping it with the outcome
 // rejected; ownership stays put. Only the proposed new Owner may reject it, and
 // they may Undo it (RestoreHandoff) with the token it returns, for UndoWindow.
+// The checks read inside the transaction that rejects it, so a Handoff
+// accepted meanwhile isn't also rejected.
 func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) (string, error) {
-	row, err := s.getPendingHandoff(ctx, handoffID)
-	if err != nil {
-		return "", err
-	}
-	if row.ToOwner != actorID {
-		return "", fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
-	}
 	var token string
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
-			Status: HandoffRejected,
-			ID:     handoffID,
-		}); err != nil {
-			return fmt.Errorf("reject handoff: %w", err)
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.getPendingHandoff(ctx, handoffID)
+		if err != nil {
+			return err
+		}
+		if row.ToOwner != actorID {
+			return fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
+		}
+		if err := tx.decidePendingHandoff(ctx, handoffID, HandoffRejected); err != nil {
+			return err
 		}
 		token, err = tx.issueUndo(ctx, undoHandoffRejection, handoffID, actorID, "")
 		return err
@@ -406,11 +416,8 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 		pending, err := tx.queries.GetPendingHandoffForGoal(ctx, goalID)
 		switch {
 		case err == nil:
-			if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
-				Status: HandoffCancelled,
-				ID:     pending.ID,
-			}); err != nil {
-				return fmt.Errorf("cancel pending handoff: %w", err)
+			if err := tx.decidePendingHandoff(ctx, pending.ID, HandoffCancelled); err != nil {
+				return err
 			}
 		case !errors.Is(err, sql.ErrNoRows):
 			return fmt.Errorf("look up pending handoff: %w", err)
@@ -452,6 +459,23 @@ func (s *Service) getPendingHandoff(ctx context.Context, handoffID int64) (db.Ha
 		return db.Handoff{}, fmt.Errorf("%w: handoff %d is not pending", ErrNotFound, handoffID)
 	}
 	return row, nil
+}
+
+// decidePendingHandoff records a Handoff's outcome, only while it is still
+// pending. A Handoff decided meanwhile is refused as getPendingHandoff refuses
+// it, so the caller's transaction rolls back and keeps nothing else it wrote.
+func (s *Service) decidePendingHandoff(ctx context.Context, handoffID int64, status string) error {
+	n, err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
+		Status: status,
+		ID:     handoffID,
+	})
+	if err != nil {
+		return fmt.Errorf("set handoff %s: %w", status, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: handoff %d is not pending", ErrNotFound, handoffID)
+	}
+	return nil
 }
 
 // loadHandoff loads a Handoff with its Goal, both Owners, and its initiator
