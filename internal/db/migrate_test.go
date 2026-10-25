@@ -1377,10 +1377,9 @@ func applyMigrationFile(t *testing.T, sqlDB *sql.DB, path string) {
 // a rebuild that adds a CHECK changes.
 func schemaShape(t *testing.T, sqlDB *sql.DB) map[string][]string {
 	t.Helper()
-	shape := map[string][]string{}
-	for _, object := range queryStrings(t, sqlDB, `SELECT type, name, tbl_name, sql FROM sqlite_schema
-		WHERE type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`) {
-		shape["objects"] = append(shape["objects"], object)
+	shape := map[string][]string{
+		"objects": queryStrings(t, sqlDB, `SELECT type, name, tbl_name, sql FROM sqlite_schema
+			WHERE type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY name`),
 	}
 	var tables []string
 	if err := func() error {

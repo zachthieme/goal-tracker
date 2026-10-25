@@ -354,7 +354,7 @@ CREATE TABLE undo_tokens_new (
     id         INTEGER PRIMARY KEY,
     token      TEXT    NOT NULL UNIQUE,
     kind       TEXT    NOT NULL
-               CONSTRAINT undo_tokens_kind_valid CHECK (kind IN ('link-removal', 'link-rejection', 'handoff-rejection', 'value-retire')),
+               CONSTRAINT undo_tokens_kind_valid CHECK (kind IN ('link-removal', 'link-rejection', 'handoff-rejection', 'value-retire', 'parent-suggestion-decline')),
     subject_id INTEGER NOT NULL,
     account_id INTEGER NOT NULL REFERENCES accounts(id),
     detail     TEXT    NOT NULL DEFAULT '',
