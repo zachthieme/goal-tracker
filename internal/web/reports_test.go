@@ -2001,8 +2001,7 @@ func TestPrintPageColoursHealthBadgesOverHTTP(t *testing.T) {
 }
 
 // The print page keeps the screen's other marks of trouble in colour too: a
-// Check-in overdue badge in its grey with a dashed edge, and the status box of
-// a Path to Green past its date in Red's tint, kept when printed (#389).
+// Check-in overdue badge in its grey with a dashed edge (#389).
 func TestPrintPageColoursOverdueMarksOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2024,12 +2023,81 @@ func TestPrintPageColoursOverdueMarksOverHTTP(t *testing.T) {
 	if !strings.Contains(overdue, "border: 0.5pt dashed var(") {
 		t.Errorf("Check-in overdue badge has no dashed edge: .st { %s }", overdue)
 	}
-	box := printPageRule(t, style, ".rp-tint.overdue")
-	if bg := printPageColour(t, style, box, "background"); bg != red {
-		t.Errorf("overdue status box is %s, not Red's tint %s: .rp-tint.overdue { %s }", bg, red, box)
+}
+
+// The print page lays a Goal block out as the screen does (#475), in its own
+// serif: Why it matters and Status in a label column, and the Path to Green
+// in a box tinted in its Goal's Health, Red or Yellow, kept when printed. An
+// overdue Path to Green keeps its Health's tint and says Overdue in its badge,
+// so an overdue Yellow one prints Yellow, not Red (#478).
+func TestPrintPageLaysOutTheGoalBlockAsOnScreenOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 0, 7))
+	h.Clock.Advance(14 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	style := between(t, printed, "<style>", "</style>")
+	doc := parsePage(t, printed)
+
+	for _, c := range []struct {
+		goal    domain.Goal
+		tint    string
+		overdue bool
+	}{
+		{red, "rp-tint-r", false},
+		{yellow, "rp-tint-y", true},
+	} {
+		block := reportBlockOf(t, doc, c.goal)
+		for _, id := range []string{"report-why-it-matters", "report-status"} {
+			dd := findByTestID(t, block, id)
+			if dl := dd.Parent.Parent; dl == nil || dl.Data != "dl" || !slices.Contains(strings.Fields(attrOf(dl, "class")), "rp-facts") {
+				t.Errorf("%q's %s isn't a row of dl.rp-facts: %s", c.goal.Title, id, renderNode(dd.Parent))
+			}
+		}
+		box := findByTestID(t, block, "report-path-box")
+		if classes := strings.Fields(attrOf(box, "class")); !slices.Contains(classes, c.tint) {
+			t.Errorf("%q's Path to Green box is %q, want %s", c.goal.Title, classes, c.tint)
+		}
+		if badge := hasTestID(box, "path-overdue"); badge != c.overdue {
+			t.Errorf("%q's Path to Green box shows the Overdue badge %v, want %v: %s", c.goal.Title, badge, c.overdue, renderNode(box))
+		}
 	}
-	if !strings.Contains(box, "-webkit-print-color-adjust: exact;") || !strings.Contains(box, " print-color-adjust: exact;") {
-		t.Errorf("overdue status box doesn't keep its tint in print: .rp-tint.overdue { %s }", box)
+
+	facts := printPageRule(t, style, ".rp-facts")
+	if !strings.Contains(facts, "display: grid;") || !strings.Contains(facts, "grid-template-columns: 7.5rem") || !strings.Contains(facts, "margin: 0.3rem 0;") {
+		t.Errorf("print page doesn't lay Why it matters and Status out in a label column: .rp-facts { %s }", facts)
+	}
+	if dd := printPageRule(t, style, ".rp-facts dd"); !strings.Contains(dd, "margin: 0;") {
+		t.Errorf("print page indents a fact's value by the browser's dd margin: .rp-facts dd { %s }", dd)
+	}
+	tint := printPageRule(t, style, ".rp-tint")
+	for _, want := range []string{"padding: 0.2rem 0.5rem;", "border-radius: 2pt;", "-webkit-print-color-adjust: exact;", " print-color-adjust: exact;"} {
+		if !strings.Contains(tint, want) {
+			t.Errorf("Path to Green box lacks %q: .rp-tint { %s }", want, tint)
+		}
+	}
+	for tint, health := range map[string]string{".rp-tint-r": ".r", ".rp-tint-y": ".y"} {
+		badge := printPageRule(t, style, health)
+		want, ink := printPageColour(t, style, badge, "background"), printPageColour(t, style, badge, "color")
+		if bg := printPageColour(t, style, printPageRule(t, style, tint), "background"); bg != want {
+			t.Errorf("print page tints %s with %s, not its Health's tint %s", tint, bg, want)
+		}
+		if got := printPageColour(t, style, printPageRule(t, style, tint+" .rp-tint-label"), "color"); got != ink {
+			t.Errorf("print page's %s Path to Green label is %s, not its Health's ink %s", tint, got, ink)
+		}
+	}
+	if _, ok := ruleFor(style, ".rp-tint.overdue"); ok {
+		t.Errorf("print page still tints an overdue Path to Green Red whatever its Health: style:\n%s", style)
 	}
 }
 
