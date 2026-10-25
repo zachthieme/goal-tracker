@@ -178,7 +178,7 @@ func assertAcceptReject(t *testing.T, row, base string) {
 	if accept := between(t, row, `action="`+base+`/accept"`, "</form>"); !strings.Contains(accept, `class="btn primary`) {
 		t.Errorf("Accept isn't the primary button:\n%s", accept)
 	}
-	assertSubmitsAtOnce(t, "Reject", tagAround(t, row, `action="`+base+`/reject"`))
+	assertSubmitsAtOnce(t, "Reject", row, `action="`+base+`/reject"`)
 }
 
 // assertConfirms checks a form's opening tag asks for confirmation in a browser
