@@ -1,79 +1,236 @@
 package web_test
 
 import (
-	"html"
 	"net/http"
 	"net/url"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	nethtml "golang.org/x/net/html"
+	"golang.org/x/net/html"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// followUpRows returns every row of the Follow-ups page's table.
-func followUpRows(page string) []string {
-	var rows []string
-	for rest := page; ; {
-		start := strings.Index(rest, `<tr data-testid="follow-up-row"`)
-		if start < 0 {
-			return rows
-		}
-		end := strings.Index(rest[start:], "</tr>")
-		if end < 0 {
-			return append(rows, rest[start:])
-		}
-		rows = append(rows, rest[start:start+end])
-		rest = rest[start+end:]
-	}
+// followUpRowsIn returns every row of the Follow-ups page's table, in order.
+func followUpRowsIn(root *html.Node) []*html.Node {
+	return findAllByTestID(root, "follow-up-row")
 }
 
-// followUpRowOf returns the Follow-ups page's one row for g, failing the test unless
-// the table holds exactly one row linking to it.
-func followUpRowOf(t *testing.T, page string, g domain.Goal) string {
+// followUpRowIn returns the Follow-ups page's one row for g, failing the test
+// unless the table holds exactly one row linking to it.
+func followUpRowIn(t *testing.T, root *html.Node, g domain.Goal) *html.Node {
 	t.Helper()
-	var found []string
-	for _, row := range followUpRows(page) {
-		if isFollowUpRowOf(row, g) {
+	var found []*html.Node
+	for _, row := range followUpRowsIn(root) {
+		if isFollowUpRowFor(row, g) {
 			found = append(found, row)
 		}
 	}
 	if len(found) != 1 {
-		t.Fatalf("the Follow-ups table has %d rows for %q, want 1:\n%s", len(found), g.Title, page)
+		t.Fatalf("the Follow-ups table has %d rows for %q, want 1:\n%s", len(found), g.Title, renderNode(root))
 	}
 	return found[0]
 }
 
-// hasFollowUpRow reports whether the Follow-ups page's table has a row for g.
-func hasFollowUpRow(page string, g domain.Goal) bool {
-	return slices.ContainsFunc(followUpRows(page), func(row string) bool { return isFollowUpRowOf(row, g) })
+// hasFollowUpRowIn reports whether the Follow-ups page's table has a row for g.
+func hasFollowUpRowIn(root *html.Node, g domain.Goal) bool {
+	return slices.ContainsFunc(followUpRowsIn(root), func(row *html.Node) bool { return isFollowUpRowFor(row, g) })
 }
 
-// isFollowUpRowOf reports whether a Follow-ups table row is g's: its Goal cell links
-// to g.
-func isFollowUpRowOf(row string, g domain.Goal) bool {
-	return strings.Contains(row, `<td data-testid="follow-up-goal" class="rk-goal">`+`<a `+navTo(g.ID)+`>`)
+// isFollowUpRowFor reports whether a Follow-ups table row is g's: its Goal
+// cell opens with a link to g reading its title. A chip's link to a parent
+// comes after it.
+func isFollowUpRowFor(row *html.Node, g domain.Goal) bool {
+	cells := findAllByTestID(row, "follow-up-goal")
+	if len(cells) != 1 {
+		return false
+	}
+	links := findAll(cells[0], func(n *html.Node) bool { return n.Data == "a" })
+	return len(links) > 0 && attrOf(links[0], "href") == goalPageURL("", g) && textOf(links[0]) == g.Title
 }
 
-// followUpChip returns a row's chip for one signal kind.
-func followUpChip(t *testing.T, row, kind string) string {
+// followUpChipsIn returns each chip under root, a row or a group card, for
+// the signal of kind.
+func followUpChipsIn(root *html.Node, kind string) []*html.Node {
+	return findAll(root, func(n *html.Node) bool {
+		return attrOf(n, "data-testid") == "follow-up-signal" && attrOf(n, "data-kind") == kind
+	})
+}
+
+// followUpChipIn returns the first chip under root, a row or a group card,
+// for the signal of kind, failing the test unless there is one. A row under
+// two halted parents has a chip for each.
+func followUpChipIn(t *testing.T, root *html.Node, kind string) *html.Node {
 	t.Helper()
-	start := strings.Index(row, `<span data-testid="follow-up-signal" data-kind="`+kind+`"`)
-	if start < 0 {
-		t.Fatalf("row has no %s chip:\n%s", kind, row)
+	chips := followUpChipsIn(root, kind)
+	if len(chips) == 0 {
+		t.Fatalf("found no %s chip:\n%s", kind, renderNode(root))
 	}
-	end := strings.Index(row[start:], "</span>")
-	if end < 0 {
-		t.Fatalf("the %s chip is not closed:\n%s", kind, row)
+	return chips[0]
+}
+
+// followUpKindsIn lists the kinds of the signal chips under root, in order.
+func followUpKindsIn(root *html.Node) []string {
+	var kinds []string
+	for _, chip := range findAllByTestID(root, "follow-up-signal") {
+		kinds = append(kinds, attrOf(chip, "data-kind"))
 	}
-	return row[start : start+end]
+	return kinds
+}
+
+// followUpClassesOf is the classes n carries, in order.
+func followUpClassesOf(n *html.Node) []string {
+	return strings.Fields(attrOf(n, "class"))
+}
+
+// followUpTipIn returns a row chip's first button, the one naming its signal,
+// failing the test unless the chip holds one.
+func followUpTipIn(t *testing.T, chip *html.Node) *html.Node {
+	t.Helper()
+	buttons := findAll(chip, func(n *html.Node) bool { return n.Data == "button" })
+	if len(buttons) == 0 {
+		t.Fatalf("the %s chip has no button: %s", attrOf(chip, "data-kind"), renderNode(chip))
+	}
+	return buttons[0]
+}
+
+// assertFollowUpChip fails unless chip is drawn with classes, where classes
+// isn't "", and reads says and nothing more, all of it on the button naming
+// its signal.
+func assertFollowUpChip(t *testing.T, chip *html.Node, classes, says string) {
+	t.Helper()
+	if classes != "" && !slices.Equal(followUpClassesOf(chip), strings.Fields(classes)) {
+		t.Errorf("the %s chip is drawn %q, want %q: %s", attrOf(chip, "data-kind"), attrOf(chip, "class"), classes, renderNode(chip))
+	}
+	if read, tip := textOf(chip), textOf(followUpTipIn(t, chip)); read != says || tip != says {
+		t.Errorf("the %s chip reads %q, its button %q, want both %q: %s", attrOf(chip, "data-kind"), read, tip, says, renderNode(chip))
+	}
+}
+
+// followUpFixIn returns a row's one Fix: its label, its address (a form's
+// action, for a Fix that posts, and "" for a disabled one), and whether it is
+// the primary button, failing the test unless the fix cell holds exactly one
+// link, one form or one button.
+func followUpFixIn(t *testing.T, row *html.Node) (label, href string, primary bool) {
+	t.Helper()
+	cell := findByTestID(t, row, "follow-up-fix")
+	tagged := func(tag string) []*html.Node { return findAll(cell, func(n *html.Node) bool { return n.Data == tag }) }
+	links, forms, buttons := tagged("a"), tagged("form"), tagged("button")
+	if len(links)+len(buttons) != 1 || len(forms) > len(buttons) {
+		t.Fatalf("fix cell has %d links, %d forms and %d buttons, want one Fix: %s", len(links), len(forms), len(buttons), renderNode(cell))
+	}
+	if len(buttons) == 1 {
+		if len(forms) == 1 {
+			href = attrOf(forms[0], "action")
+		}
+		return textOf(buttons[0]), href, slices.Contains(followUpClassesOf(buttons[0]), "primary")
+	}
+	return textOf(links[0]), attrOf(links[0], "href"), slices.Contains(followUpClassesOf(links[0]), "primary")
+}
+
+// followUpsElementByID returns the one element under root with id, failing
+// the test unless there is exactly one.
+func followUpsElementByID(t *testing.T, root *html.Node, id string) *html.Node {
+	t.Helper()
+	found := findAll(root, func(n *html.Node) bool { return attrOf(n, "id") == id })
+	if len(found) != 1 {
+		t.Fatalf("page has %d elements with id %q, want 1", len(found), id)
+	}
+	return found[0]
+}
+
+// followUpPopoverIn returns the page's native popover with id, failing the
+// test unless one is there.
+func followUpPopoverIn(t *testing.T, root *html.Node, id string) *html.Node {
+	t.Helper()
+	pop := followUpsElementByID(t, root, id)
+	if v := attrOf(pop, "popover"); !hasAttr(pop, "popover") || v != "" && v != "auto" {
+		t.Fatalf("#%s is not a native popover: %s", id, renderNode(pop))
+	}
+	return pop
+}
+
+// followUpsWithTestIDPrefix returns every element under root whose test ID
+// starts with prefix, in document order.
+func followUpsWithTestIDPrefix(root *html.Node, prefix string) []*html.Node {
+	return findAll(root, func(n *html.Node) bool { return strings.HasPrefix(attrOf(n, "data-testid"), prefix) })
+}
+
+// followUpsCardIn returns the page's group card for key.
+func followUpsCardIn(t *testing.T, root *html.Node, key string) *html.Node {
+	t.Helper()
+	return findByTestID(t, root, "follow-ups-group-"+key)
+}
+
+// followUpsCardCount is how many Goals a group card holding some counts.
+func followUpsCardCount(t *testing.T, card *html.Node) string {
+	t.Helper()
+	return textOf(findByTestID(t, card, "follow-up-group-count"))
+}
+
+// followUpsCardChips is what each of a group card's chips reads, in order.
+func followUpsCardChips(card *html.Node) []string {
+	return textsOf(findAllByTestID(card, "follow-up-signal"))
+}
+
+// followUpsAttention returns what the page's count line reads, and the count
+// it shows in bold, failing the test unless it shows one.
+func followUpsAttention(t *testing.T, root *html.Node) (line, count string) {
+	t.Helper()
+	head := findByTestID(t, root, "follow-ups-attention")
+	bold := findAll(head, func(n *html.Node) bool { return n.Data == "strong" })
+	if len(bold) != 1 {
+		t.Fatalf("the count line shows %d counts in bold, want 1: %s", len(bold), renderNode(head))
+	}
+	return textOf(head), textOf(bold[0])
+}
+
+// followUpsNavCount is the count the sidebar's Follow-ups item shows, or ""
+// when it shows none.
+func followUpsNavCount(t *testing.T, root *html.Node) string {
+	t.Helper()
+	counts := findAll(findByTestID(t, root, "nav-follow-ups"), func(n *html.Node) bool { return flatFrameHasClass(n, "count") })
+	if len(counts) == 0 {
+		return ""
+	}
+	return textOf(counts[0])
+}
+
+// followUpsValueSelectIn returns the Follow-ups page's value select for the
+// Dimension named dim, failing the test unless there is exactly one.
+func followUpsValueSelectIn(t *testing.T, root *html.Node, dim string) *html.Node {
+	t.Helper()
+	var found []*html.Node
+	for _, sel := range findAllByTestID(root, "follow-ups-value") {
+		if attrOf(sel, "data-dimension") == dim {
+			found = append(found, sel)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("the Follow-ups page has %d value selects for %s, want 1", len(found), dim)
+	}
+	return found[0]
+}
+
+// followUpsOptionIn returns the option of sel submitting value, failing the
+// test unless there is exactly one.
+func followUpsOptionIn(t *testing.T, sel *html.Node, value string) *html.Node {
+	t.Helper()
+	options := findAll(sel, func(n *html.Node) bool { return n.Data == "option" && attrOf(n, "value") == value })
+	if len(options) != 1 {
+		t.Fatalf("the select has %d options submitting %q, want 1: %s", len(options), value, renderNode(sel))
+	}
+	return options[0]
+}
+
+// followUpsSelected is how many of sel's options are selected.
+func followUpsSelected(sel *html.Node) int {
+	return len(findAll(sel, func(n *html.Node) bool { return n.Data == "option" && hasAttr(n, "selected") }))
 }
 
 // The Follow-ups page is served at /follow-ups, headed and titled Follow-ups,
@@ -87,13 +244,14 @@ func TestFollowUpsPageIsAtFollowUps(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups")
-	if !strings.Contains(page, "<title>Follow-ups · Goal Tracker</title>") || !strings.Contains(page, "<h1>Follow-ups</h1>") {
-		t.Errorf("/follow-ups isn't titled and headed Follow-ups:\n%s", page)
+	doc := getPage(t, client, ts.URL+"/follow-ups")
+	titles := findAll(doc, func(n *html.Node) bool { return n.Data == "title" })
+	if heading := headingNamed(doc, "Follow-ups"); len(titles) != 1 || textOf(titles[0]) != "Follow-ups · Goal Tracker" || heading == nil || heading.Data != "h1" {
+		t.Errorf("/follow-ups isn't titled and headed Follow-ups:\n%s", renderNode(doc))
 	}
-	nav := pageElement(t, page, "a", "nav-follow-ups")
-	if !strings.Contains(nav, `href="/follow-ups"`) || !strings.Contains(nav, `aria-current="page"`) || !strings.HasSuffix(nav, ">Follow-ups") {
-		t.Errorf("the nav's Follow-ups item isn't a current link to /follow-ups: %s", nav)
+	nav := findByTestID(t, doc, "nav-follow-ups")
+	if nav.Data != "a" || attrOf(nav, "href") != "/follow-ups" || attrOf(nav, "aria-current") != "page" || textOf(nav) != "Follow-ups" {
+		t.Errorf("the nav's Follow-ups item isn't a current link to /follow-ups: %s", renderNode(nav))
 	}
 	assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/"+strings.ToLower("Risks"), "/home")
 }
@@ -112,17 +270,17 @@ func TestFollowUpsPageListsCheckinOverdueGoals(t *testing.T) {
 	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
 	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	row := followUpRowOf(t, page, silent)
-	if chip := followUpChip(t, row, "checkin-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Check-in overdue · 10 days, checks in weekly</button>") {
-		t.Errorf("Check-in overdue chip is not a Check-in overdue badge saying 10 days, checks in weekly: %s", chip)
+	row := followUpRowIn(t, doc, silent)
+	assertFollowUpChip(t, followUpChipIn(t, row, "checkin-overdue"), "badge st", "Check-in overdue · 10 days, checks in weekly")
+	// Everything the Owner cell holds, hidden or not, reads You: it shows no
+	// person, so no email either.
+	if owner := findByTestID(t, row, "follow-up-owner"); textOf(owner) != "You" || strings.Join(nodeWords(owner, owner, nil), " ") != "You" {
+		t.Errorf("the viewer's own Goal isn't Owned by You: %s", renderNode(owner))
 	}
-	if owner := pageElement(t, row, "td", "follow-up-owner"); !strings.HasSuffix(owner, ">You") || strings.Contains(owner, "sam@example.com") {
-		t.Errorf("the viewer's own Goal isn't Owned by You: %s", owner)
-	}
-	if row := followUpRowOf(t, page, fresh); strings.Contains(row, `data-kind="checkin-overdue"`) {
-		t.Errorf("%q, which checked in today, is Check-in overdue:\n%s", fresh.Title, row)
+	if row := followUpRowIn(t, doc, fresh); len(followUpChipsIn(row, "checkin-overdue")) != 0 {
+		t.Errorf("%q, which checked in today, is Check-in overdue:\n%s", fresh.Title, renderNode(row))
 	}
 }
 
@@ -151,13 +309,10 @@ func TestFollowUpsCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	}
 	h.Clock.Advance(42 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	for cadence, g := range goals {
-		chip := followUpChip(t, followUpRowOf(t, page, g), "checkin-overdue")
-		if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">"+want[cadence]+"</button>") {
-			t.Errorf("on a %d-day cadence, the Check-in overdue chip doesn't read %q: %s", cadence, want[cadence], chip)
-		}
+		assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, g), "checkin-overdue"), "badge st", want[cadence])
 	}
 }
 
@@ -176,15 +331,13 @@ func TestFollowUpsPageListsOverduePathsToGreen(t *testing.T) {
 	h.Checkin(sam, green.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 	h.Clock.Advance(5 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	row := followUpRowOf(t, page, stalled)
-	if chip := followUpChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2 days overdue</button>") {
-		t.Errorf("overdue chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
-	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Red")
-	if row := followUpRowOf(t, page, green); strings.Contains(row, `data-kind="path-overdue"`) {
-		t.Errorf("Green %q is overdue:\n%s", green.Title, row)
+	row := followUpRowIn(t, doc, stalled)
+	assertFollowUpChip(t, followUpChipIn(t, row, "path-overdue"), "badge st", "Path to Green 2 days overdue")
+	assertHealthChip(t, findByTestID(t, row, "follow-up-health"), "Red")
+	if row := followUpRowIn(t, doc, green); len(followUpChipsIn(row, "path-overdue")) != 0 {
+		t.Errorf("Green %q is overdue:\n%s", green.Title, renderNode(row))
 	}
 }
 
@@ -207,14 +360,10 @@ func TestFollowUpsPathToGreenDaysAreCountedInTheOwnersTimezone(t *testing.T) {
 	h.Checkin(sam, plain.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
 	h.Clock.Set(time.Date(2026, 1, 7, 15, 4, 0, 0, time.UTC)) // Jan 8, 12:04am in Tokyo
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
 
-	if chip := followUpChip(t, followUpRowOf(t, page, tokyo), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 3 days overdue</button>") {
-		t.Errorf("overdue chip of an Owner in Tokyo doesn't say 3 days overdue: %s", chip)
-	}
-	if chip := followUpChip(t, followUpRowOf(t, page, plain), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 2 days overdue</button>") {
-		t.Errorf("overdue chip of an Owner with no Timezone doesn't say 2 days overdue: %s", chip)
-	}
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, tokyo), "path-overdue"), "", "Path to Green 3 days overdue")
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, plain), "path-overdue"), "", "Path to Green 2 days overdue")
 }
 
 // A Milestone overdue chip counts its days in the Goal's Owner's Timezone, as
@@ -233,16 +382,12 @@ func TestFollowUpsMilestoneOverdueDaysAreCountedInTheOwnersTimezone(t *testing.T
 	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1).Add(16 * time.Hour)) // Beta + 2 days, 1am in Tokyo
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
-	if chip := followUpChip(t, followUpRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 2 days overdue</button>") {
-		t.Errorf("Milestone overdue chip of an Owner in Tokyo doesn't say 2 days overdue: %s", chip)
-	}
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, g), "milestone-overdue"), "", "Milestone 2 days overdue")
 
 	h.SetTimezone(kenji, "")
-	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
-	if chip := followUpChip(t, followUpRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 1 day overdue</button>") {
-		t.Errorf("Milestone overdue chip of an Owner with no Timezone doesn't say 1 day overdue: %s", chip)
-	}
+	doc = getPage(t, client, ts.URL+"/follow-ups?org=all")
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, g), "milestone-overdue"), "", "Milestone 1 day overdue")
 }
 
 // A Path to Green overdue chip says in words how many days overdue it is.
@@ -262,12 +407,10 @@ func TestFollowUpsPathToGreenChipSaysItsDaysInWords(t *testing.T) {
 	}
 	h.Clock.Advance(day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	for overdue, g := range goals {
-		if chip := followUpChip(t, followUpRowOf(t, page, g), "path-overdue"); !strings.HasSuffix(chip, ">"+want[overdue]+"</button>") {
-			t.Errorf("%d days overdue, the chip doesn't read %q: %s", overdue, want[overdue], chip)
-		}
+		assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, g), "path-overdue"), "", want[overdue])
 	}
 }
 
@@ -290,26 +433,25 @@ func TestFollowUpsPageListsOwnerlessGoals(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups?org=all")
 
-	row := followUpRowOf(t, page, orphaned)
-	chip := followUpChip(t, row, "ownerless")
-	if !strings.Contains(openTag(chip), `class="badge ol"`) || !strings.HasSuffix(chip, ">Ownerless</button>") {
-		t.Errorf("Ownerless chip is not an Ownerless badge: %s", chip)
+	row := followUpRowIn(t, doc, orphaned)
+	assertFollowUpChip(t, followUpChipIn(t, row, "ownerless"), "badge ol", "Ownerless")
+	owner := findByTestID(t, row, "follow-up-owner")
+	if shown := findAll(owner, func(n *html.Node) bool { return attrOf(n, "title") == "sam@example.com" }); len(shown) != 1 || strings.Contains(textOf(owner), "You") {
+		t.Errorf("row doesn't show the departed Owner: %s", renderNode(owner))
 	}
-	if owner := pageElement(t, row, "td", "follow-up-owner"); !strings.Contains(owner, `title="sam@example.com"`) || strings.Contains(owner, "You") {
-		t.Errorf("row doesn't show the departed Owner: %s", owner)
-	}
-	if hasFollowUpRow(page, proposed) {
+	if hasFollowUpRowIn(doc, proposed) {
 		t.Errorf("the Follow-ups table lists Proposed %q", proposed.Title)
 	}
-	if row := followUpRowOf(t, page, owned); strings.Contains(row, `data-kind="ownerless"`) {
-		t.Errorf("%q, whose Owner is present, is Ownerless:\n%s", owned.Title, row)
+	if row := followUpRowIn(t, doc, owned); len(followUpChipsIn(row, "ownerless")) != 0 {
+		t.Errorf("%q, whose Owner is present, is Ownerless:\n%s", owned.Title, renderNode(row))
 	}
 }
 
 // The Follow-ups page chips each Unlinked Goal with an outlined chip saying why.
-// A Top-level Goal and a Goal that contributes to it aren't Unlinked.
+// A Top-level Goal and a Goal that contributes to it aren't Unlinked. How the
+// outlined chip is drawn is TestFollowUpsOutlinedChipStyles's.
 func TestFollowUpsPageListsUnlinkedGoals(t *testing.T) {
 	t.Parallel()
 
@@ -321,20 +463,30 @@ func TestFollowUpsPageListsUnlinkedGoals(t *testing.T) {
 	aligned := h.ActiveChildOf(sam, top, "Ship search", "People can't find things.")
 	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	row := followUpRowOf(t, page, loner)
-	if chip := followUpChip(t, row, "unlinked"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Unlinked · no parent Goal, not Top-level</button>") {
-		t.Errorf("Unlinked chip is not an outlined chip saying why: %s", chip)
-	}
-	rule, _, _ := strings.Cut(page[strings.Index(page, ".rk-tag{")+1:], "}")
-	if !strings.Contains(rule, "border-radius:var(--radius-sm)") || !strings.Contains(rule, "border:1px solid var(--color-border-strong)") {
-		t.Errorf("the outlined chip isn't outlined with the small radius: %s", rule)
-	}
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, loner), "unlinked"), "rk-tag", "Unlinked · no parent Goal, not Top-level")
 	for _, g := range []domain.Goal{top, aligned} {
-		if hasFollowUpRow(page, g) {
+		if hasFollowUpRowIn(doc, g) {
 			t.Errorf("the Follow-ups table lists %q", g.Title)
 		}
+	}
+}
+
+// assertFollowUpChipLinksParent fails unless chip is an outlined chip whose
+// button reads tip, then reads says, ending with a link to parent reading its
+// title.
+func assertFollowUpChipLinksParent(t *testing.T, chip *html.Node, tip, says string, parent domain.Goal) {
+	t.Helper()
+	if !slices.Equal(followUpClassesOf(chip), []string{"rk-tag"}) || textOf(followUpTipIn(t, chip)) != tip || textOf(chip) != says+" "+parent.Title {
+		t.Errorf("the %s chip is not an outlined chip saying %q: %s", attrOf(chip, "data-kind"), says, renderNode(chip))
+	}
+	last := chip.LastChild
+	for last != nil && last.Type != html.ElementNode {
+		last = last.PrevSibling
+	}
+	if last == nil || last.Data != "a" || attrOf(last, "href") != goalPageURL("", parent) || textOf(last) != parent.Title {
+		t.Errorf("the %s chip doesn't end with a link to its parent %q: %s", attrOf(chip, "data-kind"), parent.Title, renderNode(chip))
 	}
 }
 
@@ -358,24 +510,19 @@ func TestFollowUpsPageListsScheduleConflicts(t *testing.T) {
 	slipped := h.ActiveGoalDue(sam, "Slipped piece", time.Date(2027, 1, 10, 0, 0, 0, 0, time.UTC))
 	h.RequestLink(sam, slipped, yearEnd, "")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	for _, c := range []struct {
 		child, parent domain.Goal
 		says          string
 	}{
-		{late, launch, ">Schedule conflict</button> · due Jul 1, 30 days after its parent <a "},
-		{slipped, yearEnd, ">Schedule conflict</button> · due Jan 10, 2027, 21 days after its parent <a "},
+		{late, launch, "Schedule conflict · due Jul 1, 30 days after its parent"},
+		{slipped, yearEnd, "Schedule conflict · due Jan 10, 2027, 21 days after its parent"},
 	} {
-		chip := followUpChip(t, followUpRowOf(t, page, c.child), "schedule-conflicts")
-		if !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.Contains(chip, c.says) {
-			t.Errorf("%q's chip is not an outlined chip saying %q: %s", c.child.Title, c.says, chip)
-		}
-		if !strings.HasSuffix(chip, navTo(c.parent.ID)+">"+html.EscapeString(c.parent.Title)+"</a>") {
-			t.Errorf("%q's chip doesn't link to its parent %q: %s", c.child.Title, c.parent.Title, chip)
-		}
+		chip := followUpChipIn(t, followUpRowIn(t, doc, c.child), "schedule-conflicts")
+		assertFollowUpChipLinksParent(t, chip, "Schedule conflict", c.says, c.parent)
 	}
-	if hasFollowUpRow(page, early) && strings.Contains(followUpRowOf(t, page, early), `data-kind="schedule-conflicts"`) {
+	if hasFollowUpRowIn(doc, early) && len(followUpChipsIn(followUpRowIn(t, doc, early), "schedule-conflicts")) != 0 {
 		t.Errorf("%q, due before its parent, is a schedule conflict", early.Title)
 	}
 }
@@ -408,33 +555,28 @@ func TestFollowUpsPageListsGoalsUnderHaltedParents(t *testing.T) {
 		}
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	for _, c := range []struct {
 		child, parent domain.Goal
-		says          string
+		tip           string
 	}{
-		{underPaused, paused, ">Parent On Hold</button> · <a "},
-		{underDropped, dropped, ">Parent Cancelled</button> · <a "},
+		{underPaused, paused, "Parent On Hold"},
+		{underDropped, dropped, "Parent Cancelled"},
 	} {
-		chip := followUpChip(t, followUpRowOf(t, page, c.child), "halted-parents")
-		if !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.Contains(chip, c.says) {
-			t.Errorf("%q's chip is not an outlined chip saying %q: %s", c.child.Title, c.says, chip)
-		}
-		if !strings.HasSuffix(chip, navTo(c.parent.ID)+">"+c.parent.Title+"</a>") {
-			t.Errorf("%q's chip doesn't link to its parent %q: %s", c.child.Title, c.parent.Title, chip)
-		}
+		chip := followUpChipIn(t, followUpRowIn(t, doc, c.child), "halted-parents")
+		assertFollowUpChipLinksParent(t, chip, c.tip, c.tip+" ·", c.parent)
 	}
-	if hasFollowUpRow(page, underLive) {
+	if hasFollowUpRowIn(doc, underLive) {
 		t.Errorf("the Follow-ups table lists %q, whose parent is Active", underLive.Title)
 	}
 }
 
 // The Follow-ups page lists a Goal flagged by two signals once, in one
-// full-bleed table with no card, scrolling sideways inside itself should it
-// outgrow a narrow screen: one row with both
-// chips, a neutral dash for no Health, and one Fix: Check in for its Owner,
-// though it is Unlinked too.
+// table: one row with both chips, a neutral dash for no Health, and one Fix:
+// Check in for its Owner, though it is Unlinked too. That the table is
+// full-bleed and scrolls sideways inside itself is
+// TestFollowUpsListScrollsSidewaysStyles's.
 func TestFollowUpsPageListsEachFlaggedGoalOnce(t *testing.T) {
 	t.Parallel()
 
@@ -444,40 +586,39 @@ func TestFollowUpsPageListsEachFlaggedGoalOnce(t *testing.T) {
 	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue and Unlinked
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	if n := strings.Count(page, `<table id="follow-ups-table"`); n != 1 {
-		t.Fatalf("page has %d Follow-ups tables, want 1", n)
+	tables := findAll(doc, func(n *html.Node) bool { return n.Data == "table" })
+	if len(tables) != 1 || attrOf(tables[0], "id") != "follow-ups-table" {
+		t.Fatalf("page has %d tables, want the one Follow-ups table", len(tables))
 	}
-	if !strings.Contains(page, `<div class="rk-list"><table id="follow-ups-table"`) {
-		t.Errorf("the Follow-ups table doesn't sit straight inside its .rk-list")
+	heads := findAll(tables[0], func(n *html.Node) bool { return n.Data == "th" })
+	if got := textsOf(heads); !slices.Equal(got, []string{"Health", "Goal", "Owner", ""}) || attrOf(heads[3], "aria-label") != "Next step" {
+		t.Errorf("the Follow-ups table's head reads %q, want Health, Goal, Owner and a Next step column: %s", got, renderNode(tables[0]))
 	}
-	if rule := cssRule(t, page, ".rk-list"); !strings.Contains(rule, "overflow-x:auto") {
-		t.Errorf(".rk-list{%s} doesn't scroll sideways inside itself", rule)
-	}
-	if want := `<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Next step"></th></tr>`; !strings.Contains(page, want) {
-		t.Errorf("the Follow-ups table's head isn't Health, Goal, Owner and a Next step column:\n%s", page)
-	}
-	if rows := followUpRows(page); len(rows) != 1 {
+	if rows := followUpRowsIn(doc); len(rows) != 1 {
 		t.Fatalf("the Follow-ups table has %d rows, want 1", len(rows))
 	}
-	row := followUpRowOf(t, page, silent)
-	if n := strings.Count(row, `data-testid="follow-up-signal"`); n != 2 {
-		t.Errorf("row has %d chips, want 2:\n%s", n, row)
+	row := followUpRowIn(t, doc, silent)
+	if got := followUpKindsIn(row); !slices.Equal(got, []string{"checkin-overdue", "unlinked"}) {
+		t.Errorf("row has chips %q, want Check-in overdue and Unlinked:\n%s", got, renderNode(row))
 	}
-	for _, kind := range []string{"checkin-overdue", "unlinked"} {
-		followUpChip(t, row, kind)
+	if health := findByTestID(t, row, "follow-up-health"); !slices.Equal(followUpClassesOf(health), []string{"badge", "lc"}) || textOf(health) != "—" {
+		t.Errorf("row doesn't show a neutral dash for no Health: %s", renderNode(health))
 	}
-	if health := row[strings.Index(row, `data-testid="follow-up-health"`):strings.Index(row, `data-testid="follow-up-goal"`)]; !strings.Contains(health, `class="badge lc"`) || !strings.Contains(health, "—") {
-		t.Errorf("row doesn't show a neutral dash for no Health: %s", health)
-	}
-	if label, href, _ := followUpFix(t, row); label != "Check in" || href != "/goals/"+strconv.FormatInt(silent.ID, 10)+"/checkin" {
+	if label, href, _ := followUpFixIn(t, row); label != "Check in" || href != "/goals/"+strconv.FormatInt(silent.ID, 10)+"/checkin" {
 		t.Errorf("the Owner's Check-in overdue and Unlinked Goal's Fix is %q → %s, want Check in", label, href)
 	}
-	for _, gone := range []string{"follow-ups-nothing-in", `class="rk-empty"`, `data-testid="follow-ups-checkin-overdue"`, "Why it's flagged"} {
-		if strings.Contains(page, gone) {
-			t.Errorf("page still has %s", gone)
+	for _, gone := range []string{"follow-ups-nothing-in", "follow-ups-checkin-overdue"} {
+		if found := followUpsWithTestIDPrefix(doc, gone); len(found) > 0 {
+			t.Errorf("page still has %s: %s", gone, renderNode(found[0]))
 		}
+	}
+	if empty := findAll(doc, func(n *html.Node) bool { return flatFrameHasClass(n, "rk-empty") }); len(empty) > 0 {
+		t.Errorf("page still has an empty line: %s", renderNode(empty[0]))
+	}
+	if strings.Contains(textOf(doc), "Why it's flagged") {
+		t.Errorf("page still says Why it's flagged")
 	}
 }
 
@@ -490,27 +631,30 @@ func TestFollowUpsPageWithNothingFlaggedSaysSo(t *testing.T) {
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
 
-	if n := strings.Count(page, `data-testid="follow-ups-empty"`); n != 1 {
-		t.Fatalf("page has %d empty lines, want 1", n)
+	if empty := findByTestID(t, doc, "follow-ups-empty"); empty.Data != "p" || textOf(empty) != "No Goals need attention." {
+		t.Errorf("the empty line doesn't say no Goals need attention: %s", renderNode(empty))
 	}
-	if empty := strings.TrimSpace(pageElement(t, page, "p", "follow-ups-empty")); !strings.HasSuffix(empty, ">No Goals need attention.") {
-		t.Errorf("the empty line doesn't say no Goals need attention: %s", empty)
+	if tables := findAll(doc, func(n *html.Node) bool { return n.Data == "table" }); len(tables) > 0 {
+		t.Errorf("with nothing flagged, the page has a table")
 	}
-	for _, gone := range []string{"<table", `data-testid="follow-ups-attention"`, `data-testid="follow-ups-groups"`, `data-testid="follow-ups-group-`, "Show everything", "follow-ups-all-clear", "follow-ups-tile-"} {
-		if strings.Contains(page, gone) {
-			t.Errorf("with nothing flagged, the page has %s", gone)
+	for _, gone := range []string{"follow-ups-attention", "follow-ups-groups", "follow-ups-group-", "follow-ups-all-clear", "follow-ups-tile-"} {
+		if found := followUpsWithTestIDPrefix(doc, gone); len(found) > 0 {
+			t.Errorf("with nothing flagged, the page has %s: %s", gone, renderNode(found[0]))
 		}
 	}
-	if followUps := pageElement(t, page, "a", "nav-follow-ups"); strings.Contains(followUps, "count") {
-		t.Errorf("Follow-ups shows a count with nothing flagged: %s", followUps)
+	if strings.Contains(textOf(doc), "Show everything") {
+		t.Errorf("with nothing flagged, the page offers Show everything")
+	}
+	if count := followUpsNavCount(t, doc); count != "" {
+		t.Errorf("Follow-ups shows a count of %s with nothing flagged", count)
 	}
 }
 
-// A group card holding no Goals while another holds some is muted, links
-// nowhere, and says why it is empty. It takes no dashed edge: the groups are
-// plain blocks, not cards.
+// A group card holding no Goals while another holds some links nowhere and
+// says why it is empty. That it is muted with no dashed edge, the groups
+// being plain blocks, not cards, is TestFollowUpsEmptyGroupIsMutedStyles's.
 func TestFollowUpsPageMutesAGroupWithNoGoals(t *testing.T) {
 	t.Parallel()
 
@@ -520,17 +664,15 @@ func TestFollowUpsPageMutesAGroupWithNoGoals(t *testing.T) {
 	h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue and Unlinked
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	if strings.Contains(page, `<a data-testid="follow-ups-group-admin"`) {
-		t.Errorf("the empty admin card is a link")
+	card := followUpsCardIn(t, doc, "admin")
+	if card.Data != "div" {
+		t.Errorf("the empty admin card is a %s, not a plain block", card.Data)
 	}
-	card := pageElement(t, page, "div", "follow-ups-group-admin")
-	if !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "Nothing needs an Admin.") || strings.Contains(card, "href") {
-		t.Errorf("the empty admin card isn't muted, saying nothing needs an Admin, and linking nowhere: %s", card)
-	}
-	if rule := cssRule(t, page, ".rk-zero"); !strings.Contains(rule, "color:var(--color-ink-muted)") || strings.Contains(rule, "border") {
-		t.Errorf("an empty group .rk-zero{%s} doesn't read muted with no edge", rule)
+	linking := findAll(card, func(n *html.Node) bool { return n.Data == "a" || hasAttr(n, "href") })
+	if !strings.Contains(textOf(card), "Nothing needs an Admin.") || len(linking) > 0 {
+		t.Errorf("the empty admin card doesn't say nothing needs an Admin, linking nowhere: %s", renderNode(card))
 	}
 }
 
@@ -546,12 +688,12 @@ func TestFollowUpsPageHeadsWithHowManyGoalsToReview(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal to review, most urgent first.") {
-		t.Errorf("header doesn't say 1 Goal to review, most urgent first: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "1 Goal to review, most urgent first." || count != "1" {
+		t.Errorf("header says %q, counting %q, want 1 Goal to review, most urgent first", line, count)
 	}
-	if strings.Contains(html.UnescapeString(page), "What's going wrong") {
+	if strings.Contains(textOf(doc), "What's going wrong") {
 		t.Errorf("page still says what's going wrong")
 	}
 
@@ -559,10 +701,10 @@ func TestFollowUpsPageHeadsWithHowManyGoalsToReview(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	// The session from before the clock moved has ended; sign in again.
 	client = signInClient(t, ts.URL, "sam@example.com")
-	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals to review, most urgent first.") {
-		t.Errorf("header doesn't say 2 Goals to review, most urgent first: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "2 Goals to review, most urgent first." || count != "2" {
+		t.Errorf("header says %q, counting %q, want 2 Goals to review, most urgent first", line, count)
 	}
 }
 
@@ -579,32 +721,41 @@ func TestFollowUpsPageDefinesEachSignalBesideItsCount(t *testing.T) {
 	h.ActiveGoal(sam, "Silent work", "It matters.")
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	head := between(t, page, `<div id="follow-ups-head"`, "<main")
-	if !strings.Contains(head, `data-testid="follow-ups-attention"`) {
-		t.Fatalf("the page's head has no count line:\n%s", head)
+	head := followUpsElementByID(t, doc, "follow-ups-head")
+	if !hasTestID(head, "follow-ups-attention") {
+		t.Fatalf("the page's head has no count line:\n%s", renderNode(head))
 	}
-	at := strings.Index(head, ">What each signal means</button>")
-	if at < 0 {
-		t.Fatalf("no What each signal means button beside the count line:\n%s", head)
+	button := buttonNamed(head, "What each signal means")
+	if button == nil {
+		t.Fatalf("no What each signal means button beside the count line:\n%s", renderNode(head))
 	}
-	button := head[strings.LastIndex(head[:at], "<button"):at]
-	if attr(button, "type") != "button" || attr(button, "popovertarget") == "" {
-		t.Fatalf("What each signal means isn't a button opening a popover: %s", button)
+	if attrOf(button, "type") != "button" || attrOf(button, "popovertarget") == "" {
+		t.Fatalf("What each signal means isn't a button opening a popover: %s", renderNode(button))
 	}
-	list := html.UnescapeString(followUpPopover(t, page, attr(button, "popovertarget")))
-	var want strings.Builder
-	for _, d := range web.FollowUpSignalDefinitions {
-		want.WriteString("<dt>" + d.Name + "</dt><dd>" + d.Means + "</dd>")
-	}
-	if got := strings.TrimSpace(list); got != "<dl>"+want.String()+"</dl>" {
-		t.Errorf("the list doesn't define each signal once, in the page's order:\n%s\nwant\n<dl>%s</dl>", got, want.String())
-	}
-	for _, gone := range []string{`data-testid="follow-ups-definitions"`, "What each risk means"} {
-		if strings.Contains(page, gone) {
-			t.Errorf("the page still has its old list of definitions, %s", gone)
+	pop := followUpPopoverIn(t, doc, attrOf(button, "popovertarget"))
+	var got, want []string
+	for c := pop.FirstChild; c != nil; c = c.NextSibling {
+		switch {
+		case c.Type == html.ElementNode && c.Data == "dl":
+			for d := c.FirstChild; d != nil; d = d.NextSibling {
+				if d.Type == html.ElementNode {
+					got = append(got, d.Data+": "+textOf(d))
+				}
+			}
+		case c.Type == html.ElementNode, c.Type == html.TextNode && strings.TrimSpace(c.Data) != "":
+			got = append(got, "outside the list: "+renderNode(c))
 		}
+	}
+	for _, d := range web.FollowUpSignalDefinitions {
+		want = append(want, "dt: "+d.Name, "dd: "+d.Means)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the list doesn't define each signal once, in the page's order:\n%q\nwant\n%q", got, want)
+	}
+	if hasTestID(doc, "follow-ups-definitions") || strings.Contains(textOf(doc), "What each risk means") {
+		t.Errorf("the page still has its old list of definitions")
 	}
 }
 
@@ -635,56 +786,54 @@ func TestFollowUpsPageSummarizesGroupsByWhoActs(t *testing.T) {
 	stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Red
 	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", june)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
 
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.Contains(head, "<strong>4</strong> Goals to review,") {
-		t.Errorf("header does not count the 4 flagged Goals: %s", head)
+	if line, count := followUpsAttention(t, doc); count != "4" || !strings.HasPrefix(line, "4 Goals to review,") {
+		t.Errorf("header does not count the 4 flagged Goals: %q", line)
 	}
-	last := -1
+	var previous *html.Node
 	for _, g := range []struct {
 		key, name, href string
 		count           int
 		chips           []string
 	}{
-		{"health", "Not Green", "/follow-ups?group=health&amp;org=all", 1, []string{"Red · 1"}},
-		{"owner", "Waiting on a Check-in", "/follow-ups?group=owner&amp;org=all", 1, []string{"Check-in overdue · 1"}},
-		{"followup", "Action Items overdue", "/follow-ups?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
-		{"plan", "Placement and dates", "/follow-ups?group=plan&amp;org=all", 3, []string{"Unlinked · 2", "Schedule conflicts · 1"}},
-		{"admin", "Needs an Admin", "/follow-ups?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
+		{"health", "Not Green", "/follow-ups?group=health&org=all", 1, []string{"Red · 1"}},
+		{"owner", "Waiting on a Check-in", "/follow-ups?group=owner&org=all", 1, []string{"Check-in overdue · 1"}},
+		{"followup", "Action Items overdue", "/follow-ups?group=followup&org=all", 1, []string{"Action Item overdue · 1"}},
+		{"plan", "Placement and dates", "/follow-ups?group=plan&org=all", 3, []string{"Unlinked · 2", "Schedule conflicts · 1"}},
+		{"admin", "Needs an Admin", "/follow-ups?group=admin&org=all", 1, []string{"Ownerless · 1"}},
 	} {
-		card := pageElement(t, page, "a", "follow-ups-group-"+g.key)
-		for _, want := range append([]string{
-			`href="` + g.href + `"`,
-			html.EscapeString(g.name),
-			`<span class="num">` + strconv.Itoa(g.count) + `</span>`,
-		}, g.chips...) {
-			if !strings.Contains(card, want) {
-				t.Errorf("%s card lacks %s: %s", g.key, want, card)
-			}
+		card := followUpsCardIn(t, doc, g.key)
+		if card.Data != "a" || attrOf(card, "href") != g.href {
+			t.Errorf("%s card doesn't link to %s: %s", g.key, g.href, renderNode(card))
 		}
-		if strings.Contains(openTag(card), "aria-current") {
-			t.Errorf("%s card is current with no filter: %s", g.key, openTag(card))
+		if !strings.HasPrefix(textOf(card), g.name+" ") || followUpsCardCount(t, card) != strconv.Itoa(g.count) {
+			t.Errorf("%s card doesn't name %s counting %d: %s", g.key, g.name, g.count, renderNode(card))
 		}
-		at := strings.Index(page, `data-testid="follow-ups-group-`+g.key+`"`)
-		if at < last {
+		if got := followUpsCardChips(card); !slices.Equal(got, g.chips) {
+			t.Errorf("%s card chips %q, want %q", g.key, got, g.chips)
+		}
+		if hasAttr(card, "aria-current") {
+			t.Errorf("%s card is current with no filter: %s", g.key, renderNode(card))
+		}
+		if previous != nil && !precedes(previous, card) {
 			t.Errorf("%s card is out of order", g.key)
 		}
-		last = at
+		previous = card
 	}
 	for _, c := range []struct{ group, kind, class string }{
-		{"health", "red", `class="badge r"`},
-		{"owner", "checkin-overdue", `class="badge st"`},
-		{"followup", "action-item-overdue", `class="badge st"`},
-		{"plan", "unlinked", `class="rk-tag"`},
-		{"plan", "schedule-conflicts", `class="rk-tag"`},
-		{"admin", "ownerless", `class="badge ol"`},
+		{"health", "red", "badge r"},
+		{"owner", "checkin-overdue", "badge st"},
+		{"followup", "action-item-overdue", "badge st"},
+		{"plan", "unlinked", "rk-tag"},
+		{"plan", "schedule-conflicts", "rk-tag"},
+		{"admin", "ownerless", "badge ol"},
 	} {
-		card := pageElement(t, page, "a", "follow-ups-group-"+c.group)
-		if chip := followUpChip(t, card, c.kind); !strings.Contains(openTag(chip), c.class) {
-			t.Errorf("the %s card's %s chip isn't drawn like the table's %s: %s", c.group, c.kind, c.class, chip)
+		if chip := followUpChipIn(t, followUpsCardIn(t, doc, c.group), c.kind); !slices.Equal(followUpClassesOf(chip), strings.Fields(c.class)) {
+			t.Errorf("the %s card's %s chip isn't drawn like the table's %s: %s", c.group, c.kind, c.class, renderNode(chip))
 		}
 	}
-	if strings.Contains(page, "Show all") {
+	if strings.Contains(textOf(doc), "Show all") {
 		t.Errorf("page offers Show all with no filter")
 	}
 }
@@ -709,66 +858,66 @@ func TestFollowUpsPageFiltersToAGroup(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?group=owner&org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?group=owner&org=all")
 
-	row := followUpRowOf(t, page, silent)
-	followUpChip(t, row, "checkin-overdue")
-	if strings.Contains(row, `data-kind="unlinked"`) {
-		t.Errorf("filtered to owner, %q still has its Unlinked chip:\n%s", silent.Title, row)
+	row := followUpRowIn(t, doc, silent)
+	followUpChipIn(t, row, "checkin-overdue")
+	if len(followUpChipsIn(row, "unlinked")) != 0 {
+		t.Errorf("filtered to owner, %q still has its Unlinked chip:\n%s", silent.Title, renderNode(row))
 	}
-	if hasFollowUpRow(page, orphaned) {
+	if hasFollowUpRowIn(doc, orphaned) {
 		t.Errorf("filtered to owner, the page lists %q, flagged only outside it", orphaned.Title)
 	}
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.Contains(head, "<strong>2</strong>") {
-		t.Errorf("filtered to owner, the header doesn't still count both flagged Goals: %s", head)
+	if line, count := followUpsAttention(t, doc); count != "2" {
+		t.Errorf("filtered to owner, the header doesn't still count both flagged Goals: %q", line)
 	}
 	for key, want := range map[string]string{"owner": "1", "plan": "2", "admin": "1"} {
-		card := pageElement(t, page, "a", "follow-ups-group-"+key)
-		if !strings.Contains(card, `<span class="num">`+want+`</span>`) {
-			t.Errorf("filtered to owner, the %s card doesn't count %s: %s", key, want, card)
+		card := followUpsCardIn(t, doc, key)
+		if got := followUpsCardCount(t, card); got != want {
+			t.Errorf("filtered to owner, the %s card counts %s, want %s", key, got, want)
 		}
-		if current := strings.Contains(openTag(card), `aria-current="page"`); current != (key == "owner") {
-			t.Errorf("filtered to owner, the %s card's aria-current is %v: %s", key, current, openTag(card))
+		if current := attrOf(card, "aria-current") == "page"; current != (key == "owner") {
+			t.Errorf("filtered to owner, the %s card's aria-current is %v: %s", key, current, renderNode(card))
 		}
 	}
-	if all := pageElement(t, page, "a", "follow-ups-show-all"); !strings.Contains(all, `href="/follow-ups?org=all"`) || !strings.Contains(all, "Show all") {
-		t.Errorf("Show all doesn't clear the filter: %s", all)
+	if all := findByTestID(t, doc, "follow-ups-show-all"); all.Data != "a" || attrOf(all, "href") != "/follow-ups?org=all" || textOf(all) != "Show all" {
+		t.Errorf("Show all doesn't clear the filter: %s", renderNode(all))
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-owner"); !strings.Contains(card, "Waiting on a Check-in") {
-		t.Errorf("filtered to owner, the current card isn't Waiting on a Check-in: %s", card)
+	if card := followUpsCardIn(t, doc, "owner"); !strings.Contains(textOf(card), "Waiting on a Check-in") {
+		t.Errorf("filtered to owner, the current card isn't Waiting on a Check-in: %s", renderNode(card))
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?group=plan&org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?group=plan&org=all")
 
 	for _, g := range []domain.Goal{silent, orphaned} {
-		row := followUpRowOf(t, page, g)
-		followUpChip(t, row, "unlinked")
+		row := followUpRowIn(t, doc, g)
+		followUpChipIn(t, row, "unlinked")
 		for _, other := range []string{"checkin-overdue", "ownerless"} {
-			if strings.Contains(row, `data-kind="`+other+`"`) {
-				t.Errorf("filtered to plan, %q still has its %s chip:\n%s", g.Title, other, row)
+			if len(followUpChipsIn(row, other)) != 0 {
+				t.Errorf("filtered to plan, %q still has its %s chip:\n%s", g.Title, other, renderNode(row))
 			}
 		}
 	}
 	for _, key := range []string{"owner", "plan", "admin"} {
-		card := pageElement(t, page, "a", "follow-ups-group-"+key)
-		if current := strings.Contains(openTag(card), `aria-current="page"`); current != (key == "plan") {
-			t.Errorf("filtered to plan, the %s card's aria-current is %v: %s", key, current, openTag(card))
+		card := followUpsCardIn(t, doc, key)
+		if current := attrOf(card, "aria-current") == "page"; current != (key == "plan") {
+			t.Errorf("filtered to plan, the %s card's aria-current is %v: %s", key, current, renderNode(card))
 		}
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-plan"); !strings.Contains(card, "Placement and dates") {
-		t.Errorf("filtered to plan, the current card isn't Placement and dates: %s", card)
+	if card := followUpsCardIn(t, doc, "plan"); !strings.Contains(textOf(card), "Placement and dates") {
+		t.Errorf("filtered to plan, the current card isn't Placement and dates: %s", renderNode(card))
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?group=bogus&org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?group=bogus&org=all")
 
-	followUpChip(t, followUpRowOf(t, page, silent), "unlinked")
-	followUpChip(t, followUpRowOf(t, page, orphaned), "ownerless")
+	followUpChipIn(t, followUpRowIn(t, doc, silent), "unlinked")
+	followUpChipIn(t, followUpRowIn(t, doc, orphaned), "ownerless")
 	for _, key := range []string{"owner", "plan", "admin"} {
-		if card := pageElement(t, page, "a", "follow-ups-group-"+key); strings.Contains(openTag(card), "aria-current") {
-			t.Errorf("an unknown group marks the %s card current: %s", key, openTag(card))
+		if card := followUpsCardIn(t, doc, key); hasAttr(card, "aria-current") {
+			t.Errorf("an unknown group marks the %s card current: %s", key, renderNode(card))
 		}
 	}
-	if strings.Contains(page, `data-testid="follow-ups-show-all"`) {
+	if hasTestID(doc, "follow-ups-show-all") {
 		t.Errorf("an unknown group offers Show all")
 	}
 }
@@ -798,21 +947,26 @@ func TestFollowUpsPageFilteredToNothingSaysWhere(t *testing.T) {
 		"/follow-ups?group=admin&value=" + strconv.FormatInt(platform.ID, 10) + "&org=mine": "Nothing needs an Admin in Team Platform.",
 		"/follow-ups?org=all&value=" + strconv.FormatInt(platform.ID, 10):                   "No Goals need attention in Team Platform.",
 	} {
-		page := getBody(t, client, ts.URL+address)
+		doc := getPage(t, client, ts.URL+address)
 
-		empty := html.UnescapeString(pageElement(t, page, "p", "follow-ups-empty"))
-		if strings.HasPrefix(address, "/follow-ups?group=admin") {
-			if !strings.HasSuffix(strings.TrimSpace(empty), ">"+want) {
-				t.Errorf("at %s, the empty line doesn't say only %q: %s", address, want, empty)
+		empty := findByTestID(t, doc, "follow-ups-empty")
+		links := findAll(empty, func(n *html.Node) bool { return n.Data == "a" })
+		switch {
+		case strings.HasPrefix(address, "/follow-ups?group=admin"):
+			if textOf(empty) != want || len(links) != 0 {
+				t.Errorf("at %s, the empty line doesn't say only %q: %s", address, want, renderNode(empty))
 			}
-		} else if !strings.Contains(empty, ">"+want+" ") {
-			t.Errorf("at %s, the empty line doesn't say %q: %s", address, want, empty)
-		} else if link := between(t, empty, "<a ", ""); attr(link, "href") != "/follow-ups?org=all" || !strings.HasSuffix(link, ">Show everything</a>") {
-			t.Errorf("at %s, the empty line doesn't end linking to everything: %s", address, empty)
+		case textOf(empty) != want+" Show everything":
+			t.Errorf("at %s, the empty line doesn't say %q: %s", address, want, renderNode(empty))
+		case len(links) != 1 || attrOf(links[0], "href") != "/follow-ups?org=all" || textOf(links[0]) != "Show everything":
+			t.Errorf("at %s, the empty line doesn't end linking to everything: %s", address, renderNode(empty))
 		}
-		for _, gone := range []string{"<table", `data-testid="follow-ups-attention"`, `data-testid="follow-ups-groups"`, `data-testid="follow-ups-group-`, "follow-ups-show-all", "follow-ups-group-blank"} {
-			if strings.Contains(page, gone) {
-				t.Errorf("at %s, the page has %s", address, gone)
+		if tables := findAll(doc, func(n *html.Node) bool { return n.Data == "table" }); len(tables) > 0 {
+			t.Errorf("at %s, the page has a table", address)
+		}
+		for _, gone := range []string{"follow-ups-attention", "follow-ups-groups", "follow-ups-group-", "follow-ups-show-all"} {
+			if found := followUpsWithTestIDPrefix(doc, gone); len(found) > 0 {
+				t.Errorf("at %s, the page has %s: %s", address, gone, renderNode(found[0]))
 			}
 		}
 	}
@@ -847,20 +1001,25 @@ func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
 	for who, want := range map[string]string{"sam@example.com": "2", "ada@example.com": "3"} {
 		client := signInClient(t, ts.URL, who)
 		for _, path := range []string{"/home", "/goals", "/follow-ups"} {
-			page := getBody(t, client, ts.URL+path)
-			nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
-			followUps := pageElement(t, page, "a", "nav-follow-ups")
-			if !strings.Contains(followUps, `href="/follow-ups"`) || !strings.Contains(followUps, `<span class="count">`+want+`</span>`) {
-				t.Errorf("%s on %s: Follow-ups does not count the %s flagged Goals: %s", who, path, want, followUps)
+			doc := getPage(t, client, ts.URL+path)
+			followUps := findByTestID(t, doc, "nav-follow-ups")
+			if attrOf(followUps, "href") != "/follow-ups" || followUpsNavCount(t, doc) != want {
+				t.Errorf("%s on %s: Follow-ups does not count the %s flagged Goals: %s", who, path, want, renderNode(followUps))
 			}
-			at := strings.Index(nav, `data-testid="nav-follow-ups"`)
+			nav := followUps.Parent
+			for nav != nil && nav.Data != "nav" {
+				nav = nav.Parent
+			}
+			if nav == nil {
+				t.Fatalf("%s on %s: Follow-ups sits in no nav", who, path)
+			}
 			for _, before := range []string{"nav-home", "nav-goals"} {
-				if i := strings.Index(nav, `data-testid="`+before+`"`); i > at {
-					t.Errorf("%s on %s: Follow-ups comes before %s:\n%s", who, path, before, nav)
+				if !precedes(findByTestID(t, nav, before), followUps) {
+					t.Errorf("%s on %s: Follow-ups comes before %s:\n%s", who, path, before, renderNode(nav))
 				}
 			}
-			for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
-				if strings.Contains(nav, gone) {
+			for _, gone := range []string{"/signals", "/freshness"} {
+				if linkTo(nav, gone) != nil {
 					t.Errorf("%s on %s: the sidebar still links %s", who, path, gone)
 				}
 			}
@@ -888,68 +1047,47 @@ func TestFollowUpFlagsUseAlertBannersAndChips(t *testing.T) {
 	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", testsupport.Epoch)
 
 	client := signInClient(t, ts.URL, "sam@example.com")
-	silentPage := getBody(t, client, goalPageURL(ts.URL, silent))
-	for testID, class := range map[string]string{
-		"goal-checkin-overdue":   `class="alert st"`,
-		"goal-schedule-conflict": `class="alert lc"`,
-	} {
-		if el := pageElement(t, silentPage, "p", testID); !strings.Contains(openTag(el), class) {
-			t.Errorf("%s banner is not %s: %s", testID, class, openTag(el))
+	// banner is the page's one alert banner with testID: a paragraph drawn
+	// in classes.
+	banner := func(doc *html.Node, testID, classes string) {
+		t.Helper()
+		if el := findByTestID(t, doc, testID); el.Data != "p" || !slices.Equal(followUpClassesOf(el), strings.Fields(classes)) {
+			t.Errorf("%s banner is not %s: %s", testID, classes, renderNode(el))
 		}
 	}
-	if !strings.Contains(silentPage, `data-testid="goal-signals"`) {
+	silentPage := getPage(t, client, goalPageURL(ts.URL, silent))
+	banner(silentPage, "goal-checkin-overdue", "alert st")
+	banner(silentPage, "goal-schedule-conflict", "alert lc")
+	if !hasTestID(silentPage, "goal-signals") {
 		t.Errorf("Goal page lost its goal-signals group")
 	}
-	parentPage := getBody(t, client, goalPageURL(ts.URL, parent))
-	if el := pageElement(t, parentPage, "p", "goal-unlinked"); !strings.Contains(openTag(el), `class="alert lc"`) {
-		t.Errorf("Unlinked banner is not an alert: %s", openTag(el))
-	}
-	stalledPage := getBody(t, client, goalPageURL(ts.URL, stalled))
-	if el := pageElement(t, stalledPage, "p", "goal-path-overdue"); !strings.Contains(openTag(el), `class="alert st"`) {
-		t.Errorf("Path to Green overdue banner is not an alert: %s", openTag(el))
-	}
+	banner(getPage(t, client, goalPageURL(ts.URL, parent)), "goal-unlinked", "alert lc")
+	banner(getPage(t, client, goalPageURL(ts.URL, stalled)), "goal-path-overdue", "alert st")
 
-	list := getBody(t, client, ts.URL+"/goals")
-	if chip := pageElement(t, list, "span", "checkin-overdue"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Check-in overdue · 16 days") {
-		t.Errorf("Check-in overdue row chip is not a Check-in overdue badge saying how long: %s", chip)
-	}
-	if chip := pageElement(t, list, "span", "path-overdue"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Path to Green overdue") {
-		t.Errorf("overdue row chip is not a Check-in overdue-colored badge: %s", chip)
-	}
-
-	adaPage := getBody(t, signInClient(t, ts.URL, "ada@example.com"), goalPageURL(ts.URL, silent)+"?open=top-level")
-	if control := pageElement(t, adaPage, "section", "mark-top-level"); !strings.Contains(control, `<button type="submit" class="btn" `) {
-		t.Errorf("Top-level control is not a plain button: %s", control)
-	}
-}
-
-// followUpFix returns a row's one Fix: its label, its address (a form's action,
-// for a Fix that posts, and "" for a disabled one), and whether it is the
-// primary button, failing the test unless the fix cell holds exactly one link,
-// one form or one button.
-func followUpFix(t *testing.T, row string) (label, href string, primary bool) {
-	t.Helper()
-	cell := pageElement(t, row, "td", "follow-up-fix")
-	links, forms, buttons := strings.Count(cell, "<a "), strings.Count(cell, "<form "), strings.Count(cell, "<button ")
-	if links+buttons != 1 || forms > buttons {
-		t.Fatalf("fix cell has %d links, %d forms and %d buttons, want one Fix: %s", links, forms, buttons, cell)
-	}
-	if buttons == 1 {
-		_, button, _ := strings.Cut(cell, "<button ")
-		tag := openTag("<button " + button)
-		label, _, _ = strings.Cut(button[len(tag)-len("<button ")+1:], "</button>")
-		if _, form, ok := strings.Cut(cell, "<form "); ok {
-			href = html.UnescapeString(attr(openTag("<form "+form)+">", "action"))
+	list := getPage(t, client, ts.URL+"/goals")
+	// chip is the Goal list's first chip with testID.
+	chip := func(testID string) *html.Node {
+		t.Helper()
+		chips := findAll(list, func(n *html.Node) bool { return n.Data == "span" && attrOf(n, "data-testid") == testID })
+		if len(chips) == 0 {
+			t.Fatalf("the Goal list has no %s chip", testID)
 		}
-		return label, href, strings.Contains(tag, "primary")
+		return chips[0]
 	}
-	_, link, _ := strings.Cut(cell, "<a ")
-	link = "<a " + link
-	tag := openTag(link)
-	_, rest, _ := strings.Cut(tag, `href="`)
-	href, _, _ = strings.Cut(rest, `"`)
-	label, _, _ = strings.Cut(link[len(tag)+1:], "</a>")
-	return label, html.UnescapeString(href), strings.Contains(tag, "primary")
+	if c := chip("checkin-overdue"); !slices.Equal(followUpClassesOf(c), []string{"badge", "st"}) || !strings.Contains(textOf(c), "Check-in overdue · 16 days") {
+		t.Errorf("Check-in overdue row chip is not a Check-in overdue badge saying how long: %s", renderNode(c))
+	}
+	if c := chip("path-overdue"); !slices.Equal(followUpClassesOf(c), []string{"badge", "st"}) || !strings.Contains(textOf(c), "Path to Green overdue") {
+		t.Errorf("overdue row chip is not a Check-in overdue-colored badge: %s", renderNode(c))
+	}
+
+	adaPage := getPage(t, signInClient(t, ts.URL, "ada@example.com"), goalPageURL(ts.URL, silent)+"?open=top-level")
+	control := findByTestID(t, adaPage, "mark-top-level")
+	if plain := findAll(control, func(n *html.Node) bool {
+		return n.Data == "button" && attrOf(n, "type") == "submit" && attrOf(n, "class") == "btn"
+	}); control.Data != "section" || len(plain) == 0 {
+		t.Errorf("Top-level control is not a plain button: %s", renderNode(control))
+	}
 }
 
 // A Check-in overdue Goal's Fix is Check in, the primary button, for its Owner
@@ -979,8 +1117,8 @@ func TestFollowUpFixOnACheckinOverdueGoalIsCheckInForWhoCanCheckIn(t *testing.T)
 		{"kim@example.com", "Nudge", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge", false},
 		{"ada@example.com", "Nudge", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge", false},
 	} {
-		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all")
-		label, href, primary := followUpFix(t, followUpRowOf(t, page, silent))
+		doc := getPage(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all")
+		label, href, primary := followUpFixIn(t, followUpRowIn(t, doc, silent))
 		if label != c.label || href != c.href || primary != c.primary {
 			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
 		}
@@ -1014,15 +1152,14 @@ func TestFollowUpFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
 		{"dee@example.com", "Check in", goal + "/checkin"},
 	} {
 		client := signInClient(t, ts.URL, c.viewer)
-		page := getBody(t, client, ts.URL+"/follow-ups?org=all")
-		row := followUpRowOf(t, page, orphaned)
-		followUpChip(t, row, "ownerless")
-		followUpChip(t, row, "checkin-overdue")
-		label, href, _ := followUpFix(t, row)
+		row := followUpRowIn(t, getPage(t, client, ts.URL+"/follow-ups?org=all"), orphaned)
+		followUpChipIn(t, row, "ownerless")
+		followUpChipIn(t, row, "checkin-overdue")
+		label, href, _ := followUpFixIn(t, row)
 		if label != c.label || href != c.href {
 			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
 		}
-		if label == "Reassign" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="reassign-goal"`) {
+		if label == "Reassign" && !hasTestID(getPage(t, client, ts.URL+href), "reassign-goal") {
 			t.Errorf("Reassign doesn't open the reassign form")
 		}
 	}
@@ -1051,15 +1188,14 @@ func TestFollowUpFixOnAnUnlinkedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 		{"kim@example.com", "Suggest a parent", goal + "/suggest-parent"},
 	} {
 		client := signInClient(t, ts.URL, c.viewer)
-		page := getBody(t, client, ts.URL+"/follow-ups?org=all")
-		label, href, _ := followUpFix(t, followUpRowOf(t, page, loner))
+		label, href, _ := followUpFixIn(t, followUpRowIn(t, getPage(t, client, ts.URL+"/follow-ups?org=all"), loner))
 		if label != c.label || href != c.href {
 			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
 		}
-		if label == "Link to a parent" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="request-link"`) {
+		if label == "Link to a parent" && !hasTestID(getPage(t, client, ts.URL+href), "request-link") {
 			t.Errorf("Link to a parent doesn't open the parent-link form")
 		}
-		if label == "Suggest a parent" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="suggest-parent"`) {
+		if label == "Suggest a parent" && !hasTestID(getPage(t, client, ts.URL+href), "suggest-parent") {
 			t.Errorf("Suggest a parent doesn't open the Suggest a parent form")
 		}
 	}
@@ -1095,7 +1231,7 @@ func TestFollowUpFixOnAStructuralSignal(t *testing.T) {
 		}
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
 	for _, c := range []struct {
 		goal        domain.Goal
@@ -1105,16 +1241,16 @@ func TestFollowUpFixOnAStructuralSignal(t *testing.T) {
 		{late, []string{"schedule-conflicts", "halted-parents"}, "Check in", "/goals/" + strconv.FormatInt(late.ID, 10) + "/checkin?open=dates"},
 		{under, []string{"halted-parents"}, "Open parent", "/goals/" + strconv.FormatInt(alpha.ID, 10)},
 	} {
-		row := followUpRowOf(t, page, c.goal)
+		row := followUpRowIn(t, doc, c.goal)
 		for _, kind := range c.kinds {
-			followUpChip(t, row, kind)
+			followUpChipIn(t, row, kind)
 		}
-		if label, href, _ := followUpFix(t, row); label != c.label || href != c.href {
+		if label, href, _ := followUpFixIn(t, row); label != c.label || href != c.href {
 			t.Errorf("%q's Fix is %q → %s, want %q → %s", c.goal.Title, label, href, c.label, c.href)
 		}
 	}
-	for _, row := range followUpRows(page) {
-		followUpFix(t, row) // every row has exactly one Fix
+	for _, row := range followUpRowsIn(doc) {
+		followUpFixIn(t, row) // every row has exactly one Fix
 	}
 }
 
@@ -1156,20 +1292,19 @@ func TestFollowUpFixOnAScheduleConflict(t *testing.T) {
 		{"dee@example.com", "Check in", launchCheckin, true},
 		{"pat@example.com", "Nudge", nudge, false},
 	} {
-		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all")
-		row := followUpRowOf(t, page, late)
-		followUpChip(t, row, "schedule-conflicts")
-		label, href, primary := followUpFix(t, row)
+		row := followUpRowIn(t, getPage(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all"), late)
+		followUpChipIn(t, row, "schedule-conflicts")
+		label, href, primary := followUpFixIn(t, row)
 		if label != c.label || href != c.href || primary != c.primary {
 			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
 		}
-		if c.label == "Nudge" {
-			nudgeForm(t, row)
+		if form := findAllByTestID(findByTestID(t, row, "follow-up-fix"), "nudge"); c.label == "Nudge" && (len(form) != 1 || form[0].Data != "form") {
+			t.Errorf("%s's Nudge is no Nudge form", c.viewer)
 		}
 	}
 
-	checkin := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+lateCheckin)
-	if !strings.Contains(openTag(pageElement(t, checkin, "details", "checkin-dates-section")), " open") {
+	checkin := getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+lateCheckin)
+	if dates := findByTestID(t, checkin, "checkin-dates-section"); dates.Data != "details" || !hasAttr(dates, "open") {
 		t.Errorf("kim's Check in doesn't open the dates section")
 	}
 
@@ -1179,9 +1314,11 @@ func TestFollowUpFixOnAScheduleConflict(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/follow-ups" {
 		t.Fatalf("nudging got %d → %q, want 303 → /follow-ups", resp.StatusCode, resp.Header.Get("Location"))
 	}
-	cell := pageElement(t, followUpRowOf(t, getBody(t, pat, ts.URL+"/follow-ups?org=all"), late), "td", "follow-up-fix")
-	if !strings.Contains(cell, "disabled") || !strings.Contains(cell, "Nudged today by Pat Okafor") || strings.Contains(cell, "<form") {
-		t.Errorf("pat sees Fix %s, want a disabled Nudged today by Pat Okafor", cell)
+	cell := findByTestID(t, followUpRowIn(t, getPage(t, pat, ts.URL+"/follow-ups?org=all"), late), "follow-up-fix")
+	disabled := findAll(cell, func(n *html.Node) bool { return n.Data == "button" && hasAttr(n, "disabled") })
+	forms := findAll(cell, func(n *html.Node) bool { return n.Data == "form" })
+	if len(disabled) != 1 || textOf(disabled[0]) != "Nudged today by Pat Okafor" || len(forms) != 0 {
+		t.Errorf("pat sees Fix %s, want a disabled Nudged today by Pat Okafor", renderNode(cell))
 	}
 }
 
@@ -1217,13 +1354,13 @@ func TestFollowUpFixOnAScheduleConflictWithAProposedChild(t *testing.T) {
 		{"pat@example.com", "Open Goal", page, false},
 		{"sam@example.com", "Check in", "/goals/" + strconv.FormatInt(launch.ID, 10) + "/checkin?open=dates", true},
 	} {
-		row := followUpRowOf(t, getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all"), proposed)
-		followUpChip(t, row, "schedule-conflicts")
-		label, href, primary := followUpFix(t, row)
+		row := followUpRowIn(t, getPage(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all"), proposed)
+		followUpChipIn(t, row, "schedule-conflicts")
+		label, href, primary := followUpFixIn(t, row)
 		if label != c.label || href != c.href || primary != c.primary {
 			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
 		}
-		if strings.Contains(pageElement(t, row, "td", "follow-up-fix"), "<form") {
+		if forms := findAll(findByTestID(t, row, "follow-up-fix"), func(n *html.Node) bool { return n.Data == "form" }); len(forms) != 0 {
 			t.Errorf("%s is offered a Nudge form on a Proposed Goal", c.viewer)
 		}
 	}
@@ -1247,23 +1384,23 @@ func TestFollowUpsPageScopedToMine(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=mine")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=mine")
 
-	followUpRowOf(t, page, own)
-	followUpRowOf(t, page, delegated)
-	if hasFollowUpRow(page, other) {
+	followUpRowIn(t, doc, own)
+	followUpRowIn(t, doc, delegated)
+	if hasFollowUpRowIn(doc, other) {
 		t.Errorf("the page lists %q, which sam neither Owns nor is a Delegate on", other.Title)
 	}
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals to review in Mine, most urgent first.") {
-		t.Errorf("the count line doesn't count sam's 2 Goals in Mine: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "2 Goals to review in Mine, most urgent first." || count != "2" {
+		t.Errorf("the count line doesn't count sam's 2 Goals in Mine: %q", line)
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Check-in overdue · 2") {
-		t.Errorf("the owner card doesn't count sam's 2 Goals: %s", card)
+	if card := followUpsCardIn(t, doc, "owner"); followUpsCardCount(t, card) != "2" || !slices.Contains(followUpsCardChips(card), "Check-in overdue · 2") {
+		t.Errorf("the owner card doesn't count sam's 2 Goals: %s", renderNode(card))
 	}
-	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">2</span>`) {
-		t.Errorf("the sidebar's Follow-ups count isn't sam's default, Mine's 2: %s", followUps)
+	if count := followUpsNavCount(t, doc); count != "2" {
+		t.Errorf("the sidebar's Follow-ups count is %q, want sam's default, Mine's 2", count)
 	}
-	choices, value, label := scopeChoices(scopeSelect(t, page, "follow-ups-scope"))
+	choices, value, label := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope"))
 	if value != "mine" || label != "Mine" {
 		t.Errorf("the Scope select shows %q %q chosen, want Mine", value, label)
 	}
@@ -1271,40 +1408,18 @@ func TestFollowUpsPageScopedToMine(t *testing.T) {
 		t.Errorf("without Managers the Scope select offers %q, want %q", choices, want)
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	followUpRowOf(t, page, other)
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "<strong>3</strong> Goals to review, most urgent first.") {
-		t.Errorf("for Everyone, the count line doesn't count all 3 Goals: %s", head)
+	followUpRowIn(t, doc, other)
+	if line, count := followUpsAttention(t, doc); line != "3 Goals to review, most urgent first." || count != "3" {
+		t.Errorf("for Everyone, the count line doesn't count all 3 Goals: %q", line)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != "all" || label != "Everyone" {
+	if _, value, label := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != "all" || label != "Everyone" {
 		t.Errorf("for Everyone, the Scope select shows %q %q chosen, want Everyone", value, label)
 	}
-	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">2</span>`) {
-		t.Errorf("for Everyone, the sidebar's Follow-ups count follows the page's scope: %s", followUps)
+	if count := followUpsNavCount(t, doc); count != "2" {
+		t.Errorf("for Everyone, the sidebar's Follow-ups count %q follows the page's scope", count)
 	}
-}
-
-// followUpsValueSelects returns each of the Follow-ups page's Dimension value selects,
-// in order.
-func followUpsValueSelects(page string) []string {
-	return regexp.MustCompile(`(?s)<select data-testid="follow-ups-value".*?</select>`).FindAllString(page, -1)
-}
-
-// followUpsValueSelect returns the Follow-ups page's value select for the Dimension
-// named dim, failing the test unless there is exactly one.
-func followUpsValueSelect(t *testing.T, page, dim string) string {
-	t.Helper()
-	var found []string
-	for _, sel := range followUpsValueSelects(page) {
-		if attr(openTag(sel), "data-dimension") == dim {
-			found = append(found, sel)
-		}
-	}
-	if len(found) != 1 {
-		t.Fatalf("the Follow-ups page has %d value selects for %s, want 1:\n%s", len(found), dim, page)
-	}
-	return found[0]
 }
 
 // The Follow-ups page has a value select per offered Dimension, in the Dimensions'
@@ -1324,30 +1439,30 @@ func TestFollowUpsPageHasAValueSelectPerDimension(t *testing.T) {
 		t.Fatalf("RetireDimensionValue: %v", err)
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	sels := followUpsValueSelects(page)
 	var dims []string
-	for _, sel := range sels {
-		dims = append(dims, attr(openTag(sel), "data-dimension"))
+	for _, sel := range findAllByTestID(doc, "follow-ups-value") {
+		dims = append(dims, attrOf(sel, "data-dimension"))
 	}
 	if !slices.Equal(dims, []string{"Quarter", "Team"}) {
 		t.Fatalf("the value selects are for %q, want Quarter then Team", dims)
 	}
 	for dim, want := range map[string][]string{"Team": {"Team: any", "Platform", "Growth (retired)"}, "Quarter": {"Quarter: any", "Q3"}} {
-		sel := followUpsValueSelect(t, page, dim)
-		if name := attr(openTag(sel), "name"); name != "value" {
+		sel := followUpsValueSelectIn(t, doc, dim)
+		if name := attrOf(sel, "name"); name != "value" {
 			t.Errorf("the %s select is named %q, want value", dim, name)
 		}
-		if label := attr(openTag(sel), "aria-label"); label != dim {
+		if label := attrOf(sel, "aria-label"); label != dim {
 			t.Errorf("the %s select is labelled %q", dim, label)
 		}
-		choices, value, _ := scopeChoices(sel)
+		choices, value, _ := selectChoices(sel)
 		if !slices.Equal(choices, want) {
 			t.Errorf("the %s select offers %q, want %q", dim, choices, want)
 		}
-		if first := regexp.MustCompile(`<option[^>]*>`).FindString(sel); attr(first, "value") != "" || value != "" {
-			t.Errorf("unscoped, the %s select's any option doesn't post nothing, chosen: %s", dim, sel)
+		options := findAll(sel, func(n *html.Node) bool { return n.Data == "option" })
+		if len(options) == 0 || attrOf(options[0], "value") != "" || value != "" {
+			t.Errorf("unscoped, the %s select's any option doesn't post nothing, chosen: %s", dim, renderNode(sel))
 		}
 	}
 }
@@ -1380,38 +1495,38 @@ func TestFollowUpsPageScopedToADimensionValue(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	id := func(v domain.DimensionValue) string { return strconv.FormatInt(v.ID, 10) }
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all&value="+id(platform))
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all&value="+id(platform))
 
-	followUpRowOf(t, page, onPlatform)
+	followUpRowIn(t, doc, onPlatform)
 	for _, g := range []domain.Goal{onGrowth, untagged} {
-		if hasFollowUpRow(page, g) {
+		if hasFollowUpRowIn(doc, g) {
 			t.Errorf("scoped to Platform, the page lists %q", g.Title)
 		}
 	}
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.Contains(head, "<strong>1</strong> Goal to review,") {
-		t.Errorf("scoped to Platform, the header doesn't count its 1 Goal: %s", head)
+	if line, count := followUpsAttention(t, doc); count != "1" || !strings.HasPrefix(line, "1 Goal to review,") {
+		t.Errorf("scoped to Platform, the header doesn't count its 1 Goal: %q", line)
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-owner"); !strings.Contains(card, `<span class="num">1</span>`) {
-		t.Errorf("scoped to Platform, the owner card doesn't count its 1 Goal: %s", card)
+	if count := followUpsCardCount(t, followUpsCardIn(t, doc, "owner")); count != "1" {
+		t.Errorf("scoped to Platform, the owner card counts %s, want its 1 Goal", count)
 	}
-	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">3</span>`) {
-		t.Errorf("scoped to Platform, the sidebar's Follow-ups count follows scope: %s", followUps)
+	if count := followUpsNavCount(t, doc); count != "3" {
+		t.Errorf("scoped to Platform, the sidebar's Follow-ups count %q follows scope", count)
 	}
-	if sels := followUpsValueSelects(page); len(sels) != 1 {
+	if sels := findAllByTestID(doc, "follow-ups-value"); len(sels) != 1 {
 		t.Errorf("with Team the one offered Dimension, the page has %d value selects, want 1", len(sels))
 	}
-	if choices, value, label := scopeChoices(followUpsValueSelect(t, page, "Team")); !slices.Equal(choices, []string{"Team: any", "Platform", "Growth"}) || value != id(platform) || label != "Platform" {
+	if choices, value, label := selectChoices(followUpsValueSelectIn(t, doc, "Team")); !slices.Equal(choices, []string{"Team: any", "Platform", "Growth"}) || value != id(platform) || label != "Platform" {
 		t.Errorf("scoped to Platform, the Team select offers %q with %q %q chosen, want Team: any, Platform, Growth with Platform", choices, value, label)
 	}
-	values := formValues(between(t, page, `data-testid="follow-ups-filters"`, "</form>"))
+	values := formSubmission(findByTestID(t, doc, "follow-ups-filters"))
 	if values.Set("org", "mine"); values.Encode() != "org=mine&value="+id(platform) {
 		t.Errorf("choosing Mine doesn't keep the value scope: %s", values.Encode())
 	}
 
 	for _, ignored := range []string{id(emea), "bogus"} {
-		page = getBody(t, client, ts.URL+"/follow-ups?org=all&value="+ignored)
+		doc = getPage(t, client, ts.URL+"/follow-ups?org=all&value="+ignored)
 		for _, g := range []domain.Goal{onPlatform, onGrowth, untagged} {
-			followUpRowOf(t, page, g)
+			followUpRowIn(t, doc, g)
 		}
 	}
 }
@@ -1452,20 +1567,20 @@ func TestFollowUpsPageScopedToValuesOfSeveralDimensions(t *testing.T) {
 		"value=" + id(platform) + "&value=" + id(growth): {both, platformOnly},
 		"value=bogus&value=" + id(growth) + "&value=999": {growthInQ3},
 	} {
-		page := getBody(t, client, ts.URL+"/follow-ups?"+query)
+		doc := getPage(t, client, ts.URL+"/follow-ups?"+query)
 		for _, g := range all {
-			if listed := hasFollowUpRow(page, g); listed != slices.Contains(want, g) {
+			if listed := hasFollowUpRowIn(doc, g); listed != slices.Contains(want, g) {
 				t.Errorf("at ?%s, %q listed is %v", query, g.Title, listed)
 			}
 		}
 	}
 
-	page := getBody(t, client, ts.URL+"/follow-ups?value="+id(platform)+"&value="+id(growth))
+	doc := getPage(t, client, ts.URL+"/follow-ups?value="+id(platform)+"&value="+id(growth))
 
-	if _, value, label := scopeChoices(followUpsValueSelect(t, page, "Team")); value != id(platform) || label != "Platform" {
+	if _, value, label := selectChoices(followUpsValueSelectIn(t, doc, "Team")); value != id(platform) || label != "Platform" {
 		t.Errorf("of Platform then Growth, the Team select shows %q %q chosen, want Platform", value, label)
 	}
-	if _, value, label := scopeChoices(followUpsValueSelect(t, page, "Quarter")); value != "" || label != "Quarter: any" {
+	if _, value, label := selectChoices(followUpsValueSelectIn(t, doc, "Quarter")); value != "" || label != "Quarter: any" {
 		t.Errorf("with no Quarter chosen, the Quarter select shows %q %q chosen, want Quarter: any", value, label)
 	}
 }
@@ -1490,21 +1605,21 @@ func TestFollowUpsPageKeepsEveryValueInItsAddress(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	scope := "value=" + strconv.FormatInt(q3.ID, 10) + "&value=" + strconv.FormatInt(platform.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/follow-ups?value="+strconv.FormatInt(platform.ID, 10)+"&value="+strconv.FormatInt(q3.ID, 10))
+	doc := getPage(t, client, ts.URL+"/follow-ups?value="+strconv.FormatInt(platform.ID, 10)+"&value="+strconv.FormatInt(q3.ID, 10))
 
-	href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-group-owner")), "href"))
+	href := attrOf(followUpsCardIn(t, doc, "owner"), "href")
 	if href != "/follow-ups?group=owner&"+scope {
 		t.Fatalf("the owner card's link %q doesn't keep both values", href)
 	}
-	page = getBody(t, client, ts.URL+href)
-	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-show-all")), "href")); all != "/follow-ups?"+scope {
+	doc = getPage(t, client, ts.URL+href)
+	if all := attrOf(findByTestID(t, doc, "follow-ups-show-all"), "href"); all != "/follow-ups?"+scope {
 		t.Errorf("Show all %q doesn't keep both values", all)
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?group=admin&"+scope)
+	doc = getPage(t, client, ts.URL+"/follow-ups?group=admin&"+scope)
 
-	if empty := html.UnescapeString(pageElement(t, page, "p", "follow-ups-empty")); !strings.Contains(empty, ">Nothing needs an Admin in Quarter Q3, Team Platform.") {
-		t.Errorf("the empty line doesn't name both values with their Dimensions: %s", empty)
+	if empty := findByTestID(t, doc, "follow-ups-empty"); !strings.HasPrefix(textOf(empty), "Nothing needs an Admin in Quarter Q3, Team Platform.") {
+		t.Errorf("the empty line doesn't name both values with their Dimensions: %s", renderNode(empty))
 	}
 }
 
@@ -1526,13 +1641,13 @@ func TestFollowUpsPageWithNoDimensionsHasNoValueSelect(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?value="+strconv.FormatInt(team.Values[0].ID, 10))
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?value="+strconv.FormatInt(team.Values[0].ID, 10))
 
-	if strings.Contains(page, `data-testid="follow-ups-value"`) {
+	if hasTestID(doc, "follow-ups-value") {
 		t.Errorf("with no Dimension offered, the page has a value select")
 	}
-	followUpRowOf(t, page, g)
-	followUpRowOf(t, page, other)
+	followUpRowIn(t, doc, g)
+	followUpRowIn(t, doc, other)
 }
 
 // Scoped to Mine and a value, the group cards and Show all keep the scope, so
@@ -1560,30 +1675,30 @@ func TestFollowUpsPageGroupsWithinScope(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	scope := "org=mine&value=" + strconv.FormatInt(platform.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/follow-ups?"+scope)
+	doc := getPage(t, client, ts.URL+"/follow-ups?"+scope)
 
-	href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-group-owner")), "href"))
+	href := attrOf(followUpsCardIn(t, doc, "owner"), "href")
 	if href != "/follow-ups?group=owner&"+scope {
 		t.Fatalf("the owner card's link %q doesn't keep the scope", href)
 	}
 
-	page = getBody(t, client, ts.URL+href)
+	doc = getPage(t, client, ts.URL+href)
 
-	followUpRowOf(t, page, ownCheckinOverdue)
+	followUpRowIn(t, doc, ownCheckinOverdue)
 	for _, g := range []domain.Goal{ownUnlinked, ownUntagged, kims} {
-		if hasFollowUpRow(page, g) {
+		if hasFollowUpRowIn(doc, g) {
 			t.Errorf("scoped and filtered to owner, the page lists %q", g.Title)
 		}
 	}
 	for key, want := range map[string]string{"owner": "1", "plan": "1"} {
-		if card := pageElement(t, page, "a", "follow-ups-group-"+key); !strings.Contains(card, `<span class="num">`+want+`</span>`) {
-			t.Errorf("scoped and filtered to owner, the %s card doesn't count %s: %s", key, want, card)
+		if got := followUpsCardCount(t, followUpsCardIn(t, doc, key)); got != want {
+			t.Errorf("scoped and filtered to owner, the %s card counts %s, want %s", key, got, want)
 		}
 	}
-	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-show-all")), "href")); all != "/follow-ups?"+scope {
+	if all := attrOf(findByTestID(t, doc, "follow-ups-show-all"), "href"); all != "/follow-ups?"+scope {
 		t.Errorf("Show all %q doesn't keep the scope", all)
 	}
-	values := formValues(between(t, page, `data-testid="follow-ups-filters"`, "</form>"))
+	values := formSubmission(findByTestID(t, doc, "follow-ups-filters"))
 	if values.Set("org", "all"); values.Get("group") != "owner" || values.Get("value") != strconv.FormatInt(platform.ID, 10) {
 		t.Errorf("choosing Everyone doesn't keep the group and value: %v", values)
 	}
@@ -1614,9 +1729,12 @@ func TestFollowUpsScopeFormAppliesItself(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?group=owner&org=mine")
+	doc := getPage(t, client, ts.URL+"/follow-ups?group=owner&org=mine")
 
-	form := tagAround(t, page, `data-testid="follow-ups-filters"`)
+	form := findByTestID(t, doc, "follow-ups-filters")
+	if form.Data != "form" {
+		t.Fatalf("the filters are a %s, not a form", form.Data)
+	}
 	for name, want := range map[string]string{
 		"method":        "get",
 		"action":        "/follow-ups",
@@ -1630,38 +1748,48 @@ func TestFollowUpsScopeFormAppliesItself(t *testing.T) {
 		"hx-sync":       "this:replace",
 		"hx-history":    "false",
 	} {
-		if got := html.UnescapeString(attr(form, name)); got != want {
+		if got := attrOf(form, name); got != want {
 			t.Errorf("scope form %s = %q, want %q", name, got, want)
 		}
 	}
-	filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
-	if noscript := between(t, filters, "<noscript>", "</noscript>"); !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) || strings.Count(filters, "Apply") != 1 {
-		t.Errorf("the scope form's Apply isn't only in <noscript>:\n%s", filters)
+	// A browser running script, as the parser reads the page, takes what a
+	// <noscript> holds as text; without script it would be the Apply button.
+	noscripts := findAll(form, func(n *html.Node) bool { return n.Data == "noscript" })
+	if len(noscripts) != 1 || noscripts[0].FirstChild == nil {
+		t.Fatalf("the scope form has %d <noscript>s, want one holding Apply", len(noscripts))
 	}
-	if head := between(t, page, `<div id="follow-ups-head"`, "<main"); !strings.Contains(head, `data-testid="follow-ups-attention"`) {
-		t.Errorf("#follow-ups-head lacks the count:\n%s", head)
+	without := parsePage(t, noscripts[0].FirstChild.Data)
+	apply := buttonNamed(without, "Apply")
+	if apply == nil || len(submitButtons(without)) != 1 || attrOf(apply, "type") != "submit" || attrOf(apply, "class") != "btn" {
+		t.Errorf("the scope form's <noscript> doesn't hold its one Apply button: %s", renderNode(without))
 	}
-	body := between(t, page, `<div id="follow-ups-body"`, "</main>")
-	for _, in := range []string{`data-testid="follow-ups-groups"`, `data-testid="follow-ups-table"`} {
-		if !strings.Contains(body, in) {
+	if buttonNamed(form, "Apply") != nil || len(submitButtons(form)) != 0 {
+		t.Errorf("the scope form offers Apply outside its <noscript>: %s", renderNode(form))
+	}
+	if head := followUpsElementByID(t, doc, "follow-ups-head"); !hasTestID(head, "follow-ups-attention") {
+		t.Errorf("#follow-ups-head lacks the count:\n%s", renderNode(head))
+	}
+	body := followUpsElementByID(t, doc, "follow-ups-body")
+	for _, in := range []string{"follow-ups-groups", "follow-ups-table"} {
+		if !hasTestID(body, in) {
 			t.Errorf("#follow-ups-body lacks %s", in)
 		}
 	}
-	if strings.Contains(body, `data-testid="follow-ups-filters"`) || strings.Contains(body, `aria-label="Scope"`) {
+	if within(form, body) || len(findAll(body, func(n *html.Node) bool { return attrOf(n, "aria-label") == "Scope" })) > 0 {
 		t.Errorf("#follow-ups-body holds the scope form or its Scope, which a swap would reset")
 	}
 
-	values := formValues(filters)
+	values := formSubmission(form)
 	values.Set("value", strconv.FormatInt(platform.ID, 10))
-	address := attr(form, "hx-get") + "?" + values.Encode()
+	address := attrOf(form, "hx-get") + "?" + values.Encode()
 	if want := "/follow-ups?group=owner&org=mine&value=" + strconv.FormatInt(platform.ID, 10); address != want {
 		t.Fatalf("choosing Platform GETs %s, want %s", address, want)
 	}
 
-	page = getBody(t, client, ts.URL+address)
+	doc = getPage(t, client, ts.URL+address)
 
-	followUpRowOf(t, page, own)
-	if rows := followUpRows(page); len(rows) != 1 {
+	followUpRowIn(t, doc, own)
+	if rows := followUpRowsIn(doc); len(rows) != 1 {
 		t.Errorf("scoped to Mine and Platform and filtered to owner, the table has %d rows, want 1", len(rows))
 	}
 }
@@ -1678,133 +1806,22 @@ func TestFollowUpsHealthChipShowsOneShape(t *testing.T) {
 	h.Checkin(sam, stalled.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	chip := findByTestID(t, parsePage(t, followUpRowOf(t, page, stalled)), "follow-up-health")
-	marks := findAll(chip, func(n *nethtml.Node) bool { return n != chip && n.Data == "span" && !flatFrameHasClass(n, "sr-only") })
+	chip := findByTestID(t, followUpRowIn(t, doc, stalled), "follow-up-health")
+	marks := findAll(chip, func(n *html.Node) bool { return n != chip && n.Data == "span" && !flatFrameHasClass(n, "sr-only") })
 	if len(marks) != 1 || attrOf(marks[0], "class") != "dot" {
 		t.Errorf("the row's Health chip doesn't show just its drawn shape: %s", renderNode(chip))
 	}
 	assertHealthChip(t, chip, "Green")
 }
 
-// An Owner's name stays on one line at desktop width rather than wrapping
-// onto two in the table's narrow Owner column.
-func TestFollowUpsPageKeepsOwnersOnOneLine(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
-	h.Clock.Advance(10 * day)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
-
-	if owner := pageElement(t, followUpRowOf(t, page, silent), "td", "follow-up-owner"); !strings.Contains(openTag(owner), `class="rk-owner"`) {
-		t.Fatalf("the Owner cell has no rk-owner class to style: %s", openTag(owner))
-	}
-	if rule := cssRule(t, page, ".rk-table .rk-owner"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("the Owner cell .rk-table .rk-owner{%s} wraps", rule)
-	}
-}
-
-// A Not Green row's Health badge and its Run off Green stay on one line
-// however the table squeezes the column, so "· 10 wks" never drops its "wks"
-// under the badge.
-func TestFollowUpsPageKeepsHealthAndItsRunOnOneLine(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	yellow := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
-	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a reviewer.", h.Clock.Now().AddDate(0, 1, 0))
-	h.Clock.Advance(3 * day)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
-
-	if cell := between(t, followUpRowOf(t, page, yellow), `<td class="rk-health">`, "</td>"); !strings.Contains(cell, `data-testid="follow-up-run-off-green"`) {
-		t.Fatalf("the rk-health cell doesn't hold the Run off Green: %s", cell)
-	}
-	if rule := cssRule(t, page, ".rk-table .rk-health"); !strings.Contains(rule, "white-space:nowrap") {
-		t.Errorf("the Health cell .rk-table .rk-health{%s} wraps", rule)
-	}
-}
-
-// Below 600px each Follow-ups row stacks as a card rather than hiding its Fix off
-// to the side of a sideways scroller: its Health then the Goal and its chips on
-// one line, as at every width, then its Owner under the Goal, then its Fix.
-// The cells run Health, Goal, Owner, Fix in the HTML and none is reordered
-// (#453).
-func TestFollowUpsRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
-	h.Clock.Advance(10 * day)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
-
-	row := followUpRowOf(t, page, silent)
-	for _, class := range []string{"rk-health", "rk-goal", "rk-owner", "rk-fix"} {
-		if !strings.Contains(row, `class="`+class+`"`) {
-			t.Errorf("the row has no %s cell to style:\n%s", class, row)
-		}
-	}
-	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
-	for selector, want := range map[string]string{
-		".rk-table thead":     "display:none",
-		".rk-table tr":        "display:grid",
-		".rk-table td":        "display:block",
-		".rk-table .rk-goal":  "grid-column:2",
-		".rk-table .rk-owner": "grid-column:2",
-		".rk-table .rk-fix":   "grid-column:1/-1",
-	} {
-		if rule := cssRule(t, phone, selector); !strings.Contains(rule, want) {
-			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
-		}
-	}
-	if strings.Contains(phone, "order:") {
-		t.Errorf("at 600px a Follow-ups row reorders its cells, which read Health first: %s", phone)
-	}
-}
-
-// The Follow-ups filters wrap, as the Goal list's filter bar does, and never grow
-// past their column: a Scope select listing Other orgs by their long labels
-// shrinks within the form rather than pushing the Team select off a phone's
-// screen (#268).
-func TestFollowUpsFiltersWrapAtPhoneWidthOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	newScopeOrgFixture(h)
-	h.Clock.Advance(10 * day)
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "vera@example.com"), ts.URL+"/follow-ups")
-	choices, _, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope"))
-	if !slices.ContainsFunc(choices, func(c string) bool { return strings.HasPrefix(c, "Other orgs: ") }) {
-		t.Fatalf("the Scope select lists no Other orgs: %q", choices)
-	}
-	if form := tagAround(t, page, `data-testid="follow-ups-filters"`); !hasClass(form, "rk-filters") {
-		t.Fatalf("the filters form isn't .rk-filters: %s", form)
-	}
-	rule := cssRule(t, page, ".rk-filters")
-	for _, want := range []string{"flex-wrap:wrap", "min-width:0"} {
-		if !strings.Contains(rule, want) {
-			t.Errorf(".rk-filters{%s} lacks %s, so its selects run off a phone's screen", rule, want)
-		}
-	}
-}
-
 // The Follow-ups filters are the Goal list's chips: the Scope select sits in
 // the same always-on Scope chip, and each Dimension's select in a chip whose
 // "Team:" key shows once a value is chosen, so it reads "Team: any" or
-// "Team: Platform", filled while set. No rule of the page's own restyles the
-// selects inside them (#406).
+// "Team: Platform", filled while set. That no rule of the page's own
+// restyles the selects inside them (#406) is
+// TestFollowUpsFilterChipSelectsKeepTheirStyles's.
 func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 	t.Parallel()
 
@@ -1819,13 +1836,13 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 	// label it sits in, and the key the label opens with, its classes, whether
 	// it's hidden from screen readers and what it reads.
 	type filterChip struct{ class, keyClass, keyHidden, key string }
-	chipAround := func(sel *nethtml.Node) filterChip {
+	chipAround := func(sel *html.Node) filterChip {
 		label := sel.Parent
 		if label == nil || label.Data != "label" {
 			return filterChip{}
 		}
 		key := label.FirstChild
-		for key != nil && key.Type != nethtml.ElementNode {
+		for key != nil && key.Type != html.ElementNode {
 			key = key.NextSibling
 		}
 		if key == nil || key.Data != "span" {
@@ -1862,7 +1879,7 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 			t.Errorf("%s: the Team select isn't in a Team chip: got %+v for dimension %q, want %+v", addr, got, attrOf(value, "data-dimension"), want)
 		}
 		var options []teamOption
-		for _, o := range findAll(value, func(n *nethtml.Node) bool { return n.Data == "option" }) {
+		for _, o := range findAll(value, func(n *html.Node) bool { return n.Data == "option" }) {
 			options = append(options, teamOption{attrOf(o, "value"), textOf(o), hasAttr(o, "selected")})
 		}
 		for _, want := range []teamOption{c.any, c.chosen} {
@@ -1870,28 +1887,16 @@ func TestFollowUpsFiltersAreFilterChips(t *testing.T) {
 				t.Errorf("%s: the Team select has no %+v among %+v", addr, want, options)
 			}
 		}
-		for _, style := range findAll(doc, func(n *nethtml.Node) bool { return n.Data == "style" }) {
-			for css := style.FirstChild; css != nil; css = css.NextSibling {
-				for _, rule := range strings.Split(css.Data, "}") {
-					selectors, _, _ := strings.Cut(rule, "{")
-					for _, s := range strings.Split(selectors, ",") {
-						if strings.HasPrefix(strings.TrimSpace(s), ".rk-filters select") {
-							t.Errorf("%s: the page's own styles restyle the chips' selects: %s", addr, strings.TrimSpace(s))
-						}
-					}
-				}
-			}
-		}
 	}
 }
 
-// orgScopedFollowUpTitles names the Goals the Follow-ups table lists, in order, by matching each
-// row against the Goals it could be.
-func orgScopedFollowUpTitles(page string, goals ...domain.Goal) []string {
+// orgScopedFollowUpTitles names the Goals the Follow-ups table lists, sorted,
+// by matching each row against the Goals it could be.
+func orgScopedFollowUpTitles(root *html.Node, goals ...domain.Goal) []string {
 	var titles []string
-	for _, row := range followUpRows(page) {
+	for _, row := range followUpRowsIn(root) {
 		for _, g := range goals {
-			if isFollowUpRowOf(row, g) {
+			if isFollowUpRowFor(row, g) {
 				titles = append(titles, g.Title)
 			}
 		}
@@ -1920,13 +1925,13 @@ func TestFollowUpsPageOpensOnTheViewersDefaultScope(t *testing.T) {
 		defaultTitles                    []string
 		mine                             string
 	}{
-		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), "<strong>2</strong> Goals to review in My org, most urgent first.", []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
-		{"pia@example.com", "mine", "<strong>1</strong> Goal to review in Mine, most urgent first.", []string{"Pia's goal"}, "Pia's goal"},
+		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), "2 Goals to review in My org, most urgent first.", []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
+		{"pia@example.com", "mine", "1 Goal to review in Mine, most urgent first.", []string{"Pia's goal"}, "Pia's goal"},
 	} {
 		client := signInClient(t, ts.URL, viewer.email)
-		page := getBody(t, client, ts.URL+"/follow-ups")
-		if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, viewer.defaultLine) {
-			t.Errorf("%s's default: the count line = %s, want %q", viewer.email, head, viewer.defaultLine)
+		doc := getPage(t, client, ts.URL+"/follow-ups")
+		if line, count := followUpsAttention(t, doc); line != viewer.defaultLine || count != strconv.Itoa(len(viewer.defaultTitles)) {
+			t.Errorf("%s's default: the count line = %q, want %q", viewer.email, line, viewer.defaultLine)
 		}
 		for _, c := range []struct {
 			query, value string
@@ -1940,11 +1945,11 @@ func TestFollowUpsPageOpensOnTheViewersDefaultScope(t *testing.T) {
 			{"?org=999999", viewer.defaultValue, viewer.defaultTitles},
 			{"?mine=1", viewer.defaultValue, viewer.defaultTitles},
 		} {
-			page := getBody(t, client, ts.URL+"/follow-ups"+c.query)
-			if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, c.titles) {
+			doc := getPage(t, client, ts.URL+"/follow-ups"+c.query)
+			if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, c.titles) {
 				t.Errorf("%s, /follow-ups%s: rows = %q, want %q", viewer.email, c.query, got, c.titles)
 			}
-			if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != c.value {
+			if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != c.value {
 				t.Errorf("%s, /follow-ups%s: the Scope select shows %q chosen, want %q", viewer.email, c.query, value, c.value)
 			}
 		}
@@ -1965,22 +1970,23 @@ func TestFollowUpsPageNamesEveryoneAsOrgAll(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "mia@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
-	if sel := scopeSelect(t, page, "follow-ups-scope"); !strings.Contains(sel, `<option value="all" selected>Everyone</option>`) {
-		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", sel)
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
+	sel := scopeSelectIn(t, doc, "follow-ups-scope")
+	if everyone := followUpsOptionIn(t, sel, "all"); textOf(everyone) != "Everyone" || !hasAttr(everyone, "selected") {
+		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", renderNode(sel))
 	}
-	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-group-owner")), "href")); href != "/follow-ups?group=owner&org=all" {
+	if href := attrOf(followUpsCardIn(t, doc, "owner"), "href"); href != "/follow-ups?group=owner&org=all" {
 		t.Errorf("on Everyone, the owner card links to %q, want it to keep org=all", href)
 	}
-	page = getBody(t, client, ts.URL+"/follow-ups?group=owner&org=all")
-	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-show-all")), "href")); href != "/follow-ups?org=all" {
+	doc = getPage(t, client, ts.URL+"/follow-ups?group=owner&org=all")
+	if href := attrOf(findByTestID(t, doc, "follow-ups-show-all"), "href"); href != "/follow-ups?org=all" {
 		t.Errorf("on Everyone, Show all links to %q, want it to keep org=all", href)
 	}
 
 	lees := signInClient(t, ts.URL, lee.Email)
-	empty := pageElement(t, getBody(t, lees, ts.URL+"/follow-ups"), "p", "follow-ups-empty")
-	if !strings.Contains(empty, "No Goals need attention in Mine.") || !strings.Contains(empty, `<a href="/follow-ups?org=all">Show everything</a>`) {
-		t.Errorf("an empty default doesn't say so with Show everything to Everyone: %s", empty)
+	empty := findByTestID(t, getPage(t, lees, ts.URL+"/follow-ups"), "follow-ups-empty")
+	if everything := linkTo(empty, "/follow-ups?org=all"); !strings.Contains(textOf(empty), "No Goals need attention in Mine.") || everything == nil || textOf(everything) != "Show everything" {
+		t.Errorf("an empty default doesn't say so with Show everything to Everyone: %s", renderNode(empty))
 	}
 }
 
@@ -2008,15 +2014,15 @@ func TestFollowUpsNeedsAnAdminIsCompanyWide(t *testing.T) {
 	ts := newServer(t, h)
 
 	admin := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, admin, ts.URL+"/follow-ups?group=admin")
-	if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
+	doc := getPage(t, admin, ts.URL+"/follow-ups?group=admin")
+	if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
 		t.Errorf("Needs an Admin for an Admin with no one under them: rows = %q, want Pax's Ownerless Goal", got)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != "mine" {
+	if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != "mine" {
 		t.Errorf("Needs an Admin with no scope shows %q chosen, want the Admin's default, Mine", value)
 	}
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal waiting on an Admin, most urgent first.") {
-		t.Errorf("Needs an Admin's header doesn't say 1 Goal needs an Admin across the company: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "1 Goal waiting on an Admin, most urgent first." || count != "1" {
+		t.Errorf("Needs an Admin's header doesn't say 1 Goal needs an Admin across the company: %q", line)
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
@@ -2027,35 +2033,35 @@ func TestFollowUpsNeedsAnAdminIsCompanyWide(t *testing.T) {
 		{"?org=all", "1", "/follow-ups?group=admin&org=all"},
 		{"?value=" + coreID, "1", "/follow-ups?group=admin&value=" + coreID},
 	} {
-		card := pageElement(t, getBody(t, mia, ts.URL+"/follow-ups"+c.query), "a", "follow-ups-group-admin")
-		if !strings.Contains(card, `<span class="num">`+c.count+`</span>`) || !strings.Contains(card, "Ownerless · 1") {
-			t.Errorf("/follow-ups%s: the Needs an Admin card doesn't count the company's 1: %s", c.query, card)
+		card := followUpsCardIn(t, getPage(t, mia, ts.URL+"/follow-ups"+c.query), "admin")
+		if followUpsCardCount(t, card) != c.count || !slices.Contains(followUpsCardChips(card), "Ownerless · 1") {
+			t.Errorf("/follow-ups%s: the Needs an Admin card doesn't count the company's 1: %s", c.query, renderNode(card))
 		}
-		if href := html.UnescapeString(attr(openTag(card), "href")); href != c.href {
+		if href := attrOf(card, "href"); href != c.href {
 			t.Errorf("/follow-ups%s: the Needs an Admin card links to %q, want %q", c.query, href, c.href)
 		}
 	}
-	page = getBody(t, mia, ts.URL+"/follow-ups?group=admin&org=mine")
-	if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
+	doc = getPage(t, mia, ts.URL+"/follow-ups?group=admin&org=mine")
+	if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
 		t.Errorf("Needs an Admin in Mia's Mine: rows = %q, want Pax's Ownerless Goal", got)
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-admin"); !strings.Contains(card, `<span class="num">1</span>`) {
-		t.Errorf("Needs an Admin in Mia's Mine: the card doesn't count 1: %s", card)
+	if count := followUpsCardCount(t, followUpsCardIn(t, doc, "admin")); count != "1" {
+		t.Errorf("Needs an Admin in Mia's Mine: the card counts %s, want 1", count)
 	}
-	page = getBody(t, mia, ts.URL+"/follow-ups?value="+strconv.FormatInt(edge.ID, 10))
-	if card := pageElement(t, page, "div", "follow-ups-group-admin"); !strings.Contains(card, "Nothing needs an Admin.") {
-		t.Errorf("the Needs an Admin card doesn't keep the page's values: %s", card)
+	doc = getPage(t, mia, ts.URL+"/follow-ups?value="+strconv.FormatInt(edge.ID, 10))
+	if card := followUpsCardIn(t, doc, "admin"); card.Data != "div" || !strings.Contains(textOf(card), "Nothing needs an Admin.") {
+		t.Errorf("the Needs an Admin card doesn't keep the page's values: %s", renderNode(card))
 	}
 
 	miaID := strconv.FormatInt(org.Mia.ID, 10)
-	page = getBody(t, mia, ts.URL+"/follow-ups?group=admin&org="+miaID)
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != miaID {
+	doc = getPage(t, mia, ts.URL+"/follow-ups?group=admin&org="+miaID)
+	if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != miaID {
 		t.Errorf("Needs an Admin in Mia's org shows %q chosen, want %s", value, miaID)
 	}
-	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-show-all")), "href")); all != "/follow-ups?org="+miaID {
+	if all := attrOf(findByTestID(t, doc, "follow-ups-show-all"), "href"); all != "/follow-ups?org="+miaID {
 		t.Errorf("Show all from Needs an Admin links to %q, want it to keep Mia's org", all)
 	}
-	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "follow-ups-group-owner")), "href")); href != "/follow-ups?group=owner&org="+miaID {
+	if href := attrOf(followUpsCardIn(t, doc, "owner"), "href"); href != "/follow-ups?group=owner&org="+miaID {
 		t.Errorf("the owner card from Needs an Admin links to %q, want it to keep Mia's org", href)
 	}
 }
@@ -2073,11 +2079,11 @@ func TestFollowUpsNeedsAnAdminWithNothingSaysSo(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, query := range []string{"", "&org=mine", "&org=all"} {
-		page := getBody(t, client, ts.URL+"/follow-ups?group=admin"+query)
-		if empty := strings.TrimSpace(pageElement(t, page, "p", "follow-ups-empty")); !strings.HasSuffix(empty, ">Nothing needs an Admin.") {
-			t.Errorf("group=admin%s: the empty line doesn't say only that nothing needs an Admin: %s", query, empty)
+		doc := getPage(t, client, ts.URL+"/follow-ups?group=admin"+query)
+		if empty := findByTestID(t, doc, "follow-ups-empty"); textOf(empty) != "Nothing needs an Admin." {
+			t.Errorf("group=admin%s: the empty line doesn't say only that nothing needs an Admin: %s", query, renderNode(empty))
 		}
-		if strings.Contains(page, "Show everything") {
+		if strings.Contains(textOf(doc), "Show everything") {
 			t.Errorf("group=admin%s: the empty line offers Show everything", query)
 		}
 	}
@@ -2099,34 +2105,37 @@ func TestFollowUpsShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/follow-ups")
-	empty := pageElement(t, page, "p", "follow-ups-empty")
-	if !strings.Contains(empty, "No Goals need attention in Mine.") {
-		t.Errorf("the Admin's empty Mine doesn't say so: %s", empty)
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/follow-ups")
+	empty := findByTestID(t, doc, "follow-ups-empty")
+	if !strings.Contains(textOf(empty), "No Goals need attention in Mine.") {
+		t.Errorf("the Admin's empty Mine doesn't say so: %s", renderNode(empty))
 	}
-	card := pageElement(t, page, "a", "follow-ups-group-admin")
-	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Ownerless · 1") {
-		t.Errorf("the Admin's Needs an Admin card doesn't count the company's 1: %s", card)
+	card := followUpsCardIn(t, doc, "admin")
+	if card.Data != "a" || followUpsCardCount(t, card) != "1" || !slices.Contains(followUpsCardChips(card), "Ownerless · 1") {
+		t.Errorf("the Admin's Needs an Admin card doesn't count the company's 1: %s", renderNode(card))
 	}
-	if strings.Index(page, `data-testid="follow-ups-empty"`) > strings.Index(page, `data-testid="follow-ups-groups"`) {
+	if !precedes(empty, findByTestID(t, doc, "follow-ups-groups")) {
 		t.Errorf("the cards come before the empty line")
 	}
 	for key, blank := range map[string]string{"owner": "Nothing is waiting on a Check-in.", "followup": "No Action Item is overdue.", "plan": "Every Goal is placed and its dates fit."} {
-		if card := pageElement(t, page, "div", "follow-ups-group-"+key); !strings.Contains(card, blank) {
-			t.Errorf("the Admin's %s card isn't blank: %s", key, card)
+		if card := followUpsCardIn(t, doc, key); card.Data != "div" || !strings.Contains(textOf(card), blank) {
+			t.Errorf("the Admin's %s card isn't blank: %s", key, renderNode(card))
 		}
 	}
-	for _, gone := range []string{"<table", `data-testid="follow-ups-attention"`, "follow-ups-show-all"} {
-		if strings.Contains(page, gone) {
+	if tables := findAll(doc, func(n *html.Node) bool { return n.Data == "table" }); len(tables) > 0 {
+		t.Errorf("the Admin's empty Mine has a table")
+	}
+	for _, gone := range []string{"follow-ups-attention", "follow-ups-show-all"} {
+		if hasTestID(doc, gone) {
 			t.Errorf("the Admin's empty Mine has %s", gone)
 		}
 	}
 
-	page = getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups")
-	pageElement(t, page, "p", "follow-ups-empty")
-	for _, gone := range []string{`data-testid="follow-ups-groups"`, `data-testid="follow-ups-group-`} {
-		if strings.Contains(page, gone) {
-			t.Errorf("a non-Admin's empty Mine has %s", gone)
+	doc = getPage(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups")
+	findByTestID(t, doc, "follow-ups-empty")
+	for _, gone := range []string{"follow-ups-groups", "follow-ups-group-"} {
+		if found := followUpsWithTestIDPrefix(doc, gone); len(found) > 0 {
+			t.Errorf("a non-Admin's empty Mine has %s: %s", gone, renderNode(found[0]))
 		}
 	}
 }
@@ -2155,14 +2164,12 @@ func TestSidebarFollowUpsCountIsTheViewersDefaultScope(t *testing.T) {
 		{"boss@example.com", 2},
 	} {
 		client := signInClient(t, ts.URL, c.email)
-		page := getBody(t, client, ts.URL+"/follow-ups")
-		if rows := len(followUpRows(page)); rows != c.count {
+		if rows := len(followUpRowsIn(getPage(t, client, ts.URL+"/follow-ups"))); rows != c.count {
 			t.Errorf("%s: a bare /follow-ups lists %d rows, want %d", c.email, rows, c.count)
 		}
 		for _, path := range []string{"/home", "/goals", "/follow-ups"} {
-			nav := pageElement(t, getBody(t, client, ts.URL+path), "a", "nav-follow-ups")
-			if want := `<span class="count">` + strconv.Itoa(c.count) + `</span>`; !strings.Contains(nav, want) {
-				t.Errorf("%s on %s: the nav's Follow-ups count isn't the %d a bare /follow-ups lists: %s", c.email, path, c.count, nav)
+			if count := followUpsNavCount(t, getPage(t, client, ts.URL+path)); count != strconv.Itoa(c.count) {
+				t.Errorf("%s on %s: the nav's Follow-ups count %q isn't the %d a bare /follow-ups lists", c.email, path, count, c.count)
 			}
 		}
 	}
@@ -2185,9 +2192,8 @@ func TestFollowUpsPageScopedToMyOrg(t *testing.T) {
 	ts := newServer(t, h)
 
 	vera := signInClient(t, ts.URL, "vera@example.com")
-	page := getBody(t, vera, ts.URL+"/follow-ups?org=all")
-	sel := scopeSelect(t, page, "follow-ups-scope")
-	choices, value, label := scopeChoices(sel)
+	doc := getPage(t, vera, ts.URL+"/follow-ups?org=all")
+	choices, value, label := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope"))
 	if want := []string{
 		"Everyone", "Mine", "My org",
 		"Other orgs: Max Marsh (max@example.com)", "Other orgs: Mia Moss (mia@example.com)", "Other orgs: Oz Ortiz (oz@example.com)",
@@ -2198,37 +2204,41 @@ func TestFollowUpsPageScopedToMyOrg(t *testing.T) {
 	if value != "all" || label != "Everyone" {
 		t.Errorf("for Everyone, the Scope select shows %q %q chosen, want Everyone", value, label)
 	}
-	filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
-	if first := regexp.MustCompile(`<select data-testid="([^"]*)"`).FindAllStringSubmatch(filters, -1); len(first) != 2 || first[0][1] != "follow-ups-scope" || first[1][1] != "follow-ups-value" {
-		t.Errorf("the Scope select isn't the header form's first control, ahead of the value select:\n%s", filters)
+	var selects []string
+	for _, sel := range findAll(findByTestID(t, doc, "follow-ups-filters"), func(n *html.Node) bool { return n.Data == "select" }) {
+		selects = append(selects, attrOf(sel, "data-testid"))
 	}
-	if strings.Contains(page, "rk-scope") || strings.Contains(page, "follow-ups-scope-") {
+	if !slices.Equal(selects, []string{"follow-ups-scope", "follow-ups-value"}) {
+		t.Errorf("the header form's selects are %q, want the Scope select first, ahead of the value select", selects)
+	}
+	toggles := findAll(doc, func(n *html.Node) bool { return flatFrameHasClass(n, "rk-scope") })
+	if len(toggles) > 0 || len(followUpsWithTestIDPrefix(doc, "follow-ups-scope-")) > 0 {
 		t.Errorf("the Follow-ups page still has a scope toggle")
 	}
-	if head := html.UnescapeString(pageElement(t, page, "p", "follow-ups-attention")); !strings.HasSuffix(head, "</strong> Goals to review, most urgent first.") {
-		t.Errorf("for Everyone, the count line changed: %s", head)
+	if line, count := followUpsAttention(t, doc); line != count+" Goals to review, most urgent first." {
+		t.Errorf("for Everyone, the count line changed: %q", line)
 	}
 
-	page = getBody(t, vera, scopeOrgURL(ts.URL, "/follow-ups", org.Vera))
-	if got, want := orgScopedFollowUpTitles(page, org.goals()...), []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
+	doc = getPage(t, vera, scopeOrgURL(ts.URL, "/follow-ups", org.Vera))
+	if got, want := orgScopedFollowUpTitles(doc, org.goals()...), []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Vera's My org: rows = %q, want %q", got, want)
 	}
-	if head := pageElement(t, page, "p", "follow-ups-attention"); !strings.HasSuffix(head, "<strong>5</strong> Goals to review in My org, most urgent first.") {
-		t.Errorf("Vera's My org: the count line doesn't count 5 Goals in My org: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "5 Goals to review in My org, most urgent first." || count != "5" {
+		t.Errorf("Vera's My org: the count line doesn't count 5 Goals in My org: %q", line)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != strconv.FormatInt(org.Vera.ID, 10) || label != "My org" {
+	if _, value, label := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != strconv.FormatInt(org.Vera.ID, 10) || label != "My org" {
 		t.Errorf("scoped to My org, the Scope select shows %q %q chosen", value, label)
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
-	page = getBody(t, mia, scopeOrgURL(ts.URL, "/follow-ups", org.Mia))
-	if got, want := orgScopedFollowUpTitles(page, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+	doc = getPage(t, mia, scopeOrgURL(ts.URL, "/follow-ups", org.Mia))
+	if got, want := orgScopedFollowUpTitles(doc, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia's My org: rows = %q, want %q", got, want)
 	}
 
 	pia := signInClient(t, ts.URL, "pia@example.com")
-	page = getBody(t, pia, ts.URL+"/follow-ups")
-	if choices, _, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); slices.Contains(choices, "My org") {
+	doc = getPage(t, pia, ts.URL+"/follow-ups")
+	if choices, _, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); slices.Contains(choices, "My org") {
 		t.Errorf("Pia, with no one under her, is offered My org: %q", choices)
 	}
 }
@@ -2250,23 +2260,24 @@ func TestFollowUpsPageScopedToAnotherPersonsOrg(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	ts := newServer(t, h)
 	pia := signInClient(t, ts.URL, "pia@example.com")
+	maxID := strconv.FormatInt(org.Max.ID, 10)
 
-	page := getBody(t, pia, ts.URL+"/follow-ups")
-	orgSel := scopeSelect(t, page, "follow-ups-scope")
-	if !strings.Contains(orgSel, `<option value="`+strconv.FormatInt(org.Max.ID, 10)+`">Max Marsh (max@example.com)</option>`) {
-		t.Errorf("the Scope select doesn't offer Max by Name and email: %s", orgSel)
+	doc := getPage(t, pia, ts.URL+"/follow-ups")
+	orgSel := scopeSelectIn(t, doc, "follow-ups-scope")
+	if max := followUpsOptionIn(t, orgSel, maxID); textOf(max) != "Max Marsh (max@example.com)" || hasAttr(max, "selected") {
+		t.Errorf("the Scope select doesn't offer Max by Name and email: %s", renderNode(orgSel))
 	}
 
-	page = getBody(t, pia, scopeOrgURL(ts.URL, "/follow-ups", org.Max))
-	if got, want := orgScopedFollowUpTitles(page, org.goals()...), []string{"Max's goal", "Pax's goal"}; !slices.Equal(got, want) {
+	doc = getPage(t, pia, scopeOrgURL(ts.URL, "/follow-ups", org.Max))
+	if got, want := orgScopedFollowUpTitles(doc, org.goals()...), []string{"Max's goal", "Pax's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Max's org: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
 	}
-	if head := html.UnescapeString(pageElement(t, page, "p", "follow-ups-attention")); !strings.HasSuffix(head, "<strong>2</strong> Goals to review in Max Marsh's org, most urgent first.") {
-		t.Errorf("the count line doesn't name Max's org as its scope: %s", head)
+	if line, count := followUpsAttention(t, doc); line != "2 Goals to review in Max Marsh's org, most urgent first." || count != "2" {
+		t.Errorf("the count line doesn't name Max's org as its scope: %q", line)
 	}
-	orgSel = scopeSelect(t, page, "follow-ups-scope")
-	if !strings.Contains(orgSel, `<option value="`+strconv.FormatInt(org.Max.ID, 10)+`" selected>Max Marsh (max@example.com)</option>`) || strings.Count(orgSel, "selected") != 1 {
-		t.Errorf("Max's org isn't the one chosen scope: %s", orgSel)
+	orgSel = scopeSelectIn(t, doc, "follow-ups-scope")
+	if max := followUpsOptionIn(t, orgSel, maxID); textOf(max) != "Max Marsh (max@example.com)" || !hasAttr(max, "selected") || followUpsSelected(orgSel) != 1 {
+		t.Errorf("Max's org isn't the one chosen scope: %s", renderNode(orgSel))
 	}
 }
 
@@ -2287,14 +2298,14 @@ func TestFollowUpsPageScopesAnOrgLinkForAViewerOutsideAnyOrg(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "oz@example.com")
 
-	if got := orgScopedFollowUpTitles(getBody(t, client, ts.URL+"/follow-ups?org=all"), veraGoal, ozGoal); len(got) != 2 {
+	if got := orgScopedFollowUpTitles(getPage(t, client, ts.URL+"/follow-ups?org=all"), veraGoal, ozGoal); len(got) != 2 {
 		t.Fatalf("for Everyone, rows = %q, want both Check-in overdue Goals", got)
 	}
-	page := getBody(t, client, scopeOrgURL(ts.URL, "/follow-ups", vera))
-	if got, want := orgScopedFollowUpTitles(page, veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
+	doc := getPage(t, client, scopeOrgURL(ts.URL, "/follow-ups", vera))
+	if got, want := orgScopedFollowUpTitles(doc, veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Oz in Vera's org: rows = %q, want %q", got, want)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != strconv.FormatInt(vera.ID, 10) {
+	if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != strconv.FormatInt(vera.ID, 10) {
 		t.Errorf("Oz in Vera's org: the Scope select shows %q chosen, want %d", value, vera.ID)
 	}
 }
@@ -2317,54 +2328,52 @@ func TestFollowUpsPageKeepsTheOrgInItsAddress(t *testing.T) {
 	client := signInClient(t, ts.URL, "oz@example.com")
 	orgID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org="+orgID)
-	filters := between(t, page, `data-testid="follow-ups-filters"`, "</form>")
-	if strings.Contains(filters, `name="mine"`) {
-		t.Errorf("the scope form carries a mine field:\n%s", filters)
+	doc := getPage(t, client, ts.URL+"/follow-ups?org="+orgID)
+	filters := findByTestID(t, doc, "follow-ups-filters")
+	if mine := formFields(filters, "mine"); len(mine) > 0 {
+		t.Errorf("the scope form carries a mine field: %s", renderNode(filters))
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != orgID {
+	if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != orgID {
 		t.Errorf("Mia's org: the Scope select shows %q chosen, want %s", value, orgID)
 	}
-	values := formValues(filters)
+	values := formSubmission(filters)
 	values.Set("org", "all")
-	if got := orgScopedFollowUpTitles(getBody(t, client, ts.URL+"/follow-ups?"+values.Encode()), org.goals()...); len(got) != 6 {
+	if got := orgScopedFollowUpTitles(getPage(t, client, ts.URL+"/follow-ups?"+values.Encode()), org.goals()...); len(got) != 6 {
 		t.Errorf("choosing Everyone from Mia's org: rows = %q, want all 6", got)
 	}
-	card := pageElement(t, page, "a", "follow-ups-group-owner")
-	address := html.UnescapeString(attr(openTag(card), "href"))
+	address := attrOf(followUpsCardIn(t, doc, "owner"), "href")
 	if want := "/follow-ups?group=owner&org=" + orgID; address != want {
 		t.Fatalf("the owner card links to %s, want %s", address, want)
 	}
 
-	page = getBody(t, client, ts.URL+address)
-	if got, want := orgScopedFollowUpTitles(page, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+	doc = getPage(t, client, ts.URL+address)
+	if got, want := orgScopedFollowUpTitles(doc, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("grouped in Mia's org: rows = %q, want %q", got, want)
 	}
-	if all := pageElement(t, page, "a", "follow-ups-show-all"); attr(openTag(all), "href") != "/follow-ups?org="+orgID {
-		t.Errorf("Show all drops the org: %s", all)
+	if all := findByTestID(t, doc, "follow-ups-show-all"); attrOf(all, "href") != "/follow-ups?org="+orgID {
+		t.Errorf("Show all drops the org: %s", renderNode(all))
 	}
-	filters = between(t, page, `data-testid="follow-ups-filters"`, "</form>")
-	if values := formValues(filters); values.Get("org") != orgID || values.Get("group") != "owner" {
+	if values := formSubmission(findByTestID(t, doc, "follow-ups-filters")); values.Get("org") != orgID || values.Get("group") != "owner" {
 		t.Errorf("the scope form doesn't carry the org and group: %v", values)
 	}
 
 	for _, raw := range []string{"abc", "999999", ""} {
-		page := getBody(t, client, ts.URL+"/follow-ups?org="+raw)
-		if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+		doc := getPage(t, client, ts.URL+"/follow-ups?org="+raw)
+		if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
 			t.Errorf("org=%q: rows = %q, want Oz's default, Mine", raw, got)
 		}
-		if _, value, label := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != "mine" || label != "Mine" {
+		if _, value, label := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != "mine" || label != "Mine" {
 			t.Errorf("org=%q: the Scope select shows %q %q chosen, want Oz's default, Mine", raw, value, label)
 		}
-		page = getBody(t, client, ts.URL+"/follow-ups?mine=1&org="+raw)
-		if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+		doc = getPage(t, client, ts.URL+"/follow-ups?mine=1&org="+raw)
+		if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
 			t.Errorf("org=%q beside the old Mine parameter: rows = %q, want Oz's default, Mine", raw, got)
 		}
 	}
 
-	page = getBody(t, client, scopeOrgURL(ts.URL, "/follow-ups", lee))
-	if empty := pageElement(t, page, "p", "follow-ups-empty"); !strings.Contains(empty, "No Goals need attention in Lee Lund&#39;s org.") {
-		t.Errorf("an empty org doesn't say so: %s", empty)
+	doc = getPage(t, client, scopeOrgURL(ts.URL, "/follow-ups", lee))
+	if empty := findByTestID(t, doc, "follow-ups-empty"); !strings.Contains(textOf(empty), "No Goals need attention in Lee Lund's org.") {
+		t.Errorf("an empty org doesn't say so: %s", renderNode(empty))
 	}
 }
 
@@ -2380,13 +2389,14 @@ func TestFollowUpsPageIgnoresTheOldChainParameter(t *testing.T) {
 	ts := newServer(t, h)
 	vera := signInClient(t, ts.URL, "vera@example.com")
 
-	unscoped := orgScopedFollowUpTitles(getBody(t, vera, ts.URL+"/follow-ups"), org.goals()...)
-	page := getBody(t, vera, ts.URL+"/follow-ups?chain="+strconv.FormatInt(org.Mia.ID, 10))
-	if got := orgScopedFollowUpTitles(page, org.goals()...); !slices.Equal(got, unscoped) || len(got) != 5 {
+	unscoped := orgScopedFollowUpTitles(getPage(t, vera, ts.URL+"/follow-ups"), org.goals()...)
+	doc := getPage(t, vera, ts.URL+"/follow-ups?chain="+strconv.FormatInt(org.Mia.ID, 10))
+	if got := orgScopedFollowUpTitles(doc, org.goals()...); !slices.Equal(got, unscoped) || len(got) != 5 {
 		t.Errorf("?chain=: rows = %q, want the unscoped %q", got, unscoped)
 	}
-	if sel := scopeSelect(t, page, "follow-ups-scope"); !strings.Contains(sel, `<option value="`+strconv.FormatInt(org.Vera.ID, 10)+`" selected>My org</option>`) || strings.Count(sel, "selected") != 1 {
-		t.Errorf("?chain=: Vera's default isn't the one chosen scope: %s", sel)
+	sel := scopeSelectIn(t, doc, "follow-ups-scope")
+	if mine := followUpsOptionIn(t, sel, strconv.FormatInt(org.Vera.ID, 10)); textOf(mine) != "My org" || !hasAttr(mine, "selected") || followUpsSelected(sel) != 1 {
+		t.Errorf("?chain=: Vera's default isn't the one chosen scope: %s", renderNode(sel))
 	}
 }
 
@@ -2405,14 +2415,14 @@ func TestFollowUpsPageOffersNoOrgWithoutManagers(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org="+strconv.FormatInt(kim.ID, 10))
-	if choices, _, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
+	doc := getPage(t, client, ts.URL+"/follow-ups?org="+strconv.FormatInt(kim.ID, 10))
+	if choices, _, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
 		t.Errorf("without Managers the Scope select offers %q, want only Everyone and Mine", choices)
 	}
-	if rows := followUpRows(page); len(rows) != 1 {
+	if rows := followUpRowsIn(doc); len(rows) != 1 {
 		t.Errorf("without Managers a ?org= scoped the page to %d Goals, want Mine's 1", len(rows))
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "follow-ups-scope")); value != "mine" {
+	if _, value, _ := selectChoices(scopeSelectIn(t, doc, "follow-ups-scope")); value != "mine" {
 		t.Errorf("without Managers a ?org= chose %q, want the default Mine", value)
 	}
 }
@@ -2438,24 +2448,15 @@ func TestFollowUpsScheduleConflictDateReadsAsTheGoalPageDoes(t *testing.T) {
 		child := h.ActiveGoalDue(sam, "Child due "+c.shown, c.due)
 		h.RequestLink(sam, child, parent, "")
 
-		chip := followUpChip(t, followUpRowOf(t, getBody(t, client, ts.URL+"/follow-ups"), child), "schedule-conflicts")
-		if !strings.Contains(chip, "due "+c.shown+",") {
-			t.Errorf("the chip doesn't say due %s: %s", c.shown, chip)
+		chip := followUpChipIn(t, followUpRowIn(t, getPage(t, client, ts.URL+"/follow-ups"), child), "schedule-conflicts")
+		if !strings.Contains(textOf(chip), "due "+c.shown+",") {
+			t.Errorf("the chip doesn't say due %s: %s", c.shown, renderNode(chip))
 		}
-		delivery := pageElement(t, getBody(t, client, goalPageURL(ts.URL, child)), "span", "goal-delivery-date")
-		if !strings.Contains(delivery, "<strong>"+c.shown+"</strong>") {
-			t.Errorf("the Goal page doesn't show its delivery date as %s, as its Follow-ups chip does: %s", c.shown, delivery)
+		delivery := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, child)), "goal-delivery-date")
+		if bold := findAll(delivery, func(n *html.Node) bool { return n.Data == "strong" }); len(bold) != 1 || textOf(bold[0]) != c.shown {
+			t.Errorf("the Goal page doesn't show its delivery date as %s, as its Follow-ups chip does: %s", c.shown, renderNode(delivery))
 		}
 	}
-}
-
-// followUpSignalKinds lists the kinds of a row's signal chips, in order.
-func followUpSignalKinds(row string) []string {
-	var out []string
-	for _, m := range regexp.MustCompile(`data-testid="follow-up-signal" data-kind="([^"]+)"`).FindAllStringSubmatch(row, -1) {
-		out = append(out, m[1])
-	}
-	return out
 }
 
 // raiseFollowUpActionItem has author, who saves and publishes a Report covering
@@ -2490,13 +2491,11 @@ func TestFollowUpsPageListsGoalsWithOverdueActionItems(t *testing.T) {
 	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	raiseFollowUpActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	row := followUpRowOf(t, page, launch)
-	if chip := followUpChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue</button>") {
-		t.Errorf("overdue Action Item chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
-	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Green")
+	row := followUpRowIn(t, doc, launch)
+	assertFollowUpChip(t, followUpChipIn(t, row, "action-item-overdue"), "badge st", "Action Item 2 days overdue")
+	assertHealthChip(t, findByTestID(t, row, "follow-up-health"), "Green")
 }
 
 // A row flagged only for an overdue Action Item has one Fix, See Action
@@ -2512,13 +2511,13 @@ func TestFollowUpFixOnAnOverdueActionItemIsSeeActionItems(t *testing.T) {
 	raiseFollowUpActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
 
 	for _, who := range []string{"sam@example.com", "ada@example.com"} {
-		page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/follow-ups?org=all")
+		doc := getPage(t, signInClient(t, ts.URL, who), ts.URL+"/follow-ups?org=all")
 
-		row := followUpRowOf(t, page, launch)
-		if got := followUpSignalKinds(row); !slices.Equal(got, []string{"action-item-overdue"}) {
+		row := followUpRowIn(t, doc, launch)
+		if got := followUpKindsIn(row); !slices.Equal(got, []string{"action-item-overdue"}) {
 			t.Fatalf("%s: row's signals = %q, want only action-item-overdue", who, got)
 		}
-		label, href, primary := followUpFix(t, row)
+		label, href, primary := followUpFixIn(t, row)
 		if want := "/goals/" + strconv.FormatInt(launch.ID, 10) + "#action-items"; label != "See Action Items" || href != want || primary {
 			t.Errorf("%s: Fix = %q → %q (primary %v), want See Action Items → %q", who, label, href, primary, want)
 		}
@@ -2541,79 +2540,35 @@ func TestFollowUpsPageGroupsOverdueActionItems(t *testing.T) {
 	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	if card := pageElement(t, page, "div", "follow-ups-group-followup"); !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "No Action Item is overdue.") {
-		t.Errorf("with no overdue Action Item, the followup card isn't muted saying so: %s", card)
+	if card := followUpsCardIn(t, doc, "followup"); card.Data != "div" || !slices.Contains(followUpClassesOf(card), "rk-zero") || !strings.Contains(textOf(card), "No Action Item is overdue.") {
+		t.Errorf("with no overdue Action Item, the followup card isn't muted saying so: %s", renderNode(card))
 	}
 
 	raiseFollowUpActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
-	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	card := pageElement(t, page, "a", "follow-ups-group-followup")
-	for _, want := range []string{`href="/follow-ups?group=followup&amp;org=all"`, "Action Items overdue", `<span class="num">1</span>`, "Action Item overdue · 1"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("followup card lacks %s: %s", want, card)
-		}
+	card := followUpsCardIn(t, doc, "followup")
+	if card.Data != "a" || attrOf(card, "href") != "/follow-ups?group=followup&org=all" || !strings.HasPrefix(textOf(card), "Action Items overdue ") ||
+		followUpsCardCount(t, card) != "1" || !slices.Contains(followUpsCardChips(card), "Action Item overdue · 1") {
+		t.Errorf("followup card doesn't link to its group, counting 1 with an Action Item overdue · 1 chip: %s", renderNode(card))
 	}
-	if chip := followUpChip(t, card, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
-		t.Errorf("the followup card's chip isn't drawn like the table's: %s", chip)
+	if chip := followUpChipIn(t, card, "action-item-overdue"); !slices.Equal(followUpClassesOf(chip), []string{"badge", "st"}) {
+		t.Errorf("the followup card's chip isn't drawn like the table's: %s", renderNode(chip))
 	}
-	if order := []int{
-		strings.Index(page, `data-testid="follow-ups-group-owner"`),
-		strings.Index(page, `data-testid="follow-ups-group-followup"`),
-		strings.Index(page, `data-testid="follow-ups-group-plan"`),
-	}; !slices.IsSorted(order) {
-		t.Errorf("the followup card isn't between the owner and plan cards: %v", order)
+	if owner, plan := followUpsCardIn(t, doc, "owner"), followUpsCardIn(t, doc, "plan"); !precedes(owner, card) || !precedes(card, plan) {
+		t.Errorf("the followup card isn't between the owner and plan cards")
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?group=followup&org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?group=followup&org=all")
 
-	followUpChip(t, followUpRowOf(t, page, launch), "action-item-overdue")
-	if hasFollowUpRow(page, silent) {
+	followUpChipIn(t, followUpRowIn(t, doc, launch), "action-item-overdue")
+	if hasFollowUpRowIn(doc, silent) {
 		t.Errorf("filtered to followup, the page lists %q, flagged only outside it", silent.Title)
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-followup"); !strings.Contains(openTag(card), `aria-current="page"`) {
-		t.Errorf("filtered to followup, its card isn't current: %s", openTag(card))
-	}
-}
-
-// The Follow-ups page's five group cards sit five across at the page's full
-// width, and two per row where the page is narrower, a phone's included: no
-// rule stacks them one per row.
-func TestFollowUpsGroupCardsFitFiveAcross(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.")
-	h.Clock.Advance(10 * day)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
-
-	if n := strings.Count(page, `data-testid="follow-ups-group-`); n != 5 {
-		t.Errorf("the page has %d group cards, want 5", n)
-	}
-	css := between(t, page, "<style>", "</style>")
-	for query, want := range map[string]string{
-		"":                          "grid-template-columns:repeat(5,minmax(0,1fr))",
-		"@media (max-width:1151px)": "grid-template-columns:repeat(2,minmax(0,1fr))",
-	} {
-		block := css
-		if query != "" {
-			block = mediaBlock(t, css, query)
-		}
-		if rule, _ := ruleFor(block, ".rk-groups"); !strings.Contains(rule, want) {
-			t.Errorf("%q .rk-groups{%s} lacks %s", query, rule, want)
-		}
-	}
-	for _, query := range []string{"@media (max-width:900px)", "@media (max-width:600px)"} {
-		for _, block := range mediaBlocks(css, query) {
-			if rule, ok := ruleFor(block, ".rk-groups"); ok {
-				t.Errorf("%q restyles .rk-groups{%s}, so a phone doesn't keep two per row", query, rule)
-			}
-		}
+	if card := followUpsCardIn(t, doc, "followup"); attrOf(card, "aria-current") != "page" {
+		t.Errorf("filtered to followup, its card isn't current: %s", renderNode(card))
 	}
 }
 
@@ -2631,13 +2586,13 @@ func TestSidebarFollowUpsCountsOverdueActionItems(t *testing.T) {
 	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-follow-ups"); !strings.Contains(nav, `<span class="count">1</span>`) {
-		t.Fatalf("before the Action Item is overdue, the nav's Follow-ups count isn't 1: %s", nav)
+	if count := followUpsNavCount(t, getPage(t, client, ts.URL+"/home")); count != "1" {
+		t.Fatalf("before the Action Item is overdue, the nav's Follow-ups count is %q, want 1", count)
 	}
 	raiseFollowUpActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
 
-	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-follow-ups"); !strings.Contains(nav, `<span class="count">2</span>`) {
-		t.Errorf("with an overdue Action Item, the nav's Follow-ups count isn't 2: %s", nav)
+	if count := followUpsNavCount(t, getPage(t, client, ts.URL+"/home")); count != "2" {
+		t.Errorf("with an overdue Action Item, the nav's Follow-ups count is %q, want 2", count)
 	}
 }
 
@@ -2658,22 +2613,20 @@ func TestFollowUpsPageScopesOverdueActionItems(t *testing.T) {
 	raiseFollowUpActionItem(t, h, ada, kims, sam, "Send Kim the numbers.", -3)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=mine")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=mine")
 
-	followUpChip(t, followUpRowOf(t, page, own), "action-item-overdue")
-	if hasFollowUpRow(page, kims) {
+	followUpChipIn(t, followUpRowIn(t, doc, own), "action-item-overdue")
+	if hasFollowUpRowIn(doc, kims) {
 		t.Errorf("under Mine, the page lists %q, which Sam doesn't Own", kims.Title)
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-followup"); !strings.Contains(card, `<span class="num">1</span>`) {
-		t.Errorf("under Mine, the followup card doesn't count Sam's 1: %s", card)
+	if count := followUpsCardCount(t, followUpsCardIn(t, doc, "followup")); count != "1" {
+		t.Errorf("under Mine, the followup card counts %s, want Sam's 1", count)
 	}
 
-	page = getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc = getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	if chip := followUpChip(t, followUpRowOf(t, page, kims), "action-item-overdue"); !strings.HasSuffix(chip, ">Action Item 3 days overdue</button>") {
-		t.Errorf("under Everyone, %q's chip doesn't say 3 days overdue: %s", kims.Title, chip)
-	}
-	followUpChip(t, followUpRowOf(t, page, own), "action-item-overdue")
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, kims), "action-item-overdue"), "", "Action Item 3 days overdue")
+	followUpChipIn(t, followUpRowIn(t, doc, own), "action-item-overdue")
 }
 
 // An Action Item due today, a closed one past its due date, one about the
@@ -2711,18 +2664,18 @@ func TestFollowUpsPageIgnoresActionItemsNotOverdueAboutAnActiveGoal(t *testing.T
 	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
 	for _, g := range []domain.Goal{dueToday, closed, whole, done} {
-		if hasFollowUpRow(page, g) {
-			t.Errorf("the page lists %q:\n%s", g.Title, followUpRowOf(t, page, g))
+		if hasFollowUpRowIn(doc, g) {
+			t.Errorf("the page lists %q:\n%s", g.Title, renderNode(followUpRowIn(t, doc, g)))
 		}
 	}
-	if !strings.Contains(page, `data-testid="follow-ups-empty"`) {
+	if !hasTestID(doc, "follow-ups-empty") {
 		t.Errorf("with no overdue Action Item about an Active Goal, the page isn't empty")
 	}
-	if nav := pageElement(t, page, "a", "nav-follow-ups"); strings.Contains(nav, "count") {
-		t.Errorf("the nav counts a Follow-up: %s", nav)
+	if count := followUpsNavCount(t, doc); count != "" {
+		t.Errorf("the nav counts %s Follow-ups", count)
 	}
 }
 
@@ -2747,43 +2700,43 @@ func TestFollowUpsPageListsRedAndYellowGoalsUnderNotGreen(t *testing.T) {
 	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	if first := strings.Index(page, `data-testid="follow-ups-group-`); first < 0 || !strings.HasPrefix(page[first:], `data-testid="follow-ups-group-health"`) {
-		t.Errorf("the Not Green card isn't the first card:\n%s", page)
+	if cards := followUpsWithTestIDPrefix(doc, "follow-ups-group-"); len(cards) == 0 || attrOf(cards[0], "data-testid") != "follow-ups-group-health" {
+		t.Errorf("the Not Green card isn't the first card:\n%s", renderNode(doc))
 	}
-	card := pageElement(t, page, "a", "follow-ups-group-health")
-	if !strings.Contains(card, "Not Green") || !strings.Contains(card, `<span class="num">2</span>`) {
-		t.Errorf("the Not Green card doesn't count 2 Goals: %s", card)
+	card := followUpsCardIn(t, doc, "health")
+	if !strings.Contains(textOf(card), "Not Green") || followUpsCardCount(t, card) != "2" {
+		t.Errorf("the Not Green card doesn't count 2 Goals: %s", renderNode(card))
 	}
 	for kind, want := range map[string]struct{ class, text string }{
-		"red":    {`class="badge r"`, ">Red · 1"},
-		"yellow": {`class="badge y"`, ">Yellow · 1"},
+		"red":    {"badge r", "Red · 1"},
+		"yellow": {"badge y", "Yellow · 1"},
 	} {
-		if chip := followUpChip(t, card, kind); !strings.Contains(openTag(chip), want.class) || !strings.HasSuffix(chip, want.text) {
-			t.Errorf("the Not Green card's %s chip isn't %s saying %s: %s", kind, want.class, want.text, chip)
+		if chip := followUpChipIn(t, card, kind); !slices.Equal(followUpClassesOf(chip), strings.Fields(want.class)) || textOf(chip) != want.text {
+			t.Errorf("the Not Green card's %s chip isn't %s saying %s: %s", kind, want.class, want.text, renderNode(chip))
 		}
 	}
 	for _, g := range []domain.Goal{red, yellow} {
-		row := followUpRowOf(t, page, g)
-		if strings.Contains(row, `data-testid="follow-up-signal"`) {
-			t.Errorf("%q's row chips its Health:\n%s", g.Title, row)
+		row := followUpRowIn(t, doc, g)
+		if kinds := followUpKindsIn(row); len(kinds) > 0 {
+			t.Errorf("%q's row chips %q:\n%s", g.Title, kinds, renderNode(row))
 		}
-		if label, href, _ := followUpFix(t, row); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(g.ID, 10) {
+		if label, href, _ := followUpFixIn(t, row); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(g.ID, 10) {
 			t.Errorf("%q's Fix = %q %q, want Open Goal", g.Title, label, href)
 		}
 	}
-	if hasFollowUpRow(page, green) {
-		t.Errorf("%q, Green with nothing wrong, is listed:\n%s", green.Title, followUpRowOf(t, page, green))
+	if hasFollowUpRowIn(doc, green) {
+		t.Errorf("%q, Green with nothing wrong, is listed:\n%s", green.Title, renderNode(followUpRowIn(t, doc, green)))
 	}
 
-	filtered := getBody(t, client, ts.URL+"/follow-ups?group=health&org=all")
-	if rows := followUpRows(filtered); len(rows) != 2 || !hasFollowUpRow(filtered, red) || !hasFollowUpRow(filtered, yellow) {
-		t.Errorf("Not Green lists %d rows, want only %q and %q:\n%s", len(rows), red.Title, yellow.Title, filtered)
+	filtered := getPage(t, client, ts.URL+"/follow-ups?group=health&org=all")
+	if rows := followUpRowsIn(filtered); len(rows) != 2 || !hasFollowUpRowIn(filtered, red) || !hasFollowUpRowIn(filtered, yellow) {
+		t.Errorf("Not Green lists %d rows, want only %q and %q:\n%s", len(rows), red.Title, yellow.Title, renderNode(filtered))
 	}
 
-	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-follow-ups"); !strings.Contains(nav, `<span class="count">2</span>`) {
-		t.Errorf("the nav's Follow-ups count doesn't count the Red and Yellow Goals: %s", nav)
+	if count := followUpsNavCount(t, getPage(t, client, ts.URL+"/home")); count != "2" {
+		t.Errorf("the nav's Follow-ups count %q doesn't count the Red and Yellow Goals", count)
 	}
 }
 
@@ -2810,22 +2763,23 @@ func TestFollowUpsNotGreenRowsShowTheRunOffGreen(t *testing.T) {
 	h.Clock.Set(time.Date(2026, time.January, 14, 9, 0, 0, 0, time.UTC))
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
-	for name, body := range map[string]string{
-		"the Follow-ups page": page,
-		"Not Green":           getBody(t, client, ts.URL+"/follow-ups?group=health&org=all"),
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
+	for name, page := range map[string]*html.Node{
+		"the Follow-ups page": doc,
+		"Not Green":           getPage(t, client, ts.URL+"/follow-ups?group=health&org=all"),
 	} {
-		row := followUpRowOf(t, body, red)
-		if got := elementTexts(row, "span", "follow-up-run-off-green"); !slices.Equal(got, []string{"· 2 wks"}) {
-			t.Errorf("on %s, %q's row reads its Run off Green %q, want \"· 2 wks\":\n%s", name, red.Title, got, row)
+		row := followUpRowIn(t, page, red)
+		runs := findAllByTestID(row, "follow-up-run-off-green")
+		if got := textsOf(runs); !slices.Equal(got, []string{"· 2 wks"}) {
+			t.Errorf("on %s, %q's row reads its Run off Green %q, want \"· 2 wks\":\n%s", name, red.Title, got, renderNode(row))
+			continue
 		}
-		health, run := strings.Index(row, `data-testid="follow-up-health"`), strings.Index(row, `data-testid="follow-up-run-off-green"`)
-		if health < 0 || run < health || strings.Contains(row[health:max(run, health)], "</td>") {
-			t.Errorf("on %s, %q's Run off Green isn't right after its Health badge:\n%s", name, red.Title, row)
+		if health := findByTestID(t, row, "follow-up-health"); runs[0].Parent != health.Parent || !precedes(health, runs[0]) {
+			t.Errorf("on %s, %q's Run off Green isn't right after its Health badge:\n%s", name, red.Title, renderNode(row))
 		}
 	}
-	if row := followUpRowOf(t, page, checkinOverdue); strings.Contains(row, `data-testid="follow-up-run-off-green"`) {
-		t.Errorf("%q, Green and Check-in overdue, shows a Run off Green:\n%s", checkinOverdue.Title, row)
+	if row := followUpRowIn(t, doc, checkinOverdue); hasTestID(row, "follow-up-run-off-green") {
+		t.Errorf("%q, Green and Check-in overdue, shows a Run off Green:\n%s", checkinOverdue.Title, renderNode(row))
 	}
 }
 
@@ -2850,20 +2804,13 @@ func TestFollowUpsPageListsGoalsThatArentActiveLast(t *testing.T) {
 	}
 	h.RequestLink(sam, proposed, launch, "")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
 
-	followUpChip(t, followUpRowOf(t, page, checkinOverdue), "checkin-overdue")
-	followUpChip(t, followUpRowOf(t, page, proposed), "schedule-conflicts")
-	var order []string
-	for _, row := range followUpRows(page) {
-		for _, g := range []domain.Goal{checkinOverdue, proposed} {
-			if isFollowUpRowOf(row, g) {
-				order = append(order, g.Title)
-			}
-		}
-	}
-	if want := []string{checkinOverdue.Title, proposed.Title}; !slices.Equal(order, want) {
-		t.Errorf("rows in order %q, want %q", order, want)
+	overdueRow, proposedRow := followUpRowIn(t, doc, checkinOverdue), followUpRowIn(t, doc, proposed)
+	followUpChipIn(t, overdueRow, "checkin-overdue")
+	followUpChipIn(t, proposedRow, "schedule-conflicts")
+	if !precedes(overdueRow, proposedRow) {
+		t.Errorf("%q is listed before %q", proposed.Title, checkinOverdue.Title)
 	}
 }
 
@@ -2890,35 +2837,53 @@ func TestFollowUpsPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
 	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	for g, want := range map[*domain.Goal]string{
-		&red:   `<span data-testid="follow-up-signal" data-kind="asks-for-help" class="rk-tag"><button type="button" class="rk-tip" popovertarget="follow-up-means-asks-for-help" aria-describedby="follow-up-means-asks-for-help">Asks for help</button> of ` + shownAs(mia.Email, "Mia Chen") + `</span>`,
-		&alone: `<span data-testid="follow-up-signal" data-kind="asks-for-help" class="rk-tag"><button type="button" class="rk-tip" popovertarget="follow-up-means-asks-for-help" aria-describedby="follow-up-means-asks-for-help">Asks for help · no one above the Owner</button></span>`,
-	} {
-		if row := followUpRowOf(t, page, *g); strings.Count(row, `data-kind="asks-for-help"`) != 1 || !strings.Contains(row, want) {
-			t.Errorf("%q's row doesn't carry one chip %s:\n%s", g.Title, want, row)
+	// asks is g's one Asks for help chip, an outlined chip whose button
+	// reads tip and opens what an ask means.
+	asks := func(g domain.Goal, tip string) *html.Node {
+		t.Helper()
+		row := followUpRowIn(t, doc, g)
+		if n := len(followUpChipsIn(row, "asks-for-help")); n != 1 {
+			t.Errorf("%q's row carries %d Asks for help chips, want 1:\n%s", g.Title, n, renderNode(row))
 		}
+		chip := followUpChipIn(t, row, "asks-for-help")
+		button := followUpTipIn(t, chip)
+		if !slices.Equal(followUpClassesOf(chip), []string{"rk-tag"}) || textOf(button) != tip || attrOf(button, "type") != "button" ||
+			attrOf(button, "popovertarget") != "follow-up-means-asks-for-help" || attrOf(button, "aria-describedby") != "follow-up-means-asks-for-help" {
+			t.Errorf("%q's Asks for help chip isn't an outlined chip with a button reading %q: %s", g.Title, tip, renderNode(chip))
+		}
+		return chip
 	}
-	if row := followUpRowOf(t, page, yellow); strings.Contains(row, `data-kind="asks-for-help"`) {
-		t.Errorf("%q, which doesn't ask, carries an Asks for help chip:\n%s", yellow.Title, row)
+	chip := asks(red, "Asks for help")
+	person := findAll(chip, func(n *html.Node) bool { return n.Data == "button" && attrOf(n, "title") == mia.Email })
+	emails := findAll(chip, func(n *html.Node) bool { return hasAttr(n, "hidden") && runningText(n) == mia.Email })
+	if textOf(chip) != "Asks for help of Mia Chen" || len(person) != 1 || textOf(person[0]) != "Mia Chen" || attrOf(person[0], "aria-expanded") != "false" || len(emails) != 1 {
+		t.Errorf("%q's chip doesn't ask Mia Chen, her email beside her: %s", red.Title, renderNode(chip))
 	}
-	card := pageElement(t, page, "a", "follow-ups-group-health")
-	if chip := followUpChip(t, card, "asks-for-help"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Asks for help · 2") {
-		t.Errorf("the Not Green card's asks chip isn't an rk-tag saying Asks for help · 2: %s", chip)
+	chip = asks(alone, "Asks for help · no one above the Owner")
+	if textOf(chip) != "Asks for help · no one above the Owner" || len(findAll(chip, func(n *html.Node) bool { return n != chip })) != 1 {
+		t.Errorf("%q's chip holds more than its button: %s", alone.Title, renderNode(chip))
 	}
-	if !strings.Contains(card, `<span class="num">3</span>`) {
-		t.Errorf("the Not Green card doesn't count 3 Goals: %s", card)
+	if row := followUpRowIn(t, doc, yellow); len(followUpChipsIn(row, "asks-for-help")) != 0 {
+		t.Errorf("%q, which doesn't ask, carries an Asks for help chip:\n%s", yellow.Title, renderNode(row))
+	}
+	card := followUpsCardIn(t, doc, "health")
+	if chip := followUpChipIn(t, card, "asks-for-help"); !slices.Equal(followUpClassesOf(chip), []string{"rk-tag"}) || textOf(chip) != "Asks for help · 2" {
+		t.Errorf("the Not Green card's asks chip isn't an rk-tag saying Asks for help · 2: %s", renderNode(chip))
+	}
+	if count := followUpsCardCount(t, card); count != "3" {
+		t.Errorf("the Not Green card counts %s, want 3 Goals", count)
 	}
 
-	filtered := getBody(t, client, ts.URL+"/follow-ups?group=health&org=all")
-	if rows := followUpRows(filtered); len(rows) != 3 || !hasFollowUpRow(filtered, red) || !hasFollowUpRow(filtered, alone) || !hasFollowUpRow(filtered, yellow) {
-		t.Errorf("Not Green lists %d rows, want %q, %q and %q:\n%s", len(rows), red.Title, alone.Title, yellow.Title, filtered)
+	filtered := getPage(t, client, ts.URL+"/follow-ups?group=health&org=all")
+	if rows := followUpRowsIn(filtered); len(rows) != 3 || !hasFollowUpRowIn(filtered, red) || !hasFollowUpRowIn(filtered, alone) || !hasFollowUpRowIn(filtered, yellow) {
+		t.Errorf("Not Green lists %d rows, want %q, %q and %q:\n%s", len(rows), red.Title, alone.Title, yellow.Title, renderNode(filtered))
 	}
 
 	// The sidebar counts sam's default scope, their own two Goals, each once.
-	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-follow-ups"); !strings.Contains(nav, `<span class="count">2</span>`) {
-		t.Errorf("the nav's Follow-ups count doesn't count each of sam's Goals once: %s", nav)
+	if count := followUpsNavCount(t, getPage(t, client, ts.URL+"/home")); count != "2" {
+		t.Errorf("the nav's Follow-ups count %q doesn't count each of sam's Goals once", count)
 	}
 }
 
@@ -2936,14 +2901,14 @@ func TestFollowUpsPageDropsAnAskTheOwnerUnmarks(t *testing.T) {
 	goal := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters."))
 	h.AskForHelp(sam, goal.ID, domain.HealthRed, "Blocked.", "Need budget.", later)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if row := followUpRowOf(t, getBody(t, client, ts.URL+"/follow-ups?org=all"), goal); !strings.Contains(row, `data-kind="asks-for-help"`) {
-		t.Fatalf("the asking Goal's row has no Asks for help chip:\n%s", row)
+	if row := followUpRowIn(t, getPage(t, client, ts.URL+"/follow-ups?org=all"), goal); len(followUpChipsIn(row, "asks-for-help")) == 0 {
+		t.Fatalf("the asking Goal's row has no Asks for help chip:\n%s", renderNode(row))
 	}
 
 	h.Checkin(sam, goal.ID, domain.HealthYellow, "Better.", "Keep going.", later)
 
-	if row := followUpRowOf(t, getBody(t, client, ts.URL+"/follow-ups?org=all"), goal); strings.Contains(row, `data-kind="asks-for-help"`) {
-		t.Errorf("the row still carries the Asks for help chip after the Owner unmarked it:\n%s", row)
+	if row := followUpRowIn(t, getPage(t, client, ts.URL+"/follow-ups?org=all"), goal); len(followUpChipsIn(row, "asks-for-help")) != 0 {
+		t.Errorf("the row still carries the Asks for help chip after the Owner unmarked it:\n%s", renderNode(row))
 	}
 }
 
@@ -2964,22 +2929,20 @@ func TestFollowUpsPageListsGreenGoalsPastAMilestone(t *testing.T) {
 	g = h.MarkTopLevel(ada, g)
 	goal := "/goals/" + strconv.FormatInt(g.ID, 10)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	row := followUpRowOf(t, page, g)
-	if chip := followUpChip(t, row, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Milestone 1 day overdue</button>") {
-		t.Errorf("Milestone overdue chip is not a Check-in overdue-colored badge saying 1 day overdue: %s", chip)
+	row := followUpRowIn(t, doc, g)
+	assertFollowUpChip(t, followUpChipIn(t, row, "milestone-overdue"), "badge st", "Milestone 1 day overdue")
+	assertHealthChip(t, findByTestID(t, row, "follow-up-health"), "Green")
+	card := followUpsCardIn(t, doc, "owner")
+	if followUpsCardCount(t, card) != "1" || !slices.Contains(followUpsCardChips(card), "Milestone overdue · 1") {
+		t.Errorf("Waiting on a Check-in card doesn't count the Goal with a Milestone overdue · 1 chip: %s", renderNode(card))
 	}
-	assertHealthChip(t, findByTestID(t, parsePage(t, row), "follow-up-health"), "Green")
-	card := pageElement(t, page, "a", "follow-ups-group-owner")
-	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Milestone overdue · 1") {
-		t.Errorf("Waiting on a Check-in card doesn't count the Goal with a Milestone overdue · 1 chip: %s", card)
+	if chip := followUpChipIn(t, card, "milestone-overdue"); !slices.Equal(followUpClassesOf(chip), []string{"badge", "st"}) {
+		t.Errorf("the card's Milestone overdue chip isn't drawn like the table's: %s", renderNode(chip))
 	}
-	if chip := followUpChip(t, card, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
-		t.Errorf("the card's Milestone overdue chip isn't drawn like the table's: %s", chip)
-	}
-	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">1</span>`) {
-		t.Errorf("the sidebar's Follow-ups doesn't count the Goal: %s", followUps)
+	if count := followUpsNavCount(t, doc); count != "1" {
+		t.Errorf("the sidebar's Follow-ups counts %q, want the Goal's 1", count)
 	}
 
 	for _, c := range []struct {
@@ -2989,8 +2952,8 @@ func TestFollowUpsPageListsGreenGoalsPastAMilestone(t *testing.T) {
 		{"sam@example.com", "Check in", goal + "/checkin", true},
 		{"kim@example.com", "Nudge", goal + "/nudge", false},
 	} {
-		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all")
-		label, href, primary := followUpFix(t, followUpRowOf(t, page, g))
+		doc := getPage(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/follow-ups?org=all")
+		label, href, primary := followUpFixIn(t, followUpRowIn(t, doc, g))
 		if label != c.label || href != c.href || primary != c.primary {
 			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
 		}
@@ -3019,38 +2982,25 @@ func TestFollowUpsNotGreenRowsTagASlippedBackToGreenDate(t *testing.T) {
 	h.CheckinMovingPath(ada, slipped.ID, domain.HealthRed, "Still blocked.", "Escalate.", time.Date(2026, time.March, 3, 0, 0, 0, 0, time.UTC), "The approver is away.")
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	page := getBody(t, client, ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, client, ts.URL+"/follow-ups?org=all")
 
-	row := followUpRowOf(t, page, slipped)
-	tag := between(t, row, `<span data-testid="follow-up-back-to-green"`, `</td>`)
-	text := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(tag, ""))), " ")
-	if want := "Back to Green Mar 3 Feb 13 (2)"; text != want {
-		t.Errorf("%q's row tags its back-to-Green date %q, want %q:\n%s", slipped.Title, text, want, row)
+	row := followUpRowIn(t, doc, slipped)
+	tag := findByTestID(t, row, "follow-up-back-to-green")
+	if want := "Back to Green Mar 3 Feb 13 (2)"; textOf(tag) != want {
+		t.Errorf("%q's row tags its back-to-Green date %q, want %q:\n%s", slipped.Title, textOf(tag), want, renderNode(row))
 	}
-	if !strings.Contains(tag, "<del>Feb 13</del>") || !strings.Contains(tag, `<span data-testid="follow-up-back-to-green-slips">(2)</span>`) {
-		t.Errorf("%q's tag doesn't strike Feb 13 through and count 2 slips:\n%s", slipped.Title, tag)
+	if got := struckThrough(tag); !slices.Equal(got, []string{"Feb 13"}) || textOf(findByTestID(t, tag, "follow-up-back-to-green-slips")) != "(2)" {
+		t.Errorf("%q's tag strikes %q through, want Feb 13 and a count of 2 slips:\n%s", slipped.Title, got, renderNode(tag))
 	}
-	if !strings.Contains(between(t, row, `class="rk-chips"`, `</td>`), `data-testid="follow-up-back-to-green"`) {
-		t.Errorf("%q's tag isn't among its chips:\n%s", slipped.Title, row)
+	if !within(tag, findByTestID(t, row, "follow-up-goal")) || !flatFrameHasClass(tag.Parent, "rk-chips") {
+		t.Errorf("%q's tag isn't among its chips:\n%s", slipped.Title, renderNode(row))
 	}
-	if row := followUpRowOf(t, page, steady); strings.Contains(row, `data-testid="follow-up-back-to-green"`) {
-		t.Errorf("%q, whose back-to-Green date never slipped, tags one:\n%s", steady.Title, row)
+	if row := followUpRowIn(t, doc, steady); hasTestID(row, "follow-up-back-to-green") {
+		t.Errorf("%q, whose back-to-Green date never slipped, tags one:\n%s", steady.Title, renderNode(row))
 	}
-	if card := pageElement(t, page, "a", "follow-ups-group-health"); !strings.Contains(card, `<span class="num">2</span>`) {
-		t.Errorf("the Not Green card doesn't count its 2 Goals: %s", card)
+	if count := followUpsCardCount(t, followUpsCardIn(t, doc, "health")); count != "2" {
+		t.Errorf("the Not Green card counts %s, want its 2 Goals", count)
 	}
-}
-
-// followUpPopover returns the content of the page's native popover with id,
-// failing the test unless one is there.
-func followUpPopover(t *testing.T, page, id string) string {
-	t.Helper()
-	tag := tagAround(t, page, ` id="`+id+`"`)
-	if !regexp.MustCompile(`\spopover(="auto")?[\s>]`).MatchString(tag) {
-		t.Fatalf("#%s is not a native popover: %s", id, tag)
-	}
-	name := strings.Fields(tag[1:])[0]
-	return between(t, page[strings.Index(page, tag)+len(tag):], "", "</"+name+">")
 }
 
 // Each signal chip in the Follow-ups table names its signal with a button that,
@@ -3062,33 +3012,31 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 	t.Parallel()
 
 	checked := map[string]bool{}
-	check := func(t *testing.T, page string, g domain.Goal, kinds ...string) {
+	check := func(t *testing.T, doc *html.Node, g domain.Goal, kinds ...string) {
 		t.Helper()
-		row := followUpRowOf(t, page, g)
+		row := followUpRowIn(t, doc, g)
 		for _, kind := range kinds {
 			checked[kind] = true
-			chip := followUpChip(t, row, kind)
-			at := strings.Index(chip, "<button")
-			if at < 0 {
-				t.Errorf("%q's %s chip has no button:\n%s", g.Title, kind, chip)
-				continue
+			button := followUpTipIn(t, followUpChipIn(t, row, kind))
+			if attrOf(button, "type") != "button" {
+				t.Errorf("%q's %s button isn't type=button: %s", g.Title, kind, renderNode(button))
 			}
-			button := chip[at:]
-			if attr(openTag(button), "type") != "button" {
-				t.Errorf("%q's %s button isn't type=button: %s", g.Title, kind, openTag(button))
+			if textOf(button) == "" {
+				t.Errorf("%q's %s button has no name: %s", g.Title, kind, renderNode(button))
 			}
-			end := strings.Index(button, "</button>")
-			if end < 0 || strings.TrimSpace(button[len(openTag(button))+1:end]) == "" {
-				t.Errorf("%q's %s button has no name: %s", g.Title, kind, button)
+			if links := findAll(button, func(n *html.Node) bool { return n.Data == "a" }); len(links) > 0 {
+				t.Errorf("%q's %s button holds a link: %s", g.Title, kind, renderNode(button))
 			}
-			target := attr(openTag(button), "popovertarget")
+			target := attrOf(button, "popovertarget")
 			if target == "" {
-				t.Errorf("%q's %s button opens no popover: %s", g.Title, kind, openTag(button))
+				t.Errorf("%q's %s button opens no popover: %s", g.Title, kind, renderNode(button))
 				continue
 			}
 			def := followUpSignalDefinition(t, kind)
-			if pop, want := html.UnescapeString(followUpPopover(t, page, target)), "<strong>"+def.Name+"</strong> "+def.Means; pop != want {
-				t.Errorf("%q's %s popover = %q, want %q", g.Title, kind, pop, want)
+			pop := followUpPopoverIn(t, doc, target)
+			lead := pop.FirstChild
+			if got, want := textOf(pop), def.Name+" "+def.Means; got != want || lead == nil || lead.Data != "strong" || textOf(lead) != def.Name {
+				t.Errorf("%q's %s popover = %s, want %s in bold then %q", g.Title, kind, renderNode(pop), def.Name, def.Means)
 			}
 		}
 	}
@@ -3116,12 +3064,12 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 		stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Asks for help
 		h.AskForHelp(sam, stalled.ID, domain.HealthRed, "Blocked.", "Need budget.", june)
 
-		page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
+		doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all")
 
-		check(t, page, silent, "checkin-overdue", "action-item-overdue", "unlinked")
-		check(t, page, orphaned, "ownerless", "unlinked")
-		check(t, page, late, "schedule-conflicts")
-		check(t, page, stalled, "asks-for-help")
+		check(t, doc, silent, "checkin-overdue", "action-item-overdue", "unlinked")
+		check(t, doc, orphaned, "ownerless", "unlinked")
+		check(t, doc, late, "schedule-conflicts")
+		check(t, doc, stalled, "asks-for-help")
 	})
 
 	t.Run("by what is late or halted", func(t *testing.T) {
@@ -3140,11 +3088,11 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 		}
 		h.Clock.Advance(3 * day)
 
-		page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+		doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-		check(t, page, passed, "milestone-overdue")
-		check(t, page, stalled, "path-overdue")
-		check(t, page, under, "halted-parents")
+		check(t, doc, passed, "milestone-overdue")
+		check(t, doc, stalled, "path-overdue")
+		check(t, doc, under, "halted-parents")
 	})
 
 	for _, d := range web.FollowUpSignalDefinitions {
@@ -3184,46 +3132,14 @@ func TestFollowUpsGroupCardsHoldNoButton(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/follow-ups?org=all")
+	doc := getPage(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/follow-ups?org=all")
 
 	for _, key := range []string{"owner", "plan", "admin"} {
-		card := pageElement(t, page, "a", "follow-ups-group-"+key)
-		followUpChip(t, card, map[string]string{"owner": "checkin-overdue", "plan": "unlinked", "admin": "ownerless"}[key])
-		if strings.Contains(card, "<button") {
-			t.Errorf("the %s card holds a button:\n%s", key, card)
+		card := followUpsCardIn(t, doc, key)
+		followUpChipIn(t, card, map[string]string{"owner": "checkin-overdue", "plan": "unlinked", "admin": "ownerless"}[key])
+		if buttons := findAll(card, func(n *html.Node) bool { return n.Data == "button" }); card.Data != "a" || len(buttons) > 0 {
+			t.Errorf("the %s card is no link or holds a button:\n%s", key, renderNode(card))
 		}
-	}
-}
-
-// An open popover saying what a signal means fits a 390px phone: it is never
-// wider than the window less a margin, scrolls rather than grows past its
-// height, and the full list stacks each name over its meaning below 600px.
-func TestFollowUpsSignalPopoversFitAPhoneOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
-	h.Clock.Advance(10 * day)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
-
-	tip := attr(openTag(between(t, followUpChip(t, followUpRowOf(t, page, silent), "checkin-overdue"), "<button", "")), "popovertarget")
-	for _, id := range []string{tip, "follow-ups-meanings"} {
-		if pop := tagAround(t, page, ` id="`+id+`"`); !hasClass(pop, "rk-pop") {
-			t.Errorf("#%s isn't an .rk-pop: %s", id, pop)
-		}
-	}
-	rule := cssRule(t, page, ".rk-pop")
-	for _, want := range []string{"box-sizing:border-box", "max-width:min(360px,calc(100vw - 32px))", "max-height:calc(100dvh - 32px)", "overflow:auto"} {
-		if !strings.Contains(rule, want) {
-			t.Errorf(".rk-pop{%s} lacks %s, so it can run off a phone's screen", rule, want)
-		}
-	}
-	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
-	if rule, _ := ruleFor(phone, ".rk-defs dl"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr)") {
-		t.Errorf("at 600px .rk-defs dl{%s} keeps its names beside their meanings", rule)
 	}
 }
 
@@ -3239,17 +3155,17 @@ func TestFollowUpsPageHoldsNoCard(t *testing.T) {
 	h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue and Unlinked
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
+	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	pageElement(t, page, "a", "follow-ups-group-owner")
-	pageElement(t, page, "div", "follow-ups-group-admin")
-	if rows := followUpRows(page); len(rows) != 1 {
+	followUpsCardIn(t, doc, "owner")
+	followUpsCardIn(t, doc, "admin")
+	if rows := followUpRowsIn(doc); len(rows) != 1 {
 		t.Fatalf("the list has %d rows, want 1, so this test checks too little", len(rows))
 	}
-	for _, m := range regexp.MustCompile(`\sclass="([^"]*)"`).FindAllStringSubmatch(page, -1) {
-		for _, class := range strings.Fields(m[1]) {
+	for _, n := range findAll(doc, func(n *html.Node) bool { return hasAttr(n, "class") }) {
+		for _, class := range followUpClassesOf(n) {
 			if strings.Contains(class, "card") {
-				t.Errorf("the page has an element with the card class %q: class=%q", class, m[1])
+				t.Errorf("the page has an element with the card class %q: class=%q", class, attrOf(n, "class"))
 			}
 		}
 	}
