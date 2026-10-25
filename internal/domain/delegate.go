@@ -127,6 +127,25 @@ func (s *Service) ListDelegates(ctx context.Context, goalID int64) ([]Account, e
 	return out, nil
 }
 
+// ListDelegatesForGoals returns the Delegates of each of the Goals goalIDs,
+// keyed by Goal ID and each Goal's ordered by email, as ListDelegates reads
+// one Goal's. A Goal with no Delegates has no entry. It runs one query however
+// many Goals there are.
+func (s *Service) ListDelegatesForGoals(ctx context.Context, goalIDs []int64) (map[int64][]Account, error) {
+	out := map[int64][]Account{}
+	if len(goalIDs) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListDelegatesForGoals(ctx, goalIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list delegates: %w", err)
+	}
+	for _, r := range rows {
+		out[r.GoalID] = append(out[r.GoalID], accountFromRow(r.Account))
+	}
+	return out, nil
+}
+
 // DelegatedGoals returns every Goal the Account is a Delegate for, each with its
 // Owner resolved — the Delegate's worklist of Goals they can check in on
 // (CONTEXT.md: Delegate).

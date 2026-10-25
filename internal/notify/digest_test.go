@@ -21,7 +21,7 @@ const (
 // newNotifier wires a Notifier over the harness's Service and its recording
 // email sender, on the company's default UTC calendar.
 func newNotifier(h *testsupport.Harness) *notify.Notifier {
-	return notify.New(h.Service, h.Email, baseURL, time.UTC)
+	return notify.New(h.Service, baseURL, time.UTC)
 }
 
 // sentTo returns the messages recorded for the address.
@@ -533,7 +533,7 @@ func reminderReport(h *testsupport.Harness, name string, goals ...domain.Goal) d
 // reminders.
 func raiseReminderItem(h *testsupport.Harness, pub domain.Publication, owner domain.Account, goalID int64, text string, due time.Time) domain.ActionItem {
 	h.T.Helper()
-	svc := domain.NewService(h.DB, h.Clock, email.NewRecorder(), nil)
+	svc := domain.NewService(h.DB, h.Clock, email.NewRecorder(), nil, domain.WithEmailDeliveredOnCommit())
 	item, err := svc.RaiseActionItem(context.Background(), pub.PublishedBy.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID,
 		GoalID:        goalID,

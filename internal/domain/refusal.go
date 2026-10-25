@@ -7,8 +7,8 @@ import (
 )
 
 // Refusal refuses an action as one of the domain's kinds of refusal
-// (ErrValidation, ErrNotAuthorized, ErrNudgeNotSent, ErrPasswordRules), saying
-// why as a page shows it. It is its Kind, and reads as "<Kind>: <Reason>".
+// (ErrValidation, ErrNotAuthorized, ErrPasswordRules), saying why as a page
+// shows it. It is its Kind, and reads as "<Kind>: <Reason>".
 type Refusal struct {
 	Kind error
 	// Reason is the person-facing text, without Kind's.

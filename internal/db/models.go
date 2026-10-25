@@ -419,6 +419,11 @@ type ReportRuleValue struct {
 	Value        string
 }
 
+type ScheduledRun struct {
+	Job  string
+	Slot string
+}
+
 type UndoToken struct {
 	ID        int64
 	Token     string

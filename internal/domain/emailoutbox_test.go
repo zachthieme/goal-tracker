@@ -334,3 +334,47 @@ func TestOutboxSkipsAnEmailWhoseNextAttemptCantBeRead(t *testing.T) {
 		t.Errorf("error %q carries an email address", errs[0])
 	}
 }
+
+// Email queued with QueueEmails goes out with the transaction it is queued
+// in, and is lost with one rolled back; one that fails is tried again.
+func TestQueueEmailsSendsWithItsTransaction(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sender := &flakySender{failures: 1}
+	svc := domain.NewService(h.DB, h.Clock, sender, nil, domain.WithEmailDeliveredOnCommit())
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	msgs := []email.Message{
+		{To: sam.Email, AccountID: sam.ID, Subject: "Your weekly digest", Body: "For Sam."},
+		{To: kim.Email, AccountID: kim.ID, Subject: "Your weekly digest", Body: "For Kim."},
+	}
+
+	rollback := errors.New("roll back")
+	if err := svc.WithinTx(ctx, func(tx *domain.Service) error {
+		if err := tx.QueueEmails(ctx, msgs[:1]); err != nil {
+			return err
+		}
+		return rollback
+	}); !errors.Is(err, rollback) {
+		t.Fatalf("WithinTx: %v, want it rolled back", err)
+	}
+	if attempts, _ := sender.counts(); attempts != 0 {
+		t.Fatalf("%d sends of email queued in a rolled-back transaction, want none", attempts)
+	}
+
+	if err := svc.QueueEmails(ctx, msgs); err != nil {
+		t.Fatalf("QueueEmails: %v", err)
+	}
+	h.Clock.Advance(time.Minute)
+	if err := svc.DeliverEmail(ctx); err != nil {
+		t.Fatalf("DeliverEmail: %v", err)
+	}
+	if attempts, sent := sender.counts(); attempts != 3 || sent != 2 {
+		t.Fatalf("%d attempts and %d sent, want the first to fail and be tried again: 3 and 2", attempts, sent)
+	}
+	if sender.sent[0] != msgs[1] || sender.sent[1] != msgs[0] {
+		t.Errorf("sent %+v, want Kim's, then Sam's once tried again", sender.sent)
+	}
+}

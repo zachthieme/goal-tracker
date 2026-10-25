@@ -1,13 +1,14 @@
 // Package notify sends the weekly emails: each Owner's and Delegate's reminder
 // of their Check-ins due and the open Action Items they own, and each parent
-// Owner's digest of problems among the Goals that contribute to theirs. It reads everything through the domain Service and
-// sends through the injected email sender, so tests drive it with the fake
-// clock and assert on the recording sender.
+// Owner's digest of problems among the Goals that contribute to theirs. It reads
+// everything through the domain Service and queues its emails in the
+// Service's email outbox, which sends them once queued and tries again while a
+// send fails, so tests drive it with the fake clock and assert on the
+// recording sender behind the outbox.
 package notify
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,27 +17,48 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
-// Notifier composes and sends the weekly emails. Construct it with New.
+// Notifier composes the weekly emails and queues them. Construct it with New.
 type Notifier struct {
-	svc    *domain.Service
-	sender email.Sender
+	svc *domain.Service
 	// baseURL is where the web app is reached, so emails can link into it.
 	baseURL string
 	// loc is the company's timezone, the calendar a week is counted in.
 	loc *time.Location
 }
 
-// New returns a Notifier reading from svc and sending through sender. baseURL
-// is the web app's address (e.g. http://localhost:8080) that links in emails
-// point at; loc is the company's timezone.
-func New(svc *domain.Service, sender email.Sender, baseURL string, loc *time.Location) *Notifier {
-	return &Notifier{svc: svc, sender: sender, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
+// New returns a Notifier reading from svc and queueing in its email outbox.
+// baseURL is the web app's address (e.g. http://localhost:8080) that links in
+// emails point at; loc is the company's timezone.
+func New(svc *domain.Service, baseURL string, loc *time.Location) *Notifier {
+	return &Notifier{svc: svc, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
 }
 
-// SendWeekly sends the week's emails: the reminders, then the parent
-// digests. A failure in one doesn't stop the other; both are returned.
-func (n *Notifier) SendWeekly(ctx context.Context) error {
-	return errors.Join(n.SendReminders(ctx), n.SendDigests(ctx))
+// WeeklyJob is the scheduled job the weekly emails' runs are recorded under
+// (Service.RecordScheduledRun).
+const WeeklyJob = "weekly emails"
+
+// SendWeekly sends the week's emails for slot, the time they were due: it
+// composes the reminders and the parent digests, then, in one transaction,
+// records slot as the weekly emails' run and queues them all in the email
+// outbox. A slot already recorded, by an earlier run or another process,
+// queues nothing, so a slot's emails are queued once, and a run that fails
+// partway queues none and leaves the slot to run again.
+func (n *Notifier) SendWeekly(ctx context.Context, slot time.Time) error {
+	reminders, err := n.reminders(ctx)
+	if err != nil {
+		return err
+	}
+	digests, err := n.digests(ctx)
+	if err != nil {
+		return err
+	}
+	return n.svc.WithinTx(ctx, func(tx *domain.Service) error {
+		recorded, err := tx.RecordScheduledRun(ctx, WeeklyJob, slot)
+		if err != nil || !recorded {
+			return err
+		}
+		return tx.QueueEmails(ctx, append(reminders, digests...))
+	})
 }
 
 // reminderItem is one entry on a person's reminder: a Goal whose Check-in is
@@ -50,47 +72,65 @@ type reminderItem struct {
 	actionItem *domain.ActionItemListing
 }
 
-// SendReminders emails each Owner and Delegate the Active Goals whose Check-in
+// SendReminders queues an email to each Owner and Delegate the Active Goals whose Check-in
 // is due — it would be overdue before next week's reminder — or that are
 // Check-in overdue already, each linking to its Check-in page, which shows the
 // last Check-in's answers as ghost text. It also lists every open Action Item
 // the person owns, overdue first, so the owner of one is emailed even with no
 // Check-in due. Someone with no Check-in due and no open Action Item gets no
-// email, and nobody who has left the company is emailed.
+// email, and nobody who has left the company is emailed. It queues them now,
+// outside the schedule; SendWeekly sends them for a week's slot.
 func (n *Notifier) SendReminders(ctx context.Context) error {
-	goals, err := n.svc.ListGoals(ctx)
+	msgs, err := n.reminders(ctx)
 	if err != nil {
 		return err
 	}
-	var out outbox[reminderItem]
+	return n.svc.QueueEmails(ctx, msgs)
+}
+
+// reminders composes the reminders SendReminders describes. It reads the
+// Freshness and the Delegates of every Active Goal at once, in the same few
+// queries however many Goals there are.
+func (n *Notifier) reminders(ctx context.Context) ([]email.Message, error) {
+	goals, err := n.svc.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var active []domain.Goal
+	var ids []int64
 	for _, g := range goals {
-		if g.Lifecycle != domain.LifecycleActive {
-			continue
+		if g.Lifecycle == domain.LifecycleActive {
+			active = append(active, g)
+			ids = append(ids, g.ID)
 		}
-		f, err := n.svc.Freshness(ctx, g.ID)
-		if err != nil {
-			return err
-		}
+	}
+	freshness, err := n.svc.FreshnessByGoal(ctx, active)
+	if err != nil {
+		return nil, err
+	}
+	delegates, err := n.svc.ListDelegatesForGoals(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	var out byRecipient[reminderItem]
+	for _, g := range active {
+		f := freshness[g.ID]
 		if !f.DueBeforeNextReminder() {
 			continue
 		}
 		out.add(g.Owner, reminderItem{goal: g, freshness: f})
-		delegates, err := n.svc.ListDelegates(ctx, g.ID)
-		if err != nil {
-			return err
-		}
-		for _, d := range delegates {
+		for _, d := range delegates[g.ID] {
 			out.add(d, reminderItem{goal: g, freshness: f, asDelegate: true})
 		}
 	}
 	items, err := n.svc.AllOpenActionItems(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for i := range items {
 		out.add(items[i].Item.Owner, reminderItem{actionItem: &items[i]})
 	}
-	return out.send(ctx, n.sender, reminderSubject, n.reminderBody)
+	return out.messages(reminderSubject, n.reminderBody), nil
 }
 
 // reminderSubject titles a reminder by what it holds: Check-ins, Action Items,
@@ -205,16 +245,27 @@ type childProblem struct {
 	reasons       []string
 }
 
-// SendDigests emails each parent Owner a digest of what needs their attention:
-// the link requests waiting on them, and problems among the Goals that
-// contribute to theirs. Someone with nothing to report gets no email.
+// SendDigests queues an email to each parent Owner, a digest of what needs
+// their attention: the link requests waiting on them, and problems among the
+// Goals that contribute to theirs. Someone with nothing to report gets no
+// email. It queues them now, outside the schedule; SendWeekly sends them for a
+// week's slot.
 func (n *Notifier) SendDigests(ctx context.Context) error {
-	goals, err := n.svc.ListGoals(ctx)
+	msgs, err := n.digests(ctx)
 	if err != nil {
 		return err
 	}
+	return n.svc.QueueEmails(ctx, msgs)
+}
+
+// digests composes the digests SendDigests describes.
+func (n *Notifier) digests(ctx context.Context) ([]email.Message, error) {
+	goals, err := n.svc.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
 	weekStart := n.svc.Now().In(n.loc).AddDate(0, 0, -daysPerWeek)
-	var out outbox[digestEntry]
+	var out byRecipient[digestEntry]
 	seen := map[int64]bool{}
 	for _, g := range goals {
 		if seen[g.Owner.ID] {
@@ -223,7 +274,7 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 		seen[g.Owner.ID] = true
 		links, err := n.svc.PendingLinkRequests(ctx, g.Owner.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for i := range links {
 			out.add(g.Owner, digestEntry{pendingLink: &links[i]})
@@ -232,19 +283,19 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	for _, parent := range goals {
 		children, err := n.svc.ChildrenOf(ctx, parent.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, child := range children {
 			reasons, err := n.childProblems(ctx, child, weekStart)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if len(reasons) > 0 {
 				out.add(parent.Owner, digestEntry{problem: &childProblem{parent: parent, child: child, reasons: reasons}})
 			}
 		}
 	}
-	return out.send(ctx, n.sender, func([]digestEntry) string { return "Your weekly digest" }, n.digestBody)
+	return out.messages(func([]digestEntry) string { return "Your weekly digest" }, n.digestBody), nil
 }
 
 // childProblems says what's wrong with child, a Goal that contributes to one of
@@ -366,15 +417,15 @@ func (n *Notifier) digestBody(entries []digestEntry) string {
 	return b.String()
 }
 
-// outbox collects the items bound for each recipient, in the order recipients
-// were first seen, so each person gets one email however many items they have.
-// It never collects for someone who has left the company.
-type outbox[T any] struct {
+// byRecipient collects the items bound for each recipient, in the order
+// recipients were first seen, so each person gets one email however many items
+// they have. It never collects for someone who has left the company.
+type byRecipient[T any] struct {
 	order []domain.Account
 	items map[string][]T
 }
 
-func (o *outbox[T]) add(to domain.Account, item T) {
+func (o *byRecipient[T]) add(to domain.Account, item T) {
 	if to.Departed {
 		return
 	}
@@ -387,22 +438,18 @@ func (o *outbox[T]) add(to domain.Account, item T) {
 	o.items[to.Email] = append(o.items[to.Email], item)
 }
 
-// send emails each recipient one message whose subject and body render their
-// items. A failed send doesn't stop the rest; every failure is returned
-// together.
-func (o *outbox[T]) send(ctx context.Context, sender email.Sender, subjectOf, body func([]T) string) error {
-	var errs []error
+// messages is one email to each recipient, whose subject and body render
+// their items.
+func (o *byRecipient[T]) messages(subjectOf, body func([]T) string) []email.Message {
+	out := make([]email.Message, 0, len(o.order))
 	for _, to := range o.order {
 		items := o.items[to.Email]
-		subject := subjectOf(items)
-		if err := sender.Send(ctx, email.Message{
+		out = append(out, email.Message{
 			To:        to.Email,
 			AccountID: to.ID,
-			Subject:   subject,
+			Subject:   subjectOf(items),
 			Body:      body(items),
-		}); err != nil {
-			errs = append(errs, fmt.Errorf("send %q to %s: %w", subject, to.Email, err))
-		}
+		})
 	}
-	return errors.Join(errs...)
+	return out
 }

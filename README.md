@@ -218,6 +218,14 @@ People with nothing to report get no email, and people marked departed get
 none. The prototype has no mail transport, so it logs each email's recipient
 and subject instead of sending it.
 
+The database keeps which week's slot the emails last went out for, so a
+restart neither skips a week nor sends one twice. A slot missed while the
+server was down is sent once, late, when it next starts, however many weeks it
+missed; on the very first start nothing is sent until the next slot. The
+weekly emails and Nudges are queued and retried like the other emails: each is
+queued in the database, sent once its change commits, and tried again while
+sending fails.
+
 ## Comment alerts
 
 Readers comment on a Goal in a published Report from its publication page. The

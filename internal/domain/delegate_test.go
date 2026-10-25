@@ -208,3 +208,43 @@ func TestOnlyOwnerRemovesDelegate(t *testing.T) {
 		t.Fatalf("delegates = %+v, want both pm and tpm still authorized", delegates)
 	}
 }
+
+// ListDelegatesForGoals reads the Delegates of many Goals at once, keyed by
+// Goal ID and ordered by email as ListDelegates orders one Goal's, and has no
+// entry for a Goal with none.
+func TestListDelegatesForGoalsReadsEachGoalsDelegates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	zed := h.SignIn("zed@example.com")
+	amy := h.SignIn("amy@example.com")
+	search := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	revenue := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	alone := h.ActiveGoal(sam, "Work alone", "Nobody helps.")
+	h.AddDelegate(sam, zed, search.ID)
+	h.AddDelegate(sam, amy, search.ID)
+	h.AddDelegate(sam, zed, revenue.ID)
+
+	got, err := h.Service.ListDelegatesForGoals(ctx, []int64{search.ID, revenue.ID, alone.ID})
+	if err != nil {
+		t.Fatalf("ListDelegatesForGoals: %v", err)
+	}
+	emails := func(goalID int64) []string {
+		var out []string
+		for _, a := range got[goalID] {
+			out = append(out, a.Email)
+		}
+		return out
+	}
+	if e := emails(search.ID); len(e) != 2 || e[0] != "amy@example.com" || e[1] != "zed@example.com" {
+		t.Errorf("Ship search's Delegates %v, want amy then zed", e)
+	}
+	if e := emails(revenue.ID); len(e) != 1 || e[0] != "zed@example.com" {
+		t.Errorf("Grow revenue's Delegates %v, want zed", e)
+	}
+	if d, ok := got[alone.ID]; ok {
+		t.Errorf("Work alone's Delegates %+v, want no entry", d)
+	}
+}

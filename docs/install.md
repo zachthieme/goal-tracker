@@ -28,7 +28,13 @@ Read these first; some may decide whether the install goes ahead now.
   stops taking connections and gives the requests in flight up to 30 seconds
   to finish before it exits, so give your service manager a stop timeout
   longer than that. A weekly email run in progress is cut short; each change
-  is one database transaction, so nothing is left half written.
+  is one database transaction, so nothing is left half written. A run cut
+  short has queued none of its emails, and runs when the server next starts.
+- **A week missed while the server is down is sent late.** The database keeps
+  which week's slot the weekly emails last went out for. Started after a slot
+  that passed while it was down, the server sends that week's emails once,
+  within a minute of starting, however many weeks it missed. On the very first
+  start it sends none until the next slot.
 
 ## Requirements
 
@@ -155,7 +161,8 @@ GOAL_TRACKER_TIMEZONE=America/New_York
 # People and their Managers.
 GOAL_TRACKER_DIRECTORY_FILE=/etc/goal-tracker/people.csv
 
-# When the weekly emails go out (logged only in this release).
+# When the weekly emails go out (logged only in this release). A slot missed
+# while the server was down is sent once when it next starts.
 GOAL_TRACKER_REMINDER_DAY=Monday
 GOAL_TRACKER_REMINDER_TIME=09:00
 
@@ -493,8 +500,8 @@ idling.
 
 ### What is kept, and for how long
 
-Every email is queued in the database before it is sent, and tried again
-while sending fails, up to five times. An email that was sent, or that was
+Every email, the weekly emails and Nudges included, is queued in the database
+before it is sent, and tried again while sending fails, up to five times. An email that was sent, or that was
 given up on after its fifth failed try, is kept 90 days, then deleted. An
 email still being tried is never deleted. The one-time token behind each Undo
 is deleted once its 15 minutes have passed. The app looks for what to delete
