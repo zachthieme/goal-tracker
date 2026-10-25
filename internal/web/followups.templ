@@ -280,12 +280,12 @@ templ followUpChip(today time.Time, g domain.Goal, sig followUpSignal) {
 		case "schedule-conflicts":
 			<span data-testid="follow-up-signal" data-kind="schedule-conflicts" class="rk-tag">
 				@followUpTip(sig.Kind, "Schedule conflict")
-				{ fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)) }@goalRef(*sig.Related)
+				{ fmt.Sprintf("· due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)) }@goalRef(*sig.Related)
 			</span>
 		case "halted-parents":
 			<span data-testid="follow-up-signal" data-kind="halted-parents" class="rk-tag">
 				@followUpTip(sig.Kind, "Parent "+sig.Related.Lifecycle)
-				{ " · " }@goalRef(*sig.Related)
+				{ "· " }@goalRef(*sig.Related)
 			</span>
 	}
 }

@@ -1278,9 +1278,9 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var53 string
-			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
+			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("· due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 283, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 283, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1308,9 +1308,9 @@ func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var54 string
-			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
+			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs("· ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 288, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 288, Col: 11}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {

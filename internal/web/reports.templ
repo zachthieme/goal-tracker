@@ -1079,7 +1079,7 @@ templ curationHighlight(c curationChoice) {
 		</label>
 		<p class="small muted">
 			@person(nh.Highlight.Owner)
-			{ " · " }
+			{ "· " }
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
 			<span class="rp-kind">{ " · " + nh.Highlight.Kind }</span>
 		</p>
@@ -1128,8 +1128,7 @@ templ reportNarrative(narrative []domain.NarrativeSection) {
 templ highlightCredit(nh domain.NarrativeHighlight) {
 	<span data-testid="highlight-credit" class="rp-credit">
 		{ " — " }
-		@person(nh.Highlight.Owner)
-		{ ", " }
+		@person(nh.Highlight.Owner),
 		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
 	</span>
 }

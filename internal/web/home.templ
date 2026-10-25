@@ -301,8 +301,7 @@ templ linkRequestRow(l domain.Link) {
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
 			<span class="muted">
 				{ "(" }
-				@person(l.Child.Owner)
-				{ ") wants to contribute to" }
+				@person(l.Child.Owner)) wants to contribute to
 			</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 		</div>
@@ -323,7 +322,7 @@ templ handoffRequestRow(ho domain.Handoff) {
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
 			<span class="muted">
 				@person(ho.From)
-				{ " wants to hand this Goal to you" }
+				{ "wants to hand this Goal to you" }
 			</span>
 		</div>
 		<div class="hm-actions">

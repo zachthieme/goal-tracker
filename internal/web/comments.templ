@@ -243,8 +243,7 @@ templ actionItemSummary(item domain.ActionItem) {
 		{ " " }
 		<span data-testid="action-item-was">
 			{ "(was " }
-			@person(*item.ReassignedFrom)
-			{ "'s)" }
+			@person(*item.ReassignedFrom)'s)
 		</span>
 	}
 	{ " · due " }{ showDateYear(item.DueDate) }
