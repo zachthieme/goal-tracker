@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
 // goalPageFixture is the query-count fixture with more on its Red Goal with
-// a child, "Goal 04": a Delegate, a pending Draft Highlight, a comment and an
-// Action Item reassigned once, so its page shows everything a Goal page can
-// list.
+// a child, "Goal 04": a Delegate, a pending Draft Highlight, a comment, an
+// Action Item reassigned once, an off-target Metric, an overdue and a slipped
+// Milestone, an open Ask for help and a pending Handoff; and on its child a
+// Delegate, an open Parent suggestion and a Nudge, so their pages show
+// everything a Goal page can list.
 type goalPageFixture struct {
 	// red is "Goal 04", Owned by sam@, with a Yellow child; child is that
 	// child, which contributes to it.
@@ -23,7 +26,14 @@ type goalPageFixture struct {
 // seedGoalPageFixture seeds the query-count fixture of n Goals, then makes
 // morgan@ a Delegate on Goal 04 and its child, logs a Draft Highlight on Goal
 // 04, and has the Admin comment on it in a fresh publication of the Report and
-// raise an Action Item there, which the Admin then hands to sam@.
+// raise an Action Item there, which the Admin then hands to sam@. Then, all at
+// the same moment, it puts mia@, Departed, between sam@ and morgan@, and on
+// Goal 04 adds a Metric past its target date, an overdue Milestone and one
+// that slips, and two Check-ins repeating the Red one but for an explanation,
+// each with a reading short of the target and the second asking for help, so
+// the ask walks past mia@ to morgan@; then sam@ offers Goal 04 to priya@. On
+// the child rita@ suggests Goal 01 as a parent, and the Admin nudges it while
+// a one-day cadence makes it Check-in overdue.
 func seedGoalPageFixture(t *testing.T, h *testsupport.Harness, n int) goalPageFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -65,7 +75,92 @@ func seedGoalPageFixture(t *testing.T, h *testsupport.Harness, n int) goalPageFi
 	if _, err := h.Service.ReassignActionItem(ctx, admin.ID, item.ID, sam.ID); err != nil {
 		t.Fatalf("ReassignActionItem: %v", err)
 	}
+	seedGoalPageExtras(t, h, &out, goals)
 	return out
+}
+
+// seedGoalPageExtras is the second half of seedGoalPageFixture: what Goal 04
+// and its child have beyond the query-count fixture's Goals, so the Goal
+// page's goldens pin how each renders (#466).
+func seedGoalPageExtras(t *testing.T, h *testsupport.Harness, fx *goalPageFixture, goals []domain.Goal) {
+	t.Helper()
+	ctx := context.Background()
+	admin := h.SignIn(queryCountAdmin)
+	sam := h.SignIn("sam@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	rita := h.SignIn("rita@example.com")
+	priya := h.SignIn("priya@example.com")
+	day := func(days int) time.Time { return h.Clock.Now().AddDate(0, 0, days) }
+
+	// sam@'s Manager left, so the Ask for help goes past them to morgan@.
+	mia := h.SignInNamed("mia@example.com", "Mia Park")
+	h.SetManager(sam, mia)
+	h.SetManager(mia, morgan)
+	h.MarkDeparted(admin, mia)
+
+	metric, err := h.Service.AddMetric(ctx, sam.ID, domain.AddMetricInput{
+		GoalID: fx.red.ID, Name: "Vendor quotes", Unit: "quotes", Direction: domain.MetricUp,
+		Baseline: 0, Target: 3, TargetDate: day(-1),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+		GoalID: fx.red.ID, Name: "Security review", TargetDate: day(-2),
+	}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	contract, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+		GoalID: fx.red.ID, Name: "Vendor contract", TargetDate: day(14),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	// The Check-ins repeat the Red one's Path to Green and its date, so
+	// neither moves it.
+	red, ok, err := h.Service.LatestCheckin(ctx, fx.red.ID)
+	if err != nil || !ok {
+		t.Fatalf("LatestCheckin = %v, %v; want the Red Check-in", ok, err)
+	}
+	for _, c := range []struct {
+		quotes     float64
+		milestones []domain.MilestoneChangeInput
+		ask        bool
+	}{
+		{1, []domain.MilestoneChangeInput{{MilestoneID: contract.ID, TargetDate: day(28), DateReason: "The vendor slipped."}}, false},
+		{2, nil, true},
+	} {
+		if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID:         fx.red.ID,
+			AuthorID:       sam.ID,
+			Health:         domain.HealthRed,
+			Status:         red.Status,
+			PathToGreen:    red.PathToGreen,
+			PathTargetDate: red.PathTargetDate,
+			AsksForHelp:    c.ask,
+			Explanation:    "The vendor blocks it whatever the child does.",
+			Readings:       []domain.MetricReadingInput{{MetricID: metric.ID, Value: c.quotes}},
+			Milestones:     c.milestones,
+		}); err != nil {
+			t.Fatalf("SubmitCheckin with %v quotes: %v", c.quotes, err)
+		}
+	}
+	h.StartHandoff(sam, fx.red.ID, priya)
+
+	for _, g := range goals {
+		if g.Title == "Goal 01" {
+			h.SuggestParent(rita, fx.child, g, "It unblocks Goal 01 too.")
+		}
+	}
+	// A one-day cadence makes the child Check-in overdue for as long as the
+	// Nudge takes; its weekly one is back before the page is read.
+	if _, err := h.Service.SetCadence(ctx, sam.ID, fx.child.ID, 1); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	h.Nudge(admin, fx.child.ID)
+	if _, err := h.Service.SetCadence(ctx, sam.ID, fx.child.ID, 7); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
 }
 
 // The Goal page renders the same, to its Owner, its Delegate and a reader with
@@ -87,6 +182,11 @@ func TestGoalPageRendersAsGolden(t *testing.T) {
 		}{{"red", fx.red}, {"child", fx.child}} {
 			assertGolden(t, fmt.Sprintf("goal-page-%s-%s.golden.html", g.name, v.name), getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, g.goal.ID)))
 		}
+		// History's first page shows only the latest entries, so the Red
+		// Goal's whole History is pinned too, as its Owner sees it.
+		if v.name == "owner" {
+			assertGolden(t, "goal-page-red-owner-history.golden.html", getBody(t, client, fmt.Sprintf("%s/goals/%d?shown=25", ts.URL, fx.red.ID)))
+		}
 	}
 }
 
@@ -99,11 +199,13 @@ func TestGoalPageReadsEachThingOnce(t *testing.T) {
 	// goalPageLoaderMax is what Service.GoalPage reads for Goal 04: the Goal,
 	// the viewer and the other people it names, its links, Check-ins and
 	// what they recorded, Milestones, Metrics and readings, values, History
-	// and discussion, and every other Goal for the "Contribute to" choices.
-	const goalPageLoaderMax = 35
+	// and discussion, every other Goal for the "Contribute to" choices, and
+	// the people above its Owner its open Ask for help walks past (#466 gave
+	// it one, adding that read).
+	const goalPageLoaderMax = 36
 	// goalPageMax is the whole page: the loader's reads, plus the session's
 	// and the sidebar's, which every signed-in page makes.
-	const goalPageMax = 64
+	const goalPageMax = 65
 	type counts struct{ loader, page int }
 	countFor := func(n int) counts {
 		h := testsupport.New(t, queryCountAdmin)
