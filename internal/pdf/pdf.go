@@ -101,8 +101,8 @@ func (c Chromium) Render(ctx context.Context, html []byte, baseURL string) ([]by
 		// Chromium's sandbox can't start without a seccomp profile that allows
 		// it, and setting one up is the operator's work.
 		"--no-sandbox",
-		// The print page needs no script, and without JavaScript no markup
-		// that ever reached it unescaped can run.
+		// Headless Chromium ignores this, and runs the page's scripts all the
+		// same: what stops them is the policy servePage sends with the page.
 		"--disable-javascript",
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
@@ -193,7 +193,9 @@ func runningWith(env string) bool {
 }
 
 // servePage serves html at a URL on the loopback interface, and every other
-// path from the app, until stop is called.
+// path from the app, until stop is called. The page goes with a
+// Content-Security-Policy that lets no script on it run: the print page needs
+// none, and so no markup that ever reached it unescaped can run.
 func servePage(ctx context.Context, html []byte, app *url.URL) (pageURL string, stop func(), err error) {
 	secret := make([]byte, 16)
 	_, _ = rand.Read(secret)
@@ -212,6 +214,7 @@ func servePage(ctx context.Context, html []byte, app *url.URL) (pageURL string, 
 				return
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Security-Policy", "script-src 'none'")
 			_, _ = w.Write(html)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,

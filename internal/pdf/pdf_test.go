@@ -2,12 +2,16 @@ package pdf_test
 
 import (
 	"bytes"
+	"compress/zlib"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +98,76 @@ func TestChromiumRendersHTMLToAPDFWithTheAppsFonts(t *testing.T) {
 	if !bytes.Contains(b, []byte("SourceSerif4")) {
 		t.Error("the PDF doesn't embed the app's Source Serif 4: the page's font didn't load from the base URL")
 	}
+}
+
+// A render runs no script on the page, whatever reached it: the PDF has the
+// page's text as served, not as a script would rewrite it.
+func TestARenderRunsNoScriptOnThePage(t *testing.T) {
+	t.Parallel()
+
+	chrome := chromeForTest(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	page := `<!DOCTYPE html><html><body><p id="x">STATICTEXT</p>` +
+		`<script>document.getElementById("x").textContent = "SCRIPTRAN"</script></body></html>`
+
+	b, err := chrome.Render(ctx, []byte(page), appForTest(t).URL)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if got := pdfText(t, b); got != "STATICTEXT" {
+		t.Errorf("the PDF's text is %q, want the page's STATICTEXT: a script on the page ran", got)
+	}
+}
+
+// pdfText is the text a PDF drawn in one font shows, as Chromium writes it:
+// each text object's glyphs, read through the font's ToUnicode map, one text
+// object to a line.
+func pdfText(t *testing.T, b []byte) string {
+	t.Helper()
+	var streams [][]byte
+	for _, m := range regexp.MustCompile(`(?s)stream\r?\n(.*?)\r?\nendstream`).FindAllSubmatch(b, -1) {
+		r, err := zlib.NewReader(bytes.NewReader(m[1]))
+		if err != nil {
+			continue
+		}
+		s, err := io.ReadAll(r)
+		if err == nil {
+			streams = append(streams, s)
+		}
+	}
+	hex4 := func(h []byte) uint16 { n, _ := strconv.ParseUint(string(h), 16, 16); return uint16(n) }
+	runes := map[uint16]rune{}
+	bfchar := regexp.MustCompile(`<([0-9A-Fa-f]{4})>\s*<([0-9A-Fa-f]{4})>\s*\n`)
+	bfrange := regexp.MustCompile(`<([0-9A-Fa-f]{4})>\s*<([0-9A-Fa-f]{4})>\s*<([0-9A-Fa-f]{4})>`)
+	for _, s := range streams {
+		for _, block := range regexp.MustCompile(`(?s)beginbfchar(.*?)endbfchar`).FindAllSubmatch(s, -1) {
+			for _, m := range bfchar.FindAllSubmatch(block[1], -1) {
+				runes[hex4(m[1])] = rune(hex4(m[2]))
+			}
+		}
+		for _, block := range regexp.MustCompile(`(?s)beginbfrange(.*?)endbfrange`).FindAllSubmatch(s, -1) {
+			for _, m := range bfrange.FindAllSubmatch(block[1], -1) {
+				for g, u := hex4(m[1]), hex4(m[3]); g <= hex4(m[2]); g, u = g+1, u+1 {
+					runes[g] = rune(u)
+				}
+			}
+		}
+	}
+	var lines []string
+	glyphs := regexp.MustCompile(`<([0-9A-Fa-f]+)>`)
+	for _, s := range streams {
+		for _, text := range regexp.MustCompile(`(?s)\bBT\b(.*?)\bET\b`).FindAllSubmatch(s, -1) {
+			var line strings.Builder
+			for _, m := range glyphs.FindAllSubmatch(text[1], -1) {
+				for h := m[1]; len(h) >= 4; h = h[4:] {
+					line.WriteRune(runes[hex4(h[:4])])
+				}
+			}
+			lines = append(lines, line.String())
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // A render that runs out of time fails, rather than giving a PDF.
@@ -233,9 +307,9 @@ func TestARenderOutlastsChromiumsHelpers(t *testing.T) {
 	}
 }
 
-// Render starts Chromium with JavaScript off, as the print page needs none,
-// and without its sandbox, which can't start in the app's container.
-func TestARenderRunsChromiumWithoutJavaScriptOrSandbox(t *testing.T) {
+// Render starts Chromium without its sandbox, which can't start in the app's
+// container.
+func TestARenderRunsChromiumWithoutItsSandbox(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -251,11 +325,8 @@ func TestARenderRunsChromiumWithoutJavaScriptOrSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fake Chromium never ran: %v", err)
 	}
-	got := strings.Split(strings.TrimSpace(string(b)), "\n")
-	for _, want := range []string{"--disable-javascript", "--no-sandbox"} {
-		if !slices.Contains(got, want) {
-			t.Errorf("Chromium started without %s; args: %q", want, got)
-		}
+	if got := strings.Split(strings.TrimSpace(string(b)), "\n"); !slices.Contains(got, "--no-sandbox") {
+		t.Errorf("Chromium started without --no-sandbox; args: %q", got)
 	}
 }
 
