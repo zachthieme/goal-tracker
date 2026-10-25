@@ -2896,7 +2896,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if owner && g.Lifecycle == domain.LifecycleProposed {
+			if v.Permissions.DefineGoal {
 				templ_7745c5c3_Err = defineGoal(v).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -2940,7 +2940,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = milestoneList(v, v.Permissions.EditMilestones).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -385,7 +385,7 @@ func (v goalView) actions() []goalAction {
 		topLevel = "Unmark Top-level"
 	}
 	var suggest string
-	if !v.Owns && (v.Goal.Lifecycle == domain.LifecycleActive || v.Goal.Lifecycle == domain.LifecycleProposed) {
+	if v.Permissions.SuggestParent {
 		suggest = fmt.Sprintf("/goals/%d/suggest-parent", v.Goal.ID)
 	}
 	var out []goalAction
