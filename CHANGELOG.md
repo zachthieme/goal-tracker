@@ -21,10 +21,13 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **New features:**
 - [ops] `goal-tracker healthcheck` GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port, waiting up to 3 seconds, and exits 0 on a 200, or non-zero with one line on stderr saying why. It reads no other setting and opens no database, and the image's new `HEALTHCHECK` runs it every 30 seconds (#476).
+- [ops] `GOAL_TRACKER_METRICS_ADDR`, such as `127.0.0.1:9090`, serves `GET /metrics` in Prometheus's text format on a second listener: `goal_tracker_http_requests_total{method, route, status}` counts the requests the app answers, and `goal_tracker_http_request_duration_seconds{route}` is a histogram of how long they took, from 5 ms to 10 s. `route` is the route's pattern, as in the access line, never the path. Unset, nothing is recorded or served, and the app's own address never serves `/metrics`. It has no authentication, so listen on a private address. Startup logs `goal-tracker serving metrics` with the address, and stops with an error naming the variable when it can't listen there; the listener shuts down gracefully with the app (#502).
+- [ops] `GOAL_TRACKER_LOG_LEVEL` (`debug`, `info`, `warn` or `error`; default `info`) sets the least severe record logged, and `GOAL_TRACKER_LOG_FORMAT` (`text` or `json`; default `text`) logs slog's key=value lines or one JSON object a line, for a log collector. Both are read before anything logs, `goal-tracker healthcheck` included, whatever their case; any other value stops startup with an error naming the variable and the values it takes (#502).
 
 **Improvements:**
 - [user] A published Report, its print page and the draft as read by someone who may not manage it now head the narrative with a "Narrative" section heading and rule, as the other sections are headed (#479).
 - [user] A Report's Health summary, on the draft and the publication, is now one compact row headed "Health" that reads "2 Red · 1 Yellow · 3 Green · 6 Check-in overdue", each count with its word beside its chip, instead of four wide tiles with no words; it wraps between counts on a phone (#512).
+- [ops] The database now refuses a duplicate Metric reading in a Check-in, a Field chosen twice by a Report Definition, two values of a Dimension differing only by case, and two Dimensions or two Fields sharing a name whatever its case, as a backstop to the app's own checks. Upgrading a database that already holds such a duplicate stops at migration 0060 with an error naming its table and changes nothing; resolve the duplicate by hand and start the app again (#488).
 
 **Bug fixes:**
 - [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
@@ -70,9 +73,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] A new test pins the sidebar's counts to the pages they summarise: over the seeded company, with an Ask for help past a Departed Manager, an Action Item, a link request, a Handoff, a Parent suggestion and a Delegate added, at its end and 3 and 10 days on, every person's Needs you count equals what their Home lists and their Follow-ups count the Goals a bare Follow-ups page lists. Dropping any term from Home's count, or changing the Follow-ups default scope, fails it (#484).
 - [internal] `TestGoalPageReadsEachThingOnce` checks the Goal page for Goal 04's Delegate and a reader as well as its Owner, each with its own named query limits (#484).
 - [internal] New tests cover the healthcheck timing out against an app that accepts the connection and never answers, and `parseXLSX` closing a workbook excelize hands back with an error. `checkHealth` takes its timeout, and `parseXLSX` opens through `openXLSXWorkbook`, so the tests can stand in; the shipped healthcheck still waits 3s (#484).
+- [internal] The Goal list, Goal page and Goal table HTTP tests in `goals_test.go` read their pages through the parser helpers instead of matching markup, and their style-rule checks move to `styles_test.go`, each pinning the class on the element and the property its rule sets. The helpers other areas call move unchanged to `helpers_test.go`, and the Goal list's group mark and filter bar gain a `data-testid` (#521).
 
 **Code quality:**
 - [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
+- [internal] `WithinTx` rolls its transaction back when its closure panics, so a panic on a background context no longer holds the database's write lock, and `EditWhyItMatters` writes the new Why it matters and its revision in a transaction of its own (#504).
 
 **Documentation:**
 - [internal] The e2e gate's comment in `vetinari/config.mts` and `e2e/README.md` say that its `when` pattern only scopes it on a branch: after each wave, vetinari's merged-base gate runs every gate, `make e2e` included, whatever the wave changed (#481).
