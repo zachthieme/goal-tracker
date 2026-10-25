@@ -88,6 +88,16 @@ func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySy
 	return out, nil
 }
 
+// SyncDirectoryAsAdmin is SyncDirectory on an Admin's behalf, like Sync now.
+// It returns ErrNotAuthorized unless actorID is an Admin, without reading dir
+// or changing anything.
+func (s *Service) SyncDirectoryAsAdmin(ctx context.Context, actorID int64, dir Directory) (DirectorySyncResult, error) {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return DirectorySyncResult{}, err
+	}
+	return s.SyncDirectory(ctx, dir)
+}
+
 // recordDirectoryPerson gives p an Account, their Name, their Manager, and
 // their Timezone. A timezone it refuses is stored as none, and returned.
 func (s *Service) recordDirectoryPerson(ctx context.Context, p DirectoryPerson) (*InvalidTimezone, error) {

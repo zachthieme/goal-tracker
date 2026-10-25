@@ -74,25 +74,49 @@ func departedPasswordError(acc Account) error {
 // passwordLinkLife is how long a set-password link works after it's issued.
 const passwordLinkLife = 72 * time.Hour
 
-// IssuePasswordLink issues a set-password link for emailAddr, creating the
-// Account through EnsureAccount when there is none, and replacing any link the
-// Account had. It returns the link's token, which is stored only as its hash,
-// and when the link expires. It returns ErrNotAnEmail, creating nothing, for
-// anything but a bare email address.
-func (s *Service) IssuePasswordLink(ctx context.Context, emailAddr string) (string, time.Time, error) {
+// IssuedPasswordLink is a set-password link just issued: its token, stored
+// only as its hash and so shown this once, when it expires, and the Account it
+// sets the password of.
+type IssuedPasswordLink struct {
+	Token   string
+	Expires time.Time
+	Account Account
+}
+
+// IssuePasswordLink issues a set-password link for emailAddr on an Admin's
+// behalf, creating the Account through EnsureAccount when there is none, and
+// replacing any link the Account had. It returns ErrNotAuthorized, creating
+// nothing, unless actorID is an Admin, and ErrNotAnEmail, creating nothing,
+// for anything but a bare email address.
+func (s *Service) IssuePasswordLink(ctx context.Context, actorID int64, emailAddr string) (IssuedPasswordLink, error) {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return IssuedPasswordLink{}, err
+	}
+	return s.issuePasswordLink(ctx, emailAddr)
+}
+
+// IssueOperatorPasswordLink is IssuePasswordLink for whoever runs the host,
+// through the password-link command: how the first Admin gets a password, so
+// it needs no Admin, nor any Account, to exist. The web never calls it.
+func (s *Service) IssueOperatorPasswordLink(ctx context.Context, emailAddr string) (IssuedPasswordLink, error) {
+	return s.issuePasswordLink(ctx, emailAddr)
+}
+
+// issuePasswordLink is IssuePasswordLink without the Admin check.
+func (s *Service) issuePasswordLink(ctx context.Context, emailAddr string) (IssuedPasswordLink, error) {
 	if !isBareEmail(emailAddr) {
-		return "", time.Time{}, fmt.Errorf("%w: %q", ErrNotAnEmail, emailAddr)
+		return IssuedPasswordLink{}, fmt.Errorf("%w: %q", ErrNotAnEmail, emailAddr)
 	}
 	acc, err := s.EnsureAccount(ctx, emailAddr)
 	if err != nil {
-		return "", time.Time{}, err
+		return IssuedPasswordLink{}, err
 	}
 	if acc.Departed {
-		return "", time.Time{}, departedPasswordError(acc)
+		return IssuedPasswordLink{}, departedPasswordError(acc)
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", time.Time{}, fmt.Errorf("make link token: %w", err)
+		return IssuedPasswordLink{}, fmt.Errorf("make link token: %w", err)
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	expires := s.clock.Now().UTC().Add(passwordLinkLife)
@@ -101,9 +125,9 @@ func (s *Service) IssuePasswordLink(ctx context.Context, emailAddr string) (stri
 		TokenHash: passwordLinkHash(token),
 		ExpiresAt: expires.Format(timeFormat),
 	}); err != nil {
-		return "", time.Time{}, fmt.Errorf("store password link: %w", err)
+		return IssuedPasswordLink{}, fmt.Errorf("store password link: %w", err)
 	}
-	return token, expires, nil
+	return IssuedPasswordLink{Token: token, Expires: expires, Account: acc}, nil
 }
 
 // PasswordLinkAccount is the Account a set-password link sets the password of.

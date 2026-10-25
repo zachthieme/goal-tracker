@@ -740,11 +740,11 @@ func newPasswordServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 // token, failing the test on error.
 func passwordLinkToken(t *testing.T, h *testsupport.Harness, emailAddr string) string {
 	t.Helper()
-	token, _, err := h.Service.IssuePasswordLink(t.Context(), emailAddr)
+	link, err := h.Service.IssueOperatorPasswordLink(t.Context(), emailAddr)
 	if err != nil {
-		t.Fatalf("IssuePasswordLink(%q): %v", emailAddr, err)
+		t.Fatalf("IssueOperatorPasswordLink(%q): %v", emailAddr, err)
 	}
-	return token
+	return link.Token
 }
 
 // givePassword sets emailAddr's password through a fresh set-password link,

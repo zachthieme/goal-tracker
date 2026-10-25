@@ -86,8 +86,8 @@ type passwordLinksView struct {
 
 // handleIssuePasswordLink issues a set-password link for the email the Admin
 // typed, creating the Account if there is none, and shows it on the Admin
-// page. A Departed person is refused, as is anything that isn't an email
-// address. Only an Admin may.
+// page, logging who issued it for whom. A Departed person is refused, as is
+// anything that isn't an email address. Only an Admin may.
 func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may issue set-password links", http.StatusForbidden)
@@ -98,7 +98,11 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{Refusal: "Enter the person's email."}, adminsSectionView{})
 		return
 	}
-	token, expires, err := s.svc.IssuePasswordLink(r.Context(), emailAddr)
+	link, err := s.svc.IssuePasswordLink(r.Context(), current.ID, emailAddr)
+	if errors.Is(err, domain.ErrNotAuthorized) {
+		http.Error(w, "only an Admin may issue set-password links", http.StatusForbidden)
+		return
+	}
 	if errors.Is(err, domain.ErrNotAnEmail) {
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
 			Email:   emailAddr,
@@ -117,16 +121,16 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		s.serverError(w, r, "could not issue the set-password link", err)
 		return
 	}
-	acc, err := s.svc.AccountByEmail(r.Context(), emailAddr)
-	if err != nil {
-		s.serverError(w, r, "could not issue the set-password link", err)
-		return
-	}
+	// The link signs in as its person, so who issued one is recorded; the
+	// link and its token never are.
+	requestLogger(r.Context()).Info("set-password link issued",
+		"issuer_id", current.ID, "issuer_email", current.Email,
+		"account_id", link.Account.ID, "email", link.Account.Email, "expires", link.Expires)
 	w.Header().Set("Cache-Control", "no-store")
 	s.renderAdmin(w, r, http.StatusOK, current, &passwordLinksView{
-		Email:   acc.Email,
-		Link:    s.svc.PasswordLinkURL(token),
-		Expires: s.displayDates().timestamp(expires),
+		Email:   link.Account.Email,
+		Link:    s.svc.PasswordLinkURL(link.Token),
+		Expires: s.displayDates().timestamp(link.Expires),
 	}, adminsSectionView{})
 }
 
@@ -233,16 +237,23 @@ var syncingScript = templ.JSUnsafeFuncCall("this.setAttribute('aria-busy', 'true
 	"const button = this.querySelector('button'); button.disabled = true; button.textContent = 'Syncing…'; " +
 	"return true")
 
-// handleDirectorySyncNow runs the directory sync at once, then brings the Admin
-// back to the Admin page showing how it went. Only an Admin may.
+// handleDirectorySyncNow runs the directory sync at once, logging which Admin
+// asked, then brings the Admin back to the Admin page showing how it went.
+// Only an Admin may.
 func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
 		return
 	}
+	logger := requestLogger(r.Context())
+	logger.Info("an Admin asked for a directory sync", "admin_id", current.ID, "admin_email", current.Email)
 	// The sync is all-or-nothing, so it runs to the end even if the Admin
 	// leaves the page. It logs with the request's ID.
-	s.directorySync.RunWith(context.WithoutCancel(r.Context()), requestLogger(r.Context()))
+	out := s.directorySync.RunForAdmin(context.WithoutCancel(r.Context()), logger, current.ID)
+	if errors.Is(out.Err, domain.ErrNotAuthorized) {
+		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
+		return
+	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
