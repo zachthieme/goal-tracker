@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -522,22 +524,45 @@ func TestGoalSearchMatchesTitlesLessThosePicked(t *testing.T) {
 }
 
 // The Contributes to search answers at most 20 matches: a query more Goals'
-// titles contain finds the first 20 (#499).
+// titles contain finds the first 20 in list order, newest first, each with
+// its Health badge when it has one (#499).
 func TestGoalSearchAnswersAtMostTwentyMatches(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	for i := range 25 {
+	for i := range 24 {
 		h.CreateGoal(sam, fmt.Sprintf("Site goal %02d", i+1), "Speed sells.")
 	}
+	newest := h.ActiveGoal(sam, "Site goal 25", "Speed sells.")
+	h.Checkin(sam, newest.ID, domain.HealthYellow, "Slower than planned.", "Cache the pages.", h.Clock.Now().AddDate(0, 1, 0))
 	h.CreateGoal(sam, "Grow revenue", "The business needs it.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := parsePage(t, getBody(t, client, ts.URL+"/goals/search?"+url.Values{"q": {"site"}}.Encode()))
-	if results := findAllByTestID(page, "parent-result"); len(results) != 20 {
-		t.Errorf("searching %q, which 25 Goals match, found %d results, want 20: %q", "site", len(results), textsOf(results))
+	results := findAllByTestID(page, "parent-result")
+	var want []string
+	for i := 25; i > 5; i-- {
+		want = append(want, fmt.Sprintf("Site goal %02d", i))
+	}
+	if len(results) != len(want) {
+		t.Fatalf("searching %q, which 25 Goals match, found %d results, want 20: %q", "site", len(results), textsOf(results))
+	}
+	for i, r := range results {
+		if got := textOf(r); !strings.Contains(got, want[i]) {
+			t.Errorf("result %d reads %q, want %s: the newest 20 matches in list order", i+1, got, want[i])
+		}
+	}
+	// The <template> holds the chip a pick adds; the pick is what shows.
+	pick := func(r *nethtml.Node) *nethtml.Node {
+		return findAll(r, func(n *nethtml.Node) bool { return n.Data == "button" })[0]
+	}
+	assertHealthChip(t, healthChipIn(t, pick(results[0])), domain.HealthYellow)
+	for _, r := range results[1:] {
+		if chips := healthChipsIn(pick(r)); len(chips) != 0 {
+			t.Errorf("the result %q, a Goal with no Check-in, shows a Health badge: %s", textOf(r), renderNode(r))
+		}
 	}
 }
 

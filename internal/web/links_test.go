@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -174,11 +176,15 @@ func assertNeutralRule(t *testing.T, rule string) {
 }
 
 // assertAcceptReject checks a pending request's row decides it at base with
-// Accept as the primary button and a Reject that submits at once.
+// Accept as the primary button and a button named Reject that submits at once.
 func assertAcceptReject(t *testing.T, row, base string) {
 	t.Helper()
 	if accept := between(t, row, `action="`+base+`/accept"`, "</form>"); !strings.Contains(accept, `class="btn primary`) {
 		t.Errorf("Accept isn't the primary button:\n%s", accept)
+	}
+	rejects := findAll(parsePage(t, row), func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == base+"/reject" })
+	if len(rejects) != 1 || buttonNamed(rejects[0], "Reject") == nil {
+		t.Errorf("the row offers no button named Reject posting to %s/reject:\n%s", base, row)
 	}
 	assertSubmitsAtOnce(t, "Reject", row, base+"/reject")
 }

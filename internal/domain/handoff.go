@@ -32,6 +32,10 @@ type Handoff struct {
 // Handoff status values: a Handoff's outcome. Every Handoff is kept with its
 // outcome (CONTEXT.md: Handoff), so a Goal can have many past Handoffs but only
 // one pending.
+//
+// Each name starts Handoff: the CHECK test on handoffs.status finds its values
+// by that prefix (enumchecks_test.go), so a value named otherwise goes
+// unchecked.
 const (
 	HandoffPending   = "pending"
 	HandoffAccepted  = "accepted"

@@ -17,6 +17,9 @@ import (
 const UndoWindow = 15 * time.Minute
 
 // The actions that offer an Undo, each naming what its token's subject is.
+//
+// Each name starts undo: the CHECK test on undo_tokens.kind finds its values by
+// that prefix (enumchecks_test.go), so a value named otherwise goes unchecked.
 const (
 	undoLinkRemoval      = "link-removal"      // a LinkRemoval
 	undoLinkRejection    = "link-rejection"    // a LinkRejection

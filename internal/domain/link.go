@@ -26,6 +26,10 @@ type Link struct {
 // Link status values. A rejected or removed link is deleted, so it has no
 // status of its own; a rejection leaves a LinkRejection its rejecter can undo,
 // and a removal a LinkRemoval its remover can undo.
+//
+// Each name starts Link, not LinkEvent, which names another group: the CHECK
+// test on links.status finds its values by that prefix (enumchecks_test.go), so
+// a value named otherwise goes unchecked.
 const (
 	LinkPending  = "pending"
 	LinkAccepted = "accepted"

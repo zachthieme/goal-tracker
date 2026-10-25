@@ -3697,3 +3697,34 @@ func TestNoLiteralTypeScaleSizesStyles(t *testing.T) {
 		}
 	}
 }
+
+// tokens reads a custom property written last in its rule, with no ; after
+// it, as one followed by ; or the rule's }: a --text-label raised last in the
+// touch screen's :root is seen (#537).
+func TestStyleHelpersTokensReadAPropertyThatEndsItsRule(t *testing.T) {
+	t.Parallel()
+
+	for _, decls := range []string{"--text-body:16px;--text-label:14px", "--text-body:16px;--text-label:14px}", "--text-body:16px;--text-label: 14px ;"} {
+		if got := tokens(decls); got["--text-body"] != "16px" || got["--text-label"] != "14px" {
+			t.Errorf("tokens(%q) = %v, want --text-body 16px and --text-label 14px", decls, got)
+		}
+	}
+}
+
+// ruleFor reads every rule whose selector list names the selector, not only
+// the first, so a declaration in a later rule for it is seen (#537).
+func TestStyleHelpersRuleForReadsEveryRuleForTheSelector(t *testing.T) {
+	t.Parallel()
+
+	css := `.a{color:red}.b{margin:0}/* later */.c,.a{padding:4px}`
+	decls, ok := ruleFor(css, ".a")
+	if !ok || !strings.Contains(decls, "color:red") || !strings.Contains(decls, "padding:4px") || strings.Contains(decls, "margin") {
+		t.Errorf("ruleFor(%q, .a) = %q, %t, want color:red and padding:4px, and not .b's margin", css, decls, ok)
+	}
+	if got := declValue(t, decls, "color"); got != "red" {
+		t.Errorf("color in .a's rules %q is %q, want red", decls, got)
+	}
+	if decls, ok := ruleFor(css, ".d"); ok {
+		t.Errorf("ruleFor(%q, .d) = %q, found, want no rule", css, decls)
+	}
+}
