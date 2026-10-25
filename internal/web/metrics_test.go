@@ -231,7 +231,8 @@ func sampleValue(t *testing.T, samples []promSample, name string, labels ...stri
 // Each request is counted by its method, the route it matched and its status,
 // and timed by its route, under the pattern its access line names, not its
 // path, so IDs and mistyped paths don't grow the series without bound: a path
-// no route serves is counted under the catch-all that answers it 404.
+// no route serves is counted as unmatched, with the 404 the catch-all answers
+// it, so it doesn't share the index page's series.
 func TestRequestsAreCountedAndTimedByRouteAndStatus(t *testing.T) {
 	t.Parallel()
 
@@ -239,14 +240,24 @@ func TestRequestsAreCountedAndTimedByRouteAndStatus(t *testing.T) {
 	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/no-such-page", nil))
+	srv.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 
 	samples := scrape(t, m)
 	const requests, duration = "goal_tracker_http_requests_total", "goal_tracker_http_request_duration_seconds"
 	if n := sampleValue(t, samples, requests, "method", "GET", "route", "GET /healthz", "status", "200"); n != 2 {
 		t.Errorf("GET /healthz answered 200 counted %v times, want 2", n)
 	}
-	if n := sampleValue(t, samples, requests, "method", "GET", "route", "GET /", "status", "404"); n != 1 {
-		t.Errorf("the unknown path, answered 404 by the catch-all, counted %v times, want 1", n)
+	if n := sampleValue(t, samples, requests, "method", "GET", "route", "unmatched", "status", "404"); n != 1 {
+		t.Errorf("the unknown path, answered 404, counted as unmatched %v times, want 1", n)
+	}
+	if n := sampleValue(t, samples, requests, "method", "GET", "route", "GET /", "status", "303"); n != 1 {
+		t.Errorf("the index page, answered 303, counted under GET / %v times, want 1", n)
+	}
+	if got := samplesOf(samples, requests, "route", "GET /", "status", "404"); len(got) != 0 {
+		t.Errorf("a 404 counted under the index page's GET /: %v", got)
+	}
+	if n := sampleValue(t, samples, duration+"_count", "route", "GET /"); n != 1 {
+		t.Errorf("GET / timed %v times, want only the index page's request", n)
 	}
 	for _, s := range samples {
 		for _, v := range s.labels {

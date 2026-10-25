@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"sync"
 	"time"
 
@@ -160,7 +161,7 @@ func (s *Service) DeliverEmail(ctx context.Context) error {
 		}); err != nil {
 			return fmt.Errorf("record email %d failed: %w", row.ID, err)
 		}
-		attrs := []any{"email_outbox_id", row.ID, "account_id", row.AccountID, "subject", row.Subject, "attempts", attempts, "err", sendErr}
+		attrs := []any{"email_outbox_id", row.ID, "account_id", row.AccountID, "subject", row.Subject, "attempts", attempts, "err", withoutEmailAddresses(sendErr.Error())}
 		if attempts >= emailMaxAttempts {
 			s.outbox.log().Error("email not sent: giving up after its last attempt failed", attrs...)
 		} else {
@@ -176,6 +177,18 @@ func (o *emailOutbox) log() *slog.Logger {
 		return slog.Default()
 	}
 	return o.logger
+}
+
+// emailAddressShaped matches anything shaped like an email address: an @ and
+// the run of characters on either side of it up to a space, bracket, quote or
+// separator.
+var emailAddressShaped = regexp.MustCompile(`[^\s<>()\[\]"',;:]*@[^\s<>()\[\]"',;:]*`)
+
+// withoutEmailAddresses is msg, a failed send's error, with anything shaped
+// like an email address in it redacted, so a mail server's error that quotes
+// the recipient doesn't bring their address into the log.
+func withoutEmailAddresses(msg string) string {
+	return emailAddressShaped.ReplaceAllString(msg, "[address]")
 }
 
 // emailRetryAfter is how long the outbox waits to try an email again after

@@ -47,7 +47,8 @@ type accessWriter struct {
 	bytes int64
 	// route is the pattern the request matched (see serveRoutes) or, when it
 	// was refused before routing, the one it would have matched (see
-	// ServeHTTP); empty when it matches none.
+	// ServeHTTP); empty when it matches none but a catch-all (see
+	// matchedRoute).
 	route string
 }
 

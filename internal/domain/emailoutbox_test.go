@@ -235,6 +235,53 @@ func TestOutboxGivesUpOnAnEmailAfterFiveFailedSends(t *testing.T) {
 	}
 }
 
+// addressQuotingSender fails every send with an error quoting its recipient's
+// address, as a mail server rejecting the recipient does.
+type addressQuotingSender struct{}
+
+func (addressQuotingSender) Send(_ context.Context, msg email.Message) error {
+	return fmt.Errorf("550 5.1.1 <%s>: Recipient address rejected (to %s)", msg.To, msg.To)
+}
+
+// A send that fails with an error quoting the recipient's address is logged,
+// as it is tried again and when it is given up on, with the error's address
+// redacted, so the address doesn't reach the log (ticket #536).
+func TestOutboxLogsASendErrorWithoutTheAddressItQuotes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	svc := domain.NewService(h.DB, h.Clock, addressQuotingSender{}, nil, domain.WithEmailDeliveredOnCommit(), domain.WithEmailOutboxLogger(logger))
+	owner := h.SignIn("owner@example.com")
+	reader := h.SignIn("reader@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+
+	if _, err := svc.AddGoalComment(ctx, reader.ID, g.ID, "Why?"); err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	for range 5 {
+		h.Clock.Advance(24 * time.Hour)
+		if err := svc.DeliverEmail(ctx); err != nil {
+			t.Fatalf("DeliverEmail: %v", err)
+		}
+	}
+
+	lines := strings.Split(strings.TrimSpace(log.String()), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("logged %d lines, want five, one for each failed send:\n%s", len(lines), log.String())
+	}
+	for _, line := range lines {
+		if !strings.Contains(line, "Recipient address rejected") {
+			t.Errorf("line %q does not carry the send's error", line)
+		}
+		if strings.Contains(line, "@") {
+			t.Errorf("line %q carries an email address", line)
+		}
+	}
+}
+
 // The outbox, run in the background, sends a command's email once the
 // command commits, without waiting for its next round, and stops when its
 // context is done.
