@@ -324,10 +324,11 @@ func tokenBlock(t *testing.T, css, selector string) string {
 	return m[1]
 }
 
-// tokens returns the custom properties a rule's declarations set.
+// tokens returns the custom properties a rule's declarations set, the last
+// ended by ;, the rule's } or the end of decls.
 func tokens(decls string) map[string]string {
 	m := map[string]string{}
-	for _, d := range regexp.MustCompile(`(--[\w-]+)\s*:\s*([^;]+);`).FindAllStringSubmatch(stripComments(decls), -1) {
+	for _, d := range regexp.MustCompile(`(--[\w-]+)\s*:\s*([^;}]+)(?:[;}]|$)`).FindAllStringSubmatch(stripComments(decls), -1) {
 		m[d[1]] = strings.TrimSpace(d[2])
 	}
 	return m

@@ -3697,3 +3697,16 @@ func TestNoLiteralTypeScaleSizesStyles(t *testing.T) {
 		}
 	}
 }
+
+// tokens reads a custom property written last in its rule, with no ; after
+// it, as one followed by ; or the rule's }: a --text-label raised last in the
+// touch screen's :root is seen (#537).
+func TestStyleHelpersTokensReadAPropertyThatEndsItsRule(t *testing.T) {
+	t.Parallel()
+
+	for _, decls := range []string{"--text-body:16px;--text-label:14px", "--text-body:16px;--text-label:14px}", "--text-body:16px;--text-label: 14px ;"} {
+		if got := tokens(decls); got["--text-body"] != "16px" || got["--text-label"] != "14px" {
+			t.Errorf("tokens(%q) = %v, want --text-body 16px and --text-label 14px", decls, got)
+		}
+	}
+}
