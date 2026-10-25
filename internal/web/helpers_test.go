@@ -536,22 +536,23 @@ func mediaBlock(t *testing.T, css, query string) string {
 	return blocks[0]
 }
 
-// ruleFor returns the declarations of the rule in block whose selector list
-// names sel. A comment before the rule isn't part of its selector.
+// ruleFor returns the declarations of every rule in block whose selector
+// list names sel, in order, each set apart by ;, so a declaration in a later
+// rule for sel is read too. A comment before the rule isn't part of its
+// selector.
 func ruleFor(block, sel string) (string, bool) {
+	var found []string
 	for _, rule := range strings.Split(block, "}") {
 		selectors, decls, ok := strings.Cut(rule, "{")
 		if !ok {
 			continue
 		}
 		selectors = cssComment.ReplaceAllString(selectors, "")
-		for _, s := range strings.Split(selectors, ",") {
-			if strings.TrimSpace(s) == sel {
-				return decls, true
-			}
+		if slices.ContainsFunc(strings.Split(selectors, ","), func(s string) bool { return strings.TrimSpace(s) == sel }) {
+			found = append(found, decls)
 		}
 	}
-	return "", false
+	return strings.Join(found, ";"), len(found) > 0
 }
 
 var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
