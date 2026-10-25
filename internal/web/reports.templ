@@ -707,7 +707,6 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				.g { background: var(--print-health-g-bg); color: var(--print-health-g-ink); }
 				.lc { background: var(--print-health-none-bg); color: var(--print-health-none-ink); }
 				.st { background: var(--print-overdue-bg); color: var(--print-overdue-ink); border: 0.5pt dashed var(--print-overdue-edge); }
-				.rp-tint.overdue { background: var(--print-health-r-bg); padding: 0.2rem 0.5rem; border-radius: 2pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 				.muted { color: var(--print-ink-2); }
 				.small { font-size: 9.5pt; }
 				.label { font-variant: small-caps; letter-spacing: 0.05em; color: var(--print-ink-2); margin: 0.6rem 0 0; }
@@ -717,6 +716,21 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				.rp-fields dt::after { content: ":"; }
 				.rp-fields dd { margin: 0; }
 				.rp-field-long { white-space: pre-line; }
+				/* A Goal's facts in a label column, as on screen: the label in
+				 * small caps, its value beside it */
+				.rp-facts { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 0.15rem 0.75rem; margin: 0.3rem 0; }
+				.rp-facts > div { display: contents; }
+				.rp-facts dt { margin: 0; }
+				.rp-facts dd { margin: 0; min-width: 0; }
+				.rp-facts ul { margin: 0; }
+				/* The Path to Green box, tinted in its Goal's Health, Red or
+				 * Yellow, as on screen; Overdue is its badge */
+				.rp-tint { padding: 0.2rem 0.5rem; border-radius: 2pt; margin: 0.3rem 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+				.rp-tint > p { margin: 0.2rem 0; }
+				.rp-tint-r { background: var(--print-health-r-bg); }
+				.rp-tint-y { background: var(--print-health-y-bg); }
+				.rp-tint-r .rp-tint-label { color: var(--print-health-r-ink); }
+				.rp-tint-y .rp-tint-label { color: var(--print-health-y-ink); }
 				@media print {
 					body { margin: 0; max-width: none; padding: 0; }
 					.no-print { display: none; }

@@ -2154,7 +2154,8 @@ given):
 | No Health ink `--print-health-none-ink` `#33363C` | No Health tint `#F7F7F8` / paper `#FFFFFF` | 11.31 / 12.11 |
 | Check-in overdue ink `--print-overdue-ink` `#3B4048` | its tint `#E9EAEC` / paper `#FFFFFF` | 8.67 / 10.43 |
 | Check-in overdue edge `--print-overdue-edge` `#888F97` | paper `#FFFFFF` | 3.27 |
-| Body ink `--print-ink` `#000000` | Red tint `#FDECEC` (overdue status box) | 18.39 |
+| Body ink `--print-ink` `#000000` | Red tint `#FDECEC` (a Red Path to Green) | 18.39 |
+| Body ink `--print-ink` `#000000` | Yellow tint `#FFF3D1` (a Yellow Path to Green) | 18.99 |
 
 | Role | Size / line-height | Weight |
 | --- | --- | --- |
@@ -2180,9 +2181,17 @@ given):
 - The badges the screen colours keep their colour: Health, a Milestone's
   Overdue or Slipped mark, Ownerless, New Date and a Path to Green's Overdue
   in the Health colour they take on screen, and Check-in overdue in its grey
-  chip with a dashed edge. A Path to Green past its date tints its status box
-  Red, as on screen. Body text stays black.
-- Coloured badges and the overdue status box set `print-color-adjust: exact`
+  chip with a dashed edge. Body text stays black.
+- A Goal block lays out as on screen. Why it matters, Status, Milestones,
+  Metrics and the block's other facts sit in a label column (`.rp-facts`): the
+  label 7.5rem wide in the small-caps `.label` style and `--print-ink-2`, its
+  value beside it with no indent.
+- A Red or Yellow Goal's Path to Green, with its Ask for help, sits in a box
+  tinted in that Health (`.rp-tint-r` or `.rp-tint-y`), as on screen, with
+  its "Path to Green:" label in the Health's ink. The Health decides the
+  tint, not the date: a Path to Green past its date keeps its Health's tint
+  and says so in its Overdue badge, so an overdue Yellow one prints Yellow.
+- Coloured badges and the Path to Green box set `print-color-adjust: exact`
   (and `-webkit-print-color-adjust: exact`), so browsers keep their tints when
   printing and in PDF instead of dropping background colour.
 - A Goal block and a table row never split across pages.
