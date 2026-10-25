@@ -420,7 +420,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<style>\n\t\t\t\t.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}\n\t\t\t\t.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}\n\t\t\t\t.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n\t\t\t\t.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}\n\t\t\t\t.dh-new{margin:8px 0}\n\t\t\t\t[data-hl-js]>.gp-group-head>a{display:none}\n\t\t\t</style></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<style>\n\t\t\t\t.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}\n\t\t\t\t.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}\n\t\t\t\t.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n\t\t\t\t.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:var(--text-secondary);align-self:stretch}\n\t\t\t\t.dh-new{margin:8px 0}\n\t\t\t\t[data-hl-js]>.gp-group-head>a{display:none}\n\t\t\t</style></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

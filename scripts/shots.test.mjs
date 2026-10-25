@@ -18,6 +18,18 @@ test("a shot's status must be an integer", () => {
   assert.equal(normalise({ path: "/goals", status: 404 }, 0).status, 404);
 });
 
+test("a shot's touch must be true or false, and is false unless set", () => {
+  assert.throws(() => normalise({ path: "/goals", touch: "yes" }, 0), /shot 1: touch must be true or false/);
+  assert.throws(() => normalise({ path: "/goals", touch: 1 }, 0), /touch must be true or false/);
+  assert.equal(normalise({ path: "/goals" }, 0).touch, false);
+  assert.equal(normalise({ path: "/goals", touch: true }, 0).touch, true);
+});
+
+test("a touch shot's default name says touch", () => {
+  assert.equal(normalise({ path: "/goals", width: 820, touch: true }, 0).file, "01-goals-light-820-touch.png");
+  assert.equal(normalise({ path: "/goals", width: 820, touch: false }, 0).file, "01-goals-light-820.png");
+});
+
 test("a shot's name may end in .png without saving .png.png", () => {
   assert.equal(normalise({ path: "/goals", name: "b.png" }, 0).file, "b.png");
   assert.equal(normalise({ path: "/goals", name: "b" }, 0).file, "b.png");
@@ -143,6 +155,7 @@ const facts = {
   title: "Dimensions · Goal Tracker",
   pin: null,
   osDark: false,
+  coarse: false,
   background: "rgb(246, 246, 243)",
   past: [],
   width: 1280,
@@ -188,11 +201,19 @@ test("the facts are reported as the README shows them", () => {
   shot:     /dimensions as admin@example.com, OS light, 1280px, after the action
   page:     /dimensions (HTTP 200) "Dimensions · Goal Tracker"
   theme:    not pinned, follows the OS (light); body background rgb(246, 246, 243)
+  pointer:  fine
   overflow: none
   focus:    nothing (body)
   toast:    "Retired Platform from Team. Undo"
   dialog:   none
 `);
+});
+
+test("a touch shot's facts say it's a touch shot on a coarse pointer", () => {
+  const shot = normalise({ path: "/goals", width: 820, height: 1180, touch: true }, 0);
+  const report = formatReport(shot, { file: "x.png", facts: { ...facts, coarse: true }, native: [] });
+  assert.match(report, /^  shot:     \/goals signed out, OS light, 820px, touch$/m);
+  assert.match(report, /^  pointer:  coarse$/m);
 });
 
 test("an empty title is reported as (none)", () => {
@@ -289,4 +310,24 @@ test("an element past the window inside a box that scrolls sideways doesn't fail
   if (!run) return;
   assert.equal(run.code, 0, run.stdout + run.stderr);
   assert.match(run.stdout, /overflow: none/);
+});
+
+// pointerPage is red where the page's pointer is coarse, as on a touch
+// screen, and white where it is fine, as with a mouse.
+const pointerPage = `<!doctype html><style>body{margin:0;background:#fff}@media (pointer:coarse){body{background:#f00}}</style><body><div style="height:100px"></div>`;
+
+test("a touch shot is taken on a coarse pointer and says so", async (t) => {
+  const run = await shootPage(t, pointerPage, { path: "/", name: "touch", touch: true });
+  if (!run) return;
+  assert.equal(run.code, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /^  pointer:  coarse$/m);
+  assert.deepEqual(firstPixel(readFileSync(join(run.out, "touch.png"))), [255, 0, 0]);
+});
+
+test("a shot without touch is taken with a mouse's fine pointer", async (t) => {
+  const run = await shootPage(t, pointerPage, { path: "/", name: "mouse" });
+  if (!run) return;
+  assert.equal(run.code, 0, run.stdout + run.stderr);
+  assert.match(run.stdout, /^  pointer:  fine$/m);
+  assert.deepEqual(firstPixel(readFileSync(join(run.out, "mouse.png"))), [255, 255, 255]);
 });

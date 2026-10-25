@@ -12,6 +12,8 @@
 //   theme   "light" or "dark": the colour scheme the OS asks for (light)
 //   pin     "light" or "dark": pin the Theme menu's choice (none)
 //   width   window width in CSS pixels (1280); height (800)
+//   touch   true to emulate a touch screen, so (pointer:coarse) matches
+//           (false: a mouse)
 //   full    false to capture only the window, where the page is scrolled to
 //           after the action, not the whole page (true)
 //   action  JavaScript run in the page once it has loaded. A script, e.g.
@@ -27,7 +29,7 @@
 //           path, theme and width)
 //
 // For each shot it saves <out>/<name>.png and prints the page's status and
-// title, the theme pin, horizontal overflow, the focused element, any toast,
+// title, the theme pin, whether the pointer is coarse, horizontal overflow, the focused element, any toast,
 // and any dialog that opened. It drives the Chromium already on the machine
 // over the DevTools protocol, so nothing needs installing: $CHROME, else a
 // Chrome-family browser on PATH, else the newest Chromium Playwright installed
@@ -81,13 +83,14 @@ export function normalise(shot, i) {
     throw new Error(`shot ${i + 1}: ${message}`);
   };
   if (typeof shot?.path !== "string" || !shot.path.startsWith("/")) bad("path must start with /");
-  const s = { theme: "light", width: 1280, height: 800, full: true, dialog: "dismiss", ...shot };
+  const s = { theme: "light", width: 1280, height: 800, full: true, touch: false, dialog: "dismiss", ...shot };
   if (!["light", "dark"].includes(s.theme)) bad("theme must be light or dark");
   if (s.pin !== undefined && !["light", "dark"].includes(s.pin)) bad("pin must be light or dark");
+  if (typeof s.touch !== "boolean") bad("touch must be true or false");
   if (!["accept", "dismiss"].includes(s.dialog)) bad("dialog must be accept or dismiss");
   if (s.status !== undefined && !Number.isInteger(s.status)) bad("status must be an integer");
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
-  s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
+  s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}${s.touch ? "-touch" : ""}`;
   s.file = `${String(s.name).replace(/\.png$/i, "")}.png`;
   return s;
 }
@@ -340,6 +343,7 @@ function facts() {
     title: document.title,
     pin: root.dataset.theme ?? null,
     osDark: matchMedia("(prefers-color-scheme: dark)").matches,
+    coarse: matchMedia("(pointer:coarse)").matches,
     background: getComputedStyle(document.body).backgroundColor,
     past: past.map((el) => `${describe(el)} (${Math.round(el.getBoundingClientRect().left)}–${Math.round(el.getBoundingClientRect().right)}px)`),
     width: vw,
@@ -400,6 +404,9 @@ async function shoot(cdp, base, out, shot) {
     await cdp.send("Network.enable", {}, s);
     await cdp.send("Emulation.setDeviceMetricsOverride", { width: shot.width, height: shot.height, deviceScaleFactor: 1, mobile: false }, s);
     await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: shot.theme }] }, s);
+    // Touch emulation gives the page a touch screen's coarse pointer, so its
+    // (pointer:coarse) rules apply.
+    if (shot.touch) await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }, s);
 
     // The HTTP status of the document last loaded, after any redirects.
     let status = null;
@@ -464,9 +471,10 @@ export function formatReport(shot, { file, facts: f, native }) {
   if (f.past.length) overflow.push(`past the ${f.width}px window: ${f.past.slice(0, 5).join(", ")}${f.past.length > 5 ? ` and ${f.past.length - 5} more` : ""}`);
   const dialogs = [...native, ...f.dialogs];
   return `${file}
-  shot:     ${shot.path} ${who}, OS ${shot.theme}, ${shot.width}px${shot.action ? ", after the action" : ""}
+  shot:     ${shot.path} ${who}, OS ${shot.theme}, ${shot.width}px${shot.touch ? ", touch" : ""}${shot.action ? ", after the action" : ""}
   page:     ${f.url} (HTTP ${f.status ?? "?"}) ${f.title ? `"${f.title}"` : "(none)"}
   theme:    ${pin}; body background ${f.background}
+  pointer:  ${f.coarse ? "coarse" : "fine"}
   overflow: ${overflow.length ? overflow.join("; ") : "none"}
   focus:    ${f.focus ?? "nothing (body)"}
   toast:    ${f.toast ? `"${f.toast}"` : "none"}
