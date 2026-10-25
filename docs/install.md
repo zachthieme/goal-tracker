@@ -349,7 +349,9 @@ Startup logs the trusted proxies. The per-account lockout (five wrong
 passwords, 15 minutes) is unaffected.
 
 For a health check, `GET /healthz` needs no sign-in. It returns `200` with
-`ok` while the database answers within a second, and `503` when it doesn't.
+`ok` while it can read the database within a second, and `503` when it
+can't: it reads a table from the database file, so a file that is missing,
+unmounted, replaced or unreadable fails it.
 `goal-tracker healthcheck` checks it from the app's own host, where there may
 be no curl: it GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port,
 waits up to 3 seconds, and exits `0` on a `200`; otherwise it exits non-zero

@@ -149,7 +149,11 @@ func (s *Service) Timezone() *time.Location {
 	return s.loc
 }
 
-// Ping checks the database answers within ctx, for a health check.
+// Ping checks the database answers within ctx, for a health check. It reads
+// schema_migrations rather than running a bare ping, which SQLite answers
+// without touching the file: a missing, replaced or unreadable database file
+// fails the read, even where SQLite has opened an empty one in its place.
 func (s *Service) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
+	var n int
+	return s.db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n)
 }
