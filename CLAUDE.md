@@ -22,8 +22,10 @@ another area's file.
   helpers (`findByTestID`, `textOf`, `formField`, `linkTo`, `buttonNamed`) on
   what a person sees and can do, not by matching markup, and style rules and
   the classes they select are tested in `styles_test.go`.
-- **Domain** (`internal/domain/`): `domain.go` holds only the `Service` and its
-  constructor. Each concept's types and `Service` methods live in their own file
+- **Domain** (`internal/domain/`): `domain.go` holds only the `Service`, its
+  constructor and options (`Option`, `WithTimezone`, `WithBaseURL`), and the
+  Service-wide helpers (`WithinTx`, `Now`, `Timezone`, `Ping`). Each concept's
+  types and `Service` methods live in their own file
   (`account.go`, `goal.go`, …) — a new concept is a new file. A page whose
   view model repeats reads gets a page loader, one `Service` method in its own
   `<page>.go` file (ADR 0010).
@@ -35,9 +37,10 @@ another area's file.
 
 Run the gates (`make generate-check`, `make lint`, `make test`; `make check`
 runs all three in that order and stops at the first failure) in the
-foreground and read each to the end; `make test` takes about 2 minutes, most of
-it `internal/web` under the race detector, so give a foreground run a tool
-timeout above 2 minutes. Never
+foreground and read each to the end; `make check` takes about 3½ minutes,
+most of it `make test`, with `internal/web` under the race detector about 3
+minutes, so give a foreground gate run a tool timeout of at least 5 minutes.
+Never
 background a gate and wait for it. **Commit before you end your turn.** A
 campaign run is a single turn, so a turn that ends waiting on a background job,
 or with work uncommitted, parks the issue as "stalled, no-commit".
