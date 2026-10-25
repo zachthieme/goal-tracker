@@ -99,7 +99,7 @@ templ historyItem(h history, e historyEntry) {
 			case e.Handoff != nil:
 				<p>
 					@person(e.Handoff.From)
-					{ " → " }
+					{ "→ " }
 					@person(e.Handoff.To)
 					<span>{ " — " + ownershipOutcome(e.Handoff.Status) }</span>
 				</p>
@@ -110,19 +110,19 @@ templ historyItem(h history, e historyEntry) {
 			case e.Suggestion != nil:
 				<p>
 					@person(e.Suggestion.SuggestedBy)
-					{ " suggested " }
+					{ "suggested " }
 					<a href={ templ.SafeURL(goalPath(e.Suggestion.Parent.ID)) }>{ e.Suggestion.Parent.Title }</a>
 				</p>
 				<p class="muted small">{ h.suggestionOutcome(*e.Suggestion) }</p>
 			case e.Nudge != nil:
 				<p>
 					@person(e.Nudge.Sender)
-					{ " nudged for a Check-in" }
+					{ "nudged for a Check-in" }
 				</p>
 			case e.Milestone != nil:
 				<p>
 					@person(e.Milestone.Author)
-					{ fmt.Sprintf(" added Milestone %s (%s)", e.Milestone.Name, h.dates().date(e.Milestone.AddedDate)) }
+					{ fmt.Sprintf("added Milestone %s (%s)", e.Milestone.Name, h.dates().date(e.Milestone.AddedDate)) }
 				</p>
 			case e.Link != nil:
 				{{ before, after := linkChange(*e.Link) }}
@@ -144,7 +144,7 @@ templ historyItem(h history, e historyEntry) {
 				<p>
 					{ "for " }
 					@person(e.ActionRaisedFor)
-					{ " · due " + h.dates().date(item.DueDate) + " · from " }
+					{ "· due " + h.dates().date(item.DueDate) + " · from " }
 					<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#action-items", item.DefinitionID, item.PublicationID)) }>{ e.ActionItem.ReportName }</a>
 				</p>
 				<p class="muted small">
@@ -155,7 +155,7 @@ templ historyItem(h history, e historyEntry) {
 				<p>{ e.ActionReassign.ItemText }</p>
 				<p>
 					@person(e.ActionReassign.From)
-					{ " → " }
+					{ "→ " }
 					@person(e.ActionReassign.To)
 				</p>
 				<p class="muted small">

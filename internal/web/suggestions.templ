@@ -20,8 +20,7 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 				<h2>Parent suggestion</h2>
 				<p class="muted">
 					For <a href={ templ.SafeURL(goalPath(v.Goal.ID)) }>{ v.Goal.Title }</a>{ ", owned by " }
-					@person(v.Goal.Owner)
-					{ ", who decides whether to link it." }
+					@person(v.Goal.Owner), who decides whether to link it.
 				</p>
 			</div>
 			if v.Error != "" {
@@ -69,7 +68,7 @@ templ suggestionRequestRow(p domain.ParentSuggestion) {
 			<a href={ templ.SafeURL(goalPath(p.Goal.ID)) }>{ p.Goal.Title }</a>
 			<span class="muted">
 				@person(p.SuggestedBy)
-				{ " suggests it contribute to" }
+				{ "suggests it contribute to" }
 			</span>
 			<a href={ templ.SafeURL(goalPath(p.Parent.ID)) }>{ p.Parent.Title }</a>
 			if p.Note != "" {

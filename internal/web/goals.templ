@@ -851,7 +851,7 @@ templ goalActionItemRow(l domain.ActionItemListing, current *domain.Account, ret
 	<li data-testid="goal-action-item">
 		{ l.Item.Text }{ " · " }
 		@person(l.Item.Owner)
-		{ " · due " }{ showDateYear(l.Item.DueDate) }
+		{ "· due " }{ showDateYear(l.Item.DueDate) }
 		if l.Overdue {
 			<span data-testid="goal-action-item-overdue" class="badge r">Overdue</span>
 		}
@@ -1256,13 +1256,13 @@ templ ownerForms(v goalView) {
 		@openGoalForm(v, formDepart, "Mark owner departed") {
 			<p class="small muted">
 				@person(g.Owner)
-				{ " has left the company." }
+				{ "has left the company." }
 			</p>
 			<form data-testid="depart-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
 				<button type="submit" class="btn danger" autofocus>
 					{ "Mark " }
 					@personPlain(g.Owner)
-					{ " departed" }
+					{ "departed" }
 				</button>
 			</form>
 		}
@@ -1271,13 +1271,13 @@ templ ownerForms(v goalView) {
 		@openGoalForm(v, formReturn, "Mark returned") {
 			<p class="small muted">
 				@person(g.Owner)
-				{ " is back in the company." }
+				{ "is back in the company." }
 			</p>
 			<form data-testid="return-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
 				<button type="submit" class="btn" autofocus>
 					{ "Mark " }
 					@personPlain(g.Owner)
-					{ " returned" }
+					{ "returned" }
 				</button>
 			</form>
 		}
@@ -1681,7 +1681,7 @@ templ highlightList(highlights []domain.Highlight, dates displayDates) {
 				<span>
 					{ "— " }
 					@person(hl.Owner)
-					{ " at " + dates.timestamp(hl.CreatedAt) }
+					{ "at " + dates.timestamp(hl.CreatedAt) }
 				</span>
 			</li>
 		}

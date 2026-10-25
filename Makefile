@@ -46,9 +46,9 @@ test: ## Run the Go tests with the race detector
 test-quick: ## Run the Go tests without the race detector
 	go test -count=1 ./...
 
-# golangci-lint is pinned, here, in vetinari/Dockerfile and in
-# .github/workflows/check.yml: a newer release can enable new checks, and one
-# built with an older Go than go.mod's refuses to run. It also has to read the
+# golangci-lint is pinned here and in vetinari/Dockerfile (CI installs none, so
+# it takes the checksum-verified `go run` below): a newer release can enable new
+# checks, and one built with an older Go than go.mod's refuses to run. It also has to read the
 # export data go.mod's Go writes: version 5, from go1.27.2, needs
 # golang.org/x/tools v0.52 or later, which golangci-lint bundles from v2.15.0,
 # so move this and the Go pins together. A golangci-lint on PATH
