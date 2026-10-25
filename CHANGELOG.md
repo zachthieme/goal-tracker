@@ -18,6 +18,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [ops] `goal-tracker healthcheck` GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port, waiting up to 3 seconds, and exits 0 on a 200, or non-zero with one line on stderr saying why. It reads no other setting and opens no database, and the image's new `HEALTHCHECK` runs it every 30 seconds (#476).
 
+**Improvements:**
+- [user] A published Report, its print page and the draft as read by someone who may not manage it now head the narrative with a "Narrative" section heading and rule, as the other sections are headed (#479).
+
 **Bug fixes:**
 - [user] A Report's draft keeps Delegates and History beside the Report at a 1280px window, stacking them under it only at 960px of content width and under, as the approved design does (#477).
 - [user] A Report's print page and PDF lay each Goal out as the screen does: Why it matters, Status and the other facts in a label column, and the Path to Green in its Health's tint, so an overdue Yellow one prints Yellow, not Red (#478).
@@ -31,6 +34,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] The "submits at once, with no confirm dialog" test guard (#56) now takes the page and a marker, finds the form whose opening tag holds the marker, and checks every element in it, its submit button included, refusing htmx's `hx-confirm` as well as `onsubmit` and any `on*` or `hx-on*` handler that calls `confirm(`. Its own tests cover a confirm on the button's `hx-on:click` or `onclick` and an `hx-confirm` on the form (#463).
 - [internal] The Goal page's goldens now cover an off-target Metric with its readings, an overdue and a slipped Milestone, an open Ask for help that walks past a Departed Manager, a pending Handoff, an open Parent suggestion and a Nudge, plus the Red Goal's whole History, so a change to how the page loader reads any of them shows in a golden (#466).
+
+**Code quality:**
+- [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
 
 **Documentation:**
 - [internal] The e2e gate's comment in `vetinari/config.mts` and `e2e/README.md` say that its `when` pattern only scopes it on a branch: after each wave, vetinari's merged-base gate runs every gate, `make e2e` included, whatever the wave changed (#481).
