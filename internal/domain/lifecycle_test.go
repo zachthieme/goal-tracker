@@ -386,3 +386,27 @@ func TestLifecycleChangesAppearInCheckinHistory(t *testing.T) {
 		t.Errorf("history lifecycle changes = %+v, want %+v", got, want)
 	}
 }
+
+// A Goal takes Check-ins only while it is Active or On Hold, and Draft
+// Highlights until it is Done or Cancelled (CONTEXT.md: Lifecycle, Draft
+// Highlight).
+func TestLifecycleSaysWhatAGoalTakes(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		lifecycle                 string
+		checkins, draftHighlights bool
+	}{
+		{domain.LifecycleProposed, false, true},
+		{domain.LifecycleActive, true, true},
+		{domain.LifecycleOnHold, true, true},
+		{domain.LifecycleDone, false, false},
+		{domain.LifecycleCancelled, false, false},
+	} {
+		if got := domain.LifecycleTakesCheckins(c.lifecycle); got != c.checkins {
+			t.Errorf("LifecycleTakesCheckins(%s) = %t, want %t", c.lifecycle, got, c.checkins)
+		}
+		if got := domain.LifecycleTakesDraftHighlights(c.lifecycle); got != c.draftHighlights {
+			t.Errorf("LifecycleTakesDraftHighlights(%s) = %t, want %t", c.lifecycle, got, c.draftHighlights)
+		}
+	}
+}

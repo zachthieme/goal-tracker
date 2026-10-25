@@ -23,6 +23,21 @@ func (c LifecycleChange) Changed() bool {
 	return c.To != ""
 }
 
+// LifecycleTakesCheckins reports whether a Goal in lifecycle takes
+// Check-ins: only an Active or On Hold one does, for a Proposed Goal becomes
+// Active through the activation gate, and Done and Cancelled are end states
+// (CONTEXT.md: Lifecycle).
+func LifecycleTakesCheckins(lifecycle string) bool {
+	return lifecycle == LifecycleActive || lifecycle == LifecycleOnHold
+}
+
+// LifecycleTakesDraftHighlights reports whether a Goal in lifecycle takes
+// Draft Highlights: it does until it is Done or Cancelled, when it takes no
+// more Check-ins to offer them at (CONTEXT.md: Draft Highlight).
+func LifecycleTakesDraftHighlights(lifecycle string) bool {
+	return lifecycle != LifecycleDone && lifecycle != LifecycleCancelled
+}
+
 // planLifecycleChange validates a Check-in's requested Lifecycle against the
 // Goal's current one and returns the change to record, or the zero change when
 // the Check-in leaves it alone. An Active Goal may go On Hold or be Cancelled,
@@ -33,15 +48,14 @@ func (c LifecycleChange) Changed() bool {
 func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, error) {
 	reason = strings.TrimSpace(reason)
 	outcome = strings.TrimSpace(outcome)
+	if !LifecycleTakesCheckins(current) {
+		return LifecycleChange{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+	}
 	if to == "" || to == current {
-		switch current {
-		case LifecycleActive:
-			return LifecycleChange{}, nil
-		case LifecycleOnHold:
+		if current == LifecycleOnHold {
 			return LifecycleChange{}, inputError(CheckinInputLifecycle, "an On Hold Goal can only be resumed or Cancelled in a Check-in")
-		default:
-			return LifecycleChange{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
 		}
+		return LifecycleChange{}, nil
 	}
 
 	change := LifecycleChange{From: current, To: to, Reason: reason}
@@ -64,10 +78,8 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 		change.Outcome = outcome
 	case current == LifecycleOnHold && to == LifecycleActive:
 		// Resuming is not leaving Active, so no reason is needed.
-	case current == LifecycleActive || current == LifecycleOnHold:
-		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
 	default:
-		return LifecycleChange{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
 	}
 	return change, nil
 }
