@@ -263,16 +263,23 @@ templ navItem(href, testID, label string, count int, countClass string) {
 	if onSection(ctx, href) {
 		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>
 			@navIcon(href)
-			{ label }
+			@navItemLabel(label)
 			@navCount(count, countClass)
 		</a>
 	} else {
 		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>
 			@navIcon(href)
-			{ label }
+			@navItemLabel(label)
 			@navCount(count, countClass)
 		</a>
 	}
+}
+
+// navItemLabel is a nav item's label. It is a component, not a string after
+// navIcon, because templ renders a space between a component and text on the
+// next line, and the label is the link's whole text.
+templ navItemLabel(label string) {
+	{ label }
 }
 
 // navIcon is the 16px stroke icon beside the nav item at href.
