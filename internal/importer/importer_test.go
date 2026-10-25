@@ -929,9 +929,9 @@ func TestCSVWithAByteOrderMarkImportsAsWithout(t *testing.T) {
 // A workbook whose sheet unpacks far past anything a real Goal sheet needs —
 // a zip bomb, kilobytes on the wire — is refused as too large, and refused from
 // the sizes its archive declares, before any of it is unpacked (#468).
+//
+//nolint:paralleltest // times the refusal; the package's parallel tests would share its cores
 func TestZipBombWorkbookIsRefused(t *testing.T) {
-	t.Parallel()
-
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	bomb := zipBombXLSX(t, 80<<20)
@@ -1078,9 +1078,9 @@ func TestOldOfficeFileIsRefused(t *testing.T) {
 // A tiny workbook whose sheet has a row numbered far past any real Goal sheet —
 // which excelize's row reader would step through one missing row at a time
 // (GO-2026-6685) — is refused at once as too many rows, not read (#489).
+//
+//nolint:paralleltest // times the refusal; the package's parallel tests would share its cores
 func TestHugeRowNumberWorkbookIsRefused(t *testing.T) {
-	t.Parallel()
-
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	crafted := rowNumberedXLSX(t, "900000000000")
