@@ -515,6 +515,26 @@ func TestGoalSearchMatchesTitlesLessThosePicked(t *testing.T) {
 	}
 }
 
+// The Contributes to search answers at most 20 matches: a query more Goals'
+// titles contain finds the first 20 (#499).
+func TestGoalSearchAnswersAtMostTwentyMatches(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	for i := range 25 {
+		h.CreateGoal(sam, fmt.Sprintf("Site goal %02d", i+1), "Speed sells.")
+	}
+	h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := parsePage(t, getBody(t, client, ts.URL+"/goals/search?"+url.Values{"q": {"site"}}.Encode()))
+	if results := findAllByTestID(page, "parent-result"); len(results) != 20 {
+		t.Errorf("searching %q, which 25 Goals match, found %d results, want 20: %q", "site", len(results), textsOf(results))
+	}
+}
+
 // Without script, Contributes to is a multiple select named parent_id offering
 // every Goal not already picked, and posting its values links the new Goal to
 // each, the way the chips' inputs do.
