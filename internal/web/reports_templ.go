@@ -2035,7 +2035,7 @@ func publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) t
 
 // publicationPrintPage is a published Report on its own, without the app's
 // navigation, styled to print to PDF from the browser. Under the byline it
-// says how the Report selected its Goals; it has no Health tiles, so the line
+// says how the Report selected its Goals; it has no Health summary, so the line
 // counting what moved since the baseline follows.
 func publicationPrintPage(p domain.Publication, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -5496,7 +5496,7 @@ func hasNotes(notes []string) bool {
 
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Report's heading scale (DESIGN.md §
-// Type scale), the Health tiles, the exception blocks with their label column
+// Type scale), the Health summary, the exception blocks with their label column
 // and the Path to Green's Health tint, the discussion footer, the scrolling root-Goal
 // picker, and the draft's header and its two columns, the Report beside its
 // Delegates and History, which stack into one under 960px of the page's
