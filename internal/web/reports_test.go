@@ -1319,9 +1319,12 @@ func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDef
 	return 0
 }
 
-// The publication opens with a Health summary: how many of the Report's
-// selected Goals are Red, Yellow, Green, and Check-in overdue, so an exec sees
-// the shape of the company before reading a block.
+// The draft and the publication open with a Health summary: how many of the
+// Report's selected Goals are Red, Yellow, Green, and Check-in overdue, so an
+// exec sees the shape of the company before reading a block. It is one row
+// headed "Health", each count with its word beside it, so it reads to someone
+// who doesn't know the shapes, and each chip a shape with no word of its own,
+// so a pair reads once: "1 Red", not "Red 1 Red" (#512).
 func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1330,29 +1333,48 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
 	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	alsoGreen := h.ActiveGoal(boss, "Ship billing", "Get paid.")
 	checkinOverdue := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, checkinOverdue.ID}})
+	h.Checkin(boss, alsoGreen.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, alsoGreen.ID, checkinOverdue.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
-
-	summary := pageElement(t, page, "section", "health-summary")
-	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "checkin-overdue": "1"} {
-		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
-			t.Errorf("%s tile: %q, want a count of %s", tile, count, want)
+	draft := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	for _, url := range []string{draft, draft + "/publications/" + strconv.FormatInt(pub.ID, 10)} {
+		page := getPage(t, client, url)
+		summary := findByTestID(t, page, "health-summary")
+		if got, want := textOf(summary), "Health 1 Red · 1 Yellow · 2 Green · 1 Check-in overdue"; got != want {
+			t.Errorf("%s: the Health summary reads %q, want %q", url, got, want)
 		}
-	}
-	if !strings.Contains(summary, `<span class="dot"></span>Check-in overdue</span>`) {
-		t.Errorf("the summary has no Check-in overdue tile: %s", summary)
-	}
-	if badges := elementTexts(page, "span", "report-badge"); !slices.Contains(badges, "Check-in overdue") {
-		t.Errorf("report badges = %q, want Open Tokyo's Check-in overdue", badges)
+		for _, pair := range []string{"1 Red", "1 Yellow", "2 Green", "1 Check-in overdue"} {
+			if !strings.Contains(runningText(summary), pair) {
+				t.Errorf("%s: the Health summary runs a count into its word, want %q: %q", url, pair, runningText(summary))
+			}
+		}
+		for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "2", "checkin-overdue": "1"} {
+			if count := textOf(findByTestID(t, summary, "health-count-"+tile)); count != want {
+				t.Errorf("%s: the %s count reads %q, want %s", url, tile, count, want)
+			}
+		}
+		chips := findAll(summary, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "badge") })
+		if len(chips) != 4 {
+			t.Errorf("%s: the Health summary has %d chips, want 4: %s", url, len(chips), renderNode(summary))
+		}
+		for _, chip := range chips {
+			srOnly := findAll(chip, func(n *nethtml.Node) bool { return flatFrameHasClass(n, "sr-only") })
+			if word := textOf(chip); word != "" || len(srOnly) > 0 || attrOf(chip, "aria-hidden") != "true" {
+				t.Errorf("%s: a Health summary chip carries a word of its own, or reads to a screen reader, beside the word after its count: %s", url, renderNode(chip))
+			}
+		}
+		if badges := textsOf(findAllByTestID(page, "report-badge")); !slices.Contains(badges, "Check-in overdue") {
+			t.Errorf("%s: report badges = %q, want Open Tokyo's Check-in overdue", url, badges)
+		}
 	}
 }
 
@@ -1822,63 +1844,6 @@ func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
 		for _, css := range []string{phone, narrow, between(t, printed, "<style>", "</style>")} {
 			if rule, _ := ruleFor(css, sel); strings.Contains(strings.ReplaceAll(rule, " ", ""), "order:") || strings.Contains(rule, "reverse") {
 				t.Errorf("the card head reorders itself: %s{%s}", sel, rule)
-			}
-		}
-	}
-}
-
-// The Health summary tiles go 2 × 2 whenever the element holding them is too
-// narrow for four, as the draft's main column is in a narrow window, so the
-// Check-in overdue chip never runs past its tile, and stack where even two
-// don't fit; at 900px and below they go 2 × 2 whatever the column (#459).
-func TestReportHealthTilesGoTwoByTwoInANarrowColumnOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	goal := h.ActiveGoal(boss, "Cut infrastructure cost per request", "Margins matter.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
-	pub := h.PublishReport(boss, def)
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
-	for _, path := range []string{draft, draft + "/publications/" + strconv.FormatInt(pub.ID, 10)} {
-		page := getBody(t, client, ts.URL+path)
-		findByTestID(t, parsePage(t, page), "health-summary")
-		if holder, _ := ruleFor(page, ":has(>.rp-tiles)"); !strings.Contains(holder, "container:rp-tiles/inline-size") {
-			t.Errorf("%s: the tiles' holder isn't a container they can fit themselves to: :has(>.rp-tiles){%s}", path, holder)
-		}
-		narrow := mediaBlock(t, page, "@container rp-tiles (max-width:44rem)")
-		tiles, _ := ruleFor(narrow, ".rp-body .rp-tiles")
-		odd, _ := ruleFor(narrow, ".rp-tile:nth-child(odd)")
-		lower, _ := ruleFor(narrow, ".rp-tile:nth-child(n+3)")
-		// Each column is at least as wide as its widest tile, so in the draft's
-		// column at 1000px the Check-in overdue chip's column takes what it
-		// needs rather than half.
-		if !strings.Contains(tiles, "grid-template-columns:repeat(2,minmax(min-content,1fr))") {
-			t.Errorf("%s: narrow tiles don't form two columns each as wide as its tiles: .rp-tiles{%s}", path, tiles)
-		}
-		if !strings.Contains(odd, "border-left:none") || !strings.Contains(odd, "padding-left:0") || !strings.Contains(lower, "border-top:1px solid var(--color-border)") {
-			t.Errorf("%s: narrow tiles don't rule their 2 × 2 grid as at 900px: .rp-tile:nth-child(odd){%s} .rp-tile:nth-child(n+3){%s}", path, odd, lower)
-		}
-		// Too narrow even for that, as the draft's column is just above 900px,
-		// they stack, each under a hairline.
-		narrowest := mediaBlock(t, page, "@container rp-tiles (max-width:14rem)")
-		stacked, _ := ruleFor(narrowest, ".rp-body .rp-tiles")
-		tile, _ := ruleFor(narrowest, ".rp-tile")
-		below, _ := ruleFor(narrowest, ".rp-tile:nth-child(n+2)")
-		if !strings.Contains(stacked, "grid-template-columns:minmax(0,1fr)") || !strings.Contains(tile, "border-left:none") || !strings.Contains(tile, "padding-left:0") || !strings.Contains(below, "border-top:1px solid var(--color-border)") {
-			t.Errorf("%s: the narrowest tiles don't stack under hairlines: .rp-tiles{%s} .rp-tile{%s} .rp-tile:nth-child(n+2){%s}", path, stacked, tile, below)
-		}
-		if strings.Index(page, "@container rp-tiles (max-width:14rem)") < strings.Index(page, "@container rp-tiles (max-width:44rem)") {
-			t.Errorf("%s: the stacked tiles' rule comes before the 2 × 2 rule, which overrides it", path)
-		}
-		for _, css := range []string{narrow, narrowest} {
-			for _, sel := range []string{".rp-tiles", ".rp-body .rp-tiles", ".rp-tile"} {
-				if rule, _ := ruleFor(css, sel); strings.Contains(rule, "order:") || strings.Contains(rule, "dense") {
-					t.Errorf("%s: narrow tiles reorder themselves: %s{%s}", path, sel, rule)
-				}
 			}
 		}
 	}
@@ -2443,9 +2408,9 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 
 // The draft's own rules outrank the generic ones they sit inside (#173): a
 // Highlight's section picker is an inline segmented control, not the form's
-// column of fields, the Highlight list and its items sit flush in its card, and
-// the draft's Health tiles stay a row of four. The baseline chip is a pill as
-// tall as the buttons beside it (#180).
+// column of fields, and the Highlight list and its items sit flush in its card
+// (the Health summary's row is pinned in styles_test.go). The baseline chip is
+// a pill as tall as the buttons beside it (#180).
 func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2473,15 +2438,6 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	}
 	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 0") {
 		t.Errorf("list rows lost their padding: .rp-list>li{%s}", rule)
-	}
-	// .rp-body section stacks every section in the draft as a column; the
-	// Health tiles stay four across, two at 900px.
-	if rule := cssRule(t, page, ".rp-body .rp-tiles"); !strings.Contains(rule, "display:grid") || !strings.Contains(rule, "grid-template-columns:repeat(4,minmax(0,1fr))") {
-		t.Errorf("the draft's Health tiles are not four across: .rp-body .rp-tiles{%s}", rule)
-	}
-	narrow := between(t, page, "@media (max-width:900px){", "}}") + "}"
-	if rule := cssRule(t, narrow, ".rp-body .rp-tiles"); !strings.Contains(rule, "grid-template-columns:repeat(2,minmax(0,1fr))") {
-		t.Errorf("at 900px the draft's Health tiles are not two across: .rp-body .rp-tiles{%s}", rule)
 	}
 	// The baseline chip is a bordered pill, as a .tag is.
 	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "border:1px solid") || !strings.Contains(rule, "border-radius:var(--radius-full)") {
@@ -2547,7 +2503,7 @@ func TestDraftMainColumnReadsAsTheReportOverHTTP(t *testing.T) {
 			t.Errorf("%s: the Introduction shows %d times (%q), want once in the main column", who, len(intros), textsOf(intros))
 		}
 		if !precedes(findByTestID(t, main, "report-meta"), intros[0]) || !precedes(intros[0], findByTestID(t, main, "health-summary")) {
-			t.Errorf("%s: the Introduction isn't between the meta line and the Health tiles", who)
+			t.Errorf("%s: the Introduction isn't between the meta line and the Health summary", who)
 		}
 		if formFields(page, "introduction") != nil {
 			t.Errorf("%s: the draft offers to edit the Introduction", who)
@@ -2564,7 +2520,7 @@ func TestDraftMainColumnReadsAsTheReportOverHTTP(t *testing.T) {
 }
 
 // The narrative sits in the main column where readers meet it, after the
-// Health tiles and before the exceptions: a reader who may manage the Report
+// Health summary and before the exceptions: a reader who may manage the Report
 // composes it there, under a Narrative heading, and anyone else reads it as it
 // will be published, with no compose form. Everyone gets the narrow column
 // beside it, its Delegates above its History; only the creator gets Remove
@@ -2603,7 +2559,7 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 		t.Errorf("the composer has no Save narrative")
 	}
 	if !precedes(findByTestID(t, main, "health-summary"), composer) || !precedes(composer, findByTestID(t, main, "needs-attention")) {
-		t.Errorf("the composer isn't between the Health tiles and the exceptions")
+		t.Errorf("the composer isn't between the Health summary and the exceptions")
 	}
 	if hasTestID(page, "report-narrative") {
 		t.Errorf("the manager reads the narrative as published beside the composer")
@@ -2647,7 +2603,7 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 		t.Errorf("the reader reads the notes %q, want the saved one", got)
 	}
 	if !precedes(findByTestID(t, main, "health-summary"), narrative) || !precedes(narrative, findByTestID(t, main, "needs-attention")) {
-		t.Errorf("the reader's narrative isn't between the Health tiles and the exceptions")
+		t.Errorf("the reader's narrative isn't between the Health summary and the exceptions")
 	}
 	side = findByTestID(t, page, "draft-side")
 	if !hasTestID(side, "report-delegates") || !hasTestID(side, "report-history") {
@@ -4458,7 +4414,7 @@ func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
 }
 
 // A Report opens with a line counting what moved since its baseline, under its
-// Health tiles on the draft and the publication and under the byline on Print;
+// Health summary on the draft and the publication and under the byline on Print;
 // each exception block opens with what changed on it, and the exceptions come
 // most urgent first on every page (CONTEXT.md: Report).
 func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
@@ -4511,7 +4467,7 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 		t.Errorf("the draft's movement line reads %q, want %q", got, movement)
 	}
 	if tiles, line := strings.Index(draft, `data-testid="health-summary"`), strings.Index(draft, `data-testid="report-movement"`); tiles < 0 || line < tiles {
-		t.Errorf("the draft's movement line doesn't come under its Health tiles")
+		t.Errorf("the draft's movement line doesn't come under its Health summary")
 	}
 	if got := exceptions(draft); !slices.Equal(got, mostUrgentFirst) {
 		t.Errorf("the draft's exceptions come %q, want %q", got, mostUrgentFirst)

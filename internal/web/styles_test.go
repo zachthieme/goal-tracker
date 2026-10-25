@@ -1125,6 +1125,70 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 	}
 }
 
+// The Report's Health summary is one row sized to its content, not a grid of
+// tiles: a "Health" label at the Report's level 4, then each chip, count and
+// word as a pair that never breaks, the row wrapping between pairs on a
+// phone, so it needs no container or breakpoint of its own (#512). On the
+// draft it sits in .rp-body, whose sections stack as a column, so its rule
+// names .rp-body to stay a row.
+func TestReportHealthSummaryIsOneWrappingRowStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:12px") || !strings.Contains(decls, "font-weight:500") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
+		t.Errorf(".label{%s} isn't the Report's level 4 label, 12px, 500, muted", decls)
+	}
+	for name, url := range map[string]string{
+		"draft":       fmt.Sprintf("%s/reports/%d", ts.URL, def.ID),
+		"publication": fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID),
+	} {
+		page := getBody(t, client, url)
+		summary := findByTestID(t, parsePage(t, page), "health-summary")
+		if !flatFrameHasClass(summary, "rp-summary") {
+			t.Fatalf("%s: the Health summary isn't styled as the summary row: %s", name, renderNode(summary))
+		}
+		count := findByTestID(t, summary, "health-count-red")
+		labels := findAll(summary, func(n *html.Node) bool { return flatFrameHasClass(n, "label") })
+		if len(labels) != 1 || textOf(labels[0]) != "Health" || labels[0].Data != "span" || !precedes(labels[0], count) {
+			t.Errorf("%s: the Health summary isn't headed by one \"Health\" .label, a label not a heading: %s", name, renderNode(summary))
+		}
+		if pair := count.Parent.Parent; !flatFrameHasClass(pair, "rp-summary-pair") || !hasTestID(pair, "health-count-red") || len(findAll(pair, func(n *html.Node) bool { return flatFrameHasClass(n, "badge") })) != 1 {
+			t.Errorf("%s: a count, its word and its chip aren't one pair: %s", name, renderNode(count.Parent.Parent))
+		}
+
+		styles := between(t, page, "<style>", "</style>")
+		row, ok := ruleFor(styles, ".rp-body .rp-summary")
+		if !ok || strings.Contains(row, "display:grid") || strings.Contains(row, "grid-template-columns") {
+			t.Errorf("%s: the Health summary is a grid, or has no rule that outranks .rp-body section: .rp-body .rp-summary{%s}", name, row)
+		}
+		for _, want := range []string{"display:flex", "flex-direction:row", "flex-wrap:wrap", "align-items:center"} {
+			if !strings.Contains(row, want) {
+				t.Errorf("%s: the Health summary isn't a row that wraps between its pairs: .rp-body .rp-summary{%s} lacks %s", name, row, want)
+			}
+		}
+		if pair, _ := ruleFor(styles, ".rp-summary-pair"); !strings.Contains(pair, "white-space:nowrap") {
+			t.Errorf("%s: a Health summary pair can break across lines: .rp-summary-pair{%s}", name, pair)
+		}
+		if num, ok := ruleFor(styles, ".rp-summary .num"); !ok || !strings.Contains(num, "color:var(--color-ink)") || strings.Contains(num, "font-size") {
+			t.Errorf("%s: a Health summary count isn't --color-ink at the row's own size: .rp-summary .num{%s}", name, num)
+		}
+		for _, gone := range []string{"@container rp-tiles", "container:rp-tiles", ".rp-tile"} {
+			if strings.Contains(styles, gone) {
+				t.Errorf("%s: the tile grid's %s is still in the Report's styles", name, gone)
+			}
+		}
+	}
+}
+
 // followUpsStyleSheet is the Follow-ups page's own stylesheet, its <style>.
 func followUpsStyleSheet(t *testing.T, page string) string {
 	t.Helper()

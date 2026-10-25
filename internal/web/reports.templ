@@ -615,7 +615,7 @@ templ publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) 
 
 // publicationPrintPage is a published Report on its own, without the app's
 // navigation, styled to print to PDF from the browser. Under the byline it
-// says how the Report selected its Goals; it has no Health tiles, so the line
+// says how the Report selected its Goals; it has no Health summary, so the line
 // counting what moved since the baseline follows.
 templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	<!DOCTYPE html>
@@ -767,18 +767,20 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
 // Green — and how many are Check-in overdue, so a reader sees the shape of the
-// Report's Goals before reading a block.
+// Report's Goals before reading a block. It is one row headed "Health", each
+// count with its word beside it, so it reads to someone who doesn't know the
+// shapes; each chip is its shape alone, so a pair reads once, "2 Red".
 templ healthSummary(r domain.Report) {
-	<section data-testid="health-summary" class="rp-tiles">
-		for _, t := range healthTiles(r) {
-			<div class="rp-tile">
-				if t.class == "st" {
-					<span class={ "badge", t.class }><span class="dot"></span>{ t.label }</span>
-				} else {
-					@healthChip("", t.label)
-				}
-				<span data-testid={ "health-count-" + t.key } class="num rp-count">{ fmt.Sprintf("%d", t.count) }</span>
-			</div>
+	<section data-testid="health-summary" class="rp-summary">
+		<span class="label">Health</span>
+		for i, t := range healthTiles(r) {
+			if i > 0 {
+				<span class="muted">·</span>
+			}
+			<span class="rp-summary-pair">
+				<span class={ "badge", "shape", t.class } title={ t.label } aria-hidden="true"><span class="dot"></span></span>
+				<span><span data-testid={ "health-count-" + t.key } class="num">{ fmt.Sprintf("%d", t.count) }</span> { t.label }</span>
+			</span>
 		}
 	</section>
 }
@@ -1610,7 +1612,7 @@ func hasNotes(notes []string) bool {
 
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Report's heading scale (DESIGN.md §
-// Type scale), the Health tiles, the exception blocks with their label column
+// Type scale), the Health summary, the exception blocks with their label column
 // and the Path to Green's Health tint, the discussion footer, the scrolling root-Goal
 // picker, and the draft's header and its two columns, the Report beside its
 // Delegates and History, which stack into one under 960px of the page's
@@ -1631,13 +1633,9 @@ templ reportStyles() {
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 		span.rp-crumb{color:var(--color-ink);font-weight:500}
 		.rp-draft-head span.rp-crumb{color:var(--color-ink-muted);font-weight:400}
-		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}
-		.rp-tile{min-width:0;padding:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 8px;border-left:1px solid var(--color-border)}
-		.rp-tile:first-child{border-left:none;padding-left:0}
-		:has(>.rp-tiles){container:rp-tiles/inline-size}
-		@container rp-tiles (max-width:44rem){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(min-content,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
-		@container rp-tiles (max-width:14rem){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:minmax(0,1fr)}.rp-tile{border-left:none;padding-left:0}.rp-tile:nth-child(n+2){border-top:1px solid var(--color-border)}}
-		.rp-count{font-size:20px;color:var(--color-ink)}
+		.rp-summary,.rp-body .rp-summary{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 8px}
+		.rp-summary-pair{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+		.rp-summary .num{color:var(--color-ink)}
 		.rp-body{display:flex;flex-direction:column;gap:24px}
 		.rp-body section{display:flex;flex-direction:column;gap:12px}
 		.rp-list{list-style:none;margin:0;padding:0}
@@ -1801,7 +1799,7 @@ templ reportStyles() {
 		.rp-mark-draft{background:var(--color-canvas);border:1.5px solid var(--color-ink-muted)}
 		.rp-mark-published{background:var(--color-primary)}
 		@media (max-width:600px){.rp-head h1{font-size:24px}.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-facts>div{grid-template-columns:minmax(0,1fr);gap:4px}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{grid-column:2}.rp-track .rp-track-owner{grid-column:2}.rp-track .rp-track-due{grid-column:2}.rp-track .rp-track-talk{grid-column:1/-1}}
-		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}}
+		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}}
 		@media (min-width:1280px){.rp-draft-head{flex-wrap:nowrap}.rp-draft-head .rp-save{flex-basis:9em;min-width:9em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rp-draft-head .rp-chip,.rp-draft-head .rp-head-actions{flex-shrink:0}}
 	</style>
 }

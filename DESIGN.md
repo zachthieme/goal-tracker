@@ -258,7 +258,7 @@ A Report, on its draft and its publication, reads on its own four levels
 | 1 | The Report's name (`.rp-head h1`) | 26 / 1.2, 24 at 600px and below | 700 |
 | 2 | Its section headings (`.rp-main h2`, `.rp-read h2`): Open Action Items, Narrative, Exceptions, On track, Goals that entered or left | 18 / 1.3, under a full-width 1px `--color-border` rule, about 44px below what comes before | 650 |
 | 3 | A Goal block's title (`.rp-card-head h3`) | 16 / 1.4 | 600 |
-| 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by | 12, `--color-ink-muted` | 500 |
+| 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
 
 The Exceptions count sits beside its heading in 14px muted tabular figures,
 and the narrative's Insights, Accomplishments and Misses are 15px, 600. The
@@ -541,9 +541,15 @@ and so on).
     the lowest Health among Active children"). The badge shrinks to its shape
     (`.badge.shape`): centred, 4px sides, still 22px tall, at least 24px
     wide, and at least 24px tall where it is a link. The Check-in choice keeps its 44px height.
+    The one exception is a Report's Health summary, a row of counts read at a
+    glance by someone who may not know the shapes: there the word stands on
+    screen beside each count ("2 Red"), so the chip is its shape alone, with
+    no `.sr-only` word, hidden from a screen reader (`aria-hidden`), and keeps
+    its `title`; the pair reads once, "2 Red".
   - **What has no colour keeps its words:** the Health filter's options, "No
     Health yet", "No Health", "—", a Lifecycle badge standing in for a
-    Health, and counts ("3 Red", My org's "Red 4", Follow-ups' "Red · 3").
+    Health, and counts ("3 Red", My org's "Red 4", Follow-ups' "Red · 3",
+    the Report's Health summary's "2 Red").
   - **Without colour, the word stays.** The Print variant shows the word
     beside the shape, since paper may be black and white (§ Print variant),
     and the Markdown export, which has no colour at all, writes the word
@@ -1766,7 +1772,7 @@ and so on).
       read-only, in 15/1.7 `--color-ink`, a touch larger than the body text;
       left out when there is none. It is edited only with the definition
       (**Edit definition**, in the header).
-    - **The Report's content:** the Health tiles, the movement line, the Open
+    - **The Report's content:** the Health summary, the movement line, the Open
       Action Items, keeping Close and Reassign, each coming back to the draft,
       the narrative, then the exceptions, On track, and the Goals that
       entered or left, as a publication shows them (§ A publication). The
@@ -1852,16 +1858,18 @@ and so on).
     "Selection: …"), the Report's content, then Action Items raised here.
   - **The Report's content (`reportContent`), which the draft's main column
     reads too:**
-    - **Health tiles (`.rp-tiles`):** four tiles between hairlines, split by
-      1px rules: Red, Yellow and Green as Health badges, and Check-in overdue
-      as its chip, in one row between a rule above and below, not a grid of
-      boxes, each count at the tile's right in 20px `--color-ink`
-      tabular figures. They form a 2 × 2 grid at 900px and below, and in any
-      column under 44rem (the tiles' holder is a container, `rp-tiles`): four
-      tiles need about 680px before the Check-in overdue chip overruns its
-      tile. There each column is at least as wide as its widest tile, so the
-      chip's column takes what it needs, and in a column under 14rem they
-      stack.
+    - **Health summary (`healthSummary`, `.rp-summary`):** one row sized to
+      its content, not a grid of tiles and with no rules: a "Health" label
+      (`.label`, the Report's level 4), then four pairs, Red, Yellow, Green
+      and Check-in overdue, split by a muted "·". A pair (`.rp-summary-pair`)
+      is the chip, its shape alone (Check-in overdue's the grey, dashed-edged
+      `.st` chip with its `.dot`), then its count in `--color-ink` tabular
+      figures at the row's size and its word: "● 2 Red · ▼ 1 Yellow · ● 3
+      Green · ■ 6 Check-in overdue". It reads like the movement line under
+      it. On a narrow column or a phone the row wraps between pairs, never
+      inside one (`white-space:nowrap`), so it needs no breakpoint or
+      container of its own. On the draft its rule names `.rp-body` to stay a
+      row inside `.rp-body section`'s column.
     - **Movement line:** "**Since the previous publication:** 2 turned Red ·
       1 back to Green", or "No movement since …".
     - **Open Action Items:** as rows (`.rp-rows`), at least 44px between
