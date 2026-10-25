@@ -280,7 +280,7 @@ func (s *Service) alert(ctx context.Context, c Comment, pub *Publication, others
 			continue
 		}
 		sent[a.ID] = true
-		if err := s.queueEmail(ctx, email.Message{To: a.Email, Subject: subject, Body: body}); err != nil {
+		if err := s.queueEmail(ctx, email.Message{To: a.Email, AccountID: a.ID, Subject: subject, Body: body}); err != nil {
 			return fmt.Errorf("queue comment alert: %w", err)
 		}
 	}

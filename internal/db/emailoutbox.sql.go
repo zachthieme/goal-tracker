@@ -10,7 +10,7 @@ import (
 )
 
 const listUnsentEmail = `-- name: ListUnsentEmail :many
-SELECT id, recipient, subject, body, created_at, attempts, next_attempt_at, sent_at, last_error FROM email_outbox
+SELECT id, recipient, account_id, subject, body, created_at, attempts, next_attempt_at, sent_at, last_error FROM email_outbox
 WHERE sent_at IS NULL AND attempts < ?1
 ORDER BY id
 `
@@ -30,6 +30,7 @@ func (q *Queries) ListUnsentEmail(ctx context.Context, maxAttempts int64) ([]Ema
 		if err := rows.Scan(
 			&i.ID,
 			&i.Recipient,
+			&i.AccountID,
 			&i.Subject,
 			&i.Body,
 			&i.CreatedAt,
@@ -66,12 +67,13 @@ func (q *Queries) MarkEmailSent(ctx context.Context, arg MarkEmailSentParams) er
 }
 
 const queueEmail = `-- name: QueueEmail :exec
-INSERT INTO email_outbox (recipient, subject, body, created_at, next_attempt_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO email_outbox (recipient, account_id, subject, body, created_at, next_attempt_at)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type QueueEmailParams struct {
 	Recipient     string
+	AccountID     int64
 	Subject       string
 	Body          string
 	CreatedAt     string
@@ -81,6 +83,7 @@ type QueueEmailParams struct {
 func (q *Queries) QueueEmail(ctx context.Context, arg QueueEmailParams) error {
 	_, err := q.db.ExecContext(ctx, queueEmail,
 		arg.Recipient,
+		arg.AccountID,
 		arg.Subject,
 		arg.Body,
 		arg.CreatedAt,

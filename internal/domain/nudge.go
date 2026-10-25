@@ -104,9 +104,10 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 	var unsent []string
 	for _, r := range to {
 		msg := email.Message{
-			To:      r.Email,
-			Subject: "Check-in requested: " + goal.Title,
-			Body:    s.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
+			To:        r.Email,
+			AccountID: r.ID,
+			Subject:   "Check-in requested: " + goal.Title,
+			Body:      s.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
 		}
 		if err := s.email.Send(ctx, msg); err != nil {
 			unsent = append(unsent, r.Email)

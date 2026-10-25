@@ -156,7 +156,7 @@ func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, int
 	fmt.Fprintf(&b, "Due: %s\n\n", item.DueDate.Format(dateFormat))
 	fmt.Fprintf(&b, "%s/reports/%d/publications/%d#action-items\n", s.baseURL, item.DefinitionID, item.PublicationID)
 	subject := "Action Item: " + strings.Join(strings.Fields(item.Text), " ")
-	if err := s.queueEmail(ctx, email.Message{To: item.Owner.Email, Subject: subject, Body: b.String()}); err != nil {
+	if err := s.queueEmail(ctx, email.Message{To: item.Owner.Email, AccountID: item.Owner.ID, Subject: subject, Body: b.String()}); err != nil {
 		return fmt.Errorf("queue action item email: %w", err)
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -80,8 +81,12 @@ func TestEmailIsSentOnlyOnceItsTransactionHasCommitted(t *testing.T) {
 		t.Errorf("sent %+v while a transaction held the write lock, want none", sender.inLocked)
 	}
 	var to []string
+	accounts := map[string]int64{owner.Email: owner.ID, author.Email: author.ID, other.Email: other.ID}
 	for _, m := range sender.sent {
 		to = append(to, m.To)
+		if m.AccountID != accounts[m.To] {
+			t.Errorf("email to %s is for Account %d, want %d", m.To, m.AccountID, accounts[m.To])
+		}
 	}
 	want := []string{"owner@example.com", "author@example.com", "owner@example.com", "owner@example.com", "other@example.com"}
 	if len(to) != len(want) {
@@ -172,7 +177,7 @@ func TestCommentIsKeptAndItsAlertRetriedWhileMailIsDown(t *testing.T) {
 }
 
 // After its fifth failed send an email is no longer tried, and the outbox logs
-// an error naming it.
+// an error naming it and its recipient's Account, never their address.
 func TestOutboxGivesUpOnAnEmailAfterFiveFailedSends(t *testing.T) {
 	t.Parallel()
 
@@ -199,18 +204,33 @@ func TestOutboxGivesUpOnAnEmailAfterFiveFailedSends(t *testing.T) {
 	if attempts, _ := sender.counts(); attempts != 5 {
 		t.Errorf("%d attempts, want 5", attempts)
 	}
-	var errs []string
+	var errs, warns []string
 	for _, line := range strings.Split(strings.TrimSpace(log.String()), "\n") {
-		if strings.Contains(line, "level=ERROR") {
+		switch {
+		case strings.Contains(line, "level=ERROR"):
 			errs = append(errs, line)
+		case strings.Contains(line, "level=WARN"):
+			warns = append(warns, line)
 		}
 	}
 	if len(errs) != 1 {
 		t.Fatalf("logged errors %q, want one, on giving up:\n%s", errs, log.String())
 	}
-	for _, want := range []string{"email_outbox_id=1", "to=owner@example.com", "attempts=5", "mail is down"} {
+	if len(warns) != 4 {
+		t.Fatalf("logged warnings %q, want four, one for each retry:\n%s", warns, log.String())
+	}
+	accountID := fmt.Sprintf("account_id=%d", owner.ID)
+	for _, want := range []string{"email_outbox_id=1", accountID, "attempts=5", "mail is down"} {
 		if !strings.Contains(errs[0], want) {
 			t.Errorf("error %q does not mention %q", errs[0], want)
+		}
+	}
+	for _, line := range append(warns, errs...) {
+		if !strings.Contains(line, accountID) {
+			t.Errorf("line %q does not name the recipient by %q", line, accountID)
+		}
+		if strings.Contains(line, "@") {
+			t.Errorf("line %q carries an email address", line)
 		}
 	}
 }
@@ -251,5 +271,66 @@ func TestRunEmailOutboxSendsQueuedEmailOnceItsCommandCommits(t *testing.T) {
 	case <-stopped:
 	case <-time.After(5 * time.Second):
 		t.Fatal("RunEmailOutbox still running 5s after its context was done")
+	}
+}
+
+// An email whose next attempt time can't be read is given up on, logged once,
+// and skipped, so the email queued after it still goes out (ticket #498).
+func TestOutboxSkipsAnEmailWhoseNextAttemptCantBeRead(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sender := &flakySender{}
+	var log bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&log, nil))
+	svc := domain.NewService(h.DB, h.Clock, sender, nil, domain.WithEmailOutboxLogger(logger))
+	owner := h.SignIn("owner@example.com")
+	reader := h.SignIn("reader@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	if _, err := h.DB.ExecContext(ctx, `
+		INSERT INTO email_outbox (recipient, account_id, subject, body, created_at, next_attempt_at)
+		VALUES (?, ?, 'Broken', 'Unreadable.', ?, 'not a time')`,
+		reader.Email, reader.ID, h.Clock.Now().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("queue a broken email: %v", err)
+	}
+	if _, err := svc.AddGoalComment(ctx, reader.ID, g.ID, "Why?"); err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+
+	for pass := range 2 {
+		if err := svc.DeliverEmail(ctx); err != nil {
+			t.Fatalf("pass %d: DeliverEmail: %v", pass, err)
+		}
+	}
+
+	attempts, sent := sender.counts()
+	if attempts != 1 || sent != 1 || sender.sent[0].To != "owner@example.com" {
+		t.Errorf("%d attempts, sent %+v, want the comment alert sent to the Owner once and the broken email never tried", attempts, sender.sent)
+	}
+	var tries int64
+	var lastError string
+	if err := h.DB.QueryRowContext(ctx, `SELECT attempts, last_error FROM email_outbox WHERE subject = 'Broken'`).Scan(&tries, &lastError); err != nil {
+		t.Fatalf("read the broken email: %v", err)
+	}
+	if tries != 5 || !strings.Contains(lastError, "not a time") {
+		t.Errorf("broken email has %d attempts and last error %q, want it given up on (5) saying why", tries, lastError)
+	}
+	var errs []string
+	for _, line := range strings.Split(strings.TrimSpace(log.String()), "\n") {
+		if strings.Contains(line, "level=ERROR") {
+			errs = append(errs, line)
+		}
+	}
+	if len(errs) != 1 {
+		t.Fatalf("logged errors %q, want one, on skipping the broken email:\n%s", errs, log.String())
+	}
+	for _, want := range []string{"email_outbox_id=1", fmt.Sprintf("account_id=%d", reader.ID)} {
+		if !strings.Contains(errs[0], want) {
+			t.Errorf("error %q does not mention %q", errs[0], want)
+		}
+	}
+	if strings.Contains(errs[0], "@") {
+		t.Errorf("error %q carries an email address", errs[0])
 	}
 }

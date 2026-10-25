@@ -17,6 +17,7 @@ var fkIndexAllowList = map[string]string{
 	"action_item_reassignments.reassigned_by": "never filtered on; only read with its row",
 	"action_items.created_by":                 "never filtered on; only written with its row",
 	"date_slips.checkin_id":                   "never filtered on; slips are read by Goal or Milestone",
+	"email_outbox.account_id":                 "never filtered on; only read with its row, for the outbox's log lines",
 	"goal_value_changes.dimension_id":         "never filtered on; only read with its row",
 	"goal_value_changes.field_id":             "never filtered on; only read with its row",
 	"link_removals.parent_id":                 "only filtered with child_id, through idx_link_removals_pair",

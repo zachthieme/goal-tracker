@@ -147,6 +147,7 @@ type DraftHighlight struct {
 type EmailOutbox struct {
 	ID            int64
 	Recipient     string
+	AccountID     int64
 	Subject       string
 	Body          string
 	CreatedAt     string

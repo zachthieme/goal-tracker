@@ -121,12 +121,15 @@ func TestReminderGoesToDelegatesToo(t *testing.T) {
 		t.Fatalf("SendReminders: %v", err)
 	}
 
-	if got := sentTo(h.Email, "sam@example.com"); len(got) != 1 {
-		t.Errorf("reminders to the Owner = %d, want 1", len(got))
+	if got := sentTo(h.Email, "sam@example.com"); len(got) != 1 || got[0].AccountID != sam.ID {
+		t.Errorf("reminders to the Owner = %+v, want 1, for their Account %d", got, sam.ID)
 	}
 	msgs := sentTo(h.Email, "dee@example.com")
 	if len(msgs) != 1 {
 		t.Fatalf("reminders to the Delegate = %d, want 1", len(msgs))
+	}
+	if msgs[0].AccountID != dee.ID {
+		t.Errorf("Delegate's reminder is for Account %d, want theirs, %d", msgs[0].AccountID, dee.ID)
 	}
 	body := msgs[0].Body
 	link := fmt.Sprintf("http://goals.test/goals/%d/checkin", g.ID)

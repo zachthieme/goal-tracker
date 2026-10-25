@@ -1,6 +1,6 @@
 -- name: QueueEmail :exec
-INSERT INTO email_outbox (recipient, subject, body, created_at, next_attempt_at)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO email_outbox (recipient, account_id, subject, body, created_at, next_attempt_at)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: ListUnsentEmail :many
 -- The emails not yet sent and tried fewer than max_attempts times, oldest
