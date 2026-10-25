@@ -29,6 +29,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Report's Health summary, on the draft and the publication, is now one compact row headed "Health" that reads "2 Red · 1 Yellow · 3 Green · 6 Check-in overdue", each count with its word beside its chip, instead of four wide tiles with no words; it wraps between counts on a phone (#512).
 - [ops] The database now refuses a duplicate Metric reading in a Check-in, a Field chosen twice by a Report Definition, two values of a Dimension differing only by case, and two Dimensions or two Fields sharing a name whatever its case, as a backstop to the app's own checks. Upgrading a database that already holds such a duplicate stops at migration 0060 with an error naming its table and changes nothing; resolve the duplicate by hand and start the app again (#488).
 - [user] On a touch screen, such as an iPad, text is larger and easier to read: body copy is 16px, secondary copy and section headings are 15px, and muted copy darkens to the body's ink, while labels keep their size and recede by colour. A laptop or a mouse-driven window keeps today's sizes (#513).
+- [user] The Definition log now shows its newest 100 changes, and when there are older ones ends with an **Older changes** link to the 100 before them (`/definition-log?before=<id>`), so the page stays quick however long the log grows. A log narrowed to one Dimension or Field still shows every change to it (#500).
+- [ops] Migration 0061 indexes the Nudges by day, each Goal's Check-ins newest first (replacing `idx_checkins_goal`) and the open Action Items by due date, so the Follow-ups page, the latest-Check-in lookups and the overdue and open Action Item lists stop scanning or sorting those tables as they grow (#500).
 
 **Bug fixes:**
 - [user] Two links sent or accepted at the same moment in opposite directions no longer both go through and make two Goals contribute to each other: the duplicate and cycle checks now run inside the transaction that writes the link, so the second is refused as a cycle (#486).
@@ -42,6 +44,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Dimension and a Field (or two of either) created at the same moment with one name are no longer both made: the name check now runs inside the transaction that creates the name, so the second is refused (#487).
 - [ops] `/healthz` now reads a table from the database file, so a database file that is missing, unmounted, replaced or unreadable answers `503` rather than `200` (#503).
 - [user] The New goal form's Contributes to search answers at most 20 matches, and reads their Health in one query rather than one per match, so it stays quick as Goals grow (#499).
+- [user] A Goal's Owner can add a Contributor to it in any Lifecycle: the Goal page's Contributors block now offers Manage on an Active, On Hold, Done or Cancelled Goal too, not just a Proposed one, matching what adding a Contributor already allowed (#505).
 
 **Security:**
 - [ops] A spreadsheet import refused as too large no longer leaves excelize's temp files behind. Each XLSX parse unpacks into its own temp directory and removes it however the parse ends, so repeated oversized uploads can't fill the server's temp disk (#480).
@@ -80,6 +83,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `TestConcurrentRequestsAreEachCounted` requests a static file rather than `/healthz`, so it no longer fails when a busy machine makes the health check's database ping outlast its one-second timeout and answer 503 (#515).
 - [internal] The test that requests are each counted when answered at once asks for a static file rather than `/healthz`, whose database ping could run past its 1-second timeout under the whole suite with `-race` and answer 503, failing the test now and then (#492).
 - [internal] `scripts/shots.mjs` takes a `touch` field that emulates a touch screen, so a shot's `(pointer:coarse)` rules apply, and every shot's facts print whether its pointer is coarse or fine (#513).
+- [internal] `internal/db/indexes_test.go` checks the plans of `ListNudgesOn`, `ListOverdueActionItems` and `ListOpenActionItemsWithParties` (a scan of a partial index allowed), and that no latest-Check-in query sorts a Goal's Check-ins in a temp B-tree (#500).
+- [internal] The Reports HTTP tests in `reports_test.go` now read each page through the parser helpers, checking what a person sees and can do rather than matching markup. Their style-rule checks, the print page's included, now live in `styles_test.go`, where each checks the class on the element and the property its rule sets (#522).
 
 **Code quality:**
 - [internal] Removed the unused `Service.AlsoIncludedOnly` and corrected the Report pages' style comment to name the draft's History column and header actions (#479).
