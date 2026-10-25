@@ -409,7 +409,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const commentSubject = `subject="Comment on ${slipped.title} in ${reportName}"`;
     await expect
       .poll(() => mailLines(serverLog(), commentSubject))
-      .toEqual([expect.stringContaining(`to=${slipped.email} `)]);
+      .toEqual([expect.stringContaining(`account_id=${accountId(seedLookup, slipped.email)} `)]);
 
     const owner = await as(slipped.email);
     await owner.goto(secondPublication);
@@ -426,7 +426,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       new RegExp(`${escapeRegExp(slipped.owner)}.*${escapeRegExp(answer)}`, "s"),
     ]);
     const replySubject = `subject="Reply on ${slipped.title} in ${reportName}"`;
-    await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`to=${reader} `)]);
+    await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`account_id=${accountId(seedLookup, reader)} `)]);
   });
 
   const due = addDays(appToday(), 14);
@@ -538,6 +538,12 @@ function coreTexts(c: CoreContent): string[] {
 // subject given, as slog writes it (subject="…").
 function mailLines(log: string, subject: string): string[] {
   return log.split("\n").filter((l) => l.includes("email send") && l.includes(subject));
+}
+
+// accountId is the ID of the Account with the email given: the log names an
+// email's recipient by it, never by their address.
+function accountId(seedLookup: SeedLookup, email: string): number {
+  return seedLookup<{ id: number }>("select id from accounts where email = ?", email)[0].id;
 }
 
 function escapeRegExp(s: string): string {
