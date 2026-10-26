@@ -291,7 +291,8 @@ func rawReadingsFromForm(r *http.Request, metrics []domain.Metric) map[int64]str
 }
 
 // readingsFromForm parses the Goal's non-blank raw readings into domain input. A
-// field that is not a number is rejected with a message naming the Metric.
+// field that is not a number is rejected with a message quoting what was typed
+// and naming the Metric.
 func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.MetricReadingInput, error) {
 	out := make([]domain.MetricReadingInput, 0, len(raw))
 	for _, m := range metrics {
@@ -301,7 +302,7 @@ func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.M
 		}
 		value, err := strconv.ParseFloat(text, 64)
 		if err != nil {
-			return nil, checkinError{Field: readingField(m.ID), Message: fmt.Sprintf("%q needs a number", m.Name)}
+			return nil, checkinError{Field: readingField(m.ID), Message: fmt.Sprintf("%q isn't a number for %q.", text, m.Name)}
 		}
 		out = append(out, domain.MetricReadingInput{MetricID: m.ID, Value: value})
 	}
@@ -351,7 +352,7 @@ func datesFromForm(r *http.Request, goal domain.Goal, milestones []domain.Milest
 func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 	delivery, err := parseDate(d.DeliveryDate)
 	if err != nil {
-		return checkinError{Field: "delivery_date", Message: "invalid delivery date"}
+		return checkinError{Field: "delivery_date", Message: fmt.Sprintf("%q isn't a date.", d.DeliveryDate)}
 	}
 	in.DeliveryDate = delivery
 	in.DeliveryDateReason = d.DeliveryDateReason
@@ -360,7 +361,7 @@ func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 		if err != nil {
 			return checkinError{
 				Field:   domain.CheckinMilestoneInput(row.Milestone.ID, "date"),
-				Message: fmt.Sprintf("invalid date for Milestone %q", row.Milestone.Name),
+				Message: fmt.Sprintf("%q isn't a date for Milestone %q.", row.Date, row.Milestone.Name),
 			}
 		}
 		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
@@ -376,7 +377,7 @@ func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 		if err != nil {
 			return checkinError{
 				Field:   domain.CheckinNewMilestoneInput(i),
-				Message: fmt.Sprintf("invalid date for new Milestone %q", row.Name),
+				Message: fmt.Sprintf("%q isn't a date for new Milestone %q.", row.Date, row.Name),
 			}
 		}
 		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{Name: row.Name, TargetDate: date})
