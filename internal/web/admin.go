@@ -28,10 +28,17 @@ func WithDirectorySync(sync *directory.Sync) Option {
 // the Departed people an Admin can mark returned. Only an Admin may open it.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may open the Admin page", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may open the Admin page")
 		return
 	}
 	s.renderAdmin(w, r, http.StatusOK, current, s.passwordLinksCard(), adminsSectionView{})
+}
+
+// refuseNonAdmin answers someone who isn't an Admin, at an Admin-only route,
+// with the refusal page at 403: headed "Admins only", saying reason, and
+// linking Back to Home.
+func (s *Server) refuseNonAdmin(w http.ResponseWriter, r *http.Request, reason string) {
+	s.refuse(w, r, "Admins only", "/home", domain.Refuse(domain.ErrNotAuthorized, "%s", reason))
 }
 
 // passwordLinksCard is the set-password links card as the Admin page first
@@ -90,7 +97,7 @@ type passwordLinksView struct {
 // anything that isn't an email address. Only an Admin may.
 func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may issue set-password links", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may issue set-password links")
 		return
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
@@ -100,7 +107,7 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 	}
 	link, err := s.svc.IssuePasswordLink(r.Context(), current.ID, emailAddr)
 	if errors.Is(err, domain.ErrNotAuthorized) {
-		http.Error(w, "only an Admin may issue set-password links", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may issue set-password links")
 		return
 	}
 	if errors.Is(err, domain.ErrNotAnEmail) {
@@ -140,7 +147,7 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 // Admin may.
 func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may make someone an Admin", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may make someone an Admin")
 		return
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
@@ -172,7 +179,7 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 // Only an Admin may.
 func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may remove an Admin", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may remove an Admin")
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -242,7 +249,7 @@ var syncingScript = templ.JSUnsafeFuncCall("this.setAttribute('aria-busy', 'true
 // Only an Admin may.
 func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may sync the directory")
 		return
 	}
 	logger := requestLogger(r.Context())
@@ -251,7 +258,7 @@ func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, 
 	// leaves the page. It logs with the request's ID.
 	out := s.directorySync.RunForAdmin(context.WithoutCancel(r.Context()), logger, current.ID)
 	if errors.Is(out.Err, domain.ErrNotAuthorized) {
-		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may sync the directory")
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)

@@ -29,7 +29,7 @@ func (s *Server) handleImportForm(w http.ResponseWriter, r *http.Request, curren
 // then re-renders the page with the row-by-row report. Only an Admin may.
 func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
-		http.Error(w, "only an Admin may import Goals", http.StatusForbidden)
+		s.refuseNonAdmin(w, r, "only an Admin may import Goals")
 		return
 	}
 	if err := r.ParseMultipartForm(maxImportBytes); err != nil {
@@ -62,11 +62,13 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 	} else {
 		report, err = imp.DryRun(r.Context(), current.ID, header.Filename, data)
 	}
+	if errors.Is(err, domain.ErrNotAuthorized) {
+		s.refuseNonAdmin(w, r, "only an Admin may import Goals")
+		return
+	}
 	if err != nil {
 		status, flash := http.StatusInternalServerError, "The import failed."
 		switch {
-		case errors.Is(err, domain.ErrNotAuthorized):
-			status, flash = http.StatusForbidden, "Only an Admin may import Goals."
 		case errors.Is(err, domain.ErrValidation):
 			status, flash = http.StatusUnprocessableEntity, importFlash(err)
 		default:

@@ -37,9 +37,10 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 		t.Fatalf("GET /admin: %v", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Admin GET /admin: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin GET /admin: status %d, want 403", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, readBody(t, resp)), "Admins only", "Only an Admin may open the Admin page.", "/home")
 
 	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/admin")
 	for _, tc := range []struct{ testID, href, label, blurb string }{
@@ -405,7 +406,10 @@ func TestNonAdminCantSeeOrRunTheDirectorySync(t *testing.T) {
 	h.SignIn("sam@example.com")
 	sam := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, req := range []struct{ method, path string }{{http.MethodGet, "/admin"}, {http.MethodPost, "/admin/directory-sync"}} {
+	for _, req := range []struct{ method, path, reason string }{
+		{http.MethodGet, "/admin", "Only an Admin may open the Admin page."},
+		{http.MethodPost, "/admin/directory-sync", "Only an Admin may sync the directory."},
+	} {
 		var resp *http.Response
 		if req.method == http.MethodGet {
 			var err error
@@ -416,9 +420,11 @@ func TestNonAdminCantSeeOrRunTheDirectorySync(t *testing.T) {
 			resp = postForm(t, sam, ts.URL+req.path, url.Values{})
 			defer func() { _ = resp.Body.Close() }()
 		}
-		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-directory-sync") {
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-directory-sync") {
 			t.Errorf("non-Admin %s %s: status %d, want 403 without the sync", req.method, req.path, resp.StatusCode)
 		}
+		assertRefusalPage(t, parsePage(t, body), "Admins only", req.reason, "/home")
 	}
 	if _, err := h.Service.AccountByEmail(t.Context(), "ceo@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a non-Admin's Sync now ran the sync (err %v)", err)
@@ -727,9 +733,11 @@ func TestNonAdminCantIssueASetPasswordLink(t *testing.T) {
 
 	resp := postForm(t, noRedirects(sam), ts.URL+"/admin/password-links", url.Values{"email": {"kim@example.com"}})
 	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "/set-password?token=") {
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden || strings.Contains(body, "/set-password?token=") {
 		t.Errorf("non-Admin POST /admin/password-links: status %d, want 403 with no link:\n%s", resp.StatusCode, body)
 	}
+	assertRefusalPage(t, parsePage(t, body), "Admins only", "Only an Admin may issue set-password links.", "/home")
 	if _, err := h.Service.AccountByEmail(t.Context(), "kim@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a non-Admin's Issue link created an Account (err %v)", err)
 	}
@@ -1011,16 +1019,22 @@ func TestNonAdminCantMakeOrRemoveAnAdmin(t *testing.T) {
 	h.SignIn("kim@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for what, press := range map[string]func() *http.Response{
-		"Make Admin":               func() *http.Response { return makeAdmin(t, client, ts.URL, "kim@example.com") },
-		"Remove Admin of an Admin": func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID)) },
-		"Remove Admin of yourself": func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(sam.ID)) },
+	for _, c := range []struct {
+		what   string
+		press  func() *http.Response
+		reason string
+	}{
+		{"Make Admin", func() *http.Response { return makeAdmin(t, client, ts.URL, "kim@example.com") }, "Only an Admin may make someone an Admin."},
+		{"Remove Admin of an Admin", func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID)) }, "Only an Admin may remove an Admin."},
+		{"Remove Admin of yourself", func() *http.Response { return removeAdmin(t, client, ts.URL, fmt.Sprint(sam.ID)) }, "Only an Admin may remove an Admin."},
 	} {
-		resp := press()
+		resp := c.press()
 		defer func() { _ = resp.Body.Close() }()
-		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-admins") {
-			t.Errorf("non-Admin %s: status %d, want 403 without the Admin page:\n%s", what, resp.StatusCode, body)
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-admins") {
+			t.Errorf("non-Admin %s: status %d, want 403 without the Admin page:\n%s", c.what, resp.StatusCode, body)
 		}
+		assertRefusalPage(t, parsePage(t, body), "Admins only", c.reason, "/home")
 	}
 	admins, err := h.Service.Admins(t.Context())
 	if err != nil || len(admins) != 1 || admins[0].ID != ada.ID {
