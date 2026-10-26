@@ -14,7 +14,8 @@ import (
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
 // how it selected its Goals as it read when published (nothing for a
-// publication frozen before selections were), the line counting what moved
+// publication frozen before selections were), its Goals counted by Health and
+// Check-in overdue (domain.Report.HealthCounts), the line counting what moved
 // since then, its open Action Items, the introduction, the narrative curated
 // from Highlights, each exception's full MBR block opening with what changed on
 // it and naming the Goals it links to, most urgent first, and every other
@@ -34,6 +35,10 @@ func Markdown(p domain.Publication) string {
 	}
 	if p.Scope != "" {
 		fmt.Fprintf(&b, "\n**Selection:** %s\n", text(p.Scope))
+	}
+	if len(r.Exceptions) > 0 || len(r.Lines) > 0 {
+		h := r.HealthCounts()
+		fmt.Fprintf(&b, "\n**Health:** %d Red · %d Yellow · %d Green · %d %s\n", h.Red, h.Yellow, h.Green, h.CheckinOverdue, domain.BadgeCheckinOverdue)
 	}
 	if r.Movement != nil {
 		since := fmtDate(r.Baseline)
