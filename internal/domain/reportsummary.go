@@ -33,9 +33,38 @@ type ReportSummary struct {
 
 // HealthCounts are how many of a Report's Goals have each Owner-set Health,
 // and how many have none: a Proposed Goal, or one not yet checked in on.
-// Together they add up to the Report's Goals.
+// Together they add up to the Report's Goals. CheckinOverdue is how many of
+// them, whatever their Health, are Check-in overdue.
 type HealthCounts struct {
 	Green, Yellow, Red, None int
+	CheckinOverdue           int
+}
+
+// HealthCounts counts r's selected Goals by Health, and its Check-in overdue
+// ones by their badge, as drafted or frozen — only an exception block can be
+// Check-in overdue, since a Check-in overdue Goal is an exception. It reads
+// only r, so a publication counts as it was published, and every surface
+// counts alike.
+func (r Report) HealthCounts() HealthCounts {
+	var c HealthCounts
+	for _, sg := range r.selected() {
+		switch sg.Health {
+		case HealthGreen:
+			c.Green++
+		case HealthYellow:
+			c.Yellow++
+		case HealthRed:
+			c.Red++
+		default:
+			c.None++
+		}
+	}
+	for _, b := range r.Exceptions {
+		if slices.Contains(b.Badges, BadgeCheckinOverdue) {
+			c.CheckinOverdue++
+		}
+	}
+	return c
 }
 
 // ReportSummaries summarises every saved Report Definition, ordered by name,
@@ -71,20 +100,7 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 // needn't draft it again.
 func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary, error) {
 	def := r.Definition
-	sum := ReportSummary{Definition: def}
-	for _, sg := range r.selected() {
-		sum.Goals++
-		switch sg.Health {
-		case HealthGreen:
-			sum.Health.Green++
-		case HealthYellow:
-			sum.Health.Yellow++
-		case HealthRed:
-			sum.Health.Red++
-		default:
-			sum.Health.None++
-		}
-	}
+	sum := ReportSummary{Definition: def, Goals: len(r.selected()), Health: r.HealthCounts()}
 	if r.Previous.ID != 0 {
 		pub, err := s.GetPublication(ctx, r.Previous.ID)
 		if err != nil {

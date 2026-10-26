@@ -155,6 +155,37 @@ func TestReportSummaryOfANeverPublishedDefinition(t *testing.T) {
 	}
 }
 
+// A Report counts its Goals by Health, exception blocks and one-line Goals
+// alike, those with none apart, and how many of its blocks are Check-in
+// overdue by their badge, as frozen — so a publication counts as it was
+// published, and the page and the Markdown count alike.
+func TestReportHealthCountsItsGoalsByHealthAndItsCheckinOverdueBlocks(t *testing.T) {
+	t.Parallel()
+
+	r := domain.Report{
+		Exceptions: []domain.ReportBlock{
+			{Goal: domain.Goal{ID: 1}, Health: domain.HealthRed, Badges: []string{domain.BadgeCheckinOverdue}},
+			{Goal: domain.Goal{ID: 2}, Health: domain.HealthRed},
+			{Goal: domain.Goal{ID: 3}, Health: domain.HealthYellow, Badges: []string{domain.BadgeNew}},
+			{Goal: domain.Goal{ID: 4}, Health: domain.HealthGreen, Badges: []string{domain.BadgeNewDate, domain.BadgeCheckinOverdue}},
+			{Goal: domain.Goal{ID: 5}, Badges: []string{domain.BadgeOwnerless}},
+		},
+		Lines: []domain.SelectedGoal{
+			{Goal: domain.Goal{ID: 6}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{ID: 7}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{ID: 8}},
+		},
+	}
+
+	want := domain.HealthCounts{Green: 3, Yellow: 1, Red: 2, None: 2, CheckinOverdue: 2}
+	if got := r.HealthCounts(); got != want {
+		t.Errorf("HealthCounts() = %+v, want %+v", got, want)
+	}
+	if got := (domain.Report{}).HealthCounts(); got != (domain.HealthCounts{}) {
+		t.Errorf("an empty Report's HealthCounts() = %+v, want none", got)
+	}
+}
+
 // A published definition's summary carries its latest publication: when it
 // was published and by whom.
 func TestReportSummaryOfAPublishedDefinitionHasItsLastPublication(t *testing.T) {
