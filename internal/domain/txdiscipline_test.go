@@ -219,6 +219,7 @@ func (s *Service) PlantedReadAfterItsTx(ctx context.Context, id int64) (Account,
 		"PlantedCheckInside":                false,
 		"PlantedByEmail":                    false,
 		"PlantedReadAfterCommit":            false,
+		"PlantedReadAfterItsTx":             false,
 	} {
 		if !slices.Contains(pkg.commands(), name) {
 			t.Errorf("%s isn't found to be a command", name)

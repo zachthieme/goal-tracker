@@ -46,3 +46,12 @@ func PublishReportChangedMidway(ctx context.Context, s *Service, actorID, defID 
 	between()
 	return s.writePublication(ctx, draft)
 }
+
+// SetGoalLifecycleFrom is setGoalLifecycle making change on goalID inside a
+// transaction of s, as a Check-in makes it, so a test can plan the change
+// from a Lifecycle the Goal has already left.
+func SetGoalLifecycleFrom(ctx context.Context, s *Service, goalID int64, change LifecycleChange) error {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		return tx.setGoalLifecycle(ctx, goalID, change)
+	})
+}

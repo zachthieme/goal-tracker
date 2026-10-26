@@ -391,6 +391,29 @@ func TestCheckinRefusedOnLifecycleTakingNoCheckins(t *testing.T) {
 	}
 }
 
+// A Check-in's Lifecycle change planned from one Lifecycle, made on a Goal
+// that has since moved to another still taking Check-ins, is refused saying
+// the Lifecycle changed meanwhile, and leaves the Goal where it is.
+func TestLifecycleChangeFromALifecycleTheGoalLeftIsRefused(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+	err := domain.SetGoalLifecycleFrom(ctx, h.Service, goal.ID, domain.LifecycleChange{
+		From: domain.LifecycleOnHold, To: domain.LifecycleCancelled, Reason: "Priorities moved.",
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if got, want := domain.Reason(err), "the Goal's Lifecycle changed meanwhile: reload it and try again"; got != want {
+		t.Errorf("reason = %q, want %q", got, want)
+	}
+	assertLifecycle(t, h, goal.ID, domain.LifecycleActive)
+}
+
 // Lifecycle changes appear in the Goal's Check-in history, newest first, each
 // with where the Goal moved from and to and its reason.
 func TestLifecycleChangesAppearInCheckinHistory(t *testing.T) {
