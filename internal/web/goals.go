@@ -2,8 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -58,15 +56,6 @@ func fmtDate(t time.Time) string {
 // fmtNum renders a Metric's baseline or target without trailing zeros.
 func fmtNum(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
-// parseDate reads a date form field in the HTML date-input format. An empty
-// field is the zero time, which the domain treats as "no date".
-func parseDate(value string) (time.Time, error) {
-	if value == "" {
-		return time.Time{}, nil
-	}
-	return time.Parse(dateLayout, value)
 }
 
 // writeCommandResult redirects back to the Goal on success and answers a
@@ -154,8 +143,8 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	// Parsed before the input is built, so Unparsed holds every append.
-	var unparsed unparsedGoalFields
-	targetDate := unparsed.date(r, "target_date")
+	var unparsed formProblems
+	targetDate := unparsed.date("target_date", r.FormValue("target_date"), "")
 	_, err := s.svc.AddMilestoneAsAuthor(r.Context(), current.ID, domain.AddMilestoneInput{
 		GoalID:     id,
 		Name:       r.FormValue("name"),
@@ -176,8 +165,8 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	// Parsed before the input is built, so Unparsed holds every append.
-	var unparsed unparsedGoalFields
-	targetDate := unparsed.date(r, "target_date")
+	var unparsed formProblems
+	targetDate := unparsed.date("target_date", r.FormValue("target_date"), "")
 	m, err := s.svc.EditMilestone(r.Context(), current.ID, domain.EditMilestoneInput{
 		MilestoneID: id,
 		Name:        r.FormValue("name"),
@@ -205,10 +194,10 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	// Parsed before the input is built, so Unparsed holds every append.
-	var unparsed unparsedGoalFields
-	baseline := unparsed.metricNumber(r, "baseline")
-	target := unparsed.metricNumber(r, "target")
-	targetDate := unparsed.date(r, "target_date")
+	var unparsed formProblems
+	baseline, _ := readMetricNumber(&unparsed, "baseline", "baseline", r.FormValue("baseline"))
+	target, _ := readMetricNumber(&unparsed, "target", "target", r.FormValue("target"))
+	targetDate := unparsed.date("target_date", r.FormValue("target_date"), "")
 	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
 		Name:       r.FormValue("name"),
@@ -230,40 +219,15 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
-// unparsedGoalFields are the values a Goal page form sent that don't parse,
-// each refused under its input's name, for the domain command to refuse once
-// it has checked who sent them, as DefinedGoalInput.Unparsed are.
-type unparsedGoalFields []*domain.InputError
-
-func (u *unparsedGoalFields) refuse(input, format string, args ...any) {
-	*u = append(*u, &domain.InputError{Input: input, Message: fmt.Sprintf(format, args...)})
-}
-
-// date reads input as a date, blank being no date. One that doesn't parse is
-// refused and read as no date.
-func (u *unparsedGoalFields) date(r *http.Request, input string) time.Time {
-	value := r.FormValue(input)
-	d, err := parseDate(strings.TrimSpace(value))
-	if err != nil {
-		u.refuse(input, "%q isn't a date", value)
+// readMetricNumber reads input, a Metric's baseline or target (what) on the
+// Goal page or the New goal form, as a number into unparsed. A blank one is refused, as one that doesn't parse is,
+// and neither is read.
+func readMetricNumber(unparsed *formProblems, input, what, typed string) (float64, bool) {
+	if strings.TrimSpace(typed) == "" {
+		unparsed.add(input, "a Metric needs a %s", what)
+		return 0, false
 	}
-	return d
-}
-
-// metricNumber reads input, a Metric's baseline or target, as a number. One
-// that is blank or doesn't parse is refused and read as 0.
-func (u *unparsedGoalFields) metricNumber(r *http.Request, input string) float64 {
-	value := strings.TrimSpace(r.FormValue(input))
-	if value == "" {
-		u.refuse(input, "a Metric needs a %s", input)
-		return 0
-	}
-	n, err := strconv.ParseFloat(value, 64)
-	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-		u.refuse(input, "the %s must be a number, not %q", input, value)
-		return 0
-	}
-	return n
+	return unparsed.number(input, typed, "the "+what)
 }
 
 func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {

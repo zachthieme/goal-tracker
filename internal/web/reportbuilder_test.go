@@ -15,6 +15,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	nethtml "golang.org/x/net/html"
 )
 
 // The builder saves a picked definition: the Goals picked by hand, whatever
@@ -522,9 +523,10 @@ func TestBuilderRefusesARowLeftWithNoValueOfItsOwnOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a Lifecycle row with only an org value: status %d, want 422; body:\n%s", resp.StatusCode, page)
 	}
-	row := pageElement(t, pageElement(t, page, "form", "report-builder"), "div", "report-rule")
-	if bad := between(t, row, `id="rules[0]-error"`, `</span>`); !strings.Contains(bad, "a rule needs a value") {
-		t.Errorf("the row's error reads %q, want \"a rule needs a value\"", bad)
+	row := findByTestID(t, findByTestID(t, parsePage(t, page), "report-builder"), "report-rule")
+	bad := findAll(row, func(n *nethtml.Node) bool { return attrOf(n, "id") == "rules[0]-error" })
+	if len(bad) != 1 || textOf(bad[0]) != "A rule needs a value." {
+		t.Errorf("the row's error reads %q, want %q:\n%s", textsOf(bad), "A rule needs a value.", renderNode(row))
 	}
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
 		t.Errorf("the refused save saved %d definitions", len(defs))

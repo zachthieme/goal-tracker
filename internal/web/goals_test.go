@@ -5215,6 +5215,37 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	}
 }
 
+// A crafted save of the Goal table naming a cell no table shows is refused on
+// the refusal page, 422, quoting the cell, with a way Back to the table out of
+// edit mode, and nothing in it is saved.
+func TestGoalTableSaveOfAMalformedCellIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	mine := h.CreateGoal(sam, "Mine", "M matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Budget of Mine"), "10")
+	form.Set("d.x.1", "1")
+	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, parsePage(t, body), "Can't save Goals", `Invalid cell "d.x.1".`, "/goals?layout=table")
+	if changes, err := h.Service.ValueHistory(context.Background(), mine.ID); err != nil || len(changes) != 0 {
+		t.Errorf("Mine's history = %+v (%v), want nothing saved", changes, err)
+	}
+}
+
 // A crafted save of the Goal table touching a Goal the person may not set
 // values on — its row had no inputs — is refused with 403 on the refusal page,
 // naming the Goal, with a way Back to the table out of edit mode, and nothing
@@ -7827,7 +7858,7 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 		{"edit metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
-		}, "refused-reason", `The baseline must be a number, not "lots".`},
+		}, "refused-reason", `"lots" isn't a number for the baseline.`},
 		{"activate", fmt.Sprintf("/goals/%d/activate", bare.ID), nil,
 			"refused-reason", "A Goal must be marked Dated or Ongoing to become Active."},
 	} {
@@ -7920,7 +7951,7 @@ func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 		{"edit metric", metricID, "/metrics/%d", url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
-		}, "Only the Goal's Owner may change its Metrics.", `The baseline must be a number, not "lots".`},
+		}, "Only the Goal's Owner may change its Metrics.", `"lots" isn't a number for the baseline.`},
 	} {
 		for _, by := range []struct {
 			who    string

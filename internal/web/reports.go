@@ -127,13 +127,12 @@ func (s *Server) reportDraftView(r *http.Request, current domain.Account, def do
 }
 
 // loadReportDraftView is reportDraftView against the baseline the reader
-// picked, its forms coming back to draft: Bad Request, written to w, for a
-// baseline that isn't a date, and the server-error page when the page can't
-// be read. It reports whether the request may go on.
+// picked, its forms coming back to draft: refused, written to w, for a
+// baseline that isn't a date (reportBaseline), and the server-error page when
+// the page can't be read. It reports whether the request may go on.
 func (s *Server) loadReportDraftView(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, draft string) (reportDraftView, bool) {
-	baseline, err := parseDate(r.URL.Query().Get("baseline"))
-	if err != nil {
-		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+	baseline, ok := s.reportBaseline(w, r, "Can't show Report", def.ID)
+	if !ok {
 		return reportDraftView{}, false
 	}
 	v, err := s.reportDraftView(r, current, def, baseline, draft)
@@ -386,7 +385,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		case hx && errors.Is(err, domain.ErrValidation):
-			answerUnswapped(w, r, saveStatus("Not saved: "+domain.Reason(err), true))
+			answerUnswapped(w, r, saveStatus("Not saved: "+refusalSentence(err), true))
 		default:
 			s.writeReportError(w, r, "Can't save narrative", target, err)
 		}
@@ -440,6 +439,20 @@ func narrativeFormInput(w http.ResponseWriter, r *http.Request) (domain.CurateNa
 	return in, true
 }
 
+// reportBaseline is the baseline the reader picked for the Report Definition
+// id's Report, the baseline query parameter, a date, or the zero time for
+// none. One that isn't a date is refused, written to w on the refusal page
+// headed heading with Back to the draft without it, and ok is false.
+func (s *Server) reportBaseline(w http.ResponseWriter, r *http.Request, heading string, id int64) (baseline time.Time, ok bool) {
+	var unparsed formProblems
+	baseline = unparsed.date("baseline", r.URL.Query().Get("baseline"), "")
+	if err := unparsed.err(); err != nil {
+		s.writeReportError(w, r, heading, "/reports/"+strconv.FormatInt(id, 10), err)
+		return time.Time{}, false
+	}
+	return baseline, true
+}
+
 // narrativeDraftPath is the draft of the Report Definition id, against the
 // baseline the reader picked (the baseline query parameter), if any.
 func narrativeDraftPath(r *http.Request, id int64) string {
@@ -471,9 +484,8 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id
 		s.serverError(w, r, "could not load report", err)
 		return
 	}
-	baseline, err := parseDate(r.URL.Query().Get("baseline"))
-	if err != nil {
-		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+	baseline, ok := s.reportBaseline(w, r, "Can't show Report", id)
+	if !ok {
 		return
 	}
 	report, err := s.svc.DraftReport(r.Context(), def, baseline)
@@ -514,9 +526,8 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		s.serverError(w, r, "could not load report", err)
 		return
 	}
-	baseline, err := parseDate(r.URL.Query().Get("baseline"))
-	if err != nil {
-		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+	baseline, ok := s.reportBaseline(w, r, "Can't show Report", id)
+	if !ok {
 		return
 	}
 	// The form offers the Report's Highlights whatever the narrative, so
@@ -527,7 +538,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 	refused := errors.Is(err, domain.ErrValidation)
 	switch {
 	case refused:
-		status, code = "Not saved: "+domain.Reason(err), http.StatusUnprocessableEntity
+		status, code = "Not saved: "+refusalSentence(err), http.StatusUnprocessableEntity
 	case err != nil:
 		s.writeReportError(w, r, "Can't save narrative", narrativeDraftPath(r, def.ID), err)
 		return
@@ -653,9 +664,8 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 		s.notFound(w, r)
 		return
 	}
-	baseline, err := parseDate(r.URL.Query().Get("baseline"))
-	if err != nil {
-		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+	baseline, ok := s.reportBaseline(w, r, "Can't publish Report", id)
+	if !ok {
 		return
 	}
 	pub, err := s.svc.PublishReport(r.Context(), current.ID, id, baseline)
@@ -942,7 +952,7 @@ func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Reques
 		if !ok {
 			return
 		}
-		v.Management.Email, v.Management.Refused = email, domain.Reason(err)
+		v.Management.Email, v.Management.Refused = email, refusalSentence(err)
 		render(w, r, http.StatusUnprocessableEntity, reportDraftPage(&current, v))
 	default:
 		s.writeReportError(w, r, "Can't change Report Delegates", draft, err)

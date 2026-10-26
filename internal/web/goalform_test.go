@@ -100,7 +100,7 @@ func TestNewGoalFormRefusalMarksEachBadInputAndKeepsValues(t *testing.T) {
 		t.Errorf("the error summary isn't an alert: %s", openTag(summary))
 	}
 	form := pageElement(t, page, "form", "goal-form")
-	for name, message := range map[string]string{"title": "a Goal needs a title", "why_it_matters": "a Goal needs to say why it matters"} {
+	for name, message := range map[string]string{"title": "A Goal needs a title.", "why_it_matters": "A Goal needs to say why it matters."} {
 		if !strings.Contains(summary, message) {
 			t.Errorf("the summary doesn't list %q:\n%s", message, summary)
 		}
@@ -237,7 +237,7 @@ func TestNewGoalFormHoldSteadyMetricTakesTheChosenDirection(t *testing.T) {
 	}
 
 	form := refusedNewGoal(t, client, ts.URL, holdSteady(""))
-	wantRefused(t, form, "metrics[0].direction", "a Metric needs a direction")
+	wantRefused(t, form, "metrics[0].direction", `A Metric needs a direction of "up" or "down".`)
 	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
 		t.Fatalf("a refused post created %d Goals", len(goals))
 	}
@@ -272,15 +272,15 @@ func TestNewGoalFormRefusesRowValuesThatDontParseKeepingTheRest(t *testing.T) {
 		"title": {"Cut checkout latency"}, "why_it_matters": {""},
 		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
 		"milestones[1].name": {"Ship the fix"}, "milestones[1].date": {"next week"},
-		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"slow"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
+		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"lots"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
 		"metrics[1].name": {"Conversion"}, "metrics[1].unit": {""}, "metrics[1].baseline": {""}, "metrics[1].target": {"3"}, "metrics[1].target_date": {""},
 	})
-	wantRefused(t, form, "why_it_matters", "a Goal needs to say why it matters")
-	wantRefused(t, form, "milestones[1].date", "isn't a date")
-	wantRefused(t, form, "metrics[0].baseline", "must be a number")
-	wantRefused(t, form, "metrics[1].unit", "a Metric needs a unit")
-	wantRefused(t, form, "metrics[1].baseline", "a Metric needs a baseline")
-	wantRefused(t, form, "metrics[1].target_date", "a Metric needs a target date")
+	wantRefused(t, form, "why_it_matters", "A Goal needs to say why it matters.")
+	wantRefused(t, form, "milestones[1].date", `"next week" isn't a date.`)
+	wantRefused(t, form, "metrics[0].baseline", `"lots" isn't a number for the baseline.`)
+	wantRefused(t, form, "metrics[1].unit", "A Metric needs a unit.")
+	wantRefused(t, form, "metrics[1].baseline", "A Metric needs a baseline.")
+	wantRefused(t, form, "metrics[1].target_date", "A Metric needs a target date.")
 	for name, value := range map[string]string{
 		"milestones[0].name": "Profile checkout", "milestones[0].date": "2026-11-02",
 		"milestones[1].name": "Ship the fix", "milestones[1].date": "next week",
@@ -318,8 +318,8 @@ func TestNewGoalFormKeepsNothingWhenOnlyAValueDoesntParse(t *testing.T) {
 	form := refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{
 		"milestones[0].name": "Profile checkout", "milestones[0].date": "2026-13-45",
 	}))
-	wantRefused(t, form, "milestones[0].date", "isn't a date")
-	if strings.Contains(form, "a Milestone needs a date") {
+	wantRefused(t, form, "milestones[0].date", `"2026-13-45" isn't a date.`)
+	if strings.Contains(form, "A Milestone needs a date") {
 		t.Errorf("the date that didn't parse is also refused as missing:\n%s", form)
 	}
 	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
@@ -742,7 +742,13 @@ func TestNewGoalFormSavesTheCadenceChosen(t *testing.T) {
 func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *testing.T) {
 	t.Parallel()
 
-	for _, days := range []string{"0", "-3", "weekly", "1.5", ""} {
+	for days, want := range map[string]string{
+		"0":      `The Check-in cadence must be a whole number of days above 0, not "0".`,
+		"-3":     `The Check-in cadence must be a whole number of days above 0, not "-3".`,
+		"weekly": `The Check-in cadence must be a whole number of days above 0, not "weekly".`,
+		"1.5":    `The Check-in cadence must be a whole number of days above 0, not "1.5".`,
+		"":       "A Custom cadence needs a number of days.",
+	} {
 		t.Run(days, func(t *testing.T) {
 			t.Parallel()
 
@@ -756,8 +762,8 @@ func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *test
 				"kind": {"Dated"}, "delivery_date": {"2027-03-31"},
 				"cadence": {"custom"}, "cadence_days": {days},
 			})
-			wantRefused(t, form, "why_it_matters", "a Goal needs to say why it matters")
-			wantRefused(t, form, "cadence_days", "cadence")
+			wantRefused(t, form, "why_it_matters", "A Goal needs to say why it matters.")
+			wantRefused(t, form, "cadence_days", want)
 			if summary := pageElement(t, form, "div", "goal-form-errors"); !strings.Contains(summary, `href="#cadence"`) {
 				t.Errorf("the summary doesn't link the cadence problem to #cadence:\n%s", summary)
 			}
@@ -792,7 +798,7 @@ func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *test
 func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 	t.Parallel()
 
-	for date, want := range map[string]string{"": "a Dated Goal needs a delivery date", "someday": "isn't a date"} {
+	for date, want := range map[string]string{"": "A Dated Goal needs a delivery date.", "someday": `"someday" isn't a date.`} {
 		t.Run(date, func(t *testing.T) {
 			t.Parallel()
 
@@ -1640,7 +1646,7 @@ func TestNewGoalFormCreateAndActivate(t *testing.T) {
 	form := newGoalForm(map[string]string{"activate": "1", "kind": "Ongoing"})
 	page := refusedNewGoal(t, client, ts.URL, form)
 	summary := html.UnescapeString(pageElement(t, page, "div", "goal-form-errors"))
-	for _, rule := range []string{"an Ongoing Goal needs at least one Metric", "a Goal needs a value in Budget to become Active"} {
+	for _, rule := range []string{"An Ongoing Goal needs at least one Metric.", "A Goal needs a value in Budget to become Active."} {
 		if !strings.Contains(summary, rule) {
 			t.Errorf("the refusal doesn't list %q:\n%s", rule, summary)
 		}

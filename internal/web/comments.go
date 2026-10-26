@@ -244,18 +244,21 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	due, err := parseDate(r.FormValue("due"))
-	if err != nil {
-		http.Error(w, "the due date must be a date", http.StatusBadRequest)
+	var unparsed formProblems
+	due := unparsed.date("due", r.FormValue("due"), "")
+	if err := unparsed.err(); err != nil {
+		s.writeCommentError(w, r, publicationPath(pub), err)
 		return
 	}
 	commentID, _ := strconv.ParseInt(r.FormValue("comment"), 10, 64)
 	var goalID int64
 	if v := r.FormValue("goal"); v != "" {
-		if goalID, err = strconv.ParseInt(v, 10, 64); err != nil {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
 			s.writeCommentError(w, r, publicationPath(pub), domain.Refuse(domain.ErrValidation, "the Goal must be a Goal's id"))
 			return
 		}
+		goalID = id
 	}
 	if _, err := s.svc.RaiseActionItemByEmail(r.Context(), current.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID,

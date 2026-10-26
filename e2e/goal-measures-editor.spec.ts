@@ -175,7 +175,7 @@ test.describe("the New goal form's Milestone and Metric editor", () => {
     const editor = know(page).getByTestId("milestone-editor");
     await expect(editor).toBeVisible();
     await expect(editor.getByLabel("Name")).toHaveValue("Beta in the EU");
-    await expect(editor.getByTestId("input-error")).toHaveText("a Milestone needs a date");
+    await expect(editor.getByTestId("input-error")).toHaveText("A Milestone needs a date.");
     await expect(editor.getByLabel("Date")).toHaveAttribute("aria-invalid", "true");
     await expect(know(page).getByTestId("milestone-row")).toHaveCount(0);
     for (const b of await addButtons(page).all()) await expect(b).toBeDisabled();

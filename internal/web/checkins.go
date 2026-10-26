@@ -161,13 +161,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	dates := datesFromForm(r, view.Goal, view.Milestones)
 	lifecycle := lifecycleFromForm(r, view)
 
-	// An error from reading the form already names its field; the domain's
-	// name theirs (see checkinErrorField) and read as a sentence, without the
-	// internal prefix.
+	// The form shows the first problem err refuses, from reading the form or
+	// the domain's, beside the input it names (checkinProblem).
 	formData := func(err error) checkinFormData {
-		var e checkinError
-		if err != nil && !errors.As(err, &e) {
-			e = checkinError{Field: checkinErrorField(err), Message: sentence(plainReasonShown(err, view.Shown))}
+		var e domain.InputError
+		if err != nil {
+			e = checkinProblem(err, view.Shown)
 		}
 		return view.withContext(checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, PathTargetDateReason: pathReason, AsksForHelp: asksForHelp, Explanation: explanation,
@@ -185,7 +184,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		d := formData(nil)
 		d.Highlights = append(d.Highlights, highlightFormData{})
 		if r.FormValue("off_target_warned") != "" && health == domain.HealthGreen && !offTargetConfirmed {
-			if readings, err := readingsFromForm(metrics, rawReadings); err == nil {
+			var unread formProblems
+			if readings := readingsFromForm(&unread, metrics, rawReadings); len(unread) == 0 {
 				d.OffTarget = view.OffTargetMetrics(readings)
 			}
 		}
@@ -193,16 +193,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 
-	date, err := parseDate(rawDate)
-	if err != nil {
-		s.renderCheckinFormError(w, r, current, view, formData(checkinError{Field: "path_to_green", Message: fmt.Sprintf("%q isn't a date.", rawDate)}))
-		return
-	}
-	readings, err := readingsFromForm(metrics, rawReadings)
-	if err != nil {
-		s.renderCheckinFormError(w, r, current, view, formData(err))
-		return
-	}
+	// What the form can't read is refused before anything is sent, in the
+	// order the form shows it.
+	var unparsed formProblems
+	date := unparsed.date("path_to_green", rawDate, "")
+	readings := readingsFromForm(&unparsed, metrics, rawReadings)
 
 	in := domain.SubmitCheckinInput{
 		GoalID:         goalID,
@@ -225,7 +220,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		// re-rendered since carries it.
 		ConfirmOffTarget: offTargetConfirmed,
 	}
-	if err := dates.applyTo(&in); err != nil {
+	dates.applyTo(&in, &unparsed)
+	if err := unparsed.err(); err != nil {
 		s.renderCheckinFormError(w, r, current, view, formData(err))
 		return
 	}
@@ -238,7 +234,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		in.Highlights = append(in.Highlights, domain.HighlightInput{Kind: row.Kind, Note: row.Note})
 	}
 
-	if _, err = s.svc.SubmitCheckin(r.Context(), in); err != nil {
+	if _, err := s.svc.SubmitCheckin(r.Context(), in); err != nil {
 		// A Green with a Metric off target is a question, not a field's
 		// error: the form comes back as typed, warning about the Metrics and
 		// offering to save the Green anyway.
@@ -266,19 +262,19 @@ func offTargetSentence(o domain.OffTargetMetric, shown displayDates) string {
 		o.Metric.Name, fmtNum(o.Reading), o.Metric.Unit, fmtNum(o.Metric.Target), shown.date(o.Metric.TargetDate))
 }
 
-// checkinErrorField names the form field a Check-in refusal is about: the
-// input the domain's refusal names, by the names the form's inputs share
-// (domain.InputErrors), or "" for one about the Check-in as a whole, shown at
-// the top of the form.
-func checkinErrorField(err error) string {
-	if problems := domain.InputErrors(err); len(problems) > 0 {
-		return problems[0].Input
+// checkinProblem is the problem the Check-in form shows for err: the first
+// it refuses (problemsOf), under the input the form and the domain both name
+// it by, or none for one about the Check-in as a whole, shown at the top of
+// the form. An overdue Milestone's is told as plainReasonShown tells it.
+func checkinProblem(err error, shown displayDates) domain.InputError {
+	problem := *problemsOf(err)[0]
+	about := err
+	if problem.Input != "" {
+		about = &problem
 	}
-	return ""
+	problem.Message = sentence(plainReasonShown(about, shown))
+	return problem
 }
-
-// Error returns the message, so a form-reading error can carry its field.
-func (e checkinError) Error() string { return e.Message }
 
 // readingField names a Metric's reading input.
 func readingField(metricID int64) string {
@@ -297,22 +293,16 @@ func rawReadingsFromForm(r *http.Request, metrics []domain.Metric) map[int64]str
 }
 
 // readingsFromForm parses the Goal's non-blank raw readings into domain input. A
-// field that is not a number is rejected with a message quoting what was typed
-// and naming the Metric.
-func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.MetricReadingInput, error) {
+// reading that is not a number is refused into unparsed, quoting what was
+// typed and naming the Metric.
+func readingsFromForm(unparsed *formProblems, metrics []domain.Metric, raw map[int64]string) []domain.MetricReadingInput {
 	out := make([]domain.MetricReadingInput, 0, len(raw))
 	for _, m := range metrics {
-		text := raw[m.ID]
-		if text == "" {
-			continue
+		if value, ok := unparsed.number(readingField(m.ID), raw[m.ID], fmt.Sprintf("%q", m.Name)); ok {
+			out = append(out, domain.MetricReadingInput{MetricID: m.ID, Value: value})
 		}
-		value, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			return nil, checkinError{Field: readingField(m.ID), Message: fmt.Sprintf("%q isn't a number for %q.", text, m.Name)}
-		}
-		out = append(out, domain.MetricReadingInput{MetricID: m.ID, Value: value})
 	}
-	return out, nil
+	return out
 }
 
 // datesFromForm reads the Check-in's date and Milestone fields as typed: the
@@ -354,41 +344,26 @@ func datesFromForm(r *http.Request, goal domain.Goal, milestones []domain.Milest
 }
 
 // applyTo parses the typed dates into the Check-in's date and Milestone
-// changes. A date that isn't a date is rejected, next to its field.
-func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
-	delivery, err := parseDate(d.DeliveryDate)
-	if err != nil {
-		return checkinError{Field: "delivery_date", Message: fmt.Sprintf("%q isn't a date.", d.DeliveryDate)}
-	}
-	in.DeliveryDate = delivery
+// changes. A date that isn't a date is refused into unparsed, next to its
+// field.
+func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput, unparsed *formProblems) {
+	in.DeliveryDate = unparsed.date("delivery_date", d.DeliveryDate, "")
 	in.DeliveryDateReason = d.DeliveryDateReason
 	for _, row := range d.Milestones {
-		date, err := parseDate(row.Date)
-		if err != nil {
-			return checkinError{
-				Field:   domain.CheckinMilestoneInput(row.Milestone.ID, "date"),
-				Message: fmt.Sprintf("%q isn't a date for Milestone %q.", row.Date, row.Milestone.Name),
-			}
-		}
 		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
 			MilestoneID:   row.Milestone.ID,
-			TargetDate:    date,
+			TargetDate:    unparsed.date(domain.CheckinMilestoneInput(row.Milestone.ID, "date"), row.Date, fmt.Sprintf("Milestone %q", row.Milestone.Name)),
 			DateReason:    row.DateReason,
 			Status:        row.Status,
 			RemovedReason: row.RemovedReason,
 		})
 	}
 	for i, row := range d.NewMilestones {
-		date, err := parseDate(row.Date)
-		if err != nil {
-			return checkinError{
-				Field:   domain.CheckinNewMilestoneInput(i),
-				Message: fmt.Sprintf("%q isn't a date for new Milestone %q.", row.Date, row.Name),
-			}
-		}
-		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{Name: row.Name, TargetDate: date})
+		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{
+			Name:       row.Name,
+			TargetDate: unparsed.date(domain.CheckinNewMilestoneInput(i), row.Date, fmt.Sprintf("new Milestone %q", row.Name)),
+		})
 	}
-	return nil
 }
 
 // lifecycleFromForm reads the Check-in's Lifecycle fields: the Lifecycle to move

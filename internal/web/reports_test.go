@@ -152,10 +152,12 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Errorf("unreadable baseline: status %d, want 400", resp.StatusCode)
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("unreadable baseline: status %d, want 422", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, body), "Can't show Report", `"not-a-date" isn't a date.`, "/reports/"+strconv.FormatInt(def.ID, 10))
 }
 
 // From the draft a reader publishes the Report and lands on the frozen
@@ -244,6 +246,32 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("publication under another definition: status %d, want 404", resp.StatusCode)
+	}
+}
+
+// Publishing against a baseline that isn't a date is refused on the refusal
+// page, 422, quoting it, with a way Back to the draft without it, and nothing
+// is published.
+func TestPublishReportAgainstABaselineThatIsntADateIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	resp := postForm(t, client, ts.URL+draft+"/publications?baseline=soon", url.Values{})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, parsePage(t, body), "Can't publish Report", `"soon" isn't a date.`, draft)
+	if pubs, err := h.Service.ListPublications(context.Background(), def.ID); err != nil || len(pubs) != 0 {
+		t.Errorf("publications = %+v (%v), want none", pubs, err)
 	}
 }
 
@@ -5203,8 +5231,8 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("adding an unknown email: status %d, want 422", resp.StatusCode)
 	}
-	if refused := textOf(findByTestID(t, refusedPage, "report-delegate-refused")); !strings.Contains(refused, "nobody@example.com") {
-		t.Errorf("refusal %q doesn't name the email", refused)
+	if refused, want := textOf(findByTestID(t, refusedPage, "report-delegate-refused")), `No account with email "nobody@example.com".`; refused != want {
+		t.Errorf("refusal = %q, want %q", refused, want)
 	}
 	if email := formField(t, findByTestID(t, refusedPage, "add-report-delegate"), "email"); email.Value != "nobody@example.com" {
 		t.Errorf("the refused email isn't kept in the form: it holds %q", email.Value)

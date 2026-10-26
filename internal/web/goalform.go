@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"math"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/a-h/templ"
 
@@ -827,35 +825,12 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		OwnerID:      current.ID,
 		Kind:         v.Kind,
 	}
-	var unparsed []*domain.InputError
-	refuse := func(input, format string, args ...any) {
-		unparsed = append(unparsed, &domain.InputError{Input: input, Message: fmt.Sprintf(format, args...)})
-	}
-	date := func(input, value string) time.Time {
-		d, err := parseDate(strings.TrimSpace(value))
-		if err != nil {
-			refuse(input, "%q isn't a date", value)
-		}
-		return d
-	}
-	number := func(input, what, value string) (float64, bool) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			refuse(input, "a Metric needs a %s", what)
-			return 0, false
-		}
-		n, err := strconv.ParseFloat(value, 64)
-		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-			refuse(input, "the %s must be a number, not %q", what, value)
-			return 0, false
-		}
-		return n, true
-	}
+	var unparsed formProblems
 
 	// Only a Dated Goal has a delivery date; one posted with any other Kind is
 	// ignored, not refused.
 	if in.Kind == domain.GoalDated && strings.TrimSpace(v.DeliveryDate) != "" {
-		in.DeliveryDate = date(domain.InputDeliveryDate, v.DeliveryDate)
+		in.DeliveryDate = unparsed.date(domain.InputDeliveryDate, v.DeliveryDate, "")
 	}
 
 	// A segment posts its days; Custom posts the days typed beside it. Either is a
@@ -867,9 +842,9 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		days, err := strconv.Atoi(cadence)
 		switch {
 		case cadence == "":
-			refuse(domain.InputCadence, "a Custom cadence needs a number of days")
+			unparsed.add(domain.InputCadence, "a Custom cadence needs a number of days")
 		case err != nil || days <= 0:
-			refuse(domain.InputCadence, "the Check-in cadence must be a whole number of days above 0, not %q", cadence)
+			unparsed.add(domain.InputCadence, "the Check-in cadence must be a whole number of days above 0, not %q", cadence)
 		default:
 			in.CadenceDays = days
 		}
@@ -881,7 +856,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		}
 		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			refuse(inputParentID, "%q isn't a Goal", value)
+			unparsed.add(inputParentID, "%q isn't a Goal", value)
 			continue
 		}
 		in.ParentIDs = append(in.ParentIDs, id)
@@ -896,7 +871,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		}
 		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			refuse("", "%q isn't a Dimension value", value)
+			unparsed.add("", "%q isn't a Dimension value", value)
 			continue
 		}
 		v.Chosen[id] = true
@@ -911,20 +886,20 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 	for i, row := range formRows(r.PostForm, "milestones") {
 		m := milestoneRow{Name: row["name"], Date: row["date"]}
 		v.Milestones = append(v.Milestones, m)
-		in.Milestones = append(in.Milestones, domain.MilestoneDefinition{Name: m.Name, Date: date(domain.MilestoneInput(i, "date"), m.Date)})
+		in.Milestones = append(in.Milestones, domain.MilestoneDefinition{Name: m.Name, Date: unparsed.date(domain.MilestoneInput(i, "date"), m.Date, "")})
 	}
 	for i, row := range formRows(r.PostForm, "metrics") {
 		m := metricRow{Name: row["name"], Unit: row["unit"], Baseline: row["baseline"], Target: row["target"], Direction: row["direction"], TargetDate: row["target_date"]}
 		v.Metrics = append(v.Metrics, m)
-		baseline, baselineOK := number(domain.MetricInput(i, "baseline"), "baseline", m.Baseline)
-		target, targetOK := number(domain.MetricInput(i, "target"), "target", m.Target)
+		baseline, baselineOK := readMetricNumber(&unparsed, domain.MetricInput(i, "baseline"), "baseline", m.Baseline)
+		target, targetOK := readMetricNumber(&unparsed, domain.MetricInput(i, "target"), "target", m.Target)
 		in.Metrics = append(in.Metrics, domain.MetricDefinition{
 			Name:       m.Name,
 			Unit:       m.Unit,
 			Direction:  metricDirection(baseline, target, baselineOK && targetOK, m.Direction),
 			Baseline:   baseline,
 			Target:     target,
-			TargetDate: date(domain.MetricInput(i, "target_date"), m.TargetDate),
+			TargetDate: unparsed.date(domain.MetricInput(i, "target_date"), m.TargetDate, ""),
 		})
 	}
 	in.Unparsed = unparsed
@@ -1046,10 +1021,7 @@ func metricDirection(baseline, target float64, parsed bool, chosen string) strin
 // goalFormProblems are a refused submit's problems, those that didn't parse
 // among them, in the order the page shows its inputs.
 func goalFormProblems(err error) []*domain.InputError {
-	problems := domain.InputErrors(err)
-	if len(problems) == 0 {
-		problems = []*domain.InputError{{Message: domain.Reason(err)}}
-	}
+	problems := problemsOf(err)
 	slices.SortStableFunc(problems, func(a, b *domain.InputError) int {
 		return slices.Compare(goalFormPlace(a.Input), goalFormPlace(b.Input))
 	})
