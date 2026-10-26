@@ -62,7 +62,7 @@ type checkinFormData struct {
 	// Lifecycle is the Lifecycle change the reader is making, if any
 	// (CONTEXT.md: Lifecycle).
 	Lifecycle lifecycleFormData
-	Error     checkinError
+	Error     domain.InputError
 	// OffTarget are the Metrics off target when a Green was submitted
 	// unconfirmed, or kept through Add another on a form that warned: the form
 	// warns about them, flagged at its top, and offers to save the Green
@@ -81,15 +81,6 @@ type checkinFormData struct {
 	OpenDates bool
 	// Shown is the clock the form shows its dates against.
 	Shown displayDates
-}
-
-// checkinError is a Check-in validation message and the field it is about,
-// named as the form names the field's input (e.g. "explanation"), so the form
-// shows the message next to that field. An empty Field is an error about the
-// Check-in as a whole, shown at the top of the form.
-type checkinError struct {
-	Field   string
-	Message string
 }
 
 // lifecycleFormData is the Check-in form's Lifecycle fields as typed. Current is
@@ -223,7 +214,7 @@ func (d checkinFormData) pathTargetLastAttrs() templ.Attributes {
 func (d checkinFormData) pathReasonShown() bool {
 	return (d.PathTargetDate != "" && d.Previous.PathTargetDate != "" && d.PathTargetDate > d.Previous.PathTargetDate) ||
 		strings.TrimSpace(d.PathTargetDateReason) != "" ||
-		d.Error.Field == "path_target_date_reason"
+		d.Error.Input == "path_target_date_reason"
 }
 
 // draftHighlightRows are the rows offering each of drafts, oldest first, each
@@ -263,11 +254,11 @@ func (d checkinFormData) readingProgress(m domain.Metric) (float64, bool) {
 	return min(max((last-m.Baseline)/(m.Target-m.Baseline), 0), 1), true
 }
 
-// about reports whether the error is about one of the named fields or a field
-// in its family: "milestone" covers every milestone_*_<id> field.
-func (e checkinError) about(fields ...string) bool {
-	for _, f := range fields {
-		if e.Field == f || strings.HasPrefix(e.Field, f+"_") {
+// errorAbout reports whether e is about one of the named inputs or an input
+// in its family: "milestone" covers every milestone_*_<id> input.
+func errorAbout(e domain.InputError, inputs ...string) bool {
+	for _, input := range inputs {
+		if e.Input == input || strings.HasPrefix(e.Input, input+"_") {
 			return true
 		}
 	}
@@ -287,7 +278,7 @@ func (d checkinFormData) highlightRows() []highlightFormData {
 // the error, offers Draft Highlights, the reader added a row, or flagged or
 // wrote something.
 func (d checkinFormData) highlightOpen() bool {
-	if d.Error.about("highlight") || len(d.DraftHighlights) > 0 || len(d.Highlights) > 1 {
+	if errorAbout(d.Error, "highlight") || len(d.DraftHighlights) > 0 || len(d.Highlights) > 1 {
 		return true
 	}
 	for _, row := range d.Highlights {
@@ -324,7 +315,7 @@ func (d checkinFormData) offTargetWarned() bool {
 // holds the error, the reader changed something in it, a Milestone in it is
 // overdue, or the page was opened with ?open=dates.
 func (d checkinFormData) datesOpen() bool {
-	return d.OpenDates || d.Overdue || d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
+	return d.OpenDates || d.Overdue || errorAbout(d.Error, "delivery_date", "milestone", "new_milestone") || d.Dates.changed()
 }
 
 // changed reports whether any date or Milestone field differs from the Goal's
@@ -443,7 +434,7 @@ func (d lifecycleFormData) changeVerbs(serial bool) string {
 // outcome.
 func (d checkinFormData) lifecycleOpen() bool {
 	l := d.Lifecycle
-	return d.Error.about("lifecycle", "outcome") || l.To != l.defaultTo() ||
+	return errorAbout(d.Error, "lifecycle", "outcome") || l.To != l.defaultTo() ||
 		strings.TrimSpace(l.Reason) != "" || strings.TrimSpace(l.Outcome) != ""
 }
 
@@ -693,7 +684,7 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 						<span class="muted">{ "Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
 						if v.Permissions.NoChange {
 							@noChangeCheckinButton(g.ID, "No change", "btn")
-						} else if form.Error.Message == "" || form.Error.Field != "" {
+						} else if form.Error.Message == "" || form.Error.Input != "" {
 							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeReason }</p>
 						}
 					</div>
@@ -823,7 +814,7 @@ func checkinContextDates(g domain.Goal, milestones []domain.Milestone, dates dis
 // Check-in, with a refusal shown at the top.
 func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 	d := checkinFormFromLatest(v)
-	d.Error = checkinError{Message: refusal}
+	d.Error = domain.InputError{Message: refusal}
 	return d
 }
 
@@ -899,7 +890,7 @@ templ checkinForm(d checkinFormData) {
 				</div>
 			}
 		</section>
-		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green" || d.Error.Field == "path_target_date_reason") }>
+		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Input == "path_to_green" || d.Error.Input == "path_target_date_reason") }>
 			<legend class="checkin-section-head">
 				<h2>Path to Green</h2>
 				<span class="hint">
@@ -1203,7 +1194,7 @@ templ checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDate
 // checkinHighlightRow is the nth Highlight row (counting from 1): a kind and
 // a note. A blank note flags nothing; a note needs a kind, and that error
 // shows in the row.
-templ checkinHighlightRow(n int, row highlightFormData, e checkinError) {
+templ checkinHighlightRow(n int, row highlightFormData, e domain.InputError) {
 	<fieldset data-testid="checkin-highlight-row">
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d", n) }</legend>
 		<label>
@@ -1226,7 +1217,7 @@ templ checkinHighlightRow(n int, row highlightFormData, e checkinError) {
 // field, the Keep box's value and the kind's and note's names — so the server
 // pairs them by id, an unticked box posting nothing (CONTEXT.md: Draft
 // Highlight).
-templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
+templ checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError) {
 	{{ id := fmt.Sprint(row.DraftID) }}
 	<fieldset data-testid="checkin-highlight-row" class="checkin-draft-row">
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d · Draft", n) }</legend>
@@ -1406,7 +1397,7 @@ templ checkinStyles() {
 // as a Date Slip; moving the delivery date later rules out Green (CONTEXT.md:
 // Date Slip, Milestone). Each date input carries the Goal's current date as
 // data-current, so checkinSummaryScript can tell a changed one.
-templ checkinDateFields(d checkinDatesFormData, e checkinError) {
+templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>
 		if d.Dated {
@@ -1484,7 +1475,7 @@ templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 // Check-in. On Hold and Cancelled need a reason; Done needs a one-line outcome
 // and a final value for every Metric (the readings above). A Check-in that
 // takes the Goal out of Active records no Health (CONTEXT.md: Lifecycle).
-templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
+templ checkinLifecycleFields(d lifecycleFormData, e domain.InputError) {
 	<fieldset data-testid="checkin-lifecycle-fields">
 		<legend>Lifecycle</legend>
 		<div class="lifecycle-choices" role="radiogroup" aria-label="Lifecycle">
@@ -1514,8 +1505,8 @@ templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 // checkinFieldError shows the form's validation message when it is about the
 // named field. One about no field, shown at the top of the form, is styled as
 // an error, like the import page's error flash.
-templ checkinFieldError(e checkinError, field string) {
-	if e.Message != "" && e.Field == field {
+templ checkinFieldError(e domain.InputError, field string) {
+	if e.Message != "" && e.Input == field {
 		if field == "" {
 			<p data-testid="checkin-error" class="alert r" role="alert">{ e.Message }</p>
 		} else {

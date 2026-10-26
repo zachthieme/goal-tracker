@@ -660,6 +660,52 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	}
 }
 
+// A reading of NaN isn't a number, and is refused as any other non-number is:
+// 422 for a plain post, the sentence beside the reading, and nothing recorded.
+func TestCheckinReadingOfNaNIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
+	metric, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       "Signups",
+		Unit:       "per week",
+		Direction:  domain.MetricUp,
+		Baseline:   100,
+		Target:     500,
+		TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	reading := fmt.Sprintf("reading_%d", metric.ID)
+	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"On track."},
+		reading:  {"NaN"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422", resp.StatusCode)
+	}
+	if msg, want := fieldError(t, parsePage(t, body), reading), `"NaN" isn't a number for "Signups".`; msg != want {
+		t.Errorf("error = %q, want %q", msg, want)
+	}
+	if readings, err := h.Service.ListMetricReadings(context.Background(), metric.ID); err != nil || len(readings) != 0 {
+		t.Errorf("Signups' readings = %+v (%v), want none recorded", readings, err)
+	}
+	if checkins, err := h.Service.ListCheckins(context.Background(), goal.ID); err != nil || len(checkins) != 0 {
+		t.Errorf("Check-ins = %+v (%v), want none recorded", checkins, err)
+	}
+}
+
 // The Check-in form shows each Metric's latest reading as ghost text in its
 // empty reading input (ticket #29, #284); a Metric with no readings yet shows
 // none.
