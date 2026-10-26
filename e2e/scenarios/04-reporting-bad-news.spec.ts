@@ -222,19 +222,6 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     // The Goal page offers no delivery-date edit outside a Check-in.
     await page.goto(`/goals/${project.id}`);
     await expect(page.locator('input[name="delivery_date"]')).toHaveCount(0);
-    await expect(page.locator('form[action$="/dated"]')).toHaveCount(0);
-
-    // Posting one anyway is refused once the Goal is Active
-    // (requireProposedToSetDelivery); without a valid date it's refused before
-    // that check runs.
-    const refused = await page.request.post(`/goals/${project.id}/dated`, {
-      form: { delivery_date: addDays(newDue, 30) },
-    });
-    expect(refused.status()).toBe(422);
-    expect(await refused.text()).toContain("delivery date changes only in a Check-in");
-    const malformed = await page.request.post(`/goals/${project.id}/dated`, { form: { delivery_date: "soon" } });
-    expect(malformed.status()).toBe(422);
-    expect(await malformed.text()).toContain("invalid delivery date");
 
     // The define page, where a Proposed Goal's date is set, sends an Active
     // Goal back to its page.

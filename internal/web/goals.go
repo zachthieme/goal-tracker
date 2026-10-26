@@ -2,8 +2,11 @@ package web
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -113,55 +116,6 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 	render(w, r, status, goalPage(&current, view))
 }
 
-func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	date, err := parseDate(r.FormValue("delivery_date"))
-	if err != nil {
-		http.Error(w, "invalid delivery date", http.StatusUnprocessableEntity)
-		return
-	}
-	_, err = s.svc.MarkGoalDated(r.Context(), current.ID, id, date)
-	s.writeCommandResult(w, r, id, err)
-}
-
-func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	_, err := s.svc.MarkGoalOngoing(r.Context(), current.ID, id)
-	s.writeCommandResult(w, r, id, err)
-}
-
-func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	days, err := strconv.Atoi(r.FormValue("cadence_days"))
-	if err != nil {
-		http.Error(w, "invalid cadence", http.StatusUnprocessableEntity)
-		return
-	}
-	_, err = s.svc.SetCadence(r.Context(), current.ID, id, days)
-	s.writeCommandResult(w, r, id, err)
-}
-
 // handleEditWhyItMatters saves the Edit title and Why it matters form, for the Goal's Owner
 // or an Admin, as EditTitleAndWhyItMatters does: the title only when the form
 // sends one.
@@ -183,13 +137,12 @@ func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, 
 	s.writeFormResult(w, r, id, current, formTitleWhyItMatters, err)
 }
 
+// handleAddContributor adds a Contributor by email from the Goal page's
+// Contributors form, as AddContributorByEmail does: only the Owner may, and
+// only they hear that no account has the email, beside the form.
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	err := s.svc.AddContributorByEmail(r.Context(), current.ID, id, r.FormValue("email"))
@@ -213,24 +166,20 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 	s.writeFormResult(w, r, id, current, formMilestones, err)
 }
 
+// handleEditMilestone saves a Milestone's Edit form on the Goal page. A date
+// that doesn't parse is sent on unparsed, so EditMilestone refuses it only
+// once it has checked who sent it.
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if err := s.svc.RequireMilestoneEditor(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	date, err := parseDate(r.FormValue("target_date"))
-	if err != nil {
-		http.Error(w, "invalid milestone date", http.StatusUnprocessableEntity)
-		return
-	}
+	var unparsed unparsedGoalFields
 	m, err := s.svc.EditMilestone(r.Context(), current.ID, domain.EditMilestoneInput{
 		MilestoneID: id,
 		Name:        r.FormValue("name"),
-		TargetDate:  date,
+		TargetDate:  unparsed.date(r, "target_date"),
+		Unparsed:    unparsed,
 	})
 	if err != nil {
 		s.writeCommandResult(w, r, id, err)
@@ -239,49 +188,24 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
-func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	in, err := metricInputFromForm(r)
-	if err != nil {
-		// Not a refusal: metricInputFromForm's own text names the bad field.
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
-	in.GoalID = id
-	_, err = s.svc.AddMetric(r.Context(), current.ID, in)
-	s.writeCommandResult(w, r, id, err)
-}
-
+// handleEditMetric saves a Metric's Edit form on the Goal page. A number or
+// date that doesn't parse is sent on unparsed, so EditMetric refuses it only
+// once it has checked who sent it.
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if err := s.svc.RequireMetricOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
-		return
-	}
-	in, err := metricInputFromForm(r)
-	if err != nil {
-		// Not a refusal: metricInputFromForm's own text names the bad field.
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
+	var unparsed unparsedGoalFields
 	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
-		Name:       in.Name,
-		Unit:       in.Unit,
-		Direction:  in.Direction,
-		Baseline:   in.Baseline,
-		Target:     in.Target,
-		TargetDate: in.TargetDate,
+		Name:       r.FormValue("name"),
+		Unit:       r.FormValue("unit"),
+		Direction:  r.FormValue("direction"),
+		Baseline:   unparsed.metricNumber(r, "baseline"),
+		Target:     unparsed.metricNumber(r, "target"),
+		TargetDate: unparsed.date(r, "target_date"),
+		Unparsed:   unparsed,
 	})
 	if err != nil {
 		s.writeCommandResult(w, r, id, err)
@@ -290,38 +214,45 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
-// metricInputFromForm reads the numeric and date fields common to adding and
-// editing a Metric. The GoalID is filled in by the caller.
-func metricInputFromForm(r *http.Request) (domain.AddMetricInput, error) {
-	baseline, err := strconv.ParseFloat(r.FormValue("baseline"), 64)
+// unparsedGoalFields are the values a Goal page form sent that don't parse,
+// each refused under its input's name, for the domain command to refuse once
+// it has checked who sent them, as DefinedGoalInput.Unparsed are.
+type unparsedGoalFields []*domain.InputError
+
+func (u *unparsedGoalFields) refuse(input, format string, args ...any) {
+	*u = append(*u, &domain.InputError{Input: input, Message: fmt.Sprintf(format, args...)})
+}
+
+// date reads input as a date, blank being no date. One that doesn't parse is
+// refused and read as no date.
+func (u *unparsedGoalFields) date(r *http.Request, input string) time.Time {
+	value := r.FormValue(input)
+	d, err := parseDate(strings.TrimSpace(value))
 	if err != nil {
-		return domain.AddMetricInput{}, errors.New("invalid baseline")
+		u.refuse(input, "%q isn't a date", value)
 	}
-	target, err := strconv.ParseFloat(r.FormValue("target"), 64)
-	if err != nil {
-		return domain.AddMetricInput{}, errors.New("invalid target")
+	return d
+}
+
+// metricNumber reads input, a Metric's baseline or target, as a number. One
+// that is blank or doesn't parse is refused and read as 0.
+func (u *unparsedGoalFields) metricNumber(r *http.Request, input string) float64 {
+	value := strings.TrimSpace(r.FormValue(input))
+	if value == "" {
+		u.refuse(input, "a Metric needs a %s", input)
+		return 0
 	}
-	date, err := parseDate(r.FormValue("target_date"))
-	if err != nil {
-		return domain.AddMetricInput{}, errors.New("invalid target date")
+	n, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+		u.refuse(input, "the %s must be a number, not %q", input, value)
+		return 0
 	}
-	return domain.AddMetricInput{
-		Name:       r.FormValue("name"),
-		Unit:       r.FormValue("unit"),
-		Direction:  r.FormValue("direction"),
-		Baseline:   baseline,
-		Target:     target,
-		TargetDate: date,
-	}, nil
+	return n
 }
 
 func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
-		return
-	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
-		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	_, err := s.svc.ActivateGoal(r.Context(), current.ID, id)

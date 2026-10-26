@@ -111,37 +111,6 @@ func TestEditMetricChangesFields(t *testing.T) {
 	}
 }
 
-// RequireMetricOwner admits only the Owner of the Metric's Goal: another
-// Account and a Delegate are refused, and a missing Metric is not found.
-func TestRequireMetricOwnerAdmitsOnlyTheGoalsOwner(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	owner := h.SignIn("sam@example.com")
-	other := h.SignIn("pat@example.com")
-	delegate := h.SignIn("tpm@example.com")
-	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
-	h.AddDelegate(owner, delegate, g.ID)
-	ctx := context.Background()
-	m, err := h.Service.AddMetric(ctx, g.Owner.ID, validMetric(g.ID))
-	if err != nil {
-		t.Fatalf("AddMetric: %v", err)
-	}
-
-	if err := h.Service.RequireMetricOwner(ctx, owner.ID, m.ID); err != nil {
-		t.Errorf("Owner: err = %v, want nil", err)
-	}
-	if err := h.Service.RequireMetricOwner(ctx, other.ID, m.ID); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("another Account: err = %v, want ErrNotAuthorized", err)
-	}
-	if err := h.Service.RequireMetricOwner(ctx, delegate.ID, m.ID); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("Delegate: err = %v, want ErrNotAuthorized", err)
-	}
-	if err := h.Service.RequireMetricOwner(ctx, owner.ID, 999); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("missing Metric: err = %v, want ErrNotFound", err)
-	}
-}
-
 // A Metric is off target once its target date has passed and its reading
 // hasn't reached the target in its direction; a reading equal to the target is
 // on target, and before or on the target date nothing is off target.
@@ -206,5 +175,48 @@ func TestMetricChangesAdmitOnlyTheOwner(t *testing.T) {
 	}
 	if _, err := h.Service.EditMetric(ctx, owner.ID, edit); err != nil {
 		t.Errorf("Owner editing: %v", err)
+	}
+}
+
+// Adding or editing a Metric authorizes before it validates: anyone but the
+// Goal's Owner is refused as not authorized whatever they send, and only the
+// Owner hears what's wrong with it (#577).
+func TestMetricChangesAuthorizeBeforeTheyValidate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	other := h.SignIn("pat@example.com")
+	g := h.CreateGoal(owner, "Cut checkout latency", "why")
+	ctx := context.Background()
+	m, err := h.Service.AddMetric(ctx, owner.ID, validMetric(g.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	nameless := domain.AddMetricInput{GoalID: g.ID, Unit: "ms", Direction: domain.MetricDown, TargetDate: m.TargetDate}
+	unparsed := domain.EditMetricInput{
+		MetricID: m.ID, Name: "p99", Unit: "ms", Direction: domain.MetricDown, TargetDate: m.TargetDate,
+		Unparsed: []*domain.InputError{{Input: "baseline", Message: `the baseline must be a number, not "lots"`}},
+	}
+
+	if _, err := h.Service.AddMetric(ctx, other.ID, nameless); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger adding a nameless Metric: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.EditMetric(ctx, other.ID, unparsed); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger editing with a baseline that didn't parse: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, owner.ID, nameless); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "a Metric needs a name" {
+		t.Errorf("the Owner adding a nameless Metric: err = %v, want it refused for needing a name", err)
+	}
+	if _, err := h.Service.EditMetric(ctx, owner.ID, unparsed); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `the baseline must be a number, not "lots"` {
+		t.Errorf("the Owner editing with a baseline that didn't parse: err = %v, want it refused under the baseline", err)
+	}
+	missing := unparsed
+	missing.MetricID, missing.Unparsed = m.ID+100, nil
+	if _, err := h.Service.EditMetric(ctx, owner.ID, missing); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("editing a missing Metric: err = %v, want ErrNotFound", err)
+	}
+	if ms, _ := h.Service.ListMetrics(ctx, g.ID); len(ms) != 1 || ms[0].Name != "p95 checkout latency" {
+		t.Errorf("Metrics after refusals = %+v, want the Owner's one, unedited", ms)
 	}
 }

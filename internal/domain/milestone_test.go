@@ -707,35 +707,6 @@ func TestAMilestoneIsEditedOnlyWhilePlannedOnAProposedGoal(t *testing.T) {
 	}
 }
 
-// RequireMilestoneEditor allows a Milestone's Goal's Owner and Delegates, and
-// refuses anyone else; a missing Milestone is not found.
-func TestRequireMilestoneEditor(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	dana := h.SignIn("dana@example.com")
-	pat := h.SignIn("pat@example.com")
-	goal := h.ActiveGoal(sam, "Ship v2", "why")
-	h.AddDelegate(sam, dana, goal.ID)
-	beta := onlyMilestone(t, h, goal.ID)
-	ctx := context.Background()
-
-	if err := h.Service.RequireMilestoneEditor(ctx, sam.ID, beta.ID); err != nil {
-		t.Errorf("the Owner: %v", err)
-	}
-	if err := h.Service.RequireMilestoneEditor(ctx, dana.ID, beta.ID); err != nil {
-		t.Errorf("a Delegate: %v", err)
-	}
-	if err := h.Service.RequireMilestoneEditor(ctx, pat.ID, beta.ID); !errors.Is(err, domain.ErrNotAuthorized) ||
-		!strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
-		t.Errorf("anyone else: err = %v, want the Owner or Delegate refusal", err)
-	}
-	if err := h.Service.RequireMilestoneEditor(ctx, sam.ID, beta.ID+100); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("a missing Milestone: err = %v, want ErrNotFound", err)
-	}
-}
-
 // Defining a Goal, new or already Proposed, adds its Milestones as part of
 // planning it, so none is recorded as a change for its history.
 func TestDefiningAGoalRecordsNoMilestoneChange(t *testing.T) {
@@ -806,5 +777,46 @@ func TestMilestoneChangesAdmitOnlyTheOwnerOrADelegate(t *testing.T) {
 	}
 	if _, err := h.Service.EditMilestone(ctx, dana.ID, domain.EditMilestoneInput{MilestoneID: beta.ID, Name: "Preview", TargetDate: date}); err != nil {
 		t.Errorf("a Delegate editing: %v", err)
+	}
+}
+
+// Editing a Milestone authorizes before it validates: a stranger is refused as
+// not authorized whatever they send, and only the Owner or a Delegate hears
+// what's wrong with it (#577).
+func TestEditMilestoneAuthorizesBeforeItValidates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "why")
+	ctx := context.Background()
+	date := time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC)
+	beta, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: date})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	nameless := domain.EditMilestoneInput{MilestoneID: beta.ID, TargetDate: date}
+	unparsed := domain.EditMilestoneInput{
+		MilestoneID: beta.ID, Name: "Preview",
+		Unparsed: []*domain.InputError{{Input: "target_date", Message: `"soon" isn't a date`}},
+	}
+
+	for what, in := range map[string]domain.EditMilestoneInput{"no name": nameless, "a date that didn't parse": unparsed} {
+		if _, err := h.Service.EditMilestone(ctx, pat.ID, in); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("a stranger editing with %s: err = %v, want ErrNotAuthorized", what, err)
+		}
+	}
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, nameless); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "a Milestone needs a name" {
+		t.Errorf("the Owner editing with no name: err = %v, want it refused for needing a name", err)
+	}
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, unparsed); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `"soon" isn't a date` {
+		t.Errorf("the Owner editing with a date that didn't parse: err = %v, want it refused under the date", err)
+	}
+	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{MilestoneID: beta.ID + 100, Name: "GA", TargetDate: date}); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("editing a missing Milestone: err = %v, want ErrNotFound", err)
+	}
+	if ms, _ := h.Service.ListMilestones(ctx, g.ID); len(ms) != 1 || ms[0].Name != "Beta" || !ms[0].TargetDate.Equal(date) {
+		t.Errorf("Milestones after refusals = %+v, want just Beta, unedited", ms)
 	}
 }

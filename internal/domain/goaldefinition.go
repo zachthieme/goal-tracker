@@ -121,6 +121,13 @@ func withUnparsed(err error, unparsed []*InputError) error {
 	return errors.Join(problems...)
 }
 
+// unparsedRefusal refuses the values the caller couldn't parse, every one
+// together, for a command whose other input is checked only once they parse;
+// it is nil when there are none.
+func unparsedRefusal(unparsed []*InputError) error {
+	return withUnparsed(nil, unparsed)
+}
+
 // DefineGoal finishes defining a Proposed Goal, as the New goal form shows it
 // again, with CreateDefinedGoal's input, input names and rules for refusing
 // it: every input is checked before anything is written, every problem comes
