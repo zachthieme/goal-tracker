@@ -32,7 +32,11 @@ linters:
   # which templ copies onto the generated function: contextcheck then stops at
   # that component, and still follows every hand-written chain. A component
   # newly called from hand-written code is reported until it gets the
-  # directive too.
+  # directive too. contextcheck doesn't check inside a templ component's body,
+  # with or without the directive: a hand-written helper called there, as in
+  # { label() }, that drops the context (context.Background()) isn't
+  # reported, though the same call from a function given a ctx is. Don't rely
+  # on it there; pass the helper ctx (templ's ctx in a component's body).
 # Fail on hand-written Go code that isn't gofmt-formatted (simplify is on by
 # default). golangci-lint skips generated files here; make generate-check
 # guards those by regenerating them and diffing against what is committed.

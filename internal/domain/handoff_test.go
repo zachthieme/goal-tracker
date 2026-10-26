@@ -373,6 +373,58 @@ func TestReassignAndAcceptTogetherHaveOneOutcome(t *testing.T) {
 	}
 }
 
+// The race above lands each way only as often as the scheduler lets it, so
+// run one after the other, in each order, the Reassign and the Accept still
+// have one outcome, and the second is told why it lost (ticket #547).
+func TestReassignAndAcceptOneAfterTheOtherTellTheSecondWhy(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	cal := h.SignIn("cal@example.com")
+	for _, reassignFirst := range []bool{true, false} {
+		owner := h.SignIn(fmt.Sprintf("owner-%t@example.com", reassignFirst))
+		goal := h.CreateGoal(owner, "Reduce outages", "why")
+		ho := startHandoff(t, h, goal.ID, pat.ID, owner.ID)
+		if err := h.Service.MarkDeparted(ctx, boss.ID, owner.ID); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+		reassign := func() error {
+			_, err := h.Service.ReassignGoal(ctx, boss.ID, goal.ID, cal.ID)
+			return err
+		}
+		accept := func() error {
+			_, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID, nil)
+			return err
+		}
+
+		if reassignFirst {
+			if err := reassign(); err != nil {
+				t.Fatalf("Reassign: %v", err)
+			}
+			if err := accept(); !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("Accept after the Reassign got %v, want ErrNotFound", err)
+			}
+		} else {
+			if err := accept(); err != nil {
+				t.Fatalf("Accept: %v", err)
+			}
+			if err := reassign(); !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("Reassign after the Accept got %v, want ErrValidation", err)
+			}
+		}
+		g, err := h.Service.ViewGoal(ctx, goal.ID)
+		if err != nil {
+			t.Fatalf("ViewGoal: %v", err)
+		}
+		if want := map[bool]int64{true: cal.ID, false: pat.ID}[reassignFirst]; g.Owner.ID != want {
+			t.Errorf("Owner with Reassign first %t is %d, want %d", reassignFirst, g.Owner.ID, want)
+		}
+	}
+}
+
 // Rejecting a Handoff keeps it in the Goal's ownership history with the outcome
 // rejected; the Owner is unchanged and a new Handoff may be started
 // (CONTEXT.md: every Handoff is kept with its outcome).

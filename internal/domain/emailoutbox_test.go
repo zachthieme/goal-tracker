@@ -282,17 +282,18 @@ func TestOutboxLogsASendErrorWithoutTheAddressItQuotes(t *testing.T) {
 	}
 }
 
-// quotedAddressSender fails every send with an error quoting an address whose
-// local part is quoted, as a mail server may, space and all.
+// quotedAddressSender fails every send with an error quoting addresses whose
+// local part is quoted, as a mail server may, space and all, and addresses
+// whose domain is a bracketed IP literal.
 type quotedAddressSender struct{}
 
 func (quotedAddressSender) Send(context.Context, email.Message) error {
-	return errors.New(`550 5.1.1 <"john doe"@example.com>: Recipient address rejected (to "j.\"q\".doe"@example.com)`)
+	return errors.New(`550 5.1.1 <"john doe"@example.com>: Recipient address rejected (to "j.\"q\".doe"@example.com, "john doe"@[192.0.2.1], jane@[IPv6:2001:db8::1])`)
 }
 
-// A send error quoting an address with a quoted local part is logged with
-// none of that address: not its domain, nor the name in its quotes (ticket
-// #545).
+// A send error quoting an address with a quoted local part, or a bracketed IP
+// literal for its domain, is logged with none of that address: not its
+// domain, nor the name in its quotes (tickets #545, #547).
 func TestOutboxLogsASendErrorWithoutAQuotedLocalPart(t *testing.T) {
 	t.Parallel()
 
@@ -316,7 +317,7 @@ func TestOutboxLogsASendErrorWithoutAQuotedLocalPart(t *testing.T) {
 	if len(lines) != 1 || !strings.Contains(lines[0], "Recipient address rejected") {
 		t.Fatalf("logged %q, want one line carrying the send's error", lines)
 	}
-	for _, part := range []string{"john", "doe", "example.com", "@"} {
+	for _, part := range []string{"john", "doe", "example.com", "192.0.2.1", "jane", "2001:db8::1", "@"} {
 		if strings.Contains(lines[0], part) {
 			t.Errorf("line %q carries %q, part of a quoted address", lines[0], part)
 		}
