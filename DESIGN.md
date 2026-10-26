@@ -490,8 +490,8 @@ and so on).
     Parent suggestion (Home or the Goal page). A new Undo reuses `toastNotice`
     rather than making its own notice.
 - **Message page (`.message-page`):** a page that only says one thing (Not
-  found, Can't undo, Can't remove link, a refused Nudge, a Check-in that
-  can't be reached). It renders through `layout`, with no header strip: its
+  found, Can't undo, Can't remove link, a refused Nudge, a refused No
+  change). It renders through `layout`, with no header strip: its
   28px `h1`, its sentence and its way back sit in a column up to 760px wide,
   12px apart, centred 64px down with its text centred, as is every
   signed-out page's content.
@@ -1468,10 +1468,11 @@ and so on).
     and Submit check-in grows to 48px.
   - **A Done or Cancelled Goal** gets the header line and the rail, and in
     place of the add bar and the form, "A Done Goal takes no Check-ins."
-  - **A Check-in that can't be reached (`checkinUnavailablePage`):** a Message
-    page instead, with **Back to Home**: "Goal not found" (404), "Can't check
-    in" (403: only the Goal's Owner or a Delegate may), or "Check-in failed"
-    (500).
+  - **A Check-in that can't be reached, or a refused No change:** the
+    refusal page (`refuse`), headed "Can't check in", with **Back** to the
+    Goal page: 403 when only the Goal's Owner or a Delegate may check in, or
+    a 500 saying nothing was recorded. A Goal that doesn't exist gets the Not
+    found page (404).
 - **Check-in page's column (`.checkin-context`):** a rail of context for
   checking in, behind a 1px `--color-border` left edge with 24px inside it,
   in 13px text and with no boxes. It has three sections in order, 20px apart,

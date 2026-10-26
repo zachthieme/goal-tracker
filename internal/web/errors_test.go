@@ -265,7 +265,7 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
 }
 
-// A No change whose Goal can't be loaded answers 500 inside the page, and the
+// A No change whose Goal can't be loaded answers 500 on the refusal page, and the
 // load's failure, not the No change's, reaches the server log.
 func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	t.Parallel()
@@ -287,7 +287,7 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
-	assertCheckinUnavailable(t, page, "The Goal couldn&#39;t be loaded, so nothing was recorded. Try again.")
+	assertRefusalPage(t, parsePage(t, page), "Can't check in", "The Goal couldn't be loaded, so nothing was recorded. Try again.", fmt.Sprintf("/goals/%d", goal.ID))
 	// The sidebar reads the overdue Milestones too, so first it says at WARN
 	// that it left out its Follow-ups count (#483).
 	if records := logRecords(t, buf); len(records) <= before || records[before]["level"] != "WARN" || records[before]["msg"] != "sidebar read failed" {
@@ -296,7 +296,7 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	assertLoggedOnce(t, buf, before+1, http.MethodPost, path, "load milestones: list milestones: SQL logic error: no such table: milestones")
 }
 
-// A No change that fails to be recorded answers 500 inside the page, and its
+// A No change that fails to be recorded answers 500 on the refusal page, and its
 // cause reaches the server log.
 func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 	t.Parallel()
@@ -319,7 +319,7 @@ func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
-	assertCheckinUnavailable(t, page, "The No change couldn&#39;t be recorded. Try again.")
+	assertRefusalPage(t, parsePage(t, page), "Can't check in", "The No change couldn't be recorded. Try again.", fmt.Sprintf("/goals/%d", goal.ID))
 	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
 }
 

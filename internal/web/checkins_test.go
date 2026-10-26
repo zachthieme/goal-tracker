@@ -2312,15 +2312,15 @@ func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("hx=%v: status = %d, want 403", hx, resp.StatusCode)
 		}
-		assertCheckinUnavailable(t, page, "Only the Goal's Owner or a Delegate may check in on Ship search.")
+		assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Ship search.", fmt.Sprintf("/goals/%d", goal.ID))
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a forbidden No change recorded a Check-in: history has %d, want 1", len(history))
 	}
 }
 
-// A No change on a Goal that doesn't exist gets a 404 that says so inside the
-// normal page (#103).
+// A No change on a Goal that doesn't exist gets the Not found page, 404,
+// inside the normal page (#103).
 func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 	t.Parallel()
 
@@ -2329,13 +2329,7 @@ func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp, page := postNoChange(t, client, ts.URL+"/goals/9999/checkins/no-change", false)
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", resp.StatusCode)
-	}
-	assertCheckinUnavailable(t, page, "There is no such Goal")
+	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/goals/9999/checkins/no-change", "/home")
 }
 
 // htmx 2 leaves an error status unswapped, so the No change button, on the
@@ -2368,13 +2362,15 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("forbidden: status = %d, want 403", resp.StatusCode)
 	}
-	assertCheckinUnavailable(t, page, "Only the Goal's Owner or a Delegate may check in on Ship search.")
+	assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Ship search.", fmt.Sprintf("/goals/%d", goal.ID))
 
 	resp, page = postNoChange(t, samClient, ts.URL+"/goals/9999/checkins/no-change", true)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("missing: status = %d, want 404", resp.StatusCode)
 	}
-	assertCheckinUnavailable(t, page, "There is no such Goal")
+	if !hasTestID(parsePage(t, page), "not-found") {
+		t.Errorf("missing: the button doesn't get the Not found page; body:\n%s", page)
+	}
 }
 
 // A No change that fails for want of the database gets a 500 that says so
@@ -2399,25 +2395,10 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 		if resp.StatusCode != http.StatusInternalServerError {
 			t.Errorf("hx=%v: status = %d, want 500", hx, resp.StatusCode)
 		}
-		assertCheckinUnavailable(t, page, "The No change couldn't be recorded. Try again.")
+		assertRefusalPage(t, parsePage(t, page), "Can't check in", "The No change couldn't be recorded. Try again.", fmt.Sprintf("/goals/%d", goal.ID))
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a failed No change recorded a Check-in: history has %d, want 1", len(history))
-	}
-}
-
-// assertCheckinUnavailable checks a No change failure came back inside the
-// site's chrome with a sentence saying what happened. The sentence may carry
-// HTML entities, as the page's source does.
-func assertCheckinUnavailable(t *testing.T, page, sentence string) {
-	t.Helper()
-	sentence = html.UnescapeString(sentence)
-	doc := parsePage(t, page)
-	if !hasTestID(doc, "nav-home") {
-		t.Errorf("failure is not inside the normal page; body:\n%s", page)
-	}
-	if got := textOf(findByTestID(t, doc, "checkin-unavailable")); !strings.Contains(got, sentence) {
-		t.Errorf("failure says %q, want %q", got, sentence)
 	}
 }
 
