@@ -52,6 +52,15 @@ type FollowUpRow struct {
 	// Unreachable is whether nobody is left to check in on the Goal: it is
 	// Ownerless and none of its Delegates is still in the company.
 	Unreachable bool
+	// Permissions are what the viewer may do with the Goal, by the Goal rules
+	// (goalPermissionsFor), but No change, which Follow-ups doesn't offer.
+	// Nudge is whether the Nudge rule (nudgeRuleRefusal) lets them nudge it,
+	// counting only the row's own Schedule conflicts, where the Goal is the
+	// child, and whether it was nudged today aside. OwnedByViewer is whether
+	// they are its Owner. Service.FollowUps judges them for its viewer.
+	Permissions   GoalPermissions
+	Nudge         bool
+	OwnedByViewer bool
 }
 
 // FollowUpSignal is one reason a Goal is flagged. Kind names the signal, as
@@ -64,11 +73,14 @@ type FollowUpRow struct {
 // date falls after the parent's, and 0 otherwise. Related is the parent for
 // "schedule-conflicts" and "halted-parents". Person is whom an
 // "asks-for-help" asks, nil when no one is above the Owner.
+// RelatedPermissions are, for "schedule-conflicts", what the viewer may do
+// with the parent, as FollowUpRow.Permissions are for the row's Goal.
 type FollowUpSignal struct {
-	Kind    string
-	Days    int
-	Related *Goal
-	Person  *Account
+	Kind               string
+	Days               int
+	Related            *Goal
+	Person             *Account
+	RelatedPermissions GoalPermissions
 }
 
 // Signal is the row's first signal of kind, and whether it has one.
@@ -85,7 +97,8 @@ func (r FollowUpRow) Signal(kind string) (FollowUpSignal, bool) {
 // (ADR 0010): every Goal the company's freshness and graph signals, an
 // Ownerless Goal, an open Ask for help or an overdue Action Item flags, with
 // the Goals the viewer is a Delegate on and every Account, which the open
-// Asks for help are walked up.
+// Asks for help are walked up; and judges from them what the viewer may do
+// with each row's Goal (permitFollowUpRows).
 func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, error) {
 	active, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
@@ -127,7 +140,57 @@ func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, err
 	for _, g := range delegated {
 		out.Delegated[g.ID] = true
 	}
+	viewer, found := byID[viewerID]
+	if err := permitFollowUpRows(out.Rows, goalActor{
+		id:      viewerID,
+		account: func() (Account, bool, error) { return viewer, found, nil },
+	}, out.Delegated); err != nil {
+		return FollowUps{}, err
+	}
 	return out, nil
+}
+
+// permitFollowUpRows judges what viewer may do with each of rows' Goals, and
+// with each Schedule conflict's parent, by the Goal rules, viewer being a
+// Delegate on the Goals delegated holds: it sets each row's Permissions,
+// Nudge and OwnedByViewer, and each Schedule conflict's RelatedPermissions.
+// viewer comes without delegate, which is read from delegated Goal by Goal.
+// Rows have no No change to offer, so their Permissions have none.
+func permitFollowUpRows(rows []FollowUpRow, viewer goalActor, delegated map[int64]bool) error {
+	var failed error
+	permits := func(refusal error) bool {
+		ok, err := goalPagePermits(refusal)
+		if err != nil && failed == nil {
+			failed = err
+		}
+		return ok
+	}
+	on := func(g Goal) goalActor {
+		a := viewer
+		a.delegate = func() (bool, error) { return delegated[g.ID], nil }
+		return a
+	}
+	for i := range rows {
+		r := &rows[i]
+		actor := on(r.Goal)
+		r.Permissions = goalPermissionsFor(actor, r.Goal, nil, permits)
+		r.OwnedByViewer = r.Goal.Owner.ID == viewer.id
+		_, checkinOverdue := r.Signal("checkin-overdue")
+		_, pathOverdue := r.Signal("path-overdue")
+		_, milestoneOverdue := r.Signal("milestone-overdue")
+		_, conflicted := r.Signal("schedule-conflicts")
+		r.Nudge = permits(nudgeRuleRefusal(actor, r.Goal, nudgeFacts{
+			overdue:          checkinOverdue || pathOverdue || milestoneOverdue,
+			scheduleConflict: conflicted,
+			anyoneLeft:       !r.Unreachable,
+		}))
+		for j := range r.Signals {
+			if sig := &r.Signals[j]; sig.Kind == "schedule-conflicts" {
+				sig.RelatedPermissions = goalPermissionsFor(on(*sig.Related), *sig.Related, nil, permits)
+			}
+		}
+	}
+	return failed
 }
 
 // readFollowUpRows reads what rows show beyond their signals: each one's
