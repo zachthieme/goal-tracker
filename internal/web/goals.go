@@ -60,15 +60,6 @@ func fmtNum(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
-// parseDate reads a date form field in the HTML date-input format. An empty
-// field is the zero time, which the domain treats as "no date".
-func parseDate(value string) (time.Time, error) {
-	if value == "" {
-		return time.Time{}, nil
-	}
-	return time.Parse(dateLayout, value)
-}
-
 // writeCommandResult redirects back to the Goal on success and answers a
 // refusal with the refusal page, linking Back to the Goal: a validation error
 // (e.g. an activation gate failure) as 422, a refusal to act on someone else's
