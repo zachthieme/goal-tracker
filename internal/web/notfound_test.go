@@ -3,7 +3,9 @@ package web_test
 import (
 	"fmt"
 	"html"
+	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -23,9 +25,23 @@ func assertNotFoundPage(t *testing.T, client *http.Client, rawURL, back string) 
 // and returns the page.
 func assertNotFoundPageFor(t *testing.T, client *http.Client, method, rawURL, back string) string {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), method, rawURL, nil)
+	return assertNotFoundPageWithForm(t, client, method, rawURL, nil, back)
+}
+
+// assertNotFoundPageWithForm is assertNotFoundPageFor for a request carrying
+// form, as a submit sends it; a nil form sends no body.
+func assertNotFoundPageWithForm(t *testing.T, client *http.Client, method, rawURL string, form url.Values, back string) string {
+	t.Helper()
+	var body io.Reader
+	if form != nil {
+		body = strings.NewReader(form.Encode())
+	}
+	req, err := http.NewRequestWithContext(t.Context(), method, rawURL, body)
 	if err != nil {
 		t.Fatalf("new %s request: %v", method, err)
+	}
+	if form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -255,4 +271,34 @@ func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
 	}
 
 	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/no-such-page", "/home")
+}
+
+// Each form the Goal page submits, sent as a valid submit would but to a Goal
+// that doesn't exist, gets the Not found page with a way back to Home.
+func TestGoalFormsOnMissingGoalShowNotFoundPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	kim := h.SignIn("kim@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	headcount := h.CreateField(boss, "Headcount", domain.FieldNumber, "people")
+	parent := h.ActiveGoal(kim, "Grow revenue", "The company needs it.")
+	client := signInClient(t, ts.URL, "boss@example.com")
+	missing := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID+1000)
+	due := h.Clock.Now().AddDate(0, 3, 0).Format("2006-01-02")
+
+	for path, form := range map[string]url.Values{
+		"/delegates":        {"email": {kim.Email}},
+		"/delegates/remove": {"email": {kim.Email}},
+		"/milestones":       {"name": {"Beta"}, "target_date": {due}},
+		"/links":            {"parent_id": {fmt.Sprint(parent.ID)}, "note": {"It feeds revenue."}},
+		"/handoff":          {"to_email": {kim.Email}},
+		"/reassign":         {"email": {kim.Email}},
+		"/fields":           {"field_id": {fmt.Sprint(headcount.ID)}, "value": {"12"}},
+		"/dimensions":       {"value_id": {fmt.Sprint(pillar.Values[0].ID)}},
+	} {
+		assertNotFoundPageWithForm(t, client, http.MethodPost, missing+path, form, "/home")
+	}
 }

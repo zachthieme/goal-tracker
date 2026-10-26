@@ -491,7 +491,8 @@ func joinIDs(ids []int64) string {
 // saved edit lands back on the table out of edit mode. A refused one comes
 // back in edit mode as typed, each bad cell marked with why. An edit touching
 // a Goal the person may not set values on is refused outright, on the refusal
-// page linking Back to the table out of edit mode.
+// page linking Back to the table out of edit mode, and one touching a Goal
+// that doesn't exist is the Not found page.
 func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
@@ -511,7 +512,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	case err == nil:
 		http.Redirect(w, r, saved, http.StatusSeeOther)
 		return
-	case errors.Is(err, domain.ErrNotAuthorized):
+	case errors.Is(err, domain.ErrNotAuthorized), errors.Is(err, domain.ErrNotFound):
 		s.refuse(w, r, "Can't save Goals", saved, err)
 		return
 	case !errors.Is(err, domain.ErrValidation):

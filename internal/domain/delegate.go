@@ -82,20 +82,11 @@ const (
 
 // delegatesGoal loads goalID for a change to its Delegates by actorID, as
 // AddDelegate and RemoveDelegate do inside their transaction: a missing Goal
-// is ErrValidation, and anyone goalOwnerRefusal refuses act is refused.
+// is ErrNotFound, and anyone goalOwnerRefusal refuses act is refused.
 func (s *Service) delegatesGoal(ctx context.Context, actorID, goalID int64, act string) (Goal, error) {
-	row, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return Goal{}, fmt.Errorf("look up goal: %w", err)
-	}
-	goal := goalFromRow(row.Goal, row.Account)
-	if err := goalOwnerRefusal(s.goalActorFor(ctx, actorID, goalID), goal, act); err != nil {
-		return Goal{}, err
-	}
-	return goal, nil
+	return s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+		return goalOwnerRefusal(a, g, act)
+	}, nil)
 }
 
 // RemoveDelegate revokes accountID's authorization to write Check-ins on the

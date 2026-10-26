@@ -75,13 +75,16 @@ type delegatedGoal struct {
 
 // writeDelegateResult redirects back to the Goal on success and maps a domain
 // Delegate error to a status: a non-Owner attempt is 403 on the refusal page,
-// headed refused and linking Back to the Goal, and a bad input 422 with the
-// Goal page's Delegates form open and the reason beside it.
+// headed refused and linking Back to the Goal, a missing Goal the Not found
+// page, and a bad input 422 with the Goal page's Delegates form open and the
+// reason beside it.
 func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused string, err error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
 			s.refuse(w, r, refused, goalPath(goalID), err)
+		case errors.Is(err, domain.ErrNotFound):
+			s.notFound(w, r)
 		case errors.Is(err, domain.ErrValidation):
 			s.renderRefusedForm(w, r, goalID, current, formDelegates, http.StatusUnprocessableEntity, err)
 		default:

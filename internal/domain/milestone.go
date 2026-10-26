@@ -233,18 +233,11 @@ func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilesto
 		if in.TargetDate.IsZero() {
 			return Refuse(ErrValidation, "a Milestone needs a date")
 		}
-		goal, err := tx.queries.GetGoal(ctx, in.GoalID)
+		g, err := tx.openGoalCommand(ctx, actorID, in.GoalID, milestoneEditorRefusal, nil)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		g := goalFromRow(goal.Goal, goal.Account)
-		if err := milestoneEditorRefusal(tx.goalActorFor(ctx, actorID, g.ID), g); err != nil {
 			return err
 		}
-		out, err = tx.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
+		out, err = tx.createMilestone(ctx, in.GoalID, name, in.TargetDate, g.Lifecycle == LifecycleActive)
 		return err
 	})
 	if err != nil {
@@ -282,18 +275,8 @@ func milestonesAddable(lifecycle string) bool {
 func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in AddMilestoneInput) (Milestone, error) {
 	var out Milestone
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.queries.GetGoal(ctx, in.GoalID)
+		g, err := tx.openGoalCommand(ctx, authorID, in.GoalID, milestoneAdditionRefusal, in.Unparsed)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: goal %d", ErrNotFound, in.GoalID)
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		g := goalFromRow(goal.Goal, goal.Account)
-		if err := milestoneAdditionRefusal(tx.goalActorFor(ctx, authorID, g.ID), g); err != nil {
-			return err
-		}
-		if err := unparsedRefusal(in.Unparsed); err != nil {
 			return err
 		}
 		lifecycle := g.Lifecycle
@@ -304,7 +287,7 @@ func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in A
 		if in.TargetDate.IsZero() {
 			return Refuse(ErrValidation, "a Milestone needs a date")
 		}
-		m, err := tx.createMilestone(ctx, goal.Goal.ID, name, in.TargetDate, lifecycle == LifecycleActive)
+		m, err := tx.createMilestone(ctx, g.ID, name, in.TargetDate, lifecycle == LifecycleActive)
 		if err != nil {
 			return err
 		}
@@ -380,12 +363,9 @@ func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMiles
 		if err != nil {
 			return err
 		}
-		if err := tx.goalRule(ctx, actorID, current.GoalID, func(a goalActor, g Goal) error {
+		if _, err := tx.openGoalCommand(ctx, actorID, current.GoalID, func(a goalActor, g Goal) error {
 			return milestoneEditRefusal(a, g, current.Status)
-		}); err != nil {
-			return err
-		}
-		if err := unparsedRefusal(in.Unparsed); err != nil {
+		}, in.Unparsed); err != nil {
 			return err
 		}
 		name := strings.TrimSpace(in.Name)

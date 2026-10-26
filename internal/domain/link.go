@@ -67,27 +67,20 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 	}
 
 	now := s.clock.Now()
-	var child, parent db.GetGoalRow
+	var child, parent Goal
 	var row db.Link
 	err := s.WithinTx(ctx, func(tx *Service) error {
 		var err error
-		if child, err = tx.queries.GetGoal(ctx, in.ChildID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "child goal does not exist")
-			}
-			return fmt.Errorf("look up child goal: %w", err)
+		if child, err = tx.openGoalCommand(ctx, in.RequesterID, in.ChildID, func(a goalActor, g Goal) error {
+			return goalOwnerRefusal(a, g, "link it to a parent")
+		}, nil); err != nil {
+			return err
 		}
-		if parent, err = tx.queries.GetGoal(ctx, in.ParentID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "parent goal does not exist")
-			}
-			return fmt.Errorf("look up parent goal: %w", err)
-		}
-		if err := goalOwnerRefusal(tx.goalActorFor(ctx, in.RequesterID, in.ChildID), goalFromRow(child.Goal, child.Account), "link it to a parent"); err != nil {
+		if parent, err = tx.linkParentGoal(ctx, in.ParentID); err != nil {
 			return err
 		}
 		status := LinkPending
-		if parent.Goal.OwnerID == in.RequesterID {
+		if parent.Owner.ID == in.RequesterID {
 			status = LinkAccepted
 		}
 		// The duplicate and cycle checks read inside the transaction that
@@ -122,8 +115,8 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 
 	return Link{
 		ID:        row.ID,
-		Child:     goalFromRow(child.Goal, child.Account),
-		Parent:    goalFromRow(parent.Goal, parent.Account),
+		Child:     child,
+		Parent:    parent,
 		Status:    row.Status,
 		Note:      row.Note,
 		CreatedAt: now,
@@ -147,21 +140,17 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
 	now := s.clock.Now()
-	var child, parent db.GetGoalRow
+	var child, parent Goal
 	var row db.Link
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		// The importing Admin may link any Goal, so the child opens for
+		// anyone.
 		var err error
-		if child, err = tx.queries.GetGoal(ctx, childID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "child goal does not exist")
-			}
-			return fmt.Errorf("look up child goal: %w", err)
+		if child, err = tx.openGoalCommand(ctx, actorID, childID, nil, nil); err != nil {
+			return err
 		}
-		if parent, err = tx.queries.GetGoal(ctx, parentID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "parent goal does not exist")
-			}
-			return fmt.Errorf("look up parent goal: %w", err)
+		if parent, err = tx.linkParentGoal(ctx, parentID); err != nil {
+			return err
 		}
 		if err := tx.ensureNewAcyclicLink(ctx, childID, parentID); err != nil {
 			return err
@@ -171,13 +160,13 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 			ParentID:    parentID,
 			Status:      LinkAccepted,
 			Note:        "",
-			RequestedBy: child.Goal.OwnerID,
+			RequestedBy: child.Owner.ID,
 			CreatedAt:   now.Format(timeFormat),
 		})
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
-		if err := tx.recordLinkEvent(ctx, childID, parentID, LinkEventLinked, child.Goal.OwnerID, now); err != nil {
+		if err := tx.recordLinkEvent(ctx, childID, parentID, LinkEventLinked, child.Owner.ID, now); err != nil {
 			return err
 		}
 		return tx.closeSuggestionsForLink(ctx, childID, parentID)
@@ -187,12 +176,22 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 	}
 	return Link{
 		ID:        row.ID,
-		Child:     goalFromRow(child.Goal, child.Account),
-		Parent:    goalFromRow(parent.Goal, parent.Account),
+		Child:     child,
+		Parent:    parent,
 		Status:    row.Status,
 		Note:      row.Note,
 		CreatedAt: now,
 	}, nil
+}
+
+// linkParentGoal loads parentID, the parent a link is asked for: one that doesn't
+// exist is refused as input, ErrValidation.
+func (s *Service) linkParentGoal(ctx context.Context, parentID int64) (Goal, error) {
+	parent, err := s.loadGoal(ctx, parentID)
+	if errors.Is(err, ErrNotFound) {
+		return Goal{}, Refuse(ErrValidation, "parent goal does not exist")
+	}
+	return parent, err
 }
 
 // AcceptLink accepts a pending request. The actor must own the parent Goal. The

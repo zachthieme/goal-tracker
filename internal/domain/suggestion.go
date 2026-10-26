@@ -55,14 +55,7 @@ const (
 func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID int64, note string) (ParentSuggestion, error) {
 	var row db.ParentSuggestion
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.queries.GetGoal(ctx, goalID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		if err := suggestParentRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
+		if _, err := tx.openGoalCommand(ctx, actorID, goalID, suggestParentRefusal, nil); err != nil {
 			return err
 		}
 		if parentID == goalID {
@@ -257,7 +250,7 @@ func (s *Service) openSuggestionForOwner(ctx context.Context, actorID, suggestio
 	if err != nil {
 		return ParentSuggestion{}, err
 	}
-	if err := decideSuggestionRefusal(s.goalActorFor(ctx, actorID, p.Goal.ID), p.Goal); err != nil {
+	if _, err := s.openGoalCommand(ctx, actorID, p.Goal.ID, decideSuggestionRefusal, nil); err != nil {
 		return ParentSuggestion{}, err
 	}
 	if p.Status != SuggestionOpen {

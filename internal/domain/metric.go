@@ -77,13 +77,7 @@ type AddMetricInput struct {
 func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInput) (Metric, error) {
 	var row db.Metric
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if _, err := tx.queries.GetGoal(ctx, in.GoalID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		if err := tx.goalRule(ctx, actorID, in.GoalID, metricEditRefusal); err != nil {
+		if _, err := tx.openGoalCommand(ctx, actorID, in.GoalID, metricEditRefusal, nil); err != nil {
 			return err
 		}
 		name := strings.TrimSpace(in.Name)
@@ -152,10 +146,7 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 		if err != nil {
 			return err
 		}
-		if err := tx.goalRule(ctx, actorID, current.GoalID, metricEditRefusal); err != nil {
-			return err
-		}
-		if err := unparsedRefusal(in.Unparsed); err != nil {
+		if _, err := tx.openGoalCommand(ctx, actorID, current.GoalID, metricEditRefusal, in.Unparsed); err != nil {
 			return err
 		}
 		name := strings.TrimSpace(in.Name)

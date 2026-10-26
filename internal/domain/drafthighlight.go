@@ -46,11 +46,8 @@ type LogDraftHighlightInput struct {
 func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInput) (DraftHighlight, error) {
 	var row db.DraftHighlight
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.loadGoal(ctx, in.GoalID)
+		goal, err := tx.openGoalCommand(ctx, in.AuthorID, in.GoalID, logDraftHighlightRefusal, nil)
 		if err != nil {
-			return err
-		}
-		if err := logDraftHighlightRefusal(tx.goalActorFor(ctx, in.AuthorID, goal.ID), goal); err != nil {
 			return err
 		}
 		note, err := draftHighlightValues(in.Kind, in.Note)
@@ -83,11 +80,7 @@ func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInp
 // first, each with who logged it. Only the Goal's Owner or a Delegate, as
 // viewerID, may see them.
 func (s *Service) PendingDraftHighlights(ctx context.Context, viewerID, goalID int64) ([]DraftHighlight, error) {
-	goal, err := s.loadGoal(ctx, goalID)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.authorizeDraftHighlighter(ctx, goal, viewerID); err != nil {
+	if _, err := s.authorizeDraftHighlighter(ctx, viewerID, goalID); err != nil {
 		return nil, err
 	}
 	return s.pendingDraftHighlights(ctx, goalID)
@@ -193,11 +186,8 @@ func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (Dra
 		return DraftHighlight{}, Goal{}, fmt.Errorf("get draft highlight: %w", err)
 	}
 	draft := draftHighlightFromRow(row.DraftHighlight, row.Account)
-	goal, err := s.loadGoal(ctx, draft.GoalID)
+	goal, err := s.authorizeDraftHighlighter(ctx, actorID, draft.GoalID)
 	if err != nil {
-		return DraftHighlight{}, Goal{}, err
-	}
-	if err := s.authorizeDraftHighlighter(ctx, goal, actorID); err != nil {
 		return DraftHighlight{}, Goal{}, err
 	}
 	return draft, goal, nil
@@ -316,9 +306,10 @@ func (s *Service) discardedDraftHighlightsByCheckin(ctx context.Context, goalID 
 
 // authorizeDraftHighlighter allows only those who may write the Goal's
 // Check-ins — its Owner or a Delegate, neither Departed — to log, see, edit or
-// delete its pending Draft Highlights (draftHighlighterRefusal).
-func (s *Service) authorizeDraftHighlighter(ctx context.Context, goal Goal, actorID int64) error {
-	return draftHighlighterRefusal(s.goalActorFor(ctx, actorID, goal.ID), goal)
+// delete its pending Draft Highlights (draftHighlighterRefusal), returning the
+// Goal goalID; a missing Goal is ErrNotFound.
+func (s *Service) authorizeDraftHighlighter(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	return s.openGoalCommand(ctx, actorID, goalID, draftHighlighterRefusal, nil)
 }
 
 func draftHighlightFromRow(d db.DraftHighlight, loggedBy db.Account) DraftHighlight {
