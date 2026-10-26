@@ -36,3 +36,6 @@ dev/authentik/.env
 
 # Python bytecode (scripts/contrast.py run without -B).
 __pycache__/
+
+# Personal Claude Code settings, e.g. a status line of your own.
+.claude/settings.local.json

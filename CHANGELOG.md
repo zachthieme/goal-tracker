@@ -35,6 +35,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
 
+**Infrastructure:**
+- [internal] Claude Code sessions in this repo show vetinari's status line: `.claude/settings.json` runs `vetinari statusline`, which adds the 🏰 campaign line under the branch. A personal status line goes in the git-ignored `.claude/settings.local.json`, which wins over the shared one (#550).
+
 ### Collected changes — October 25, 2026
 
 **Breaking changes:**

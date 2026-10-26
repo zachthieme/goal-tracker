@@ -1,0 +1,7 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "vetinari statusline",
+    "refreshInterval": 5
+  }
+}
