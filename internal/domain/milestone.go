@@ -132,8 +132,8 @@ func overdueMilestone(milestones []Milestone, today time.Time) (Milestone, bool)
 
 // MilestoneOverdueError is a refusal because Milestone is overdue — Planned and
 // past its date — naming it and what the missed date rules out, so a caller
-// can compose its message with the date as a page shows dates. It is an
-// ErrValidation.
+// composes its message with the date as a page shows dates; its own text is a
+// terse log form, not one for people. It is an ErrValidation.
 type MilestoneOverdueError struct {
 	Milestone Milestone
 	RulesOut  OverdueRulesOut
@@ -152,18 +152,20 @@ const (
 )
 
 func (e *MilestoneOverdueError) Error() string {
-	return fmt.Sprintf("%v: %s", ErrValidation, e.shownReason())
+	return fmt.Sprintf("%v: %s", ErrValidation, e.logDetail())
 }
 
 func (e *MilestoneOverdueError) Unwrap() error { return ErrValidation }
 
-func (e *MilestoneOverdueError) shownReason() string {
-	msg := fmt.Sprintf("Milestone %q is overdue (due %s)", e.Milestone.Name, e.Milestone.TargetDate.Format(dateFormat))
+// logDetail is e's log text without its kind: `milestone "Beta" overdue (due
+// 2026-04-01), rules out green`.
+func (e *MilestoneOverdueError) logDetail() string {
+	msg := fmt.Sprintf("milestone %q overdue (due %s)", e.Milestone.Name, e.Milestone.TargetDate.Format(dateFormat))
 	switch e.RulesOut {
 	case OverdueRulesOutGreen:
-		msg += ", so the Goal can't be Green"
+		msg += ", rules out green"
 	case OverdueRulesOutNoChange:
-		msg += ": submit a Check-in to move its date, mark it Done or remove it"
+		msg += ", rules out no change"
 	}
 	return msg
 }
@@ -171,7 +173,8 @@ func (e *MilestoneOverdueError) shownReason() string {
 // rejectGreenWhileOverdue refuses a Green Health while any of g's Milestones,
 // as they will stand after the Check-in, is overdue as of today in g's
 // timezone (see GoalTimezone): a slip is never hidden behind a Green
-// (CONTEXT.md: Date Slip).
+// (CONTEXT.md: Date Slip). Its InputError's Message is the overdue refusal's
+// log text: a page composes the sentence from the *MilestoneOverdueError.
 func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db.Milestone) error {
 	if health != HealthGreen {
 		return nil
@@ -180,7 +183,7 @@ func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db
 	for _, m := range milestones {
 		if milestone := milestoneFromRow(m); milestone.OverdueOn(today) {
 			overdue := &MilestoneOverdueError{Milestone: milestone, RulesOut: OverdueRulesOutGreen}
-			return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.shownReason(), Err: overdue}
+			return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.logDetail(), Err: overdue}
 		}
 	}
 	return nil

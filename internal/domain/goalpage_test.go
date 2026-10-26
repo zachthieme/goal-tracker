@@ -5,7 +5,6 @@ import (
 	"errors"
 	"reflect"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -594,8 +593,8 @@ func TestGoalPageDerivesWhatTheServiceMethodsGive(t *testing.T) {
 	// Its No change is judged as NoChangeRefusal judges one: the Red repeats
 	// its explanation of the Yellow roll-up, but the Beta due in ten days has
 	// since gone overdue.
-	if want := `Milestone "Beta" is overdue`; p.NoChangeRefusal == nil || !strings.HasPrefix(domain.Reason(p.NoChangeRefusal), want) {
-		t.Errorf("No change refusal = %v, want %s", p.NoChangeRefusal, want)
+	if overdue := (*domain.MilestoneOverdueError)(nil); !errors.As(p.NoChangeRefusal, &overdue) || overdue.Milestone.Name != "Beta" {
+		t.Errorf("No change refusal = %v, want Beta overdue", p.NoChangeRefusal)
 	}
 	if p.OverdueMilestone == nil || p.OverdueMilestone.Name != "Beta" {
 		t.Errorf("OverdueMilestone = %+v, want Beta", p.OverdueMilestone)

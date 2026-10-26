@@ -415,9 +415,10 @@ type OffTargetMetric struct {
 }
 
 // GreenOffTargetError refuses a Green Check-in, unconfirmed, while Metrics on
-// the Goal are off target, naming each with its reading so the Owner can
-// confirm the Green or change it. It is both an ErrGreenOffTarget and an
-// ErrValidation.
+// the Goal are off target, naming each with its reading so a caller can ask
+// the Owner to confirm the Green or change it, with the dates as a page shows
+// them; its own text is a terse log form, not one for people. It is both an
+// ErrGreenOffTarget and an ErrValidation.
 type GreenOffTargetError struct {
 	Metrics []OffTargetMetric
 }
@@ -425,10 +426,10 @@ type GreenOffTargetError struct {
 func (e *GreenOffTargetError) Error() string {
 	missed := make([]string, 0, len(e.Metrics))
 	for _, o := range e.Metrics {
-		missed = append(missed, fmt.Sprintf("%s is %s %s; its target was %s by %s",
+		missed = append(missed, fmt.Sprintf("%s %s %s, target %s by %s",
 			o.Metric.Name, formatMetricValue(o.Reading), o.Metric.Unit, formatMetricValue(o.Metric.Target), o.Metric.TargetDate.Format(dateFormat)))
 	}
-	return fmt.Sprintf("%v: %s, so the Goal's Green needs confirming", ErrValidation, strings.Join(missed, "; "))
+	return fmt.Sprintf("%v: green off target: %s", ErrValidation, strings.Join(missed, "; "))
 }
 
 func (e *GreenOffTargetError) Unwrap() []error { return []error{ErrGreenOffTarget, ErrValidation} }
@@ -808,9 +809,9 @@ func noChangeRefusalOf(facts noChangeFacts) (string, error) {
 		return "", Refuse(ErrValidation, "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health")
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
-	// confirm that.
+	// confirm that, as a page says beside the Metrics.
 	if prev.Health == HealthGreen && len(facts.offTarget) > 0 {
-		return "", fmt.Errorf("%w — submit a Check-in to confirm or update it", &GreenOffTargetError{Metrics: facts.offTarget})
+		return "", &GreenOffTargetError{Metrics: facts.offTarget}
 	}
 	return explanation, nil
 }
