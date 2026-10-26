@@ -119,6 +119,54 @@ func TestCommitCleanImport(t *testing.T) {
 	}
 }
 
+// A row naming a Departed Owner imports an Ownerless Goal, and the import still
+// records its Kind, Milestones and Metrics: the Admin running it makes them
+// for the Owner, so the rule refusing a Departed Owner doesn't refuse them.
+func TestCommitRecordsAGoalForADepartedOwner(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	gone := h.SignIn("gone@example.com")
+	h.MarkDeparted(admin, gone)
+	const csv = `Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics
+Ship export,gone@example.com,People can't leave.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,Exports | a day | up | 10 | 100 | 2026-06-30
+`
+
+	rep, err := importer.New(h.Service).Commit(ctx, admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("import not committed cleanly; report: %+v", rep.Rows)
+	}
+
+	goals, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 1 {
+		t.Fatalf("want 1 imported Goal, got %d", len(goals))
+	}
+	g := goals[0]
+	if !g.Ownerless {
+		t.Errorf("the Goal of a Departed Owner isn't Ownerless")
+	}
+	if g.Kind != domain.GoalDated {
+		t.Errorf("Kind = %q, want Dated", g.Kind)
+	}
+	if milestones, err := h.Service.ListMilestones(ctx, g.ID); err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	} else if len(milestones) != 2 {
+		t.Errorf("Milestones = %+v, want Beta and GA", milestones)
+	}
+	if metrics, err := h.Service.ListMetrics(ctx, g.ID); err != nil {
+		t.Fatalf("ListMetrics: %v", err)
+	} else if len(metrics) != 1 || metrics[0].Name != "Exports" {
+		t.Errorf("Metrics = %+v, want Exports", metrics)
+	}
+}
+
 // A dry run reports each bad row's errors and saves nothing — not even the rows
 // that are valid (ticket #22: a dry run shows errors row by row and saves
 // nothing).

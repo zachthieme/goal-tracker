@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -76,15 +75,8 @@ func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Hando
 
 // startHandoff is StartHandoff's checks and insert, run inside its transaction.
 func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Handoff, error) {
-	goal, err := s.queries.GetGoal(ctx, in.GoalID)
+	goal, err := s.ownershipGoal(ctx, in.ActorID, in.GoalID, handoffRefusal)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Handoff{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return Handoff{}, fmt.Errorf("look up goal: %w", err)
-	}
-
-	if err := handoffRefusal(s.goalActorFor(ctx, in.ActorID, in.GoalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
 		return Handoff{}, err
 	}
 	actor, err := s.queries.GetAccount(ctx, in.ActorID)
@@ -135,33 +127,65 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 	}, nil
 }
 
+// ownershipGoal loads goalID for a change of its Owner by actorID, as
+// StartHandoff and ReassignGoal do inside their transaction: a missing Goal is
+// ErrValidation, and anyone rule refuses is refused.
+func (s *Service) ownershipGoal(ctx context.Context, actorID, goalID int64, rule func(goalActor, Goal) error) (db.GetGoalRow, error) {
+	goal, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return db.GetGoalRow{}, Refuse(ErrValidation, "goal does not exist")
+		}
+		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
+	}
+	if err := rule(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
+		return db.GetGoalRow{}, err
+	}
+	return goal, nil
+}
+
 // StartHandoffByEmail starts a Handoff to the Account with the given email. It is
 // the web-facing convenience over StartHandoff, since the tool identifies people
 // by email (CONTEXT.md: development sign-in by email). An email with no account
-// is rejected.
+// is rejected, but only once the actor may start the Handoff, so someone who
+// may not learns nothing of who has an Account.
 func (s *Service) StartHandoffByEmail(ctx context.Context, goalID int64, toEmail string, actorID int64) (Handoff, error) {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(toEmail))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Handoff{}, Refuse(ErrValidation, "no account with email %q", toEmail)
+	var ho Handoff
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.ownershipGoal(ctx, actorID, goalID, handoffRefusal); err != nil {
+			return err
 		}
-		return Handoff{}, fmt.Errorf("look up new owner: %w", err)
+		toOwnerID, err := tx.accountIDWithEmail(ctx, toEmail)
+		if err != nil {
+			return err
+		}
+		ho, err = tx.startHandoff(ctx, StartHandoffInput{GoalID: goalID, ToOwnerID: toOwnerID, ActorID: actorID})
+		return err
+	})
+	if err != nil {
+		return Handoff{}, err
 	}
-	return s.StartHandoff(ctx, StartHandoffInput{GoalID: goalID, ToOwnerID: acc.ID, ActorID: actorID})
+	return ho, nil
 }
 
 // ReassignGoalByEmail reassigns an Ownerless Goal to the Account with the given
 // email. It is the web-facing convenience over ReassignGoal. An email with no
-// account is rejected.
+// account is rejected, but only once the actor may reassign the Goal.
 func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64, newOwnerEmail string) (Goal, error) {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(newOwnerEmail))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, Refuse(ErrValidation, "no account with email %q", newOwnerEmail)
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.ownershipGoal(ctx, actorID, goalID, reassignRefusal); err != nil {
+			return err
 		}
-		return Goal{}, fmt.Errorf("look up new owner: %w", err)
+		newOwnerID, err := tx.accountIDWithEmail(ctx, newOwnerEmail)
+		if err != nil {
+			return err
+		}
+		return tx.reassignGoal(ctx, actorID, goalID, newOwnerID)
+	})
+	if err != nil {
+		return Goal{}, err
 	}
-	return s.ReassignGoal(ctx, actorID, goalID, acc.ID)
+	return s.loadGoal(ctx, goalID)
 }
 
 // AcceptHandoff accepts a pending Handoff, moving the Goal to the new Owner. Only
@@ -401,14 +425,8 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 
 // reassignGoal is ReassignGoal's checks and writes, run inside its transaction.
 func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) error {
-	goal, err := s.queries.GetGoal(ctx, goalID)
+	goal, err := s.ownershipGoal(ctx, actorID, goalID, reassignRefusal)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "goal does not exist")
-		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	if err := reassignRefusal(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
 		return err
 	}
 	newOwner, err := s.queries.GetAccount(ctx, newOwnerID)
