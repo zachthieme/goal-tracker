@@ -13,7 +13,8 @@ import (
 )
 
 // An Admin marks a Goal Top-level from its page and unmarks it again; the Goal
-// page shows the mark. The Goal's Owner, not being an Admin, is refused.
+// page shows the mark. The Goal's Owner, not being an Admin, is refused on the
+// refusal page, with a way Back to the Goal.
 func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -36,10 +37,11 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 
 	resp := postForm(t, samClient, goalURL+"/top-level", url.Values{"top_level": {"true"}})
 	defer func() { _ = resp.Body.Close() }()
-	_ = readBody(t, resp)
+	refused := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Owner marking Top-level: status %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
+	assertRefusalPage(t, refused, "Can't change Top-level", "Only an Admin may do this.", fmt.Sprintf("/goals/%d", g.ID))
 
 	resp = postForm(t, adaClient, goalURL+"/top-level", url.Values{"top_level": {"true"}})
 	page := readBody(t, resp)

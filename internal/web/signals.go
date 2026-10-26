@@ -22,7 +22,7 @@ func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, curr
 
 // handleSetTopLevel marks the Goal in the path a Top-level Goal when top_level
 // is true, and unmarks it when false. Only an Admin may (CONTEXT.md: Top-level
-// Goal).
+// Goal): anyone else gets the refusal page, 403, linking Back to the Goal.
 func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -41,7 +41,7 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, domain.Reason(err), http.StatusForbidden)
+			s.refuse(w, r, "Can't change Top-level", goalPath(goalID), err)
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		default:
