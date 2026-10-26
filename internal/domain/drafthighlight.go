@@ -44,29 +44,36 @@ type LogDraftHighlightInput struct {
 // trimmed and required; a kind, if given, must be an Insight, Accomplishment
 // or Miss.
 func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInput) (DraftHighlight, error) {
-	goal, err := s.loadGoal(ctx, in.GoalID)
-	if err != nil {
-		return DraftHighlight{}, err
-	}
-	if err := s.authorizeDraftHighlighter(ctx, goal, in.AuthorID); err != nil {
-		return DraftHighlight{}, err
-	}
-	if err := draftHighlightsTaken(goal); err != nil {
-		return DraftHighlight{}, err
-	}
-	note, err := draftHighlightValues(in.Kind, in.Note)
-	if err != nil {
-		return DraftHighlight{}, err
-	}
-	row, err := s.queries.CreateDraftHighlight(ctx, db.CreateDraftHighlightParams{
-		GoalID:    goal.ID,
-		Kind:      in.Kind,
-		Note:      note,
-		LoggedBy:  in.AuthorID,
-		CreatedAt: s.clock.Now().Format(timeFormat),
+	var row db.DraftHighlight
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.loadGoal(ctx, in.GoalID)
+		if err != nil {
+			return err
+		}
+		if err := tx.authorizeDraftHighlighter(ctx, goal, in.AuthorID); err != nil {
+			return err
+		}
+		if err := draftHighlightsTaken(goal); err != nil {
+			return err
+		}
+		note, err := draftHighlightValues(in.Kind, in.Note)
+		if err != nil {
+			return err
+		}
+		row, err = tx.queries.CreateDraftHighlight(ctx, db.CreateDraftHighlightParams{
+			GoalID:    goal.ID,
+			Kind:      in.Kind,
+			Note:      note,
+			LoggedBy:  in.AuthorID,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create draft highlight: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return DraftHighlight{}, fmt.Errorf("create draft highlight: %w", err)
+		return DraftHighlight{}, err
 	}
 	author, err := s.queries.GetAccount(ctx, in.AuthorID)
 	if err != nil {
@@ -108,16 +115,24 @@ func (s *Service) pendingDraftHighlights(ctx context.Context, goalID int64) ([]D
 // Only its Goal's Owner or a Delegate, as actorID, may delete one. One that
 // doesn't exist, or that a Check-in has already discarded, is ErrNotFound.
 func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
-	draft, _, err := s.draftHighlightFor(ctx, actorID, id)
+	var draft DraftHighlight
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		draft, _, err = tx.draftHighlightFor(ctx, actorID, id)
+		if err != nil {
+			return err
+		}
+		n, err := tx.queries.DeletePendingDraftHighlight(ctx, id)
+		if err != nil {
+			return fmt.Errorf("delete draft highlight: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
+		}
+		return nil
+	})
 	if err != nil {
 		return DraftHighlight{}, err
-	}
-	n, err := s.queries.DeletePendingDraftHighlight(ctx, id)
-	if err != nil {
-		return DraftHighlight{}, fmt.Errorf("delete draft highlight: %w", err)
-	}
-	if n == 0 {
-		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
 	}
 	return draft, nil
 }
@@ -132,23 +147,32 @@ func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (
 // ErrNotFound. The edit records nothing in the Goal's History: the Draft
 // Highlight is still pending.
 func (s *Service) EditDraftHighlight(ctx context.Context, actorID, id int64, kind, note string) (DraftHighlight, error) {
-	draft, goal, err := s.draftHighlightFor(ctx, actorID, id)
+	var draft DraftHighlight
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var goal Goal
+		var err error
+		draft, goal, err = tx.draftHighlightFor(ctx, actorID, id)
+		if err != nil {
+			return err
+		}
+		if err := draftHighlightsTaken(goal); err != nil {
+			return err
+		}
+		note, err = draftHighlightValues(kind, note)
+		if err != nil {
+			return err
+		}
+		n, err := tx.queries.UpdatePendingDraftHighlight(ctx, db.UpdatePendingDraftHighlightParams{Kind: kind, Note: note, ID: id})
+		if err != nil {
+			return fmt.Errorf("edit draft highlight: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
+		}
+		return nil
+	})
 	if err != nil {
 		return DraftHighlight{}, err
-	}
-	if err := draftHighlightsTaken(goal); err != nil {
-		return DraftHighlight{}, err
-	}
-	note, err = draftHighlightValues(kind, note)
-	if err != nil {
-		return DraftHighlight{}, err
-	}
-	n, err := s.queries.UpdatePendingDraftHighlight(ctx, db.UpdatePendingDraftHighlightParams{Kind: kind, Note: note, ID: id})
-	if err != nil {
-		return DraftHighlight{}, fmt.Errorf("edit draft highlight: %w", err)
-	}
-	if n == 0 {
-		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
 	}
 	draft.Kind, draft.Note = kind, note
 	return draft, nil

@@ -130,27 +130,28 @@ type CreateGoalInput struct {
 // CreateGoal creates a Proposed Goal owned by OwnerID. Title and Why it matters are
 // required (CONTEXT.md: Why it matters is required when the Goal is created).
 func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, error) {
-	title := strings.TrimSpace(in.Title)
-	whyItMatters := strings.TrimSpace(in.WhyItMatters)
-	if title == "" {
-		return Goal{}, Refuse(ErrValidation, "a Goal needs a title")
-	}
-	if whyItMatters == "" {
-		return Goal{}, Refuse(ErrValidation, "a Goal needs to say why it matters")
-	}
-
-	owner, err := s.queries.GetAccount(ctx, in.OwnerID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Goal{}, Refuse(ErrValidation, "owner does not exist")
-		}
-		return Goal{}, fmt.Errorf("look up owner: %w", err)
-	}
-
-	now := s.clock.Now()
 	var row db.Goal
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	var owner db.Account
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		title := strings.TrimSpace(in.Title)
+		whyItMatters := strings.TrimSpace(in.WhyItMatters)
+		if title == "" {
+			return Refuse(ErrValidation, "a Goal needs a title")
+		}
+		if whyItMatters == "" {
+			return Refuse(ErrValidation, "a Goal needs to say why it matters")
+		}
+
 		var err error
+		owner, err = tx.queries.GetAccount(ctx, in.OwnerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "owner does not exist")
+			}
+			return fmt.Errorf("look up owner: %w", err)
+		}
+
+		now := tx.clock.Now()
 		row, err = tx.queries.CreateGoal(ctx, db.CreateGoalParams{
 			Title:        title,
 			WhyItMatters: whyItMatters,
@@ -199,15 +200,14 @@ type WhyItMattersRevision struct {
 // RequireGoalOwnerOrAdmin). The text and its revision are written together or
 // not at all, in the caller's transaction when it has one.
 func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
-	whyItMatters = strings.TrimSpace(whyItMatters)
-	if whyItMatters == "" {
-		return Goal{}, Refuse(ErrValidation, "a Goal needs to say why it matters")
-	}
-	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
-		return Goal{}, err
-	}
-
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		whyItMatters = strings.TrimSpace(whyItMatters)
+		if whyItMatters == "" {
+			return Refuse(ErrValidation, "a Goal needs to say why it matters")
+		}
+		if err := tx.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
+			return err
+		}
 		if _, err := tx.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{
 			WhyItMatters: whyItMatters,
 			ID:           goalID,
@@ -453,21 +453,27 @@ func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) e
 // delivery date, so a zero date is rejected. Only the Goal's Owner may mark it
 // (ErrNotAuthorized).
 func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deliveryDate time.Time) (Goal, error) {
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		if deliveryDate.IsZero() {
+			return Refuse(ErrValidation, "a Dated Goal needs a delivery date")
+		}
+		if err := tx.requireProposedToSetDelivery(ctx, goalID); err != nil {
+			return err
+		}
+		if _, err := tx.queries.SetGoalKind(ctx, db.SetGoalKindParams{
+			Kind:         GoalDated,
+			DeliveryDate: deliveryDate.Format(dateFormat),
+			ID:           goalID,
+		}); err != nil {
+			return fmt.Errorf("mark goal dated: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return Goal{}, err
-	}
-	if deliveryDate.IsZero() {
-		return Goal{}, Refuse(ErrValidation, "a Dated Goal needs a delivery date")
-	}
-	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
-		return Goal{}, err
-	}
-	if _, err := s.queries.SetGoalKind(ctx, db.SetGoalKindParams{
-		Kind:         GoalDated,
-		DeliveryDate: deliveryDate.Format(dateFormat),
-		ID:           goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("mark goal dated: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
 }
@@ -476,17 +482,23 @@ func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deli
 // must be positive (CONTEXT.md: Check-in cadence, 7 days by default). Only the
 // Goal's Owner may set it (ErrNotAuthorized).
 func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days int) (Goal, error) {
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		if days <= 0 {
+			return Refuse(ErrValidation, "the Check-in cadence must be a positive number of days")
+		}
+		if _, err := tx.queries.SetGoalCadence(ctx, db.SetGoalCadenceParams{
+			CadenceDays: int64(days),
+			ID:          goalID,
+		}); err != nil {
+			return fmt.Errorf("set cadence: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return Goal{}, err
-	}
-	if days <= 0 {
-		return Goal{}, Refuse(ErrValidation, "the Check-in cadence must be a positive number of days")
-	}
-	if _, err := s.queries.SetGoalCadence(ctx, db.SetGoalCadenceParams{
-		CadenceDays: int64(days),
-		ID:          goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("set cadence: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
 }
@@ -497,38 +509,40 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 // same Account twice is rejected. Only the Goal's Owner may add one
 // (ErrNotAuthorized).
 func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {
-	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "goal does not exist")
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.GetGoal(ctx, goalID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
 		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
-		return err
-	}
-	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "account does not exist")
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+			return err
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	if _, err := s.queries.GetContributor(ctx, db.GetContributorParams{
-		GoalID:    goalID,
-		AccountID: accountID,
-	}); err == nil {
-		return Refuse(ErrValidation, "already a Contributor")
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up contributor: %w", err)
-	}
+		if _, err := tx.queries.GetAccount(ctx, accountID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "account does not exist")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if _, err := tx.queries.GetContributor(ctx, db.GetContributorParams{
+			GoalID:    goalID,
+			AccountID: accountID,
+		}); err == nil {
+			return Refuse(ErrValidation, "already a Contributor")
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up contributor: %w", err)
+		}
 
-	if _, err := s.queries.AddContributor(ctx, db.AddContributorParams{
-		GoalID:    goalID,
-		AccountID: accountID,
-		CreatedAt: s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("add contributor: %w", err)
-	}
-	return nil
+		if _, err := tx.queries.AddContributor(ctx, db.AddContributorParams{
+			GoalID:    goalID,
+			AccountID: accountID,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("add contributor: %w", err)
+		}
+		return nil
+	})
 }
 
 // AddContributorByEmail lists the Account with the given email as a Contributor
@@ -567,18 +581,24 @@ func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account
 // Health is judged against its Metrics instead (CONTEXT.md: Ongoing Goal).
 // Only the Goal's Owner may mark it (ErrNotAuthorized).
 func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (Goal, error) {
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		if err := tx.requireProposedToSetDelivery(ctx, goalID); err != nil {
+			return err
+		}
+		if _, err := tx.queries.SetGoalKind(ctx, db.SetGoalKindParams{
+			Kind:         GoalOngoing,
+			DeliveryDate: "",
+			ID:           goalID,
+		}); err != nil {
+			return fmt.Errorf("mark goal ongoing: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return Goal{}, err
-	}
-	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
-		return Goal{}, err
-	}
-	if _, err := s.queries.SetGoalKind(ctx, db.SetGoalKindParams{
-		Kind:         GoalOngoing,
-		DeliveryDate: "",
-		ID:           goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("mark goal ongoing: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
 }
