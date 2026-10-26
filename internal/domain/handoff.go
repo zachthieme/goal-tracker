@@ -57,8 +57,8 @@ type StartHandoffInput struct {
 // StartHandoff proposes transferring a Goal to a new Owner. The actor must be
 // the Goal's current Owner or an Admin. The Handoff waits Pending and ownership
 // does not move until the new Owner accepts it (CONTEXT.md: Handoff). Handing a
-// Goal to its current Owner, or starting a second Handoff while one is pending,
-// is rejected.
+// Goal to its current Owner, handing off an Ownerless Goal (an Admin reassigns
+// it instead), or starting a second Handoff while one is pending, is rejected.
 func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Handoff, error) {
 	// Every check reads inside the transaction that writes the Handoff, so two
 	// started together (a double-submit) can't both find none pending.
@@ -90,6 +90,11 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 	}
 	if goal.Goal.OwnerID != in.ActorID && actor.IsAdmin == 0 {
 		return Handoff{}, Refuse(ErrNotAuthorized, "only the Owner or an Admin may start a Handoff")
+	}
+	// An Ownerless Goal is resolved by Reassign, or by accepting a Handoff its
+	// Owner started before leaving (CONTEXT.md: Ownerless), not a new Handoff.
+	if goal.Account.Departed != 0 {
+		return Handoff{}, Refuse(ErrValidation, "this Goal is Ownerless: reassign it instead")
 	}
 
 	if in.ToOwnerID == goal.Goal.OwnerID {

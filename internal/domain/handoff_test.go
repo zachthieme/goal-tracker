@@ -117,6 +117,37 @@ func TestStartHandoffAuthorization(t *testing.T) {
 	}
 }
 
+// An Ownerless Goal is resolved by an Admin reassigning it, or by accepting a
+// Handoff its Owner started before leaving (CONTEXT.md: Ownerless), so an Admin
+// may not start a new Handoff on one: it's refused, pointing at Reassign, and
+// nothing is recorded.
+func TestStartHandoffRefusesAnOwnerlessGoal(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com") // Admin
+	sam := h.SignIn("sam@example.com")   // Departed Owner
+	pat := h.SignIn("pat@example.com")   // proposed new Owner
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if err := h.Service.MarkDeparted(ctx, boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	_, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{
+		GoalID: goal.ID, ToOwnerID: pat.ID, ActorID: boss.ID,
+	})
+	if want := "this Goal is Ownerless: reassign it instead"; !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != want {
+		t.Errorf("Admin StartHandoff on an Ownerless Goal err = %v, want ErrValidation %q", err, want)
+	}
+	if history, err := h.Service.OwnershipHistory(ctx, goal.ID); err != nil || len(history) != 0 {
+		t.Errorf("OwnershipHistory = %+v, %v; want no Handoff recorded", history, err)
+	}
+	if pending, err := h.Service.PendingHandoffs(ctx, pat.ID); err != nil || len(pending) != 0 {
+		t.Errorf("pending for Pat = %+v, %v; want none", pending, err)
+	}
+}
+
 // An Admin marks a person departed; the Goals they still own become Ownerless.
 func TestMarkDepartedMakesGoalsOwnerless(t *testing.T) {
 	t.Parallel()
