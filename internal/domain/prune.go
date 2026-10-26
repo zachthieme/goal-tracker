@@ -51,23 +51,13 @@ func (s *Service) PruneStale(ctx context.Context) (StaleRowsPruned, error) {
 	return pruned, nil
 }
 
-// RunPrune prunes stale rows (PruneStale) now and then every interval, until
-// ctx is done, logging what each prune deleted, or why it failed, to logger.
-func (s *Service) RunPrune(ctx context.Context, every time.Duration, logger *slog.Logger) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	for {
-		pruned, err := s.PruneStale(ctx)
-		switch {
-		case err != nil && ctx.Err() == nil:
-			logger.Error("prune stale rows", "err", err)
-		case err == nil:
-			logger.Info("pruned stale rows", "email", pruned.Email, "undo_tokens", pruned.UndoTokens)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
+// PruneStaleAndLog is the prune job's run: it prunes stale rows (PruneStale)
+// and logs what it deleted to logger. Its error is the job runner's to log.
+func (s *Service) PruneStaleAndLog(ctx context.Context, logger *slog.Logger) error {
+	pruned, err := s.PruneStale(ctx)
+	if err != nil {
+		return err
 	}
+	logger.Info("pruned stale rows", "email", pruned.Email, "undo_tokens", pruned.UndoTokens)
+	return nil
 }

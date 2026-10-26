@@ -22,10 +22,10 @@ type emailOutbox struct {
 	// can't both send a row.
 	delivering sync.Mutex
 	// onCommit has the transaction that queued email deliver it as soon as it
-	// commits, in its caller, rather than waiting for RunEmailOutbox.
+	// commits, in its caller, rather than waiting for the email outbox job.
 	onCommit bool
-	// wake tells RunEmailOutbox that a transaction has committed email for it
-	// to send. It holds one wake-up, so a burst of commits wakes it once.
+	// wake tells the email outbox job that a transaction has committed email
+	// for it to send. It holds one wake-up, so a burst of commits wakes it once.
 	wake chan struct{}
 	// logger is where a failed send is logged; nil logs to slog.Default().
 	logger *slog.Logger
@@ -33,8 +33,8 @@ type emailOutbox struct {
 
 // WithEmailDeliveredOnCommit has the Service send the email a command queues
 // as soon as the command's transaction commits, before the command returns,
-// rather than leaving it for RunEmailOutbox. It is for tests, which assert on
-// what was sent without running the outbox in the background.
+// rather than leaving it for the email outbox job. It is for tests, which
+// assert on what was sent without running the job in the background.
 func WithEmailDeliveredOnCommit() Option {
 	return func(s *Service) { s.outbox.onCommit = true }
 }
@@ -78,8 +78,8 @@ func (s *Service) queueEmail(ctx context.Context, msg email.Message) error {
 }
 
 // emailQueued is called once a transaction that queued email has committed.
-// It wakes RunEmailOutbox to send it, or with WithEmailDeliveredOnCommit,
-// sends it itself.
+// It wakes the email outbox job to send it, or with
+// WithEmailDeliveredOnCommit, sends it itself.
 func (s *Service) emailQueued(ctx context.Context) {
 	if s.outbox.onCommit {
 		if err := s.DeliverEmail(ctx); err != nil {
@@ -93,23 +93,11 @@ func (s *Service) emailQueued(ctx context.Context) {
 	}
 }
 
-// RunEmailOutbox sends the email in the outbox as it falls due, until ctx is
-// done: at once, whenever a command commits email, and every interval, for
-// the emails waiting to be tried again.
-func (s *Service) RunEmailOutbox(ctx context.Context, every time.Duration) {
-	ticker := time.NewTicker(every)
-	defer ticker.Stop()
-	for {
-		if err := s.DeliverEmail(ctx); err != nil && ctx.Err() == nil {
-			s.outbox.log().Error("email outbox: deliver", "err", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-s.outbox.wake:
-		case <-ticker.C:
-		}
-	}
+// EmailWake receives once a transaction has committed email for the email
+// outbox job to send (DeliverEmail), however many have since it last
+// received. With WithEmailDeliveredOnCommit, it never receives.
+func (s *Service) EmailWake() <-chan struct{} {
+	return s.outbox.wake
 }
 
 // DeliverEmail sends the email in the outbox that is due, oldest first, and

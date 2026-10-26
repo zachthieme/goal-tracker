@@ -1,12 +1,8 @@
 package notify_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"log/slog"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -165,9 +161,9 @@ func TestSchedulerFirstStartedJustAfterASlotWaitsForTheNext(t *testing.T) {
 }
 
 // A run that fails, such as on a database error, is tried again at the next
-// poll rather than a week later, and once it succeeds the slot isn't run
+// Tick rather than a week later, and once it succeeds the slot isn't run
 // again.
-func TestSchedulerRetriesAFailedRunAtTheNextPoll(t *testing.T) {
+func TestSchedulerRetriesAFailedRunAtTheNextTick(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -195,7 +191,7 @@ func TestSchedulerRetriesAFailedRunAtTheNextPoll(t *testing.T) {
 
 	tick(sched, mondayAt9(0).Add(time.Minute))
 	if got := len(sentTo(h.Email, "sam@example.com")); got != 1 {
-		t.Fatalf("sent %d emails at the poll after the failed run, want the one reminder", got)
+		t.Fatalf("sent %d emails at the Tick after the failed run, want the one reminder", got)
 	}
 	for _, at := range []time.Time{mondayAt9(0).Add(2 * time.Minute), mondayAt9(1).Add(-time.Minute)} {
 		tick(sched, at)
@@ -209,91 +205,32 @@ func TestSchedulerRetriesAFailedRunAtTheNextPoll(t *testing.T) {
 	}
 }
 
-// A run that keeps failing is still tried at every poll, but logged at its
-// first failure and then after a backoff that doubles from a minute to at
-// most an hour, each line naming the job and the slot; its recovery is logged
-// once. A later failure is logged at once again (ticket #545).
-func TestSchedulerLogsAFailingRunWithABackoff(t *testing.T) {
+// A run that fails returns an error naming the slot it was for, so the
+// failure's log says which week's emails didn't go out.
+func TestSchedulerAFailedRunsErrorNamesItsSlot(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	when := mondays9am(t)
-	failing, tries := true, 0
 	sched := notify.NewScheduler(h.Service, notify.WeeklyJob, when, func(context.Context, time.Time) error {
-		tries++
-		if failing {
-			return errors.New("database is locked")
-		}
-		return nil
+		return errors.New("database is locked")
 	})
-	var log bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(&log, nil))
-	// poll sets the clock to at and polls sched, returning the lines it logged.
-	poll := func(at time.Time) []map[string]any {
-		t.Helper()
-		h.Clock.Set(at)
-		log.Reset()
-		sched.Poll(context.Background(), logger)
-		var lines []map[string]any
-		for _, line := range strings.Split(strings.TrimSpace(log.String()), "\n") {
-			if line == "" {
-				continue
-			}
-			var rec map[string]any
-			if err := json.Unmarshal([]byte(line), &rec); err != nil {
-				t.Fatalf("log line %q: %v", line, err)
-			}
-			lines = append(lines, rec)
-		}
-		return lines
-	}
-	// isFor reports whether rec is at level and names the weekly emails job and
-	// slot.
-	isFor := func(rec map[string]any, level string, slot time.Time) bool {
-		return rec["level"] == level && rec["job"] == notify.WeeklyJob && rec["slot"] == slot.Format(time.RFC3339)
-	}
+	ticker(t, h)(sched, mondayAt9(0).Add(-time.Minute))
 
-	if got := poll(mondayAt9(0).Add(-time.Minute)); len(got) != 0 {
-		t.Fatalf("logged %v before the slot, want nothing", got)
+	h.Clock.Set(mondayAt9(0).Add(time.Minute))
+	err := sched.Tick(context.Background())
+	if err == nil {
+		t.Fatal("Tick at the slot succeeded, want the run's error")
 	}
-	var loggedAt []int
-	for minute := range 184 {
-		for _, rec := range poll(mondayAt9(0).Add(time.Duration(minute) * time.Minute)) {
-			if !isFor(rec, "ERROR", mondayAt9(0)) {
-				t.Fatalf("minute %d logged %v, want an ERROR naming the job and Monday's slot", minute, rec)
-			}
-			loggedAt = append(loggedAt, minute)
-		}
-	}
-	if tries != 184 {
-		t.Errorf("tried the run %d times over 184 polls, want every poll", tries)
-	}
-	// Each wait doubles from a minute until it reaches the hour: 1, 2, 4, 8, 16,
-	// 32, 60, 60 minutes.
-	if want := []int{0, 1, 3, 7, 15, 31, 63, 123, 183}; !slices.Equal(loggedAt, want) {
-		t.Errorf("logged the failure at minutes %v, want %v", loggedAt, want)
-	}
-
-	failing = false
-	got := poll(mondayAt9(0).Add(184 * time.Minute))
-	if len(got) != 1 || !isFor(got[0], "INFO", mondayAt9(0)) {
-		t.Fatalf("logged %v on recovering, want one INFO naming the job and Monday's slot", got)
-	}
-	if got := poll(mondayAt9(0).Add(185 * time.Minute)); len(got) != 0 {
-		t.Errorf("logged %v after recovering, want nothing more", got)
-	}
-
-	failing = true
-	got = poll(mondayAt9(1))
-	if len(got) != 1 || !isFor(got[0], "ERROR", mondayAt9(1)) {
-		t.Errorf("logged %v on next week's first failure, want an ERROR at once naming its slot", got)
+	if slot := mondayAt9(0).Format(time.RFC3339); !strings.Contains(err.Error(), slot) || !strings.Contains(err.Error(), "database is locked") {
+		t.Errorf("Tick's error %q, want it to name the slot %s and the run's error", err, slot)
 	}
 }
 
 // Restarted after Monday's slot was sent, the app that can't read the job's
-// last run logs the failure without naming a slot: it doesn't know which slot
-// is due, and Monday's is already done (ticket #547).
-func TestSchedulerLogsAFailureToReadTheLastRunWithoutASlot(t *testing.T) {
+// last run fails without naming a slot: it doesn't know which slot is due, and
+// Monday's is already done (ticket #547).
+func TestSchedulerAFailureToReadTheLastRunNamesNoSlot(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -308,18 +245,12 @@ func TestSchedulerLogsAFailureToReadTheLastRunWithoutASlot(t *testing.T) {
 		t.Fatalf("closing the database: %v", err)
 	}
 	h.Clock.Set(mondayAt9(0).Add(time.Hour))
-	var log bytes.Buffer
-	restarted.Poll(context.Background(), slog.New(slog.NewJSONHandler(&log, nil)))
-
-	var rec map[string]any
-	if err := json.Unmarshal(log.Bytes(), &rec); err != nil {
-		t.Fatalf("log %q: want one JSON line: %v", log.String(), err)
+	err := restarted.Tick(context.Background())
+	if err == nil {
+		t.Fatal("Tick with the database closed succeeded, want an error")
 	}
-	if rec["level"] != "ERROR" || rec["job"] != notify.WeeklyJob || rec["err"] == nil {
-		t.Errorf("logged %v, want an ERROR naming the job and the error", rec)
-	}
-	if slot, ok := rec["slot"]; ok {
-		t.Errorf("logged slot %v for failing to read the last run, want no slot", slot)
+	if msg := err.Error(); strings.Contains(msg, "slot") || strings.Contains(msg, "2026-") {
+		t.Errorf("Tick's error %q names a slot, want none", msg)
 	}
 }
 

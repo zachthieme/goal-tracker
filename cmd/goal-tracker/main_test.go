@@ -1650,3 +1650,66 @@ func TestAMetricsAddressInUseStopsStartup(t *testing.T) {
 		t.Errorf("run with %s in use: %v, want an error naming %s", taken.Addr(), err, metricsAddrVar)
 	}
 }
+
+// run starts every background job, the directory sync among them when a
+// directory is set, and, asked to stop, stops each before it closes the
+// database.
+//
+//nolint:paralleltest // sets the process environment, through serveEnv
+func TestRunStartsEveryJobAndStopsThemBeforeTheDatabaseCloses(t *testing.T) {
+	serveEnv(t)
+	people := filepath.Join(t.TempDir(), "people.csv")
+	if err := os.WriteFile(people, []byte("email,name,manager_email\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(directoryFileVar, people)
+	var log bytes.Buffer
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	_, done := startRunLogging(t, ctx, slog.NewJSONHandler(&log, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	stop()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run, asked to stop: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run didn't return within 10s of being asked to stop")
+	}
+
+	// started and stopped are the jobs, by name, in the order their starts and
+	// stops were logged; closedAt is the index among the records of "database
+	// closed", and stoppedAt the latest of a "job stopped".
+	var started, stopped []string
+	closedAt, stoppedAt := -1, -1
+	for i, line := range slices.Collect(strings.Lines(log.String())) {
+		var rec struct{ Msg, Job string }
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line %q: %v", line, err)
+		}
+		switch rec.Msg {
+		case "job started":
+			started = append(started, rec.Job)
+		case "job stopped":
+			stopped = append(stopped, rec.Job)
+			stoppedAt = i
+		case "database closed":
+			closedAt = i
+		}
+	}
+	slices.Sort(started)
+	slices.Sort(stopped)
+	want := []string{"directory sync", "email outbox", "prune", "weekly emails"}
+	if !slices.Equal(started, want) {
+		t.Errorf("logged starting jobs %q, want %q", started, want)
+	}
+	if !slices.Equal(stopped, want) {
+		t.Errorf("logged stopping jobs %q, want %q", stopped, want)
+	}
+	if closedAt == -1 {
+		t.Fatal(`logged no "database closed"`)
+	}
+	if stoppedAt > closedAt {
+		t.Errorf("a job stopped after the database closed:\n%s", log.String())
+	}
+}
