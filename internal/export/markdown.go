@@ -12,154 +12,175 @@ import (
 )
 
 // Markdown renders a published Report as Markdown with the same content as its
-// snapshot page: who published it and when, what it read its changes against,
-// how it selected its Goals as it read when published (nothing for a
-// publication frozen before selections were), its Goals counted by Health and
-// Check-in overdue (domain.Report.HealthCounts), the line counting what moved
-// since then, its open Action Items, the introduction, the narrative curated
-// from Highlights, each exception's full MBR block opening with what changed on
-// it and naming the Goals it links to, most urgent first, and every other
-// selected Goal one line (CONTEXT.md: Report), each Goal with the Fields the
-// Report chose. With no hover to show an email, a person's first mention reads
-// Name (email) and later ones their Name (CONTEXT.md: Name).
+// snapshot page, in the order and words its facts list them
+// (domain.Publication.Facts): who published it and when, what it read its
+// changes against, how it selected its Goals as it read when published
+// (nothing for a publication frozen before selections were), its Goals counted
+// by Health and Check-in overdue when it selects any, the line counting what
+// moved since then, its open Action Items, the introduction, the narrative
+// curated from Highlights, each exception's full MBR block (writeBlock), most
+// urgent first, every other selected Goal On track one line, each Goal with
+// the Fields the Report chose, and the Goals that entered or left it
+// (CONTEXT.md: Report). It writes only the Markdown: headings, emphasis,
+// escaping, dates and numbers. With no hover to show an email, a person's
+// first mention reads Name (email) and later ones their Name (CONTEXT.md:
+// Name).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
 	var people domain.Mentions
 	r := p.Report
 	fmt.Fprintf(&b, "# %s\n\n", text(r.Definition.Name))
-	fmt.Fprintf(&b, "Published %s by %s. ", fmtPublished(p.PublishedAt), text(people.Of(p.PublishedBy)))
-	if r.Previous.ID != 0 {
-		fmt.Fprintf(&b, "Changes since the previous publication, %s.\n", fmtPublished(r.Previous.PublishedAt))
-	} else {
-		fmt.Fprintf(&b, "Changes since %s.\n", fmtDate(r.Baseline))
-	}
-	if p.Scope != "" {
-		fmt.Fprintf(&b, "\n**Selection:** %s\n", text(p.Scope))
-	}
-	if len(r.Exceptions) > 0 || len(r.Lines) > 0 {
-		h := r.HealthCounts()
-		fmt.Fprintf(&b, "\n**Health:** %d Red · %d Yellow · %d Green · %d %s\n", h.Red, h.Yellow, h.Green, h.CheckinOverdue, domain.BadgeCheckinOverdue)
-	}
-	if r.Movement != nil {
-		since := fmtDate(r.Baseline)
-		if r.Previous.ID != 0 {
-			since = "the previous publication"
+	// "No Goals selected." stands where the Goals would, before the Goals
+	// that entered or left.
+	noGoals := len(r.Exceptions) == 0 && len(r.Lines) == 0
+	for _, f := range p.Facts() {
+		if noGoals && f.Kind == domain.ReportFactMembershipChanges {
+			b.WriteString("\nNo Goals selected.\n")
+			noGoals = false
 		}
-		if parts := r.Movement.Parts(); len(parts) > 0 {
-			fmt.Fprintf(&b, "\n**Since %s:** %s\n", since, strings.Join(parts, " · "))
-		} else {
-			fmt.Fprintf(&b, "\nNo movement since %s.\n", since)
-		}
+		writeFact(&b, &people, f, p.PublishedAt)
 	}
-	if len(r.ActionItems) > 0 {
-		b.WriteString("\n## Open Action Items\n\n")
-		for _, item := range r.ActionItems {
-			fmt.Fprintf(&b, "- %s — %s — due %s\n", text(item.Text), text(people.Of(item.Owner)), fmtDate(item.DueDate))
-		}
-	}
-	if r.Definition.Introduction != "" {
-		fmt.Fprintf(&b, "\n%s\n", text(r.Definition.Introduction))
-	}
-	for _, sec := range r.Narrative {
-		fmt.Fprintf(&b, "\n## %s\n", sec.Heading())
-		for _, note := range sec.Notes {
-			fmt.Fprintf(&b, "\n%s\n", text(note))
-		}
-		if len(sec.Highlights) > 0 {
-			b.WriteString("\n")
-			for _, nh := range sec.Highlights {
-				fmt.Fprintf(&b, "- %s — %s, %s\n", text(nh.Highlight.Note), text(people.Of(nh.Highlight.Owner)), text(nh.GoalTitle))
-			}
-		}
-	}
-	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
+	if noGoals {
 		b.WriteString("\nNo Goals selected.\n")
-	}
-	if len(r.Exceptions) > 0 {
-		b.WriteString("\n## Exceptions\n")
-		for _, blk := range r.Exceptions {
-			writeBlock(&b, &people, blk, p.PublishedAt)
-		}
-	}
-	if len(r.Lines) > 0 {
-		b.WriteString("\n## Other Goals\n\n")
-		for _, sg := range r.Lines {
-			fmt.Fprintf(&b, "- %s — %s — %s", health(sg.Health), text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)))
-			if !sg.Goal.DeliveryDate.IsZero() {
-				fmt.Fprintf(&b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
-			}
-			if len(sg.Fields) > 0 {
-				fmt.Fprintf(&b, " — %s", fields(sg.Fields, "%s: %s"))
-			}
-			b.WriteString("\n")
-		}
 	}
 	return b.String()
 }
 
-// writeBlock writes an exception Goal's full MBR block: its Health, which
-// leads a Goal's title everywhere, then the title and badges ("### Red ·
-// Launch in EU"); the Owner, Lifecycle, Run off Green as published ("5 wks"),
-// what the Health was when it changed since the baseline and the due date with
-// its history struck through; what changed on it since, the Goals in the
-// Report it contributes to, the chosen Fields, Why it matters, latest status, Path to Green with its back-to-Green
-// date struck through as a Milestone's is when it slipped in the Run off Green
+// writeFact writes one of a publication's facts, read as of asOf, the instant
+// it was published.
+func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact, asOf time.Time) {
+	switch f.Kind {
+	case domain.ReportFactByline:
+		fmt.Fprintf(b, "%s %s by %s. ", f.Label, fmtPublished(f.Byline.PublishedAt), text(people.Of(f.Byline.PublishedBy)))
+		if words := f.Byline.Since.Words(); words != "" {
+			fmt.Fprintf(b, "Changes since %s, %s.\n", words, fmtPublished(f.Byline.Since.At))
+		} else {
+			fmt.Fprintf(b, "Changes since %s.\n", fmtDate(f.Byline.Since.At))
+		}
+	case domain.ReportFactSelection:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(f.Text))
+	case domain.ReportFactHealthCounts:
+		h := f.HealthCounts
+		fmt.Fprintf(b, "\n**%s:** %d %s · %d %s · %d %s · %d %s\n", f.Label,
+			h.Red, domain.HealthRed, h.Yellow, domain.HealthYellow, h.Green, domain.HealthGreen, h.CheckinOverdue, domain.BadgeCheckinOverdue)
+	case domain.ReportFactMovement:
+		since := f.Movement.Since.Words()
+		if since == "" {
+			since = fmtDate(f.Movement.Since.At)
+		}
+		if len(f.Movement.Parts) > 0 {
+			fmt.Fprintf(b, "\n**%s %s:** %s\n", f.Label, since, strings.Join(f.Movement.Parts, " · "))
+		} else {
+			fmt.Fprintf(b, "\nNo movement since %s.\n", since)
+		}
+	case domain.ReportFactActionItems:
+		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
+		for _, item := range f.ActionItems {
+			fmt.Fprintf(b, "- %s — %s — due %s\n", text(item.Text), text(people.Of(item.Owner)), fmtDate(item.DueDate))
+		}
+	case domain.ReportFactIntroduction:
+		fmt.Fprintf(b, "\n%s\n", text(f.Text))
+	case domain.ReportFactNarrative:
+		for _, sec := range f.Narrative {
+			fmt.Fprintf(b, "\n## %s\n", sec.Heading())
+			for _, note := range sec.Notes {
+				fmt.Fprintf(b, "\n%s\n", text(note))
+			}
+			if len(sec.Highlights) > 0 {
+				b.WriteString("\n")
+				for _, nh := range sec.Highlights {
+					fmt.Fprintf(b, "- %s — %s, %s\n", text(nh.Highlight.Note), text(people.Of(nh.Highlight.Owner)), text(nh.GoalTitle))
+				}
+			}
+		}
+	case domain.ReportFactExceptions:
+		fmt.Fprintf(b, "\n## %s\n", f.Label)
+		for _, blk := range f.Exceptions {
+			writeBlock(b, people, blk, asOf)
+		}
+	case domain.ReportFactOnTrack:
+		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
+		for _, sg := range f.Lines {
+			fmt.Fprintf(b, "- %s — %s — %s", health(sg.Health), text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)))
+			if !sg.Goal.DeliveryDate.IsZero() {
+				fmt.Fprintf(b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
+			}
+			if len(sg.Fields) > 0 {
+				fmt.Fprintf(b, " — %s", fields(sg.Fields, "%s: %s"))
+			}
+			b.WriteString("\n")
+		}
+	case domain.ReportFactMembershipChanges:
+		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
+		for _, c := range f.MembershipChanges {
+			fmt.Fprintf(b, "- %s — %s — %s\n", text(c.Goal.Title), c.Direction, c.Reason)
+		}
+	}
+}
+
+// writeBlock writes an exception Goal's full MBR block from its facts
+// (domain.ReportBlock.Facts), read as of asOf, the instant the Report was
+// published: its Health, which leads a Goal's title everywhere, then the title
+// and badges ("### Red · Launch in EU"); the Owner, Lifecycle, Run off Green
+// as published ("5 wks"), what the Health was when it changed since the
+// baseline and the due date with its history struck through; then each of its
+// other facts under its label. A Path to Green's back-to-Green date is struck
+// through as a Milestone's is when it slipped in the Run off Green
 // ("2026-10-03 ~~2026-09-12~~ (2)") and marked Overdue once that date has
-// passed ("— **Overdue**"), whom it asks for help, Milestones, Metrics against
-// target, and the Rolled-up Health with how many children are Red, Yellow and
-// Check-in overdue, the Goals behind it, and the Owner's explanation when the
-// block shows it (domain.ReportBlock.ShowsExplanation). Each Milestone, and the
-// Path to Green (domain.PathToGreenOverdueAt), is marked as of asOf, the instant
-// the Report was published, read in the zone the block's Goal was judged in.
+// passed ("— **Overdue**").
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
-	g := blk.Goal
-	fmt.Fprintf(b, "\n### %s · %s", health(blk.Health), text(g.Title))
-	for _, badge := range blk.Badges {
-		fmt.Fprintf(b, " **[%s]**", badge)
+	for _, f := range blk.Facts(asOf) {
+		writeBlockFact(b, people, f)
 	}
-	fmt.Fprintf(b, "\n\n%s · %s", text(people.Of(g.Owner)), g.Lifecycle)
-	if blk.RunOffGreenWeeks > 0 {
-		fmt.Fprintf(b, " · %s", domain.RunOffGreenLabel(blk.RunOffGreenWeeks))
-	}
-	if blk.PriorHealth != "" {
-		fmt.Fprintf(b, " · was %s", blk.PriorHealth)
-	}
-	if !g.DeliveryDate.IsZero() {
-		fmt.Fprintf(b, " · due %s%s", struck(g.DeliveryDate, blk.PriorDueDates), fmtDate(g.DeliveryDate))
-	}
-	if len(blk.Changes) > 0 {
-		fmt.Fprintf(b, "\n\n**Changed:** %s", strings.Join(blk.Changes, " · "))
-	}
-	if len(blk.ContributesTo) > 0 {
-		fmt.Fprintf(b, "\n\n**Contributes to:** %s", linkedGoals(blk.ContributesTo))
-	}
-	if len(blk.Fields) > 0 {
-		fmt.Fprintf(b, "\n\n%s", fields(blk.Fields, "**%s:** %s"))
-	}
-	fmt.Fprintf(b, "\n\n**Why it matters:** %s\n", text(g.WhyItMatters))
-	if blk.Status != "" {
-		fmt.Fprintf(b, "\n**Status:** %s\n", text(blk.Status))
-	}
-	if blk.PathToGreen != "" {
-		fmt.Fprintf(b, "\n**Path to Green:** %s (back to Green by %s)", text(blk.PathToGreen), milestoneDate(blk.PathTargetDate, blk.PriorPathTargetDates))
-		if domain.PathToGreenOverdueAt(blk, asOf) {
-			b.WriteString(" — **Overdue**")
+}
+
+// writeBlockFact writes one of an exception block's facts.
+func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact) {
+	switch f.Kind {
+	case domain.ReportFactBlockHead:
+		h := f.Head
+		fmt.Fprintf(b, "\n### %s · %s", health(h.Health), text(h.Title))
+		for _, badge := range h.Badges {
+			fmt.Fprintf(b, " **[%s]**", badge)
+		}
+		fmt.Fprintf(b, "\n\n%s · %s", text(people.Of(h.Owner)), h.Lifecycle)
+		for _, part := range []string{h.RunOffGreen, h.WasHealth} {
+			if part != "" {
+				fmt.Fprintf(b, " · %s", part)
+			}
+		}
+		if !h.Due.IsZero() {
+			fmt.Fprintf(b, " · due %s%s", struck(h.Due, h.PriorDue), fmtDate(h.Due))
+		}
+	case domain.ReportFactChanged:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, strings.Join(f.Changes, " · "))
+	case domain.ReportFactContributesTo:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, linkedGoals(f.Goals))
+	case domain.ReportFactFields:
+		fmt.Fprintf(b, "\n\n%s", fields(f.Fields, "**%s:** %s"))
+	case domain.ReportFactWhyItMatters:
+		fmt.Fprintf(b, "\n\n**%s:** %s\n", f.Label, text(f.Text))
+	case domain.ReportFactStatus, domain.ReportFactExplanation:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(f.Text))
+	case domain.ReportFactPathToGreen:
+		path := f.PathToGreen
+		fmt.Fprintf(b, "\n**%s:** %s (%s %s)", f.Label, text(path.Plan), path.ByWords(), milestoneDate(path.By, path.PriorDates))
+		if path.Overdue {
+			fmt.Fprintf(b, " — **%s**", path.OverdueWords())
 		}
 		b.WriteString("\n")
-	}
-	if blk.AsksForHelp {
-		if blk.AskAddressee != nil {
-			fmt.Fprintf(b, "\n**Asks for help** of %s\n", text(people.Of(*blk.AskAddressee)))
+	case domain.ReportFactAskForHelp:
+		if f.Ask.Addressee != nil {
+			fmt.Fprintf(b, "\n**%s** of %s\n", f.Label, text(people.Of(*f.Ask.Addressee)))
 		} else {
-			b.WriteString("\n**Asks for help** (no one above the Owner)\n")
+			fmt.Fprintf(b, "\n**%s** (%s)\n", f.Label, f.Ask.Words())
 		}
-	}
-	if len(blk.Milestones) > 0 {
-		b.WriteString("\n**Milestones:**\n\n")
-		for _, m := range blk.Milestones {
+	case domain.ReportFactMilestones:
+		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
+		for _, m := range f.Milestones {
 			b.WriteString("- ")
-			if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(blk.Location())); mark != domain.MilestoneMarkNone {
-				fmt.Fprintf(b, "**[%s]** ", mark)
+			if m.Mark != domain.MilestoneMarkNone {
+				fmt.Fprintf(b, "**[%s]** ", m.Mark)
 			}
 			name := text(m.Milestone.Name)
 			if m.Milestone.Status == domain.MilestoneRemoved {
@@ -171,34 +192,24 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 			}
 			b.WriteString("\n")
 		}
-	}
-	if len(blk.Metrics) > 0 {
-		b.WriteString("\n**Metrics:**\n\n")
-		for _, m := range blk.Metrics {
-			current := "no reading yet"
-			if m.Read {
-				current = fmtNum(m.Current)
-			}
-			fmt.Fprintf(b, "- %s: %s against a target of %s %s by %s (baseline %s, %s)\n",
-				text(m.Metric.Name), current, fmtNum(m.Metric.Target), text(m.Metric.Unit),
+	case domain.ReportFactMetrics:
+		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
+		for _, m := range f.Metrics {
+			fmt.Fprintf(b, "- %s: %s %s %s %s by %s (baseline %s, %s)\n",
+				text(m.Metric.Name), m.Reading(fmtNum), domain.ReportAgainstATargetOf, fmtNum(m.Metric.Target), text(m.Metric.Unit),
 				fmtDate(m.Metric.TargetDate), fmtNum(m.Metric.Baseline), m.Metric.Direction)
 		}
-	}
-	var parts []string
-	if blk.RolledUp.Present {
-		parts = append(parts, "**Rolled-up Health:** "+blk.RolledUp.Health)
-	}
-	if count := blk.RolledUp.CountLine(); count != "" {
-		parts = append(parts, count)
-	}
-	if len(parts) > 0 {
+	case domain.ReportFactRolledUp:
+		var parts []string
+		if f.RolledUp.Present {
+			parts = append(parts, "**"+f.Label+":** "+f.RolledUp.Health)
+		}
+		if f.RolledUp.Count != "" {
+			parts = append(parts, f.RolledUp.Count)
+		}
 		fmt.Fprintf(b, "\n%s\n", strings.Join(parts, " · "))
-	}
-	if len(blk.Behind) > 0 {
-		fmt.Fprintf(b, "\n**Supported by:** %s\n", linkedGoals(blk.Behind))
-	}
-	if blk.ShowsExplanation() {
-		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
+	case domain.ReportFactSupportedBy:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, linkedGoals(f.Goals))
 	}
 }
 

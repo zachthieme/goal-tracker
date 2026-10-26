@@ -55,7 +55,7 @@ Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01
 
 Quarterly business review.
 
-## Other Goals
+## On track
 
 - Green — Cut churn — boss — due 2026-06-30
 - — — Hire a PM — boss
@@ -389,7 +389,7 @@ func TestMarkdownIntroducesEachPersonAtFirstMention(t *testing.T) {
 
 Quarterly business review.
 
-## Other Goals
+## On track
 
 - Green — Cut churn — Ada Okafor (ada.okafor@example.com)
 - Green — Hire a PM — Ada Okafor
@@ -456,7 +456,7 @@ boss · Active
 
 **Why it matters:** Expand the market.
 
-## Other Goals
+## On track
 
 - Green — Cut churn — boss — Budget: 40 $
 - Green — Hire a PM — boss
@@ -851,5 +851,53 @@ func TestMarkdownStrikesNoDateEqualToItsOwn(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown lacks %q:\n%s", want, got)
 		}
+	}
+}
+
+// The Goals that entered or left the Report since its previous publication
+// follow On track, as on its page, one line each with its direction and why;
+// a Report with none has no such section.
+func TestMarkdownListsTheGoalsThatEnteredOrLeft(t *testing.T) {
+	t.Parallel()
+
+	pub := publication(nil, []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen}})
+	pub.Report.MembershipChanges = []domain.MembershipChange{
+		{Goal: domain.Goal{Title: "Hire a PM"}, Direction: domain.MembershipAdded, Reason: domain.MembershipPickedByHand},
+		{Goal: domain.Goal{Title: "Old *launch*"}, Direction: domain.MembershipLeft, Reason: domain.MembershipNoLongerMatches},
+	}
+
+	want := `## On track
+
+- Green — Cut churn — boss
+
+## Goals that entered or left this report
+
+- Hire a PM — Added — picked by hand
+- Old \*launch\* — Left — no longer matches the rules
+`
+	if got := export.Markdown(pub); !strings.HasSuffix(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to end:\n%s", got, want)
+	}
+
+	pub.Report.MembershipChanges = nil
+	if got := export.Markdown(pub); strings.Contains(got, "entered or left") {
+		t.Errorf("Markdown of a Report with no membership changes lists some:\n%s", got)
+	}
+}
+
+// A Green block shows no Path to Green, whatever its latest Check-in held, as
+// its page shows one only on a Red or Yellow block.
+func TestMarkdownWritesNoPathToGreenOnAGreenBlock(t *testing.T) {
+	t.Parallel()
+
+	got := export.Markdown(publication([]domain.ReportBlock{{
+		Goal:           domain.Goal{Title: "Cut churn", WhyItMatters: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Health:         domain.HealthGreen,
+		Badges:         []string{domain.BadgeNewDate},
+		PathToGreen:    "Hire counsel.",
+		PathTargetDate: date(2026, 2, 12),
+	}}, nil))
+	if strings.Contains(got, "Path to Green") || strings.Contains(got, "Hire counsel.") {
+		t.Errorf("Markdown of a Green block writes its Path to Green:\n%s", got)
 	}
 }
