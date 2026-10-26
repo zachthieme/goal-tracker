@@ -29,7 +29,7 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 		s.serverError(w, r, "could not list goals", err)
 		return
 	}
-	view.SwapClearOOB = r.Header.Get("HX-Request") == "true"
+	view.SwapClearOOB = isHTMX(r)
 	render(w, r, http.StatusOK, goalsPage(&current, view))
 }
 
