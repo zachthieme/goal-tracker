@@ -112,7 +112,11 @@ func template() ([]byte, error) {
 			return
 		}
 		info, ok := debug.ReadBuildInfo()
-		name, err := templateCacheName(db.Migrations(), builder, sqliteModuleVersion(info, ok))
+		modules := make([]string, len(templateModules))
+		for i, module := range templateModules {
+			modules[i] = templateModuleVersion(info, ok, module)
+		}
+		name, err := templateCacheName(db.Migrations(), builder, modules)
 		if err != nil {
 			templateErr = err
 			return
@@ -147,6 +151,17 @@ func templateBuilderSource() (map[string][]byte, error) {
 	if !ok {
 		return nil, errors.New("find the harness's source to read the template's builder")
 	}
+	return templateBuilderSourceFrom(harness)
+}
+
+// templateBuilderSourceFrom reads each of templateBuilderFiles from the
+// module root two directories above harness, the path of this file. Built
+// with -trimpath, that path is the module's import path rather than one on
+// disk, so the harness can't find its source and says why.
+func templateBuilderSourceFrom(harness string) (map[string][]byte, error) {
+	if !filepath.IsAbs(harness) {
+		return nil, fmt.Errorf("the test harness reads its source from disk to name the template database, and -trimpath hides where it is (its path is %s): run the tests without -trimpath", harness)
+	}
 	root := filepath.Join(filepath.Dir(harness), "..", "..")
 	source := make(map[string][]byte, len(templateBuilderFiles))
 	for _, path := range templateBuilderFiles {
@@ -159,15 +174,22 @@ func templateBuilderSource() (map[string][]byte, error) {
 	return source, nil
 }
 
-// sqliteModuleVersion is the version of modernc.org/sqlite in the build info
-// (debug.ReadBuildInfo's results), which fixes the SQLite the migrations run
-// on, or "unknown" when the build info, or the module in it, isn't there.
-func sqliteModuleVersion(info *debug.BuildInfo, ok bool) string {
+// templateModules are the modules, by path, whose code the migrations run on:
+// modernc.org/sqlite and the C library it is translated onto.
+var templateModules = []string{"modernc.org/sqlite", "modernc.org/libc"}
+
+// templateModuleVersion is the version and checksum of module in the build
+// info (debug.ReadBuildInfo's results), or "unknown" when the build info, or
+// the module in it, isn't there. A module replaced by a local directory has
+// neither, so only the directory's path is named and the cache can't see
+// edits made there: a person editing one clears $TMPDIR/goal-tracker-testdb
+// (templateDir) by hand, so the next run builds the template afresh.
+func templateModuleVersion(info *debug.BuildInfo, ok bool, module string) string {
 	if !ok || info == nil {
 		return "unknown"
 	}
 	for _, dep := range info.Deps {
-		if dep.Path != "modernc.org/sqlite" {
+		if dep.Path != module {
 			continue
 		}
 		if dep.Replace != nil {
@@ -179,18 +201,20 @@ func sqliteModuleVersion(info *debug.BuildInfo, ok bool) string {
 }
 
 // templateCacheName names the template built from migrations (migrations/*.sql
-// in it) by builder (Go source by path) on the modernc.org/sqlite at
-// sqliteVersion, after a hash of all three, so a changed, added or removed
-// migration, an edit to the code that applies them, or another SQLite names a
-// new template rather than reusing one built without it.
-func templateCacheName(migrations fs.FS, builder map[string][]byte, sqliteVersion string) (string, error) {
+// in it) by builder (Go source by path) on modules (templateModuleVersion's
+// results), after a hash of all three, so a changed, added or removed
+// migration, an edit to the code that applies them, or another SQLite or libc
+// names a new template rather than reusing one built without it.
+func templateCacheName(migrations fs.FS, builder map[string][]byte, modules []string) (string, error) {
 	paths, err := fs.Glob(migrations, "migrations/*.sql")
 	if err != nil {
 		return "", fmt.Errorf("glob migrations: %w", err)
 	}
 	sort.Strings(paths)
 	sum := sha256.New()
-	_, _ = fmt.Fprintf(sum, "sqlite\x00%d\x00%s", len(sqliteVersion), sqliteVersion)
+	for _, module := range modules {
+		_, _ = fmt.Fprintf(sum, "module\x00%d\x00%s\x00", len(module), module)
+	}
 	for _, path := range slices.Sorted(maps.Keys(builder)) {
 		body := builder[path]
 		_, _ = fmt.Fprintf(sum, "\x00builder\x00%s\x00%d\x00", path, len(body))
