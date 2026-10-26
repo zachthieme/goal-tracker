@@ -330,20 +330,6 @@ func followUpSignalKinds(r FollowUpRow) int {
 	return len(seen)
 }
 
-// followUpHealthRank orders Health most urgent first: Red, Yellow, none, then
-// Green.
-func followUpHealthRank(health string) int {
-	switch health {
-	case HealthRed:
-		return 0
-	case HealthYellow:
-		return 1
-	case HealthGreen:
-		return 3
-	}
-	return 2
-}
-
 // followUpRank orders true before false.
 func followUpRank(b bool) int {
 	if b {
@@ -354,7 +340,7 @@ func followUpRank(b bool) int {
 
 // sortFollowUpRows puts the most urgent Goals first, key by key: Active Goals
 // before the Proposed and On Hold ones, which nothing has gone wrong with yet;
-// then Ownerless first; then by Health (followUpHealthRank); then a Path to
+// then Ownerless first; then by Health (HealthUrgencyRank); then a Path to
 // Green overdue first, longest overdue first; then a Milestone overdue first,
 // longest overdue first; then an overdue Action Item first, longest overdue
 // first; then Check-in overdue first, furthest past its cadence first; then
@@ -371,7 +357,7 @@ func sortFollowUpRows(rows []FollowUpRow) {
 		if c := cmp.Compare(followUpRank(aOwnerless), followUpRank(bOwnerless)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(followUpHealthRank(a.Health), followUpHealthRank(b.Health)); c != 0 {
+		if c := cmp.Compare(HealthUrgencyRank(a.Health), HealthUrgencyRank(b.Health)); c != 0 {
 			return c
 		}
 		aPath, aOverdue := a.Signal("path-overdue")
