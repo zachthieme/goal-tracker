@@ -17,6 +17,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Improvements:**
 - [ops] Follow-ups reads each thing once: it no longer reads every Goal twice, nor the Unlinked Goals apart from the Active ones, nor each overdue Action Item's Goal, nor each Ownerless Goal's Delegates one Goal at a time, so for a lead it runs 33 queries however many Goals there are, down from 37 for 10 Goals and 45 for 50 (#557).
+- [user] Follow-ups narrowed to several values of one Dimension, as a link from the Goal list can be (`?value=` twice), now lists the Goals carrying any of them, as the Goal list does, instead of only the first value's; its select still shows the first, and its group filters and Show all keep every value (#559).
+- [user] A published Report's Markdown export now opens with its Goals counted by Health, as the snapshot page's Health summary does: `**Health:** 2 Red · 1 Yellow · 3 Green · 1 Check-in overdue`, under the selection and before what moved; a Report with no Goals still just says "No Goals selected." (#562).
+- [user] A refused Nudge links Back to the Follow-ups page it was sent from, its filters kept, instead of the plain Follow-ups page; and an Undo refused for making a cycle says so in the same words as a refused link (#572).
 
 **Bug fixes:**
 - [user] A link request refused for making a cycle now says "That Goal already contributes to this one, so linking them would make a cycle." in the Goal page's form, as Suggest a parent does, instead of naming both Goals by their IDs (#546).
@@ -33,6 +36,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Dimension and Field changes made at the same moment no longer slip past each other's checks, because each one now checks and writes in a single transaction. A Dimension switched to one value while a Goal is given a second value in it now refuses one of the two, where before both went through and the Goal ended up with two values. Two values merged into each other together merge once and refuse the other; the losing merge used to fail with an internal error. Adding one value twice with different capitals (an Admin double-submit) adds it once; the second add used to fail with an internal error. A Goal's Field set by two people together keeps a Value history in which the second change starts from the first change's value (#569).
 - [user] A Report Delegate removed while they publish the Report is now refused, where before the publication went through after the removal: publishing still drafts the Report first, then checks again who may publish inside the transaction that keeps the publication (#570).
 - [user] Saving and editing a Report Definition, adding and removing Report Delegates, curating a narrative, commenting and replying, raising, closing and reassigning an Action Item, and sending a Nudge now make their checks in the same transaction as their write, so a change that lands at the same moment can no longer slip in between the check and the write (#570).
+- [user] An Admin can no longer start a Handoff on an Ownerless Goal, which the Goal page already hid: it is refused with "this Goal is Ownerless: reassign it instead". A Handoff the Owner started before leaving can still be accepted (#553).
+- [user] Creating a Goal, editing its title or Why it matters, marking it Dated or Ongoing, setting its Check-in cadence, adding a Contributor or Delegate, adding and editing Metrics and Milestones, logging, editing and deleting Draft Highlights, marking a Goal Top-level, saving value edits, and suggesting or withdrawing a parent now check who may act, and the Goal's state, in the same transaction as their write. A change that lands at the same moment can no longer slip in between the check and the write (#568).
 
 **Security:**
 - [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
@@ -42,6 +47,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Architecture:**
 - [internal] Which Goals Follow-ups flags, with their signals, days and order, is decided once, in the domain: the page reads it through one page loader, `Service.FollowUps` (ADR 0010), and the sidebar's Follow-ups count comes from the same merge, so the test that kept the two in agreement is gone (#557).
+- [internal] A page's scope (Everyone, Mine with Delegate Goals, or an Org by Owner, the viewer's default, the picker's people, and the Dimension values) is one domain concept, `domain.GoalScope`, shared by the Goal list, the goal table, Follow-ups and the sidebar's Follow-ups count; web keeps only its URL encoding. `Org`, `OrgSignals` and the scope walk an Org with one in-memory walk over one read of every Account, in place of a query per level (#559).
+- [internal] A Report block decides for itself whether it shows the Owner's explanation (`ReportBlock.ShowsExplanation`), and a Report counts its own Goals by Health and Check-in overdue (`Report.HealthCounts`, which `HealthCounts` gains `CheckinOverdue` for), so the report page, its Health tiles, the Reports list's summary and the Markdown export use one rule each and no longer restate them (#562).
 
 **Testing:**
 - [internal] The Handoff tests run a Reassign and an Accept one after the other, in each order, so the error each loser gets is checked on every run, not only when the race lands that way (#547).
@@ -50,6 +57,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Code quality:**
 - [internal] `.golangci.yml` notes that contextcheck doesn't check inside a templ component's body, so a helper called there that drops the context isn't reported (#547).
+- [internal] Links, Handoffs, Nudges and Undo answer a refused action with one shared refusal page and one mapping from refusal to status and sentence, with the reason under one test id, `refused-reason` (#572).
 
 **Documentation:**
 - [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
