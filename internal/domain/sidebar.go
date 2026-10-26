@@ -71,61 +71,23 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 // sidebarFollowUps counts the Goals the Follow-ups page flags in accountID's
 // default scope (Sidebar.FollowUps), given active, every Active Goal with its
 // latest Check-in, isDelegate, the IDs of the Goals accountID is a Delegate
-// on, and byID, every Account by ID. Every Goal the freshness signals, an
-// Ownerless Goal or an overdue Action Item flags is Active, so active holds
-// them all, and the graph's signals flag the Goals on accepted links. An open
-// Ask for help flags a Goal whose latest Check-in is Red or Yellow, which Not
-// Green already flags, so the asks aren't read for it.
+// on, and byID, every Account by ID. It decides which Goals are flagged as
+// Service.FollowUps does (followUpRowsAmong), reading only what that needs
+// beyond active, and not the open Asks for help, which flag only Goals Not
+// Green flags already.
 func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active []db.ListActiveGoalsWithLatestCheckinRow, isDelegate map[int64]bool, byID map[int64]Account) (int, error) {
-	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	reads, err := s.readFollowUpSignals(ctx, active)
 	if err != nil {
 		return 0, err
-	}
-	edges, err := s.acceptedEdges(ctx)
-	if err != nil {
-		return 0, err
-	}
-	items, err := s.queries.ListOverdueActionItems(ctx, orgDate(s.clock.Now(), s.loc).Format(dateFormat))
-	if err != nil {
-		return 0, fmt.Errorf("list overdue action items: %w", err)
-	}
-	goals := make([]Goal, 0, len(active))
-	for _, r := range active {
-		goals = append(goals, goalFromRow(r.Goal, r.Account))
 	}
 	keeps := sidebarDefaultScope(accountID, isDelegate, byID)
-	flagged := map[int64]bool{}
-	flag := func(g Goal) {
-		if keeps(g) {
-			flagged[g.ID] = true
+	n := 0
+	for _, r := range s.followUpRowsAmong(reads) {
+		if keeps(r.Goal) {
+			n++
 		}
 	}
-	fresh := s.freshnessSignalsAmong(active, overdue)
-	for _, list := range [][]GoalFreshness{fresh.NotGreen, fresh.CheckinOverdue, fresh.OverduePaths, fresh.OverdueMilestones} {
-		for _, gf := range list {
-			flag(gf.Goal)
-		}
-	}
-	graph := graphSignalsOf(unlinkedAmong(goals, edges), edges)
-	for _, g := range graph.Unlinked {
-		flag(g)
-	}
-	for _, c := range graph.ScheduleConflicts {
-		flag(c.Child)
-	}
-	for _, hp := range graph.HaltedParents {
-		flag(hp.Child)
-	}
-	withOverdueItem := map[int64]bool{}
-	for _, r := range items {
-		withOverdueItem[r.ActionItem.GoalID] = true
-	}
-	for _, g := range goals {
-		if g.Ownerless || withOverdueItem[g.ID] {
-			flag(g)
-		}
-	}
-	return len(flagged), nil
+	return n, nil
 }
 
 // sidebarDefaultScope is whether accountID's default scope on the Follow-ups

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -21,8 +20,8 @@ import (
 // Everyone (?org=all), the viewer's own Goals (?org=mine) or an Org's
 // (?org=), else the viewer's default scope, and to the Goals with an offered
 // Dimension's value (?value=, one per Dimension). The scope narrows the rows
-// only after they are built: loadFollowUps stays company-wide, for Needs an
-// Admin.
+// only after Service.FollowUps has read them: its rows are the company's, for
+// Needs an Admin.
 func (s *Server) handleFollowUps(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadFollowUpsPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
@@ -34,57 +33,30 @@ func (s *Server) handleFollowUps(w http.ResponseWriter, r *http.Request, current
 
 // loadFollowUpsPage builds the Follow-ups page current sees at an address with query q.
 func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current domain.Account) (followUpsPageView, error) {
-	v, err := s.loadFollowUps(ctx)
+	f, err := s.svc.FollowUps(ctx, current.ID)
 	if err != nil {
 		return followUpsPageView{}, err
 	}
-	rows, err := s.followUpRows(ctx, v)
-	if err != nil {
-		return followUpsPageView{}, err
+	rows := make([]followUpGoalRow, 0, len(f.Rows))
+	for _, r := range f.Rows {
+		row := followUpGoalRow{FollowUpRow: r}
+		row.Fix = row.fix(current, f.Delegated)
+		rows = append(rows, row)
 	}
-	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-	if err != nil {
-		return followUpsPageView{}, fmt.Errorf("load delegated goals: %w", err)
-	}
-	facts := followUpFixFacts{delegate: map[int64]bool{}, unreachable: map[int64]bool{}}
-	for _, g := range delegated {
-		facts.delegate[g.ID] = true
-	}
-	ids := make([]int64, 0, len(rows))
-	for _, row := range rows {
-		ids = append(ids, row.Goal.ID)
-		if !row.Goal.Ownerless {
-			continue
-		}
-		delegates, err := s.svc.ListDelegates(ctx, row.Goal.ID)
-		if err != nil {
-			return followUpsPageView{}, err
-		}
-		facts.unreachable[row.Goal.ID] = !slices.ContainsFunc(delegates, func(a domain.Account) bool { return !a.Departed })
-	}
-	if facts.nudged, err = s.svc.NudgedToday(ctx, ids); err != nil {
-		return followUpsPageView{}, err
-	}
-	fixFollowUpRows(current, rows, facts)
 	dims, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return followUpsPageView{}, err
 	}
-	goals, err := s.svc.ListGoals(ctx)
-	if err != nil {
-		return followUpsPageView{}, err
-	}
 	group := followUpGroupKey(q.Get("group"))
-	org, err := s.loadPageOrgScope(ctx, q, current, goals)
+	org, err := s.loadPageOrgScope(ctx, q, current, f.Goals)
 	if err != nil {
 		return followUpsPageView{}, err
 	}
 	page := followUpsPageView{
-		followUpsView: v,
-		Group:         group,
-		Org:           org,
-		Dimensions:    domain.OfferedDimensions(dims),
-		Today:         s.svc.Now().In(s.svc.Timezone()),
+		Group:      group,
+		Org:        org,
+		Dimensions: domain.OfferedDimensions(dims),
+		Today:      s.svc.Now().In(s.svc.Timezone()),
 	}
 	page.Values = followUpValues(q["value"], page.Dimensions)
 	var valued map[int64]bool
@@ -145,13 +117,12 @@ func followUpValueLabel(v domain.DimensionValue) string {
 	return v.Value
 }
 
-// followUpsPageView is the Follow-ups page: its lists, its rows in scope, its rows
+// followUpsPageView is the Follow-ups page: its rows in scope, its rows
 // with its values in any scope, which Needs an Admin's card and table hold, the
 // group its address filters it to, "" for every group, its Scope, the offered
 // Dimensions and the values of theirs it is scoped to, at most one each, in
 // the Dimensions' order, and today, which its dates are read against.
 type followUpsPageView struct {
-	followUpsView
 	Rows        []followUpGoalRow
 	CompanyRows []followUpGoalRow
 	Group       string
@@ -226,7 +197,7 @@ func (p followUpsPageView) Shown() []followUpGoalRow {
 	}
 	var shown []followUpGoalRow
 	for _, r := range rows {
-		var signals []followUpSignal
+		var signals []domain.FollowUpSignal
 		for _, sig := range r.Signals {
 			if slices.Contains(kinds, sig.Kind) {
 				signals = append(signals, sig)
@@ -395,7 +366,7 @@ func (p followUpsPageView) Cards() []followUpCard {
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range rows {
-				if _, ok := r.signal(kind); ok {
+				if _, ok := r.Signal(kind); ok {
 					n++
 				}
 			}
@@ -406,36 +377,6 @@ func (p followUpsPageView) Cards() []followUpCard {
 		cards = append(cards, c)
 	}
 	return cards
-}
-
-// followUpsView is what the Follow-ups page shows, one list per problem type.
-type followUpsView struct {
-	CheckinOverdue []domain.GoalFreshness
-	OverduePaths   []domain.GoalFreshness
-	// OverdueMilestones are the Active Goals whose latest Check-in is Green
-	// while a Milestone is overdue (domain.Freshness.MilestoneOverdue).
-	OverdueMilestones []domain.GoalFreshness
-	// NotGreen are the Active Goals whose latest Check-in is Red or Yellow.
-	NotGreen []domain.GoalFreshness
-	// Asks are the open Asks for help, each a Goal NotGreen holds.
-	Asks []domain.AskForHelp
-	// Ownerless are the Active Goals whose Owner has left the company.
-	Ownerless []domain.Goal
-	Unlinked  []domain.Goal
-	// ScheduleConflicts and HaltedParents are listed by their child, the Goal
-	// that needs to change.
-	ScheduleConflicts []domain.ScheduleConflict
-	HaltedParents     []domain.HaltedParent
-	// OverdueActionItems are the Active Goals an overdue Action Item is about,
-	// one entry each.
-	OverdueActionItems []followUpOverdueGoal
-}
-
-// followUpOverdueGoal is a Goal with an overdue Action Item about it, and how many
-// days the most overdue of them is past its due date.
-type followUpOverdueGoal struct {
-	Goal domain.Goal
-	Days int
 }
 
 // followUpType is a signal's chip on a group card: its kind, its name, and how
@@ -501,81 +442,10 @@ func followUpMeansID(kind string) string {
 	return "follow-up-means-" + kind
 }
 
-// loadFollowUps reads every Goal the company's signals flag.
-func (s *Server) loadFollowUps(ctx context.Context) (followUpsView, error) {
-	fresh, err := s.svc.FreshnessSignals(ctx)
-	if err != nil {
-		return followUpsView{}, err
-	}
-	goals, err := s.svc.ListGoals(ctx)
-	if err != nil {
-		return followUpsView{}, err
-	}
-	graph, err := s.svc.GraphSignals(ctx)
-	if err != nil {
-		return followUpsView{}, err
-	}
-	v := followUpsView{
-		CheckinOverdue:    fresh.CheckinOverdue,
-		OverduePaths:      fresh.OverduePaths,
-		OverdueMilestones: fresh.OverdueMilestones,
-		NotGreen:          fresh.NotGreen,
-		Unlinked:          graph.Unlinked,
-		ScheduleConflicts: graph.ScheduleConflicts,
-		HaltedParents:     graph.HaltedParents,
-	}
-	for _, g := range goals {
-		if g.Ownerless && g.Lifecycle == domain.LifecycleActive {
-			v.Ownerless = append(v.Ownerless, g)
-		}
-	}
-	items, err := s.svc.OverdueActionItems(ctx)
-	if err != nil {
-		return followUpsView{}, err
-	}
-	v.OverdueActionItems = followUpOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
-	if v.Asks, err = s.svc.OpenAsksForHelp(ctx); err != nil {
-		return followUpsView{}, err
-	}
-	return v, nil
-}
-
-// followUpOverdueGoals are the Active Goals among goals that an overdue Action
-// Item among items is about, in goals' order, each with the days its most
-// overdue item is past its due date as of today.
-func followUpOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, today time.Time) []followUpOverdueGoal {
-	days := map[int64]int{}
-	for _, l := range items {
-		if d := calendarDays(l.Item.DueDate, today); d > days[l.Item.GoalID] {
-			days[l.Item.GoalID] = d
-		}
-	}
-	var out []followUpOverdueGoal
-	for _, g := range goals {
-		if d, ok := days[g.ID]; ok && g.Lifecycle == domain.LifecycleActive {
-			out = append(out, followUpOverdueGoal{Goal: g, Days: d})
-		}
-	}
-	return out
-}
-
-// followUpGoalRow is one flagged Goal on the Follow-ups page with every signal that
-// flags it, so a Goal flagged twice is one row, not two.
+// followUpGoalRow is one flagged Goal on the Follow-ups page, as
+// Service.FollowUps reads it, with its Fix.
 type followUpGoalRow struct {
-	Goal domain.Goal
-	// Health is the Goal's latest Check-in's Health, empty when it has none.
-	Health string
-	// RunOffGreen is how long a Not Green row's Goal has been Yellow or Red,
-	// shown beside its Health; it isn't running on any other row (CONTEXT.md:
-	// Run off Green).
-	RunOffGreen domain.RunOffGreen
-	// PathTargetDate is a Not Green row's back-to-Green date, its latest
-	// Check-in's, and PathPriorDates the dates it slipped from within the Run
-	// off Green, earliest first (see domain.BackToGreenPriorDates). Only a
-	// Not Green row reads them.
-	PathTargetDate time.Time
-	PathPriorDates []time.Time
-	Signals        []followUpSignal
+	domain.FollowUpRow
 	// Fix is the one action the row offers its viewer.
 	Fix followUpFix
 }
@@ -591,31 +461,9 @@ type followUpFix struct {
 	Disabled bool
 }
 
-// followUpFixFacts are what the rows' Fixes turn on beyond the rows themselves:
-// the Goals the viewer is a Delegate on, the Goals nudged today with their
-// Nudge, and the Ownerless Goals with no Delegate left to check in on them.
-type followUpFixFacts struct {
-	delegate    map[int64]bool
-	nudged      map[int64]domain.Nudge
-	unreachable map[int64]bool
-}
-
-// fixFollowUpRows sets each row's Fix for current.
-func fixFollowUpRows(current domain.Account, rows []followUpGoalRow, facts followUpFixFacts) {
-	for i := range rows {
-		id := rows[i].Goal.ID
-		nudge, nudged := facts.nudged[id]
-		var today *domain.Nudge
-		if nudged {
-			today = &nudge
-		}
-		rows[i].Fix = rows[i].fix(current, facts.delegate, today, facts.unreachable[id])
-	}
-}
-
 // fix is the row's Fix for current, given the Goals current is a Delegate on,
-// the row's Goal's Nudge today, if any, and whether nobody is left to check in
-// on it. It is the first that applies of:
+// by the row's Goal's Nudge today, if any, and whether nobody is left to check
+// in on it. It is the first that applies of:
 //  1. Reassign, for an Ownerless Goal and an Admin;
 //  2. Check in, for a Check-in overdue, Path to Green overdue or Milestone
 //     overdue Goal current Owns or is a Delegate on (an Admin has no Check-in
@@ -636,14 +484,15 @@ func fixFollowUpRows(current domain.Account, rows []followUpGoalRow, facts follo
 //     Item;
 //  9. Open Goal, for anything else, a Check-in overdue Goal nobody can check in
 //     on and a Goal flagged only for its Health, Red or Yellow, among them.
-func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) followUpFix {
+func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool) followUpFix {
+	nudged, unreachable := r.NudgedToday, r.Unreachable
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
-	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
+	if _, ownerless := r.Signal("ownerless"); ownerless && current.IsAdmin {
 		return followUpFix{Label: "Reassign", Href: goal + "?open=reassign"}
 	}
-	_, checkinOverdue := r.signal("checkin-overdue")
-	_, pathOverdue := r.signal("path-overdue")
-	_, milestoneOverdue := r.signal("milestone-overdue")
+	_, checkinOverdue := r.Signal("checkin-overdue")
+	_, pathOverdue := r.Signal("path-overdue")
+	_, milestoneOverdue := r.Signal("milestone-overdue")
 	overdue := pathOverdue || milestoneOverdue
 	if (checkinOverdue || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
 		return followUpFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
@@ -654,10 +503,10 @@ func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool, nu
 	if (checkinOverdue || overdue) && !unreachable {
 		return followUpFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 	}
-	if _, unlinked := r.signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
+	if _, unlinked := r.Signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
 		return followUpFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
-	if f, ok := r.scheduleConflictFix(current, delegate, nudged, unreachable); ok {
+	if f, ok := r.scheduleConflictFix(current, delegate); ok {
 		return f
 	}
 	var parent *domain.Goal
@@ -669,10 +518,10 @@ func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool, nu
 	if parent != nil {
 		return followUpFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
-	if _, unlinked := r.signal("unlinked"); unlinked {
+	if _, unlinked := r.Signal("unlinked"); unlinked {
 		return followUpFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
-	if _, overdue := r.signal("action-item-overdue"); overdue {
+	if _, overdue := r.Signal("action-item-overdue"); overdue {
 		return followUpFix{Label: "See Action Items", Href: goal + "#action-items"}
 	}
 	return followUpFix{Label: "Open Goal", Href: goal}
@@ -691,7 +540,8 @@ func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool, nu
 //     to check in on it.
 //
 // Otherwise the row has none here, and falls through to the later Fixes.
-func (r followUpGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) (followUpFix, bool) {
+func (r followUpGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool) (followUpFix, bool) {
+	nudged, unreachable := r.NudgedToday, r.Unreachable
 	var parents []domain.Goal
 	for _, sig := range r.Signals {
 		if sig.Kind == "schedule-conflicts" {
@@ -731,231 +581,12 @@ func (r followUpGoalRow) scheduleConflictFix(current domain.Account, delegate ma
 	return followUpFix{}, false
 }
 
-// followUpSignal is one reason a Goal is flagged. Kind names the signal, as the
-// chip's data-kind on the Follow-ups page. Days is how long the signal has held: for
-// "checkin-overdue" the days since the last update, for "path-overdue" the days
-// past the Path to Green's target date, for "milestone-overdue" the days past
-// the earliest overdue Milestone's date, for "action-item-overdue" the days the
-// most overdue Action Item about the Goal is past its due date, for
-// "schedule-conflicts" the days the child's delivery date falls after the
-// parent's, and 0 otherwise. Related is the parent for "schedule-conflicts" and
-// "halted-parents". Person is whom an "asks-for-help" asks, nil when no one is
-// above the Owner.
-type followUpSignal struct {
-	Kind    string
-	Days    int
-	Related *domain.Goal
-	Person  *domain.Account
-}
-
-// followUpRows merges v's lists into one row per flagged Goal. It reads each
-// flagged Goal's latest Check-in, so only the Follow-ups page calls it.
-func (s *Server) followUpRows(ctx context.Context, v followUpsView) ([]followUpGoalRow, error) {
-	var rows []followUpGoalRow
-	at := map[int64]int{}
-	add := func(g domain.Goal, sig followUpSignal) {
-		i, ok := at[g.ID]
-		if !ok {
-			i = len(rows)
-			at[g.ID] = i
-			rows = append(rows, followUpGoalRow{Goal: g})
-		}
-		rows[i].Signals = append(rows[i].Signals, sig)
-	}
-	for _, gf := range v.NotGreen {
-		add(gf.Goal, followUpSignal{Kind: followUpHealthKind(gf.Health)})
-	}
-	for _, ask := range v.Asks {
-		add(ask.Goal, followUpSignal{Kind: "asks-for-help", Person: ask.Addressee})
-	}
-	for _, gf := range v.CheckinOverdue {
-		add(gf.Goal, followUpSignal{Kind: "checkin-overdue", Days: gf.Freshness.DaysSince})
-	}
-	// A Path to Green's overdue days are counted in the Goal's timezone, the
-	// one its flag was judged in.
-	for _, gf := range v.OverduePaths {
-		add(gf.Goal, followUpSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
-	}
-	// So are a Milestone's.
-	for _, gf := range v.OverdueMilestones {
-		add(gf.Goal, followUpSignal{Kind: "milestone-overdue", Days: calendarDays(gf.Freshness.OverdueMilestoneDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
-	}
-	for _, og := range v.OverdueActionItems {
-		add(og.Goal, followUpSignal{Kind: "action-item-overdue", Days: og.Days})
-	}
-	for _, g := range v.Ownerless {
-		add(g, followUpSignal{Kind: "ownerless"})
-	}
-	for _, g := range v.Unlinked {
-		add(g, followUpSignal{Kind: "unlinked"})
-	}
-	for _, c := range v.ScheduleConflicts {
-		add(c.Child, followUpSignal{Kind: "schedule-conflicts", Days: calendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
-	}
-	for _, hp := range v.HaltedParents {
-		add(hp.Child, followUpSignal{Kind: "halted-parents", Related: &hp.Parent})
-	}
-	ids := make([]int64, 0, len(rows))
-	var notGreen []domain.Goal
-	var notGreenIDs []int64
-	for _, row := range rows {
-		ids = append(ids, row.Goal.ID)
-		_, red := row.signal("red")
-		_, yellow := row.signal("yellow")
-		if red || yellow {
-			notGreen = append(notGreen, row.Goal)
-			notGreenIDs = append(notGreenIDs, row.Goal.ID)
-		}
-	}
-	latest, err := s.svc.LatestCheckinsByGoal(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("load flagged goals' check-ins: %w", err)
-	}
-	runs, err := s.svc.RunOffGreenByGoal(ctx, notGreen)
-	if err != nil {
-		return nil, fmt.Errorf("read not green goals' run off green: %w", err)
-	}
-	slips, err := s.svc.DateSlipsByGoal(ctx, notGreenIDs)
-	if err != nil {
-		return nil, fmt.Errorf("load not green goals' date slips: %w", err)
-	}
-	for i := range rows {
-		id := rows[i].Goal.ID
-		rows[i].Health = latest[id].Health
-		run, ok := runs[id]
-		if !ok {
-			continue
-		}
-		rows[i].RunOffGreen = run
-		rows[i].PathTargetDate = latest[id].PathTargetDate
-		rows[i].PathPriorDates = domain.BackToGreenPriorDates(slips[id], run)
-	}
-	sortFollowUpRows(rows)
-	return rows, nil
-}
-
-// followUpHealthKind is the signal kind a Not Green Goal's Health flags it with:
-// "red" for Red, "yellow" for Yellow.
-func followUpHealthKind(health string) string {
-	if health == domain.HealthRed {
-		return "red"
-	}
-	return "yellow"
-}
-
-// signal is the row's first signal of kind, and whether it has one.
-func (r followUpGoalRow) signal(kind string) (followUpSignal, bool) {
-	for _, sig := range r.Signals {
-		if sig.Kind == kind {
-			return sig, true
-		}
-	}
-	return followUpSignal{}, false
-}
-
-// signalKinds counts the distinct kinds of signal that flag the row, so a Goal
-// under two halted parents counts its halted parents once.
-func (r followUpGoalRow) signalKinds() int {
-	seen := map[string]bool{}
-	for _, sig := range r.Signals {
-		seen[sig.Kind] = true
-	}
-	return len(seen)
-}
-
-// followUpHealthRank orders Health most urgent first: Red, Yellow, none, then
-// Green.
-func followUpHealthRank(health string) int {
-	switch health {
-	case domain.HealthRed:
-		return 0
-	case domain.HealthYellow:
-		return 1
-	case domain.HealthGreen:
-		return 3
-	}
-	return 2
-}
-
-// sortFollowUpRows puts the most urgent Goals first, key by key: Active Goals
-// before the Proposed and On Hold ones, which nothing has gone wrong with yet;
-// then Ownerless first; then by Health (followUpHealthRank); then a Path to Green
-// overdue first, longest overdue first; then a Milestone overdue first, longest
-// overdue first; then an overdue Action Item first, longest overdue first; then
-// Check-in overdue first, furthest past its cadence first; then more distinct
-// kinds of signal first; then by title, ignoring case.
-func sortFollowUpRows(rows []followUpGoalRow) {
-	slices.SortStableFunc(rows, func(a, b followUpGoalRow) int {
-		aActive := a.Goal.Lifecycle == domain.LifecycleActive
-		bActive := b.Goal.Lifecycle == domain.LifecycleActive
-		if c := cmp.Compare(boolRank(!aActive), boolRank(!bActive)); c != 0 {
-			return c
-		}
-		_, aOwnerless := a.signal("ownerless")
-		_, bOwnerless := b.signal("ownerless")
-		if c := cmp.Compare(boolRank(!aOwnerless), boolRank(!bOwnerless)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(followUpHealthRank(a.Health), followUpHealthRank(b.Health)); c != 0 {
-			return c
-		}
-		aPath, aOverdue := a.signal("path-overdue")
-		bPath, bOverdue := b.signal("path-overdue")
-		if c := cmp.Compare(boolRank(!aOverdue), boolRank(!bOverdue)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(bPath.Days, aPath.Days); c != 0 {
-			return c
-		}
-		aMilestone, aMilestoneOverdue := a.signal("milestone-overdue")
-		bMilestone, bMilestoneOverdue := b.signal("milestone-overdue")
-		if c := cmp.Compare(boolRank(!aMilestoneOverdue), boolRank(!bMilestoneOverdue)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(bMilestone.Days, aMilestone.Days); c != 0 {
-			return c
-		}
-		aItem, aItemOverdue := a.signal("action-item-overdue")
-		bItem, bItemOverdue := b.signal("action-item-overdue")
-		if c := cmp.Compare(boolRank(!aItemOverdue), boolRank(!bItemOverdue)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
-			return c
-		}
-		aCheckinOverdue, aIsCheckinOverdue := a.signal("checkin-overdue")
-		bCheckinOverdue, bIsCheckinOverdue := b.signal("checkin-overdue")
-		if c := cmp.Compare(boolRank(!aIsCheckinOverdue), boolRank(!bIsCheckinOverdue)); c != 0 {
-			return c
-		}
-		if aIsCheckinOverdue && bIsCheckinOverdue {
-			if c := cmp.Compare(bCheckinOverdue.Days-b.Goal.CadenceDays, aCheckinOverdue.Days-a.Goal.CadenceDays); c != 0 {
-				return c
-			}
-		}
-		if c := cmp.Compare(b.signalKinds(), a.signalKinds()); c != 0 {
-			return c
-		}
-		return cmp.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title))
-	})
-}
-
 // followUpDays says a count of days in words: "1 day", "22 days".
 func followUpDays(n int) string {
 	if n == 1 {
 		return "1 day"
 	}
 	return fmt.Sprintf("%d days", n)
-}
-
-// calendarDays counts the calendar days from one date to a later one, each
-// read as the date it falls on in its own location.
-func calendarDays(from, to time.Time) int {
-	date := func(t time.Time) time.Time {
-		y, m, d := t.Date()
-		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	}
-	return int(date(to).Sub(date(from)) / (24 * time.Hour))
 }
 
 // followUpGroup is a set of signal kinds grouped by who acts on them: Key names
@@ -991,7 +622,7 @@ func followUpGroups(rows []followUpGoalRow) []followUpGroup {
 	for _, gk := range followUpGroupKinds {
 		g := followUpGroup{Key: gk.Key, Name: gk.Name}
 		for _, r := range rows {
-			if slices.ContainsFunc(r.Signals, func(sig followUpSignal) bool { return slices.Contains(gk.Kinds, sig.Kind) }) {
+			if slices.ContainsFunc(r.Signals, func(sig domain.FollowUpSignal) bool { return slices.Contains(gk.Kinds, sig.Kind) }) {
 				g.Count++
 			}
 		}
