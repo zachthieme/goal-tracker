@@ -4405,3 +4405,40 @@ func TestCheckinParseFailureByNonAuthorIsForbidden(t *testing.T) {
 		t.Errorf("plain: someone neither Owner nor Delegate got status %d for an invalid date, want 403", status)
 	}
 }
+
+// A Check-in by someone who may not check in, sent by htmx or not, answers
+// 403 with the whole refusal page, headed Can't check in and linking Back to
+// the Goal, which the form's swapErrorPageScript swaps in for the body (#573).
+func TestACheckinBySomeoneWhoMayNotCheckInAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("eve@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	submitURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	form := url.Values{"health": {domain.HealthGreen}, "status": {"On track."}}
+	client := signInClient(t, ts.URL, "eve@example.com")
+
+	for _, tc := range []struct {
+		name string
+		post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
+	}{
+		{"htmx", postFormHX},
+		{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
+			resp := postForm(t, client, rawURL, form)
+			defer func() { _ = resp.Body.Close() }()
+			return readBody(t, resp), resp.StatusCode
+		}},
+	} {
+		body, status := tc.post(t, client, submitURL, form)
+		if status != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", tc.name, status)
+		}
+		assertRefusalPage(t, parsePage(t, body), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Reduce outages.", fmt.Sprintf("/goals/%d", goal.ID))
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("a refused Check-in recorded %d Check-ins, want none", len(history))
+	}
+}

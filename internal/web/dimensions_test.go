@@ -736,8 +736,9 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 	} {
 		resp := postForm(t, client, ts.URL+post.path, post.form)
 		defer func() { _ = resp.Body.Close() }()
-		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, reason) {
-			t.Errorf("%s: status %d, body %q; want 422 saying why", what, resp.StatusCode, body)
+		page := parsePage(t, readBody(t, resp))
+		if got := textOf(findByTestID(t, page, "refused-reason")); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(got, reason) {
+			t.Errorf("%s: status %d, refused-reason %q; want 422 saying why", what, resp.StatusCode, got)
 		}
 	}
 
@@ -1024,5 +1025,36 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 	}
 	if dims[0].Values[1].Retired {
 		t.Error("Trust is still Retired after its Restore button")
+	}
+}
+
+// A refused Dimension change answers with the refusal page, headed Can't
+// change Dimension and linking Back to the Dimensions page, at its refusal's
+// status: one that isn't there is 422, as the domain refuses it for its
+// input, and someone not an Admin is 403 (#573).
+func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.SignIn("sam@example.com")
+	quarter := h.CreateDimension(boss, "Quarter", "Q3", "Q4")
+	ts := newServer(t, h)
+
+	for _, c := range []struct {
+		name, who, path string
+		status          int
+		reason          string
+	}{
+		{"a Dimension that isn't there", "boss@example.com", "/dimensions/99999/retire", http.StatusUnprocessableEntity, "Dimension does not exist."},
+		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/dimensions/%d/retire", quarter.ID), http.StatusForbidden, "Only an Admin may do this."},
+	} {
+		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, url.Values{})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, "Can't change Dimension", c.reason, "/dimensions")
 	}
 }

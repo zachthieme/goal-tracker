@@ -76,7 +76,7 @@ func (s *Server) loadCheckinView(w http.ResponseWriter, r *http.Request, goalID 
 		return checkinView{}, false
 	}
 	if !view.CanCheckin {
-		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
+		s.refuse(w, r, "Can't check in", goalPath(goalID), domain.Refuse(domain.ErrNotAuthorized, "only the Goal's Owner or a Delegate may check in on %s", view.Goal.Title))
 		return checkinView{}, false
 	}
 	return view, true
@@ -251,7 +251,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			s.renderCheckinFormError(w, r, formData(err))
 			return
 		}
-		s.writeCheckinError(w, r, err)
+		s.writeCheckinError(w, r, goalID, err)
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
@@ -515,19 +515,14 @@ func (s *Server) noChangeReason(err error) string {
 	return strings.Join(missed, " ") + " To keep Green, submit a Check-in that confirms it, or update the Health."
 }
 
-// plainReason is why a domain refusal refused, as a page shows it, without its
-// internal "validation failed:" or "not authorized:" kind (domain.Reason).
-func plainReason(err error) string {
-	return domain.Reason(err)
-}
-
-// plainReasonShown is plainReason, but an overdue Milestone's refusal is
+// plainReasonShown is why a domain refusal refused, as a page shows it
+// (domain.Reason), but an overdue Milestone's refusal is
 // composed from the Milestone and what its missed date rules out, with its due
 // date as the page shows dates.
 func plainReasonShown(err error, shown displayDates) string {
 	var overdue *domain.MilestoneOverdueError
 	if !errors.As(err, &overdue) {
-		return plainReason(err)
+		return domain.Reason(err)
 	}
 	msg := fmt.Sprintf("Milestone %q is overdue (due %s)", overdue.Milestone.Name, shown.date(overdue.Milestone.TargetDate))
 	switch overdue.RulesOut {
@@ -579,16 +574,8 @@ func (s *Server) checkinRedirect(w http.ResponseWriter, r *http.Request, goalID 
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
-// writeCheckinError maps a domain Check-in error to an HTTP status.
-func (s *Server) writeCheckinError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	case errors.Is(err, domain.ErrNotFound):
-		http.Error(w, "not found", http.StatusNotFound)
-	default:
-		s.serverError(w, r, "check-in failed", err)
-	}
+// writeCheckinError answers a Check-in on goalID the domain refused with the
+// refusal page, linking Back to the Goal.
+func (s *Server) writeCheckinError(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
+	s.refuse(w, r, "Can't check in", goalPath(goalID), err)
 }

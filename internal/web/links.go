@@ -11,8 +11,19 @@ import (
 )
 
 // errLinkWouldCycle is a link refused for making a cycle, as a form beside it
-// says it: ErrCycle's own text names the two Goals by ID.
-var errLinkWouldCycle = errors.New("that Goal already contributes to this one, so linking them would make a cycle")
+// says it: ErrCycle's own text names the two Goals by ID. It is an ErrCycle,
+// so where no form is offered beside it, the refusal page answers it as one.
+var errLinkWouldCycle error = linkWouldCycleError{}
+
+// linkWouldCycleError is errLinkWouldCycle's type: its text is the form's
+// sentence, and errors.Is matches it to domain.ErrCycle.
+type linkWouldCycleError struct{}
+
+func (linkWouldCycleError) Error() string {
+	return "that Goal already contributes to this one, so linking them would make a cycle"
+}
+
+func (linkWouldCycleError) Unwrap() error { return domain.ErrCycle }
 
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.
@@ -26,7 +37,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
 	if err != nil {
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, errors.New("a parent Goal is required"))
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, domain.Refuse(domain.ErrValidation, "a parent Goal is required"))
 		return
 	}
 	_, err = s.svc.RequestLink(r.Context(), domain.RequestLinkInput{

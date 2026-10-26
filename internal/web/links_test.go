@@ -14,6 +14,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // A Goal's Owner links it under another Goal they own; the link is accepted
@@ -1026,5 +1027,52 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/links" {
 		t.Errorf("Accept without from: status %d at %s, want 200 at /links", resp.StatusCode, resp.Request.URL.Path)
+	}
+}
+
+// A link request refused for its parent, missing or making a cycle, keeps its
+// status, 422 or 409, whether or not the Goal page offers the viewer the link
+// form: offered, the reason is beside the form; not offered, it is the
+// refusal page, linking Back to the Goal (#573).
+func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	srv.HandleRefusedLinkCycleForTest("POST /link-cycle-test/{id}")
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com") // owns the child
+	h.SignIn("pat@example.com")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	back := fmt.Sprintf("/goals/%d", child.ID)
+
+	for _, c := range []struct {
+		name, who, path string
+		form            url.Values
+		status          int
+		reason          string
+		offered         bool
+	}{
+		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", true},
+		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false},
+		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
+			"That Goal already contributes to this one, so linking them would make a cycle.", true},
+		{"cycle, not offered", "pat@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
+			"Linking these Goals would make a cycle: the parent already contributes to the child.", false},
+	} {
+		resp := postForm(t, signInClient(t, ts.URL, c.who), ts.URL+c.path, c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		if !c.offered {
+			assertRefusalPage(t, page, "Can't change Goal", c.reason, back)
+			continue
+		}
+		if got := textOf(findByTestID(t, page, "form-error")); got != c.reason {
+			t.Errorf("%s: form-error = %q, want %q", c.name, got, c.reason)
+		}
 	}
 }

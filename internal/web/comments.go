@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -176,7 +175,7 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, curren
 	}
 	goalID, _ := strconv.ParseInt(r.FormValue("goal"), 10, 64)
 	if _, err := s.svc.AddComment(r.Context(), current.ID, pub.ID, goalID, r.FormValue("body")); err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, publicationPath(pub), err)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), goalID), http.StatusSeeOther)
@@ -195,7 +194,7 @@ func (s *Server) handleAddGoalComment(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	if _, err := s.svc.AddGoalComment(r.Context(), current.ID, id, r.FormValue("body")); err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, goalPath(id), err)
 		return
 	}
 	http.Redirect(w, r, goalCommentsPath(id), http.StatusSeeOther)
@@ -220,7 +219,7 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 	}
 	reply, err := s.svc.ReplyToComment(r.Context(), current.ID, id, r.FormValue("body"))
 	if err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, s.commentPagePath(r, id), err)
 		return
 	}
 	if reply.PublicationID == 0 {
@@ -229,7 +228,7 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 	}
 	pub, err := s.svc.GetPublication(r.Context(), reply.PublicationID)
 	if err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, goalPath(reply.GoalID), err)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), reply.GoalID), http.StatusSeeOther)
@@ -257,7 +256,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 	var goalID int64
 	if v := r.FormValue("goal"); v != "" {
 		if goalID, err = strconv.ParseInt(v, 10, 64); err != nil {
-			s.writeCommentError(w, r, domain.Refuse(domain.ErrValidation, "the Goal must be a Goal's id"))
+			s.writeCommentError(w, r, publicationPath(pub), domain.Refuse(domain.ErrValidation, "the Goal must be a Goal's id"))
 			return
 		}
 	}
@@ -268,7 +267,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		Text:          r.FormValue("text"),
 		DueDate:       due,
 	}, r.FormValue("owner")); err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, publicationPath(pub), err)
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub)+"#action-items", http.StatusSeeOther)
@@ -288,7 +287,7 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 	}
 	item, err := s.svc.CloseActionItem(r.Context(), current.ID, id, r.FormValue("note"))
 	if err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
 		return
 	}
 	back := r.FormValue("return")
@@ -313,7 +312,7 @@ func (s *Server) handleReassignActionItem(w http.ResponseWriter, r *http.Request
 	}
 	item, err := s.svc.ReassignActionItemByEmail(r.Context(), current.ID, id, r.FormValue("owner"))
 	if err != nil {
-		s.writeCommentError(w, r, err)
+		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
 		return
 	}
 	back := r.FormValue("return")
@@ -333,17 +332,43 @@ func localPath(p string) bool {
 	return !strings.ContainsFunc(p, func(r rune) bool { return r <= ' ' || r == 0x7f || r == '\\' })
 }
 
-// writeCommentError maps a domain error from a discussion — a comment on a
-// Goal or a Report, or an Action Item — to an HTTP status.
-func (s *Server) writeCommentError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	case errors.Is(err, domain.ErrNotFound):
-		http.Error(w, "not found", http.StatusNotFound)
-	default:
-		s.serverError(w, r, "discussion action failed", err)
+// writeCommentError answers a domain refusal from a discussion — a comment on
+// a Goal or a Report, or an Action Item — with the refusal page, linking Back
+// to back, the page it was on; a missing record is the Not found page.
+func (s *Server) writeCommentError(w http.ResponseWriter, r *http.Request, back string, err error) {
+	s.refuse(w, r, "Can't comment", back, err)
+}
+
+// commentPagePath is the page the Comment id is on, for a refusal to link
+// Back to: the Goal page for one on the Goal itself, else its publication's
+// page, or Home when it can't be read. A refused reply returns no Comment, so
+// it is read again.
+func (s *Server) commentPagePath(r *http.Request, id int64) string {
+	c, err := s.svc.GetComment(r.Context(), id)
+	if err != nil {
+		return "/home"
 	}
+	if c.PublicationID == 0 {
+		return goalPath(c.GoalID)
+	}
+	pub, err := s.svc.GetPublication(r.Context(), c.PublicationID)
+	if err != nil {
+		return "/home"
+	}
+	return publicationPath(pub)
+}
+
+// actionItemPagePath is the page a refused close or reassign of the Action
+// Item id links Back to: the form's return, when it is a page of the app's
+// own, or else the publication it was raised on, or Home when it can't be
+// read. A refused command returns no Action Item, so it is read again.
+func (s *Server) actionItemPagePath(r *http.Request, id int64) string {
+	if back := r.FormValue("return"); localPath(back) {
+		return back
+	}
+	item, err := s.svc.GetActionItem(r.Context(), id)
+	if err != nil {
+		return "/home"
+	}
+	return fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
 }

@@ -296,16 +296,12 @@ func (s *Server) dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (in
 	return id, true
 }
 
-// writeDimensionError maps a domain Dimension error to an HTTP status.
+// writeDimensionError answers a refused Dimension change with the refusal
+// page, linking Back to the Dimensions page. The domain refuses a Dimension
+// or value that isn't there for its input, but a missing record would be the
+// Not found page.
 func (s *Server) writeDimensionError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	default:
-		s.serverError(w, r, "dimension action failed", err)
-	}
+	s.refuse(w, r, "Can't change Dimension", "/dimensions", err)
 }
 
 // selectionLabel says whether a Goal takes one of d's values or several.

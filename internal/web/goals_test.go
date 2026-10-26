@@ -194,9 +194,9 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
 	}
-	// The refusal is plain text, not a page.
-	if body := readBody(t, resp); !strings.Contains(body, "Dated") {
-		t.Errorf("rejection should explain the missing Dated/Ongoing choice; body:\n%s", body)
+	// The refusal page says why.
+	if reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason")); !strings.Contains(reason, "Dated") {
+		t.Errorf("rejection should explain the missing Dated/Ongoing choice; it says %q", reason)
 	}
 }
 
@@ -219,8 +219,8 @@ func TestActivateDoneGoalLeavesItDone(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
 	}
-	if body := readBody(t, resp); !strings.Contains(body, "Ship v2 is Done, so it can't be activated") {
-		t.Errorf("refusal should say the Goal is Done; body:\n%s", body)
+	if reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason")); !strings.Contains(reason, "Ship v2 is Done, so it can't be activated") {
+		t.Errorf("refusal should say the Goal is Done; it says %q", reason)
 	}
 
 	page := getPage(t, client, goalURL)
@@ -2404,9 +2404,9 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 			before := rows(g)
 			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
 			defer func() { _ = resp.Body.Close() }()
-			body := textOf(parsePage(t, readBody(t, resp)))
-			if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "only the Owner or a Delegate may change this Goal's Milestones") {
-				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, body)
+			reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason"))
+			if resp.StatusCode != http.StatusForbidden || reason != "Only the Owner or a Delegate may change this Goal's Milestones." {
+				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, reason)
 			}
 			m := onlyMilestone(t, h, g)
 			resp = postForm(t, client, fmt.Sprintf("%s/milestones/%d", ts.URL, m.ID), url.Values{"name": {"Renamed"}, "target_date": {m.TargetDate.Format("2006-01-02")}})
@@ -7626,7 +7626,7 @@ func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
-	if !strings.Contains(textOf(parsePage(t, body)), "a Goal needs a title") {
+	if !strings.Contains(textOf(parsePage(t, body)), "A Goal needs a title.") {
 		t.Errorf("the refusal doesn't say a Goal needs a title; body:\n%s", body)
 	}
 	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
@@ -7634,8 +7634,9 @@ func TestCreateGoalWithABlankTitleIsRefusedOverHTTP(t *testing.T) {
 	}
 }
 
-// A Goal posted to /goals without a title is refused with the reason alone,
-// not the error's "validation failed:" prefix.
+// A Goal posted to /goals without a title is refused with the refusal page,
+// its reason a sentence without the error's "validation failed:" prefix, and
+// Back to the new Goal form, as no Goal exists yet (#573).
 func TestCreatingAGoalWithoutATitleAnswersWithTheReason(t *testing.T) {
 	t.Parallel()
 
@@ -7649,7 +7650,36 @@ func TestCreatingAGoalWithoutATitleAnswersWithTheReason(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	if got, want := strings.TrimSpace(body), "a Goal needs a title"; got != want {
-		t.Errorf("body = %q, want %q", got, want)
+	assertRefusalPage(t, parsePage(t, body), "Can't create Goal", "A Goal needs a title.", "/goals/new")
+}
+
+// A Goal command refused answers with the refusal page, headed Can't change
+// Goal and linking Back to the Goal, at the status its refusal has: 422 for
+// what was sent, 403 for who sent it (#573).
+func TestARefusedGoalCommandAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	datedURL := goalPageURL(ts.URL, goal) + "/dated"
+
+	for _, c := range []struct {
+		who, date string
+		status    int
+		reason    string
+	}{
+		{"sam@example.com", "", http.StatusUnprocessableEntity, "A Dated Goal needs a delivery date."},
+		{"pat@example.com", "2026-06-15", http.StatusForbidden, "Only the Goal's Owner may change it."},
+	} {
+		resp := postForm(t, signInClient(t, ts.URL, c.who), datedURL, url.Values{"delivery_date": {c.date}})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.who, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, "Can't change Goal", c.reason, fmt.Sprintf("/goals/%d", goal.ID))
 	}
 }

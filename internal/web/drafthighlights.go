@@ -50,7 +50,7 @@ func (s *Server) handleEditDraftHighlight(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	s.writeDraftHighlightResult(w, r, draft.GoalID, current, "could not edit draft highlight", err)
+	s.writeDraftHighlightResult(w, r, id, draft, current, "could not edit draft highlight", err)
 }
 
 // handleDeleteDraftHighlight deletes the path's pending Draft Highlight and
@@ -63,23 +63,28 @@ func (s *Server) handleDeleteDraftHighlight(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	draft, err := s.svc.DeleteDraftHighlight(r.Context(), current.ID, id)
-	s.writeDraftHighlightResult(w, r, draft.GoalID, current, "could not delete draft highlight", err)
+	s.writeDraftHighlightResult(w, r, id, draft, current, "could not delete draft highlight", err)
 }
 
-// writeDraftHighlightResult answers an edit or delete of a Draft Highlight on
-// goalID: done, a plain post returns to the Goal page and an htmx one gets the
-// Draft Highlights block as it now stands. Refused, it is a 422 for what was
-// typed, a 403 for someone who may not, and a 404 for one no longer pending.
-func (s *Server) writeDraftHighlightResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, failed string, err error) {
+// writeDraftHighlightResult answers an edit or delete of the Draft Highlight
+// id, draft as it was changed: done, a plain post returns to its Goal page and
+// an htmx one gets the Draft Highlights block as it now stands. Refused, it is
+// the refusal page: a 422 for what was typed, a 403 for someone who may not,
+// and the Not found page for one no longer pending. A refused change returns
+// no Draft Highlight, so the way back is read again: its Goal page, or Home
+// for a viewer who may not see it.
+func (s *Server) writeDraftHighlightResult(w http.ResponseWriter, r *http.Request, id int64, draft domain.DraftHighlight, current domain.Account, failed string, err error) {
 	switch {
 	case err == nil && r.Header.Get("HX-Request") == "true":
-		s.renderDraftHighlights(w, r, goalID, current, draftHighlightRefusal{})
+		s.renderDraftHighlights(w, r, draft.GoalID, current, draftHighlightRefusal{})
 	case err == nil:
-		http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, sentence(plainReason(err)), http.StatusUnprocessableEntity)
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, plainReason(err), http.StatusForbidden)
+		http.Redirect(w, r, goalPath(draft.GoalID), http.StatusSeeOther)
+	case errors.Is(err, domain.ErrValidation), errors.Is(err, domain.ErrNotAuthorized):
+		back := "/home"
+		if refused, lookErr := s.svc.DraftHighlight(r.Context(), current.ID, id); lookErr == nil {
+			back = goalPath(refused.GoalID)
+		}
+		s.refuse(w, r, "Can't change highlight", back, err)
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	default:
@@ -104,7 +109,7 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 	if !errors.Is(err, domain.ErrValidation) {
 		return draftHighlightRefusal{}
 	}
-	return draftHighlightRefusal{ID: id, Reason: sentence(plainReason(err)), Kind: r.PostForm.Get("kind"), Note: r.PostForm.Get("note")}
+	return draftHighlightRefusal{ID: id, Reason: sentence(domain.Reason(err)), Kind: r.PostForm.Get("kind"), Note: r.PostForm.Get("note")}
 }
 
 // renderDraftHighlights answers the Highlight editor's htmx post with the Goal
@@ -113,8 +118,8 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 // block's log form open, its reason and what was typed in it, for the editor
 // to open on; a refused edit marks its Draft Highlight the same way. When the
 // page no longer offers the log form, such as once the Goal is Done, a refused
-// log or edit has no editor to open on: the reason comes back on its own, as
-// renderRefusedForm sends it.
+// log or edit has no editor to open on: the reason comes back on the refusal
+// page, 422, linking Back to the Goal, which the editor swaps in.
 func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused draftHighlightRefusal) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
@@ -126,7 +131,7 @@ func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, g
 		return
 	}
 	if refused.Reason != "" && !view.offers(formDraftHighlight) {
-		http.Error(w, refused.Reason, http.StatusUnprocessableEntity)
+		s.refuse(w, r, "Can't change highlight", goalPath(goalID), domain.Refuse(domain.ErrValidation, "%s", refused.Reason))
 		return
 	}
 	if refused.Reason != "" && refused.ID == 0 {
