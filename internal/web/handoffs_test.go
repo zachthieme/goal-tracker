@@ -15,6 +15,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	nethtml "golang.org/x/net/html"
 )
 
 // An Owner starts a Handoff from their Goal page; the proposed new Owner sees it
@@ -851,9 +852,9 @@ func TestADecisionOnADecidedHandoffSaysHowItWasDecided(t *testing.T) {
 		back              string
 	}{
 		{"accept", "Can't accept Handoff", url.Values{}, "/handoffs"},
-		{"accept", "Can't accept Handoff", url.Values{"from": {"home"}}, "/home"},
+		{"accept", "Can't accept Handoff", url.Values{"return": {"/home"}}, "/home"},
 		{"reject", "Can't reject Handoff", url.Values{}, "/handoffs"},
-		{"reject", "Can't reject Handoff", url.Values{"from": {"home"}}, "/home"},
+		{"reject", "Can't reject Handoff", url.Values{"return": {"/home"}}, "/home"},
 	}
 	for _, d := range decisions {
 		resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/%s", ts.URL, ho.ID, d.decision), d.form)
@@ -931,12 +932,16 @@ func rejectHandoff(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 	pat = signInClient(t, ts.URL, "pat@example.com")
 	form := url.Values{}
 	if from == "/home" {
-		row := homeRow(t, pageElement(t, getBody(t, pat, ts.URL+"/home"), "ul", "home-requests"), goal)
-		reject := between(t, row, fmt.Sprintf(`action="/handoffs/%d/reject"`, ho.ID), "</form>")
-		if !strings.Contains(reject, `name="from" value="home"`) {
-			t.Fatalf("Home's Reject doesn't say it came from Home:\n%s", reject)
+		action := fmt.Sprintf("/handoffs/%d/reject", ho.ID)
+		requests := findByTestID(t, getPage(t, pat, ts.URL+"/home"), "home-requests")
+		rejects := findAll(requests, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
+		if len(rejects) != 1 {
+			t.Fatalf("Home offers %d Rejects posting to %s, want 1", len(rejects), action)
 		}
-		form.Set("from", "home")
+		form = formSubmission(rejects[0])
+		if got := form.Get("return"); got != "/home" {
+			t.Fatalf("Home's Reject returns to %q, want /home: %s", got, renderNode(rejects[0]))
+		}
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), form)
 	defer func() { _ = resp.Body.Close() }()

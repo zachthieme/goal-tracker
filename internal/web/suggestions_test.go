@@ -352,7 +352,7 @@ func TestUndoingADeclineIsRefusedOnceTheLinkWasRequested(t *testing.T) {
 	ts := newServer(t, h)
 	goal, parent, s := suggestionScene(t, h)
 	sam := signInClient(t, ts.URL, "sam@example.com")
-	resp := postForm(t, sam, fmt.Sprintf("%s/parent-suggestions/%d/decline", ts.URL, s.ID), url.Values{"from": {"home"}})
+	resp := postForm(t, sam, fmt.Sprintf("%s/parent-suggestions/%d/decline", ts.URL, s.ID), url.Values{"return": {"/home"}})
 	defer func() { _ = resp.Body.Close() }()
 	landed := readBody(t, resp)
 	h.RequestLink(h.SignIn("sam@example.com"), goal, parent, "")

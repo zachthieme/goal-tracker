@@ -367,12 +367,9 @@ func (s *Server) commentPagePath(r *http.Request, id int64) string {
 // own, or else the publication it was raised on, or Home when it can't be
 // read. A refused command returns no Action Item, so it is read again.
 func (s *Server) actionItemPagePath(r *http.Request, id int64) string {
-	if back := returnTo(r, ""); back != "" {
-		return back
+	raisedOn := "/home"
+	if item, err := s.svc.GetActionItem(r.Context(), id); err == nil {
+		raisedOn = fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
 	}
-	item, err := s.svc.GetActionItem(r.Context(), id)
-	if err != nil {
-		return "/home"
-	}
-	return fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
+	return returnTo(r, raisedOn)
 }

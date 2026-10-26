@@ -28,9 +28,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 	v.Dates = s.displayDates()
 	offer := takeUndo(w, r)
 	v.Toast = cmp.Or(
-		s.linkRejectionToast(r.Context(), offer, current, fromHome),
-		s.handoffRejectionToast(r.Context(), offer, current, fromHome),
-		s.suggestionDeclineToast(r.Context(), offer, current, 0, fromHome),
+		s.linkRejectionToast(r.Context(), offer, current, "/home"),
+		s.handoffRejectionToast(r.Context(), offer, current, "/home"),
+		s.suggestionDeclineToast(r.Context(), offer, current, 0, "/home"),
 	)
 	render(w, r, http.StatusOK, homePage(&current, v))
 }
@@ -85,27 +85,14 @@ type homeOrg struct {
 	Clear int
 }
 
-// fromHome is the from a request's Reject and its Undo post when they come
-// from Home, so each returns there rather than to the request's pending page.
-const fromHome = "home"
-
-// requestPage is the page to return to after deciding a request: Home when
-// from says the decision came from there, the request's pending page
-// otherwise.
-func requestPage(from, pending string) string {
-	if from == fromHome {
-		return "/home"
-	}
-	return pending
-}
-
-// fromField is the hidden input that has an Undo return to the page from
-// names, or none for the request's pending page.
-func fromField(from string) []toastField {
-	if from == "" {
+// undoReturnFields is the hidden return that has an Undo come back to back,
+// as the decision it undoes did, or none when back is "", for the request's
+// pending page, which returnTo falls back to.
+func undoReturnFields(back string) []toastField {
+	if back == "" {
 		return nil
 	}
-	return []toastField{{Name: "from", Value: from}}
+	return []toastField{{Name: "return", Value: back}}
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, the

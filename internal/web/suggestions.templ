@@ -78,21 +78,21 @@ templ suggestionRequestRow(p domain.ParentSuggestion) {
 			}
 		</div>
 		<div class="hm-actions">
-			@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), fromHome)
+			@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), "/home")
 		</div>
 	</li>
 }
 
 // declineAccept is the pair of buttons deciding the Parent suggestion at base,
-// returning to the page from names: Decline as a text button, which sends at
-// once and is offered Undo in a toast, then Accept outlined.
-templ declineAccept(base, from string) {
+// returning to back: Decline as a text button, which sends at once and is
+// offered Undo in a toast, then Accept outlined.
+templ declineAccept(base, back string) {
 	<form method="post" action={ templ.SafeURL(base + "/decline") } class="inline-form">
-		<input type="hidden" name="from" value={ from }/>
+		<input type="hidden" name="return" value={ back }/>
 		<button type="submit" class="btn quiet sm">Decline</button>
 	</form>
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
-		<input type="hidden" name="from" value={ from }/>
+		<input type="hidden" name="return" value={ back }/>
 		<button type="submit" class="btn sm">Accept</button>
 	</form>
 }
@@ -118,7 +118,7 @@ templ suggestedParents(v goalView) {
 					<span class="gp-link-meta">
 						if v.Permissions.DecideSuggestions {
 							<span class="gp-decide">
-								@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), "")
+								@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), goalPath(p.Goal.ID))
 							</span>
 						} else {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/parent-suggestions/%d/withdraw", p.ID)) }>
