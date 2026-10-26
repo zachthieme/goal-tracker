@@ -4374,3 +4374,34 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 		}
 	}
 }
+
+// A submit that fails the form's own reading, such as a back-to-Green date that
+// isn't a date, is still refused with 403 to someone who may not check in: they
+// don't get the form back, ghost text and all (#560).
+func TestCheckinParseFailureByNonAuthorIsForbidden(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("eve@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Waiting on the vendor.", "Second vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	submitURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	form := url.Values{
+		"health":           {domain.HealthYellow},
+		"status":           {"Still waiting."},
+		"path_to_green":    {"Second vendor."},
+		"path_target_date": {"not-a-date"},
+	}
+	client := signInClient(t, ts.URL, "eve@example.com")
+
+	if body, status := postFormHX(t, client, submitURL, form); status != http.StatusForbidden {
+		t.Errorf("htmx: someone neither Owner nor Delegate got status %d for an invalid date, want 403", status)
+	} else if hasTestID(parsePage(t, body), "checkin-form") {
+		t.Error("htmx: the 403 carries the Check-in form")
+	}
+	if status := postFormStatus(t, client, submitURL, form); status != http.StatusForbidden {
+		t.Errorf("plain: someone neither Owner nor Delegate got status %d for an invalid date, want 403", status)
+	}
+}

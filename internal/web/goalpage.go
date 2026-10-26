@@ -66,12 +66,9 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	}
 	// The Owner and Delegates are offered a No change only where it would be
 	// recorded; where it wouldn't, the Check-in page says why.
-	var noChangeRefusal string
-	switch err := p.NoChangeRefusal; {
-	case errors.Is(err, domain.ErrValidation):
-		noChangeRefusal = sentence(s.noChangeReason(err))
-	case err != nil:
-		return goalView{}, fmt.Errorf("check no change: %w", err)
+	noChangeRefusal, err := s.noChangeSentence(p.NoChangeRefusal)
+	if err != nil {
+		return goalView{}, err
 	}
 
 	view := goalView{

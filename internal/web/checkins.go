@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,17 +19,8 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 	if !ok {
 		return
 	}
-	view, err := s.goalPageView(r.Context(), goalID, current)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			s.notFound(w, r)
-			return
-		}
-		s.serverError(w, r, "could not load goal", err)
-		return
-	}
-	if !view.CanCheckin {
-		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
+	view, ok := s.loadCheckinView(w, r, goalID, current)
+	if !ok {
 		return
 	}
 	form := checkinFormFromLatest(view)
@@ -37,6 +29,69 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 	}
 	form.OpenDates = r.URL.Query().Get("open") == "dates"
 	render(w, r, http.StatusOK, checkinPage(&current, view, form))
+}
+
+// checkinView is what the Check-in page shows around its form, read through
+// the Check-in page's loader (ADR 0010): what the loader read, why a No
+// change would be refused, as a sentence ("" when one would be recorded or
+// isn't on offer), and the clock the page shows its dates against.
+type checkinView struct {
+	domain.CheckinPage
+	NoChangeReason string
+	Shown          displayDates
+}
+
+// checksIn reports whether the page offers the form: the viewer may check in
+// and the Goal takes Check-ins now, as domain.GoalPermissions.CheckIn says.
+func (v checkinView) checksIn() bool {
+	return v.CanCheckin && domain.LifecycleTakesCheckins(v.Goal.Lifecycle)
+}
+
+// checkinView reads the Check-in page for goalID as current sees it, through
+// its loader, once. A missing Goal comes back as domain.ErrNotFound.
+func (s *Server) checkinView(ctx context.Context, goalID int64, current domain.Account) (checkinView, error) {
+	p, err := s.svc.CheckinPage(ctx, current.ID, goalID)
+	if err != nil {
+		return checkinView{}, err
+	}
+	reason, err := s.noChangeSentence(p.NoChangeRefusal)
+	if err != nil {
+		return checkinView{}, err
+	}
+	return checkinView{CheckinPage: p, NoChangeReason: reason, Shown: displayDates{Now: p.Now, Loc: s.svc.Timezone()}}, nil
+}
+
+// loadCheckinView is checkinView for a request that shows or posts the
+// Check-in form: a missing Goal gets the not-found page, and anyone who may
+// not check in on it 403, before anything they sent is read (#528, #560).
+// It reports whether the request may go on.
+func (s *Server) loadCheckinView(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account) (checkinView, bool) {
+	view, err := s.checkinView(r.Context(), goalID, current)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			s.notFound(w, r)
+			return checkinView{}, false
+		}
+		s.serverError(w, r, "could not load goal", err)
+		return checkinView{}, false
+	}
+	if !view.CanCheckin {
+		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
+		return checkinView{}, false
+	}
+	return view, true
+}
+
+// noChangeSentence is why a No change would be refused, refusal, as a page
+// says it, or "" for none. An error that isn't a refusal comes back as one.
+func (s *Server) noChangeSentence(refusal error) (string, error) {
+	switch {
+	case errors.Is(refusal, domain.ErrValidation):
+		return sentence(s.noChangeReason(refusal)), nil
+	case refusal != nil:
+		return "", fmt.Errorf("check no change: %w", refusal)
+	}
+	return "", nil
 }
 
 // lifecycleFromQuery is the Lifecycle change the Goal page's menu picked for the
@@ -88,31 +143,21 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	highlights := highlightsFromForm(r)
 	drafts := draftHighlightsFromForm(r)
 
-	// The reading inputs are named reading_<metricID>, one per Metric on the
-	// Goal, so parsing them needs the Goal's current Metrics.
-	metrics, err := s.svc.ListMetrics(r.Context(), goalID)
-	if err != nil {
-		s.serverError(w, r, "could not load metrics", err)
+	// The form's context is read once, through the Check-in page's loader,
+	// which also refuses anyone who may not check in. The reading inputs are
+	// named reading_<metricID>, one per Metric on the Goal, and the delivery
+	// date and Milestone fields are keyed to the Goal's current state: whether
+	// it is Dated, and which Milestones are still Planned. SubmitCheckin reads
+	// what it decides on again, inside the transaction that writes.
+	view, ok := s.loadCheckinView(w, r, goalID, current)
+	if !ok {
 		return
 	}
+	metrics := view.Metrics
 	// Values the reader typed, kept so an error re-render shows them again.
 	rawReadings := rawReadingsFromForm(r, metrics)
-
-	// The delivery date and Milestone fields are keyed to the Goal's current
-	// state: whether it is Dated, and which Milestones are still Planned.
-	goal, err := s.svc.ViewGoal(r.Context(), goalID)
-	if err != nil {
-		s.writeCheckinError(w, r, err)
-		return
-	}
-	milestones, err := s.svc.ListMilestones(r.Context(), goalID)
-	if err != nil {
-		s.serverError(w, r, "could not load milestones", err)
-		return
-	}
-	dates := datesFromForm(r, goal, milestones)
-
-	lifecycle := lifecycleFromForm(r, goal)
+	dates := datesFromForm(r, view.Goal, view.Milestones)
+	lifecycle := lifecycleFromForm(r, view.Goal)
 
 	// An error from reading the form already names its field; the domain's
 	// name theirs (see checkinErrorField) and read as a sentence, without the
@@ -120,13 +165,13 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	formData := func(err error) checkinFormData {
 		var e checkinError
 		if err != nil && !errors.As(err, &e) {
-			e = checkinError{Field: checkinErrorField(err), Message: sentence(plainReasonShown(err, s.displayDates()))}
+			e = checkinError{Field: checkinErrorField(err), Message: sentence(plainReasonShown(err, view.Shown))}
 		}
-		return checkinFormData{
+		return view.withContext(checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, PathTargetDateReason: pathReason, AsksForHelp: asksForHelp, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
-			OffTargetConfirmed: offTargetConfirmed, Shown: s.displayDates(),
-		}
+			Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
+			OffTargetConfirmed: offTargetConfirmed,
+		})
 	}
 
 	// Add another records nothing: it re-renders the form, everything typed
@@ -139,25 +184,21 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		d.Highlights = append(d.Highlights, highlightFormData{})
 		if r.FormValue("off_target_warned") != "" && health == domain.HealthGreen && !offTargetConfirmed {
 			if readings, err := readingsFromForm(metrics, rawReadings); err == nil {
-				d.OffTarget, err = s.svc.OffTargetMetrics(r.Context(), goalID, readings)
-				if err != nil {
-					s.serverError(w, r, "could not judge metrics", err)
-					return
-				}
+				d.OffTarget = view.OffTargetMetrics(readings)
 			}
 		}
-		s.renderCheckinFormAgain(w, r, current, d)
+		s.renderCheckinFormAgain(w, r, current, view, d)
 		return
 	}
 
 	date, err := parseDate(rawDate)
 	if err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
+		s.renderCheckinFormError(w, r, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
 		return
 	}
 	readings, err := readingsFromForm(metrics, rawReadings)
 	if err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData(err))
+		s.renderCheckinFormError(w, r, formData(err))
 		return
 	}
 
@@ -183,7 +224,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		ConfirmOffTarget: offTargetConfirmed,
 	}
 	if err := dates.applyTo(&in); err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData(err))
+		s.renderCheckinFormError(w, r, formData(err))
 		return
 	}
 	// The offered rows come first, as on the form, so the domain numbers
@@ -203,11 +244,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		if errors.As(err, &offTarget) {
 			d := formData(nil)
 			d.OffTarget = offTarget.Metrics
-			s.renderCheckinFormError(w, r, goalID, d)
+			s.renderCheckinFormError(w, r, d)
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			s.renderCheckinFormError(w, r, goalID, formData(err))
+			s.renderCheckinFormError(w, r, formData(err))
 			return
 		}
 		s.writeCheckinError(w, r, err)
@@ -436,7 +477,7 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
 	// The Goal is loaded first: the domain checks the Lifecycle before who may
 	// check in, so a validation error alone doesn't mean the reader may.
-	view, viewErr := s.goalPageView(r.Context(), goalID, current)
+	view, viewErr := s.checkinView(r.Context(), goalID, current)
 	switch {
 	case errors.Is(viewErr, domain.ErrNotFound):
 		render(w, r, http.StatusNotFound, checkinUnavailablePage(&current, "Goal not found", "There is no such Goal, so there is nothing to check in on."))
@@ -500,20 +541,12 @@ func plainReasonShown(err error, shown displayDates) string {
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.
 // For an htmx request it returns 200 so htmx swaps the form in place (htmx does
-// not swap error statuses by default); a plain post gets 422. It reloads the
-// Goal's Rolled-up Health so the re-rendered form still shows it beside the
-// Owner's Health (ADR-0003), its Run off Green for the Path to Green's
-// heading, the latest Check-in's answers so it still shows them as ghost
-// text, and whom an ask would go to.
-func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, goalID int64, data checkinFormData) {
-	if rollup, err := s.svc.RolledUpHealth(r.Context(), goalID); err == nil {
-		data.RolledUp = rollup
-	}
-	if run, err := s.svc.RunOffGreen(r.Context(), goalID); err == nil {
-		data.RunOffGreen = run
-	}
-	data.Previous = s.loadCheckinPrevious(r, goalID, data.Metrics)
-	data.AskAddressee = s.loadCheckinAskAddressee(r, goalID)
+// not swap error statuses by default); a plain post gets 422. The form keeps
+// the context the Check-in page's loader read for it (checkinView.withContext):
+// the Goal's Rolled-up Health beside the Owner's Health (ADR-0003), its Run
+// off Green for the Path to Green's heading, the latest Check-in's answers as
+// ghost text, and whom an ask would go to.
+func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, data checkinFormData) {
 	status := http.StatusUnprocessableEntity
 	if r.Header.Get("HX-Request") == "true" {
 		status = http.StatusOK
@@ -523,77 +556,14 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
-// Check-in page around it. The Rolled-up Health and Run off Green still show,
-// the latest Check-in's answers still show as ghost text, and the form still
-// says whom an ask would go to. Only whoever may open the Check-in page — the
-// Owner or a Delegate — gets the form back; anyone else gets its 403 (#528).
-func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
-	view, err := s.goalPageView(r.Context(), data.GoalID, current)
-	if err != nil {
-		s.serverError(w, r, "could not load goal", err)
-		return
-	}
-	if !view.CanCheckin {
-		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
-		return
-	}
-	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
-		data.RolledUp = rollup
-	}
-	if run, err := s.svc.RunOffGreen(r.Context(), data.GoalID); err == nil {
-		data.RunOffGreen = run
-	}
-	data.Previous = s.loadCheckinPrevious(r, data.GoalID, data.Metrics)
-	data.AskAddressee = s.loadCheckinAskAddressee(r, data.GoalID)
+// Check-in page, view, around it. The form keeps the context the page's loader
+// read for it, as renderCheckinFormError's does.
+func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, http.StatusOK, checkinForm(data))
 		return
 	}
 	render(w, r, http.StatusOK, checkinPage(&current, view, data))
-}
-
-// loadCheckinPrevious loads the Goal's latest Check-in and its Metrics'
-// readings, for a re-rendered form to show as ghost text. Ghost text only helps
-// the reader, so a failure to load it is logged and the form shows none rather
-// than losing what was typed.
-func (s *Server) loadCheckinPrevious(r *http.Request, goalID int64, metrics []domain.Metric) checkinPreviousAnswers {
-	latest, ok, err := s.svc.LatestCheckin(r.Context(), goalID)
-	if err != nil {
-		s.logServerError(r, err)
-		return checkinPreviousAnswers{}
-	}
-	var latestPtr *domain.Checkin
-	if ok {
-		latestPtr = &latest
-	}
-	trends := make([]metricTrend, 0, len(metrics))
-	for _, m := range metrics {
-		readings, err := s.svc.ListMetricReadings(r.Context(), m.ID)
-		if err != nil {
-			s.logServerError(r, err)
-			return checkinPreviousAnswers{}
-		}
-		trends = append(trends, metricTrend{Metric: m, Readings: readings})
-	}
-	return checkinPreviousFrom(latestPtr, trends)
-}
-
-// loadCheckinAskAddressee is whom an Ask for help from the Goal's Owner would
-// go to, for a re-rendered form's hint; nil for no one above the Owner. The
-// hint only helps the reader, so a failure to load it is logged and the hint
-// says no one rather than losing what was typed.
-func (s *Server) loadCheckinAskAddressee(r *http.Request, goalID int64) *domain.Account {
-	goal, err := s.svc.ViewGoal(r.Context(), goalID)
-	if err != nil {
-		s.logServerError(r, err)
-		return nil
-	}
-	addressee, err := s.svc.AskAddressee(r.Context(), goal.Owner)
-	if err != nil {
-		s.logServerError(r, err)
-		return nil
-	}
-	return addressee
 }
 
 // checkinRedirect returns the reader to the Goal page after a successful
