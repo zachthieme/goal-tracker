@@ -702,25 +702,25 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // together with it. A retired value is not offered for a new assignment. Only
 // the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
-	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
-		return err
-	}
-	val, err := s.queries.GetDimensionValue(ctx, valueID)
-	if err != nil {
-		return Refuse(ErrValidation, "dimension value does not exist")
-	}
-	if val.Retired != 0 {
-		return Refuse(ErrValidation, "that value is retired and cannot be newly assigned")
-	}
-	dimRow, err := s.queries.GetDimension(ctx, val.DimensionID)
-	if err != nil {
-		return fmt.Errorf("load dimension: %w", err)
-	}
-	dim := dimensionFromRow(dimRow)
-	if dim.Retired {
-		return retiredDimensionError(dim)
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		val, err := tx.queries.GetDimensionValue(ctx, valueID)
+		if err != nil {
+			return Refuse(ErrValidation, "dimension value does not exist")
+		}
+		if val.Retired != 0 {
+			return Refuse(ErrValidation, "that value is retired and cannot be newly assigned")
+		}
+		dimRow, err := tx.queries.GetDimension(ctx, val.DimensionID)
+		if err != nil {
+			return fmt.Errorf("load dimension: %w", err)
+		}
+		dim := dimensionFromRow(dimRow)
+		if dim.Retired {
+			return retiredDimensionError(dim)
+		}
 		before, err := tx.GoalValues(ctx, goalID)
 		if err != nil {
 			return err
