@@ -363,6 +363,42 @@ func TestHandoffAndReassignByOneWhoMayNotAnswerTheRefusalPage(t *testing.T) {
 	}
 }
 
+// An Admin's Hand off of an Ownerless Goal, or Reassign of an owned one, is
+// refused where the Goal page offers no such form, so the refusal page says
+// why, 422, headed by what was refused, with a way Back to the Goal.
+func TestHandoffAndReassignTheGoalPageDoesNotOfferAnswerTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	leo := h.SignIn("leo@example.com")
+	h.SignIn("pat@example.com")
+	owned := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ownerless := h.CreateGoal(leo, "Migrate displays", "Displays fail often.")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, leo.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, c := range []struct {
+		name, path, field, heading, reason string
+		goal                               domain.Goal
+	}{
+		{"Hand off of an Ownerless Goal", "handoff", "to_email", "Can't hand off Goal", "This Goal is Ownerless: reassign it instead.", ownerless},
+		{"Reassign of an owned Goal", "reassign", "email", "Can't reassign Goal", "Only an Ownerless Goal is reassigned; hand off a Goal with a present Owner.", owned},
+	} {
+		resp := postForm(t, bossClient, fmt.Sprintf("%s/goals/%d/%s", ts.URL, c.goal.ID, c.path), url.Values{c.field: {"pat@example.com"}})
+		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("an Admin's %s: status %d, want 422", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, fmt.Sprintf("/goals/%d", c.goal.ID))
+	}
+}
+
 // A Depart or Return that is refused answers the refusal page, linking Back to
 // Home: 403 for someone who isn't an Admin, and 422 for an Admin's that can't
 // be done to that person. A path that names no Account by number is the Not

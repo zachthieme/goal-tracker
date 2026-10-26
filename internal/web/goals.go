@@ -96,9 +96,16 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 // carrying why its submit was refused and what it sent. When the page no
 // longer offers the viewer that form, such as Add Milestone once the Goal is
 // Done, there is nowhere beside it to say why, so the refusal page says it,
-// at the status refused's kind has, linking Back to the Goal. Either way the
-// reason is a sentence without its internal prefix.
+// headed "Can't change Goal", at the status refused's kind has, linking Back
+// to the Goal. Either way the reason is a sentence without its internal
+// prefix.
 func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
+	s.renderRefusedFormHeaded(w, r, goalID, current, form, "Can't change Goal", status, refused)
+}
+
+// renderRefusedFormHeaded is renderRefusedForm with the refusal page, when the
+// Goal page doesn't offer form, headed heading.
+func (s *Server) renderRefusedFormHeaded(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, heading string, status int, refused error) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -109,7 +116,7 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 		return
 	}
 	if !view.offers(form) {
-		s.refuse(w, r, "Can't change Goal", goalPath(goalID), refused)
+		s.refuse(w, r, heading, goalPath(goalID), refused)
 		return
 	}
 	view.Open, view.FormError, view.FormInput = form, sentence(domain.Reason(refused)), r.PostForm

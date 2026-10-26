@@ -10,14 +10,15 @@ import (
 
 // handleAddDelegate authorizes the account named by email as a Delegate on the
 // Goal in the path. Only the Goal's Owner may do so, so a non-Owner's attempt
-// comes back 403 (CONTEXT.md: a person an Owner authorizes).
+// comes back 403 on the refusal page (CONTEXT.md: a person an Owner
+// authorizes).
 func (s *Server) handleAddDelegate(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	err := s.svc.AddDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	s.writeDelegateResult(w, r, id, current, err)
+	s.writeDelegateResult(w, r, id, current, "Can't add Delegate", err)
 }
 
 // handleRemoveDelegate revokes the Delegate named by email on the Goal in the
@@ -28,7 +29,7 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	err := s.svc.RemoveDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	s.writeDelegateResult(w, r, id, current, err)
+	s.writeDelegateResult(w, r, id, current, "Can't remove Delegate", err)
 }
 
 // handleDelegatePage lists every Goal the current Account is a Delegate for,
@@ -73,13 +74,14 @@ type delegatedGoal struct {
 }
 
 // writeDelegateResult redirects back to the Goal on success and maps a domain
-// Delegate error to a status: a non-Owner attempt is 403, and a bad input 422
-// with the Goal page's Delegates form open and the reason beside it.
-func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, err error) {
+// Delegate error to a status: a non-Owner attempt is 403 on the refusal page,
+// headed refused and linking Back to the Goal, and a bad input 422 with the
+// Goal page's Delegates form open and the reason beside it.
+func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused string, err error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, domain.Reason(err), http.StatusForbidden)
+			s.refuse(w, r, refused, goalPath(goalID), err)
 		case errors.Is(err, domain.ErrValidation):
 			s.renderRefusedForm(w, r, goalID, current, formDelegates, http.StatusUnprocessableEntity, err)
 		default:

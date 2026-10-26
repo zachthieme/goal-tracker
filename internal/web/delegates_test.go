@@ -207,6 +207,45 @@ func TestOnlyOwnerRemovesDelegateThroughTheWeb(t *testing.T) {
 	}
 }
 
+// A Delegate add or remove by someone not the Goal's Owner answers the
+// refusal page, 403, saying only the Owner may, with a way Back to the Goal,
+// whether posted plainly or by htmx.
+func TestDelegateChangeBySomeoneNotTheOwnerAnswersTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	mel := noRedirects(signInClient(t, ts.URL, "mel@example.com"))
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+
+	for _, c := range []struct {
+		name, path, heading, reason string
+	}{
+		{"an add", back + "/delegates", "Can't add Delegate", "Only the Goal's Owner may authorize a Delegate."},
+		{"a remove", back + "/delegates/remove", "Can't remove Delegate", "Only the Goal's Owner may remove a Delegate."},
+	} {
+		form := url.Values{"email": {"tpm@example.com"}}
+		resp := postForm(t, mel, ts.URL+c.path, form)
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by someone not the Owner: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, back)
+
+		body, status := postFormHX(t, mel, ts.URL+c.path, form)
+		if status != http.StatusForbidden {
+			t.Errorf("%s by someone not the Owner, by htmx: status %d, want 403", c.name, status)
+		}
+		assertRefusalPage(t, parsePage(t, body), c.heading, c.reason, back)
+	}
+}
+
 // The Delegate's page shows each delegated Goal as a row with its Health, its
 // Owner, when it was last checked in on, and a Check in link to the Check-in
 // page, rather than embedding the whole form. It sits in the flat frame: its
