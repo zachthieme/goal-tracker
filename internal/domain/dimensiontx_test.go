@@ -137,3 +137,38 @@ func TestTwoValuesMergedIntoEachOtherTogetherOnlyOneMerges(t *testing.T) {
 		}
 	}
 }
+
+// One value added to a Dimension's list twice at the same moment, differing
+// only in case, is added once: the list gains no near-duplicate (CONTEXT.md:
+// Admins add values).
+func TestValueAddedTwiceTogetherIsAddedOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateDimension(boss, "Customer", "Globex")
+	for i := range 30 {
+		errOne, errOther := raceAttributeCommands(
+			func() error {
+				_, err := h.Service.AddDimensionValue(ctx, boss.ID, customer.ID, fmt.Sprintf("Acme %d", i))
+				return err
+			},
+			func() error {
+				_, err := h.Service.AddDimensionValue(ctx, boss.ID, customer.ID, fmt.Sprintf("acme %d", i))
+				return err
+			},
+		)
+		if errOne != nil || errOther != nil {
+			t.Fatalf("round %d: add err = %v, the other add err = %v", i, errOne, errOther)
+		}
+		dims, err := h.Service.ListDimensions(ctx)
+		if err != nil {
+			t.Fatalf("round %d: ListDimensions: %v", i, err)
+		}
+		if got := len(dims[0].Values); got != i+2 {
+			t.Fatalf("round %d: Customer has %d values %+v, want %d", i, got, dims[0].Values, i+2)
+		}
+	}
+}
