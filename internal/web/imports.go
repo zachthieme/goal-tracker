@@ -70,7 +70,7 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		status, flash := http.StatusInternalServerError, "The import failed."
 		switch {
 		case errors.Is(err, domain.ErrValidation):
-			status, flash = http.StatusUnprocessableEntity, importFlash(err)
+			status, flash = http.StatusUnprocessableEntity, refusalSentence(err)
 		default:
 			s.logServerError(r, err)
 		}
@@ -78,12 +78,6 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	render(w, r, http.StatusOK, importsPage(&current, &report, ""))
-}
-
-// importFlash renders a whole-file error (a bad header, an unknown Dimension
-// column) plainly, by its reason (domain.Reason).
-func importFlash(err error) string {
-	return domain.Reason(err)
 }
 
 // importRowLabel is the title shown for a report row, or a placeholder when the

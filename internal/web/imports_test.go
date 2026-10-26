@@ -389,13 +389,8 @@ func TestImportMissingRequiredColumnsFlashesThemOverHTTP(t *testing.T) {
 		t.Fatalf("status %d, want 422", resp.StatusCode)
 	}
 	flash := textOf(findByTestID(t, page, "import-flash"))
-	for _, column := range []string{"Owner", "Why it matters"} {
-		if !strings.Contains(flash, column) {
-			t.Errorf("import flash %q doesn't name the missing %s column", flash, column)
-		}
-	}
-	if strings.HasPrefix(flash, "validation failed") {
-		t.Errorf("import flash %q shows the internal validation prefix", flash)
+	if want := "The spreadsheet is missing required column(s): Owner, Why it matters."; flash != want {
+		t.Errorf("import flash = %q, want %q", flash, want)
 	}
 	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
 		t.Errorf("ListGoals = %d Goals, %v after a refused import, want none", len(goals), err)

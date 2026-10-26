@@ -385,7 +385,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		case hx && errors.Is(err, domain.ErrValidation):
-			answerUnswapped(w, r, saveStatus("Not saved: "+domain.Reason(err), true))
+			answerUnswapped(w, r, saveStatus("Not saved: "+refusalSentence(err), true))
 		default:
 			s.writeReportError(w, r, "Can't save narrative", target, err)
 		}
@@ -538,7 +538,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 	refused := errors.Is(err, domain.ErrValidation)
 	switch {
 	case refused:
-		status, code = "Not saved: "+domain.Reason(err), http.StatusUnprocessableEntity
+		status, code = "Not saved: "+refusalSentence(err), http.StatusUnprocessableEntity
 	case err != nil:
 		s.writeReportError(w, r, "Can't save narrative", narrativeDraftPath(r, def.ID), err)
 		return
@@ -952,7 +952,7 @@ func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Reques
 		if !ok {
 			return
 		}
-		v.Management.Email, v.Management.Refused = email, domain.Reason(err)
+		v.Management.Email, v.Management.Refused = email, refusalSentence(err)
 		render(w, r, http.StatusUnprocessableEntity, reportDraftPage(&current, v))
 	default:
 		s.writeReportError(w, r, "Can't change Report Delegates", draft, err)

@@ -5231,8 +5231,8 @@ func TestCreatorAddsAndRemovesAReportDelegateOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("adding an unknown email: status %d, want 422", resp.StatusCode)
 	}
-	if refused := textOf(findByTestID(t, refusedPage, "report-delegate-refused")); !strings.Contains(refused, "nobody@example.com") {
-		t.Errorf("refusal %q doesn't name the email", refused)
+	if refused, want := textOf(findByTestID(t, refusedPage, "report-delegate-refused")), `No account with email "nobody@example.com".`; refused != want {
+		t.Errorf("refusal = %q, want %q", refused, want)
 	}
 	if email := formField(t, findByTestID(t, refusedPage, "add-report-delegate"), "email"); email.Value != "nobody@example.com" {
 		t.Errorf("the refused email isn't kept in the form: it holds %q", email.Value)
