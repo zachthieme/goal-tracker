@@ -290,10 +290,7 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
 		return
 	}
-	back := r.FormValue("return")
-	if !localPath(back) {
-		back = fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
-	}
+	back := returnTo(r, fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID))
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
@@ -315,11 +312,18 @@ func (s *Server) handleReassignActionItem(w http.ResponseWriter, r *http.Request
 		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
 		return
 	}
-	back := r.FormValue("return")
-	if !localPath(back) {
-		back = fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
-	}
+	back := returnTo(r, fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID))
 	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// returnTo is the page a form sends someone back to: its posted return, when
+// localPath accepts it, or else fallback, the route's own page. Every redirect
+// or Back built from a posted page goes through it, so none leaves the app.
+func returnTo(r *http.Request, fallback string) string {
+	if back := r.FormValue("return"); localPath(back) {
+		return back
+	}
+	return fallback
 }
 
 // localPath reports whether p is a path on this site, safe to redirect to.
@@ -363,12 +367,9 @@ func (s *Server) commentPagePath(r *http.Request, id int64) string {
 // own, or else the publication it was raised on, or Home when it can't be
 // read. A refused command returns no Action Item, so it is read again.
 func (s *Server) actionItemPagePath(r *http.Request, id int64) string {
-	if back := r.FormValue("return"); localPath(back) {
-		return back
+	raisedOn := "/home"
+	if item, err := s.svc.GetActionItem(r.Context(), id); err == nil {
+		raisedOn = fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
 	}
-	item, err := s.svc.GetActionItem(r.Context(), id)
-	if err != nil {
-		return "/home"
-	}
-	return fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID)
+	return returnTo(r, raisedOn)
 }

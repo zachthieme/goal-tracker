@@ -20,6 +20,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
+	nethtml "golang.org/x/net/html"
 )
 
 // The Admin page is the home of the Admin tools: an Admin sees rows linking to
@@ -248,15 +249,14 @@ func TestAdminMarksDepartedPersonReturnedFromAdminPage(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("%s/accounts/%d/return", ts.URL, kim.ID), nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
+	action := fmt.Sprintf("/accounts/%d/return", kim.ID)
+	forms := findAll(findByTestID(t, getPage(t, client, ts.URL+"/admin"), "admin-departed"), func(n *nethtml.Node) bool {
+		return n.Data == "form" && attrOf(n, "action") == action
+	})
+	if len(forms) != 1 {
+		t.Fatalf("the Departed list has %d forms posting to %s, want 1", len(forms), action)
 	}
-	req.Header.Set("Referer", ts.URL+"/admin")
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("POST return: %v", err)
-	}
+	resp := postForm(t, client, ts.URL+action, formSubmission(forms[0]))
 	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/admin" {

@@ -309,9 +309,9 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 		{"/link-removals/4242/undo", url.Values{}, "/home"},
 		{"/link-removals/nothing/undo", url.Values{"goal_id": {"nothing"}}, "/home"},
 		{"/link-rejections/4242/undo", url.Values{}, "/links"},
-		{"/link-rejections/4242/undo", url.Values{"from": {"home"}}, "/home"},
+		{"/link-rejections/4242/undo", url.Values{"return": {"/home"}}, "/home"},
 		{"/handoffs/4242/restore", url.Values{}, "/handoffs"},
-		{"/handoffs/4242/restore", url.Values{"from": {"home"}}, "/home"},
+		{"/handoffs/4242/restore", url.Values{"return": {"/home"}}, "/home"},
 	} {
 		t.Run(tc.path+"?"+tc.form.Encode(), func(t *testing.T) {
 			resp := postForm(t, sam, ts.URL+tc.path, tc.form)

@@ -92,30 +92,30 @@ func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, cur
 
 // handleAcceptParentSuggestion accepts the open suggestion in the path, which
 // requests its link as the Goal's Owner; only they may. It returns to the page
-// the Accept came from (from: Home, or the Goal page), or refuses with a page
-// saying why, linking back there.
+// the Accept came from (its return: Home, or else the Goal page), or refuses
+// with a page saying why, linking back there.
 func (s *Server) handleAcceptParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	p, ok := s.suggestionFromPath(w, r)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.AcceptParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		s.writeLinkError(w, r, current, "Can't accept suggestion", requestPage(r.FormValue("from"), goalPath(p.Goal.ID)), err)
+		s.writeLinkError(w, r, current, "Can't accept suggestion", returnTo(r, goalPath(p.Goal.ID)), err)
 		return
 	}
-	http.Redirect(w, r, requestPage(r.FormValue("from"), goalPath(p.Goal.ID)), http.StatusSeeOther)
+	http.Redirect(w, r, returnTo(r, goalPath(p.Goal.ID)), http.StatusSeeOther)
 }
 
 // handleDeclineParentSuggestion declines the open suggestion in the path;
 // only the Goal's Owner may. It returns to the page the Decline came from
-// (from: Home, or the Goal page), which offers Undo once in a toast, or
-// refuses with a page saying why, linking back there.
+// (its return: Home, or else the Goal page), which offers Undo once in a
+// toast, or refuses with a page saying why, linking back there.
 func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	p, ok := s.suggestionFromPath(w, r)
 	if !ok {
 		return
 	}
-	back := requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
+	back := returnTo(r, goalPath(p.Goal.ID))
 	token, err := s.svc.DeclineParentSuggestion(r.Context(), current.ID, p.ID)
 	if err != nil {
 		s.writeLinkError(w, r, current, "Can't decline suggestion", back, err)
@@ -127,9 +127,9 @@ func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Re
 
 // handleUndoDeclineParentSuggestion puts the declined suggestion in the path
 // back to open; only the person who declined it may, with the toast's token,
-// and only once. It returns to the page the Undo came from (from: Home, or
-// the Goal page), or refuses with a page saying why, linking back there, and
-// changes nothing.
+// and only once. It returns to the page the Undo came from (its return:
+// Home, or else the Goal page), or refuses with a page saying why, linking
+// back there, and changes nothing.
 func (s *Server) handleUndoDeclineParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	back := "/home"
 	id, ok := s.undoIDFromPath(w, r, current, back)
@@ -141,7 +141,7 @@ func (s *Server) handleUndoDeclineParentSuggestion(w http.ResponseWriter, r *htt
 		s.refuseUndo(w, r, current, back, err)
 		return
 	}
-	back = requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
+	back = returnTo(r, goalPath(p.Goal.ID))
 	if err := s.svc.UndoDeclineParentSuggestion(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
 		s.refuseUndo(w, r, current, back, err)
 		return
@@ -168,9 +168,9 @@ func (s *Server) handleWithdrawParentSuggestion(w http.ResponseWriter, r *http.R
 // declined a Parent suggestion (offer), with the Undo that reopens it — or nil
 // when the offer isn't for a declined suggestion on a Goal current Owns.
 // goalID, when not 0, is the Goal page carrying it, which shows only its own
-// Goal's. from names the page for the Undo to return to, as the Decline's own
-// from did.
-func (s *Server) suggestionDeclineToast(ctx context.Context, offer undoOffer, current domain.Account, goalID int64, from string) *toast {
+// Goal's. back is the page for the Undo to return to, as the Decline's own
+// return did, or "" for the Goal page.
+func (s *Server) suggestionDeclineToast(ctx context.Context, offer undoOffer, current domain.Account, goalID int64, back string) *toast {
 	id, ok := offer.of(undoSuggestionDecline)
 	if !ok {
 		return nil
@@ -183,7 +183,7 @@ func (s *Server) suggestionDeclineToast(ctx context.Context, offer undoOffer, cu
 	return &toast{
 		Message: fmt.Sprintf("Suggestion declined: %s won't be linked to %s.", p.Goal.Title, p.Parent.Title),
 		Undo:    fmt.Sprintf("/parent-suggestions/%d/undo-decline", p.ID),
-		Fields:  offer.fields(fromField(from)...),
+		Fields:  offer.fields(undoReturnFields(back)...),
 	}
 }
 

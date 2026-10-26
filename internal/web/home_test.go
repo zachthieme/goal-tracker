@@ -1127,12 +1127,12 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 			t.Errorf("the row offers no %s:\n%s", label, renderNode(row))
 			continue
 		}
-		if got := formSubmission(form).Get("from"); got != "home" {
-			t.Errorf("Home's %s says it came from %q, want home: %s", label, got, renderNode(form))
+		if got := formSubmission(form).Get("return"); got != "/home" {
+			t.Errorf("Home's %s returns to %q, want /home: %s", label, got, renderNode(form))
 		}
 	}
 
-	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"from": {"home"}})
+	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"return": {"/home"}})
 	defer func() { _ = resp.Body.Close() }()
 	landed := parsePage(t, readBody(t, resp))
 	if resp.Request.URL.Path != "/home" {

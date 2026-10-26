@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -67,8 +66,8 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 }
 
 // handleRejectHandoff rejects a pending Handoff; only the new Owner may. It
-// returns to the page the reject came from (from: Home, or the pending page),
-// which offers Undo once in a toast.
+// returns to the page the reject came from (its return: Home, or else the
+// pending page), which offers Undo once in a toast.
 func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.handoffIDFromPath(w, r)
 	if !ok {
@@ -79,17 +78,17 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 		s.writeHandoffDecisionError(w, r, "Can't reject Handoff", err)
 		return
 	}
-	back := requestPage(r.FormValue("from"), "/handoffs")
+	back := returnTo(r, "/handoffs")
 	offerUndo(w, back, undoHandoffRejection, id, token)
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // handleRestoreHandoff puts the rejected Handoff in the path back as pending;
 // only the person who rejected it may, with the toast's token, and only once.
-// It returns to the page the Undo came from (from), or refuses with a page
-// saying why, linking back there, and changes nothing.
+// It returns to the page the Undo came from (its return), or refuses with a
+// page saying why, linking back there, and changes nothing.
 func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	back := requestPage(r.FormValue("from"), "/handoffs")
+	back := returnTo(r, "/handoffs")
 	id, ok := s.undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
@@ -103,9 +102,10 @@ func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, cu
 
 // handoffRejectionToast is the toast a page carries straight after current
 // rejected a Handoff (offer), with the Undo that puts it back — or nil when
-// the offer isn't for a Handoff current rejected and can still undo. from
-// names the page for the Undo to return to, as the reject's own from did.
-func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, current domain.Account, from string) *toast {
+// the offer isn't for a Handoff current rejected and can still undo. back is
+// the page for the Undo to return to, as the reject's own return did, or ""
+// for the pending page.
+func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, current domain.Account, back string) *toast {
 	id, ok := offer.of(undoHandoffRejection)
 	if !ok {
 		return nil
@@ -117,12 +117,13 @@ func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, cur
 	return &toast{
 		Message: fmt.Sprintf("Handoff rejected: %s stays with %s.", ho.Goal.Title, ho.From.Label()),
 		Undo:    fmt.Sprintf("/handoffs/%d/restore", ho.ID),
-		Fields:  offer.fields(fromField(from)...),
+		Fields:  offer.fields(undoReturnFields(back)...),
 	}
 }
 
 // handleDepartAccount marks the Account in the path as departed, making the Goals
-// they still own Ownerless. Only an Admin may.
+// they still own Ownerless, and comes back to the form's return, or else
+// /goals. Only an Admin may.
 func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -133,12 +134,12 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		s.writeHandoffError(w, r, "Can't mark departed", "/home", err)
 		return
 	}
-	redirectBack(w, r)
+	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
 }
 
 // handleReturnAccount reverses the departure of the Account in the path, so the
-// Goals they still own stop being Ownerless and they can sign in again. Only an
-// Admin may.
+// Goals they still own stop being Ownerless and they can sign in again, and
+// comes back to the form's return, or else /goals. Only an Admin may.
 func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -149,7 +150,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 		s.writeHandoffError(w, r, "Can't mark returned", "/home", err)
 		return
 	}
-	redirectBack(w, r)
+	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
 }
 
 // handleReassignGoal reassigns an Ownerless Goal to the Account named by email.
@@ -178,23 +179,6 @@ func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goa
 	s.writeHandoffError(w, r, refused, goalPath(goalID), err)
 }
 
-// redirectBack returns to wherever an action was triggered, usually a Goal page.
-// It keeps only the Referer's path and query, and only when localPath accepts
-// them, so it never leaves the app; otherwise it goes to /goals.
-func redirectBack(w http.ResponseWriter, r *http.Request) {
-	target := "/goals"
-	if ref, err := url.Parse(r.Header.Get("Referer")); err == nil {
-		back := ref.EscapedPath()
-		if ref.RawQuery != "" {
-			back += "?" + ref.RawQuery
-		}
-		if localPath(back) {
-			target = back
-		}
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
-}
-
 func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -206,10 +190,11 @@ func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int6
 
 // writeHandoffDecisionError refuses an Accept or Reject of a Handoff with
 // refuse's page headed refused (e.g. "Can't accept Handoff"), linking back to
-// the page the decision came from (from: Home, or the pending page). A Handoff
+// the page the decision came from (its return: Home, or else the pending
+// page). A Handoff
 // that doesn't exist is the Not found page.
 func (s *Server) writeHandoffDecisionError(w http.ResponseWriter, r *http.Request, refused string, err error) {
-	s.refuse(w, r, refused, requestPage(r.FormValue("from"), "/handoffs"), err)
+	s.refuse(w, r, refused, returnTo(r, "/handoffs"), err)
 }
 
 // writeHandoffError refuses a Handoff, Reassign, Depart or Return with

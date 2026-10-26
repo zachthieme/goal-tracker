@@ -18,7 +18,7 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 	if !ok {
 		return
 	}
-	back := followUpsReturn(r.FormValue("return"))
+	back := followUpsReturn(returnTo(r, "/follow-ups"))
 	if _, err := s.svc.Nudge(r.Context(), current.ID, goalID); err != nil {
 		s.refuse(w, r, "Can't nudge", back, err, refuseFailureSaying("The Nudge couldn't be sent, so nothing changed. Try again."))
 		return
@@ -26,11 +26,12 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
-// followUpsReturn is where a Nudge returns: the Follow-ups page at back when back is
-// that page, its filters and all, and the plain Follow-ups page otherwise.
+// followUpsReturn is where a Nudge returns: the Follow-ups page at back, a
+// page returnTo accepted, when back is that page, its filters and all, and the
+// plain Follow-ups page otherwise.
 func followUpsReturn(back string) string {
 	u, err := url.Parse(back)
-	if err != nil || !localPath(back) || u.Path != "/follow-ups" || u.RawQuery == "" {
+	if err != nil || u.Path != "/follow-ups" || u.RawQuery == "" {
 		return "/follow-ups"
 	}
 	return "/follow-ups?" + u.RawQuery

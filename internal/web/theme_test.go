@@ -134,7 +134,8 @@ func TestChoosingAThemePinsItAndSystemClearsIt(t *testing.T) {
 }
 
 // After choosing, the person lands back on the page they chose from. A return
-// address that isn't a path on this site lands on Home instead.
+// address that isn't a path on this site, or holds a control character, lands
+// on Home instead.
 func TestChoosingAThemeReturnsToThePage(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +148,9 @@ func TestChoosingAThemeReturnsToThePage(t *testing.T) {
 	}{
 		{"/goals?owner=me", "/goals?owner=me"},
 		{"/signin", "/signin"},
+		{"/goals/5", "/goals/5"},
+		// Posted as return=/x%0Ay: decoded, it holds a newline.
+		{"/x\ny", "/home"},
 		{"", "/home"},
 		{"goals", "/home"},
 		{"https://evil.example/", "/home"},

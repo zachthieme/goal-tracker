@@ -15,6 +15,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	nethtml "golang.org/x/net/html"
 )
 
 // An Owner starts a Handoff from their Goal page; the proposed new Owner sees it
@@ -440,10 +441,11 @@ func TestNonAdminCannotMarkReturned(t *testing.T) {
 	}
 }
 
-// Marking someone Departed returns the Admin to the page the Referer names,
-// but only as a path on this app: a Referer from another origin keeps just its
-// path and query, and one with no usable path goes to /goals.
-func TestDepartRedirectsBackOnlyWithinTheApp(t *testing.T) {
+// Marking someone Departed or returned sends the Admin back to the page the
+// form's return names, but only a path on this app: none, or one a browser
+// would read as another site, goes to /goals. The Referer is never read, so
+// one naming another page changes nothing.
+func TestDepartAndReturnRedirectBackOnlyWithinTheApp(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -452,41 +454,86 @@ func TestDepartRedirectsBackOnlyWithinTheApp(t *testing.T) {
 	bossClient := noRedirects(signInClient(t, ts.URL, "boss@example.com"))
 
 	for i, tc := range []struct {
-		name, referer, want string
+		name, back, want string
 	}{
-		{"the app's own page", ts.URL + "/admin", "/admin"},
-		{"another origin", "https://evil.example/goals/5?x=1", "/goals/5?x=1"},
-		{"a path starting //", "https://app.example//evil.example/x", "/goals"},
-		{"a Referer that doesn't parse", "http://%zz/goals/5", "/goals"},
-		{"an empty path", "https://evil.example", "/goals"},
-		{"no Referer", "", "/goals"},
+		{"the Admin page", "/admin", "/admin"},
+		{"a Goal page with a query", "/goals/5?x=1", "/goals/5?x=1"},
+		{"no return", "", "/goals"},
+		{"another origin", "https://evil.example/goals/5", "/goals"},
+		{"a path starting //", "//evil.example/x", "/goals"},
+		{"a path with a backslash", `/\evil.example`, "/goals"},
+		{"a path with a newline", "/goals/5\n", "/goals"},
 	} {
 		who := h.SignIn(fmt.Sprintf("leaver%d@example.com", i))
-		if got := departWithReferer(t, bossClient, ts.URL, who, tc.referer); got != tc.want {
-			t.Errorf("depart with %s (Referer %q) redirected to %q, want %q", tc.name, tc.referer, got, tc.want)
+		depart := fmt.Sprintf("%s/accounts/%d/depart", ts.URL, who.ID)
+		if got := markAccount(t, bossClient, depart, tc.back); got != tc.want {
+			t.Errorf("depart with %s (return %q) redirected to %q, want %q", tc.name, tc.back, got, tc.want)
+		}
+		ret := fmt.Sprintf("%s/accounts/%d/return", ts.URL, who.ID)
+		if got := markAccount(t, bossClient, ret, tc.back); got != tc.want {
+			t.Errorf("return with %s (return %q) redirected to %q, want %q", tc.name, tc.back, got, tc.want)
 		}
 	}
 }
 
-// departWithReferer marks who Departed as client, sending referer as the
-// Referer (none when empty), and returns where the response redirects.
-func departWithReferer(t *testing.T, client *http.Client, baseURL string, who domain.Account, referer string) string {
+// Marking a Goal's Owner departed or returned from the Goal page's People
+// block comes back to that Goal's plain page, not the one with the form open.
+func TestDepartAndReturnFromTheGoalPageComeBackToIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "ada@example.com"))
+
+	for _, tc := range []struct {
+		name, open, form string
+		goal             domain.Goal
+	}{
+		{"Mark owner departed", "depart", "depart-owner", goal},
+		{"Mark returned", "return", "return-owner", orphan},
+	} {
+		page := getPage(t, client, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, tc.goal.ID, tc.open))
+		form := findByTestID(t, page, tc.form)
+		resp := postForm(t, client, ts.URL+attrOf(form, "action"), formSubmission(form))
+		_ = readBody(t, resp)
+		_ = resp.Body.Close()
+		if got, want := resp.Header.Get("Location"), fmt.Sprintf("/goals/%d", tc.goal.ID); resp.StatusCode != http.StatusSeeOther || got != want {
+			t.Errorf("%s: status %d to %q, want 303 to %q", tc.name, resp.StatusCode, got, want)
+		}
+	}
+}
+
+// markAccount posts a Depart or Return to rawURL as client, with back as the
+// form's return (none when empty) and a Referer naming another page, and
+// returns where the response redirects.
+func markAccount(t *testing.T, client *http.Client, rawURL, back string) string {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, fmt.Sprintf("%s/accounts/%d/depart", baseURL, who.ID), nil)
+	form := url.Values{}
+	if back != "" {
+		form.Set("return", back)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	if referer != "" {
-		req.Header.Set("Referer", referer)
-	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "https://app.example/referer-page")
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("POST depart: %v", err)
+		t.Fatalf("POST %s: %v", rawURL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("depart %s: status %d, want 303", who.Email, resp.StatusCode)
+		t.Fatalf("POST %s: status %d, want 303", rawURL, resp.StatusCode)
 	}
 	return resp.Header.Get("Location")
 }
@@ -805,9 +852,9 @@ func TestADecisionOnADecidedHandoffSaysHowItWasDecided(t *testing.T) {
 		back              string
 	}{
 		{"accept", "Can't accept Handoff", url.Values{}, "/handoffs"},
-		{"accept", "Can't accept Handoff", url.Values{"from": {"home"}}, "/home"},
+		{"accept", "Can't accept Handoff", url.Values{"return": {"/home"}}, "/home"},
 		{"reject", "Can't reject Handoff", url.Values{}, "/handoffs"},
-		{"reject", "Can't reject Handoff", url.Values{"from": {"home"}}, "/home"},
+		{"reject", "Can't reject Handoff", url.Values{"return": {"/home"}}, "/home"},
 	}
 	for _, d := range decisions {
 		resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/%s", ts.URL, ho.ID, d.decision), d.form)
@@ -885,12 +932,16 @@ func rejectHandoff(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 	pat = signInClient(t, ts.URL, "pat@example.com")
 	form := url.Values{}
 	if from == "/home" {
-		row := homeRow(t, pageElement(t, getBody(t, pat, ts.URL+"/home"), "ul", "home-requests"), goal)
-		reject := between(t, row, fmt.Sprintf(`action="/handoffs/%d/reject"`, ho.ID), "</form>")
-		if !strings.Contains(reject, `name="from" value="home"`) {
-			t.Fatalf("Home's Reject doesn't say it came from Home:\n%s", reject)
+		action := fmt.Sprintf("/handoffs/%d/reject", ho.ID)
+		requests := findByTestID(t, getPage(t, pat, ts.URL+"/home"), "home-requests")
+		rejects := findAll(requests, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
+		if len(rejects) != 1 {
+			t.Fatalf("Home offers %d Rejects posting to %s, want 1", len(rejects), action)
 		}
-		form.Set("from", "home")
+		form = formSubmission(rejects[0])
+		if got := form.Get("return"); got != "/home" {
+			t.Fatalf("Home's Reject returns to %q, want /home: %s", got, renderNode(rejects[0]))
+		}
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), form)
 	defer func() { _ = resp.Body.Close() }()

@@ -409,12 +409,16 @@ func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 	pat = signInClient(t, ts.URL, "pat@example.com")
 	form := url.Values{}
 	if from == "/home" {
-		row := homeRow(t, pageElement(t, getBody(t, pat, ts.URL+"/home"), "ul", "home-requests"), child)
-		reject := between(t, row, fmt.Sprintf(`action="/links/%d/reject"`, link.ID), "</form>")
-		if !strings.Contains(reject, `name="from" value="home"`) {
-			t.Fatalf("Home's Reject doesn't say it came from Home:\n%s", reject)
+		action := fmt.Sprintf("/links/%d/reject", link.ID)
+		requests := findByTestID(t, getPage(t, pat, ts.URL+"/home"), "home-requests")
+		rejects := findAll(requests, func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
+		if len(rejects) != 1 {
+			t.Fatalf("Home offers %d Rejects posting to %s, want 1", len(rejects), action)
 		}
-		form.Set("from", "home")
+		form = formSubmission(rejects[0])
+		if got := form.Get("return"); got != "/home" {
+			t.Fatalf("Home's Reject returns to %q, want /home: %s", got, renderNode(rejects[0]))
+		}
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/reject", ts.URL, link.ID), form)
 	defer func() { _ = resp.Body.Close() }()
@@ -873,8 +877,8 @@ func TestARefusedSuggestionActionShowsAPageLinkingBack(t *testing.T) {
 		reason  string
 		back    string
 	}{
-		{pat, "decline", url.Values{"from": {"home"}}, "Can't decline suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
-		{pat, "accept", url.Values{"from": {"home"}}, "Can't accept suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
+		{pat, "decline", url.Values{"return": {"/home"}}, "Can't decline suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
+		{pat, "accept", url.Values{"return": {"/home"}}, "Can't accept suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
 		{pat, "decline", url.Values{}, "Can't decline suggestion", "Only the Goal's Owner may decide a parent suggestion.", fmt.Sprintf("/goals/%d", goal.ID)},
 		{sam, "withdraw", url.Values{}, "Can't withdraw suggestion", "Only the person who made a suggestion may withdraw it.", fmt.Sprintf("/goals/%d", goal.ID)},
 	}
@@ -947,9 +951,9 @@ func TestADecisionOnAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
 		back              string
 	}{
 		{"accept", "Can't accept link", url.Values{}, "/links"},
-		{"accept", "Can't accept link", url.Values{"from": {"home"}}, "/home"},
+		{"accept", "Can't accept link", url.Values{"return": {"/home"}}, "/home"},
 		{"reject", "Can't reject link", url.Values{}, "/links"},
-		{"reject", "Can't reject link", url.Values{"from": {"home"}}, "/home"},
+		{"reject", "Can't reject link", url.Values{"return": {"/home"}}, "/home"},
 	}
 	for _, d := range decisions {
 		resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/%s", ts.URL, link.ID, d.decision), d.form)
