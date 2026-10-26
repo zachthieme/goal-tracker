@@ -1421,19 +1421,6 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 // suggestions_test.go). goals_test.go and home_test.go read their pages
 // through the parser helpers instead.
 
-// homeRow returns the row of a Home section that links to g, failing the test
-// when the section has none.
-func homeRow(t *testing.T, section string, g domain.Goal) string {
-	t.Helper()
-	at := strings.Index(section, navTo(g.ID))
-	if at < 0 {
-		t.Fatalf("section has no row for %q:\n%s", g.Title, section)
-	}
-	start := strings.LastIndex(section[:at], "<li")
-	end := strings.Index(section[at:], "</li>")
-	return section[start : at+end]
-}
-
 // hasClass reports whether an open tag's class attribute holds class.
 func hasClass(openTag, class string) bool {
 	_, rest, ok := strings.Cut(openTag, `class="`)
