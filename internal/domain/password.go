@@ -89,10 +89,19 @@ type IssuedPasswordLink struct {
 // nothing, unless actorID is an Admin, and ErrNotAnEmail, creating nothing,
 // for anything but a bare email address.
 func (s *Service) IssuePasswordLink(ctx context.Context, actorID int64, emailAddr string) (IssuedPasswordLink, error) {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
+	var issued IssuedPasswordLink
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		var err error
+		issued, err = tx.issuePasswordLink(ctx, emailAddr)
+		return err
+	})
+	if err != nil {
 		return IssuedPasswordLink{}, err
 	}
-	return s.issuePasswordLink(ctx, emailAddr)
+	return issued, nil
 }
 
 // IssueOperatorPasswordLink is IssuePasswordLink for whoever runs the host,
@@ -102,32 +111,41 @@ func (s *Service) IssueOperatorPasswordLink(ctx context.Context, emailAddr strin
 	return s.issuePasswordLink(ctx, emailAddr)
 }
 
-// issuePasswordLink is IssuePasswordLink without the Admin check.
+// issuePasswordLink is IssuePasswordLink without the Admin check, the Account
+// and its link made in one transaction.
 func (s *Service) issuePasswordLink(ctx context.Context, emailAddr string) (IssuedPasswordLink, error) {
 	if !isBareEmail(emailAddr) {
 		return IssuedPasswordLink{}, fmt.Errorf("%w: %q", ErrNotAnEmail, emailAddr)
 	}
-	acc, err := s.EnsureAccount(ctx, emailAddr)
+	var issued IssuedPasswordLink
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		acc, err := tx.EnsureAccount(ctx, emailAddr)
+		if err != nil {
+			return err
+		}
+		if acc.Departed {
+			return departedPasswordError(acc)
+		}
+		raw := make([]byte, 32)
+		if _, err := rand.Read(raw); err != nil {
+			return fmt.Errorf("make link token: %w", err)
+		}
+		token := base64.RawURLEncoding.EncodeToString(raw)
+		expires := tx.clock.Now().UTC().Add(passwordLinkLife)
+		if err := tx.queries.UpsertPasswordLink(ctx, db.UpsertPasswordLinkParams{
+			AccountID: acc.ID,
+			TokenHash: passwordLinkHash(token),
+			ExpiresAt: expires.Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("store password link: %w", err)
+		}
+		issued = IssuedPasswordLink{Token: token, Expires: expires, Account: acc}
+		return nil
+	})
 	if err != nil {
 		return IssuedPasswordLink{}, err
 	}
-	if acc.Departed {
-		return IssuedPasswordLink{}, departedPasswordError(acc)
-	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return IssuedPasswordLink{}, fmt.Errorf("make link token: %w", err)
-	}
-	token := base64.RawURLEncoding.EncodeToString(raw)
-	expires := s.clock.Now().UTC().Add(passwordLinkLife)
-	if err := s.queries.UpsertPasswordLink(ctx, db.UpsertPasswordLinkParams{
-		AccountID: acc.ID,
-		TokenHash: passwordLinkHash(token),
-		ExpiresAt: expires.Format(timeFormat),
-	}); err != nil {
-		return IssuedPasswordLink{}, fmt.Errorf("store password link: %w", err)
-	}
-	return IssuedPasswordLink{Token: token, Expires: expires, Account: acc}, nil
+	return issued, nil
 }
 
 // PasswordLinkAccount is the Account a set-password link sets the password of.
@@ -155,7 +173,9 @@ func (s *Service) PasswordLinkAccount(ctx context.Context, token string) (Accoun
 // the person had (EndSessions), so a browser signed in before is signed out.
 // It returns ErrLinkInvalid for a link that is unknown, expired, or used,
 // ErrPasswordRules for a password too short or long, leaving the link to try
-// again, and ErrDeparted for a Departed person.
+// again, and ErrDeparted for a Departed person. It checks the link and the
+// rules before hashing, outside any transaction, so the hash doesn't hold the
+// write lock, and checks the link again in the transaction that stores it.
 func (s *Service) SetPassword(ctx context.Context, token, password string) (Account, error) {
 	acc, err := s.PasswordLinkAccount(ctx, token)
 	if err != nil {
@@ -172,6 +192,12 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 		return Account{}, err
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		if acc, err = tx.PasswordLinkAccount(ctx, token); err != nil {
+			return err
+		}
+		if acc.Departed {
+			return departedPasswordError(acc)
+		}
 		if err := tx.queries.SetAccountPassword(ctx, db.SetAccountPasswordParams{AccountID: acc.ID, PasswordHash: &hash}); err != nil {
 			return fmt.Errorf("store password: %w", err)
 		}
@@ -221,31 +247,57 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	if err != nil {
 		return Account{}, err
 	}
-	now := s.clock.Now()
-	locked, err := lockedAt(stored, now)
+	// The hash ran outside any transaction, so as not to hold the write lock;
+	// what it was checked against is read again in the one that records it.
+	var acc Account
+	var refused error
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		current, err := tx.queries.GetAccountPassword(ctx, row.ID)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (current.PasswordHash == nil || *current.PasswordHash != *stored.PasswordHash) {
+			refused = ErrBadCredentials // the password changed while it was hashed
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("get password: %w", err)
+		}
+		now := tx.clock.Now()
+		locked, err := lockedAt(current, now)
+		if err != nil {
+			return err
+		}
+		if locked {
+			refused = ErrBadCredentials
+			return nil
+		}
+		if !matches {
+			lockedUntil := now.UTC().Add(signInLockout).Format(timeFormat)
+			if err := tx.queries.RecordFailedSignin(ctx, db.RecordFailedSigninParams{
+				LockAt: signInLockAt, LockedUntil: &lockedUntil, AccountID: row.ID,
+			}); err != nil {
+				return fmt.Errorf("record failed sign-in: %w", err)
+			}
+			refused = ErrBadCredentials
+			return nil
+		}
+		if current.FailedSignins != 0 || current.LockedUntil != nil {
+			if err := tx.queries.ClearFailedSignins(ctx, row.ID); err != nil {
+				return fmt.Errorf("clear failed sign-ins: %w", err)
+			}
+		}
+		person, err := tx.queries.GetAccount(ctx, row.ID)
+		if err != nil {
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if acc = accountFromRow(person); acc.Departed {
+			refused = departedPasswordError(acc)
+		}
+		return nil
+	})
 	if err != nil {
 		return Account{}, err
 	}
-	if locked {
-		return Account{}, ErrBadCredentials
-	}
-	if !matches {
-		lockedUntil := now.UTC().Add(signInLockout).Format(timeFormat)
-		if err := s.queries.RecordFailedSignin(ctx, db.RecordFailedSigninParams{
-			LockAt: signInLockAt, LockedUntil: &lockedUntil, AccountID: row.ID,
-		}); err != nil {
-			return Account{}, fmt.Errorf("record failed sign-in: %w", err)
-		}
-		return Account{}, ErrBadCredentials
-	}
-	if stored.FailedSignins != 0 || stored.LockedUntil != nil {
-		if err := s.queries.ClearFailedSignins(ctx, row.ID); err != nil {
-			return Account{}, fmt.Errorf("clear failed sign-ins: %w", err)
-		}
-	}
-	acc := accountFromRow(row)
-	if acc.Departed {
-		return Account{}, departedPasswordError(acc)
+	if refused != nil {
+		return Account{}, refused
 	}
 	return acc, nil
 }

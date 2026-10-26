@@ -114,7 +114,8 @@ func (s *Service) RunEmailOutbox(ctx context.Context, every time.Duration) {
 
 // DeliverEmail sends the email in the outbox that is due, oldest first, and
 // marks each sent. Call it outside any transaction: each send waits on the
-// mail server.
+// mail server, so it sends outside one, and records each email's outcome in a
+// short one of its own, so it holds the write lock only while it records one.
 func (s *Service) DeliverEmail(ctx context.Context) error {
 	s.outbox.delivering.Lock()
 	defer s.outbox.delivering.Unlock()
@@ -128,11 +129,13 @@ func (s *Service) DeliverEmail(ctx context.Context) error {
 		if err != nil {
 			// One unreadable row mustn't hold up the rest: give up on it.
 			parseErr := fmt.Errorf("next attempt at %q: %w", row.NextAttemptAt, err)
-			if err := s.queries.RecordEmailFailure(ctx, db.RecordEmailFailureParams{
-				Attempts:      emailMaxAttempts,
-				LastError:     parseErr.Error(),
-				NextAttemptAt: now.Format(timeFormat),
-				ID:            row.ID,
+			if err := s.WithinTx(ctx, func(tx *Service) error {
+				return tx.queries.RecordEmailFailure(ctx, db.RecordEmailFailureParams{
+					Attempts:      emailMaxAttempts,
+					LastError:     parseErr.Error(),
+					NextAttemptAt: now.Format(timeFormat),
+					ID:            row.ID,
+				})
 			}); err != nil {
 				return fmt.Errorf("give up on email %d: %w", row.ID, err)
 			}
@@ -146,18 +149,22 @@ func (s *Service) DeliverEmail(ctx context.Context) error {
 		sendErr := s.email.Send(ctx, email.Message{To: row.Recipient, AccountID: row.AccountID, Subject: row.Subject, Body: row.Body})
 		if sendErr == nil {
 			sentAt := now.Format(timeFormat)
-			if err := s.queries.MarkEmailSent(ctx, db.MarkEmailSentParams{SentAt: &sentAt, ID: row.ID}); err != nil {
+			if err := s.WithinTx(ctx, func(tx *Service) error {
+				return tx.queries.MarkEmailSent(ctx, db.MarkEmailSentParams{SentAt: &sentAt, ID: row.ID})
+			}); err != nil {
 				return fmt.Errorf("mark email %d sent: %w", row.ID, err)
 			}
 			continue
 		}
 		attempts := row.Attempts + 1
 		next := now.Add(emailRetryAfter(attempts))
-		if err := s.queries.RecordEmailFailure(ctx, db.RecordEmailFailureParams{
-			Attempts:      attempts,
-			LastError:     sendErr.Error(),
-			NextAttemptAt: next.Format(timeFormat),
-			ID:            row.ID,
+		if err := s.WithinTx(ctx, func(tx *Service) error {
+			return tx.queries.RecordEmailFailure(ctx, db.RecordEmailFailureParams{
+				Attempts:      attempts,
+				LastError:     sendErr.Error(),
+				NextAttemptAt: next.Format(timeFormat),
+				ID:            row.ID,
+			})
 		}); err != nil {
 			return fmt.Errorf("record email %d failed: %w", row.ID, err)
 		}

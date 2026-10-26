@@ -82,7 +82,7 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 	}
 	s := &Service{
 		db:      sqlDB,
-		queries: db.New(sqlDB),
+		queries: db.New(writeOutsideTxGuard{db: sqlDB}),
 		clock:   clk,
 		email:   sender,
 		admins:  admins,
