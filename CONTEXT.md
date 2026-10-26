@@ -21,7 +21,7 @@ The person someone reports to, as the company's directory records it. It is read
 _Avoid_: boss, supervisor, lead, reports to (it collides with Report)
 
 **Timezone**:
-Where a person works, as the company's directory records it; read from the directory and never set in the tool. A person without one uses the company's. A Goal's own dates and cadence are judged in its Owner's Timezone: whether its Check-in is overdue, whether a Milestone or the back-to-Green date has passed, whether a Metric is off target, and its Run off Green. An Ownerless Goal uses the company's. Company-wide dates, such as a Report's baseline, stay in the company's timezone.
+Where a person works, as the company's directory records it; read from the directory and never set in the tool. A person without one uses the company's. A Goal's own dates and cadence are judged in its Owner's Timezone: whether its Check-in is overdue, whether a Milestone or the back-to-Green date has passed, whether a Metric is off target, and its Run off Green. An Ownerless Goal uses the company's. A Parent digest counts its past week in the Timezone of the parent Owner it goes to. Company-wide dates, such as a Report's baseline, stay in the company's timezone.
 _Avoid_: locale, location, region
 
 **Org**:

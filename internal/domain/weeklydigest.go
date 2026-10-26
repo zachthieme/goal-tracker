@@ -43,12 +43,18 @@ type WeeklyDigestProblem struct {
 const weeklyDigestDays = 7
 
 // WeeklyDigests is the page loader for the weekly Parent digests (ADR 0010):
-// one WeeklyDigest per parent Owner with something to report. It reads every
-// Goal, every accepted link and the children's Check-ins, Date Slips and
+// one WeeklyDigest per parent Owner with something to report, leaving out
+// anyone who has left the company. It reads every Goal, every accepted link,
+// every pending link request, and the children's Check-ins, Date Slips and
 // Freshness once each, in the same few queries however many Goals and links
 // there are, and judges each child once however many parents it has. Only
 // whether a child got worse and the Date Slips it recorded are judged against
 // the week, which each recipient counts in their own Timezone.
+//
+// Recipients come in the order they are first met: those with link requests by
+// their first Goal in ListGoals order, then those with problems by parent Goal
+// in that order. A digest's link requests come oldest first, and its problems
+// by parent, then by child newest first, as ChildrenOf orders them.
 func (s *Service) WeeklyDigests(ctx context.Context) ([]WeeklyDigest, error) {
 	goals, err := s.ListGoals(ctx)
 	if err != nil {
@@ -80,7 +86,7 @@ func (s *Service) WeeklyDigests(ctx context.Context) ([]WeeklyDigest, error) {
 		for _, childID := range childrenOf[parent.ID] {
 			c, ok := children[childID]
 			if !ok {
-				continue
+				continue // Done or Cancelled: nothing left at risk
 			}
 			if p := c.problemUnder(parent, weekStart); p.reportable() {
 				d := out.digest(parent.Owner)
@@ -167,7 +173,7 @@ func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[i
 	for _, c := range live {
 		parents := up[c.ID]
 		// A child's halted parents come newest first, as ParentsOf reads them.
-		slices.SortFunc(parents, func(a, b edge) int { return newestGoalFirst(a.parent, b.parent) })
+		slices.SortFunc(parents, func(a, b edge) int { return weeklyDigestNewestFirst(a.parent, b.parent) })
 		f := freshness[c.ID]
 		children[c.ID] = &weeklyDigestChild{
 			goal:               c,
@@ -180,7 +186,7 @@ func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[i
 	}
 	ordered := make(map[int64][]int64, len(childrenOf))
 	for parentID, kids := range childrenOf {
-		slices.SortFunc(kids, newestGoalFirst)
+		slices.SortFunc(kids, weeklyDigestNewestFirst)
 		for _, k := range kids {
 			ordered[parentID] = append(ordered[parentID], k.ID)
 		}
@@ -230,9 +236,9 @@ func (s *Service) weeklyDigestTimezone(a Account) *time.Location {
 	return s.loc
 }
 
-// newestGoalFirst orders Goals newest first, as ListChildGoals and
+// weeklyDigestNewestFirst orders Goals newest first, as ListChildGoals and
 // ListParentGoals do.
-func newestGoalFirst(a, b Goal) int {
+func weeklyDigestNewestFirst(a, b Goal) int {
 	if c := b.CreatedAt.Compare(a.CreatedAt); c != 0 {
 		return c
 	}
