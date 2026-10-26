@@ -74,33 +74,41 @@ type AddMetricInput struct {
 // target date are required. Only the Goal's Owner may add one
 // (ErrNotAuthorized).
 func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInput) (Metric, error) {
-	name := strings.TrimSpace(in.Name)
-	unit := strings.TrimSpace(in.Unit)
-	if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
-		return Metric{}, err
-	}
-	if _, err := s.queries.GetGoal(ctx, in.GoalID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Metric{}, Refuse(ErrValidation, "goal does not exist")
+	var row db.Metric
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		name := strings.TrimSpace(in.Name)
+		unit := strings.TrimSpace(in.Unit)
+		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
+			return err
 		}
-		return Metric{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, in.GoalID); err != nil {
-		return Metric{}, err
-	}
+		if _, err := tx.queries.GetGoal(ctx, in.GoalID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, in.GoalID); err != nil {
+			return err
+		}
 
-	row, err := s.queries.CreateMetric(ctx, db.CreateMetricParams{
-		GoalID:     in.GoalID,
-		Name:       name,
-		Unit:       unit,
-		Direction:  in.Direction,
-		Baseline:   in.Baseline,
-		Target:     in.Target,
-		TargetDate: in.TargetDate.Format(dateFormat),
-		CreatedAt:  s.clock.Now().Format(timeFormat),
+		var err error
+		row, err = tx.queries.CreateMetric(ctx, db.CreateMetricParams{
+			GoalID:     in.GoalID,
+			Name:       name,
+			Unit:       unit,
+			Direction:  in.Direction,
+			Baseline:   in.Baseline,
+			Target:     in.Target,
+			TargetDate: in.TargetDate.Format(dateFormat),
+			CreatedAt:  tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create metric: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return Metric{}, fmt.Errorf("create metric: %w", err)
+		return Metric{}, err
 	}
 	return metricFromRow(row), nil
 }
@@ -119,33 +127,40 @@ type EditMetricInput struct {
 // EditMetric changes a Metric's fields. The same rules as AddMetric apply,
 // its Goal's Owner alone included.
 func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricInput) (Metric, error) {
-	name := strings.TrimSpace(in.Name)
-	unit := strings.TrimSpace(in.Unit)
-	if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
-		return Metric{}, err
-	}
-	current, err := s.queries.GetMetric(ctx, in.MetricID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Metric{}, fmt.Errorf("%w: metric %d", ErrNotFound, in.MetricID)
+	var row db.Metric
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		name := strings.TrimSpace(in.Name)
+		unit := strings.TrimSpace(in.Unit)
+		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
+			return err
 		}
-		return Metric{}, fmt.Errorf("look up metric: %w", err)
-	}
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, current.GoalID); err != nil {
-		return Metric{}, err
-	}
+		current, err := tx.queries.GetMetric(ctx, in.MetricID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: metric %d", ErrNotFound, in.MetricID)
+			}
+			return fmt.Errorf("look up metric: %w", err)
+		}
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, current.GoalID); err != nil {
+			return err
+		}
 
-	row, err := s.queries.UpdateMetric(ctx, db.UpdateMetricParams{
-		Name:       name,
-		Unit:       unit,
-		Direction:  in.Direction,
-		Baseline:   in.Baseline,
-		Target:     in.Target,
-		TargetDate: in.TargetDate.Format(dateFormat),
-		ID:         in.MetricID,
+		row, err = tx.queries.UpdateMetric(ctx, db.UpdateMetricParams{
+			Name:       name,
+			Unit:       unit,
+			Direction:  in.Direction,
+			Baseline:   in.Baseline,
+			Target:     in.Target,
+			TargetDate: in.TargetDate.Format(dateFormat),
+			ID:         in.MetricID,
+		})
+		if err != nil {
+			return fmt.Errorf("update metric: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return Metric{}, fmt.Errorf("update metric: %w", err)
+		return Metric{}, err
 	}
 	return metricFromRow(row), nil
 }

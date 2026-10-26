@@ -28,21 +28,25 @@ type TitleRevision struct {
 // nothing. authorID records who made the change, and must be the Goal's Owner
 // or an Admin (ErrNotAuthorized; see RequireGoalOwnerOrAdmin).
 func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, authorID int64) (Goal, error) {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return Goal{}, Refuse(ErrValidation, "a Goal needs a title")
-	}
-	if err := s.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
-		return Goal{}, err
-	}
-	current, err := s.loadGoal(ctx, goalID)
-	if err != nil {
-		return Goal{}, err
-	}
-	if title == current.Title {
-		return current, nil
-	}
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	var current Goal
+	unchanged := false
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		title = strings.TrimSpace(title)
+		if title == "" {
+			return Refuse(ErrValidation, "a Goal needs a title")
+		}
+		if err := tx.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
+			return err
+		}
+		var err error
+		current, err = tx.loadGoal(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		if title == current.Title {
+			unchanged = true
+			return nil
+		}
 		if _, err := tx.queries.SetGoalTitle(ctx, db.SetGoalTitleParams{Title: title, ID: goalID}); err != nil {
 			return fmt.Errorf("set title: %w", err)
 		}
@@ -60,6 +64,9 @@ func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, aut
 	if err != nil {
 		return Goal{}, err
 	}
+	if unchanged {
+		return current, nil
+	}
 	return s.loadGoal(ctx, goalID)
 }
 
@@ -70,11 +77,11 @@ func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, aut
 // revision, and a refused save changes neither. Each field is checked as
 // EditTitle and EditWhyItMatters check it.
 func (s *Service) EditTitleAndWhyItMatters(ctx context.Context, actorID, goalID int64, title *string, whyItMatters string) (Goal, error) {
-	if err := s.RequireGoalOwnerOrAdmin(ctx, actorID, goalID); err != nil {
-		return Goal{}, err
-	}
 	var g Goal
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.RequireGoalOwnerOrAdmin(ctx, actorID, goalID); err != nil {
+			return err
+		}
 		var err error
 		if g, err = tx.loadGoal(ctx, goalID); err != nil {
 			return err

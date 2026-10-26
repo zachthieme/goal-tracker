@@ -205,24 +205,32 @@ type AddMilestoneInput struct {
 // Milestone change. Name and target date are required. Only the Goal's Owner
 // or a Delegate may add one (ErrNotAuthorized), as for AddMilestoneAsAuthor.
 func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilestoneInput) (Milestone, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a name")
-	}
-	if in.TargetDate.IsZero() {
-		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a date")
-	}
-	goal, err := s.queries.GetGoal(ctx, in.GoalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Milestone{}, Refuse(ErrValidation, "goal does not exist")
+	var out Milestone
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return Refuse(ErrValidation, "a Milestone needs a name")
 		}
-		return Milestone{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if err := s.authorizeMilestoneChange(ctx, goal.Goal, actorID); err != nil {
+		if in.TargetDate.IsZero() {
+			return Refuse(ErrValidation, "a Milestone needs a date")
+		}
+		goal, err := tx.queries.GetGoal(ctx, in.GoalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if err := tx.authorizeMilestoneChange(ctx, goal.Goal, actorID); err != nil {
+			return err
+		}
+		out, err = tx.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
+		return err
+	})
+	if err != nil {
 		return Milestone{}, err
 	}
-	return s.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
+	return out, nil
 }
 
 // errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
@@ -357,43 +365,50 @@ type EditMilestoneInput struct {
 // Check-in as a Date Slip. Only its Goal's Owner or a Delegate may edit it
 // (ErrNotAuthorized; see RequireMilestoneEditor).
 func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMilestoneInput) (Milestone, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a name")
-	}
-	if in.TargetDate.IsZero() {
-		return Milestone{}, Refuse(ErrValidation, "a Milestone needs a date")
-	}
-	current, err := s.queries.GetMilestone(ctx, in.MilestoneID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Milestone{}, fmt.Errorf("%w: milestone %d", ErrNotFound, in.MilestoneID)
+	var row db.Milestone
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return Refuse(ErrValidation, "a Milestone needs a name")
 		}
-		return Milestone{}, fmt.Errorf("look up milestone: %w", err)
-	}
-	if err := s.RequireMilestoneEditor(ctx, actorID, in.MilestoneID); err != nil {
-		return Milestone{}, err
-	}
-	// Once the Goal is past Proposed its Milestone dates move only in a
-	// Check-in, which records the Date Slip and its reason (CONTEXT.md: Date
-	// Slip).
-	if in.TargetDate.Format(dateFormat) != current.TargetDate {
-		goal, err := s.queries.GetGoal(ctx, current.GoalID)
+		if in.TargetDate.IsZero() {
+			return Refuse(ErrValidation, "a Milestone needs a date")
+		}
+		current, err := tx.queries.GetMilestone(ctx, in.MilestoneID)
 		if err != nil {
-			return Milestone{}, fmt.Errorf("look up goal: %w", err)
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: milestone %d", ErrNotFound, in.MilestoneID)
+			}
+			return fmt.Errorf("look up milestone: %w", err)
 		}
-		if goal.Goal.Lifecycle != LifecycleProposed {
-			return Milestone{}, Refuse(ErrValidation, "change a Milestone's date in a Check-in, with a reason")
+		if err := tx.RequireMilestoneEditor(ctx, actorID, in.MilestoneID); err != nil {
+			return err
 		}
-	}
+		// Once the Goal is past Proposed its Milestone dates move only in a
+		// Check-in, which records the Date Slip and its reason (CONTEXT.md:
+		// Date Slip).
+		if in.TargetDate.Format(dateFormat) != current.TargetDate {
+			goal, err := tx.queries.GetGoal(ctx, current.GoalID)
+			if err != nil {
+				return fmt.Errorf("look up goal: %w", err)
+			}
+			if goal.Goal.Lifecycle != LifecycleProposed {
+				return Refuse(ErrValidation, "change a Milestone's date in a Check-in, with a reason")
+			}
+		}
 
-	row, err := s.queries.UpdateMilestone(ctx, db.UpdateMilestoneParams{
-		Name:       name,
-		TargetDate: in.TargetDate.Format(dateFormat),
-		ID:         in.MilestoneID,
+		row, err = tx.queries.UpdateMilestone(ctx, db.UpdateMilestoneParams{
+			Name:       name,
+			TargetDate: in.TargetDate.Format(dateFormat),
+			ID:         in.MilestoneID,
+		})
+		if err != nil {
+			return fmt.Errorf("update milestone: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return Milestone{}, fmt.Errorf("update milestone: %w", err)
+		return Milestone{}, err
 	}
 	return milestoneFromRow(row), nil
 }

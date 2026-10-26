@@ -53,63 +53,70 @@ const (
 // or Pending for the Goal, or already suggested and still open, and with
 // ErrCycle when the link would make a cycle (ADR-0001).
 func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID int64, note string) (ParentSuggestion, error) {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ParentSuggestion{}, fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+	var row db.ParentSuggestion
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, goalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+			}
+			return fmt.Errorf("look up goal: %w", err)
 		}
-		return ParentSuggestion{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if goal.Goal.OwnerID == actorID {
-		return ParentSuggestion{}, Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
-	}
-	if !suggestable(goal.Goal.Lifecycle) {
-		return ParentSuggestion{}, Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")
-	}
-	if parentID == goalID {
-		return ParentSuggestion{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
-	}
-	parent, err := s.queries.GetGoal(ctx, parentID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ParentSuggestion{}, Refuse(ErrValidation, "parent goal does not exist")
+		if goal.Goal.OwnerID == actorID {
+			return Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
 		}
-		return ParentSuggestion{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-	if !suggestable(parent.Goal.Lifecycle) {
-		return ParentSuggestion{}, Refuse(ErrValidation, "only an Active or Proposed Goal can be suggested as a parent")
-	}
-	if link, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-		ChildID:  goalID,
-		ParentID: parentID,
-	}); err == nil {
-		if link.Status == LinkPending {
-			return ParentSuggestion{}, Refuse(ErrValidation, "the Goal's Owner has already asked to link it to that parent")
+		if !suggestable(goal.Goal.Lifecycle) {
+			return Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")
 		}
-		return ParentSuggestion{}, Refuse(ErrValidation, "the Goal already contributes to that parent")
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return ParentSuggestion{}, fmt.Errorf("look up existing link: %w", err)
-	}
-	if open, err := s.queries.GetOpenParentSuggestionFor(ctx, db.GetOpenParentSuggestionForParams{
-		GoalID:   goalID,
-		ParentID: parentID,
-	}); err == nil {
-		return ParentSuggestion{}, Refuse(ErrValidation, "%s has already suggested that parent", accountFromRow(open.Account).Label())
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return ParentSuggestion{}, fmt.Errorf("look up open suggestion: %w", err)
-	}
-	if err := s.ensureNoCycle(ctx, goalID, parentID); err != nil {
-		return ParentSuggestion{}, err
-	}
-	row, err := s.queries.CreateParentSuggestion(ctx, db.CreateParentSuggestionParams{
-		GoalID:      goalID,
-		ParentID:    parentID,
-		SuggestedBy: actorID,
-		Note:        strings.TrimSpace(note),
-		CreatedAt:   s.clock.Now().Format(timeFormat),
+		if parentID == goalID {
+			return Refuse(ErrValidation, "a Goal cannot contribute to itself")
+		}
+		parent, err := tx.queries.GetGoal(ctx, parentID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "parent goal does not exist")
+			}
+			return fmt.Errorf("look up parent goal: %w", err)
+		}
+		if !suggestable(parent.Goal.Lifecycle) {
+			return Refuse(ErrValidation, "only an Active or Proposed Goal can be suggested as a parent")
+		}
+		if link, err := tx.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+			ChildID:  goalID,
+			ParentID: parentID,
+		}); err == nil {
+			if link.Status == LinkPending {
+				return Refuse(ErrValidation, "the Goal's Owner has already asked to link it to that parent")
+			}
+			return Refuse(ErrValidation, "the Goal already contributes to that parent")
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up existing link: %w", err)
+		}
+		if open, err := tx.queries.GetOpenParentSuggestionFor(ctx, db.GetOpenParentSuggestionForParams{
+			GoalID:   goalID,
+			ParentID: parentID,
+		}); err == nil {
+			return Refuse(ErrValidation, "%s has already suggested that parent", accountFromRow(open.Account).Label())
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up open suggestion: %w", err)
+		}
+		if err := tx.ensureNoCycle(ctx, goalID, parentID); err != nil {
+			return err
+		}
+		row, err = tx.queries.CreateParentSuggestion(ctx, db.CreateParentSuggestionParams{
+			GoalID:      goalID,
+			ParentID:    parentID,
+			SuggestedBy: actorID,
+			Note:        strings.TrimSpace(note),
+			CreatedAt:   tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("record parent suggestion: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return ParentSuggestion{}, fmt.Errorf("record parent suggestion: %w", err)
+		return ParentSuggestion{}, err
 	}
 	return s.ParentSuggestion(ctx, row.ID)
 }
@@ -267,14 +274,16 @@ func (s *Service) ensureNotLinkedSinceDecline(ctx context.Context, p ParentSugge
 // WithdrawParentSuggestion withdraws an open suggestion on behalf of actorID,
 // who must have made it.
 func (s *Service) WithdrawParentSuggestion(ctx context.Context, actorID, suggestionID int64) error {
-	p, err := s.ParentSuggestion(ctx, suggestionID)
-	if err != nil {
-		return err
-	}
-	if p.SuggestedBy.ID != actorID {
-		return Refuse(ErrNotAuthorized, "only the person who made a suggestion may withdraw it")
-	}
-	return s.closeSuggestion(ctx, suggestionID, SuggestionWithdrawn)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		p, err := tx.ParentSuggestion(ctx, suggestionID)
+		if err != nil {
+			return err
+		}
+		if p.SuggestedBy.ID != actorID {
+			return Refuse(ErrNotAuthorized, "only the person who made a suggestion may withdraw it")
+		}
+		return tx.closeSuggestion(ctx, suggestionID, SuggestionWithdrawn)
+	})
 }
 
 // openSuggestionForOwner loads a suggestion actorID may decide: one that is

@@ -21,21 +21,27 @@ func (s *Service) UnmarkTopLevel(ctx context.Context, actorID, goalID int64) (Go
 }
 
 func (s *Service) setTopLevel(ctx context.Context, actorID, goalID int64, topLevel bool) (Goal, error) {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		if _, err := tx.loadGoal(ctx, goalID); err != nil {
+			return err
+		}
+		var flag int64
+		if topLevel {
+			flag = 1
+		}
+		if err := tx.queries.SetGoalTopLevel(ctx, db.SetGoalTopLevelParams{
+			TopLevel: flag,
+			ID:       goalID,
+		}); err != nil {
+			return fmt.Errorf("set top-level: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
 		return Goal{}, err
-	}
-	if _, err := s.loadGoal(ctx, goalID); err != nil {
-		return Goal{}, err
-	}
-	var flag int64
-	if topLevel {
-		flag = 1
-	}
-	if err := s.queries.SetGoalTopLevel(ctx, db.SetGoalTopLevelParams{
-		TopLevel: flag,
-		ID:       goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("set top-level: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
 }

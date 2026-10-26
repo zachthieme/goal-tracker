@@ -22,42 +22,44 @@ import (
 // exist, the Owner is already authorized so cannot be added, and authorizing the
 // same Delegate twice is rejected.
 func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID int64) error {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "goal does not exist")
+	return s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, goalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
 		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	if actorID != goal.Goal.OwnerID {
-		return Refuse(ErrNotAuthorized, "only the Owner may authorize a Delegate")
-	}
-	if accountID == goal.Goal.OwnerID {
-		return Refuse(ErrValidation, "the Owner already writes this Goal's Check-ins")
-	}
-	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "account does not exist")
+		if actorID != goal.Goal.OwnerID {
+			return Refuse(ErrNotAuthorized, "only the Owner may authorize a Delegate")
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	if _, err := s.queries.GetDelegate(ctx, db.GetDelegateParams{
-		GoalID:    goalID,
-		AccountID: accountID,
-	}); err == nil {
-		return Refuse(ErrValidation, "already a Delegate")
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up delegate: %w", err)
-	}
+		if accountID == goal.Goal.OwnerID {
+			return Refuse(ErrValidation, "the Owner already writes this Goal's Check-ins")
+		}
+		if _, err := tx.queries.GetAccount(ctx, accountID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "account does not exist")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if _, err := tx.queries.GetDelegate(ctx, db.GetDelegateParams{
+			GoalID:    goalID,
+			AccountID: accountID,
+		}); err == nil {
+			return Refuse(ErrValidation, "already a Delegate")
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up delegate: %w", err)
+		}
 
-	if _, err := s.queries.AddDelegate(ctx, db.AddDelegateParams{
-		GoalID:    goalID,
-		AccountID: accountID,
-		CreatedAt: s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("add delegate: %w", err)
-	}
-	return nil
+		if _, err := tx.queries.AddDelegate(ctx, db.AddDelegateParams{
+			GoalID:    goalID,
+			AccountID: accountID,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("add delegate: %w", err)
+		}
+		return nil
+	})
 }
 
 // AddDelegateByEmail authorizes the Account with the given email as a Delegate on
@@ -80,23 +82,25 @@ func (s *Service) AddDelegateByEmail(ctx context.Context, actorID, goalID int64,
 // authorizes); actorID is the acting Account. Removing someone who is not a
 // Delegate is a no-op.
 func (s *Service) RemoveDelegate(ctx context.Context, actorID, goalID, accountID int64) error {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "goal does not exist")
+	return s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, goalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
 		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	if actorID != goal.Goal.OwnerID {
-		return Refuse(ErrNotAuthorized, "only the Owner may remove a Delegate")
-	}
-	if err := s.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
-		GoalID:    goalID,
-		AccountID: accountID,
-	}); err != nil {
-		return fmt.Errorf("remove delegate: %w", err)
-	}
-	return nil
+		if actorID != goal.Goal.OwnerID {
+			return Refuse(ErrNotAuthorized, "only the Owner may remove a Delegate")
+		}
+		if err := tx.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
+			GoalID:    goalID,
+			AccountID: accountID,
+		}); err != nil {
+			return fmt.Errorf("remove delegate: %w", err)
+		}
+		return nil
+	})
 }
 
 // RemoveDelegateByEmail revokes the Delegate with the given email on the Goal. It

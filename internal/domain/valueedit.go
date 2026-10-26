@@ -59,24 +59,24 @@ func (e *ValueEditError) Unwrap() error { return ErrValidation }
 // values the author may not set — they are not its Owner, a Delegate or an
 // Admin — is refused whole, naming that Goal (CONTEXT.md: Delegate).
 func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []ValueEdit) error {
-	checked := map[int64]bool{}
-	for _, e := range edits {
-		if checked[e.GoalID] {
-			continue
-		}
-		checked[e.GoalID] = true
-		if err := s.requireGoalValueSetter(ctx, actorID, e.GoalID); errors.Is(err, ErrNotAuthorized) {
-			goal, err := s.queries.GetGoal(ctx, e.GoalID)
-			if err != nil {
-				return fmt.Errorf("load goal: %w", err)
-			}
-			return Refuse(ErrNotAuthorized, "only its Owner, a Delegate or an Admin may set the values of %s", goal.Goal.Title)
-		} else if err != nil {
-			return err
-		}
-	}
 	refusal := &ValueEditError{}
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		checked := map[int64]bool{}
+		for _, e := range edits {
+			if checked[e.GoalID] {
+				continue
+			}
+			checked[e.GoalID] = true
+			if err := tx.requireGoalValueSetter(ctx, actorID, e.GoalID); errors.Is(err, ErrNotAuthorized) {
+				goal, err := tx.queries.GetGoal(ctx, e.GoalID)
+				if err != nil {
+					return fmt.Errorf("load goal: %w", err)
+				}
+				return Refuse(ErrNotAuthorized, "only its Owner, a Delegate or an Admin may set the values of %s", goal.Goal.Title)
+			} else if err != nil {
+				return err
+			}
+		}
 		for _, e := range edits {
 			// Every Goal's setter was checked above, so a refusal here is
 			// the cell's own, e.g. adding to a Fixed list (CONTEXT.md: Fixed).
