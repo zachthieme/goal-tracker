@@ -251,20 +251,30 @@ type ActionItemPermissions struct {
 // ActionItemPermissions is what actorID may do to each of items, by its id,
 // as the Report pages offer it.
 func (s *Service) ActionItemPermissions(ctx context.Context, actorID int64, items []ActionItem) (map[int64]ActionItemPermissions, error) {
-	a := s.accountActor(ctx, actorID)
 	reports := map[int64]actionItemRuleReport{}
-	out := make(map[int64]ActionItemPermissions, len(items))
-	for _, item := range items {
+	return permitActionItems(s.accountActor(ctx, actorID), items, func(item ActionItem) (actionItemRuleReport, error) {
 		r, ok := reports[item.PublicationID]
 		if !ok {
 			var err error
 			if r, err = s.actionItemRuleReportOf(ctx, item.DefinitionID, item.PublicationID); err != nil {
-				return nil, err
+				return actionItemRuleReport{}, err
 			}
 			reports[item.PublicationID] = r
 		}
+		return r, nil
+	})
+}
+
+// permitActionItems is what a may do to each of items, by its id, each
+// judged against the published Report it was raised on, as report finds it.
+func permitActionItems(a goalActor, items []ActionItem, report func(ActionItem) (actionItemRuleReport, error)) (map[int64]ActionItemPermissions, error) {
+	out := make(map[int64]ActionItemPermissions, len(items))
+	for _, item := range items {
+		r, err := report(item)
+		if err != nil {
+			return nil, err
+		}
 		var p ActionItemPermissions
-		var err error
 		if p.Close, err = goalPagePermits(closeActionItemRefusal(a, item)); err != nil {
 			return nil, err
 		}

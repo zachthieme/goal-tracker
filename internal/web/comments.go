@@ -123,21 +123,17 @@ func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, 
 	}, nil
 }
 
-// draftDiscussion is the draft's part in the discussion: its Action Items are
-// read live, so their owners can close them from it, and those who may can
-// reassign them.
-func (s *Server) draftDiscussion(r *http.Request, current domain.Account, defID int64) (discussion, error) {
-	open, permissions, err := s.liveActionItems(r, current, defID)
-	if err != nil {
-		return discussion{}, err
-	}
+// draftDiscussion is the draft's part in the discussion: its Action Items,
+// items, are read live, so their owners can close them from it, and those
+// permissions lets reassign them can. Its forms come back to back.
+func (s *Server) draftDiscussion(current domain.Account, items []domain.ActionItem, permissions map[int64]domain.ActionItemPermissions, back string) discussion {
 	return discussion{
 		Current:     &current,
-		Open:        open,
+		Open:        openByID(items),
 		Permissions: permissions,
-		Return:      fmt.Sprintf("/reports/%d", defID),
+		Return:      back,
 		Loc:         s.svc.Timezone(),
-	}, nil
+	}
 }
 
 // liveActionItems are the Report Definition's Action Items open now, by id,
@@ -147,15 +143,20 @@ func (s *Server) liveActionItems(r *http.Request, current domain.Account, defID 
 	if err != nil {
 		return nil, nil, err
 	}
-	open := make(map[int64]domain.ActionItem, len(items))
-	for _, item := range items {
-		open[item.ID] = item
-	}
 	permissions, err := s.svc.ActionItemPermissions(r.Context(), current.ID, items)
 	if err != nil {
 		return nil, nil, err
 	}
-	return open, permissions, nil
+	return openByID(items), permissions, nil
+}
+
+// openByID is items by their id.
+func openByID(items []domain.ActionItem) map[int64]domain.ActionItem {
+	open := make(map[int64]domain.ActionItem, len(items))
+	for _, item := range items {
+		open[item.ID] = item
+	}
+	return open
 }
 
 // handleAddComment comments on a Goal's block in a published Report and comes

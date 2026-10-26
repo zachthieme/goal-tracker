@@ -181,24 +181,23 @@ templ reportHealthBar(h domain.HealthCounts) {
 // breadcrumb, the save status, the baseline chip and Publish at the right.
 // Below it the page is one page in two columns: the main column is the
 // Report as readers get it, the narrative composed in place, and the narrow
-// column beside it holds its Delegates and its History, history, times in the
-// company's timezone, loc, moving under the main column where the page is too narrow for both (CONTEXT.md: Report,
-// Report Definition; DESIGN.md § A Report's draft page). Paths to Green are
-// judged overdue as of asOf, today. panel says what the definition selects.
-// The compose form shows form, and the save status says status. Only a reader
-// m lets manage the Report gets Edit definition, the compose form and
-// Publish…; everyone else reads the narrative as it stands.
+// column beside it holds its Delegates and its History, times in the
+// company's timezone, moving under the main column where the page is too narrow for both (CONTEXT.md: Report,
+// Report Definition; DESIGN.md § A Report's draft page). v is all of it (see
+// reportDraftView). Only a reader its Management lets manage the Report gets
+// Edit definition, the compose form and Publish…; everyone else reads the
+// narrative as it stands.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, history []draftHistoryEntry, form narrativeForm, status string) {
-	{{ facts := r.Facts() }}
-	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, chip, panel, m, status)) {
+templ reportDraftPage(current *domain.Account, v reportDraftView) {
+	{{ r, facts, m := v.Report, v.Report.Facts(), v.Management }}
+	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, v.Chip, v.Panel, m, v.Status)) {
 		@reportStyles()
 		<div class="rp-draft-page">
 			<div data-testid="report-draft" class="rp-body rp-main">
 				<header class="rp-head">
 					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
-					<p data-testid="report-meta" class="muted">{ draftMeta(r, panel) }</p>
+					<p data-testid="report-meta" class="muted">{ draftMeta(r, v.Panel) }</p>
 				</header>
 				for _, f := range facts {
 					if f.Kind == domain.ReportFactIntroduction {
@@ -212,15 +211,15 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				// publication.
 				<div data-testid="report-snapshot" class="rp-body">
 					if m.Manage {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), asOf, d, &form)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.AsOf, v.Discussion, &v.Form)
 					} else {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), asOf, d, nil)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), v.AsOf, v.Discussion, nil)
 					}
 				</div>
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)
-				@reportHistory(r, history, loc, false)
+				@reportHistory(r, v.History, v.Loc, false)
 			</aside>
 		</div>
 		if m.Manage {

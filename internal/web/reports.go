@@ -57,13 +57,10 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	m, err := s.reportManagement(r, current, def)
-	if err != nil {
-		s.serverError(w, r, "could not load Report Delegates", err)
-		return
-	}
 	// Closing an Action Item comes back to this draft, baseline and all.
-	s.renderReportDraft(w, r, current, def, m, r.URL.RequestURI(), http.StatusOK)
+	if v, ok := s.loadReportDraftView(w, r, current, def, r.URL.RequestURI()); ok {
+		render(w, r, http.StatusOK, reportDraftPage(&current, v))
+	}
 }
 
 // reportFromPath loads the Report Definition the path names, writing Not found
@@ -86,42 +83,65 @@ func (s *Server) reportFromPath(w http.ResponseWriter, r *http.Request) (domain.
 	return def, true
 }
 
-// renderReportDraft renders def's draft page as code, as m lets current manage
-// it, against the baseline the reader picked. Its forms come back to draft.
-func (s *Server) renderReportDraft(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, m reportManagement, draft string, code int) {
+// reportDraftView is everything a Report's draft page shows: the draft Report
+// and, as of AsOf (now), the Paths to Green it judges overdue; its discussion,
+// the open Action Items its forms come back from; the company's timezone, Loc,
+// its times are shown in; the baseline chip; what its definition selects,
+// Panel; what the reader may do to it, Management; its History; and the
+// compose form and save status.
+type reportDraftView struct {
+	Report     domain.Report
+	AsOf       time.Time
+	Discussion discussion
+	Loc        *time.Location
+	Chip       baselineChip
+	Panel      goalsPanel
+	Management reportManagement
+	History    []draftHistoryEntry
+	Form       narrativeForm
+	Status     string
+}
+
+// reportDraftView reads def's draft page as current sees it, against
+// baseline (zero for the default), through its loader, once (ADR 0010). Its
+// forms come back to back. The compose form shows the narrative as saved, and
+// the save status says nothing.
+func (s *Server) reportDraftView(r *http.Request, current domain.Account, def domain.ReportDefinition, baseline time.Time, back string) (reportDraftView, error) {
+	p, err := s.svc.ReportDraftPage(r.Context(), current.ID, def, baseline)
+	if err != nil {
+		return reportDraftView{}, err
+	}
+	m := newReportManagement(def, p.Permissions)
+	chip := newBaselineChip(p.Report, r.URL.Query().Get("baseline") != "", len(p.Publications) > 0, s.svc.Now(), s.svc.Timezone())
+	return reportDraftView{
+		Report:     p.Report,
+		AsOf:       s.svc.Now(),
+		Discussion: s.draftDiscussion(current, p.Report.ActionItems, p.ActionItemPermissions, back),
+		Loc:        s.svc.Timezone(),
+		Chip:       chip,
+		Panel:      draftGoalsPanel(def, p.Scope, m),
+		Management: m,
+		History:    draftHistory(p.Publications, p.Log),
+		Form:       savedNarrativeForm(p.Report, chip),
+	}, nil
+}
+
+// loadReportDraftView is reportDraftView against the baseline the reader
+// picked, its forms coming back to draft: Bad Request, written to w, for a
+// baseline that isn't a date, and the server-error page when the page can't
+// be read. It reports whether the request may go on.
+func (s *Server) loadReportDraftView(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, draft string) (reportDraftView, bool) {
 	baseline, err := parseDate(r.URL.Query().Get("baseline"))
 	if err != nil {
 		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
-		return
+		return reportDraftView{}, false
 	}
-	report, err := s.svc.DraftReport(r.Context(), def, baseline)
+	v, err := s.reportDraftView(r, current, def, baseline, draft)
 	if err != nil {
-		s.serverError(w, r, "could not build the draft", err)
-		return
+		s.serverError(w, r, "could not load the draft", err)
+		return reportDraftView{}, false
 	}
-	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load publications", err)
-		return
-	}
-	d, err := s.draftDiscussion(r, current, def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load Action Items", err)
-		return
-	}
-	d.Return = draft
-	panel, err := s.draftGoalsPanel(r, report, m)
-	if err != nil {
-		s.serverError(w, r, "could not summarise the report", err)
-		return
-	}
-	log, err := s.svc.ReportLog(r.Context(), def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load the Report log", err)
-		return
-	}
-	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), d, s.svc.Timezone(), chip, panel, m, draftHistory(pubs, log), savedNarrativeForm(report, chip), ""))
+	return v, true
 }
 
 // draftHistoryEntry is one of a Report draft's History entries after the
@@ -177,19 +197,15 @@ type reportManagement struct {
 	Refused string
 }
 
-// reportManagement is what current may do to def, as its draft page offers it
-// (domain.ReportPermissions).
-func (s *Server) reportManagement(r *http.Request, current domain.Account, def domain.ReportDefinition) (reportManagement, error) {
-	p, err := s.svc.ReportPermissions(r.Context(), current.ID, def)
-	if err != nil {
-		return reportManagement{}, err
-	}
+// newReportManagement is what p, the viewer's permissions on def, let them do
+// to it, as its draft page offers it.
+func newReportManagement(def domain.ReportDefinition, p domain.ReportPermissions) reportManagement {
 	return reportManagement{
 		DefID:           def.ID,
 		Manage:          p.Manage,
 		ManageDelegates: p.ManageDelegates,
 		Delegates:       p.Delegates,
-	}, nil
+	}
 }
 
 // handleEditReportForm shows the builder filled with the saved Report
@@ -274,18 +290,14 @@ type goalsPanel struct {
 	Edit  string
 }
 
-// draftGoalsPanel says what the draft report's definition selects, linking to
-// Edit definition for a reader m lets manage it.
-func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report, m reportManagement) (goalsPanel, error) {
-	sum, err := s.svc.SummarizeReport(r.Context(), report)
-	if err != nil {
-		return goalsPanel{}, err
-	}
-	panel := goalsPanel{Scope: sum.Scope}
+// draftGoalsPanel says what def selects, scope, linking to Edit definition
+// for a reader m lets manage it.
+func draftGoalsPanel(def domain.ReportDefinition, scope string, m reportManagement) goalsPanel {
+	panel := goalsPanel{Scope: scope}
 	if m.Manage {
-		panel.Edit = "/reports/" + strconv.FormatInt(report.Definition.ID, 10) + "/edit"
+		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
 	}
-	return panel, nil
+	return panel
 }
 
 // baselineChip is the draft header's "Changes since …" menu, and the baseline
@@ -510,19 +522,13 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 	}
 	// The form offers the Report's Highlights whatever the narrative, so
 	// the draft with the posted narrative serves it, or, when refused, the
-	// draft as saved, which is then a plain post's page's draft too
-	// (report), built once.
+	// draft as saved, which a plain post's page reads anyway.
 	status, code := "", http.StatusOK
-	var report domain.Report
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
+	refused := errors.Is(err, domain.ErrValidation)
 	switch {
-	case errors.Is(err, domain.ErrValidation):
+	case refused:
 		status, code = "Not saved: "+domain.Reason(err), http.StatusUnprocessableEntity
-		if posted, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
-			s.serverError(w, r, "could not build the draft", err)
-			return
-		}
-		report = posted
 	case err != nil:
 		s.writeReportError(w, r, "Can't save narrative", narrativeDraftPath(r, def.ID), err)
 		return
@@ -532,47 +538,34 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load publications", err)
-		return
-	}
-	chip := newBaselineChip(posted, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	form := postedNarrativeForm(posted, chip, r.Form, addNote)
 	if r.Header.Get("HX-Request") == "true" {
-		// htmx swaps only a 2xx answer, so a refusal is 200 too.
-		render(w, r, http.StatusOK, narrativeFormAgain(form, status))
-		return
-	}
-	if code == http.StatusOK {
-		// posted is the narrative as posted; the page shows it as saved.
-		if report, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
-			s.serverError(w, r, "could not build the draft", err)
+		if refused {
+			if posted, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
+				s.serverError(w, r, "could not build the draft", err)
+				return
+			}
+		}
+		pubs, err := s.svc.ListPublications(r.Context(), def.ID)
+		if err != nil {
+			s.serverError(w, r, "could not load publications", err)
 			return
 		}
-	}
-	d, err := s.draftDiscussion(r, current, def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load Action Items", err)
+		chip := newBaselineChip(posted, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+		// htmx swaps only a 2xx answer, so a refusal is 200 too.
+		render(w, r, http.StatusOK, narrativeFormAgain(postedNarrativeForm(posted, chip, r.Form, addNote), status))
 		return
 	}
-	d.Return = narrativeDraftPath(r, def.ID)
-	m, err := s.reportManagement(r, current, def)
+	// The page shows the narrative as saved, and the form as posted.
+	v, err := s.reportDraftView(r, current, def, baseline, narrativeDraftPath(r, def.ID))
 	if err != nil {
-		s.serverError(w, r, "could not load Report Delegates", err)
+		s.serverError(w, r, "could not load the draft", err)
 		return
 	}
-	panel, err := s.draftGoalsPanel(r, report, m)
-	if err != nil {
-		s.serverError(w, r, "could not summarise the report", err)
-		return
+	if refused {
+		posted = v.Report
 	}
-	log, err := s.svc.ReportLog(r.Context(), def.ID)
-	if err != nil {
-		s.serverError(w, r, "could not load the Report log", err)
-		return
-	}
-	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), d, s.svc.Timezone(), chip, panel, m, draftHistory(pubs, log), form, status))
+	v.Form, v.Status = postedNarrativeForm(posted, v.Chip, r.Form, addNote), status
+	render(w, r, code, reportDraftPage(&current, v))
 }
 
 // narrativeForm is what the draft's compose form shows: each Highlight in the
@@ -947,13 +940,12 @@ func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Reques
 	case err == nil:
 		http.Redirect(w, r, draft, http.StatusSeeOther)
 	case errors.Is(err, domain.ErrValidation):
-		m, lerr := s.reportManagement(r, current, def)
-		if lerr != nil {
-			s.serverError(w, r, "could not load Report Delegates", lerr)
+		v, ok := s.loadReportDraftView(w, r, current, def, draft)
+		if !ok {
 			return
 		}
-		m.Email, m.Refused = email, domain.Reason(err)
-		s.renderReportDraft(w, r, current, def, m, draft, http.StatusUnprocessableEntity)
+		v.Management.Email, v.Management.Refused = email, domain.Reason(err)
+		render(w, r, http.StatusUnprocessableEntity, reportDraftPage(&current, v))
 	default:
 		s.writeReportError(w, r, "Can't change Report Delegates", draft, err)
 	}
