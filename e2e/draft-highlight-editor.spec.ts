@@ -6,26 +6,18 @@
 // Without script the block is as it was: a link to the log form, and Delete.
 import type { Locator, Page } from "@playwright/test";
 
-import { expect, signIn, test } from "./fixtures";
+import { expect, requirePick, signIn, test } from "./fixtures";
 
-// draftlessGoal is an Active Goal with no Draft Highlights and an Owner who
-// hasn't departed, so the Goal page's Draft Highlights are this test's alone.
-const draftlessGoal = `
-  select g.id, a.email
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0
-    and not exists (select 1 from draft_highlights d where d.goal_id = g.id)
-  order by g.id
-  limit 1`;
-
+// The manifest's draftlessGoal is an Active Goal with no Draft Highlights and
+// an Owner who hasn't departed, so the Goal page's Draft Highlights are this
+// test's alone.
 type Goal = { id: number; email: string };
 
 test.describe("the Goal page's Draft Highlight editor", () => {
   let goal: Goal;
 
-  test.beforeEach(async ({ page, seedLookup }) => {
-    [goal] = seedLookup<Goal>(draftlessGoal);
-    expect(goal, "the seed has an Active Goal with no Draft Highlights").toBeDefined();
+  test.beforeEach(async ({ page, manifest }) => {
+    goal = requirePick("draftlessGoal", manifest.draftlessGoal);
     await signIn(page, goal.email);
     await page.goto(`/goals/${goal.id}`);
     // A page load would lose this; an htmx swap keeps it.
@@ -178,8 +170,8 @@ test.describe("the Goal page's Draft Highlight editor", () => {
 test.describe("the Goal page's Draft Highlights without script", () => {
   test.use({ javaScriptEnabled: false });
 
-  test("(e) the link opens the log form, and each one has Delete and no Edit", async ({ page, seedLookup }) => {
-    const [goal] = seedLookup<Goal>(draftlessGoal);
+  test("(e) the link opens the log form, and each one has Delete and no Edit", async ({ page, manifest }) => {
+    const goal = requirePick("draftlessGoal", manifest.draftlessGoal);
     await signIn(page, goal.email);
     await page.goto(`/goals/${goal.id}`);
     const drafts = page.getByTestId("goal-draft-highlights");

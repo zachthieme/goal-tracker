@@ -5,53 +5,35 @@
 // asserted, so it isn't.
 import type { Page } from "@playwright/test";
 
-import { appToday, expect, signIn, test } from "../fixtures";
+import { appToday, expect, requirePick, signIn, test } from "../fixtures";
 
-type OwnedGoal = { id: number; title: string; metric: number };
+type OwnedGoal = { id: number; title: string; metric: boolean };
 
-// weekOwners are the Owners who could be the scenario's Priya, most Active
-// Goals first: at least two Active Goals, exactly one with a Metric, and none
-// a No change would be refused on (no accepted children, so no Rolled-up
-// Health to differ from, no overdue Planned Milestone, and no back-to-Green
-// date passed on the latest Check-in). Never cto@, whom
-// the seed names Priya Raman. Which of their Goals are due is read from Home.
-const weekOwners = `
-  select a.email, a.name
-  from accounts a join goals g on g.owner_id = a.id
-  where a.departed = 0 and a.email <> 'cto@example.com' and g.lifecycle = 'Active'
-  group by a.id
-  having count(*) >= 2
-    and sum(exists (select 1 from metrics m where m.goal_id = g.id)) = 1
-    and sum(exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')) = 0
-    and sum(exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))) = 0
-    and sum(exists (select 1 from checkins c
-                    where c.id = (select c2.id from checkins c2 where c2.goal_id = g.id
-                                  order by c2.created_at desc, c2.id desc limit 1)
-                      and c.path_target_date <> '' and c.path_target_date < date($now))) = 0
-  order by count(*) desc, a.id`;
-
-const activeGoalsOf = `
-  select g.id, g.title, exists (select 1 from metrics m where m.goal_id = g.id) as metric
-  from goals g join accounts a on a.id = g.owner_id
-  where a.email = ? and g.lifecycle = 'Active'
-  order by g.id`;
+// The due template's manifest names weekOwners, the Owners who could be the
+// scenario's Priya, most Active Goals first, each with their Active Goals: at
+// least two Active Goals, exactly one with a Metric, and none a No change
+// would be refused on (no accepted children, so no Rolled-up Health to differ
+// from, no overdue Planned Milestone, and no back-to-Green date passed on the
+// latest Check-in). Never cto@, whom the seed names Priya Raman. Which of
+// their Goals are due is read from Home.
 
 test.describe("on the due template", () => {
   test.use({ template: "due" });
 
   test("the week: No change on the routine Goals, a fresh Check-in over the ghost text on the one that moved", async ({
     page,
-    seedLookup,
+    manifest,
   }) => {
     // Priya is the first candidate whose Home lists at least two Check-ins
     // due, her Metric Goal among them.
     let due: OwnedGoal[] = [];
     let metricGoal: OwnedGoal | undefined;
     let ownerName = "";
-    for (const owner of seedLookup<{ email: string; name: string }>(weekOwners)) {
+    const owners = manifest.weeklyCheckin.weekOwners;
+    expect(owners.length, "weeklyCheckin.weekOwners has an Owner").toBeGreaterThan(0);
+    for (const owner of owners) {
       await signIn(page, owner.email);
-      const goals = seedLookup<OwnedGoal>(activeGoalsOf, owner.email);
+      const goals: OwnedGoal[] = owner.goals;
       const listed = await dueRows(page).getByRole("link").allTextContents();
       due = goals.filter((g) => listed.includes(g.title));
       metricGoal = due.find((g) => g.metric);
@@ -261,42 +243,20 @@ function today(): RegExp {
   return new RegExp(`^${appToday()}T`);
 }
 
-// checkinOverdueGoal is a Goal on the default template whose Owner is away:
-// Active, last checked in more than its cadence (and a day) ago, so Check-in
-// overdue on Follow-ups, with no accepted children or overdue Planned Milestone to
-// complicate its Check-in, and no Delegates yet. The oldest first.
-const checkinOverdueGoal = `
-  select g.id, g.title, a.email, a.name
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0 and a.name is not null
-    and julianday($now) - julianday((select max(c.created_at) from checkins c where c.goal_id = g.id))
-        > g.cadence_days + 1
-    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-    and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-    and not exists (select 1 from delegates d where d.goal_id = g.id)
-  order by (select max(c.created_at) from checkins c where c.goal_id = g.id), g.id
-  limit 1`;
-
-// delegateFor is another seeded person, neither the Owner nor an Admin, to
-// cover for them.
-const delegateFor = `
-  select email, name from accounts
-  where departed = 0 and is_admin = 0 and name is not null and email <> ?
-  order by id
-  limit 1`;
-
+// The default template's manifest names the Delegate's cover: its goal, a
+// Goal whose Owner is away: Active, last checked in more than its cadence
+// (and a day) ago, so Check-in overdue on Follow-ups, with no accepted
+// children or overdue Planned Milestone to complicate its Check-in, and no
+// Delegates yet, the oldest first; and its delegate, another seeded person,
+// neither the Owner nor an Admin, to cover for them.
 test("a Delegate checks in for an Owner who's away, and the Goal stops being Check-in overdue", async ({
   page,
   as,
-  seedLookup,
+  manifest,
 }) => {
-  type Person = { email: string; name: string };
-  const [goal] = seedLookup<{ id: number; title: string } & Person>(checkinOverdueGoal);
-  expect(goal, "the seed has a Check-in overdue Goal to delegate").toBeDefined();
-  const owner: Person = { email: goal.email, name: goal.name };
-  const [delegate] = seedLookup<Person>(delegateFor, owner.email);
-  expect(delegate, "the seed has someone to delegate to").toBeDefined();
+  const goal = requirePick("weeklyCheckin.delegateCover.goal", manifest.weeklyCheckin.delegateCover.goal);
+  const owner = { email: goal.email, name: goal.name };
+  const delegate = requirePick("weeklyCheckin.delegateCover.delegate", manifest.weeklyCheckin.delegateCover.delegate);
 
   await test.step("3.D1 The Goal is Check-in overdue on Follow-ups and on its Owner's Home", async () => {
     await signIn(page, owner.email);

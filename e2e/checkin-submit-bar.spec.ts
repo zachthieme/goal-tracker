@@ -4,31 +4,18 @@
 // keeps up to date. At 390px the bar drops Cancel.
 import type { Locator, Page } from "@playwright/test";
 
-import { expect, signIn, test } from "./fixtures";
+import { expect, requirePick, signIn, test } from "./fixtures";
 
-// goalWithMetric is an Active Goal with a Metric and a Check-in to start the
-// form from, and its Owner, who can check in on it. It has no Draft Highlight,
-// so the form starts with no Highlight, and no overdue Milestone, so its dates
-// section starts closed.
-const goalWithMetric = `
-  select g.id, a.email
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0
-    and exists (select 1 from metrics m where m.goal_id = g.id)
-    and exists (select 1 from checkins c where c.goal_id = g.id)
-    and not exists (select 1 from draft_highlights d where d.goal_id = g.id)
-    and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-  order by g.id
-  limit 1`;
-
+// The manifest's metricGoal is an Active Goal with a Metric and a Check-in to
+// start the form from, and its Owner, who can check in on it. It has no Draft
+// Highlight, so the form starts with no Highlight, and no overdue Milestone,
+// so its dates section starts closed.
 type Goal = { id: number; email: string };
 
 let goal: Goal;
 
-test.beforeEach(async ({ page, seedLookup }) => {
-  [goal] = seedLookup<Goal>(goalWithMetric);
-  expect(goal, "the seed has an Active Goal with a Metric and a Check-in").toBeDefined();
+test.beforeEach(async ({ page, manifest }) => {
+  goal = requirePick("metricGoal", manifest.metricGoal);
   await signIn(page, goal.email);
 });
 

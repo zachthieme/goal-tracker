@@ -298,6 +298,8 @@ already has Goals, so to reseed, delete the database file and run it again.
 | `-seed` | `23` | Random seed. It decides dates, Owners, and how each project's weeks play out. |
 | `-end` | now | Last day of the history, `YYYY-MM-DD`. The history ends on the day you seed, so Check-in overdue is judged against that day. Reseed later on to keep the demo current. |
 | `-admin` | `admin@example.com` | The Admin who defines the Team Dimension and runs the import. |
+| `-manifest` | _(none)_ | Also write the e2e manifest to this file: the Goals and people each end-to-end spec acts on, picked by role, as JSON (`e2e/manifest.ts`). Unset, no manifest is written. |
+| `-manifest-at` | the `-end` instant | When the manifest's picks are judged, RFC 3339 (e.g. `2026-10-05T18:05:00Z`): what counts as today, Check-in overdue and an overdue Milestone. |
 
 ## License
 

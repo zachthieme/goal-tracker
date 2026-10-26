@@ -5,34 +5,21 @@
 // closes it. The watch-list Report is scenario 2's other half (#198).
 import { type Locator, type Page } from "@playwright/test";
 
-import { admin, appToday, expect, test } from "../fixtures";
+import { admin, appToday, expect, type Manifest, requirePick, test } from "../fixtures";
+import type { ReportGoal } from "../manifest";
 
 // The leader ("Elena") and the reader two levels up. The seed names them
 // Priya Raman and Dana Whitfield; the page is asserted on those Names.
 const leader = "cto@example.com";
 const reader = "ceo@example.com";
 
-// platformGoals are the Goals a "Team is any of Platform" rule selects on a
-// first draft, whose baseline is 30 days back: every Platform Goal less those
-// Done or Cancelled before then.
-const platformGoals = `
-  select g.id, g.title
-  from goals g
-  join goal_dimension_values gdv on gdv.goal_id = g.id
-  join dimension_values dv on dv.id = gdv.dimension_value_id
-  join dimensions d on d.id = dv.dimension_id
-  where d.name = 'Team' and dv.value = 'Platform'
-    and not (g.lifecycle in ('Done', 'Cancelled')
-             and coalesce((select max(c.created_at) from checkins c
-                           where c.goal_id = g.id and c.lifecycle_to = g.lifecycle), '')
-                 < strftime('%Y-%m-%dT%H:%M:%SZ', $now, '-30 days'))
-  order by g.id`;
-
-type Goal = { id: number; title: string };
+// The manifest's understandingTrouble.platformReport are the Goals a "Team is
+// any of Platform" rule selects on a first draft, whose baseline is 30 days
+// back: every Platform Goal less those Done or Cancelled before then.
 
 test("a leader's Report from Definition to publication, Comment and Action Item", async ({
   as,
-  seedLookup,
+  manifest,
   serverLog,
 }) => {
   test.setTimeout(180_000);
@@ -44,8 +31,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   let reportURL = "";
 
   await test.step("1 She builds a Report Definition, and the rail lists the Goals its rule selects", async () => {
-    const platform = seedLookup<Goal>(platformGoals);
-    expect(platform.length, "the seed has Platform Goals").toBeGreaterThan(0);
+    const platform = manifest.understandingTrouble.platformReport;
+    expect(platform.length, "understandingTrouble.platformReport has Platform Goals").toBeGreaterThan(0);
 
     await elena.goto("/reports/new");
     const builder = elena.getByTestId("report-builder");
@@ -101,7 +88,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const exceptions: string[] = [];
     // What each block should carry is read from the Goal itself.
     for (const block of await blocks.all()) {
-      const goal = goalOfBlock(seedLookup, await block.getAttribute("id"));
+      const goal = goalOfBlock(manifest, await block.getAttribute("id"));
       exceptions.push(goal.title);
       await expect(block.getByRole("heading", { level: 3 })).toHaveText(goal.title);
       await expect(block.getByTestId("report-owner")).toContainText(goal.owner);
@@ -124,7 +111,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const lines = draft.getByTestId("on-track").getByTestId("selected-goal");
     const onTrack: string[] = [];
     for (const line of await lines.all()) {
-      const goal = goalOfBlock(seedLookup, await line.getAttribute("id"));
+      const goal = goalOfBlock(manifest, await line.getAttribute("id"));
       onTrack.push(goal.title);
       // Not Red or Yellow: those always earn a block. An On Hold Goal has no
       // Health, and stays on one line unless something about it changed.
@@ -132,9 +119,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     }
     expect(onTrack.filter((t) => exceptions.includes(t))).toEqual([]);
     expect([...exceptions, ...onTrack].sort()).toEqual(
-      seedLookup<Goal>(platformGoals)
-        .map((g) => g.title)
-        .sort(),
+      manifest.understandingTrouble.platformReport.map((g) => g.title).sort(),
     );
   });
 
@@ -154,15 +139,16 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   });
 
   // The Goals the month's changes happen to: one slips, one leaves for another
-  // Team, and one's Health turns.
-  const slipped = pickCheckinGoal(seedLookup, "Green", "and g.kind = 'Dated'");
-  const turning = pickCheckinGoal(seedLookup, "Yellow", `and g.id <> ${slipped.id}`);
+  // Team, and one's Health turns. The first two are Platform Goals whose
+  // Owners can check in on them plainly: Active, the Owner still here,
+  // checked in within the Goal's cadence, with no accepted child Goals (so no
+  // Rolled-up Health asks for an explanation) and no overdue Planned
+  // Milestone. The one to slip is Green and Dated; the one to turn is Yellow
+  // if one is.
+  const slipped = requirePick("understandingTrouble.slipped", manifest.understandingTrouble.slipped);
+  const turning = requirePick("understandingTrouble.turning", manifest.understandingTrouble.turning);
   const turnedTo = turning.health === "Yellow" ? "Green" : "Yellow";
-  const [moved] = seedLookup<Goal>(
-    `select id, title from (${platformGoals}) where id not in (?, ?) order by id limit 1`,
-    slipped.id,
-    turning.id,
-  );
+  const moved = requirePick("understandingTrouble.moved", manifest.understandingTrouble.moved);
 
   await test.step("4 Changes since read against her previous publication", async () => {
     // The slip: a later delivery date, with a reason. A later date rules out
@@ -409,7 +395,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const commentSubject = `subject="Comment on ${slipped.title} in ${reportName}"`;
     await expect
       .poll(() => mailLines(serverLog(), commentSubject))
-      .toEqual([expect.stringContaining(`account_id=${accountId(seedLookup, slipped.email)} `)]);
+      .toEqual([expect.stringContaining(`account_id=${accountId(manifest, slipped.email)} `)]);
 
     const owner = await as(slipped.email);
     await owner.goto(secondPublication);
@@ -426,7 +412,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       new RegExp(`${escapeRegExp(slipped.owner)}.*${escapeRegExp(answer)}`, "s"),
     ]);
     const replySubject = `subject="Reply on ${slipped.title} in ${reportName}"`;
-    await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`account_id=${accountId(seedLookup, reader)} `)]);
+    await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`account_id=${accountId(manifest, reader)} `)]);
   });
 
   const due = addDays(appToday(), 14);
@@ -542,8 +528,8 @@ function mailLines(log: string, subject: string): string[] {
 
 // accountId is the ID of the Account with the email given: the log names an
 // email's recipient by it, never by their address.
-function accountId(seedLookup: SeedLookup, email: string): number {
-  return seedLookup<{ id: number }>("select id from accounts where email = ?", email)[0].id;
+function accountId(manifest: Manifest, email: string): number {
+  return requirePick(`accountIDs[${email}]`, manifest.accountIDs[email]);
 }
 
 function escapeRegExp(s: string): string {
@@ -577,33 +563,6 @@ async function trackTyping(page: Page) {
     stop: () => (on = false),
     names: () => [...names],
   };
-}
-
-// pickCheckinGoal picks a Platform Goal whose Owner can check in on it plainly,
-// with the Health given first if one has it: Active, its Owner still here, not
-// Check-in overdue, with no accepted child Goals (so no Rolled-up Health asks
-// for an explanation) and no overdue Planned Milestone.
-function pickCheckinGoal(seedLookup: SeedLookup, health: string, extra = ""): GoalDetail & { health: string } {
-  const [row] = seedLookup<{ id: number }>(
-    `select g.id from (${platformGoals}) p join goals g on g.id = p.id join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and a.departed = 0
-       and (select max(created_at) from checkins c where c.goal_id = g.id)
-           > strftime('%Y-%m-%dT%H:%M:%SZ', $now, '-' || g.cadence_days || ' days')
-       and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-       and not exists (select 1 from milestones m
-                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-       ${extra}
-     order by (select health from checkins c where c.goal_id = g.id order by created_at desc, id desc limit 1) = ? desc, g.id
-     limit 1`,
-    health,
-  );
-  expect(row, "Platform has a Goal its Owner can check in on").toBeDefined();
-  const goal = goalOfBlock(seedLookup, `goal-${row.id}`);
-  const [latest] = seedLookup<{ health: string }>(
-    "select health from checkins where goal_id = ? order by created_at desc, id desc limit 1",
-    row.id,
-  );
-  return { ...goal, health: latest.health };
 }
 
 type CheckinInput = {
@@ -726,37 +685,14 @@ async function healthOf(badge: Locator): Promise<string> {
   return ((await badge.textContent()) ?? "").replace(/\s+/g, " ").trim();
 }
 
-type GoalDetail = Goal & {
-  owner: string;
-  email: string;
-  lifecycle: string;
-  why_it_matters: string;
-  delivery_date: string;
-  status: string;
-  path_to_green: string;
-  milestones: number;
-  metrics: number;
-};
-
 // goalOfBlock looks up the Goal a Report's block or line is about, by its
-// anchor ("goal-12"), for what it should show.
-function goalOfBlock(seedLookup: SeedLookup, anchor: string | null): GoalDetail {
+// anchor ("goal-12"), in the Report's Goals, for what it should show.
+function goalOfBlock(manifest: Manifest, anchor: string | null): ReportGoal {
   const id = Number((anchor ?? "").replace("goal-", ""));
-  const [goal] = seedLookup<GoalDetail>(
-    `select g.id, g.title, coalesce(a.name, a.email) owner, a.email, g.lifecycle, g.why_it_matters, g.delivery_date,
-            c.status, c.path_to_green,
-            (select count(*) from milestones m where m.goal_id = g.id) milestones,
-            (select count(*) from metrics m where m.goal_id = g.id) metrics
-     from goals g join accounts a on a.id = g.owner_id
-     left join checkins c on c.id = (select id from checkins where goal_id = g.id order by created_at desc, id desc limit 1)
-     where g.id = ?`,
-    id,
-  );
+  const goal = manifest.understandingTrouble.platformReport.find((g) => g.id === id);
   expect(goal, `a Goal behind ${anchor}`).toBeDefined();
-  return goal;
+  return goal!;
 }
-
-type SeedLookup = <T = Record<string, unknown>>(sql: string, ...params: (string | number)[]) => T[];
 
 // leavingWarns reports whether leaving the page now would ask the browser's
 // "Leave site?" question: whether its beforeunload is cancelled.

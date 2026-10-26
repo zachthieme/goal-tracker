@@ -3,9 +3,6 @@
   "private": true,
   "description": "Playwright end-to-end suite: drives the real binary over a freshly seeded database (see README.md).",
   "type": "module",
-  "engines": {
-    "node": ">=22.13"
-  },
   "scripts": {
     "test": "playwright test",
     "typecheck": "tsc -p ."

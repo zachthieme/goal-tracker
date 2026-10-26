@@ -1,6 +1,7 @@
 // Global setup: build the binaries and seed the template databases, once per
-// run. Each test copies a template (see the app fixture in fixtures.ts), so
-// every test starts from the same seeded org.
+// run, each with its manifest of the specs' picks. Each test copies a template
+// (see the app fixture in fixtures.ts), so every test starts from the same
+// seeded org.
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,6 +21,11 @@ export const admin = "admin@example.com";
 
 export function templatePath(dir: string, template: Template): string {
   return join(dir, `${template}.db`);
+}
+
+// manifestPath is where the seed writes the template's manifest (manifest.ts).
+export function manifestPath(dir: string, template: Template): string {
+  return join(dir, `${template}.manifest.json`);
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -59,7 +65,13 @@ export default function globalSetup() {
     execFileSync("go", ["build", "-o", join(dir, cmd), `./cmd/${cmd}`], { cwd: root, stdio: "inherit" });
   }
   for (const [name, end] of Object.entries(templates)) {
-    const args = ["-db", templatePath(dir, name as Template), "-seed", "23", "-admin", admin, "-end", end];
+    const template = name as Template;
+    // The manifest's picks are judged at startAt, where each test's app
+    // starts, not at -end: the due template's see the reference date as today.
+    const args = [
+      ...["-db", templatePath(dir, template), "-seed", "23", "-admin", admin, "-end", end],
+      ...["-manifest", manifestPath(dir, template), "-manifest-at", startAt],
+    ];
     execFileSync(join(dir, "seed"), args, { stdio: "pipe" });
   }
 

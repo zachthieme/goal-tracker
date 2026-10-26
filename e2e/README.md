@@ -6,9 +6,9 @@ scenarios in [`docs/scenarios.md`](../docs/scenarios.md) are checked in a
 browser. It's a vetinari gate, after `make check`'s three, for a branch that
 changes what the browser gets or the suite itself: a `.templ` file or a Go file
 other than a `_test.go` in `internal/web/`, anything in `internal/web/static/`,
-`e2e/`, `internal/seed/` or `cmd/seed/`. It also runs on a change to anything in
-`internal/db/`, because the specs read the schema directly through `seedLookup`
-([`fixtures.ts`](fixtures.ts)). The pattern is the e2e gate's `when` in
+`e2e/`, `internal/seed/` or `cmd/seed/`, where the seed picks the specs' Goals
+and people ([`manifest.ts`](manifest.ts)), or to anything in `internal/db/`.
+The pattern is the e2e gate's `when` in
 [`vetinari/config.mts`](../vetinari/config.mts). That pattern only decides
 whether it runs on a branch: after each wave, vetinari runs the suite on the
 merged result whatever the wave changed. `make check` doesn't run it.
@@ -27,7 +27,7 @@ is unset it also runs `npx playwright install chromium`, which does nothing if
 the browser is already there. It needs:
 
 - Go, to build the binaries
-- Node 22.13 or later, for `node:sqlite`
+- Node, for Playwright
 - outbound network, to install Playwright and its npm packages. The pages
   themselves don't need it: the app serves htmx and the fonts
 
@@ -52,7 +52,9 @@ vetinari don't run it. From `e2e/`, `npm run typecheck` does the same.
 [`global-setup.ts`](global-setup.ts) runs once per run. It builds
 `cmd/goal-tracker` and `cmd/seed` into a temp dir, then seeds two template
 databases with `-seed 23`, both frozen at the **reference date, Monday 5
-October 2026**, not the machine's date:
+October 2026**, not the machine's date. Beside each it writes the template's
+manifest (`-manifest`), the specs' picks from it, judged at `startAt`
+(`-manifest-at`):
 
 | Template  | Seeded with       | What it gives                                                                                                                                                                                    |
 | --------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -94,13 +96,17 @@ there, not from `@playwright/test`. Each test gets:
 - **`as(email)`**: opens a page in a new browser context, already signed in,
   for scenarios with two people. `page.context()` is the context. It closes
   after the test.
-- **`seedLookup(sql, ...params)`**: a read-only query on the test's database
-  through `node:sqlite`. Use it only to choose actors and Goals, such as "an
-  Owner with a Check-in due" or "a project and the Owner of the Goal it
-  contributes to". It never writes, and never asserts an outcome. Outcomes are
-  asserted on the page. `$now` in the SQL is bound to `app.now()`: write
-  `date($now)` or `julianday($now)`, never SQLite's `'now'`, which reads the
-  machine's clock.
+- **`manifest`**: the seed's picks for the test's template, typed `Manifest`
+  ([`manifest.ts`](manifest.ts)): the Goals and people the specs act on, by
+  role, such as `quietGoal`, an Owner who can check in Green with only a
+  status, or `badNewsChain`, a project and the Goal it contributes to. The
+  seed (`seed.BuildManifest` in `internal/seed/manifest.go`) picks them
+  through the domain, judging "today", Check-in overdue and overdue
+  Milestones at `startAt`, where each test's app starts, not at `-end`. A
+  role with no pick is `null`, and a list with none is empty:
+  `requirePick(role, pick)` returns the pick or fails naming the role. Use it
+  only to choose actors and Goals, never to assert an outcome. Outcomes are
+  asserted on the page.
 - **`serverLog()`**: what the server has logged so far. Use it for what the app
   only logs: email goes to the log through `email.LogSender`, not out.
 
@@ -169,23 +175,26 @@ a saved item.
 
 - **One spec per scenario**, at `scenarios/<nn>-<slug>.spec.ts`. A helper only
   one scenario uses stays in that spec.
-- **A scenario spec ticket edits only its own spec file.** It doesn't edit
-  `fixtures.ts`, this README, `playwright.config.ts` or `package.json`. Its
+- **A scenario spec ticket edits only its own spec file**, and the manifest's
+  files for a role it adds. It doesn't edit `fixtures.ts`, this README,
+  `playwright.config.ts` or `package.json`. Its
   file-set marker doesn't list them, so a co-wave ticket that did could
   collide. If a scenario needs a helper in `fixtures.ts`, keep a local copy in
   the spec and report a finding.
-- **Choose Goals by criteria, with `seedLookup` at test time**, never by a
-  fixed id or title. A Goal's seeded Health differs between the two templates,
-  but not from day to day: both are frozen at the reference date.
+- **Choose Goals and actors by role from `manifest`**, or actors by email,
+  never a Goal by a fixed id or title. A Goal's seeded Health differs between
+  the two templates, but not from day to day: both are frozen at the reference
+  date. Where the page decides, as which of a lead's team Goals shows
+  Rolled-up Health Green, read it there over the role's ordered candidates. A
+  new role is added in `internal/seed/manifest.go`, `manifest.ts` and
+  `TestE2EScenarioSituations` (`internal/seed/scenarios_test.go`) together.
 - **Read "now" and "today" from the app, never the machine.** Use
-  `app.now()`, `appToday()` and `$now` in `seedLookup`, not `Date.now()`,
-  `new Date()` or SQLite's `'now'`. Timeouts and polling deadlines stay on the
-  real clock.
-- **Choose actors by email or with `seedLookup`.** The scenarios' people
-  (Elena, Priya, Marcus) are roles, not accounts. The seed's own Names belong
-  to other accounts (`cto@` is Priya Raman, `cpo@` is Marcus Bell,
-  `growth-lead@` is Elena Petrova). Assert on the seeded Name the page shows,
-  never on a scenario's name.
+  `app.now()` and `appToday()`, not `Date.now()` or `new Date()`. Timeouts and
+  polling deadlines stay on the real clock.
+- **The scenarios' people (Elena, Priya, Marcus) are roles, not accounts.**
+  The seed's own Names belong to other accounts (`cto@` is Priya Raman, `cpo@`
+  is Marcus Bell, `growth-lead@` is Elena Petrova). Assert on the seeded Name
+  the page shows, never on a scenario's name.
 - **Find elements by role and visible text**, in `CONTEXT.md`'s terms. Use the
   existing `data-testid`s where text is ambiguous. Don't use CSS classes.
 - **Name each `test.step` after the scenario step it checks**, e.g.
