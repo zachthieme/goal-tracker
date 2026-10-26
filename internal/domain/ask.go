@@ -98,6 +98,16 @@ func (s *Service) OpenAsksForHelp(ctx context.Context) ([]AskForHelp, error) {
 	return openAsksAmong(rows, byID)
 }
 
+// openAsksForHelpAmong is OpenAsksForHelp given byID, every Account by ID,
+// already read, so it reads only the open Asks for help.
+func (s *Service) openAsksForHelpAmong(ctx context.Context, byID map[int64]Account) ([]AskForHelp, error) {
+	rows, err := s.queries.ListOpenAsksForHelp(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list open asks for help: %w", err)
+	}
+	return openAsksAmong(rows, byID)
+}
+
 // openAsksAmong is OpenAsksForHelp over rows, every open Ask for help, given
 // byID, every Account by ID, to walk each ask's Owner up their line in.
 func openAsksAmong(rows []db.ListOpenAsksForHelpRow, byID map[int64]Account) ([]AskForHelp, error) {

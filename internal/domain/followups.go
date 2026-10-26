@@ -24,6 +24,10 @@ type FollowUps struct {
 	// Delegated holds the IDs of the Goals the viewer is a Delegate on
 	// (DelegatedGoals).
 	Delegated map[int64]bool
+	// Accounts are every Account, by ID, read whether or not an Ask for
+	// help is open, so the page's Scope needn't read them again
+	// (GoalScopeAmong).
+	Accounts []Account
 }
 
 // FollowUpRow is one flagged Goal with every signal that flags it, so a Goal
@@ -80,7 +84,8 @@ func (r FollowUpRow) Signal(kind string) (FollowUpSignal, bool) {
 // FollowUps reads the Follow-ups page for viewerID, reading each thing once
 // (ADR 0010): every Goal the company's freshness and graph signals, an
 // Ownerless Goal, an open Ask for help or an overdue Action Item flags, with
-// the Goals the viewer is a Delegate on.
+// the Goals the viewer is a Delegate on and every Account, which the open
+// Asks for help are walked up.
 func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, error) {
 	active, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
@@ -94,15 +99,24 @@ func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, err
 	if err != nil {
 		return FollowUps{}, err
 	}
-	if reads.asks, err = s.OpenAsksForHelp(ctx); err != nil {
+	rows, err := s.queries.ListAskWalkAccounts(ctx)
+	if err != nil {
+		return FollowUps{}, fmt.Errorf("list accounts: %w", err)
+	}
+	accounts := orgWalkAccountsOf(rows)
+	byID := make(map[int64]Account, len(accounts))
+	for _, a := range accounts {
+		byID[a.ID] = a
+	}
+	if reads.asks, err = s.openAsksForHelpAmong(ctx, byID); err != nil {
 		return FollowUps{}, err
 	}
-	rows := s.followUpRowsAmong(reads)
-	if err := s.readFollowUpRows(ctx, rows); err != nil {
+	flagged := s.followUpRowsAmong(reads)
+	if err := s.readFollowUpRows(ctx, flagged); err != nil {
 		return FollowUps{}, err
 	}
-	sortFollowUpRows(rows)
-	out := FollowUps{Rows: rows, Delegated: map[int64]bool{}}
+	sortFollowUpRows(flagged)
+	out := FollowUps{Rows: flagged, Delegated: map[int64]bool{}, Accounts: accounts}
 	if out.Goals, err = s.ListGoals(ctx); err != nil {
 		return FollowUps{}, err
 	}

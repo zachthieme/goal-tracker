@@ -70,7 +70,9 @@ func seedOwnerlessGoals(t *testing.T, h *testsupport.Harness, n int) {
 // 0010): Service.FollowUps runs no query twice, for an Admin or for a lead
 // with an Org, and as many for 50 Goals, 10 of them Ownerless, as for 10, 2 of
 // them Ownerless. The whole page, its sidebar and the session's reads
-// included, runs twice only what the loader and the sidebar both need.
+// included, runs twice only what the loader and the sidebar both need, and
+// its Scope reads nothing the loader holds: not every Account, nor the
+// viewer's Delegate Goals (#592).
 func TestFollowUpsReadsEachThingOnce(t *testing.T) {
 	t.Parallel()
 	// followUpsMax is what Service.FollowUps reads: every Active Goal with
@@ -81,8 +83,8 @@ func TestFollowUpsReadsEachThingOnce(t *testing.T) {
 	// Goals.
 	const followUpsMax = 12
 	// followUpsShared are the reads the loader and the sidebar both make, so
-	// the whole page runs each twice. The page's Scope reads the viewer's
-	// Delegate Goals a third time, for Mine.
+	// the whole page runs each twice. The page's Scope reads none of them
+	// again, its Accounts and Delegate Goals being the loader's.
 	followUpsShared := map[string]int{
 		"ListActiveGoalsWithLatestCheckin": 2,
 		"ListOverdueMilestones":            2,
@@ -90,18 +92,18 @@ func TestFollowUpsReadsEachThingOnce(t *testing.T) {
 		"ListOverdueActionItems":           2,
 		"ListOpenAsksForHelp":              2,
 		"ListAskWalkAccounts":              2,
-		"ListDelegatedGoals":               3,
+		"ListDelegatedGoals":               2,
 	}
 	for _, v := range []struct {
-		email   string
-		pageMax int
+		email     string
+		pageCount int
 		// scopeReads are what the page's Scope reads more than once to
 		// resolve a lead's default scope, My org: whom they manage, and the
 		// people under them.
 		scopeReads map[string]int
 	}{
-		{queryCountAdmin, 31, nil},
-		{"morgan@example.com", 33, map[string]int{"ListAccountsUnder": 3, "GetAccount": 2}},
+		{queryCountAdmin, 27, nil},
+		{"morgan@example.com", 27, map[string]int{"ListAccountsUnder": 3, "GetAccount": 2}},
 	} {
 		t.Run(v.email, func(t *testing.T) {
 			t.Parallel()
@@ -125,6 +127,9 @@ func TestFollowUpsReadsEachThingOnce(t *testing.T) {
 				}
 				getBody(t, client, ts.URL+"/follow-ups")
 				page := queries.take()
+				if times := countQueryNames(page)["ListOrgWalkAccounts"]; times > 0 {
+					t.Errorf("Follow-ups ran ListOrgWalkAccounts %d times for %d Goals; want the loader's Accounts", times, n)
+				}
 				for name, times := range countQueryNames(page) {
 					want := max(1, followUpsShared[name], v.scopeReads[name])
 					if times > want {
@@ -137,12 +142,41 @@ func TestFollowUpsReadsEachThingOnce(t *testing.T) {
 			if ten.loader > followUpsMax {
 				t.Errorf("FollowUps ran %d queries; want at most %d", ten.loader, followUpsMax)
 			}
-			if ten.page > v.pageMax {
-				t.Errorf("Follow-ups ran %d queries; want at most %d", ten.page, v.pageMax)
+			if ten.page != v.pageCount {
+				t.Errorf("Follow-ups ran %d queries; want %d", ten.page, v.pageCount)
 			}
 			if ten != fifty {
 				t.Errorf("FollowUps and Follow-ups ran %d and %d queries for 10 Goals, and %d and %d for 50; want the same", ten.loader, ten.page, fifty.loader, fifty.page)
 			}
 		})
+	}
+}
+
+// With no Ask for help open, Follow-ups still reads every Account in its
+// loader, so its Scope reads them no more than when one is (#592).
+func TestFollowUpsScopeReadsNoAccountsWithNoAskForHelp(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, queryCountAdmin)
+	admin := h.SignInNamed(queryCountAdmin, "Ada Admin")
+	lead := h.SignInNamed("morgan@example.com", "Morgan Wu")
+	dev := h.SignInNamed("priya@example.com", "Priya Raman")
+	h.SetManager(dev, lead)
+	h.ActiveGoal(dev, "Dev's goal", "It matters.")
+	h.ActiveGoal(admin, "Admin's goal", "It matters.")
+	ts, _, queries := newQueryCountingServer(t, h)
+	for _, email := range []string{queryCountAdmin, "morgan@example.com"} {
+		client := signInClient(t, ts.URL, email)
+		queries.take()
+		getBody(t, client, ts.URL+"/follow-ups")
+		names := countQueryNames(queries.take())
+		if names["ListOpenAsksForHelp"] == 0 {
+			t.Fatalf("Follow-ups for %s read no open Asks for help; the test no longer sees the no-Ask path", email)
+		}
+		if times := names["ListOrgWalkAccounts"]; times > 0 {
+			t.Errorf("Follow-ups for %s ran ListOrgWalkAccounts %d times with no Ask for help open; want none", email, times)
+		}
+		if times := names["ListDelegatedGoals"]; times > 2 {
+			t.Errorf("Follow-ups for %s ran ListDelegatedGoals %d times; want at most 2", email, times)
+		}
 	}
 }

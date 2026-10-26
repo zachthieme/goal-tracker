@@ -88,6 +88,18 @@ func (s *Service) GoalScope(ctx context.Context, viewer Account, req GoalScopeRe
 	return sc, nil
 }
 
+// GoalScopeAmong is GoalScope over what a page loader has already read,
+// reading nothing: accounts, every Account by ID, and delegated, the IDs of
+// the Goals viewer is a Delegate on, for Mine. The Follow-ups page resolves
+// its scope this way, over Service.FollowUps' reads (#592).
+func GoalScopeAmong(viewer Account, req GoalScopeRequest, dims []Dimension, goals []Goal, accounts []Account, delegated map[int64]bool) GoalScope {
+	sc := goalScopeAmong(viewer, req, dims, goals, accounts)
+	if sc.Mine {
+		sc.delegated = delegated
+	}
+	return sc
+}
+
 // goalScopeAmong is GoalScope over accounts, every Account by ID, reading
 // nothing: Mine's Delegate Goals are left for the caller.
 func goalScopeAmong(viewer Account, req GoalScopeRequest, dims []Dimension, goals []Goal, accounts []Account) GoalScope {
