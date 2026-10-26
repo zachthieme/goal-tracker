@@ -122,6 +122,45 @@ func TestARefusalLinksBackOnlyWithinTheApp(t *testing.T) {
 	}
 }
 
+// A refusal's reason that opens with a value, such as an email or a Goal's
+// title, reads as written; one that opens with a plain lowercase word is
+// capitalised. Either way it ends in a full stop.
+func TestARefusalReasonOpeningWithAValueReadsAsWritten(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	h.SignIn("sam@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	base, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, c := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"an email", domain.Refuse(domain.ErrValidation, "%s already owns this Action Item", "owner@example.com"),
+			"owner@example.com already owns this Action Item."},
+		{"a Goal's title", domain.Refuse(domain.ErrValidation, "%s is Done, so it can't be activated", "iOS launch"),
+			"iOS launch is Done, so it can't be activated."},
+		{"a plain word", domain.Refuse(domain.ErrValidation, "a Milestone needs a name"),
+			"A Milestone needs a name."},
+	} {
+		path := fmt.Sprintf("/refusal-reason-test/%d", i)
+		srv.HandleRefusalForTest("GET "+path, "Can't do it", "/goals/12", c.err)
+		w := serveSignedIn(t, srv, sam, base, path)
+		page := parsePage(t, w.Body.String())
+		if got := textOf(findByTestID(t, page, "refused-reason")); got != c.want {
+			t.Errorf("%s: refused-reason = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // serveSignedIn has srv answer a GET of path as client's signed-in Account
 // would send it, and returns the answer once srv has finished with it.
 func serveSignedIn(t *testing.T, srv *web.Server, client *http.Client, base *url.URL, path string) *httptest.ResponseRecorder {

@@ -91,12 +91,19 @@ func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, _ domain.Acc
 		refuseFailureSaying("The Undo couldn't be done, so nothing changed. Try again."))
 }
 
-// sentence is msg capitalised and ending in a full stop.
+// sentence is msg ending in a full stop, its first letter upper-cased only
+// when its first word, up to the first space, is all lowercase a–z. A first
+// word holding anything else, such as an "@", a ".", a digit or an uppercase
+// letter, is a value like an email or a Goal's title and is left as written
+// (#583). A value that is all lowercase letters is still capitalised.
 func sentence(msg string) string {
 	if msg == "" {
 		return msg
 	}
-	msg = strings.ToUpper(msg[:1]) + msg[1:]
+	first, _, _ := strings.Cut(msg, " ")
+	if strings.Trim(first, "abcdefghijklmnopqrstuvwxyz") == "" {
+		msg = strings.ToUpper(msg[:1]) + msg[1:]
+	}
 	if !strings.HasSuffix(msg, ".") {
 		msg += "."
 	}
