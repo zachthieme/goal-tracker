@@ -3766,13 +3766,13 @@ func highlightCredit(nh domain.NarrativeHighlight) templ.Component {
 // Path to Green, its back-to-Green date followed by the date it last slipped
 // from in the Run off Green struck through and the count of slips once more
 // than one, as drafted (see reportBackToGreenPrior), and marked Overdue when
-// its target date passed before asOf (domain.PathToGreenOverdueAt), and after
-// it an Ask for help open when the Report was drafted (reportAskForHelp); then
-// labelled rows of Milestones, each marked as of asOf, Metrics against target,
-// and the Rolled-up Health with how many children are Red, Yellow and Check-in
-// overdue ("2 of 6 Red · 1 Yellow · 1 overdue"), the Goals behind it, and the
-// Owner's explanation. Each row's label sits in a column beside it (DESIGN.md
-// § A publication). It reads asOf in the zone the block's Goal was judged in when drafted (see
+// its target date passed before asOf, and after it an Ask for help open when
+// the Report was drafted (reportAskForHelp); then labelled rows of Milestones,
+// each marked as of asOf, Metrics against target, and the Rolled-up Health with
+// how many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1
+// Yellow · 1 overdue"), the Goals behind it, and the Owner's explanation. Each
+// row's label sits in a column beside it (DESIGN.md § A publication). It reads asOf
+// in the zone the block's Goal was judged in when drafted (see
 // domain.ReportBlock.Timezone). Each Goal it names links to its place in the
 // Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
 // A Yellow or Red Health reads with its Run off Green as drafted, and one that
