@@ -2803,6 +2803,96 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 	}
 }
 
+// On a Goal's page, each parent and child link offers Remove to the Owner of
+// either linked Goal and to no one else: not a Delegate, an Admin or a
+// stranger (the people RemoveLink allows).
+func TestGoalPageOffersLinkRemoveOnlyToEitherGoalsOwner(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	chris := h.SignIn("chris@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	h.SignIn("rita@example.com")
+	h.SignIn("admin@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	parent := h.ActiveGoal(pat, "Grow revenue", "We need to grow.")
+	child := h.ActiveGoal(chris, "Index the catalog", "Search needs an index.")
+	h.AddDelegate(sam, morgan, goal.ID)
+	up := h.RequestLink(sam, goal, parent, "")
+	if _, err := h.Service.AcceptLink(ctx, up.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink of the parent link: %v", err)
+	}
+	down := h.RequestLink(chris, child, goal, "")
+	if _, err := h.Service.AcceptLink(ctx, down.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink of the child link: %v", err)
+	}
+	ts := newServer(t, h)
+
+	for _, v := range []struct {
+		who, name                 string
+		removeParent, removeChild bool
+	}{
+		{"sam@example.com", "the Goal's Owner", true, true},
+		{"pat@example.com", "the parent's Owner", true, false},
+		{"chris@example.com", "the child's Owner", false, true},
+		{"morgan@example.com", "a Delegate", false, false},
+		{"admin@example.com", "an Admin", false, false},
+		{"rita@example.com", "a stranger", false, false},
+	} {
+		page := getPage(t, signInClient(t, ts.URL, v.who), goalPageURL(ts.URL, goal))
+		for _, s := range []struct {
+			section string
+			linked  domain.Goal
+			want    bool
+		}{
+			{"goal-parents", parent, v.removeParent},
+			{"goal-children", child, v.removeChild},
+		} {
+			section := findByTestID(t, page, s.section)
+			if linkTo(section, goalHref(s.linked.ID)) == nil {
+				t.Errorf("%s: %s doesn't link %s:\n%s", v.name, s.section, s.linked.Title, renderNode(section))
+			}
+			if got := buttonNamed(section, "Remove") != nil; got != s.want {
+				t.Errorf("%s: Remove shown in %s = %t, want %t:\n%s", v.name, s.section, got, s.want, renderNode(section))
+			}
+		}
+	}
+}
+
+// Activate Goal shows only to the Owner of a Proposed Goal: not to its
+// Delegate, an Admin or a stranger, and not to the Owner once it is Active.
+func TestGoalPageOffersActivateGoalOnlyToAProposedGoalsOwner(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	h.SignIn("rita@example.com")
+	h.SignIn("admin@example.com")
+	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, morgan, proposed.ID)
+	ts := newServer(t, h)
+
+	for _, v := range []struct {
+		who, name string
+		goal      domain.Goal
+		want      bool
+	}{
+		{"sam@example.com", "the Owner of the Proposed Goal", proposed, true},
+		{"morgan@example.com", "a Delegate on the Proposed Goal", proposed, false},
+		{"admin@example.com", "an Admin on the Proposed Goal", proposed, false},
+		{"rita@example.com", "a stranger to the Proposed Goal", proposed, false},
+		{"sam@example.com", "the Owner of the Active Goal", active, false},
+	} {
+		page := getPage(t, signInClient(t, ts.URL, v.who), goalPageURL(ts.URL, v.goal))
+		if got := buttonNamed(findByTestID(t, page, "goal-main"), "Activate Goal") != nil; got != v.want {
+			t.Errorf("%s: Activate Goal shown = %t, want %t", v.name, got, v.want)
+		}
+	}
+}
+
 // Each Metric is a row: its name over "baseline → target by date", then a
 // sparkline of its readings with a dashed target line, labelled for a screen
 // reader with the trend, then its current value. The Owner edits it in a

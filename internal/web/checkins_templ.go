@@ -1292,7 +1292,7 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = linkList(g, nil, v.Children, v.LinkHealth, "no-children", "").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = linkList(g, v.Children, v.LinkHealth, nil, "no-children", "").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -811,7 +811,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					@goalComments(current, v)
 					@goalHistory(v.History)
 				</div>
-				@goalRail(current, v)
+				@goalRail(v)
 			</div>
 		</div>
 	}
@@ -898,7 +898,7 @@ templ goalHead(v goalView) {
 // properties as label and value rows (goalProperties), then its Dimension
 // values, its Fields, the Goals it contributes to and those contributing to it.
 // Each group's form opens in place in the rail from its heading's link.
-templ goalRail(current *domain.Account, v goalView) {
+templ goalRail(v goalView) {
 	{{ g := v.Goal }}
 	<aside data-testid="goal-sidebar" class="gp-rail" aria-label="Properties">
 		@goalProperties(v)
@@ -920,13 +920,13 @@ templ goalRail(current *domain.Account, v goalView) {
 			@groupHead(v, formParentLink, "+ Add", "Add a parent Goal") {
 				<h3>Contributes to</h3>
 			}
-			@linkList(g, current, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
+			@linkList(g, v.Parents, v.LinkHealth, v.RemovableLinks, "no-parents", "This Goal contributes to nothing yet.")
 			@requestParentLink(v)
 			@suggestedParents(v)
 		</section>
 		<section data-testid="goal-children" class="gp-block gp-rail-group">
 			<h3>Contributed to by</h3>
-			@linkList(g, current, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
+			@linkList(g, v.Children, v.LinkHealth, v.RemovableLinks, "no-children", "Nothing contributes to this Goal yet.")
 		</section>
 	</aside>
 }
@@ -1418,9 +1418,9 @@ templ requestParentLink(v goalView) {
 }
 
 // defineGoal is the Owner's toolkit for a Proposed Goal: the activation
-// checklist, Activate Goal once it is done, and Finish defining, which opens
-// the define page to set the Kind, cadence, Why it matters, Milestones, Metrics and
-// the rest on one form.
+// checklist, Activate Goal once it is done, for one who may activate it
+// (ActivateGoal), and Finish defining, which opens the define page to set the
+// Kind, cadence, Why it matters, Milestones, Metrics and the rest on one form.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="define-goal" class="gp-block gp-section gp-define">
@@ -1438,9 +1438,11 @@ templ defineGoal(v goalView) {
 				}
 			</ul>
 		</div>
-		<form data-testid="activate-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) }>
-			<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
-		</form>
+		if v.Permissions.Activate {
+			<form data-testid="activate-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) }>
+				<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
+			</form>
+		}
 	</section>
 }
 
@@ -1700,11 +1702,10 @@ templ metricFields(m domain.Metric) {
 
 // linkList renders Goal g's parents or children as navigable links, each led
 // by its Health, or its Lifecycle when it has none, then its title, on one
-// line with Ownerless when it is and, for current when they own g or the
-// linked Goal (the Owners RemoveLink allows), a button that removes the
-// connecting link at once: the page that follows offers Undo.
-// emptyTestID/emptyText render when there are none.
-templ linkList(g domain.Goal, current *domain.Account, links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
+// line with Ownerless when it is and, for a link removable says the viewer
+// may remove (RemoveLink), a button that removes it at once: the page that
+// follows offers Undo. emptyTestID/emptyText render when there are none.
+templ linkList(g domain.Goal, links []domain.GoalLink, health map[int64]string, removable map[int64]bool, emptyTestID, emptyText string) {
 	<ul class="gp-list">
 		if len(links) == 0 {
 			<li data-testid={ emptyTestID } class="muted">{ emptyText }</li>
@@ -1722,7 +1723,7 @@ templ linkList(g domain.Goal, current *domain.Account, links []domain.GoalLink, 
 						if l.Goal.Ownerless {
 							<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
 						}
-						if current != nil && (current.ID == g.Owner.ID || current.ID == l.Goal.Owner.ID) {
+						if removable[l.LinkID] {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>
 								<input type="hidden" name="goal_id" value={ fmt.Sprint(g.ID) }/>
 								<button type="submit" class="btn quiet sm">Remove</button>

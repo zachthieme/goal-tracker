@@ -514,6 +514,61 @@ func TestGoalPagePermitsAnAdminToReassignAnOwnerlessGoal(t *testing.T) {
 	}
 }
 
+// The Goal page's loader says, for each of the Goal's parent and child links,
+// whether its viewer may remove it, by RemoveLink's rule: the Owner of either
+// linked Goal may, and a Delegate, an Admin, anyone else and an Owner who has
+// Departed may not.
+func TestGoalPageSaysWhichLinksItsViewerMayRemove(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	chris := h.SignIn("chris@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	rita := h.SignIn("rita@example.com")
+	admin := h.SignIn("admin@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	parent := h.ActiveGoal(pat, "Grow revenue", "We need to grow.")
+	child := h.ActiveGoal(chris, "Index the catalog", "Search needs an index.")
+	h.AddDelegate(sam, morgan, g.ID)
+	up := h.RequestLink(sam, g, parent, "")
+	if _, err := h.Service.AcceptLink(ctx, up.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink of the parent link: %v", err)
+	}
+	down := h.RequestLink(chris, child, g, "")
+	if _, err := h.Service.AcceptLink(ctx, down.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink of the child link: %v", err)
+	}
+
+	removable := func(t *testing.T, name string, viewer domain.Account, want map[int64]bool) {
+		t.Helper()
+		p, err := h.Service.GoalPage(ctx, viewer.ID, g.ID)
+		if err != nil {
+			t.Fatalf("GoalPage for %s: %v", name, err)
+		}
+		if !reflect.DeepEqual(p.RemovableLinks, want) {
+			t.Errorf("RemovableLinks for %s = %v, want %v", name, p.RemovableLinks, want)
+		}
+	}
+	for _, v := range []struct {
+		name   string
+		viewer domain.Account
+		want   map[int64]bool
+	}{
+		{"the Goal's Owner", sam, map[int64]bool{up.ID: true, down.ID: true}},
+		{"the parent's Owner", pat, map[int64]bool{up.ID: true, down.ID: false}},
+		{"the child's Owner", chris, map[int64]bool{up.ID: false, down.ID: true}},
+		{"a Delegate", morgan, map[int64]bool{up.ID: false, down.ID: false}},
+		{"an Admin", admin, map[int64]bool{up.ID: false, down.ID: false}},
+		{"a stranger", rita, map[int64]bool{up.ID: false, down.ID: false}},
+	} {
+		removable(t, v.name, v.viewer, v.want)
+	}
+	h.MarkDeparted(admin, sam)
+	removable(t, "the Goal's Departed Owner", sam, map[int64]bool{up.ID: false, down.ID: false})
+}
+
 // A viewer ID that names no Account is neither the Owner, a Delegate nor an
 // Admin, so the Goal page's loader offers them neither Check in nor setting
 // values, and none of the pending Draft Highlights.
