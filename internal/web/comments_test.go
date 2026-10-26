@@ -228,6 +228,35 @@ func TestDirectActionItemNamesAGoalOverHTTP(t *testing.T) {
 	}
 }
 
+// An Action Item due on a day that isn't a date is refused on the refusal
+// page, 422, quoting what was typed, with a way Back to the publication, and
+// no Action Item is raised.
+func TestActionItemDueDateThatIsntADateIsRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	v2 := h.ActiveGoal(author, "Ship v2", "Win back churned accounts.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{v2.ID}})
+	pub := h.PublishReport(author, def)
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	resp := postForm(t, client, ts.URL+pubPath+"/action-items", url.Values{
+		"text": {"Book the EU legal review."}, "owner": {"author@example.com"}, "due": {"someday"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, parsePage(t, body), "Can't comment", `"someday" isn't a date.`, pubPath)
+	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 0 {
+		t.Errorf("Action Items = %+v (%v), want none raised", items, err)
+	}
+}
+
 // Closing an Action Item comes back only to a page on this site: a return
 // address that a browser would read as another site is ignored.
 func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
