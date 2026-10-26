@@ -258,16 +258,41 @@ func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) (
 // has marked required (CONTEXT.md: Incomplete). Every unmet requirement comes back as its own
 // validation error, joined together, so the Owner sees the whole list at once;
 // use ActivationReasons to enumerate them. The Goal stays Proposed on rejection.
-// Only the Goal's Owner may activate it (ErrNotAuthorized).
+// Only the Goal's Owner may activate it (ErrNotAuthorized), and only while it
+// is Proposed: any other Lifecycle is refused (ErrValidation) before the
+// standard is checked. The checks and the write run in one transaction.
 func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
-		return Goal{}, err
-	}
-	g, err := s.loadGoal(ctx, goalID)
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		g, err := tx.loadGoal(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		if g.Lifecycle != LifecycleProposed {
+			return Refuse(ErrValidation, "%s is %s, so it can't be activated", g.Title, g.Lifecycle)
+		}
+		if err := tx.requireActivationStandard(ctx, g); err != nil {
+			return err
+		}
+		if err := tx.queries.ActivateGoal(ctx, db.ActivateGoalParams{
+			ActivatedAt: tx.clock.Now().Format(timeFormat),
+			ID:          goalID,
+		}); err != nil {
+			return fmt.Errorf("activate goal: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
 		return Goal{}, err
 	}
+	return s.loadGoal(ctx, goalID)
+}
 
+// requireActivationStandard checks g against the minimum standard
+// ActivateGoal enforces, joining every unmet requirement into one error.
+func (s *Service) requireActivationStandard(ctx context.Context, g Goal) error {
 	var reasons []error
 	// Why it matters and Owner are guaranteed by CreateGoal/EditWhyItMatters and the schema,
 	// but the gate states the full minimum standard so it still holds if those
@@ -284,17 +309,17 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 		if g.DeliveryDate.IsZero() {
 			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs a delivery date"))
 		}
-		milestones, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
+		milestones, metrics, err := s.countMilestonesAndMetrics(ctx, g.ID)
 		if err != nil {
-			return Goal{}, err
+			return err
 		}
 		if milestones == 0 && metrics == 0 {
 			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs at least one Milestone or Metric"))
 		}
 	case GoalOngoing:
-		_, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
+		_, metrics, err := s.countMilestonesAndMetrics(ctx, g.ID)
 		if err != nil {
-			return Goal{}, err
+			return err
 		}
 		if metrics == 0 {
 			reasons = append(reasons, Refuse(ErrValidation, "an Ongoing Goal needs at least one Metric"))
@@ -302,25 +327,14 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 	default:
 		reasons = append(reasons, Refuse(ErrValidation, "a Goal must be marked Dated or Ongoing to become Active"))
 	}
-	missing, err := s.MissingRequired(ctx, goalID)
+	missing, err := s.MissingRequired(ctx, g.ID)
 	if err != nil {
-		return Goal{}, err
+		return err
 	}
 	for _, name := range missing {
 		reasons = append(reasons, Refuse(ErrValidation, "a Goal needs a value in %s to become Active", name))
 	}
-
-	if len(reasons) > 0 {
-		return Goal{}, errors.Join(reasons...)
-	}
-
-	if err := s.queries.ActivateGoal(ctx, db.ActivateGoalParams{
-		ActivatedAt: s.clock.Now().Format(timeFormat),
-		ID:          goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("activate goal: %w", err)
-	}
-	return s.loadGoal(ctx, goalID)
+	return errors.Join(reasons...)
 }
 
 // countMilestonesAndMetrics returns how many Milestones and Metrics a Goal has.
