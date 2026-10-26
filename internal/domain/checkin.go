@@ -195,14 +195,18 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 // transaction: it reads the Goal, judges the Check-in from its facts
 // (judgeCheckin) and writes what the judgement planned.
 func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) (Checkin, error) {
-	goal, err := s.queries.GetGoal(ctx, in.GoalID)
+	// Who may check in, and move the Goal's Lifecycle how, is judged with the
+	// Check-in's other facts (judgeCheckin), so the Goal opens keeping the
+	// actor for them.
+	var actor goalActor
+	goal, err := s.openGoalCommand(ctx, in.AuthorID, in.GoalID, func(a goalActor, _ Goal) error {
+		actor = a
+		return nil
+	}, nil)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Checkin{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return Checkin{}, fmt.Errorf("look up goal: %w", err)
+		return Checkin{}, err
 	}
-	plan, err := judgeCheckin(in, s.checkinFactsFor(ctx, goalFromRow(goal.Goal, goal.Account), in.AuthorID))
+	plan, err := judgeCheckin(in, s.checkinFactsFor(ctx, goal, actor))
 	if err != nil {
 		return Checkin{}, err
 	}
@@ -211,11 +215,11 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 		return Checkin{}, err
 	}
 	if lifecycle := plan.lifecycle; lifecycle.Changed() {
-		if err := s.setGoalLifecycle(ctx, goal.Goal.ID, lifecycle); err != nil {
+		if err := s.setGoalLifecycle(ctx, goal.ID, lifecycle); err != nil {
 			return Checkin{}, err
 		}
 		if lifecycle.To == LifecycleDone || lifecycle.To == LifecycleCancelled {
-			if err := s.closeSuggestionsOfEndedGoal(ctx, goal.Goal.ID); err != nil {
+			if err := s.closeSuggestionsOfEndedGoal(ctx, goal.ID); err != nil {
 				return Checkin{}, err
 			}
 		}
@@ -227,11 +231,11 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 		if slip == nil {
 			continue
 		}
-		if err := s.recordSlip(ctx, goal.Goal.ID, c.ID, *slip); err != nil {
+		if err := s.recordSlip(ctx, goal.ID, c.ID, *slip); err != nil {
 			return Checkin{}, err
 		}
 	}
-	if err := plan.milestones.apply(ctx, s, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
+	if err := plan.milestones.apply(ctx, s, goal.ID, c.ID, in.AuthorID); err != nil {
 		return Checkin{}, err
 	}
 	if err := s.recordHighlights(ctx, c.ID, plan.highlights); err != nil {
@@ -243,14 +247,14 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 	return c, nil
 }
 
-// checkinFactsFor is the facts a Check-in on g by authorID is judged from,
+// checkinFactsFor is the facts a Check-in on g by actor is judged from,
 // read through s. Each fact is read only when a rule asks for it, and at most
 // once: the Goal's Metrics, which the readings, a Done's final values and an
 // off-target Green all ask for, run one query between them.
-func (s *Service) checkinFactsFor(ctx context.Context, g Goal, authorID int64) checkinFacts {
+func (s *Service) checkinFactsFor(ctx context.Context, g Goal, actor goalActor) checkinFacts {
 	return checkinFacts{
 		goal:  g,
-		actor: s.goalActorFor(ctx, authorID, g.ID),
+		actor: actor,
 		today: s.goalToday(g),
 		rollup: sync.OnceValues(func() (RolledUpHealth, error) {
 			return s.RolledUpHealth(ctx, g.ID)
@@ -469,15 +473,8 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
 	var out Checkin
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.queries.GetGoal(ctx, goalID)
+		g, err := tx.openGoalCommand(ctx, authorID, goalID, noChangeCheckinRefusal, nil)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		g := goalFromRow(goal.Goal, goal.Account)
-		if err := noChangeCheckinRefusal(tx.goalActorFor(ctx, authorID, goalID), g); err != nil {
 			return err
 		}
 
@@ -501,7 +498,7 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		out, err = tx.createCheckin(ctx, db.CreateCheckinParams{
 			GoalID:         goalID,
 			AuthorID:       authorID,
-			OwnerID:        goal.Goal.OwnerID,
+			OwnerID:        g.Owner.ID,
 			Health:         prev.Health,
 			Status:         prev.Status,
 			PathToGreen:    prev.PathToGreen,
@@ -524,32 +521,20 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 // Milestone is overdue or the back-to-Green date has passed. It is
 // NoChangeRefusalsByGoal for the one Goal.
 func (s *Service) NoChangeRefusal(ctx context.Context, goalID int64) error {
-	goal, err := s.activeGoalForNoChange(ctx, goalID)
+	// It judges for any allowed author, so opens the Goal for no one in
+	// particular.
+	g, err := s.openGoalCommand(ctx, 0, goalID, nil, nil)
 	if err != nil {
 		return err
 	}
-	g := goalFromRow(goal.Goal, goal.Account)
+	if g.Lifecycle != LifecycleActive {
+		return errNotActiveForNoChange
+	}
 	refusals, err := s.NoChangeRefusalsByGoal(ctx, []Goal{g})
 	if err != nil {
 		return err
 	}
 	return refusals[g.ID]
-}
-
-// activeGoalForNoChange looks up goalID for a No change, refusing a Goal that
-// doesn't exist or isn't Active.
-func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.GetGoalRow, error) {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return db.GetGoalRow{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if goal.Goal.Lifecycle != LifecycleActive {
-		return db.GetGoalRow{}, errNotActiveForNoChange
-	}
-	return goal, nil
 }
 
 // NoChangeRefusalsByGoal reports, for each of goals, why a No change on it

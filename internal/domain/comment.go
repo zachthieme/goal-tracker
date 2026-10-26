@@ -83,11 +83,8 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 		if err := commentRefusal(tx.accountActor(ctx, actorID)); err != nil {
 			return err
 		}
-		if _, err := tx.queries.GetGoal(ctx, goalID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-			}
-			return fmt.Errorf("get goal: %w", err)
+		if _, err := tx.openGoalCommand(ctx, actorID, goalID, nil, nil); err != nil {
+			return err
 		}
 		var err error
 		if c, err = tx.createComment(ctx, actorID, 0, goalID, 0, body); err != nil {

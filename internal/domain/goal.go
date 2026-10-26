@@ -263,11 +263,8 @@ func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) (
 // standard is checked. The checks and the write run in one transaction.
 func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		g, err := tx.loadGoal(ctx, goalID)
+		g, err := tx.openGoalCommand(ctx, actorID, goalID, activateGoalRefusal, nil)
 		if err != nil {
-			return err
-		}
-		if err := activateGoalRefusal(tx.goalActorFor(ctx, actorID, goalID), g); err != nil {
 			return err
 		}
 		if err := tx.requireActivationStandard(ctx, g); err != nil {
@@ -436,25 +433,24 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 // only the Owner may make — MarkGoalDated, SetCadence, MarkGoalOngoing and the
 // like — check it for themselves, inside their transaction.
 func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
-	return s.goalRule(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
 		return goalOwnerRefusal(a, g, "change it")
-	})
+	}, nil)
+	return err
 }
 
 // MarkGoalDated marks the Goal as Dated with the given delivery date, against
-// which its Health will be judged (CONTEXT.md: Dated Goal). A Dated Goal needs a
-// delivery date, so a zero date is rejected. Only the Goal's Owner may mark it
-// (ErrNotAuthorized).
+// which its Health will be judged (CONTEXT.md: Dated Goal). Only the Goal's
+// Owner may mark it (ErrNotAuthorized), and only while it is Proposed
+// (setDeliveryRefusal); then a zero date is rejected, since a Dated Goal needs
+// a delivery date.
 func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deliveryDate time.Time) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
+		if _, err := tx.openGoalCommand(ctx, actorID, goalID, setDeliveryRefusal, nil); err != nil {
 			return err
 		}
 		if deliveryDate.IsZero() {
 			return Refuse(ErrValidation, "a Dated Goal needs a delivery date")
-		}
-		if err := tx.requireProposedToSetDelivery(ctx, goalID); err != nil {
-			return err
 		}
 		if _, err := tx.queries.SetGoalKind(ctx, db.SetGoalKindParams{
 			Kind:         GoalDated,
@@ -498,13 +494,11 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its
 // Health is judged against its Metrics instead (CONTEXT.md: Ongoing Goal).
-// Only the Goal's Owner may mark it (ErrNotAuthorized).
+// Only the Goal's Owner may mark it (ErrNotAuthorized), and only while it is
+// Proposed (setDeliveryRefusal).
 func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
-			return err
-		}
-		if err := tx.requireProposedToSetDelivery(ctx, goalID); err != nil {
+		if _, err := tx.openGoalCommand(ctx, actorID, goalID, setDeliveryRefusal, nil); err != nil {
 			return err
 		}
 		if _, err := tx.queries.SetGoalKind(ctx, db.SetGoalKindParams{
@@ -520,21 +514,4 @@ func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (G
 		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
-}
-
-// requireProposedToSetDelivery allows marking a Goal Dated or Ongoing only while
-// it is Proposed. After that its delivery date moves only in a Check-in, which
-// records the Date Slip and its reason (CONTEXT.md: Date Slip).
-func (s *Service) requireProposedToSetDelivery(ctx context.Context, goalID int64) error {
-	g, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	if g.Goal.Lifecycle != LifecycleProposed {
-		return Refuse(ErrValidation, "a %s Goal's delivery date changes only in a Check-in, with a reason", g.Goal.Lifecycle)
-	}
-	return nil
 }

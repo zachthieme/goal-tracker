@@ -64,14 +64,27 @@ func (s *Service) actorAccount(ctx context.Context, actorID int64) func() (Accou
 	}
 }
 
-// goalRule loads goalID and evaluates rule for actorID on it, as a command
-// does inside its transaction; a missing Goal is ErrNotFound.
-func (s *Service) goalRule(ctx context.Context, actorID, goalID int64, rule func(goalActor, Goal) error) error {
+// openGoalCommand opens goalID for a Goal command, or a Goal-page probe, by
+// actorID, through s: the command's transaction, or the plain Service for a
+// probe. It loads the Goal, a missing one being ErrNotFound and any other
+// failure to read it returned as it is; applies rule to actorID on it, a nil
+// rule allowing anyone; then refuses unparsed, the values the caller couldn't
+// parse (unparsedRefusal). It returns the Goal it loaded, so the command
+// needn't read it again.
+func (s *Service) openGoalCommand(ctx context.Context, actorID, goalID int64, rule func(goalActor, Goal) error, unparsed []*InputError) (Goal, error) {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {
-		return err
+		return Goal{}, err
 	}
-	return rule(s.goalActorFor(ctx, actorID, goalID), g)
+	if rule != nil {
+		if err := rule(s.goalActorFor(ctx, actorID, goalID), g); err != nil {
+			return Goal{}, err
+		}
+	}
+	if err := unparsedRefusal(unparsed); err != nil {
+		return Goal{}, err
+	}
+	return g, nil
 }
 
 // checkinAuthorRuleRefusal is the rule for who writes g's Check-ins, in any
@@ -329,6 +342,20 @@ func defineGoalRefusal(a goalActor, g Goal) error {
 	}
 	if g.Lifecycle != LifecycleProposed {
 		return Refuse(ErrValidation, "%s is %s, so it is no longer defined here", g.Title, g.Lifecycle)
+	}
+	return nil
+}
+
+// setDeliveryRefusal is the rule for marking g Dated or Ongoing
+// (MarkGoalDated, MarkGoalOngoing): its Owner, while g is Proposed. After that
+// its delivery date moves only in a Check-in, which records the Date Slip and
+// its reason (CONTEXT.md: Date Slip).
+func setDeliveryRefusal(a goalActor, g Goal) error {
+	if err := goalOwnerRefusal(a, g, "change it"); err != nil {
+		return err
+	}
+	if g.Lifecycle != LifecycleProposed {
+		return Refuse(ErrValidation, "a %s Goal's delivery date changes only in a Check-in, with a reason", g.Lifecycle)
 	}
 	return nil
 }

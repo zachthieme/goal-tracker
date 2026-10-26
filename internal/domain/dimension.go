@@ -913,13 +913,11 @@ func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name str
 }
 
 // requireGoalValueSetter refuses anyone but the Goal's Owner, one of its
-// Delegates, or an Admin, by goalValueSetterRefusal (CONTEXT.md: Delegate).
+// Delegates, or an Admin, by goalValueSetterRefusal (CONTEXT.md: Delegate); a
+// missing Goal is ErrNotFound.
 func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		return Refuse(ErrValidation, "goal does not exist")
-	}
-	return goalValueSetterRefusal(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account))
+	_, err := s.openGoalCommand(ctx, actorID, goalID, goalValueSetterRefusal, nil)
+	return err
 }
 
 // ValueSettableGoals names those of goals whose Dimension values and Fields

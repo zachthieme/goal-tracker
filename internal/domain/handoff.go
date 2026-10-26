@@ -84,7 +84,7 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, fmt.Errorf("look up actor: %w", err)
 	}
 
-	if in.ToOwnerID == goal.Goal.OwnerID {
+	if in.ToOwnerID == goal.Owner.ID {
 		return Handoff{}, Refuse(ErrValidation, "the Goal is already owned by that person")
 	}
 	newOwner, err := s.queries.GetAccount(ctx, in.ToOwnerID)
@@ -107,7 +107,7 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 	now := s.clock.Now()
 	row, err := s.queries.CreateHandoff(ctx, db.CreateHandoffParams{
 		GoalID:      in.GoalID,
-		FromOwner:   goal.Goal.OwnerID,
+		FromOwner:   goal.Owner.ID,
 		ToOwner:     in.ToOwnerID,
 		Status:      HandoffPending,
 		InitiatedBy: in.ActorID,
@@ -118,8 +118,8 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 	}
 	return Handoff{
 		ID:          row.ID,
-		Goal:        goalFromRow(goal.Goal, goal.Account),
-		From:        accountFromRow(goal.Account),
+		Goal:        goal,
+		From:        goal.Owner,
 		To:          accountFromRow(newOwner),
 		InitiatedBy: accountFromRow(actor),
 		Status:      row.Status,
@@ -129,19 +129,9 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 
 // ownershipGoal loads goalID for a change of its Owner by actorID, as
 // StartHandoff and ReassignGoal do inside their transaction: a missing Goal is
-// ErrValidation, and anyone rule refuses is refused.
-func (s *Service) ownershipGoal(ctx context.Context, actorID, goalID int64, rule func(goalActor, Goal) error) (db.GetGoalRow, error) {
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return db.GetGoalRow{}, Refuse(ErrValidation, "goal does not exist")
-		}
-		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if err := rule(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
-		return db.GetGoalRow{}, err
-	}
-	return goal, nil
+// ErrNotFound, and anyone rule refuses is refused.
+func (s *Service) ownershipGoal(ctx context.Context, actorID, goalID int64, rule func(goalActor, Goal) error) (Goal, error) {
+	return s.openGoalCommand(ctx, actorID, goalID, rule, nil)
 }
 
 // StartHandoffByEmail starts a Handoff to the Account with the given email. It is
@@ -456,7 +446,7 @@ func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 	}
 	if _, err := s.queries.CreateHandoff(ctx, db.CreateHandoffParams{
 		GoalID:      goalID,
-		FromOwner:   goal.Goal.OwnerID,
+		FromOwner:   goal.Owner.ID,
 		ToOwner:     newOwnerID,
 		Status:      HandoffReassigned,
 		InitiatedBy: actorID,

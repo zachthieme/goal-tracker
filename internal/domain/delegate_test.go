@@ -282,17 +282,17 @@ func TestDelegateByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
 }
 
 // Adding or removing a Delegate by email on a Goal that doesn't exist is
-// refused as AddDelegate and RemoveDelegate refuse it, whatever the email.
+// not found, as AddDelegate and RemoveDelegate answer it, whatever the email.
 func TestDelegateByEmailRefusesAMissingGoal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 
-	if err := h.Service.AddDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
-		t.Errorf("AddDelegateByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	if err := h.Service.AddDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("AddDelegateByEmail on a missing Goal = %v, want ErrNotFound", err)
 	}
-	if err := h.Service.RemoveDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
-		t.Errorf("RemoveDelegateByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	if err := h.Service.RemoveDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RemoveDelegateByEmail on a missing Goal = %v, want ErrNotFound", err)
 	}
 }

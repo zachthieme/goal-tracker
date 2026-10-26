@@ -169,3 +169,219 @@ func runRolledBack(t *testing.T, h *testsupport.Harness, c departedCommand) erro
 	}
 	return got
 }
+
+// goalCommandCall is one Goal command, or Goal-page probe, made on goalID.
+type goalCommandCall struct {
+	name string
+	run  func(goalID int64) error
+}
+
+// Every Goal command and Goal-page probe opens its Goal the one way
+// (openGoalCommand), so a Goal that doesn't exist is ErrNotFound from each,
+// even when everything else it is sent is valid.
+func TestGoalCommandsAnswerAMissingGoalNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	headcount := h.CreateField(admin, "Headcount", domain.FieldNumber, "people")
+	parent := h.ActiveGoal(kim, "Grow revenue", "The company needs it.")
+	missing := parent.ID + 1000
+	due := h.Clock.Now().AddDate(0, 3, 0)
+
+	calls := []goalCommandCall{
+		{"SubmitCheckin", func(id int64) error {
+			_, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{GoalID: id, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track."})
+			return err
+		}},
+		{"SubmitNoChangeCheckin", func(id int64) error {
+			_, err := h.Service.SubmitNoChangeCheckin(ctx, id, sam.ID)
+			return err
+		}},
+		{"NoChangeRefusal", func(id int64) error { return h.Service.NoChangeRefusal(ctx, id) }},
+		{"AddDelegate", func(id int64) error { return h.Service.AddDelegate(ctx, sam.ID, id, kim.ID) }},
+		{"AddDelegateByEmail", func(id int64) error { return h.Service.AddDelegateByEmail(ctx, sam.ID, id, kim.Email) }},
+		{"RemoveDelegate", func(id int64) error { return h.Service.RemoveDelegate(ctx, sam.ID, id, kim.ID) }},
+		{"RemoveDelegateByEmail", func(id int64) error { return h.Service.RemoveDelegateByEmail(ctx, sam.ID, id, kim.Email) }},
+		{"StartHandoff", func(id int64) error {
+			_, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: id, ToOwnerID: kim.ID, ActorID: sam.ID})
+			return err
+		}},
+		{"StartHandoffByEmail", func(id int64) error {
+			_, err := h.Service.StartHandoffByEmail(ctx, id, kim.Email, sam.ID)
+			return err
+		}},
+		{"ReassignGoal", func(id int64) error {
+			_, err := h.Service.ReassignGoal(ctx, admin.ID, id, kim.ID)
+			return err
+		}},
+		{"ReassignGoalByEmail", func(id int64) error {
+			_, err := h.Service.ReassignGoalByEmail(ctx, admin.ID, id, kim.Email)
+			return err
+		}},
+		{"AssignGoalValue", func(id int64) error { return h.Service.AssignGoalValue(ctx, sam.ID, id, pillar.Values[0].ID) }},
+		{"AssignGoalValueByName", func(id int64) error {
+			_, err := h.Service.AssignGoalValueByName(ctx, sam.ID, id, pillar.ID, "Growth")
+			return err
+		}},
+		{"SetGoalValues", func(id int64) error {
+			return h.Service.SetGoalValues(ctx, sam.ID, id, pillar.ID, []int64{pillar.Values[0].ID})
+		}},
+		{"SetGoalField", func(id int64) error { return h.Service.SetGoalField(ctx, sam.ID, id, headcount.ID, "12") }},
+		{"AddMetric", func(id int64) error {
+			_, err := h.Service.AddMetric(ctx, sam.ID, domain.AddMetricInput{
+				GoalID: id, Name: "Exports", Unit: "a day", Direction: domain.MetricUp,
+				Baseline: 10, Target: 100, TargetDate: due,
+			})
+			return err
+		}},
+		{"AddMilestone", func(id int64) error {
+			_, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: id, Name: "Beta", TargetDate: due})
+			return err
+		}},
+		{"AddMilestoneAsAuthor", func(id int64) error {
+			_, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{GoalID: id, Name: "Beta", TargetDate: due})
+			return err
+		}},
+		{"RequestLink", func(id int64) error {
+			_, err := h.Service.RequestLink(ctx, domain.RequestLinkInput{ChildID: id, ParentID: parent.ID, RequesterID: sam.ID})
+			return err
+		}},
+		{"SuggestParent", func(id int64) error {
+			_, err := h.Service.SuggestParent(ctx, sam.ID, id, parent.ID, "")
+			return err
+		}},
+		{"AddGoalComment", func(id int64) error {
+			_, err := h.Service.AddGoalComment(ctx, sam.ID, id, "Looks good.")
+			return err
+		}},
+		{"MarkGoalDated", func(id int64) error {
+			_, err := h.Service.MarkGoalDated(ctx, sam.ID, id, due)
+			return err
+		}},
+		{"MarkGoalOngoing", func(id int64) error {
+			_, err := h.Service.MarkGoalOngoing(ctx, sam.ID, id)
+			return err
+		}},
+		{"SetCadence", func(id int64) error {
+			_, err := h.Service.SetCadence(ctx, sam.ID, id, 14)
+			return err
+		}},
+		{"ActivateGoal", func(id int64) error {
+			_, err := h.Service.ActivateGoal(ctx, sam.ID, id)
+			return err
+		}},
+		{"DefineGoal", func(id int64) error {
+			_, err := h.Service.DefineGoal(ctx, sam.ID, id, domain.DefinedGoalInput{
+				WhyItMatters: "People can't find things.", Kind: domain.GoalDated, DeliveryDate: due,
+				Milestones: []domain.MilestoneDefinition{{Name: "Beta", Date: due}},
+			})
+			return err
+		}},
+		{"MarkTopLevel", func(id int64) error {
+			_, err := h.Service.MarkTopLevel(ctx, admin.ID, id)
+			return err
+		}},
+		{"EditTitle", func(id int64) error {
+			_, err := h.Service.EditTitle(ctx, id, "Ship search, again", sam.ID)
+			return err
+		}},
+		{"EditWhyItMatters", func(id int64) error {
+			_, err := h.Service.EditWhyItMatters(ctx, id, "People still can't find things.", sam.ID)
+			return err
+		}},
+		{"LogDraftHighlight", func(id int64) error {
+			_, err := h.Service.LogDraftHighlight(ctx, domain.LogDraftHighlightInput{GoalID: id, AuthorID: sam.ID, Note: "Search shipped to beta."})
+			return err
+		}},
+		{"RequireGoalOwner", func(id int64) error { return h.Service.RequireGoalOwner(ctx, sam.ID, id) }},
+		{"RequireCheckinAuthor", func(id int64) error { return h.Service.RequireCheckinAuthor(ctx, sam.ID, id) }},
+		{"RequireGoalValueSetter", func(id int64) error { return h.Service.RequireGoalValueSetter(ctx, sam.ID, id) }},
+	}
+
+	for _, c := range calls {
+		if err := c.run(missing); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s on a missing Goal = %v, want ErrNotFound", c.name, err)
+		}
+	}
+}
+
+// A Goal that can't be read for want of the database is neither missing nor
+// refused: the probes answer the failure as it is.
+func TestGoalProbesAnswerADatabaseFailureAsItIs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	if err := h.DB.Close(); err != nil {
+		t.Fatalf("close the database: %v", err)
+	}
+
+	for _, c := range []goalCommandCall{
+		{"RequireGoalValueSetter", func(id int64) error { return h.Service.RequireGoalValueSetter(ctx, sam.ID, id) }},
+		{"RequireGoalOwner", func(id int64) error { return h.Service.RequireGoalOwner(ctx, sam.ID, id) }},
+	} {
+		err := c.run(g.ID)
+		if err == nil || errors.Is(err, domain.ErrNotFound) || errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s with the database closed = %v, want the failure, neither ErrNotFound nor ErrValidation", c.name, err)
+		}
+	}
+}
+
+// A command taking values its caller couldn't parse judges who is asking
+// first: an Account with no right to the Goal is refused for that, and
+// learns nothing of what's wrong with what they sent.
+func TestGoalCommandsRefuseUnparsedInputFromAnyoneWithNoRight(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.CreateGoal(sam, "Ship search", "People can't find things.")
+	due := h.Clock.Now().AddDate(0, 3, 0)
+	milestone, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: due})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	metric, err := h.Service.AddMetric(ctx, sam.ID, validMetric(g.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	unparsed := []*domain.InputError{{Input: "target_date", Message: `"soon" isn't a date`}}
+
+	for _, c := range []struct {
+		name string
+		run  func() error
+	}{
+		{"AddMilestoneAsAuthor", func() error {
+			_, err := h.Service.AddMilestoneAsAuthor(ctx, kim.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Launch", Unparsed: unparsed})
+			return err
+		}},
+		{"EditMilestone", func() error {
+			_, err := h.Service.EditMilestone(ctx, kim.ID, domain.EditMilestoneInput{MilestoneID: milestone.ID, Name: "Beta", Unparsed: unparsed})
+			return err
+		}},
+		{"EditMetric", func() error {
+			in := validMetric(g.ID)
+			_, err := h.Service.EditMetric(ctx, kim.ID, domain.EditMetricInput{
+				MetricID: metric.ID, Name: in.Name, Unit: in.Unit, Direction: in.Direction,
+				Baseline: in.Baseline, Target: in.Target, Unparsed: unparsed,
+			})
+			return err
+		}},
+		{"DefineGoal", func() error {
+			_, err := h.Service.DefineGoal(ctx, kim.ID, g.ID, domain.DefinedGoalInput{
+				WhyItMatters: g.WhyItMatters, Kind: domain.GoalDated, Unparsed: unparsed,
+			})
+			return err
+		}},
+	} {
+		if err := c.run(); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s of unparsed input by someone with no right to the Goal = %v, want ErrNotAuthorized", c.name, err)
+		}
+	}
+}

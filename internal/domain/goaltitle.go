@@ -129,7 +129,8 @@ func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]Title
 // ErrNotFound if no such Goal exists. EditTitle and EditWhyItMatters check it
 // for themselves.
 func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
-	return s.goalRule(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
 		return goalOwnerOrAdminRefusal(a, g, "change it")
-	})
+	}, nil)
+	return err
 }
