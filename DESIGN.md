@@ -1185,10 +1185,10 @@ and so on).
     - **Kind:** Dated or Ongoing, as a help button, or "Not yet Dated or
       Ongoing";
     - **Owner:** the person control at 500;
-    - **Delegates** and **Contributors:** each Name on its own line beside the
-      label, "departed" on a Departed Delegate, or a muted "No Delegates
-      yet." or "No Contributors yet.", with a **Manage** link at the row's
-      right and, under Delegates, "What is a Delegate?";
+    - **Delegates:** each Name on its own line beside the label, "departed"
+      on a Departed Delegate, or a muted "No Delegates yet.", with a
+      **Manage** link at the row's right, and "What is a Delegate?" under
+      the row;
     - **Cadence:** "every 7 days";
     - **Delivers**, on a Dated Goal: every date it slipped from struck
       through, then the current date in bold;
@@ -1220,9 +1220,9 @@ and so on).
   - **Where each opens:** Edit title and Why it matters (the Owner or an
     Admin; the title and the Why it matters as they stand, with a **Save**)
     and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
-    departed and Mark returned in the rail under the Owner row. Delegates and
-    Contributors in their rows: the current people with **Remove**, and an
-    email input to add one. Link to a parent Goal under Contributes to, and
+    departed and Mark returned in the rail under the Owner row. Delegates in
+    their row: the current people with **Remove**, and an email input to add
+    one. Link to a parent Goal under Contributes to, and
     the Dimension and Field forms in their groups. Add a Milestone under the
     Milestones table (a name, a date and **Add Milestone**, for the Owner or a
     Delegate until the Goal is Done or Cancelled). Without script, the Draft
@@ -1230,7 +1230,7 @@ and so on).
   - **Heading links (`.gp-group-head`):** a section or rail group whose form
     opens in place has a small link at the right of its heading, shown only to
     those who may use it and hidden while its form is open: **Manage** for
-    Delegates and for Contributors, **Edit** for Dimensions and for Fields,
+    Delegates, **Edit** for Dimensions and for Fields,
     **+ Add** for Contributes to and for Milestones, and **+ Log a highlight**
     for Draft Highlights. Each link's accessible name says what it acts on
     ("Edit Fields").

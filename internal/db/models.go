@@ -80,13 +80,6 @@ type Comment struct {
 	CreatedAt     string
 }
 
-type Contributor struct {
-	ID        int64
-	GoalID    int64
-	AccountID int64
-	CreatedAt string
-}
-
 type DateSlip struct {
 	ID          int64
 	GoalID      int64

@@ -102,14 +102,12 @@ func findGoalLink(t *testing.T, root *nethtml.Node) *nethtml.Node {
 
 // TestSmokeDefineAndActivateGoal is the define-and-activate HTTP smoke test: an
 // Owner defines a Proposed Goal as Dated with a Metric and a cadence, adds a
-// Milestone, revises the Why it matters, adds a Contributor, and activates it
-// — then sees it rendered Active with everything it filled in.
+// Milestone, revises the Why it matters, and activates it — then sees it
+// rendered Active with everything it filled in.
 func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	// The Contributor's account must already exist to be added by email.
-	h.SignIn("dana@example.com")
 
 	ts := httptest.NewServer(web.NewServer(h.Service))
 	t.Cleanup(ts.Close)
@@ -148,7 +146,6 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		"target_date": {"2026-03-16"},
 	})
 	postFormStatus(t, client, goalURL+"/why-it-matters", url.Values{"why_it_matters": {"Faster checkout lifts conversion."}})
-	postFormStatus(t, client, goalURL+"/contributors", url.Values{"email": {"dana@example.com"}})
 
 	resp = postForm(t, client, goalURL+"/activate", nil)
 	if resp.StatusCode != http.StatusOK {
@@ -166,9 +163,6 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		if got := textOf(findByTestID(t, page, tc.testID)); !strings.Contains(got, tc.want) {
 			t.Errorf("activated goal page's %s reads %q, missing %q", tc.testID, got, tc.want)
 		}
-	}
-	if contributors := findByTestID(t, page, "goal-contributors"); !goalShows(contributors, "dana@example.com", "dana") {
-		t.Errorf("activated goal page doesn't list dana@example.com as a Contributor: %s", renderNode(contributors))
 	}
 }
 
@@ -3796,9 +3790,9 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 }
 
 // A Delegate sees the Goal page's Dimension value controls and sets values and
-// adds to an Extendable list through them; a Contributor sees no controls and
-// is refused with 403 (CONTEXT.md: Delegate, Contributor).
-func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testing.T) {
+// adds to an Extendable list through them; an Account with no role on the Goal
+// sees no controls and is refused with 403 (CONTEXT.md: Delegate).
+func TestDelegateSetsAndAddsDimensionValuesButAStrangerCannotOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3810,9 +3804,6 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(context.Background(), goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
-		t.Fatalf("AddContributorByEmail: %v", err)
-	}
 	ts := newServer(t, h)
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 	deeClient := signInClient(t, ts.URL, "dee@example.com")
@@ -3840,7 +3831,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	}
 
 	if page := getPage(t, coryClient, goalURL+"?open=dimensions"); len(goalOpenFormsIn(page)) > 0 || hasTestID(page, "open-dimensions") {
-		t.Errorf("Contributor's Goal page offers Dimension value controls:\n%s", renderNode(page))
+		t.Errorf("stranger's Goal page offers Dimension value controls:\n%s", renderNode(page))
 	}
 	for _, form := range []url.Values{
 		{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}},
@@ -3850,7 +3841,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 		defer func() { _ = resp.Body.Close() }()
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("Contributor posting %v: status %d, want 403", form, resp.StatusCode)
+			t.Errorf("stranger posting %v: status %d, want 403", form, resp.StatusCode)
 		}
 	}
 	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme", "Globex"}) {
@@ -3944,7 +3935,6 @@ func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 	}
 	h.CheckinWithHighlights(sam, active.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	h.LogDraftHighlight(sam, active.ID, domain.HighlightAccomplishment, "Paged nobody all week.")
-	proposed := h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything.")
 	orphaned := h.ActiveGoal(lee, "Migrate displays", "Displays fail often.")
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, lee.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
@@ -3977,7 +3967,6 @@ func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 		{"top-level", "ada@example.com", active},
 		{"parent-link", "sam@example.com", active},
 		{"delegates", "sam@example.com", active},
-		{"contributors", "sam@example.com", proposed},
 		{"milestones", "sam@example.com", active},
 		{"dimensions", "sam@example.com", active},
 		{"fields", "sam@example.com", active},
@@ -6477,8 +6466,8 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 }
 
 // Each sidebar group's heading carries a small link, for whoever may use it,
-// that opens the group's form right there: Manage for Delegates and for
-// Contributors, Edit for Dimensions and for Fields, + Add for Contributes to.
+// that opens the group's form right there: Manage for Delegates, Edit for
+// Dimensions and for Fields, + Add for Contributes to.
 // Nothing on the page jumps to a collapsed section any more. How the headings
 // look is TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTPStyles's.
 func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
@@ -6500,8 +6489,7 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 		group, heading, link, form, action, next string
 	}{
 		{"goal-parents", "Contributes to", "+ Add", "parent-link", "/links", "goal-children"},
-		{"goal-delegates", "Delegates", "Manage", "delegates", "/delegates", "goal-contributors"},
-		{"goal-contributors", "Contributors", "Manage", "contributors", "/contributors", "goal-dimensions"},
+		{"goal-delegates", "Delegates", "Manage", "delegates", "/delegates", "goal-dimensions"},
 		{"goal-dimensions", "Dimensions", "Edit", "dimensions", "/dimensions", "goal-field-block"},
 		{"goal-field-block", "Fields", "Edit", "fields", "/fields", "goal-parents"},
 	} {
@@ -6546,81 +6534,6 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	}
 }
 
-// A Contributor is listed for information only, so the Owner can add one in
-// any Lifecycle: on an Active, On Hold, Done or Cancelled Goal the Owner's
-// Contributors block offers Manage, which opens the Add a Contributor form, and
-// the email posted there is listed. A Delegate and a reader are offered
-// neither, even asking for the form by its URL (CONTEXT.md: Contributor).
-func TestGoalPageOffersAddContributorInEveryLifecycleOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	tpm := h.SignIn("tpm@example.com")
-	h.SignIn("mel@example.com")
-	h.SignIn("dana@example.com")
-	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.AddDelegate(sam, tpm, active.ID)
-	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
-	done := h.ActiveGoal(sam, "Ship v1", "Customers asked for it.")
-	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
-	cancelled := h.ActiveGoal(sam, "Rewrite billing", "Billing is brittle.")
-	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
-	ts := newServer(t, h)
-	owner := signInClient(t, ts.URL, "sam@example.com")
-
-	for lifecycle, goal := range map[string]domain.Goal{
-		domain.LifecycleActive:    active,
-		domain.LifecycleOnHold:    onHold,
-		domain.LifecycleDone:      done,
-		domain.LifecycleCancelled: cancelled,
-	} {
-		page := getPage(t, owner, goalPageURL(ts.URL, goal))
-		if !goalShowsLifecycle(page, lifecycle) {
-			t.Errorf("%s: the page doesn't show the Goal %s", lifecycle, lifecycle)
-		}
-		openURL := fmt.Sprintf("/goals/%d?open=contributors", goal.ID)
-		link := linkTo(findByTestID(t, page, "goal-contributors"), openURL)
-		if link == nil || attrOf(link, "aria-label") != "Manage Contributors" {
-			t.Errorf("%s: the Owner's Contributors block offers no Manage Contributors link: %s", lifecycle, renderNode(findByTestID(t, page, "goal-contributors")))
-			continue
-		}
-		form := findByTestID(t, getPage(t, owner, ts.URL+attrOf(link, "href")), "add-contributor")
-		if field := formField(t, form, "email"); field.Label != "Contributor email" {
-			t.Errorf("%s: the Add a Contributor form's email field is labelled %q", lifecycle, field.Label)
-		}
-		if buttonNamed(form, "Add Contributor") == nil {
-			t.Errorf("%s: the Add a Contributor form has no Add Contributor button: %s", lifecycle, renderNode(form))
-		}
-		resp := postForm(t, owner, ts.URL+attrOf(form, "action"), url.Values{"email": {"dana@example.com"}})
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("%s: adding a Contributor: status %d, want 200: %s", lifecycle, resp.StatusCode, readBody(t, resp))
-			continue
-		}
-		_ = resp.Body.Close()
-		after := getPage(t, owner, goalPageURL(ts.URL, goal))
-		if contributors := findByTestID(t, after, "goal-contributors"); !goalShows(contributors, "dana@example.com", "dana") {
-			t.Errorf("%s: the Goal page doesn't list dana@example.com as a Contributor: %s", lifecycle, renderNode(contributors))
-		}
-	}
-
-	openURL := fmt.Sprintf("/goals/%d?open=contributors", active.ID)
-	for _, viewer := range []string{"tpm@example.com", "mel@example.com"} {
-		client := signInClient(t, ts.URL, viewer)
-		for _, page := range []*nethtml.Node{
-			getPage(t, client, goalPageURL(ts.URL, active)),
-			getPage(t, client, ts.URL+openURL),
-		} {
-			if link := linkTo(page, openURL); link != nil {
-				t.Errorf("%s is offered the Manage Contributors link: %s", viewer, renderNode(link))
-			}
-			if hasTestID(page, "add-contributor") {
-				t.Errorf("%s is shown the Add a Contributor form", viewer)
-			}
-		}
-	}
-}
-
 // A refused submit from a form opened in place comes back as the Goal page
 // with that same form open, the reason beside it as a sentence without the
 // internal "validation failed:" prefix (#192), and what was typed still in it,
@@ -6635,7 +6548,6 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 	h.CreateExtendableDimension(ada, "Team", "Core")
 	budget := h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
@@ -6660,7 +6572,6 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because."},
 		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", "note", "Because."},
 		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com"},
-		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"not-an-email"}}, `No account with email "not-an-email".`, "email", "not-an-email"},
 		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01"},
 		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA"},
 		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  "},
@@ -6779,7 +6690,6 @@ func ownerOnlyRoutes() []ownerOnlyRoute {
 		}},
 		{"activate", onGoal("activate"), nil},
 		{"why it matters", onGoal("why-it-matters"), url.Values{"why_it_matters": {"Faster checkout lifts conversion."}}},
-		{"contributors", onGoal("contributors"), url.Values{"email": {"dana@example.com"}}},
 	}
 }
 
@@ -6811,10 +6721,6 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	if err != nil {
 		t.Fatalf("ViewGoal: %v", err)
 	}
-	contributors, err := h.Service.ListContributors(ctx, goalID)
-	if err != nil {
-		t.Fatalf("ListContributors: %v", err)
-	}
 	metrics, err := h.Service.ListMetrics(ctx, goalID)
 	if err != nil {
 		t.Fatalf("ListMetrics: %v", err)
@@ -6823,13 +6729,12 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	if err != nil {
 		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
-	return fmt.Sprintf("goal %+v\ncontributors %+v\nmetrics %+v\nrevisions %+v", g, contributors, metrics, revisions)
+	return fmt.Sprintf("goal %+v\nmetrics %+v\nrevisions %+v", g, metrics, revisions)
 }
 
-// Setting a Goal's Contributors and editing its Metrics, and Activating it,
-// are the Owner's alone, and its Why it matters the Owner's or an
-// Admin's (#281): anyone else, a Delegate included, is refused with 403 and
-// the Goal is left as it was (#191).
+// Editing a Goal's Metrics and Activating it are the Owner's alone, and its
+// Why it matters the Owner's or an Admin's (#281): anyone else, a Delegate
+// included, is refused with 403 and the Goal is left as it was (#191).
 func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -6837,7 +6742,6 @@ func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	delegate := h.SignIn("tpm@example.com")
 	h.SignIn("other@example.com")
-	h.SignIn("dana@example.com")
 	ts := newServer(t, h)
 	clients := map[string]*http.Client{
 		"another Account": signInClient(t, ts.URL, "other@example.com"),
@@ -6868,7 +6772,6 @@ func TestOwnerStillSetsUpTheirGoalOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
-	h.SignIn("dana@example.com")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "owner@example.com")
 
@@ -7748,8 +7651,6 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 		shownAt    string
 		reason     string
 	}{
-		{"add contributor", fmt.Sprintf("/goals/%d/contributors", g.ID), url.Values{"email": {"nobody@example.com"}},
-			"form-error", `No account with email "nobody@example.com".`},
 		{"edit milestone", fmt.Sprintf("/milestones/%d", milestone.ID), url.Values{"name": {"Beta"}, "target_date": {"soon"}},
 			"refused-reason", `"soon" isn't a date.`},
 		{"edit metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
@@ -7780,5 +7681,28 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 		if after := ownerOnlyGoalState(t, h, g.ID) + ownerOnlyGoalState(t, h, bare.ID); after != before {
 			t.Errorf("%s changed a Goal:\nbefore %s\nafter  %s", c.name, before, after)
 		}
+	}
+}
+
+// The Contributor concept is gone (#593): the Owner's Goal page has no
+// Contributors section, and its route answers as a gone one.
+func TestGoalPageHasNoContributorsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("dana@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if page := getPage(t, client, goalPageURL(ts.URL, goal)); hasTestID(page, "goal-contributors") {
+		t.Errorf("the Owner's Goal page has a Contributors section: %s", renderNode(page))
+	}
+	resp := postForm(t, client, goalPageURL(ts.URL, goal)+"/contributors", url.Values{"email": {"dana@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /goals/%d/contributors answered %d, want it gone", goal.ID, resp.StatusCode)
 	}
 }

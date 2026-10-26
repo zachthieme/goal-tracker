@@ -433,7 +433,7 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 // RequireGoalOwner returns ErrNotAuthorized unless actorID is the Goal's Owner
 // (a Delegate and an Admin are refused too), or the Admin whose import created
 // it, by goalOwnerRefusal; ErrNotFound if no such Goal exists. The commands
-// only the Owner may make — MarkGoalDated, SetCadence, AddContributor and the
+// only the Owner may make — MarkGoalDated, SetCadence, MarkGoalOngoing and the
 // like — check it for themselves, inside their transaction.
 func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
 	return s.goalRule(ctx, actorID, goalID, func(a goalActor, g Goal) error {
@@ -494,82 +494,6 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
-}
-
-// AddContributor lists an Account on the Goal as a Contributor: named for
-// information only, with no update duty (CONTEXT.md: Contributor), so one can
-// be added in any Lifecycle, not just while the Goal is Proposed. Adding the
-// same Account twice is rejected. Only the Goal's Owner may add one
-// (ErrNotAuthorized).
-func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID int64) error {
-	return s.WithinTx(ctx, func(tx *Service) error {
-		if _, err := tx.queries.GetGoal(ctx, goalID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
-			return err
-		}
-		if _, err := tx.queries.GetAccount(ctx, accountID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "account does not exist")
-			}
-			return fmt.Errorf("look up account: %w", err)
-		}
-		if _, err := tx.queries.GetContributor(ctx, db.GetContributorParams{
-			GoalID:    goalID,
-			AccountID: accountID,
-		}); err == nil {
-			return Refuse(ErrValidation, "already a Contributor")
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("look up contributor: %w", err)
-		}
-
-		if _, err := tx.queries.AddContributor(ctx, db.AddContributorParams{
-			GoalID:    goalID,
-			AccountID: accountID,
-			CreatedAt: tx.clock.Now().Format(timeFormat),
-		}); err != nil {
-			return fmt.Errorf("add contributor: %w", err)
-		}
-		return nil
-	})
-}
-
-// AddContributorByEmail lists the Account with the given email as a Contributor
-// on the Goal. It is the web-facing convenience over AddContributor, since the
-// tool identifies people by email (CONTEXT.md: development sign-in by email). An
-// email with no account is rejected, as is anyone but the Goal's Owner.
-func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int64, email string) error {
-	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
-			return err
-		}
-		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "no account with email %q", email)
-			}
-			return fmt.Errorf("look up account: %w", err)
-		}
-		return tx.AddContributor(ctx, actorID, goalID, acc.ID)
-	})
-}
-
-// ListContributors returns the Accounts listed as Contributors on the Goal,
-// ordered by email.
-func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account, error) {
-	rows, err := s.queries.ListContributors(ctx, goalID)
-	if err != nil {
-		return nil, fmt.Errorf("list contributors: %w", err)
-	}
-	out := make([]Account, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, accountFromRow(r.Account))
-	}
-	return out, nil
 }
 
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its

@@ -114,7 +114,7 @@ func TestOpenCapsThePoolAtEightConnections(t *testing.T) {
 	}
 }
 
-// A Contributor can't be added to a Goal that doesn't exist: the schema's
+// A Delegate can't be added to a Goal that doesn't exist: the schema's
 // foreign keys are enforced on the connections Open hands out.
 func TestOpenEnforcesForeignKeys(t *testing.T) {
 	t.Parallel()
@@ -131,9 +131,9 @@ func TestOpenEnforcesForeignKeys(t *testing.T) {
 		t.Fatalf("insert account: %v", err)
 	}
 
-	_, err = sqlDB.ExecContext(t.Context(), `INSERT INTO contributors (goal_id, account_id, created_at) VALUES (999, 1, '2026-01-02T15:04:05Z')`)
+	_, err = sqlDB.ExecContext(t.Context(), `INSERT INTO delegates (goal_id, account_id, created_at) VALUES (999, 1, '2026-01-02T15:04:05Z')`)
 	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
-		t.Fatalf("insert Contributor for missing Goal: err = %v, want a foreign-key error", err)
+		t.Fatalf("insert Delegate for missing Goal: err = %v, want a foreign-key error", err)
 	}
 }
 

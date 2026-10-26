@@ -116,7 +116,7 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	}
 	owner := domain.GoalPermissions{
 		CheckinPermissions: checksIn, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
-		AddContributor: true, ManageDelegates: true, LinkParent: true, EditMetrics: true, DecideSuggestions: true,
+		ManageDelegates: true, LinkParent: true, EditMetrics: true, DecideSuggestions: true,
 		EditTitleAndWhyItMatters: true, HandOff: true,
 	}
 	delegate := domain.GoalPermissions{
@@ -270,9 +270,6 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 		}},
 		{"SetValues", func(p domain.GoalPermissions) bool { return p.SetValues }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
 			return tx.AssignGoalValue(ctx, v.ID, g.ID, pillar.Values[0].ID)
-		}},
-		{"AddContributor", func(p domain.GoalPermissions) bool { return p.AddContributor }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
-			return tx.AddContributor(ctx, v.ID, g.ID, nina.ID)
 		}},
 		{"ManageDelegates", func(p domain.GoalPermissions) bool { return p.ManageDelegates }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
 			return tx.AddDelegate(ctx, v.ID, g.ID, nina.ID)

@@ -597,9 +597,9 @@ func dimensionNamed(t *testing.T, h *testsupport.Harness, name string) domain.Di
 }
 
 // A Goal's Delegate sets its values like its Owner, in one-value and
-// several-values Dimensions alike; a Contributor can't (CONTEXT.md: Delegate,
-// Contributor).
-func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
+// several-values Dimensions alike; an Account with no role on the Goal can't
+// (CONTEXT.md: Delegate).
+func TestDelegateSetsGoalValuesButAStrangerCannot(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -613,9 +613,6 @@ func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
 	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(ctx, goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
-		t.Fatalf("AddContributorByEmail: %v", err)
-	}
 
 	if err := h.Service.AssignGoalValue(ctx, dee.ID, goal.ID, pillar.Values[1].ID); err != nil {
 		t.Fatalf("Delegate AssignGoalValue: %v", err)
@@ -628,13 +625,13 @@ func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
 	}
 
 	if err := h.Service.AssignGoalValue(ctx, cory.ID, goal.ID, pillar.Values[0].ID); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("Contributor AssignGoalValue err = %v, want ErrNotAuthorized", err)
+		t.Errorf("stranger AssignGoalValue err = %v, want ErrNotAuthorized", err)
 	}
 	if err := h.Service.SetGoalValues(ctx, cory.ID, goal.ID, teams.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("Contributor SetGoalValues err = %v, want ErrNotAuthorized", err)
+		t.Errorf("stranger SetGoalValues err = %v, want ErrNotAuthorized", err)
 	}
 	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Reliability", "Core", "Infra"}) {
-		t.Errorf("after the Contributor's refused sets, values = %v, want them unchanged", got)
+		t.Errorf("after the stranger's refused sets, values = %v, want them unchanged", got)
 	}
 }
 
@@ -817,9 +814,9 @@ func TestAdminAddingNearDuplicateValueAddsNothing(t *testing.T) {
 }
 
 // A Delegate adds a new value to an Extendable list from the Goal, like its
-// Owner; a Contributor can't, and nothing is added (CONTEXT.md: Delegate,
-// Extendable).
-func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
+// Owner; an Account with no role on the Goal can't, and nothing is added
+// (CONTEXT.md: Delegate, Extendable).
+func TestDelegateAddsToExtendableListButAStrangerCannot(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -832,15 +829,12 @@ func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
 	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dee, goal.ID)
-	if err := h.Service.AddContributorByEmail(ctx, goal.Owner.ID, goal.ID, "cory@example.com"); err != nil {
-		t.Fatalf("AddContributorByEmail: %v", err)
-	}
 
 	if _, err := h.Service.AssignGoalValueByName(ctx, dee.ID, goal.ID, customer.ID, "Globex"); err != nil {
 		t.Fatalf("Delegate AssignGoalValueByName: %v", err)
 	}
 	if _, err := h.Service.AssignGoalValueByName(ctx, cory.ID, goal.ID, customer.ID, "Initech"); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("Contributor AssignGoalValueByName err = %v, want ErrNotAuthorized", err)
+		t.Errorf("stranger AssignGoalValueByName err = %v, want ErrNotAuthorized", err)
 	}
 	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Globex"}) {
 		t.Errorf("values = %v, want [Globex]", got)
