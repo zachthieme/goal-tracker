@@ -92,6 +92,35 @@ func TestEditMilestoneChangesNameAndDate(t *testing.T) {
 	}
 }
 
+// Milestone reads a Milestone by id, or is ErrNotFound for one there isn't.
+func TestMilestoneReadsTheMilestone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	h.CreateGoal(owner, "Earlier goal", "why")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	added, err := h.Service.AddMilestone(context.Background(), owner.ID, domain.AddMilestoneInput{
+		GoalID:     g.ID,
+		Name:       "Beta cut",
+		TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+
+	got, err := h.Service.Milestone(context.Background(), added.ID)
+	if err != nil {
+		t.Fatalf("Milestone: %v", err)
+	}
+	if got.ID != added.ID || got.GoalID != g.ID || got.Name != "Beta cut" {
+		t.Errorf("Milestone = %+v, want Beta cut on Goal %d", got, g.ID)
+	}
+	if _, err := h.Service.Milestone(context.Background(), added.ID+1); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Milestone of an unknown id: err %v, want ErrNotFound", err)
+	}
+}
+
 // A Check-in marks a Milestone Done; a Done Milestone is no longer overdue, so
 // the Check-in may be Green even past its date.
 func TestCheckinMarksMilestoneDone(t *testing.T) {
