@@ -1039,6 +1039,48 @@ func TestBuilderMatchesReadAgainstTheDefinitionsBaselineOverHTTP(t *testing.T) {
 	}
 }
 
+// The rail's "m left out" doesn't count a Leave out Goal finished before the
+// baseline, which for a new definition is 30 days ago: finished work is
+// reported once, so Leave out keeps nothing out by it.
+func TestBuilderMatchesLeftOutSkipsAGoalFinishedBeforeTheBaselineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	paused := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Open a Paris office", "Matters."))
+	shipped := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Ship the SDK", "Matters."))
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: shipped.ID, AuthorID: boss.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Shipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin to Done: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"exclude":            {id(paused.ID), id(shipped.ID)},
+	}
+
+	rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if got := textOf(findByTestID(t, parsePage(t, rail), "matches-more")); got != "2 left out" {
+		t.Errorf("with the Goal finished since the baseline the rail's closing line is %q, want 2 left out", got)
+	}
+	h.Clock.Advance(31 * 24 * time.Hour)
+	client = signInClient(t, ts.URL, "boss@example.com")
+	rail, _ = postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	page := parsePage(t, rail)
+	if got := textOf(findByTestID(t, page, "matches-count")); got != "Matches 1 Goal" {
+		t.Errorf("the rail's count is %q, want Matches 1 Goal", got)
+	}
+	if got := textOf(findByTestID(t, page, "matches-more")); got != "1 left out" {
+		t.Errorf("with the Goal finished before the baseline the rail's closing line is %q, want 1 left out", got)
+	}
+}
+
 // The builder posts itself to the rail as it is typed — on change, and on
 // input after a pause, but not a picker's search — swapping the rail, which
 // sits outside the form. The rail is there from the first render, and after
