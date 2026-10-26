@@ -19,3 +19,7 @@ ADR 0004 chose relational storage, "SQLite, later Postgres". In October 2026 a p
 - **Backups:** they use SQLite's online backup (`.backup` or `VACUUM INTO`), never a file copy. The WAL file beside the database is part of its state.
 - **Testing stays portable.** Shifting time (`clock.Fixed`) and recording email (`email.Recorder`) live in the app, not the database. A fresh database per test, and failure injection by trigger, both have Postgres equivalents (`CREATE DATABASE … TEMPLATE`, PL/pgSQL triggers). A later move keeps every testing capability, only slower.
 - **Keep the move cheap:** prefer portable SQL in new queries. Where SQLite-only behaviour is needed, keep it behind the domain service, as ADR 0004 already does for graph traversal.
+
+## Notes
+
+- 2026-10-26: migrations squashed into one baseline (`0001_baseline.sql`); the cost of rewriting the migration chain no longer applies. The decision stands (#617).
