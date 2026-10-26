@@ -153,7 +153,7 @@ func goalOwnerRefusal(a goalActor, g Goal, act string) error {
 	return nil
 }
 
-// departedRefusal refuses a Departed person act: they can't act at all
+// departedRefusal refuses a Departed person act, since they can't act at all
 // (CONTEXT.md: Departed).
 func departedRefusal(act string) error {
 	return Refuse(ErrNotAuthorized, "a Departed person can't %s", act)

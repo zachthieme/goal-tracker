@@ -190,10 +190,11 @@ var errRolledBack = errors.New("rolled back")
 func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	h := testsupport.New(t, "admin@example.com")
+	h := testsupport.New(t, "admin@example.com", "ada@example.com")
 	sam := h.SignIn("sam@example.com")
 	morgan := h.SignIn("morgan@example.com")
 	admin := h.SignIn("admin@example.com")
+	ada := h.SignIn("ada@example.com")
 	rita := h.SignIn("rita@example.com")
 	dana := h.SignIn("dana@example.com")
 	nina := h.SignIn("nina@example.com")
@@ -216,7 +217,16 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	cancelled := h.ActiveGoal(sam, "Ship chat", "People can't talk.")
 	ownerless := h.ActiveGoal(olive, "Ship export", "People can't leave.")
 	goals := []domain.Goal{proposed, active, onHold, done, cancelled, ownerless}
+	later := h.Clock.Now().AddDate(0, 4, 0)
+	metrics := map[int64]domain.Metric{}
 	for _, g := range goals {
+		m, err := h.Service.AddMetric(ctx, g.Owner.ID, domain.AddMetricInput{
+			GoalID: g.ID, Name: "Uses", Unit: "a day", Direction: domain.MetricUp, Baseline: 10, Target: 100, TargetDate: later,
+		})
+		if err != nil {
+			t.Fatalf("AddMetric for %s: %v", g.Title, err)
+		}
+		metrics[g.ID] = m
 		h.AddDelegate(g.Owner, morgan, g.ID)
 		h.AddDelegate(g.Owner, dana, g.ID)
 		h.SuggestParent(rita, g, suggested, "")
@@ -229,12 +239,17 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("SubmitCheckin On Hold: %v", err)
 	}
-	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: done.ID, AuthorID: sam.ID, Status: "Wrapping this up.", Lifecycle: domain.LifecycleDone, Outcome: "It shipped.",
+		Readings: []domain.MetricReadingInput{{MetricID: metrics[done.ID].ID, Value: 100}}, // a Done Goal's Metrics each need a final value
+	}); err != nil {
+		t.Fatalf("SubmitCheckin to Done: %v", err)
+	}
 	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
 	h.MarkDeparted(admin, dana)
 	h.MarkDeparted(admin, olive)
+	h.MarkDeparted(admin, ada)
 
-	later := h.Clock.Now().AddDate(0, 4, 0)
 	commands := []goalCommand{
 		{"CheckIn", func(p domain.GoalPermissions) bool { return p.CheckIn }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
 			in := domain.SubmitCheckinInput{GoalID: g.ID, AuthorID: v.ID, Health: domain.HealthGreen, Status: "On track."}
@@ -281,6 +296,13 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 		{"EditMetrics", func(p domain.GoalPermissions) bool { return p.EditMetrics }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
 			_, err := tx.AddMetric(ctx, v.ID, domain.AddMetricInput{
 				GoalID: g.ID, Name: "Searches", Unit: "a day", Direction: domain.MetricUp, Baseline: 10, Target: 100, TargetDate: later,
+			})
+			return err
+		}},
+		{"EditMetric", func(p domain.GoalPermissions) bool { return p.EditMetrics }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
+			m := metrics[g.ID]
+			_, err := tx.EditMetric(ctx, v.ID, domain.EditMetricInput{
+				MetricID: m.ID, Name: "Daily uses", Unit: m.Unit, Direction: m.Direction, Baseline: m.Baseline, Target: m.Target, TargetDate: m.TargetDate,
 			})
 			return err
 		}},
@@ -332,6 +354,7 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 			_, err := tx.SubmitCheckin(ctx, domain.SubmitCheckinInput{
 				GoalID: g.ID, AuthorID: v.ID, Health: domain.HealthGreen, Status: "Moving on.",
 				Lifecycle: to, LifecycleReason: "Plans changed.", Outcome: "It shipped.",
+				Readings: []domain.MetricReadingInput{{MetricID: metrics[g.ID].ID, Value: 100}},
 			})
 			return err
 		}})
@@ -359,7 +382,12 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 		{"an Admin", func(domain.Goal) domain.Account { return admin }},
 		{"anyone else", func(domain.Goal) domain.Account { return rita }},
 		{"a Departed Delegate", func(domain.Goal) domain.Account { return dana }},
+		{"a Departed Admin", func(domain.Goal) domain.Account { return ada }},
 	}
+	// accepted are the commands some viewer was offered on some Goal and the
+	// command then accepted: each must be, or its refusals elsewhere could be
+	// of its input rather than by its rule.
+	accepted := map[string]bool{}
 	for _, g := range goals {
 		state := g.Lifecycle
 		if g.ID == ownerless.ID {
@@ -370,6 +398,12 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 			p, err := h.Service.GoalPage(ctx, viewer.ID, g.ID)
 			if err != nil {
 				t.Fatalf("GoalPage for %s of the %s Goal: %v", who.name, state, err)
+			}
+			// A Departed person can't act (CONTEXT.md: Departed), so is
+			// offered nothing: the Owner of the Ownerless Goal, the Departed
+			// Delegate and the Departed Admin alike.
+			if p.Viewer.Departed && !reflect.DeepEqual(p.Permissions, domain.GoalPermissions{}) {
+				t.Errorf("%s, Departed, is offered %+v on the %s Goal, want nothing", who.name, p.Permissions, state)
 			}
 			for _, c := range commands {
 				var got error
@@ -384,12 +418,19 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 				}
 				refused := errors.Is(got, domain.ErrNotAuthorized) || errors.Is(got, domain.ErrValidation)
 				switch offered := c.allowed(p.Permissions); {
+				case offered && got == nil:
+					accepted[c.name] = true
 				case offered && got != nil:
 					t.Errorf("%s by %s on the %s Goal: the page offers it, but the command refused: %v", c.name, who.name, state, got)
 				case !offered && !refused:
 					t.Errorf("%s by %s on the %s Goal: the page doesn't offer it, but the command answered %v", c.name, who.name, state, got)
 				}
 			}
+		}
+	}
+	for _, c := range commands {
+		if !accepted[c.name] {
+			t.Errorf("%s is offered and accepted for no viewer on any Goal, so its refusals prove nothing of its rule", c.name)
 		}
 	}
 }

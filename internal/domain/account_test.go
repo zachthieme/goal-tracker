@@ -163,6 +163,42 @@ func TestMarkDepartedRefusesAnActorWithNoAccount(t *testing.T) {
 	}
 }
 
+// A Departed Admin can't act (CONTEXT.md: Departed), so every Admin command
+// refuses them as the rule for an Admin does — marking people departed or
+// returned, defining Dimensions and Fields — and the refused attempts change
+// nothing.
+func TestAdminCommandsRefuseADepartedAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com", "ada@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.MarkDeparted(boss, pat)
+	h.MarkDeparted(boss, ada)
+
+	if err := h.Service.MarkDeparted(ctx, ada.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("MarkDeparted by a Departed Admin: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.MarkReturned(ctx, ada.ID, pat.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("MarkReturned by a Departed Admin: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.CreateDimension(ctx, ada.ID, "Pillar", []string{"Growth"}); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("CreateDimension by a Departed Admin: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.CreateField(ctx, ada.ID, "Budget", domain.FieldNumber, "USD"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("CreateField by a Departed Admin: err = %v, want ErrNotAuthorized", err)
+	}
+	if acc, err := h.Service.Account(ctx, sam.ID); err != nil || acc.Departed {
+		t.Errorf("Sam after a refused MarkDeparted = %+v, %v; want present", acc, err)
+	}
+	if acc, err := h.Service.Account(ctx, pat.ID); err != nil || !acc.Departed {
+		t.Errorf("Pat after a refused MarkReturned = %+v, %v; want Departed", acc, err)
+	}
+}
+
 // DepartedAccounts lists every Departed person, whether or not they own a Goal,
 // in the order they are shown: by Label. A present person isn't listed, nor is
 // one who has returned.

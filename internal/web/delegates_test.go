@@ -130,6 +130,29 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 	}
 }
 
+// Someone not the Owner who posts an email no one has is refused as not
+// permitted, before the email is looked up, so the refusal says nothing of
+// who has an Account.
+func TestNonOwnerAddingAnUnknownEmailAsDelegateIsForbidden(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	melClient := signInClient(t, ts.URL, "mel@example.com")
+	resp := postForm(t, melClient, fmt.Sprintf("%s/goals/%d/delegates", ts.URL, goal.ID), url.Values{
+		"email": {"nobody@example.com"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Owner add of an unknown email as Delegate: status = %d, want 403", resp.StatusCode)
+	}
+}
+
 // Only the Owner may remove a Delegate through the web: another signed-in
 // person posting the Owner's Remove form is refused and the Delegate stays,
 // and the Owner's own Remove takes them off the Goal (CONTEXT.md: a person an
