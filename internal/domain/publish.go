@@ -149,13 +149,13 @@ func (s *Service) writePublication(ctx context.Context, draft draftedPublication
 }
 
 // publishableDefinition returns the Report Definition defID if actorID may
-// publish it: its creator, a Report Delegate or an Admin.
+// publish it (publishReportRefusal).
 func (s *Service) publishableDefinition(ctx context.Context, actorID, defID int64) (ReportDefinition, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
 		return ReportDefinition{}, err
 	}
-	if err := s.requireReportManager(ctx, actorID, def, "publish"); err != nil {
+	if err := s.reportRule(ctx, actorID, def, publishReportRefusal); err != nil {
 		return ReportDefinition{}, err
 	}
 	return def, nil

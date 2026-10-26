@@ -163,6 +163,38 @@ func TestMarkDepartedRefusesAnActorWithNoAccount(t *testing.T) {
 	}
 }
 
+// MarkDeparted and MarkReturned look the person up before asking who is
+// acting, so an account id that names no Account is refused "account does not
+// exist" whoever asks, a non-Admin included, and nothing changes.
+func TestMarkDepartedAndReturnedRefuseAMissingAccountWhoeverAsks(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	nobody := boss.ID + pat.ID + 1000
+
+	for name, mark := range map[string]func(actorID, accountID int64) error{
+		"MarkDeparted": func(actorID, accountID int64) error { return h.Service.MarkDeparted(ctx, actorID, accountID) },
+		"MarkReturned": func(actorID, accountID int64) error { return h.Service.MarkReturned(ctx, actorID, accountID) },
+	} {
+		err := mark(pat.ID, nobody)
+		if !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "account does not exist" {
+			t.Errorf("%s by a non-Admin of no Account: err %v, want ErrValidation \"account does not exist\"", name, err)
+		}
+	}
+	departed, err := h.Service.DepartedAccounts(ctx)
+	if err != nil || len(departed) != 0 {
+		t.Errorf("Departed Accounts after the refused marks = %+v (err %v), want none", departed, err)
+	}
+	for _, acc := range []domain.Account{boss, pat} {
+		if got, err := h.Service.Account(ctx, acc.ID); err != nil || got != acc {
+			t.Errorf("%s after the refused marks = %+v (err %v), want %+v", acc.Email, got, err, acc)
+		}
+	}
+}
+
 // A Departed Admin can't act (CONTEXT.md: Departed), so every Admin command
 // refuses them as the rule for an Admin does — marking people departed or
 // returned, defining Dimensions and Fields — and the refused attempts change

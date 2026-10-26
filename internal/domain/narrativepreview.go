@@ -13,7 +13,7 @@ import (
 // who may not curate def (ErrNotAuthorized), and a narrative CurateNarrative
 // couldn't save (ErrValidation).
 func (s *Service) PreviewNarrative(ctx context.Context, actorID int64, def ReportDefinition, baseline time.Time, in CurateNarrativeInput) (Report, error) {
-	if err := s.requireReportManager(ctx, actorID, def, "curate"); err != nil {
+	if err := s.reportRule(ctx, actorID, def, curateNarrativeRefusal); err != nil {
 		return Report{}, err
 	}
 	notes, err := s.checkCuratedNarrative(ctx, def, in)

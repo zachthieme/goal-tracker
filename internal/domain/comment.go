@@ -37,11 +37,12 @@ type Thread struct {
 }
 
 // AddComment comments on the Goal goalID's block in the published Report
-// pubID, starting a thread. Anyone signed in may comment; actorID records who
-// did. The Goal must be one the publication covers, and the comment cannot be
-// blank. The Goal's current Owner — the one accountable for it now — is
-// emailed the comment unless they wrote it or have left the org, once it is
-// kept (see queueEmail); a mail server that is down only delays the alert.
+// pubID, starting a thread. Anyone signed in may comment, but not once they
+// have Departed (commentRefusal); actorID records who did. The Goal must be
+// one the publication covers, and the comment cannot be blank. The Goal's
+// current Owner — the one accountable for it now — is emailed the comment
+// unless they wrote it or have left the org, once it is kept (see
+// queueEmail); a mail server that is down only delays the alert.
 func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -49,6 +50,9 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 	}
 	var c Comment
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := commentRefusal(tx.accountActor(ctx, actorID)); err != nil {
+			return err
+		}
 		pub, err := tx.GetPublication(ctx, pubID)
 		if err != nil {
 			return err
@@ -65,10 +69,10 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 }
 
 // AddGoalComment comments on the Goal goalID itself, with no Report, starting
-// a thread on the Goal's page. Anyone signed in may comment, in any Lifecycle;
-// actorID records who did. The comment cannot be blank. The Goal's current
-// Owner is emailed it unless they wrote it or have left the org, once it is
-// kept (see queueEmail).
+// a thread on the Goal's page. Anyone signed in may comment, in any Lifecycle,
+// but not once they have Departed (commentRefusal); actorID records who did.
+// The comment cannot be blank. The Goal's current Owner is emailed it unless
+// they wrote it or have left the org, once it is kept (see queueEmail).
 func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -76,6 +80,9 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 	}
 	var c Comment
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := commentRefusal(tx.accountActor(ctx, actorID)); err != nil {
+			return err
+		}
 		if _, err := tx.queries.GetGoal(ctx, goalID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
@@ -93,10 +100,10 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 
 // ReplyToComment replies in the thread commentID belongs to; replying to a
 // reply answers in the same thread, on the Goal or on the Report the thread
-// is on. Anyone signed in may reply. The Goal's
-// current Owner and everyone else who has written in the thread are emailed
-// the reply, except its author and anyone who has left the org, once it is
-// kept (see queueEmail).
+// is on. Anyone signed in may reply, but not once they have Departed
+// (commentRefusal). The Goal's current Owner and everyone else who has
+// written in the thread are emailed the reply, except its author and anyone
+// who has left the org, once it is kept (see queueEmail).
 func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -104,6 +111,9 @@ func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, 
 	}
 	var c Comment
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := commentRefusal(tx.accountActor(ctx, actorID)); err != nil {
+			return err
+		}
 		parent, err := tx.GetComment(ctx, commentID)
 		if err != nil {
 			return err

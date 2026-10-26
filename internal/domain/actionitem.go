@@ -71,12 +71,8 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		if err != nil {
 			return err
 		}
-		author, err := tx.isReportAuthor(ctx, actorID, pub)
-		if err != nil {
+		if err := tx.raiseActionItemRule(ctx, actorID, pub); err != nil {
 			return err
-		}
-		if !author {
-			return Refuse(ErrNotAuthorized, "only the Report's author raises Action Items")
 		}
 		text := strings.TrimSpace(in.Text)
 		goalID := in.GoalID
@@ -164,24 +160,13 @@ func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, int
 
 // IsReportAuthor reports whether actorID is the author of the published Report
 // pubID — who saved its Definition, or who published it — and so may raise
-// Action Items on it.
+// Action Items on it (raiseActionItemRefusal).
 func (s *Service) IsReportAuthor(ctx context.Context, actorID, pubID int64) (bool, error) {
 	pub, err := s.GetPublication(ctx, pubID)
 	if err != nil {
 		return false, err
 	}
-	return s.isReportAuthor(ctx, actorID, pub)
-}
-
-func (s *Service) isReportAuthor(ctx context.Context, actorID int64, pub Publication) (bool, error) {
-	if actorID == pub.PublishedBy.ID {
-		return true, nil
-	}
-	def, err := s.queries.GetReportDefinition(ctx, pub.DefinitionID)
-	if err != nil {
-		return false, fmt.Errorf("get report definition: %w", err)
-	}
-	return actorID == def.CreatedBy, nil
+	return goalPagePermits(s.raiseActionItemRule(ctx, actorID, pub))
 }
 
 // RaiseActionItemByEmail raises an Action Item owned by the Account with the
@@ -205,7 +190,8 @@ func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in 
 }
 
 // CloseActionItem closes an open Action Item with a note on how it was
-// resolved. Only its owner may close it, and the note cannot be blank.
+// resolved. Only its owner may close it, and not once they have Departed
+// (closeActionItemRefusal); the note cannot be blank.
 func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note string) (ActionItem, error) {
 	var closed ActionItem
 	if err := s.WithinTx(ctx, func(tx *Service) error {
@@ -213,11 +199,8 @@ func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note s
 		if err != nil {
 			return err
 		}
-		if actorID != item.Owner.ID {
-			return Refuse(ErrNotAuthorized, "only the Action Item's owner closes it")
-		}
-		if item.Closed {
-			return Refuse(ErrValidation, "the Action Item is already closed")
+		if err := closeActionItemRefusal(tx.accountActor(ctx, actorID), item); err != nil {
+			return err
 		}
 		note = strings.TrimSpace(note)
 		if note == "" {
@@ -254,8 +237,8 @@ type ActionItemReassignment struct {
 }
 
 // ReassignActionItem hands the open Action Item itemID to newOwnerID and
-// records the reassignment. Only those CanReassignActionItem allows may do
-// it, and the new owner must not have left the company or already own it.
+// records the reassignment. Only those reassignActionItemRefusal allows may
+// do it, and the new owner must not have left the company or already own it.
 // The new owner is emailed it unless they reassigned it to themselves, once
 // the reassignment is kept (see queueEmail).
 func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOwnerID int64) (ActionItem, error) {
@@ -336,74 +319,22 @@ func (s *Service) ReassignActionItemByEmail(ctx context.Context, actorID, itemID
 	return item, err
 }
 
-// reassignableActionItem returns the Action Item itemID if it exists, is open,
-// and actorID may reassign it.
+// reassignableActionItem returns the Action Item itemID if it exists and
+// actorID may reassign it, by reassignActionItemRefusal: who they are first,
+// then whether it is still open.
 func (s *Service) reassignableActionItem(ctx context.Context, actorID, itemID int64) (ActionItem, error) {
 	item, err := s.GetActionItem(ctx, itemID)
 	if err != nil {
 		return ActionItem{}, err
 	}
-	if item.Closed {
-		return ActionItem{}, Refuse(ErrValidation, "the Action Item is already closed")
-	}
-	ok, err := s.CanReassignActionItem(ctx, actorID, item)
+	r, err := s.actionItemRuleReportOf(ctx, item.DefinitionID, item.PublicationID)
 	if err != nil {
 		return ActionItem{}, err
 	}
-	if !ok {
-		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item")
+	if err := reassignActionItemRefusal(s.accountActor(ctx, actorID), r, item); err != nil {
+		return ActionItem{}, err
 	}
 	return item, nil
-}
-
-// CanReassignActionItem reports whether actorID may hand the Action Item to a
-// new owner (CONTEXT.md: Action Item): it is open, and they are its Report
-// Definition's creator or one of its Report Delegates, who published the
-// publication it was raised on, an Admin, or the creator's Manager. A Departed
-// person can't.
-func (s *Service) CanReassignActionItem(ctx context.Context, actorID int64, item ActionItem) (bool, error) {
-	if item.Closed {
-		return false, nil
-	}
-	actor, err := s.queries.GetAccount(ctx, actorID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return false, fmt.Errorf("look up actor: %w", err)
-	}
-	if actor.Departed != 0 {
-		return false, nil
-	}
-	if actor.IsAdmin != 0 {
-		return true, nil
-	}
-	def, err := s.queries.GetReportDefinition(ctx, item.DefinitionID)
-	if err != nil {
-		return false, fmt.Errorf("get report definition: %w", err)
-	}
-	if def.CreatedBy == actorID {
-		return true, nil
-	}
-	delegates, err := s.ListReportDelegates(ctx, def.ID)
-	if err != nil {
-		return false, err
-	}
-	if isReportDelegate(delegates, actorID) {
-		return true, nil
-	}
-	pub, err := s.queries.GetReportPublication(ctx, item.PublicationID)
-	if err != nil {
-		return false, fmt.Errorf("get report publication: %w", err)
-	}
-	if pub.PublishedBy == actorID {
-		return true, nil
-	}
-	creator, err := s.queries.GetAccount(ctx, def.CreatedBy)
-	if err != nil {
-		return false, fmt.Errorf("look up report creator: %w", err)
-	}
-	return creator.ManagerID != nil && *creator.ManagerID == actorID, nil
 }
 
 // ActionItemReassignments returns the Action Item itemID's reassignments,

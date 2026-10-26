@@ -16,71 +16,42 @@ import (
 // creator may do except add or remove Report Delegates (CONTEXT.md: Report
 // Delegate). Like a Goal's Delegates, they are surfaced as plain Accounts.
 
-// CanManageReport reports whether actor may change def, curate its narrative
-// and publish it: its creator, one of its Report Delegates (delegates, as
-// ListReportDelegates returns them) or an Admin may (CONTEXT.md: Report
-// Definition).
-func CanManageReport(actor Account, def ReportDefinition, delegates []Account) bool {
-	return CanManageReportDelegates(actor, def) || isReportDelegate(delegates, actor.ID)
-}
-
 // isReportDelegate reports whether accountID is among delegates.
 func isReportDelegate(delegates []Account, accountID int64) bool {
 	return slices.ContainsFunc(delegates, func(d Account) bool { return d.ID == accountID })
 }
 
-// CanManageReportDelegates reports whether actor may add and remove def's
-// Report Delegates: only its creator or an Admin may.
-func CanManageReportDelegates(actor Account, def ReportDefinition) bool {
-	return actor.IsAdmin || actor.ID == def.CreatedBy
-}
-
-// requireReportManager returns ErrNotAuthorized, naming what actorID tried
-// (doing), unless they may change def, curate its narrative and publish it. An
-// unknown actor may do none of it.
-func (s *Service) requireReportManager(ctx context.Context, actorID int64, def ReportDefinition, doing string) error {
-	actor, err := s.queries.GetAccount(ctx, actorID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up actor: %w", err)
-	}
-	delegates, lerr := s.ListReportDelegates(ctx, def.ID)
-	if lerr != nil {
-		return lerr
-	}
-	if err != nil || !CanManageReport(accountFromRow(actor), def, delegates) {
-		return Refuse(ErrNotAuthorized, "only its creator, a Report Delegate or an Admin may %s %s", doing, def.Name)
-	}
-	return nil
-}
-
-// reportDelegatesDefinition returns the Report Definition defID if actorID may
-// add and remove its Report Delegates: its creator or an Admin.
-func (s *Service) reportDelegatesDefinition(ctx context.Context, actorID, defID int64) (ReportDefinition, error) {
+// reportDelegatesDefinition returns the Report Definition defID, with its
+// Report Delegates, if actorID may add and remove them
+// (reportDelegatesRefusal).
+func (s *Service) reportDelegatesDefinition(ctx context.Context, actorID, defID int64) (reportRuleDefinition, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
-		return ReportDefinition{}, err
+		return reportRuleDefinition{}, err
 	}
-	actor, err := s.queries.GetAccount(ctx, actorID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return ReportDefinition{}, fmt.Errorf("look up actor: %w", err)
+	r, err := s.reportRuleDefinitionOf(ctx, def)
+	if err != nil {
+		return reportRuleDefinition{}, err
 	}
-	if err != nil || !CanManageReportDelegates(accountFromRow(actor), def) {
-		return ReportDefinition{}, Refuse(ErrNotAuthorized, "only its creator or an Admin may change who are Report Delegates on %s", def.Name)
+	if err := reportDelegatesRefusal(s.accountActor(ctx, actorID), r); err != nil {
+		return reportRuleDefinition{}, err
 	}
-	return def, nil
+	return r, nil
 }
 
 // AddReportDelegate authorizes accountID to change, curate and publish the
-// Report Definition defID. Only its creator or an Admin may (ErrNotAuthorized);
-// actorID is the acting Account. The creator is already authorized so cannot
+// Report Definition defID. Only its creator or an Admin may, and not one who
+// has Departed (reportDelegatesRefusal, ErrNotAuthorized); actorID is the
+// acting Account. The creator is already authorized so cannot
 // be added, and neither can someone already a Report Delegate, a Departed
 // person or an Account that doesn't exist (ErrValidation).
 func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		def, err := tx.reportDelegatesDefinition(ctx, actorID, defID)
+		r, err := tx.reportDelegatesDefinition(ctx, actorID, defID)
 		if err != nil {
 			return err
 		}
+		def := r.def
 		if accountID == def.CreatedBy {
 			return Refuse(ErrValidation, "the creator already manages %s", def.Name)
 		}
@@ -94,11 +65,7 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 		if acc.Departed != 0 {
 			return Refuse(ErrValidation, "%s has left the company", acc.Email)
 		}
-		delegates, err := tx.ListReportDelegates(ctx, defID)
-		if err != nil {
-			return err
-		}
-		if isReportDelegate(delegates, accountID) {
+		if isReportDelegate(r.delegates, accountID) {
 			return Refuse(ErrValidation, "%s is already a Report Delegate", acc.Email)
 		}
 		if err := tx.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
@@ -129,7 +96,8 @@ func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID i
 }
 
 // RemoveReportDelegate revokes accountID's authorization on the Report
-// Definition defID. Only its creator or an Admin may (ErrNotAuthorized).
+// Definition defID. Only its creator or an Admin may (reportDelegatesRefusal,
+// ErrNotAuthorized).
 // Removing someone who is not a Report Delegate is a no-op. The Report log
 // records each one added or removed (CONTEXT.md: Report log).
 func (s *Service) RemoveReportDelegate(ctx context.Context, actorID, defID, accountID int64) error {

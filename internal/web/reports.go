@@ -177,17 +177,18 @@ type reportManagement struct {
 	Refused string
 }
 
-// reportManagement is what current may do to def, as its draft page offers it.
+// reportManagement is what current may do to def, as its draft page offers it
+// (domain.ReportPermissions).
 func (s *Server) reportManagement(r *http.Request, current domain.Account, def domain.ReportDefinition) (reportManagement, error) {
-	delegates, err := s.svc.ListReportDelegates(r.Context(), def.ID)
+	p, err := s.svc.ReportPermissions(r.Context(), current.ID, def)
 	if err != nil {
 		return reportManagement{}, err
 	}
 	return reportManagement{
 		DefID:           def.ID,
-		Manage:          domain.CanManageReport(current, def, delegates),
-		ManageDelegates: domain.CanManageReportDelegates(current, def),
-		Delegates:       delegates,
+		Manage:          p.Manage,
+		ManageDelegates: p.ManageDelegates,
+		Delegates:       p.Delegates,
 	}, nil
 }
 
@@ -222,21 +223,15 @@ func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, curren
 
 // editableReport loads the Report Definition the path names for current to
 // edit, writing Not found when there is none and the refusal page, 403,
-// linking Back to its draft, when current is neither its creator, a Report
-// Delegate nor an Admin.
+// linking Back to its draft, when the domain refuses current as its editor
+// (domain.Service.RequireReportEditor).
 func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current domain.Account) (domain.ReportDefinition, bool) {
 	def, ok := s.reportFromPath(w, r)
 	if !ok {
 		return domain.ReportDefinition{}, false
 	}
-	m, err := s.reportManagement(r, current, def)
-	if err != nil {
-		s.serverError(w, r, "could not load Report Delegates", err)
-		return domain.ReportDefinition{}, false
-	}
-	if !m.Manage {
-		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(def.ID, 10),
-			domain.Refuse(domain.ErrNotAuthorized, "only its creator, a Report Delegate or an Admin may edit %s", def.Name))
+	if err := s.svc.RequireReportEditor(r.Context(), current.ID, def); err != nil {
+		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(def.ID, 10), err)
 		return domain.ReportDefinition{}, false
 	}
 	return def, true
