@@ -117,15 +117,9 @@ func (s *Service) FreshnessByGoal(ctx context.Context, goals []Goal) (map[int64]
 		}
 	}
 	// Only a Green, Active Goal can be Milestone overdue, so only theirs are read.
-	milestones := map[int64][]db.Milestone{}
-	if len(green) > 0 {
-		rows, err := s.queries.ListMilestonesForGoals(ctx, green)
-		if err != nil {
-			return nil, fmt.Errorf("list milestones: %w", err)
-		}
-		for _, m := range rows {
-			milestones[m.GoalID] = append(milestones[m.GoalID], m)
-		}
+	milestones, err := s.milestonesByGoal(ctx, green)
+	if err != nil {
+		return nil, err
 	}
 	out := make(map[int64]Freshness, len(goals))
 	for _, g := range goals {
@@ -145,19 +139,19 @@ func greenWhileActive(g Goal, health string) bool {
 
 // markMilestoneOverdue sets f's Milestone overdue fields (see
 // Freshness.MilestoneOverdue) for g, whose latest Check-in's Health is health,
-// from g's milestones sorted by date, judging overdue as overdueMilestone does
-// as of today in g's timezone, as the Check-in refusals judge it.
-func (s *Service) markMilestoneOverdue(f *Freshness, g Goal, health string, milestones []db.Milestone) {
+// from g's milestones sorted by date, judging each by Milestone.OverdueOn as of
+// today in g's timezone, as the Check-in refusals judge it.
+func (s *Service) markMilestoneOverdue(f *Freshness, g Goal, health string, milestones []Milestone) {
 	if !greenWhileActive(g, health) {
 		return
 	}
-	m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat))
+	m, ok := overdueMilestone(milestones, s.goalToday(g))
 	if !ok {
 		return
 	}
 	f.MilestoneOverdue = true
 	f.OverdueMilestone = m.Name
-	f.OverdueMilestoneDate, _ = time.Parse(dateFormat, m.TargetDate)
+	f.OverdueMilestoneDate = m.TargetDate
 }
 
 // GoalFreshness is a Goal with its freshness signals and the Health of its
@@ -215,9 +209,9 @@ func (s *Service) listFreshnessOverdueMilestones(ctx context.Context) ([]db.Mile
 // its latest Check-in, given overdue, as listFreshnessOverdueMilestones reads
 // them.
 func (s *Service) freshnessSignalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone) FreshnessSignals {
-	milestones := map[int64][]db.Milestone{}
+	milestones := map[int64][]Milestone{}
 	for _, m := range overdue {
-		milestones[m.GoalID] = append(milestones[m.GoalID], m)
+		milestones[m.GoalID] = append(milestones[m.GoalID], milestoneFromRow(m))
 	}
 	var out FreshnessSignals
 	for _, r := range rows {

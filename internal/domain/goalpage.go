@@ -213,8 +213,8 @@ func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage
 		p.Ask = &AskForHelp{Goal: goalFromRow(ask.Goal, ask.Account), Health: ask.Health, PathToGreen: ask.PathToGreen, Addressee: p.AskAddressee}
 	}
 
-	s.deriveGoalPage(&p, milestones)
-	if err := s.permitGoalPage(ctx, &p, actorID, account); err != nil {
+	noChange := s.deriveGoalPage(&p)
+	if err := s.permitGoalPage(ctx, &p, actorID, account, noChange); err != nil {
 		return GoalPage{}, err
 	}
 	return p, nil
@@ -456,28 +456,28 @@ func (s *Service) listGoalPageActionItems(p *GoalPage, items []db.ListActionItem
 }
 
 // deriveGoalPage works out what p shows that is computed when read, from what
-// GoalPage has read into it and the Goal's Milestone rows, milestones.
-func (s *Service) deriveGoalPage(p *GoalPage, milestones []db.Milestone) {
+// GoalPage has read into it, returning the verdict on a No change on its Goal,
+// judged from the same facts NoChangeRefusal reads.
+func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	g := p.Goal
 	var last lastCheckin
 	if c := p.LatestCheckin; c != nil {
 		last = lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 	}
 	p.Freshness = s.judgeFreshness(g, last)
-	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
-		overdue := milestoneFromRow(m)
-		p.OverdueMilestone = &overdue
-	}
-	s.markMilestoneOverdue(&p.Freshness, g, last.health, milestones)
+	s.markMilestoneOverdue(&p.Freshness, g, last.health, p.Milestones)
 	p.RunOffGreen = s.runOffGreen(g, p.Checkins)
 	p.HealthStrip = s.healthStrip(g, p.Checkins)
 	p.Signals = goalSignalsOf(g, goalsOf(p.Parents), goalsOf(p.Children))
+	noChange := judgeNoChange(s.noChangeFactsOf(g, p.LatestCheckin, p.RolledUp, p.Milestones, p.Metrics, p.Readings))
+	p.OverdueMilestone = noChange.overdueMilestone
+	return noChange
 }
 
 // permitGoalPage decides what p's viewer, actorID, may do on its Goal, and,
 // for one who may check in, reads the pending Draft Highlights only they see
-// and judges a No change on it.
-func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error)) error {
+// and gives them noChange's refusal of a No change on it.
+func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict) error {
 	g := p.Goal
 	viewer, err := account(actorID)
 	found := err == nil
@@ -535,27 +535,9 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		return fmt.Errorf("load draft highlights: %w", err)
 	}
 	if g.Lifecycle == LifecycleActive && p.LatestCheckin != nil {
-		p.NoChangeRefusal = s.goalPageNoChangeRefusal(p)
+		p.NoChangeRefusal = noChange.refusal
 	}
 	return nil
-}
-
-// goalPageNoChangeRefusal is NoChangeRefusal for p's Active Goal with a
-// Check-in to repeat, judged from what p holds.
-func (s *Service) goalPageNoChangeRefusal(p *GoalPage) error {
-	prev := p.LatestCheckin
-	facts := noChangeFacts{
-		health:      prev.Health,
-		explanation: prev.Explanation,
-		rollup:      p.RolledUp,
-		milestones:  p.Milestones,
-		freshness:   p.Freshness,
-	}
-	if prev.Health == HealthGreen {
-		facts.offTarget = s.offTargetByLatestReading(p.Goal, p.Metrics, p.Readings)
-	}
-	_, err := s.judgeNoChange(p.Goal, facts)
-	return err
 }
 
 // goalPagePermits reads a refusal from one of the permission rules as whether

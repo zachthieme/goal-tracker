@@ -458,9 +458,14 @@ func (s *Service) OffTargetMetrics(ctx context.Context, goalID int64, readings [
 	return s.offTargetMetricsOf(ctx, g, readings)
 }
 
-// offTargetMetricsOf is OffTargetMetrics for a Goal already loaded.
+// offTargetMetricsOf is OffTargetMetrics for a Goal already loaded. It reads
+// the Goal's Metrics and all their readings, one query each.
 func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []MetricReadingInput) ([]OffTargetMetric, error) {
 	metrics, err := s.ListMetrics(ctx, g.ID)
+	if err != nil {
+		return nil, err
+	}
+	recorded, err := s.metricReadingsByMetric(ctx, []int64{g.ID})
 	if err != nil {
 		return nil, err
 	}
@@ -468,38 +473,25 @@ func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []Met
 	for _, rd := range readings {
 		entered[rd.MetricID] = rd.Value
 	}
-	today := s.goalToday(g)
+	return offTargetMetricsAmong(metrics, recorded, entered, s.goalToday(g)), nil
+}
+
+// offTargetMetricsAmong are those of metrics, one Goal's, off target as of
+// today, a date in the Goal's timezone, each with the reading that missed:
+// its reading in entered or, when there is none, its latest in recorded, each
+// keyed by Metric ID. A Metric never read is not off target.
+func offTargetMetricsAmong(metrics []Metric, recorded map[int64][]MetricReading, entered map[int64]float64, today time.Time) []OffTargetMetric {
 	var missed []OffTargetMetric
 	for _, m := range metrics {
 		reading, ok := entered[m.ID]
 		if !ok {
-			recorded, err := s.queries.ListMetricReadings(ctx, m.ID)
-			if err != nil {
-				return nil, fmt.Errorf("list metric readings: %w", err)
-			}
-			if len(recorded) == 0 {
+			readings := recorded[m.ID]
+			if len(readings) == 0 {
 				continue
 			}
-			reading = recorded[len(recorded)-1].Value
+			reading = readings[len(readings)-1].Value
 		}
 		if m.OffTarget(reading, today) {
-			missed = append(missed, OffTargetMetric{Metric: m, Reading: reading})
-		}
-	}
-	return missed, nil
-}
-
-// offTargetByLatestReading is offTargetMetricsOf with no reading entered, for
-// g's metrics, judged by their latest readings in readings, keyed by Metric ID.
-func (s *Service) offTargetByLatestReading(g Goal, metrics []Metric, readings map[int64][]MetricReading) []OffTargetMetric {
-	today := s.goalToday(g)
-	var missed []OffTargetMetric
-	for _, m := range metrics {
-		recorded := readings[m.ID]
-		if len(recorded) == 0 {
-			continue
-		}
-		if reading := recorded[len(recorded)-1].Value; m.OffTarget(reading, today) {
 			missed = append(missed, OffTargetMetric{Metric: m, Reading: reading})
 		}
 	}
@@ -555,8 +547,9 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 // is once the Path to Green's back-to-Green date has passed: the Owner must
 // submit a Check-in with a new date and reason, or update the Health. The new
 // Check-in is still immutable and records its own author and Owner. The Goal
-// and the previous Check-in are read in the transaction that writes the new
-// one, so a No change can't land on a Goal another Check-in has just closed.
+// and what its verdict is judged from are read in the transaction that writes
+// the new one, so a No change can't land on a Goal another Check-in has just
+// closed.
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
 	var out Checkin
 	err := s.WithinTx(ctx, func(tx *Service) error {
@@ -568,9 +561,23 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 			return err
 		}
 
-		prev, explanation, err := tx.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
+		g := goalFromRow(goal.Goal, goal.Account)
+		facts, err := tx.noChangeFactsByGoal(ctx, []Goal{g})
 		if err != nil {
 			return err
+		}
+		verdict := judgeNoChange(facts[g.ID])
+		if verdict.refusal != nil {
+			return verdict.refusal
+		}
+		prev := *facts[g.ID].previous
+		var pathTargetDate string
+		if !prev.PathTargetDate.IsZero() {
+			pathTargetDate = prev.PathTargetDate.Format(dateFormat)
+		}
+		var asksForHelp int64
+		if prev.AsksForHelp {
+			asksForHelp = 1
 		}
 		out, err = tx.createCheckin(ctx, db.CreateCheckinParams{
 			GoalID:         goalID,
@@ -579,9 +586,9 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 			Health:         prev.Health,
 			Status:         prev.Status,
 			PathToGreen:    prev.PathToGreen,
-			PathTargetDate: prev.PathTargetDate,
-			AsksForHelp:    prev.AsksForHelp,
-			Explanation:    explanation,
+			PathTargetDate: pathTargetDate,
+			AsksForHelp:    asksForHelp,
+			Explanation:    verdict.explanation,
 		})
 		return err
 	})
@@ -595,14 +602,19 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 // author allowed to check in on it, or nil when one would be recorded. It
 // gives the error SubmitNoChangeCheckin would, without recording anything, so
 // a page can offer the No change only when it would be taken: none while a
-// Milestone is overdue or the back-to-Green date has passed.
+// Milestone is overdue or the back-to-Green date has passed. It is
+// NoChangeRefusalsByGoal for the one Goal.
 func (s *Service) NoChangeRefusal(ctx context.Context, goalID int64) error {
 	goal, err := s.activeGoalForNoChange(ctx, goalID)
 	if err != nil {
 		return err
 	}
-	_, _, err = s.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
-	return err
+	g := goalFromRow(goal.Goal, goal.Account)
+	refusals, err := s.NoChangeRefusalsByGoal(ctx, []Goal{g})
+	if err != nil {
+		return err
+	}
+	return refusals[g.ID]
 }
 
 // activeGoalForNoChange looks up goalID for a No change, refusing a Goal that
@@ -621,50 +633,31 @@ func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.G
 	return goal, nil
 }
 
-// noChangeCheck runs the checks a No change on g must pass once the Goal is
-// known to be Active and the author allowed to check in, none of which depend
-// on who is asking. It returns the previous Check-in to repeat and the
-// explanation to record with it.
-func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string, error) {
-	prev, err := s.queries.GetLatestCheckin(ctx, g.ID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return db.Checkin{}, "", errNoCheckinToRepeat
-		}
-		return db.Checkin{}, "", fmt.Errorf("look up previous checkin: %w", err)
-	}
-	facts := noChangeFacts{health: prev.Health, explanation: prev.Explanation}
-	if facts.rollup, err = s.RolledUpHealth(ctx, g.ID); err != nil {
-		return db.Checkin{}, "", err
-	}
-	milestones, err := s.queries.ListMilestones(ctx, g.ID)
-	if err != nil {
-		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
-	}
-	for _, m := range milestones {
-		facts.milestones = append(facts.milestones, milestoneFromRow(m))
-	}
-	if facts.freshness, err = s.Freshness(ctx, g.ID); err != nil {
-		return db.Checkin{}, "", err
-	}
-	if prev.Health == HealthGreen {
-		if facts.offTarget, err = s.offTargetMetricsOf(ctx, g, nil); err != nil {
-			return db.Checkin{}, "", err
-		}
-	}
-	explanation, err := s.judgeNoChange(g, facts)
-	if err != nil {
-		return db.Checkin{}, "", err
-	}
-	return prev, explanation, nil
-}
-
 // NoChangeRefusalsByGoal reports, for each of goals, why a No change on it
-// would be refused, as NoChangeRefusal reports for one Goal, keyed by Goal ID;
+// would be refused for any author allowed to check in on it, keyed by Goal ID;
 // a Goal on which one would be recorded has no entry. It runs the same few
 // queries however many Goals there are, so a page listing Goals can afford it.
 func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map[int64]error, error) {
+	facts, err := s.noChangeFactsByGoal(ctx, goals)
+	if err != nil {
+		return nil, err
+	}
 	out := map[int64]error{}
+	for _, g := range goals {
+		if refusal := judgeNoChange(facts[g.ID]).refusal; refusal != nil {
+			out[g.ID] = refusal
+		}
+	}
+	return out, nil
+}
+
+// noChangeFactsByGoal reads what a No change on each of goals is judged from,
+// keyed by Goal ID: their latest Check-ins and their Active children's, which
+// their Rolled-up Health is judged from, their Milestones, and their Metrics
+// with all their readings. It runs the same few queries however many Goals
+// there are, so one Goal is a batch of one; no Goals reads nothing.
+func (s *Service) noChangeFactsByGoal(ctx context.Context, goals []Goal) (map[int64]noChangeFacts, error) {
+	out := make(map[int64]noChangeFacts, len(goals))
 	if len(goals) == 0 {
 		return out, nil
 	}
@@ -676,8 +669,7 @@ func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map
 	if err != nil {
 		return nil, err
 	}
-	// One read holds the Goals' latest Check-ins and their Active children's,
-	// which their Rolled-up Health is judged from.
+	// One read holds the Goals' latest Check-ins and their Active children's.
 	withChildren := slices.Clone(ids)
 	for _, id := range ids {
 		withChildren = append(withChildren, activeGoalIDs(children[id])...)
@@ -690,10 +682,6 @@ func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map
 	if err != nil {
 		return nil, err
 	}
-	freshness, err := s.FreshnessByGoal(ctx, goals)
-	if err != nil {
-		return nil, err
-	}
 	metrics, err := s.metricsByGoal(ctx, ids)
 	if err != nil {
 		return nil, err
@@ -703,28 +691,11 @@ func (s *Service) NoChangeRefusalsByGoal(ctx context.Context, goals []Goal) (map
 		return nil, err
 	}
 	for _, g := range goals {
-		if g.Lifecycle != LifecycleActive {
-			out[g.ID] = errNotActiveForNoChange
-			continue
+		var previous *Checkin
+		if c, ok := latest[g.ID]; ok {
+			previous = &c
 		}
-		prev, ok := latest[g.ID]
-		if !ok {
-			out[g.ID] = errNoCheckinToRepeat
-			continue
-		}
-		facts := noChangeFacts{
-			health:      prev.Health,
-			explanation: prev.Explanation,
-			rollup:      s.rollUp(children[g.ID], latest),
-			milestones:  milestones[g.ID],
-			freshness:   freshness[g.ID],
-		}
-		if prev.Health == HealthGreen {
-			facts.offTarget = s.offTargetByLatestReading(g, metrics[g.ID], readings)
-		}
-		if _, err := s.judgeNoChange(g, facts); err != nil {
-			out[g.ID] = err
-		}
+		out[g.ID] = s.noChangeFactsOf(g, previous, s.rollUp(children[g.ID], latest), milestones[g.ID], metrics[g.ID], readings)
 	}
 	return out, nil
 }
@@ -736,46 +707,99 @@ var (
 	errNoCheckinToRepeat    = Refuse(ErrValidation, "there is no previous Check-in to repeat")
 )
 
-// noChangeFacts is what judging a No change on a Goal reads of it: its
-// previous Check-in's Health and explanation, its Rolled-up Health, its
-// Milestones soonest first, its freshness, and, when the previous Check-in is
-// Green, its Metrics off target with no reading entered.
+// noChangeFacts is what judging a No change on a Goal reads of it, as of today
+// in its timezone: whether it is Active, its previous Check-in (nil when it has
+// none), its Rolled-up Health, its first overdue Milestone (nil when none is),
+// whether its back-to-Green date has passed, and its Metrics off target by
+// their latest readings.
 type noChangeFacts struct {
-	health, explanation string
-	rollup              RolledUpHealth
-	milestones          []Milestone
-	freshness           Freshness
-	offTarget           []OffTargetMetric
+	active             bool
+	previous           *Checkin
+	rollup             RolledUpHealth
+	overdueMilestone   *Milestone
+	pathToGreenOverdue bool
+	offTarget          []OffTargetMetric
 }
 
-// judgeNoChange refuses a No change on g, an Active Goal with a previous
-// Check-in, from facts, or returns the explanation to record with it.
-func (s *Service) judgeNoChange(g Goal, facts noChangeFacts) (string, error) {
+// noChangeFactsOf works out the facts a No change on g is judged from, given
+// what was read of it: its latest Check-in, previous (nil when it has none),
+// its Rolled-up Health, its Milestones soonest first, and its Metrics with
+// their readings keyed by Metric ID. noChangeFactsByGoal and the Goal page
+// both build them through it.
+func (s *Service) noChangeFactsOf(g Goal, previous *Checkin, rollup RolledUpHealth, milestones []Milestone, metrics []Metric, readings map[int64][]MetricReading) noChangeFacts {
+	today := s.goalToday(g)
+	f := noChangeFacts{
+		active:    g.Lifecycle == LifecycleActive,
+		previous:  previous,
+		rollup:    rollup,
+		offTarget: offTargetMetricsAmong(metrics, readings, nil, today),
+	}
+	if m, ok := overdueMilestone(milestones, today); ok {
+		f.overdueMilestone = &m
+	}
+	if previous != nil {
+		f.pathToGreenOverdue = pathToGreenPastTarget(g.Lifecycle, previous.Health, previous.PathTargetDate, s.clock.Now(), s.GoalTimezone(g))
+	}
+	return f
+}
+
+// noChangeVerdict is the judgement of a No change on a Goal: why it would be
+// refused (nil when it would be recorded) or the explanation to record with
+// it, and the facts a page shows beside it, the Goal's first overdue
+// Milestone and its Metrics off target, whatever refused it.
+type noChangeVerdict struct {
+	refusal          error
+	explanation      string
+	overdueMilestone *Milestone
+	offTarget        []OffTargetMetric
+}
+
+// judgeNoChange judges a No change on a Goal from facts. Its refusals are
+// checked in order: a Goal that isn't Active, one with no Check-in to repeat,
+// a Health the Rolled-up Health now needs explaining, an overdue Milestone, a
+// passed back-to-Green date, and a Green with a Metric off target.
+func judgeNoChange(facts noChangeFacts) noChangeVerdict {
+	explanation, refusal := noChangeRefusalOf(facts)
+	return noChangeVerdict{
+		refusal:          refusal,
+		explanation:      explanation,
+		overdueMilestone: facts.overdueMilestone,
+		offTarget:        facts.offTarget,
+	}
+}
+
+// noChangeRefusalOf is judgeNoChange's rule: the explanation a No change on a
+// Goal of facts records, or why it is refused.
+func noChangeRefusalOf(facts noChangeFacts) (string, error) {
+	if !facts.active {
+		return "", errNotActiveForNoChange
+	}
+	prev := facts.previous
+	if prev == nil {
+		return "", errNoCheckinToRepeat
+	}
 	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
 	// roll-up has since changed so the repeated Health would differ from it and
 	// the previous Check-in carried no explanation, refuse it so the Owner uses
 	// the full form to explain (ADR-0003).
-	explanation, err := rollupExplanation(facts.rollup, facts.health, facts.explanation)
+	explanation, err := rollupExplanation(facts.rollup, prev.Health, prev.Explanation)
 	if err != nil {
 		return "", Refuse(ErrValidation, "%s — submit a Check-in to explain", Reason(err))
 	}
 	// Nor can it repeat any Health once a Milestone has gone overdue, as of
 	// today in the Goal's timezone: the missed date needs a response.
-	today := s.goalToday(g).Format(dateFormat)
-	for _, m := range facts.milestones {
-		if m.Status == MilestonePlanned && m.TargetDate.Format(dateFormat) < today {
-			return "", &MilestoneOverdueError{Milestone: m, RulesOut: OverdueRulesOutNoChange}
-		}
+	if m := facts.overdueMilestone; m != nil {
+		return "", &MilestoneOverdueError{Milestone: *m, RulesOut: OverdueRulesOutNoChange}
 	}
 	// Nor once the back-to-Green date has passed, as of today in the Goal's
 	// timezone, whatever the Health: the Owner must submit a Check-in with a
 	// new date and reason, or update the Health (CONTEXT.md: Check-in).
-	if facts.freshness.PathToGreenOverdue {
+	if facts.pathToGreenOverdue {
 		return "", Refuse(ErrValidation, "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health")
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.
-	if facts.health == HealthGreen && len(facts.offTarget) > 0 {
+	if prev.Health == HealthGreen && len(facts.offTarget) > 0 {
 		return "", fmt.Errorf("%w — submit a Check-in to confirm or update it", &GreenOffTargetError{Metrics: facts.offTarget})
 	}
 	return explanation, nil

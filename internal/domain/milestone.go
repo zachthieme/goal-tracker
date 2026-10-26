@@ -51,9 +51,10 @@ const (
 )
 
 // MilestoneMarkOf is the one mark a Milestone shows, the first that applies:
-// Done or Removed by its Status; Overdue while Planned and past its date as of
-// asOf, compared with the calendar date asOf falls on in its own location, so a
-// caller passes a time in the Goal's timezone to judge by its calendar; Slipped
+// Done or Removed by its Status; Overdue while overdue on asOf
+// (Milestone.OverdueOn), compared with the calendar date asOf falls on in its
+// own location, so a caller passes a time in the Goal's timezone to judge by
+// its calendar; Slipped
 // while Planned and slipped, having prior dates; New while Planned and isNew,
 // added within the window being read. Risk outranks newness, so a new
 // Milestone that slipped is Slipped. It needs only what a frozen Report
@@ -64,7 +65,7 @@ func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.
 		return MilestoneMarkDone
 	case m.Status == MilestoneRemoved:
 		return MilestoneMarkRemoved
-	case m.TargetDate.Format(dateFormat) < asOf.Format(dateFormat):
+	case m.OverdueOn(asOf):
 		return MilestoneMarkOverdue
 	case len(priorDates) > 0:
 		return MilestoneMarkSlipped
@@ -109,15 +110,24 @@ const (
 	MilestoneChangeRemoved = MilestoneRemoved
 )
 
-// overdueMilestone returns the first of milestones that is overdue — Planned and
-// past its date — as of today (a dateFormat date), or ok false when none is.
-func overdueMilestone(milestones []db.Milestone, today string) (db.Milestone, bool) {
+// OverdueOn reports whether m is overdue on today: still Planned and dated
+// before it, comparing calendar dates, with today's the date it falls on in its
+// own location. A caller passes today in the Goal's timezone (see
+// Service.GoalTimezone) to judge by the Goal's calendar, so on its own date a
+// Milestone is not yet overdue. Every overdue judgement is this one.
+func (m Milestone) OverdueOn(today time.Time) bool {
+	return m.Status == MilestonePlanned && m.TargetDate.Format(dateFormat) < today.Format(dateFormat)
+}
+
+// overdueMilestone returns the first of milestones overdue on today (see
+// Milestone.OverdueOn), or ok false when none is.
+func overdueMilestone(milestones []Milestone, today time.Time) (Milestone, bool) {
 	for _, m := range milestones {
-		if m.Status == MilestonePlanned && m.TargetDate < today {
+		if m.OverdueOn(today) {
 			return m, true
 		}
 	}
-	return db.Milestone{}, false
+	return Milestone{}, false
 }
 
 // MilestoneOverdueError is a refusal because Milestone is overdue — Planned and
@@ -166,12 +176,14 @@ func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db
 	if health != HealthGreen {
 		return nil
 	}
-	m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat))
-	if !ok {
-		return nil
+	today := s.goalToday(g)
+	for _, m := range milestones {
+		if milestone := milestoneFromRow(m); milestone.OverdueOn(today) {
+			overdue := &MilestoneOverdueError{Milestone: milestone, RulesOut: OverdueRulesOutGreen}
+			return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.shownReason(), Err: overdue}
+		}
 	}
-	overdue := &MilestoneOverdueError{Milestone: milestoneFromRow(m), RulesOut: OverdueRulesOutGreen}
-	return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.shownReason(), Err: overdue}
+	return nil
 }
 
 // milestoneDateInput names the Check-in input that dates m, one of milestones
