@@ -50,10 +50,12 @@ Read these first; some may decide whether the install goes ahead now.
   SQLite, no cgo), so you can build elsewhere and copy it over.
 - Optional but recommended: the `sqlite3` command-line tool on the host, for
   backups.
-- Optional: Chromium or Google Chrome on the host (`apt install chromium`, or
-  `dnf install chromium`), for Reports to download as PDF files. Without it,
-  a Report's PDF download opens its print page, which the reader prints to PDF
-  from the browser.
+- Optional: Chromium or Google Chrome on the host (`apt install chromium` on
+  Debian, `dnf install chromium` on Fedora), for Reports to download as PDF
+  files. On Ubuntu, `chromium` is a snap, which can't start under the systemd
+  unit's `NoNewPrivileges=yes`: install Google Chrome's `.deb` instead, or use
+  the Docker image, which has its own. Without one, a Report's PDF download
+  opens its print page, which the reader prints to PDF from the browser.
 
 ## 1. Build the binary
 
@@ -65,7 +67,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o goal-tracker ./cmd/g
 
 Use `GOARCH=arm64` for an arm64 host. The generated code is committed, so the
 build needs nothing but Go. The pages, styles, migrations and timezone data are
-all embedded: the binary is the whole app (about 28 MB).
+all embedded: the binary is the whole app (about 30 MB).
 
 ### Or build the Docker image
 
@@ -76,15 +78,29 @@ keeps the database in the `/data` volume (`GOAL_TRACKER_DB` is
 
 ```sh
 docker build -t goal-tracker .
-docker run -d --name goal-tracker -p 127.0.0.1:8080:8080 \
-  -v goal-tracker-data:/data --env-file /etc/goal-tracker/env goal-tracker
+docker run -d --name goal-tracker --restart unless-stopped -p 127.0.0.1:8080:8080 \
+  -v goal-tracker-data:/data \
+  -v /etc/goal-tracker/people.csv:/etc/goal-tracker/people.csv:ro \
+  --env-file /etc/goal-tracker/env goal-tracker
 ```
 
 The settings in step 4 go in the env file, without `GOAL_TRACKER_ADDR`,
-`GOAL_TRACKER_DB` or `GOAL_TRACKER_CHROME`, which the image sets. Steps 2 and 6
-(the host layout and systemd) don't apply; the reverse proxy in step 7 does.
-The image includes `sqlite3`, so the online backup in § Backups runs inside
-it, writing into the volume:
+`GOAL_TRACKER_DB` or `GOAL_TRACKER_CHROME`, which the image sets. Two differ
+in a container:
+
+- `GOAL_TRACKER_DIRECTORY_FILE` is the CSV's path inside the container:
+  `/etc/goal-tracker/people.csv` with the mount above. The app runs as uid
+  10001, so the file must be readable by it: `chown root:10001` with mode
+  `0640`, or mode `0644`. Without the mount, startup still succeeds, but every
+  sync logs an `ERROR` and nobody has a Manager.
+- `GOAL_TRACKER_TRUSTED_PROXIES` is the address the container sees the proxy
+  connect from: the bridge's gateway, usually `172.17.0.1`, not `127.0.0.1`.
+
+Of step 2, only `/etc/goal-tracker` (the env file and the CSV) applies, and
+step 6 (systemd) doesn't; the reverse proxy in step 7 does. A host directory
+mounted at `/data` in place of the volume must be owned by uid 10001. The
+image includes `sqlite3`, so the online backup in § Backups runs inside it,
+writing into the volume:
 
 ```sh
 docker exec goal-tracker sqlite3 /data/goal-tracker.db ".backup /data/backup-$(date +%F).db"
@@ -199,6 +215,10 @@ Startup checks this and stops with a message naming the problem: an unset or
 unknown sign-in method, a missing or short session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
 `GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
+session key that isn't base64, a `GOAL_TRACKER_REMINDER_DAY` that isn't a
+weekday name or a `GOAL_TRACKER_REMINDER_TIME` that isn't a 24-hour `HH:MM`,
+`GOAL_TRACKER_DIRECTORY_FILE` set together with the Authentik directory
+variables, a
 `GOAL_TRACKER_CHROME` that isn't there or can't run, a
 `GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP (or is
 an IPv4-mapped CIDR, `::ffff:a.b.c.d/n`, wider than `/96`), a
@@ -282,7 +302,9 @@ ada@example.com,Ada Lovelace,ceo@example.com,America/Los_Angeles
 grace@example.com,Grace Hopper,ada@example.com,
 ```
 
-- UTF-8, with a header row naming `email`, `name` and `manager_email`, in any
+- UTF-8. From Excel, save as **CSV UTF-8**: its plain **CSV** is
+  Windows-1252, and garbles accented names.
+- A header row naming `email`, `name` and `manager_email`, in any
   order and any case, and optionally `timezone`. Other columns are ignored.
 - Everyone in the file gets an account (without a password) if they don't have
   one. An empty `name` keeps the name they have; an empty `manager_email`
@@ -291,18 +313,27 @@ grace@example.com,Grace Hopper,ada@example.com,
   `America/Los_Angeles`. A blank or invalid one, or no column at all, means
   they use the company's timezone (`GOAL_TRACKER_TIMEZONE`); an invalid one is
   logged at `WARN`.
-- A file that's missing, lacks a column, has a row with the wrong number of
+- Give every Manager a row of their own. A `manager_email` with no row still
+  gets an account, with no name, Manager or timezone, shown by its email. A
+  row with a blank `email` is skipped.
+- A file that's missing, lacks a column or names one twice, has a row with the wrong number of
   fields, or has a field that runs onto the next line (an unclosed quote)
   fails the sync and changes nothing. The Admin page shows when the last
   sync ran and whether it worked, and failures are logged at `ERROR`.
 - The sync never removes anyone. Someone who leaves the company stays until an
   Admin marks them **Departed**, from the Owner section of any Goal they own;
   they then can't sign in, get no email, and their Goals show as Ownerless.
+  Someone who owns no Goal can't be marked Departed yet, so with passwords
+  their password keeps working.
 
-Have HR's export land somewhere the service can read
-(`sudo install -m 0640 -o root -g goal-tracker export.csv /etc/goal-tracker/people.csv`),
-replacing the file whole rather than editing it in place, so a sync never reads
-a half-written file.
+Have HR's export land somewhere the service can read, replacing the file
+whole with a rename rather than writing it in place, so a sync never reads a
+half-written file:
+
+```sh
+sudo install -m 0640 -o root -g goal-tracker export.csv /etc/goal-tracker/people.csv.new
+sudo mv /etc/goal-tracker/people.csv.new /etc/goal-tracker/people.csv
+```
 
 ## 6. Run it under systemd
 
@@ -339,7 +370,7 @@ sudo systemctl enable --now goal-tracker
 journalctl -u goal-tracker -f
 ```
 
-A healthy start logs, among others:
+A healthy start logs, among others and not always in this order:
 
 ```
 level=INFO msg="syncing people and their Managers from the directory file, now and hourly" file=/etc/goal-tracker/people.csv
@@ -374,6 +405,30 @@ needed: no websockets, no long requests, no path prefix (the app must be served
 at the root of its host name). Nor does the proxy need to add
 `Strict-Transport-Security`: the app sends it itself, with a one-year
 `max-age`, when `GOAL_TRACKER_BASE_URL` is an https address.
+
+### The certificate
+
+The certificate must name the host in `GOAL_TRACKER_BASE_URL`, and the
+browsers people use must trust it. Pick one:
+
+- **A certificate from the company's own CA.** For a host only reachable
+  inside the network, ask IT for a certificate for its name (say
+  `goals.corp.example.com`); company-managed machines already trust that CA.
+  Install the certificate (with any intermediates, in one file) and its key on
+  the host, readable only by root and the proxy, and point the proxy at them:
+  nginx's `ssl_certificate`/`ssl_certificate_key` below, or Caddy's
+  `tls /etc/ssl/goals.crt /etc/ssl/goals.key`. Note when it expires and who
+  renews it.
+- **A public certificate from Let's Encrypt.** Caddy gets and renews one by
+  itself when the name is in public DNS and the host is reachable from the
+  internet on ports 80 and 443. For a host that isn't, Caddy can use the DNS
+  challenge instead, which needs a Caddy build with your DNS provider's plugin
+  and an API token for the zone.
+- **Caddy's own CA (`tls internal`), for a short trial only.** Caddy issues
+  the certificate from a CA it creates; every browser warns until that CA's
+  root is trusted on their machine: copy `pki/authorities/local/root.crt`
+  from Caddy's data directory to the people trying it, and have them add it
+  to their machine's trusted roots.
 
 Caddy (gets its own certificate):
 
@@ -445,8 +500,13 @@ runs it every 30 seconds, so `docker ps` shows the container as `healthy` or
   sudo -u goal-tracker sh -c 'set -a; . /etc/goal-tracker/env; exec /usr/local/bin/goal-tracker password-link it-admin@example.com'
   ```
 
+  With Docker, `docker exec goal-tracker goal-tracker password-link
+  it-admin@example.com`, which uses the container's settings.
+
   It prints `https://goals.example.com/set-password?token=…` and exits; the
-  server can stay running. The link works once, for 72 hours. The Admin then
+  server can stay running. Run it as the service's user, as above: run as root,
+  it can leave a database file the service can't open. A second link for the
+  same person replaces the first. The link works once, for 72 hours. The Admin then
   issues everyone else's links from the Admin page's **Set-password links**
   card and sends them however the company sends such things.
 
@@ -535,6 +595,7 @@ passwords, their passwords still work.
 | ------- | ----- |
 | `run migrations: … unable to open database file (14)` | The database's directory doesn't exist or isn't writable by `goal-tracker`. |
 | `GOAL_TRACKER_SIGNIN must be one of oidc, password, dev` | The env file isn't being read, or the variable is misspelled. |
+| `GOAL_TRACKER_SIGNIN=password needs GOAL_TRACKER_SESSION_KEY: …` | The env file has no session key: generate one with `openssl rand -base64 32`. |
 | `GOAL_TRACKER_SESSION_KEY is N bytes, want at least 32` | Generate it with `openssl rand -base64 32`. |
 | `GOAL_TRACKER_SIGNIN=… needs GOAL_TRACKER_BASE_URL` | Set it to the https address people reach the app at, through the reverse proxy. |
 | OIDC: startup fails discovering the issuer | The issuer URL is wrong, or the host can't reach the provider. |
@@ -543,6 +604,7 @@ passwords, their passwords still work.
 | A Report's PDF download opens its print page, not a file | No Chromium was found: startup logs `PDF downloads fall back to the print page`. Install one, or set `GOAL_TRACKER_CHROME`. |
 | `GOAL_TRACKER_METRICS_ADDR: listen tcp …: bind: address already in use` | Something else listens on the metrics address: pick another port, or stop it. |
 | `GOAL_TRACKER_CHROME: … can't run` | The path is wrong, or the file isn't executable by the service's user. |
-| Nobody has a Manager | The sync failed (Admin page, and `ERROR` in the log), or `GOAL_TRACKER_DIRECTORY_FILE` is unset. |
+| Nobody has a Manager | The sync failed (Admin page, and `ERROR` in the log), or `GOAL_TRACKER_DIRECTORY_FILE` is unset. With Docker, the CSV isn't mounted into the container, or uid 10001 can't read it. |
+| PDF downloads fail with an `ERROR` after startup found a Chromium | On Ubuntu, a snap Chromium can't run under the unit's hardening: install Google Chrome's `.deb`. |
 | Someone who should be an Admin isn't | They were created before being listed in `GOAL_TRACKER_ADMINS`. An Admin can make them one on the Admin page; see [above](#making-someone-an-admin-later). |
 | Emails never arrive | Expected in this release: they're logged, not sent. |
