@@ -761,10 +761,10 @@ func TestNoChangeRefusalsByGoal(t *testing.T) {
 	early := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
 	addPilot := func(g domain.Goal) {
 		t.Helper()
-		if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+		if _, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{
 			GoalID: g.ID, Name: "Pilot", TargetDate: early,
 		}); err != nil {
-			t.Fatalf("AddMilestone: %v", err)
+			t.Fatalf("AddMilestoneAsAuthor: %v", err)
 		}
 	}
 
@@ -1628,7 +1628,7 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 					{Name: " ", TargetDate: pathDate},
 				}}, domain.CheckinNewMilestoneInput(1)
 			},
-			message: "a new Milestone needs a name",
+			message: "a Milestone needs a name",
 		},
 		{
 			name: "a new Milestone without a date",
@@ -1637,7 +1637,7 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 					{Name: "Launch"},
 				}}, domain.CheckinNewMilestoneInput(0)
 			},
-			message: `new Milestone "Launch" needs a date`,
+			message: "a Milestone needs a date",
 		},
 		{
 			name: "a Highlight without a kind",

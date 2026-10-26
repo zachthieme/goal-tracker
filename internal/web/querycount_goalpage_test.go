@@ -28,7 +28,7 @@ type goalPageFixture struct {
 // raise an Action Item there, which the Admin then hands to sam@. Then, all at
 // the same moment, it puts mia@, Departed, between sam@ and morgan@, and on
 // Goal 04 adds a Metric past its target date, an overdue Milestone and one
-// that slips, and two Check-ins repeating the Red one but for an explanation,
+// that slips, both added while it is Active and so in its History, and two Check-ins repeating the Red one but for an explanation,
 // each with a reading short of the target and the second asking for help, so
 // the ask walks past mia@ to morgan@; then sam@ offers Goal 04 to priya@. On
 // the child rita@ suggests Goal 01 as a parent, and the Admin nudges it while
@@ -104,16 +104,16 @@ func seedGoalPageExtras(t *testing.T, h *testsupport.Harness, fx *goalPageFixtur
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{
 		GoalID: fx.red.ID, Name: "Security review", TargetDate: day(-2),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
-	contract, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+	contract, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{
 		GoalID: fx.red.ID, Name: "Vendor contract", TargetDate: day(14),
 	})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	// The Check-ins repeat the Red one's Path to Green and its date, so
 	// neither moves it.

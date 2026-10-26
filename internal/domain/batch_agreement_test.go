@@ -83,12 +83,12 @@ func seedBatchAgreementGoals(t *testing.T, h *testsupport.Harness) []domain.Goal
 	h.AssignGoalValue(carried, area.Values[0])
 	// Alpha, added after Beta, is due before it, and the Metrics are added
 	// latest due first: each lists in date order, not the order it was added.
-	if _, err := h.Service.AddMilestone(ctx, priya.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, priya.ID, domain.AddMilestoneInput{
 		GoalID:     carried.ID,
 		Name:       "Alpha",
 		TargetDate: h.Clock.Now().AddDate(0, 1, 0),
 	}); err != nil {
-		t.Fatalf("AddMilestone Alpha: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor Alpha: %v", err)
 	}
 	latency := batchAgreementMetric(t, h, priya, carried, "Latency", h.Clock.Now().AddDate(0, 2, 0))
 	uptime := batchAgreementMetric(t, h, priya, carried, "Uptime", h.Clock.Now().AddDate(0, 1, 0))

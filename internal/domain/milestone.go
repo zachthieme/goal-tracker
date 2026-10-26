@@ -209,41 +209,28 @@ func milestoneDateInput(milestones []Milestone, m Milestone) string {
 	return ""
 }
 
+// milestoneProblems is the one check of a Milestone's own input, shared by
+// the commands that add or edit one and by Goal definition: it needs a name
+// and a date, each refused under the input name given for it.
+func milestoneProblems(name string, date time.Time, nameInput, dateInput string) []*InputError {
+	var problems []*InputError
+	if strings.TrimSpace(name) == "" {
+		problems = append(problems, inputError(nameInput, "a Milestone needs a name"))
+	}
+	if date.IsZero() {
+		problems = append(problems, inputError(dateInput, "a Milestone needs a date"))
+	}
+	return problems
+}
+
 // AddMilestoneInput is the add-Milestone command's input.
 type AddMilestoneInput struct {
 	GoalID     int64
 	Name       string
 	TargetDate time.Time
 	// Unparsed are the values the caller couldn't parse, each refused under
-	// its input's name, as DefinedGoalInput.Unparsed are. Only
-	// AddMilestoneAsAuthor reads them.
+	// its input's name, as DefinedGoalInput.Unparsed are.
 	Unparsed []*InputError
-}
-
-// AddMilestone adds a Milestone to a Goal as part of planning it, recording no
-// Milestone change. Name and target date are required. Only the Goal's Owner
-// or a Delegate may add one (ErrNotAuthorized), as for AddMilestoneAsAuthor.
-func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilestoneInput) (Milestone, error) {
-	var out Milestone
-	err := s.WithinTx(ctx, func(tx *Service) error {
-		name := strings.TrimSpace(in.Name)
-		if name == "" {
-			return Refuse(ErrValidation, "a Milestone needs a name")
-		}
-		if in.TargetDate.IsZero() {
-			return Refuse(ErrValidation, "a Milestone needs a date")
-		}
-		g, err := tx.openGoalCommand(ctx, actorID, in.GoalID, milestoneEditorRefusal, nil)
-		if err != nil {
-			return err
-		}
-		out, err = tx.createMilestone(ctx, in.GoalID, name, in.TargetDate, g.Lifecycle == LifecycleActive)
-		return err
-	})
-	if err != nil {
-		return Milestone{}, err
-	}
-	return out, nil
 }
 
 // errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
@@ -251,8 +238,9 @@ func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilesto
 var errMilestonesOwnerOrDelegateOnly = Refuse(ErrNotAuthorized, "only the Owner or a Delegate may change this Goal's Milestones")
 
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
-// Goal page, as authorID: only its Owner or a Delegate may, and only while the
-// Goal is Proposed, Active or On Hold. Those are checked first, so no one else
+// Goal page, a definition or an import, as authorID: only its Owner or a
+// Delegate may, or the Admin whose import created it, and only while the Goal
+// is Proposed, Active or On Hold. Those are checked first, so no one else
 // learns what's wrong with what they sent; then a value the caller couldn't
 // parse (see in.Unparsed) is refused, and then a missing name or date. An
 // addition while the Goal is Active or On Hold is recorded as a Milestone
@@ -269,14 +257,10 @@ func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in A
 			return err
 		}
 		lifecycle := g.Lifecycle
-		name := strings.TrimSpace(in.Name)
-		if name == "" {
-			return Refuse(ErrValidation, "a Milestone needs a name")
+		if err := joinInputErrors(milestoneProblems(in.Name, in.TargetDate, "name", "target_date")); err != nil {
+			return err
 		}
-		if in.TargetDate.IsZero() {
-			return Refuse(ErrValidation, "a Milestone needs a date")
-		}
-		m, err := tx.createMilestone(ctx, g.ID, name, in.TargetDate, lifecycle == LifecycleActive)
+		m, err := tx.createMilestone(ctx, g.ID, strings.TrimSpace(in.Name), in.TargetDate, lifecycle == LifecycleActive)
 		if err != nil {
 			return err
 		}
@@ -357,15 +341,11 @@ func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMiles
 		}, in.Unparsed); err != nil {
 			return err
 		}
-		name := strings.TrimSpace(in.Name)
-		if name == "" {
-			return Refuse(ErrValidation, "a Milestone needs a name")
-		}
-		if in.TargetDate.IsZero() {
-			return Refuse(ErrValidation, "a Milestone needs a date")
+		if err := joinInputErrors(milestoneProblems(in.Name, in.TargetDate, "name", "target_date")); err != nil {
+			return err
 		}
 		row, err = tx.queries.UpdateMilestone(ctx, db.UpdateMilestoneParams{
-			Name:       name,
+			Name:       strings.TrimSpace(in.Name),
 			TargetDate: in.TargetDate.Format(dateFormat),
 			ID:         in.MilestoneID,
 		})
@@ -481,13 +461,11 @@ func planMilestoneChanges(current []Milestone, changes []MilestoneChangeInput, a
 		}
 	}
 	for i, a := range added {
+		input := CheckinNewMilestoneInput(i)
+		if err := joinInputErrors(milestoneProblems(a.Name, a.TargetDate, input, input)); err != nil {
+			return milestonePlan{}, err
+		}
 		name := strings.TrimSpace(a.Name)
-		if name == "" {
-			return milestonePlan{}, inputError(CheckinNewMilestoneInput(i), "a new Milestone needs a name")
-		}
-		if a.TargetDate.IsZero() {
-			return milestonePlan{}, inputError(CheckinNewMilestoneInput(i), "new Milestone %q needs a date", name)
-		}
 		plan.added = append(plan.added, NewMilestoneInput{Name: name, TargetDate: a.TargetDate})
 		plan.resulting = append(plan.resulting, Milestone{Name: name, TargetDate: calendarDate(a.TargetDate), Status: MilestonePlanned})
 	}

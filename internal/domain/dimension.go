@@ -722,16 +722,13 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 		if err != nil {
 			return Refuse(ErrValidation, "dimension value does not exist")
 		}
-		if val.Retired != 0 {
-			return Refuse(ErrValidation, "that value is retired and cannot be newly assigned")
-		}
 		dimRow, err := tx.queries.GetDimension(ctx, val.DimensionID)
 		if err != nil {
 			return fmt.Errorf("load dimension: %w", err)
 		}
 		dim := dimensionFromRow(dimRow)
-		if dim.Retired {
-			return retiredDimensionError(dim)
+		if err := joinInputErrors(chosenValueProblems(dimensionValueFromRow(val), dim, false, "value_id")); err != nil {
+			return err
 		}
 		before, err := tx.GoalValues(ctx, goalID)
 		if err != nil {
@@ -792,17 +789,20 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 	if err != nil {
 		return DimensionValue{}, Refuse(ErrValidation, "dimension does not exist")
 	}
-	if dim := dimensionFromRow(dimRow); dim.Retired {
-		return DimensionValue{}, retiredDimensionError(dim)
-	}
-	if match, ok, err := s.matchingValue(ctx, dimensionID, name); err != nil {
+	dim := dimensionFromRow(dimRow)
+	match, ok, err := s.valueNamed(ctx, dimensionID, name)
+	if err != nil {
 		return DimensionValue{}, err
-	} else if ok {
+	}
+	if err := joinInputErrors(typedValueProblems(dim, name, match, ok, "new_value")); err != nil {
+		return DimensionValue{}, err
+	}
+	if ok {
 		return match, s.AssignGoalValue(ctx, actorID, goalID, match.ID)
 	}
-	if dim := dimensionFromRow(dimRow); !dim.Extendable() {
+	if !dim.Extendable() {
 		if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
-			return DimensionValue{}, Refuse(ErrNotAuthorized, "%s is a Fixed list, so only an Admin may add to it", dim.Name)
+			return DimensionValue{}, Refuse(ErrNotAuthorized, "%s", fixedListSentence(dim))
 		} else if err != nil {
 			return DimensionValue{}, err
 		}
@@ -849,11 +849,8 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 			if err != nil || val.DimensionID != dimensionID {
 				return Refuse(ErrValidation, "that value is not in %s", dim.Name)
 			}
-			if val.Retired != 0 && !carries[id] {
-				return Refuse(ErrValidation, "%s is retired and cannot be newly assigned", val.Value)
-			}
-			if dim.Retired && !carries[id] {
-				return retiredDimensionError(dim)
+			if err := joinInputErrors(chosenValueProblems(dimensionValueFromRow(val), dim, carries[id], "value_id")); err != nil {
+				return err
 			}
 			keep[id] = true
 		}
@@ -883,33 +880,88 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 	})
 }
 
-// retiredDimensionError refuses newly giving a Goal a value in a Retired
-// Dimension (CONTEXT.md: Retired).
-func retiredDimensionError(dim Dimension) error {
-	return Refuse(ErrValidation, "%s is retired, so its values can't be newly assigned", dim.Name)
+// chosenValueProblems is the one check of a Dimension value chosen for a
+// Goal, val in dim, shared by AssignGoalValue, SetGoalValues and Goal
+// definition, refused under input: a Retired value, or one in a Retired
+// Dimension, can't be newly given (CONTEXT.md: Retired). One the Goal already
+// carries (carried) may be kept.
+func chosenValueProblems(val DimensionValue, dim Dimension, carried bool, input string) []*InputError {
+	switch {
+	case carried:
+		return nil
+	case val.Retired:
+		return []*InputError{inputError(input, "%s is retired and cannot be newly assigned", val.Value)}
+	case dim.Retired:
+		return []*InputError{retiredDimensionProblem(dim, input)}
+	}
+	return nil
 }
 
-// matchingValue finds the Dimension's value that name matches whatever its
+// typedValueProblems is the one check of a value typed in for a Goal in dim,
+// shared by AssignGoalValueByName and Goal definition, refused under input.
+// match is the value on dim's list that name matches (valueNamed), when
+// matched. A Retired Dimension's values can't be newly given, nor can a
+// Retired value it matches (CONTEXT.md: Retired), and a new value can't
+// contain a semicolon (checkValueName). Who may add to a Fixed list is
+// fixedListSentence's rule, asked by the caller.
+func typedValueProblems(dim Dimension, name string, match DimensionValue, matched bool, input string) []*InputError {
+	switch {
+	case dim.Retired:
+		return []*InputError{retiredDimensionProblem(dim, input)}
+	case matched && match.Retired:
+		return []*InputError{inputError(input, "%s", retiredValueMatchSentence(match))}
+	case matched:
+		return nil
+	}
+	if err := checkValueName(strings.TrimSpace(name)); err != nil {
+		return []*InputError{inputError(input, "%s", Reason(err))}
+	}
+	return nil
+}
+
+// retiredDimensionProblem refuses newly giving a Goal a value in a Retired
+// Dimension, under input (CONTEXT.md: Retired).
+func retiredDimensionProblem(dim Dimension, input string) *InputError {
+	return inputError(input, "%s is retired, so its values can't be newly assigned", dim.Name)
+}
+
+// fixedListSentence is why someone who isn't an Admin is refused adding a
+// value to dim, a Fixed list (CONTEXT.md: Fixed): the one rule for who may.
+func fixedListSentence(dim Dimension) string {
+	return fmt.Sprintf("%s is a Fixed list, so only an Admin may add to it", dim.Name)
+}
+
+// retiredValueMatchSentence is why a name matching v, a Retired value, is
+// refused: it can't be added again, nor newly given (CONTEXT.md: Retired).
+func retiredValueMatchSentence(v DimensionValue) string {
+	return fmt.Sprintf("%s is retired, so it can't be added or newly assigned", v.Value)
+}
+
+// valueNamed finds the Dimension's value that name matches whatever its
 // letter case or surrounding spaces ("acme " is "Acme"), so no list gains a
-// near-duplicate. A match on a Retired value is refused, saying so (CONTEXT.md:
-// Retired). ok is false when nothing matches.
-func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name string) (match DimensionValue, ok bool, err error) {
+// near-duplicate, Retired or not. ok is false when nothing matches.
+func (s *Service) valueNamed(ctx context.Context, dimensionID int64, name string) (match DimensionValue, ok bool, err error) {
 	rows, err := s.queries.ListDimensionValues(ctx, dimensionID)
 	if err != nil {
 		return DimensionValue{}, false, fmt.Errorf("list dimension values: %w", err)
 	}
 	name = strings.TrimSpace(name)
 	for _, r := range rows {
-		if !strings.EqualFold(strings.TrimSpace(r.Value), name) {
-			continue
+		if strings.EqualFold(strings.TrimSpace(r.Value), name) {
+			return dimensionValueFromRow(r), true, nil
 		}
-		v := dimensionValueFromRow(r)
-		if v.Retired {
-			return DimensionValue{}, false, Refuse(ErrValidation, "%s is retired, so it can't be added or newly assigned", v.Value)
-		}
-		return v, true, nil
 	}
 	return DimensionValue{}, false, nil
+}
+
+// matchingValue is valueNamed, refusing a match on a Retired value, saying
+// so (CONTEXT.md: Retired).
+func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name string) (match DimensionValue, ok bool, err error) {
+	match, ok, err = s.valueNamed(ctx, dimensionID, name)
+	if err == nil && ok && match.Retired {
+		return DimensionValue{}, false, Refuse(ErrValidation, "%s", retiredValueMatchSentence(match))
+	}
+	return match, ok, err
 }
 
 // requireGoalValueSetter refuses anyone but the Goal's Owner, one of its

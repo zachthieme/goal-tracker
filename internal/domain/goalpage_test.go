@@ -212,8 +212,8 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	if _, err := h.Service.MarkGoalDated(ctx, sam.ID, proposed.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: proposed.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 3, 0)}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{GoalID: proposed.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 3, 0)}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	onHold := h.ActiveGoal(sam, "Ship sharing", "People can't share.")
@@ -633,10 +633,10 @@ func TestGoalPageDerivesWhatTheServiceMethodsGive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{
 		GoalID: g.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 0, 10),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
 		GoalID: g.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track.",

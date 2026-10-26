@@ -29,19 +29,29 @@ func (h *Harness) MilestoneMarksGoal(owner domain.Account) domain.Goal {
 	ctx := h.T.Context()
 	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
 
-	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	child := h.ActiveChildOf(owner, g, "EU payments", "Take payments in the EU.")
+	// Built as production builds it: Proposed and Dated, as ActiveGoal makes
+	// it, its Milestones added while it is Proposed, then activated.
+	g := h.CreateGoal(owner, "Launch in EU", "Expand the market.")
+	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
+		h.T.Fatalf("MarkGoalDated: %v", err)
+	}
 	for _, m := range []domain.AddMilestoneInput{
+		{GoalID: g.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 3, 0)},
 		{GoalID: g.ID, Name: "Security review", TargetDate: day(1, 20)},
 		{GoalID: g.ID, Name: "Pilot", TargetDate: day(2, 1)},
 		{GoalID: g.ID, Name: "Vendor sign-off", TargetDate: day(3, 1)},
 		{GoalID: g.ID, Name: "Launch party", TargetDate: day(5, 20)},
 		{GoalID: g.ID, Name: "GA launch", TargetDate: day(6, 15)},
 	} {
-		if _, err := h.Service.AddMilestone(ctx, owner.ID, m); err != nil {
-			h.T.Fatalf("AddMilestone %q: %v", m.Name, err)
+		if _, err := h.Service.AddMilestoneAsAuthor(ctx, owner.ID, m); err != nil {
+			h.T.Fatalf("AddMilestoneAsAuthor %q: %v", m.Name, err)
 		}
 	}
+	g, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID)
+	if err != nil {
+		h.T.Fatalf("ActivateGoal: %v", err)
+	}
+	child := h.ActiveChildOf(owner, g, "EU payments", "Take payments in the EU.")
 	milestones, err := h.Service.ListMilestones(ctx, g.ID)
 	if err != nil {
 		h.T.Fatalf("ListMilestones: %v", err)

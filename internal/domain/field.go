@@ -182,21 +182,16 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 			return Refuse(ErrValidation, "field does not exist")
 		}
 		field := fieldFromRow(row)
-		if field.Retired {
-			return Refuse(ErrValidation, "%s is retired, so it can't be set", field.Name)
-		}
 		value = strings.TrimSpace(value)
+		if err := joinInputErrors(fieldValueProblems(field, value, "value")); err != nil {
+			return err
+		}
 		before, err := tx.goalFieldValue(ctx, goalID, fieldID)
 		if err != nil {
 			return err
 		}
 		if value == before {
 			return nil
-		}
-		if value != "" {
-			if err := field.Check(value); err != nil {
-				return err
-			}
 		}
 		if value == "" {
 			if err := tx.queries.ClearGoalFieldValue(ctx, db.ClearGoalFieldValueParams{GoalID: goalID, FieldID: fieldID}); err != nil {
@@ -212,6 +207,23 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 		}
 		return tx.recordFieldChange(ctx, actorID, goalID, field, before, value)
 	})
+}
+
+// fieldValueProblems is the one check of a Goal's value in a Field, shared by
+// SetGoalField and Goal definition, refused under input: a Retired Field
+// can't be set, even to blank, and a value given must be one the Field takes
+// (Field.Check). A blank value clears the Field.
+func fieldValueProblems(field Field, value, input string) []*InputError {
+	if field.Retired {
+		return []*InputError{inputError(input, "%s is retired, so it can't be set", field.Name)}
+	}
+	if value = strings.TrimSpace(value); value == "" {
+		return nil
+	}
+	if err := field.Check(value); err != nil {
+		return []*InputError{inputError(input, "%s", Reason(err))}
+	}
+	return nil
 }
 
 // goalFieldValue is a Goal's value in one Field, empty when it has none.

@@ -56,16 +56,14 @@ type RequestLinkInput struct {
 // RequestLink requests that ChildID contribute to ParentID. The requester must
 // own the child. The request is accepted immediately when the requester also
 // owns the parent (CONTEXT.md: creating a child directly under a Goal you own);
-// otherwise it waits Pending for the parent's Owner. A request that would close
-// a cycle is rejected here and again at accept time (ADR-0001). Any open Parent
+// otherwise it waits Pending for the parent's Owner. A link to the Goal itself,
+// or to a parent that doesn't exist, is refused (parentLinkProblems), and a
+// request that would close a cycle is rejected here and again at accept time
+// (ADR-0001). Any open Parent
 // suggestion of the same parent for the child closes as no longer applying, as
 // it does when ImportLink makes the link or RestoreLinkRequest or RestoreLink
 // brings it back.
 func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, error) {
-	if in.ChildID == in.ParentID {
-		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
-	}
-
 	now := s.clock.Now()
 	var child, parent Goal
 	var row db.Link
@@ -76,7 +74,7 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 		}, nil); err != nil {
 			return err
 		}
-		if parent, err = tx.linkParentGoal(ctx, in.ParentID); err != nil {
+		if parent, err = tx.linkParentGoal(ctx, in.ChildID, in.ParentID); err != nil {
 			return err
 		}
 		status := LinkPending
@@ -136,9 +134,6 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 	if err := s.requireImportingAdmin(actorID); err != nil {
 		return Link{}, err
 	}
-	if childID == parentID {
-		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
-	}
 	now := s.clock.Now()
 	var child, parent Goal
 	var row db.Link
@@ -149,7 +144,7 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 		if child, err = tx.openGoalCommand(ctx, actorID, childID, nil, nil); err != nil {
 			return err
 		}
-		if parent, err = tx.linkParentGoal(ctx, parentID); err != nil {
+		if parent, err = tx.linkParentGoal(ctx, childID, parentID); err != nil {
 			return err
 		}
 		if err := tx.ensureNewAcyclicLink(ctx, childID, parentID); err != nil {
@@ -184,14 +179,32 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 	}, nil
 }
 
-// linkParentGoal loads parentID, the parent a link is asked for: one that doesn't
-// exist is refused as input, ErrValidation.
-func (s *Service) linkParentGoal(ctx context.Context, parentID int64) (Goal, error) {
+// linkParentGoal loads parentID, the parent childID's link is asked for,
+// refusing the link by parentLinkProblems: one to the child itself, or to a
+// parent that doesn't exist, is refused as input, ErrValidation.
+func (s *Service) linkParentGoal(ctx context.Context, childID, parentID int64) (Goal, error) {
 	parent, err := s.loadGoal(ctx, parentID)
-	if errors.Is(err, ErrNotFound) {
-		return Goal{}, Refuse(ErrValidation, "parent goal does not exist")
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Goal{}, err
 	}
-	return parent, err
+	if err := joinInputErrors(parentLinkProblems(childID, parentID, err == nil, "parent_id")); err != nil {
+		return Goal{}, err
+	}
+	return parent, nil
+}
+
+// parentLinkProblems is the one check of a parent a Goal is linked to, shared
+// by RequestLink, ImportLink and Goal definition, refused under input: a Goal
+// can't contribute to itself, and the parent must exist (parentExists, as the
+// caller read it). childID is 0 for a Goal not yet saved.
+func parentLinkProblems(childID, parentID int64, parentExists bool, input string) []*InputError {
+	if childID != 0 && childID == parentID {
+		return []*InputError{inputError(input, "a Goal cannot contribute to itself")}
+	}
+	if !parentExists {
+		return []*InputError{inputError(input, "that parent Goal does not exist")}
+	}
+	return nil
 }
 
 // AcceptLink accepts a pending request. The actor must own the parent Goal. The

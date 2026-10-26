@@ -80,7 +80,7 @@ type MetricDefinition struct {
 func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (Goal, error) {
 	var g Goal
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		problems, err := tx.checkDefinedGoal(ctx, in, nil)
+		problems, err := tx.checkDefinedGoal(ctx, in, 0, nil)
 		if err != nil {
 			return err
 		}
@@ -178,7 +178,7 @@ func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in Defi
 		if in.FieldValues, err = tx.changedFields(ctx, goalID, in.FieldValues); err != nil {
 			return err
 		}
-		problems, err := tx.checkDefinedGoal(ctx, in, carries)
+		problems, err := tx.checkDefinedGoal(ctx, in, goalID, carries)
 		if err != nil {
 			return err
 		}
@@ -272,15 +272,15 @@ func (s *Service) changedFields(ctx context.Context, goalID int64, values map[in
 }
 
 // checkRedefinedGoal checks what redefining a saved Goal adds to
-// checkDefinedGoal's rules: its Title stays as it is, and no parent is the
-// Goal itself or would close a cycle (ADR-0001).
+// checkDefinedGoal's rules: its Title stays as it is, and no parent would
+// close a cycle (ADR-0001). checkDefinedGoal refuses the Goal itself as a
+// parent.
 func (s *Service) checkRedefinedGoal(ctx context.Context, current Goal, in DefinedGoalInput) (problems []error, err error) {
 	if title := strings.TrimSpace(in.Title); title != "" && title != current.Title {
 		problems = append(problems, inputError(InputTitle, "a Goal's Title can't be changed here"))
 	}
 	for _, parentID := range dedupeIDs(in.ParentIDs) {
 		if parentID == current.ID {
-			problems = append(problems, inputError(ParentInput(parentID), "a Goal cannot contribute to itself"))
 			continue
 		}
 		if err := s.ensureNoCycle(ctx, current.ID, parentID); errors.Is(err, ErrCycle) {
@@ -389,7 +389,8 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 		}
 	}
 	// AddDimensionValue is Admin-only; any value setter may add to an
-	// Extendable list this way (CONTEXT.md: Extendable).
+	// Extendable list this way, and an Admin to a Fixed one (CONTEXT.md:
+	// Extendable, Fixed).
 	for _, dimID := range slices.Sorted(maps.Keys(in.NewValues)) {
 		if strings.TrimSpace(in.NewValues[dimID]) == "" {
 			continue
@@ -413,7 +414,7 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 // Goal, within the transaction the caller holds.
 func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in DefinedGoalInput) error {
 	for _, m := range in.Milestones {
-		if _, err := s.AddMilestone(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
+		if _, err := s.AddMilestoneAsAuthor(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
 			return err
 		}
 	}
@@ -450,10 +451,13 @@ func (s *Service) linkAndActivate(ctx context.Context, goalID int64, in DefinedG
 
 // checkDefinedGoal checks every input of a Goal's definition, writing nothing,
 // and returns each problem as an *InputError, in the order the inputs come.
-// carried are the values the Goal already carries, which it may keep though
-// they are Retired (CONTEXT.md: Retired); a new Goal carries none. err is a
-// failure to check, not a problem with the input.
-func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, carried map[int64]bool) (problems []error, err error) {
+// Each part is checked by the check its own command uses (milestoneProblems,
+// metricProblems, the value checks, fieldValueProblems, parentLinkProblems);
+// what only definition refuses is checked here. goalID is the Goal being
+// defined, 0 for a new one. carried are the values the Goal already carries,
+// which it may keep though they are Retired (CONTEXT.md: Retired); a new Goal
+// carries none. err is a failure to check, not a problem with the input.
+func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, goalID int64, carried map[int64]bool) (problems []error, err error) {
 	refuse := func(input, format string, args ...any) {
 		problems = append(problems, inputError(input, format, args...))
 	}
@@ -476,26 +480,12 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 		refuse(InputCadence, "the Check-in cadence must be a positive number of days")
 	}
 	for i, m := range in.Milestones {
-		if strings.TrimSpace(m.Name) == "" {
-			refuse(MilestoneInput(i, "name"), "a Milestone needs a name")
-		}
-		if m.Date.IsZero() {
-			refuse(MilestoneInput(i, "date"), "a Milestone needs a date")
-		}
+		problems = appendInputErrors(problems, milestoneProblems(m.Name, m.Date, MilestoneInput(i, "name"), MilestoneInput(i, "date")))
 	}
 	for i, m := range in.Metrics {
-		if strings.TrimSpace(m.Name) == "" {
-			refuse(MetricInput(i, "name"), "a Metric needs a name")
-		}
-		if strings.TrimSpace(m.Unit) == "" {
-			refuse(MetricInput(i, "unit"), "a Metric needs a unit")
-		}
-		if !validDirection(m.Direction) {
-			refuse(MetricInput(i, "direction"), "a Metric needs a direction of %q or %q", MetricUp, MetricDown)
-		}
-		if m.TargetDate.IsZero() {
-			refuse(MetricInput(i, "target_date"), "a Metric needs a target date")
-		}
+		problems = appendInputErrors(problems, metricProblems(m.Name, m.Unit, m.Direction, m.TargetDate, func(part string) string {
+			return MetricInput(i, part)
+		}))
 	}
 	valueProblems, err := s.checkDefinedValues(ctx, in, carried)
 	if err != nil {
@@ -515,12 +505,7 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 		} else if err != nil {
 			return nil, fmt.Errorf("look up field: %w", err)
 		}
-		field := fieldFromRow(row)
-		if field.Retired {
-			refuse(input, "%s is retired, so it can't be set", field.Name)
-		} else if err := field.Check(value); err != nil {
-			refuse(input, "%s", Reason(err))
-		}
+		problems = appendInputErrors(problems, fieldValueProblems(fieldFromRow(row), value, input))
 	}
 	given := map[int64]bool{}
 	for _, parentID := range in.ParentIDs {
@@ -530,20 +515,22 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 			continue
 		}
 		given[parentID] = true
-		if _, err := s.queries.GetGoal(ctx, parentID); errors.Is(err, sql.ErrNoRows) {
-			refuse(input, "that parent Goal does not exist")
-		} else if err != nil {
+		_, err := s.queries.GetGoal(ctx, parentID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("look up parent goal: %w", err)
 		}
+		problems = appendInputErrors(problems, parentLinkProblems(goalID, parentID, err == nil, input))
 	}
 	return problems, nil
 }
 
 // checkDefinedValues checks the Dimension values a Goal is to be given, both
-// those chosen and those typed in as new, by the rules AssignGoalValue and
-// AssignGoalValueByName follow, and refuses several in a Dimension that takes
-// one, naming each of them. A value in carried may be kept though it is
-// Retired, or in a Retired Dimension, as SetGoalValues keeps it.
+// those chosen and those typed in as new, by the checks AssignGoalValue and
+// AssignGoalValueByName use (chosenValueProblems, typedValueProblems), and
+// refuses several in a Dimension that takes one, naming each of them. A value
+// in carried may be kept though it is Retired, or in a Retired Dimension, as
+// SetGoalValues keeps it. Only an Owner who is an Admin may add a new value
+// to a Fixed list (fixedListSentence), as AssignGoalValueByName allows.
 func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, carried map[int64]bool) (problems []error, err error) {
 	refuse := func(input, format string, args ...any) {
 		problems = append(problems, inputError(input, format, args...))
@@ -572,16 +559,25 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 			return nil, fmt.Errorf("load dimension: %w", err)
 		}
 		dim := dimensionFromRow(dimRow)
-		switch {
-		case carried[valueID]:
-			given(dim, input)
-		case val.Retired != 0:
-			refuse(input, "%s is retired and cannot be newly assigned", val.Value)
-		case dim.Retired:
-			refuse(input, "%s", Reason(retiredDimensionError(dim)))
-		default:
-			given(dim, input)
+		if more := chosenValueProblems(dimensionValueFromRow(val), dim, carried[valueID], input); len(more) > 0 {
+			problems = appendInputErrors(problems, more)
+			continue
 		}
+		given(dim, input)
+	}
+	// mayAddToFixed reads whether the Owner is an Admin, who alone may add to
+	// a Fixed list, only once a new value would be added to one.
+	var ownerIsAdmin *bool
+	mayAddToFixed := func() (bool, error) {
+		if ownerIsAdmin == nil {
+			err := s.requireAdmin(ctx, in.OwnerID)
+			if err != nil && !errors.Is(err, ErrNotAuthorized) {
+				return false, err
+			}
+			admin := err == nil
+			ownerIsAdmin = &admin
+		}
+		return *ownerIsAdmin, nil
 	}
 	for _, dimID := range slices.Sorted(maps.Keys(in.NewValues)) {
 		name := strings.TrimSpace(in.NewValues[dimID])
@@ -597,23 +593,21 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 			return nil, fmt.Errorf("look up dimension: %w", err)
 		}
 		dim := dimensionFromRow(dimRow)
-		if dim.Retired {
-			refuse(input, "%s", Reason(retiredDimensionError(dim)))
-			continue
-		}
-		if !dim.Extendable() {
-			refuse(input, "%s is a Fixed list, so a new value can't be added to it here", dim.Name)
-			continue
-		}
-		if err := checkValueName(name); err != nil {
-			refuse(input, "%s", Reason(err))
-			continue
-		}
-		if _, _, err := s.matchingValue(ctx, dimID, name); errors.Is(err, ErrValidation) {
-			refuse(input, "%s", Reason(err))
-			continue
-		} else if err != nil {
+		match, matched, err := s.valueNamed(ctx, dimID, name)
+		if err != nil {
 			return nil, err
+		}
+		if more := typedValueProblems(dim, name, match, matched, input); len(more) > 0 {
+			problems = appendInputErrors(problems, more)
+			continue
+		}
+		if !matched && !dim.Extendable() {
+			if ok, err := mayAddToFixed(); err != nil {
+				return nil, err
+			} else if !ok {
+				refuse(input, "%s", fixedListSentence(dim))
+				continue
+			}
 		}
 		given(dim, input)
 	}
@@ -684,6 +678,25 @@ func (e *InputError) shownReason() string { return e.Message }
 
 func inputError(input, format string, args ...any) *InputError {
 	return &InputError{Input: input, Message: fmt.Sprintf(format, args...)}
+}
+
+// joinInputErrors is a command's refusal of problems, a Goal part's check
+// (milestoneProblems and the like), every one joined in order, or nil when
+// there are none.
+func joinInputErrors(problems []*InputError) error {
+	errs := make([]error, 0, len(problems))
+	for _, p := range problems {
+		errs = append(errs, p)
+	}
+	return errors.Join(errs...)
+}
+
+// appendInputErrors adds more, a Goal part's problems, to problems, in order.
+func appendInputErrors(problems []error, more []*InputError) []error {
+	for _, p := range more {
+		problems = append(problems, p)
+	}
+	return problems
 }
 
 // MilestoneInput names one part ("name", "date") of the i-th Milestone.

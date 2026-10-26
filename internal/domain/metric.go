@@ -73,18 +73,17 @@ type AddMetricInput struct {
 // AddMetric adds a Metric to a Goal. Only the Goal's Owner may add one
 // (ErrNotAuthorized), and that is checked first, so no one else learns what's
 // wrong with what they sent. Name, unit, a valid direction, and a target date
-// are required.
+// are required (metricProblems), and every one missing is refused together.
 func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInput) (Metric, error) {
 	var row db.Metric
 	err := s.WithinTx(ctx, func(tx *Service) error {
 		if _, err := tx.openGoalCommand(ctx, actorID, in.GoalID, metricEditRefusal, nil); err != nil {
 			return err
 		}
-		name := strings.TrimSpace(in.Name)
-		unit := strings.TrimSpace(in.Unit)
-		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
+		if err := joinInputErrors(metricProblems(in.Name, in.Unit, in.Direction, in.TargetDate, metricFormInput)); err != nil {
 			return err
 		}
+		name, unit := strings.TrimSpace(in.Name), strings.TrimSpace(in.Unit)
 
 		var err error
 		row, err = tx.queries.CreateMetric(ctx, db.CreateMetricParams{
@@ -149,11 +148,10 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 		if _, err := tx.openGoalCommand(ctx, actorID, current.GoalID, metricEditRefusal, in.Unparsed); err != nil {
 			return err
 		}
-		name := strings.TrimSpace(in.Name)
-		unit := strings.TrimSpace(in.Unit)
-		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
+		if err := joinInputErrors(metricProblems(in.Name, in.Unit, in.Direction, in.TargetDate, metricFormInput)); err != nil {
 			return err
 		}
+		name, unit := strings.TrimSpace(in.Name), strings.TrimSpace(in.Unit)
 
 		row, err = tx.queries.UpdateMetric(ctx, db.UpdateMetricParams{
 			Name:       name,
@@ -212,21 +210,31 @@ func (s *Service) metricsByGoal(ctx context.Context, goalIDs []int64) (map[int64
 	return out, nil
 }
 
-func validateMetric(name, unit, direction string, targetDate time.Time) error {
-	if name == "" {
-		return Refuse(ErrValidation, "a Metric needs a name")
+// metricProblems is the one check of a Metric's own input, shared by the
+// commands that add or edit one and by Goal definition: it needs a name, a
+// unit, a direction of MetricUp or MetricDown and a target date. Every
+// problem is refused, under input(part) for its part ("name", "unit",
+// "direction", "target_date").
+func metricProblems(name, unit, direction string, targetDate time.Time, input func(part string) string) []*InputError {
+	var problems []*InputError
+	if strings.TrimSpace(name) == "" {
+		problems = append(problems, inputError(input("name"), "a Metric needs a name"))
 	}
-	if unit == "" {
-		return Refuse(ErrValidation, "a Metric needs a unit")
+	if strings.TrimSpace(unit) == "" {
+		problems = append(problems, inputError(input("unit"), "a Metric needs a unit"))
 	}
 	if !validDirection(direction) {
-		return Refuse(ErrValidation, "a Metric needs a direction of %q or %q", MetricUp, MetricDown)
+		problems = append(problems, inputError(input("direction"), "a Metric needs a direction of %q or %q", MetricUp, MetricDown))
 	}
 	if targetDate.IsZero() {
-		return Refuse(ErrValidation, "a Metric needs a target date")
+		problems = append(problems, inputError(input("target_date"), "a Metric needs a target date"))
 	}
-	return nil
+	return problems
 }
+
+// metricFormInput names a part of a Metric as the Goal page's Metric forms
+// do: by the part alone.
+func metricFormInput(part string) string { return part }
 
 // MetricReading is a Metric's value recorded at a Check-in (CONTEXT.md: Metric -
 // its current value is recorded at each Check-in). A Metric's readings ordered

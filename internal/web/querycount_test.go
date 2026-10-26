@@ -120,10 +120,10 @@ func seedQueryCountFixture(t *testing.T, h *testsupport.Harness, n int) queryCou
 			h.Checkin(owner, g.ID, domain.HealthGreen, "Daily so far.", "", time.Time{})
 		case 6:
 			g = h.ActiveGoal(owner, title, "It matters.")
-			if _, err := h.Service.AddMilestone(ctx, owner.ID, domain.AddMilestoneInput{
+			if _, err := h.Service.AddMilestoneAsAuthor(ctx, owner.ID, domain.AddMilestoneInput{
 				GoalID: g.ID, Name: "Pilot", TargetDate: path(2),
 			}); err != nil {
-				t.Fatalf("AddMilestone: %v", err)
+				t.Fatalf("AddMilestoneAsAuthor: %v", err)
 			}
 			h.Checkin(owner, g.ID, domain.HealthGreen, "Pilot lined up.", "", time.Time{})
 		case 7:
