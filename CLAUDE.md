@@ -23,10 +23,12 @@ another area's file.
   what a person sees and can do, not by matching markup, and style rules and
   the classes they select are tested in `styles_test.go`.
 - **Domain** (`internal/domain/`): `domain.go` holds only the `Service`, its
-  constructor and options (`Option`, `WithTimezone`, `WithBaseURL`), and the
-  Service-wide helpers (`WithinTx`, `Now`, `Timezone`, `Ping`). Each concept's
-  types and `Service` methods live in their own file
-  (`account.go`, `goal.go`, …) — a new concept is a new file. A page whose
+  constructor, the Service-wide options (`Option`, `WithTimezone`,
+  `WithBaseURL`), and the Service-wide helpers (`WithinTx`, `Now`, `Timezone`,
+  `Ping`). Each concept's types, `Service` methods and own options live in
+  their own file (`account.go`, `goal.go`, …; the email outbox's
+  `WithEmailDeliveredOnCommit` and `WithEmailOutboxLogger` in
+  `emailoutbox.go`) — a new concept is a new file. A page whose
   view model repeats reads gets a page loader, one `Service` method in its own
   `<page>.go` file (ADR 0010).
 - **Test support** (`internal/testsupport/`): `harness.go` keeps the core

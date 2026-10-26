@@ -249,7 +249,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			s.renderCheckinFormError(w, r, current, view, formData(err))
 			return
 		}
-		s.writeCheckinError(w, r, goalID, err)
+		s.refuse(w, r, "Can't check in", goalPath(goalID), err)
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
@@ -537,10 +537,4 @@ func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, 
 // refresh), a plain post follows a 303 (answerRedirect).
 func (s *Server) checkinRedirect(w http.ResponseWriter, r *http.Request, goalID int64) {
 	answerRedirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10))
-}
-
-// writeCheckinError answers a Check-in on goalID the domain refused with the
-// refusal page, linking Back to the Goal.
-func (s *Server) writeCheckinError(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
-	s.refuse(w, r, "Can't check in", goalPath(goalID), err)
 }

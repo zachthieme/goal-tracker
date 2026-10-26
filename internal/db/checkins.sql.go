@@ -245,36 +245,6 @@ func (q *Queries) CreateMilestoneChange(ctx context.Context, arg CreateMilestone
 	return i, err
 }
 
-const getLatestCheckin = `-- name: GetLatestCheckin :one
-SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome, asks_for_help FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
-`
-
-// The most recent Check-in on a Goal, which carries the Goal's current Health,
-// status, and Path to Green (CONTEXT.md: current values come from the latest
-// Check-in).
-func (q *Queries) GetLatestCheckin(ctx context.Context, goalID int64) (Checkin, error) {
-	row := q.db.QueryRowContext(ctx, getLatestCheckin, goalID)
-	var i Checkin
-	err := row.Scan(
-		&i.ID,
-		&i.GoalID,
-		&i.AuthorID,
-		&i.OwnerID,
-		&i.Health,
-		&i.Status,
-		&i.PathToGreen,
-		&i.PathTargetDate,
-		&i.CreatedAt,
-		&i.Explanation,
-		&i.LifecycleFrom,
-		&i.LifecycleTo,
-		&i.LifecycleReason,
-		&i.Outcome,
-		&i.AsksForHelp,
-	)
-	return i, err
-}
-
 const listCheckins = `-- name: ListCheckins :many
 SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, checkins.asks_for_help, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, author.oidc_subject, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone, owner.oidc_subject
 FROM checkins
@@ -723,9 +693,11 @@ type ListLatestCheckinsForGoalsRow struct {
 	Account_2 Account
 }
 
-// Each given Goal's most recent Check-in, picked as GetLatestCheckin picks it,
-// with its author and the Owner it was written for resolved. A Goal with no
-// Check-in has no row.
+// Each given Goal's most recent Check-in, the one with the newest created_at
+// and, of those, the highest id, which carries the Goal's current Health,
+// status, and Path to Green (CONTEXT.md: current values come from the latest
+// Check-in). Its author and the Owner it was written for are resolved. A Goal
+// with no Check-in has no row.
 func (q *Queries) ListLatestCheckinsForGoals(ctx context.Context, goalIds []int64) ([]ListLatestCheckinsForGoalsRow, error) {
 	query := listLatestCheckinsForGoals
 	var queryParams []interface{}

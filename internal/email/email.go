@@ -1,8 +1,10 @@
-// Package email defines the outbound email seam and a recording fake for tests.
+// Package email defines the outbound email seam, Sender, that the domain's
+// email outbox sends each queued message through once its command has
+// committed.
 //
-// No mail is sent yet in the walking skeleton, but the seam exists so later
-// tickets (Handoffs, Report publication) have a controllable sender from the
-// start and tests can assert on what would be sent.
+// LogSender, the Sender the app and the seed use, logs each message instead of
+// delivering it: no real mail transport exists yet. Recorder records what
+// would be sent, so a test can assert on it.
 package email
 
 import (

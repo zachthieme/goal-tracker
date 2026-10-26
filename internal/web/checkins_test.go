@@ -2006,25 +2006,6 @@ func assertNoChangeRefusalOnForm(t *testing.T, page, reason string) {
 	}
 }
 
-// postNoChange clicks a No change button: it posts to the button's action, as
-// htmx does when hx is set, and returns the response with its body read.
-func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*http.Response, string) {
-	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, rawURL, strings.NewReader(""))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if hx {
-		req.Header.Set("HX-Request", "true")
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("POST %s: %v", rawURL, err)
-	}
-	return resp, readBody(t, resp)
-}
-
 // overdueGreenGoal arranges a Goal whose latest Check-in is Green and whose
 // Beta Milestone has since gone overdue, so No change on it is refused.
 func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal {
