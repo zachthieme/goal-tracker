@@ -203,3 +203,62 @@ func TestActivateLeavesGoalProposedWhenRejected(t *testing.T) {
 		t.Errorf("Lifecycle = %q, want it to stay %q", got.Lifecycle, domain.LifecycleProposed)
 	}
 }
+
+// Only a Proposed Goal can be activated (CONTEXT.md: Lifecycle). One that is
+// already Active, On Hold, or has ended is refused before the minimum standard
+// is checked, and keeps its Lifecycle and the time it first became Active.
+func TestActivateRefusesGoalThatIsNotProposed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		lifecycle string
+		arrange   func(h *testsupport.Harness, owner domain.Account) domain.Goal
+	}{
+		{domain.LifecycleActive, func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			return h.ActiveGoal(owner, "Ship v2", "Customers wait too long for v2.")
+		}},
+		{domain.LifecycleOnHold, func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			return h.OnHoldGoal(owner, "Ship v2", "Customers wait too long for v2.", "Waiting on legal.")
+		}},
+		{domain.LifecycleDone, func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			g := h.ActiveGoal(owner, "Ship v2", "Customers wait too long for v2.")
+			h.EndGoalInCheckin(owner, g.ID, domain.LifecycleDone)
+			return g
+		}},
+		{domain.LifecycleCancelled, func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			g := h.ActiveGoal(owner, "Ship v2", "Customers wait too long for v2.")
+			h.EndGoalInCheckin(owner, g.ID, domain.LifecycleCancelled)
+			return g
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.lifecycle, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			owner := h.SignIn("sam@example.com")
+			g := tt.arrange(h, owner)
+			activatedAt := g.ActivatedAt
+			h.Clock.Advance(48 * time.Hour)
+
+			_, err := h.Service.ActivateGoal(context.Background(), owner.ID, g.ID)
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			want := "Ship v2 is " + tt.lifecycle + ", so it can't be activated"
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %q, want it to say %q", err.Error(), want)
+			}
+			got, err := h.Service.ViewGoal(context.Background(), g.ID)
+			if err != nil {
+				t.Fatalf("ViewGoal: %v", err)
+			}
+			if got.Lifecycle != tt.lifecycle {
+				t.Errorf("Lifecycle = %q, want it to stay %q", got.Lifecycle, tt.lifecycle)
+			}
+			if !got.ActivatedAt.Equal(activatedAt) {
+				t.Errorf("ActivatedAt = %v, want it to stay %v", got.ActivatedAt, activatedAt)
+			}
+		})
+	}
+}
