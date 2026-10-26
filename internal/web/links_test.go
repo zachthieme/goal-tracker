@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -188,18 +187,6 @@ func assertAcceptReject(t *testing.T, row, base string) {
 		t.Errorf("the row offers no button named Reject posting to %s/reject:\n%s", base, row)
 	}
 	assertSubmitsAtOnce(t, "Reject", row, base+"/reject")
-}
-
-// undoAction pulls the Undo form's action out of a page's toast, failing when
-// the page carries no toast.
-func undoAction(t *testing.T, page string) string {
-	t.Helper()
-	toast := pageElement(t, page, "aside", "toast")
-	m := regexp.MustCompile(`<form[^>]*action="([^"]+)"`).FindStringSubmatch(toast)
-	if m == nil {
-		t.Fatalf("the toast has no Undo form:\n%s", toast)
-	}
-	return m[1]
 }
 
 // removeAcrossOwners arranges Sam's child Goal accepted under Pat's parent and

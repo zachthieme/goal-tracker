@@ -1,7 +1,6 @@
 package web
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -31,11 +30,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
-	offer := takeUndo(w, r)
-	view.Toast = cmp.Or(
-		s.linkRemovalToast(r.Context(), offer, current, id),
-		s.suggestionDeclineToast(r.Context(), offer, current, id, ""),
-	)
+	view.Toast = s.undoToast(w, r, current)
 	view.Open = goalForm(r.URL.Query().Get("open"))
 	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))

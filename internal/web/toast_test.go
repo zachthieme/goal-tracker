@@ -62,7 +62,7 @@ func TestToastFitsAPhoneWidth(t *testing.T) {
 	}
 }
 
-// undoCase is one of the four actions that offer an Undo in a toast: act does
+// undoCase is one of the actions that offer an Undo in a toast: act does
 // it over HTTP and returns the person's client and the page they land on, and
 // restored says whether the Undo has put things back. back is the page a
 // refused Undo links back to, again what a second Undo is refused with, and
@@ -166,6 +166,126 @@ var undoCases = []undoCase{
 		notYours: "This Undo isn't yours to use.",
 		writes:   "UPDATE ON dimension_values",
 	},
+	{
+		name: "Parent suggestion decline",
+		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
+			_, _, s := suggestionScene(t, h)
+			sam := signInClient(t, ts.URL, "sam@example.com")
+			resp := postForm(t, sam, fmt.Sprintf("%s/parent-suggestions/%d/decline", ts.URL, s.ID), url.Values{"return": {"/home"}})
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("decline: status %d", resp.StatusCode)
+			}
+			return sam, readBody(t, resp)
+		},
+		restored: func(t *testing.T, h *testsupport.Harness) bool {
+			open, err := h.Service.OpenParentSuggestions(context.Background(), goalTitled(t, h, "Migrate displays").ID)
+			if err != nil {
+				t.Fatalf("OpenParentSuggestions: %v", err)
+			}
+			return len(open) == 1
+		},
+		back:     func(*testing.T, *testsupport.Harness) string { return "/home" },
+		again:    "This suggestion is no longer declined.",
+		notYours: "This Undo isn't yours to use.",
+		writes:   "UPDATE ON parent_suggestions",
+	},
+}
+
+// Every Undo goes the whole way round: the decision, made from the page its
+// kind is offered on (with a query, where the decision posts its return),
+// lands back there, whose toast's Undo restores the record and lands on that
+// same page, query and all (#605).
+func TestEachUndoReturnsToThePageItWasOfferedOn(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		undo undoCase
+		// decide arranges the record and makes the decision from the page it is
+		// offered on, returning who decided, the page, and its form.
+		decide func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (client *http.Client, page string, form *html.Node)
+	}{
+		{undoCases[0], func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string, *html.Node) {
+			child, _, link := linkedAcrossOwners(t, h)
+			sam := signInClient(t, ts.URL, "sam@example.com")
+			page := fmt.Sprintf("/goals/%d", child.ID)
+			return sam, page, decisionForm(t, sam, ts.URL+page, fmt.Sprintf("/links/%d/remove", link.ID))
+		}},
+		{undoCases[1], func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string, *html.Node) {
+			pat, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
+			parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+			child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+			link := h.RequestLink(sam, child, parent, "displays cause outages")
+			client := signInClient(t, ts.URL, "pat@example.com")
+			return client, "/home?x=1", decisionForm(t, client, ts.URL+"/home?x=1", fmt.Sprintf("/links/%d/reject", link.ID))
+		}},
+		{undoCases[2], func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string, *html.Node) {
+			sam, pat := h.SignIn("sam@example.com"), h.SignIn("pat@example.com")
+			goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+			ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+			if err != nil {
+				t.Fatalf("StartHandoff: %v", err)
+			}
+			client := signInClient(t, ts.URL, "pat@example.com")
+			return client, "/home?x=1", decisionForm(t, client, ts.URL+"/home?x=1", fmt.Sprintf("/handoffs/%d/reject", ho.ID))
+		}},
+		{undoCases[3], func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string, *html.Node) {
+			pillar := h.CreateDimension(h.SignIn("boss@example.com"), "Pillar", "Growth", "Trust")
+			admin := signInClient(t, ts.URL, "boss@example.com")
+			return admin, "/dimensions", decisionForm(t, admin, ts.URL+"/dimensions", fmt.Sprintf("/dimension-values/%d/retire", pillar.Values[1].ID))
+		}},
+		{undoCases[4], func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string, *html.Node) {
+			_, _, s := suggestionScene(t, h)
+			sam := signInClient(t, ts.URL, "sam@example.com")
+			return sam, "/home?x=1", decisionForm(t, sam, ts.URL+"/home?x=1", fmt.Sprintf("/parent-suggestions/%d/decline", s.ID))
+		}},
+	} {
+		t.Run(tc.undo.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t, tc.undo.admins...)
+			ts := newServer(t, h)
+			client, page, form := tc.decide(t, h, ts)
+			decision := formSubmission(form)
+			if decision.Has("return") {
+				decision.Set("return", page)
+			}
+
+			decided := postForm(t, client, ts.URL+attrOf(form, "action"), decision)
+			defer func() { _ = decided.Body.Close() }()
+			if decided.StatusCode != http.StatusOK {
+				t.Fatalf("decision: status %d", decided.StatusCode)
+			}
+			if got := decided.Request.URL.RequestURI(); got != page {
+				t.Fatalf("decision landed on %s, want %s", got, page)
+			}
+			toast := findByTestID(t, parsePage(t, readBody(t, decided)), "toast")
+			forms := findAll(toast, func(n *html.Node) bool { return n.Data == "form" })
+			if len(forms) != 1 || buttonNamed(forms[0], "Undo") == nil {
+				t.Fatalf("the toast has no Undo form:\n%s", renderNode(toast))
+			}
+
+			undone := postForm(t, client, ts.URL+attrOf(forms[0], "action"), formSubmission(forms[0]))
+			defer func() { _ = undone.Body.Close() }()
+			if undone.StatusCode != http.StatusOK {
+				t.Fatalf("Undo: status %d", undone.StatusCode)
+			}
+			if !tc.undo.restored(t, h) {
+				t.Error("not restored by the Undo")
+			}
+			if got := undone.Request.URL.RequestURI(); got != page {
+				t.Errorf("Undo landed on %s, want %s, where its toast was shown", got, page)
+			}
+		})
+	}
+}
+
+// decisionForm is the one form on the page at rawURL posting to action.
+func decisionForm(t *testing.T, client *http.Client, rawURL, action string) *html.Node {
+	t.Helper()
+	forms := findAll(getPage(t, client, rawURL), func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
+	if len(forms) != 1 {
+		t.Fatalf("%s has %d forms posting to %s, want 1", rawURL, len(forms), action)
+	}
+	return forms[0]
 }
 
 // goalTitled is the Goal called title.
@@ -306,9 +426,9 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 		form url.Values
 		back string
 	}{
-		{"/link-removals/4242/undo", url.Values{"goal_id": {fmt.Sprint(goal.ID)}}, fmt.Sprintf("/goals/%d", goal.ID)},
+		{"/link-removals/4242/undo", url.Values{"return": {fmt.Sprintf("/goals/%d", goal.ID)}}, fmt.Sprintf("/goals/%d", goal.ID)},
 		{"/link-removals/4242/undo", url.Values{}, "/home"},
-		{"/link-removals/nothing/undo", url.Values{"goal_id": {"nothing"}}, "/home"},
+		{"/link-removals/nothing/undo", url.Values{"return": {"nothing"}}, "/home"},
 		{"/link-rejections/4242/undo", url.Values{}, "/links"},
 		{"/link-rejections/4242/undo", url.Values{"return": {"/home"}}, "/home"},
 		{"/handoffs/4242/restore", url.Values{}, "/handoffs"},
@@ -459,8 +579,8 @@ func TestAnUndoThatNoLongerFitsSaysWhatChanged(t *testing.T) {
 
 // An Undo offer made to a page whose return carries a query is scoped to that
 // page's path alone, so the page, query and all, shows the toast; its Undo
-// puts the request back as pending and lands on Home, where the toast posts
-// its return (#597).
+// puts the request back as pending and lands on the page the toast was shown
+// on, query and all (#597, #605).
 func TestAnUndoOfferReachesAReturnWithAQuery(t *testing.T) {
 	t.Parallel()
 
@@ -504,8 +624,8 @@ func TestAnUndoOfferReachesAReturnWithAQuery(t *testing.T) {
 	if undone.StatusCode != http.StatusOK {
 		t.Fatalf("Undo: status %d", undone.StatusCode)
 	}
-	if got := undone.Request.URL.Path; got != "/home" {
-		t.Errorf("Undo landed on %s, want /home", got)
+	if got := undone.Request.URL.RequestURI(); got != "/home?x=1" {
+		t.Errorf("Undo landed on %s, want /home?x=1", got)
 	}
 	pending, err := h.Service.PendingLinkRequests(context.Background(), pat.ID)
 	if err != nil {
