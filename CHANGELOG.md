@@ -13,6 +13,25 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 26, 2026
+
+**Bug fixes:**
+- [user] A link request refused for making a cycle now says "That Goal already contributes to this one, so linking them would make a cycle." in the Goal page's form, as Suggest a parent does, instead of naming both Goals by their IDs (#546).
+- [user] A refused Accept, Reject or Request link, and a refused Accept, Decline or Withdraw of a parent suggestion, now answer with a page inside the app headed by what was refused (such as "Can't accept link"), saying why and linking Back to the page the action came from, instead of a bare line of text; acting on a link that isn't there shows the Not found page (#546).
+- [ops] The weekly emails' scheduler no longer names a slot when it fails to read the job's last run after a restart: the ERROR line carries the job and the error only, since the slot it named may already have been sent (#547).
+
+**Security:**
+- [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
+
+**Testing:**
+- [internal] The Handoff tests run a Reassign and an Accept one after the other, in each order, so the error each loser gets is checked on every run, not only when the race lands that way (#547).
+
+**Code quality:**
+- [internal] `.golangci.yml` notes that contextcheck doesn't check inside a templ component's body, so a helper called there that drops the context isn't reported (#547).
+
+**Documentation:**
+- [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
+
 ### Collected changes — October 25, 2026
 
 **Breaking changes:**
