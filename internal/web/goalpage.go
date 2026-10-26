@@ -49,20 +49,11 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, err
 	}
-	g := p.Goal
 	// Each Metric's readings over time, for its trend against target (CONTEXT.md:
 	// the Goal page shows each Metric's trend over time against its target).
 	trends := make([]metricTrend, 0, len(p.Metrics))
 	for _, m := range p.Metrics {
 		trends = append(trends, metricTrend{Metric: m, Readings: p.Readings[m.ID]})
-	}
-	// The Owner decides every open suggestion; anyone else sees only their
-	// own, to withdraw (CONTEXT.md: Parent suggestion).
-	var suggested []domain.ParentSuggestion
-	for _, sg := range p.Suggestions {
-		if sg.Status == domain.SuggestionOpen && (current.ID == g.Owner.ID || current.ID == sg.SuggestedBy.ID) {
-			suggested = append(suggested, sg)
-		}
 	}
 	// The Owner and Delegates are offered a No change only where it would be
 	// recorded; where it wouldn't, the Check-in page says why.
@@ -72,7 +63,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	}
 
 	view := goalView{
-		Goal:               g,
+		Goal:               p.Goal,
 		Parents:            p.Parents,
 		Children:           p.Children,
 		LinkHealth:         p.LinkHealth,
@@ -88,7 +79,6 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		NoChangeRefusal:    noChangeRefusal,
 		OverdueMilestone:   p.OverdueMilestone,
 		Permissions:        p.Permissions,
-		Owns:               current.ID == g.Owner.ID,
 		Revisions:          p.Revisions,
 		TitleRevisions:     p.TitleRevisions,
 		Ownership:          p.Ownership,
@@ -111,7 +101,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		HealthStrip:        p.HealthStrip,
 		RunOffGreen:        p.RunOffGreen,
 		Suggestions:        p.Suggestions,
-		Suggested:          suggested,
+		Suggested:          p.OpenSuggestions,
 		Nudges:             p.Nudges,
 		LinkEvents:         p.LinkEvents,
 		MilestoneAdditions: p.MilestoneAdditions,
@@ -183,9 +173,6 @@ type goalView struct {
 	Values      []domain.DimensionValue
 	Fields      []domain.Field
 	FieldValues []domain.FieldValue
-	// Owns says whether the viewer is the Goal's Owner, who decides its
-	// Parent suggestions rather than making them.
-	Owns bool
 	// Open is the one form the page shows open in place, from its ?open=
 	// address, or "" for none. FormError is why that form's last submit was
 	// refused and FormInput what it sent, so it comes back as it was left.
@@ -237,8 +224,9 @@ type goalView struct {
 	HealthStrip domain.HealthStrip
 	// Suggestions are every Parent suggestion made for the Goal with its
 	// outcome, oldest first, for its History. Suggested are the open ones the
-	// viewer is shown under Suggested parents: all of them for the Owner, who
-	// decides them, and their own for anyone else, to withdraw.
+	// viewer is shown under Suggested parents, as the domain lists them
+	// (domain.GoalPage.OpenSuggestions): all of them for one who may decide
+	// them, and their own for anyone else, to withdraw.
 	Suggestions []domain.ParentSuggestion
 	Suggested   []domain.ParentSuggestion
 	// Nudges are every Nudge of the Goal, oldest first, for its History.
@@ -412,32 +400,30 @@ func (v goalView) actions() []goalAction {
 	return append(out, v.lifecycleActions()...)
 }
 
-// lifecycleActions are the action menu's Lifecycle changes, for whoever may
-// check in: an Active Goal may go On Hold, be marked Done or be Cancelled, and
-// an On Hold one be Cancelled (resuming is its Check-in's default). Each leads
-// to the Check-in page with that change picked, for a Lifecycle change is made
-// in a Check-in (CONTEXT.md: Lifecycle).
+// lifecycleActions are the action menu's Lifecycle changes: each one a
+// Check-in may make (domain.CheckinPermissions.LifecycleChanges) but the one
+// the Check-in form picks by default, resuming an On Hold Goal. Each leads to
+// the Check-in page with that change picked, for a Lifecycle change is made in
+// a Check-in (CONTEXT.md: Lifecycle).
 func (v goalView) lifecycleActions() []goalAction {
-	if !v.CanCheckin {
-		return nil
-	}
-	type change struct{ label, to string }
-	var changes []change
-	switch v.Goal.Lifecycle {
-	case domain.LifecycleActive:
-		changes = []change{
-			{"Put on hold…", domain.LifecycleOnHold},
-			{"Mark done…", domain.LifecycleDone},
-			{"Cancel…", domain.LifecycleCancelled},
+	l := lifecycleFormOf(v.Goal.Lifecycle, v.Permissions.CheckinPermissions)
+	out := make([]goalAction, 0, len(l.Changes))
+	for _, to := range l.Changes {
+		if to == l.defaultTo() {
+			continue
 		}
-	case domain.LifecycleOnHold:
-		changes = []change{{"Cancel…", domain.LifecycleCancelled}}
-	}
-	out := make([]goalAction, 0, len(changes))
-	for _, c := range changes {
-		out = append(out, goalAction{c.label, templ.SafeURL(fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", v.Goal.ID, url.QueryEscape(c.to)))})
+		out = append(out, goalAction{lifecycleActionLabels[to], templ.SafeURL(fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", v.Goal.ID, url.QueryEscape(to)))})
 	}
 	return out
+}
+
+// lifecycleActionLabels are the action menu's labels for the Lifecycle
+// changes, by the Lifecycle each moves the Goal to.
+var lifecycleActionLabels = map[string]string{
+	domain.LifecycleActive:    "Resume…",
+	domain.LifecycleOnHold:    "Put on hold…",
+	domain.LifecycleDone:      "Mark done…",
+	domain.LifecycleCancelled: "Cancel…",
 }
 
 // openActionItems are the Goal's open Action Items, soonest due first, as its

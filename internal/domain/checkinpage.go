@@ -20,6 +20,9 @@ type CheckinPage struct {
 	// Viewer.
 	Viewer     Account
 	CanCheckin bool
+	// Permissions are what they may do with its Check-ins now, as the Goal
+	// page's Permissions say.
+	Permissions CheckinPermissions
 	// Children are the Goal's accepted children (ChildLinks), for the
 	// "Contributed to by" rail, and LinkHealth the Health of each Active one's
 	// latest Check-in, keyed by Goal ID; one with no Check-in has no entry.
@@ -74,7 +77,11 @@ func (s *Service) CheckinPage(ctx context.Context, actorID, goalID int64) (Check
 	if err != nil {
 		return CheckinPage{}, err
 	}
-	if p.CanCheckin, err = s.permitCheckinPage(ctx, &p, actorID, account); err != nil || !p.CanCheckin {
+	actor, err := s.checkinPageActor(ctx, &p, actorID, account)
+	if err != nil {
+		return CheckinPage{}, err
+	}
+	if p.CanCheckin, err = goalPagePermits(checkinAuthorRuleRefusal(actor, g)); err != nil || !p.CanCheckin {
 		return p, err
 	}
 	if err := s.readCheckinPageLinks(ctx, &p); err != nil {
@@ -105,26 +112,48 @@ func (s *Service) CheckinPage(ctx context.Context, actorID, goalID int64) (Check
 	if g.Lifecycle == LifecycleActive && p.LatestCheckin != nil {
 		p.NoChangeRefusal = noChange.refusal
 	}
+	var failed error
+	p.Permissions = permitCheckins(actor, g, noChange, func(refusal error) bool {
+		ok, err := goalPagePermits(refusal)
+		if err != nil && failed == nil {
+			failed = err
+		}
+		return ok
+	})
+	if failed != nil {
+		return CheckinPage{}, failed
+	}
 	return p, nil
 }
 
-// permitCheckinPage reports whether actorID may write p.Goal's Check-ins, by
-// the rule SubmitCheckin applies, looked up through account, and records who
-// they are on p. A Delegate is looked up only for someone not its Owner.
-func (s *Service) permitCheckinPage(ctx context.Context, p *CheckinPage, actorID int64, account func(id int64) (Account, error)) (bool, error) {
+// checkinPageActor is actorID as the Goal rules judge them on p.Goal, looked
+// up through account, and records who they are on p. Whether they are a
+// Delegate is looked up once, only when a rule asks: for someone not its
+// Owner.
+func (s *Service) checkinPageActor(ctx context.Context, p *CheckinPage, actorID int64, account func(id int64) (Account, error)) (goalActor, error) {
 	viewer, err := account(actorID)
+	found := err == nil
 	switch {
 	case errors.Is(err, ErrNotFound):
-		return false, nil
 	case err != nil:
-		return false, err
+		return goalActor{}, err
 	}
 	p.Viewer = viewer
-	return goalPagePermits(checkinAuthorRuleRefusal(goalActor{
-		id:       actorID,
-		account:  func() (Account, bool, error) { return viewer, true, nil },
-		delegate: func() (bool, error) { return s.isDelegate(ctx, p.Goal.ID, actorID) },
-	}, p.Goal))
+	var delegate *bool
+	return goalActor{
+		id:      actorID,
+		account: func() (Account, bool, error) { return viewer, found, nil },
+		delegate: func() (bool, error) {
+			if delegate == nil {
+				ok, err := s.isDelegate(ctx, p.Goal.ID, actorID)
+				if err != nil {
+					return false, err
+				}
+				delegate = &ok
+			}
+			return *delegate, nil
+		},
+	}, nil
 }
 
 // readCheckinPageLinks reads p.Goal's children and, in one read, its latest

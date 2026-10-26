@@ -42,9 +42,9 @@ type checkinView struct {
 }
 
 // checksIn reports whether the page offers the form: the viewer may check in
-// and the Goal takes Check-ins now, as domain.GoalPermissions.CheckIn says.
+// and the Goal takes Check-ins now, as domain.CheckinPermissions.CheckIn says.
 func (v checkinView) checksIn() bool {
-	return v.CanCheckin && domain.LifecycleTakesCheckins(v.Goal.Lifecycle)
+	return v.Permissions.CheckIn
 }
 
 // checkinView reads the Check-in page for goalID as current sees it, through
@@ -95,15 +95,11 @@ func (s *Server) noChangeSentence(refusal error) (string, error) {
 }
 
 // lifecycleFromQuery is the Lifecycle change the Goal page's menu picked for the
-// Check-in (?lifecycle=), when the form offers it from the Goal's current
-// Lifecycle and it isn't the form's default. Anything else is ignored, so the
-// form opens as it would without it.
+// Check-in (?lifecycle=), when the form offers it and it isn't the form's
+// default. Anything else is ignored, so the form opens as it would without it.
 func lifecycleFromQuery(r *http.Request, l lifecycleFormData) (string, bool) {
 	to := r.URL.Query().Get("lifecycle")
 	if to == "" || to == l.defaultTo() {
-		return "", false
-	}
-	if !domain.LifecycleTakesCheckins(l.Current) {
 		return "", false
 	}
 	for _, c := range l.choices() {
@@ -157,7 +153,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// Values the reader typed, kept so an error re-render shows them again.
 	rawReadings := rawReadingsFromForm(r, metrics)
 	dates := datesFromForm(r, view.Goal, view.Milestones)
-	lifecycle := lifecycleFromForm(r, view.Goal)
+	lifecycle := lifecycleFromForm(r, view)
 
 	// An error from reading the form already names its field; the domain's
 	// name theirs (see checkinErrorField) and read as a sentence, without the
@@ -390,14 +386,13 @@ func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 
 // lifecycleFromForm reads the Check-in's Lifecycle fields: the Lifecycle to move
 // the Goal to (empty to leave it alone), and the reason or outcome that change
-// needs. Current is the Goal's Lifecycle, which decides the choices offered.
-func lifecycleFromForm(r *http.Request, goal domain.Goal) lifecycleFormData {
-	return lifecycleFormData{
-		Current: goal.Lifecycle,
-		To:      r.FormValue("lifecycle"),
-		Reason:  r.FormValue("lifecycle_reason"),
-		Outcome: r.FormValue("outcome"),
-	}
+// needs, with the choices the page's permissions offer.
+func lifecycleFromForm(r *http.Request, v checkinView) lifecycleFormData {
+	l := lifecycleFormOf(v.Goal.Lifecycle, v.Permissions)
+	l.To = r.FormValue("lifecycle")
+	l.Reason = r.FormValue("lifecycle_reason")
+	l.Outcome = r.FormValue("outcome")
+	return l
 }
 
 // highlightsFromForm reads the Highlight rows as typed (highlight_kind and

@@ -753,7 +753,6 @@ templ goalsStyles() {
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
-	{{ owner := current != nil && current.ID == g.Owner.ID }}
 	@framedLayout(g.Title, current, goalPageHeader(v)) {
 		@goalPageStyles()
 		<div class="gp-frame">
@@ -775,7 +774,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					@checkinSection(v)
 					<section data-testid="goal-metrics" class="gp-block gp-section">
 						<h2>Metrics</h2>
-						@metricList(v.Trends, owner, v.dates())
+						@metricList(v.Trends, v.Permissions.EditMetrics, v.dates())
 					</section>
 					<section data-testid="goal-milestones" class="gp-block gp-section gp-milestones">
 						@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
@@ -838,7 +837,7 @@ templ goalPageHeader(v goalView) {
 		<div data-testid="goal-actions" class="ph-actions gp-actions">
 			if v.Permissions.CheckIn {
 				<a class="btn primary sm" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
-				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
+				if v.Permissions.NoChange {
 					@noChangeCheckinButton(g.ID, "No change", "btn quiet sm")
 				}
 			}
@@ -1600,9 +1599,9 @@ templ slippedDates(current time.Time, prior []time.Time, dates displayDates, cou
 // metricList shows each of a Goal's Metrics as a row: its name over its
 // baseline and target, its trend over time against the target as a sparkline,
 // and its current value in tabular figures (CONTEXT.md: the Goal page shows
-// each Metric's trend); its readings and, for the Owner, its edit form fold
-// under it.
-templ metricList(trends []metricTrend, owner bool, dates displayDates) {
+// each Metric's trend); its readings and, for whoever may edit it, its edit
+// form fold under it.
+templ metricList(trends []metricTrend, editable bool, dates displayDates) {
 	if len(trends) == 0 {
 		<p data-testid="no-metrics" class="muted">No Metrics yet.</p>
 	}
@@ -1626,7 +1625,7 @@ templ metricList(trends []metricTrend, owner bool, dates displayDates) {
 				}
 			</p>
 			@metricTrendReadings(t, dates)
-			if owner {
+			if editable {
 				<details data-testid="metric-edit" class="gp-edit">
 					<summary class="small">Edit Metric</summary>
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) }>

@@ -93,14 +93,22 @@ type checkinError struct {
 }
 
 // lifecycleFormData is the Check-in form's Lifecycle fields as typed. Current is
-// the Goal's Lifecycle: an Active Goal may go On Hold, be marked Done, or be
-// Cancelled; an On Hold Goal may be resumed or Cancelled. To is empty to leave
-// the Lifecycle alone.
+// the Goal's Lifecycle; Keep says whether the Check-in may leave it as it is,
+// and Changes are the Lifecycles it may move it to, as the domain says
+// (domain.CheckinPermissions). To is empty to leave the Lifecycle alone.
 type lifecycleFormData struct {
 	Current string
+	Keep    bool
+	Changes []string
 	To      string
 	Reason  string
 	Outcome string
+}
+
+// lifecycleFormOf is the Lifecycle fields, nothing picked or typed, for a
+// Goal in current whose Check-ins the viewer may make as perms says.
+func lifecycleFormOf(current string, perms domain.CheckinPermissions) lifecycleFormData {
+	return lifecycleFormData{Current: current, Keep: perms.KeepLifecycle, Changes: perms.LifecycleChanges}
 }
 
 // checkinDatesFormData is the Check-in form's date and Milestone fields as
@@ -365,31 +373,69 @@ type lifecycleChoice struct {
 	Label string
 }
 
-// choices are the Lifecycles the form offers from the Goal's current one: an
-// Active Goal may stay Active, go On Hold, be marked Done, or be Cancelled; an
-// On Hold Goal may be resumed or Cancelled.
+// choices are the Lifecycles the form offers: keeping the Goal's current one,
+// where the Check-in may, then each it may move the Goal to.
 func (d lifecycleFormData) choices() []lifecycleChoice {
-	if d.Current == domain.LifecycleOnHold {
-		return []lifecycleChoice{
-			{domain.LifecycleActive, "Resume (Active)"},
-			{domain.LifecycleCancelled, "Cancel"},
-		}
+	var out []lifecycleChoice
+	if d.Keep {
+		out = append(out, lifecycleChoice{"", "Keep " + d.Current})
 	}
-	return []lifecycleChoice{
-		{"", "Keep Active"},
-		{domain.LifecycleOnHold, "Put On Hold"},
-		{domain.LifecycleDone, "Mark Done"},
-		{domain.LifecycleCancelled, "Cancel"},
+	for _, to := range d.Changes {
+		out = append(out, lifecycleChoice{to, lifecycleChoiceLabels[to]})
 	}
+	return out
 }
 
-// defaultTo is the Lifecycle the form picks by default: leave an Active Goal
-// alone, resume an On Hold one.
+// lifecycleChoiceLabels are the form's labels for the Lifecycle changes, by
+// the Lifecycle each moves the Goal to, and lifecycleChangeVerbs what each
+// does to it, for the section's button and summary.
+var (
+	lifecycleChoiceLabels = map[string]string{
+		domain.LifecycleActive:    "Resume (Active)",
+		domain.LifecycleOnHold:    "Put On Hold",
+		domain.LifecycleDone:      "Mark Done",
+		domain.LifecycleCancelled: "Cancel",
+	}
+	lifecycleChangeVerbs = map[string]string{
+		domain.LifecycleActive:    "resume",
+		domain.LifecycleOnHold:    "pause",
+		domain.LifecycleDone:      "finish",
+		domain.LifecycleCancelled: "cancel",
+	}
+)
+
+// defaultTo is the Lifecycle the form picks by default: leave the Goal's
+// alone where the Check-in may, and otherwise resume it where it may be
+// resumed, the common case.
 func (d lifecycleFormData) defaultTo() string {
-	if d.Current == domain.LifecycleOnHold {
+	if !d.Keep && slices.Contains(d.Changes, domain.LifecycleActive) {
 		return domain.LifecycleActive
 	}
 	return ""
+}
+
+// changeVerbs names what the Lifecycle changes on offer do, in order and
+// joined by "or", with a comma before it when serial ("pause, finish, or
+// cancel"), and capitalized.
+func (d lifecycleFormData) changeVerbs(serial bool) string {
+	verbs := make([]string, 0, len(d.Changes))
+	for _, to := range d.Changes {
+		verbs = append(verbs, lifecycleChangeVerbs[to])
+	}
+	var out string
+	switch n := len(verbs); n {
+	case 0:
+		return ""
+	case 1:
+		out = verbs[0]
+	default:
+		sep := " or "
+		if serial && n > 2 {
+			sep = ", or "
+		}
+		out = strings.Join(verbs[:n-1], ", ") + sep + verbs[n-1]
+	}
+	return strings.ToUpper(out[:1]) + out[1:]
 }
 
 // lifecycleOpen reports whether the Lifecycle section renders open: it holds
@@ -404,21 +450,16 @@ func (d checkinFormData) lifecycleOpen() bool {
 // addLabel is the Check-in page's add bar button that opens the Lifecycle
 // section, naming what the section offers.
 func (d lifecycleFormData) addLabel() string {
-	if d.Current == domain.LifecycleOnHold {
-		return "Resume or cancel"
-	}
-	return "Pause, finish or cancel"
+	return d.changeVerbs(false)
 }
 
-// summary is the Lifecycle section's summary line, naming the change picked.
+// summary is the Lifecycle section's summary line, naming what the section
+// offers and the change picked.
 func (d lifecycleFormData) summary() string {
-	title := "Pause, finish, or cancel this goal"
-	if d.Current == domain.LifecycleOnHold {
-		title = "Resume or cancel this goal"
-	}
+	title := d.changeVerbs(true) + " this goal"
 	switch d.To {
 	case "":
-		return title + " · stays Active"
+		return title + " · stays " + d.Current
 	case domain.LifecycleActive:
 		return title + " · resumes"
 	default:
@@ -450,12 +491,10 @@ func checkinFormFromLatest(v checkinView) checkinFormData {
 		d.Health = ""
 	}
 	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)
-	d.Lifecycle.Current = g.Lifecycle
-	if g.Lifecycle == domain.LifecycleOnHold {
-		// An On Hold Goal's Check-in resumes or Cancels it; resuming is the
-		// common case, so it is preselected.
-		d.Lifecycle.To = domain.LifecycleActive
-	}
+	// An On Hold Goal's Check-in resumes or Cancels it; resuming is the
+	// common case, so it is preselected.
+	d.Lifecycle = lifecycleFormOf(g.Lifecycle, v.Permissions)
+	d.Lifecycle.To = d.Lifecycle.defaultTo()
 	d.Dates.Dated = g.Kind == domain.GoalDated
 	d.Dates.DeliveryDate = fmtDate(g.DeliveryDate)
 	d.Dates.CurrentDeliveryDate = d.Dates.DeliveryDate
@@ -649,10 +688,10 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 		<div class="checkin-page">
 			<div class="checkin-head">
 				<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
-				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+				if v.Permissions.NoChange || v.NoChangeReason != "" {
 					<div data-testid="no-change-card" class="checkin-no-change">
 						<span class="muted">{ "Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
-						if v.NoChangeReason == "" {
+						if v.Permissions.NoChange {
 							@noChangeCheckinButton(g.ID, "No change", "btn")
 						} else if form.Error.Message == "" || form.Error.Field != "" {
 							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeReason }</p>
@@ -1477,7 +1516,7 @@ templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 			<textarea name="lifecycle_reason">{ d.Reason }</textarea>
 		</label>
 		@checkinFieldError(e, "lifecycle_reason")
-		if d.Current != domain.LifecycleOnHold {
+		if slices.Contains(d.Changes, domain.LifecycleDone) {
 			<label>
 				Outcome, in one line (required for Done, with a final value for every Metric)
 				<input type="text" name="outcome" value={ d.Outcome }/>

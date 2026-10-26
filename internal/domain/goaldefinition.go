@@ -128,6 +128,22 @@ func unparsedRefusal(unparsed []*InputError) error {
 	return withUnparsed(nil, unparsed)
 }
 
+// DefinableGoal is the Goal goalID for its define page, when actorID may
+// define it by DefineGoal's rule: its Owner, while it is Proposed. Anyone else
+// is refused with ErrNotAuthorized, and the Owner once it is no longer
+// Proposed with ErrValidation; a missing Goal is ErrNotFound. DefineGoal asks
+// the rule again, inside its transaction.
+func (s *Service) DefinableGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
+	g, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return Goal{}, err
+	}
+	if err := defineGoalRefusal(s.goalActorFor(ctx, actorID, goalID), g); err != nil {
+		return Goal{}, err
+	}
+	return g, nil
+}
+
 // DefineGoal finishes defining a Proposed Goal, as the New goal form shows it
 // again, with CreateDefinedGoal's input, input names and rules for refusing
 // it: every input is checked before anything is written, every problem comes
