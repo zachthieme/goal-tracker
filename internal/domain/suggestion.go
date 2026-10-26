@@ -62,11 +62,8 @@ func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID i
 			}
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if goal.Goal.OwnerID == actorID {
-			return Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
-		}
-		if !suggestable(goal.Goal.Lifecycle) {
-			return Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")
+		if err := suggestParentRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
+			return err
 		}
 		if parentID == goalID {
 			return Refuse(ErrValidation, "a Goal cannot contribute to itself")
@@ -293,8 +290,8 @@ func (s *Service) openSuggestionForOwner(ctx context.Context, actorID, suggestio
 	if err != nil {
 		return ParentSuggestion{}, err
 	}
-	if p.Goal.Owner.ID != actorID {
-		return ParentSuggestion{}, Refuse(ErrNotAuthorized, "only the Goal's Owner may decide a parent suggestion")
+	if err := decideSuggestionRefusal(s.goalActorFor(ctx, actorID, p.Goal.ID), p.Goal); err != nil {
+		return ParentSuggestion{}, err
 	}
 	if p.Status != SuggestionOpen {
 		return ParentSuggestion{}, errSuggestionClosed

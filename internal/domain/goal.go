@@ -263,15 +263,12 @@ func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) (
 // standard is checked. The checks and the write run in one transaction.
 func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
-			return err
-		}
 		g, err := tx.loadGoal(ctx, goalID)
 		if err != nil {
 			return err
 		}
-		if g.Lifecycle != LifecycleProposed {
-			return Refuse(ErrValidation, "%s is %s, so it can't be activated", g.Title, g.Lifecycle)
+		if err := activateGoalRefusal(tx.goalActorFor(ctx, actorID, goalID), g); err != nil {
+			return err
 		}
 		if err := tx.requireActivationStandard(ctx, g); err != nil {
 			return err
@@ -434,18 +431,14 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 }
 
 // RequireGoalOwner returns ErrNotAuthorized unless actorID is the Goal's Owner
-// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The
-// commands only the Owner may make — MarkGoalDated, SetCadence, AddMetric and
-// the like — check it for themselves, as DefineGoal does.
+// (a Delegate and an Admin are refused too), or the Admin whose import created
+// it, by goalOwnerRefusal; ErrNotFound if no such Goal exists. The commands
+// only the Owner may make — MarkGoalDated, SetCadence, AddContributor and the
+// like — check it for themselves, inside their transaction.
 func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
-	g, err := s.loadGoal(ctx, goalID)
-	if err != nil {
-		return err
-	}
-	if g.Owner.ID != actorID {
-		return Refuse(ErrNotAuthorized, "only the Goal's Owner may change it")
-	}
-	return nil
+	return s.goalRule(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+		return goalOwnerRefusal(a, g, "change it")
+	})
 }
 
 // MarkGoalDated marks the Goal as Dated with the given delivery date, against
@@ -454,7 +447,7 @@ func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) e
 // (ErrNotAuthorized).
 func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deliveryDate time.Time) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
 			return err
 		}
 		if deliveryDate.IsZero() {
@@ -483,7 +476,7 @@ func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deli
 // Goal's Owner may set it (ErrNotAuthorized).
 func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days int) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
 			return err
 		}
 		if days <= 0 {
@@ -516,7 +509,7 @@ func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID
 			}
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
 			return err
 		}
 		if _, err := tx.queries.GetAccount(ctx, accountID); err != nil {
@@ -550,7 +543,7 @@ func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID
 // tool identifies people by email (CONTEXT.md: development sign-in by email). An
 // email with no account is rejected, as is anyone but the Goal's Owner.
 func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int64, email string) error {
-	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+	if err := s.RequireGoalOwner(ctx, actorID, goalID); err != nil {
 		return err
 	}
 	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
@@ -582,7 +575,7 @@ func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account
 // Only the Goal's Owner may mark it (ErrNotAuthorized).
 func (s *Service) MarkGoalOngoing(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
 			return err
 		}
 		if err := tx.requireProposedToSetDelivery(ctx, goalID); err != nil {

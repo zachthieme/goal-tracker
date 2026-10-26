@@ -81,8 +81,8 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 		return Link{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 
-	if child.Goal.OwnerID != in.RequesterID {
-		return Link{}, Refuse(ErrNotAuthorized, "only the child's Owner may request a link")
+	if err := goalOwnerRefusal(s.goalActorFor(ctx, in.RequesterID, in.ChildID), goalFromRow(child.Goal, child.Account), "link it to a parent"); err != nil {
+		return Link{}, err
 	}
 
 	status := LinkPending

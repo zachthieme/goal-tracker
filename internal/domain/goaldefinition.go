@@ -146,11 +146,8 @@ func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in Defi
 		if err != nil {
 			return err
 		}
-		if current.Owner.ID != actorID {
-			return Refuse(ErrNotAuthorized, "only the Goal's Owner may define it")
-		}
-		if current.Lifecycle != LifecycleProposed {
-			return Refuse(ErrValidation, "%s is %s, so it is no longer defined here", current.Title, current.Lifecycle)
+		if err := defineGoalRefusal(tx.goalActorFor(ctx, actorID, goalID), current); err != nil {
+			return err
 		}
 		carried, err := tx.GoalValues(ctx, goalID)
 		if err != nil {

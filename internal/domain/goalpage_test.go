@@ -91,10 +91,9 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 // author may, set values and suggest a parent, an Admin set values, edit, hand
 // off, mark the Owner departed, mark Top-level and suggest a parent, and a
 // reader suggest a parent. Only while the Goal is Proposed may its Owner
-// define it, and its Owner and Delegates edit its Milestones, and no one checks
-// in on it yet. Once the
-// Goal is Done no one may check in, add a Milestone, log a Draft Highlight or
-// suggest a parent, the Owner included.
+// define and activate it, and its Owner and Delegates edit its Milestones, and
+// no one checks in on it yet. Once the Goal is Done no one may check in, add a
+// Milestone, log a Draft Highlight or suggest a parent, the Owner included.
 func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -111,13 +110,14 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	}
 	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 
+	changes := []string{domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled}
 	owner := domain.GoalPermissions{
-		CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
-		AddContributor: true, ManageDelegates: true, LinkParent: true,
+		CheckIn: true, LifecycleChanges: changes, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		AddContributor: true, ManageDelegates: true, LinkParent: true, EditMetrics: true, DecideSuggestions: true,
 		EditTitleAndWhyItMatters: true, HandOff: true,
 	}
 	delegate := domain.GoalPermissions{
-		CheckIn: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		CheckIn: true, LifecycleChanges: changes, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
 		SuggestParent: true,
 	}
 	anAdmin := domain.GoalPermissions{
@@ -126,12 +126,12 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	}
 	reader := domain.GoalPermissions{SuggestParent: true}
 	ownerOfProposed := owner
-	ownerOfProposed.CheckIn = false
-	ownerOfProposed.DefineGoal, ownerOfProposed.EditMilestones = true, true
+	ownerOfProposed.CheckIn, ownerOfProposed.LifecycleChanges = false, nil
+	ownerOfProposed.DefineGoal, ownerOfProposed.Activate, ownerOfProposed.EditMilestones = true, true, true
 	delegateOnProposed := delegate
-	delegateOnProposed.CheckIn, delegateOnProposed.EditMilestones = false, true
+	delegateOnProposed.CheckIn, delegateOnProposed.LifecycleChanges, delegateOnProposed.EditMilestones = false, nil, true
 	ownerOfDone := owner
-	ownerOfDone.CheckIn, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, false, false
+	ownerOfDone.CheckIn, ownerOfDone.LifecycleChanges, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, nil, false, false
 	adminOnDone := anAdmin
 	adminOnDone.SuggestParent = false
 	for _, v := range []struct {
@@ -157,7 +157,7 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GoalPage for %s: %v", v.name, err)
 		}
-		if p.Permissions != v.want {
+		if !reflect.DeepEqual(p.Permissions, v.want) {
 			t.Errorf("Permissions for %s = %+v, want %+v", v.name, p.Permissions, v.want)
 		}
 	}
@@ -182,7 +182,7 @@ func TestGoalPagePermitsAnAdminToReassignAnOwnerlessGoal(t *testing.T) {
 		SetValues: true, EditTitleAndWhyItMatters: true, Reassign: true,
 		MarkOwnerReturned: true, MarkTopLevel: true, SuggestParent: true,
 	}
-	if p.Permissions != want {
+	if !reflect.DeepEqual(p.Permissions, want) {
 		t.Errorf("Permissions for an Admin on an Ownerless Goal = %+v, want %+v", p.Permissions, want)
 	}
 }
@@ -209,7 +209,7 @@ func TestGoalPagePermitsNothingToAViewerWithNoAccount(t *testing.T) {
 	if p.CanCheckin {
 		t.Errorf("CanCheckin for a viewer with no Account = true, want false")
 	}
-	if p.Permissions != (domain.GoalPermissions{}) {
+	if !reflect.DeepEqual(p.Permissions, domain.GoalPermissions{}) {
 		t.Errorf("Permissions for a viewer with no Account = %+v, want none", p.Permissions)
 	}
 	if len(p.DraftHighlights) != 0 {

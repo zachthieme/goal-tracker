@@ -84,17 +84,12 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, fmt.Errorf("look up goal: %w", err)
 	}
 
+	if err := handoffRefusal(s.goalActorFor(ctx, in.ActorID, in.GoalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
+		return Handoff{}, err
+	}
 	actor, err := s.queries.GetAccount(ctx, in.ActorID)
 	if err != nil {
 		return Handoff{}, fmt.Errorf("look up actor: %w", err)
-	}
-	if goal.Goal.OwnerID != in.ActorID && actor.IsAdmin == 0 {
-		return Handoff{}, Refuse(ErrNotAuthorized, "only the Owner or an Admin may start a Handoff")
-	}
-	// An Ownerless Goal is resolved by Reassign, or by accepting a Handoff its
-	// Owner started before leaving (CONTEXT.md: Ownerless), not a new Handoff.
-	if goal.Account.Departed != 0 {
-		return Handoff{}, Refuse(ErrValidation, "this Goal is Ownerless: reassign it instead")
 	}
 
 	if in.ToOwnerID == goal.Goal.OwnerID {
@@ -406,9 +401,6 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 
 // reassignGoal is ReassignGoal's checks and writes, run inside its transaction.
 func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -416,8 +408,8 @@ func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 		}
 		return fmt.Errorf("look up goal: %w", err)
 	}
-	if goal.Account.Departed == 0 {
-		return Refuse(ErrValidation, "only an Ownerless Goal is reassigned; hand off a Goal with a present Owner")
+	if err := reassignRefusal(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account)); err != nil {
+		return err
 	}
 	newOwner, err := s.queries.GetAccount(ctx, newOwnerID)
 	if err != nil {
