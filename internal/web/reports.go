@@ -103,46 +103,26 @@ type reportDraftView struct {
 }
 
 // reportDraftView reads def's draft page as current sees it, against
-// baseline (zero for the default), its forms coming back to back. The
-// compose form shows the narrative as saved, and the save status says
-// nothing.
+// baseline (zero for the default), through its loader, once (ADR 0010). Its
+// forms come back to back. The compose form shows the narrative as saved, and
+// the save status says nothing.
 func (s *Server) reportDraftView(r *http.Request, current domain.Account, def domain.ReportDefinition, baseline time.Time, back string) (reportDraftView, error) {
-	report, err := s.svc.DraftReport(r.Context(), def, baseline)
+	p, err := s.svc.ReportDraftPage(r.Context(), current.ID, def, baseline)
 	if err != nil {
-		return reportDraftView{}, fmt.Errorf("build the draft: %w", err)
+		return reportDraftView{}, err
 	}
-	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
-	if err != nil {
-		return reportDraftView{}, fmt.Errorf("load publications: %w", err)
-	}
-	d, err := s.draftDiscussion(r, current, def.ID)
-	if err != nil {
-		return reportDraftView{}, fmt.Errorf("load Action Items: %w", err)
-	}
-	d.Return = back
-	m, err := s.reportManagement(r, current, def)
-	if err != nil {
-		return reportDraftView{}, fmt.Errorf("load Report Delegates: %w", err)
-	}
-	panel, err := s.draftGoalsPanel(r, report, m)
-	if err != nil {
-		return reportDraftView{}, fmt.Errorf("summarise the report: %w", err)
-	}
-	log, err := s.svc.ReportLog(r.Context(), def.ID)
-	if err != nil {
-		return reportDraftView{}, fmt.Errorf("load the Report log: %w", err)
-	}
-	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+	m := newReportManagement(def, p.Permissions)
+	chip := newBaselineChip(p.Report, r.URL.Query().Get("baseline") != "", len(p.Publications) > 0, s.svc.Now(), s.svc.Timezone())
 	return reportDraftView{
-		Report:     report,
+		Report:     p.Report,
 		AsOf:       s.svc.Now(),
-		Discussion: d,
+		Discussion: s.draftDiscussion(current, p.Report.ActionItems, p.ActionItemPermissions, back),
 		Loc:        s.svc.Timezone(),
 		Chip:       chip,
-		Panel:      panel,
+		Panel:      draftGoalsPanel(def, p.Scope, m),
 		Management: m,
-		History:    draftHistory(pubs, log),
-		Form:       savedNarrativeForm(report, chip),
+		History:    draftHistory(p.Publications, p.Log),
+		Form:       savedNarrativeForm(p.Report, chip),
 	}, nil
 }
 
@@ -217,19 +197,15 @@ type reportManagement struct {
 	Refused string
 }
 
-// reportManagement is what current may do to def, as its draft page offers it
-// (domain.ReportPermissions).
-func (s *Server) reportManagement(r *http.Request, current domain.Account, def domain.ReportDefinition) (reportManagement, error) {
-	p, err := s.svc.ReportPermissions(r.Context(), current.ID, def)
-	if err != nil {
-		return reportManagement{}, err
-	}
+// newReportManagement is what p, the viewer's permissions on def, let them do
+// to it, as its draft page offers it.
+func newReportManagement(def domain.ReportDefinition, p domain.ReportPermissions) reportManagement {
 	return reportManagement{
 		DefID:           def.ID,
 		Manage:          p.Manage,
 		ManageDelegates: p.ManageDelegates,
 		Delegates:       p.Delegates,
-	}, nil
+	}
 }
 
 // handleEditReportForm shows the builder filled with the saved Report
@@ -314,18 +290,14 @@ type goalsPanel struct {
 	Edit  string
 }
 
-// draftGoalsPanel says what the draft report's definition selects, linking to
-// Edit definition for a reader m lets manage it.
-func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report, m reportManagement) (goalsPanel, error) {
-	sum, err := s.svc.SummarizeReport(r.Context(), report)
-	if err != nil {
-		return goalsPanel{}, err
-	}
-	panel := goalsPanel{Scope: sum.Scope}
+// draftGoalsPanel says what def selects, scope, linking to Edit definition
+// for a reader m lets manage it.
+func draftGoalsPanel(def domain.ReportDefinition, scope string, m reportManagement) goalsPanel {
+	panel := goalsPanel{Scope: scope}
 	if m.Manage {
-		panel.Edit = "/reports/" + strconv.FormatInt(report.Definition.ID, 10) + "/edit"
+		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
 	}
-	return panel, nil
+	return panel
 }
 
 // baselineChip is the draft header's "Changes since …" menu, and the baseline
