@@ -82,6 +82,7 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 									</td>
 									<td class="ad-action">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", a.ID)) } onsubmit={ confirmScript(confirmReturnPerson) }>
+											<input type="hidden" name="return" value="/admin"/>
 											<button type="submit" class="btn sm">Mark returned…</button>
 										</form>
 									</td>

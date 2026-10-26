@@ -1239,6 +1239,7 @@ templ ownerForms(v goalView) {
 				{ "has left the company." }
 			</p>
 			<form data-testid="depart-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
+				<input type="hidden" name="return" value={ goalPath(g.ID) }/>
 				<button type="submit" class="btn danger" autofocus>
 					{ "Mark " }
 					@personPlain(g.Owner)
@@ -1254,6 +1255,7 @@ templ ownerForms(v goalView) {
 				{ "is back in the company." }
 			</p>
 			<form data-testid="return-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
+				<input type="hidden" name="return" value={ goalPath(g.ID) }/>
 				<button type="submit" class="btn" autofocus>
 					{ "Mark " }
 					@personPlain(g.Owner)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -122,7 +121,8 @@ func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, cur
 }
 
 // handleDepartAccount marks the Account in the path as departed, making the Goals
-// they still own Ownerless. Only an Admin may.
+// they still own Ownerless, and comes back to the form's return, or else
+// /goals. Only an Admin may.
 func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -133,12 +133,12 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		s.writeHandoffError(w, r, "Can't mark departed", "/home", err)
 		return
 	}
-	redirectBack(w, r)
+	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
 }
 
 // handleReturnAccount reverses the departure of the Account in the path, so the
-// Goals they still own stop being Ownerless and they can sign in again. Only an
-// Admin may.
+// Goals they still own stop being Ownerless and they can sign in again, and
+// comes back to the form's return, or else /goals. Only an Admin may.
 func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -149,7 +149,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 		s.writeHandoffError(w, r, "Can't mark returned", "/home", err)
 		return
 	}
-	redirectBack(w, r)
+	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
 }
 
 // handleReassignGoal reassigns an Ownerless Goal to the Account named by email.
@@ -176,23 +176,6 @@ func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goa
 		return
 	}
 	s.writeHandoffError(w, r, refused, goalPath(goalID), err)
-}
-
-// redirectBack returns to wherever an action was triggered, usually a Goal page.
-// It keeps only the Referer's path and query, and only when localPath accepts
-// them, so it never leaves the app; otherwise it goes to /goals.
-func redirectBack(w http.ResponseWriter, r *http.Request) {
-	target := "/goals"
-	if ref, err := url.Parse(r.Header.Get("Referer")); err == nil {
-		back := ref.EscapedPath()
-		if ref.RawQuery != "" {
-			back += "?" + ref.RawQuery
-		}
-		if localPath(back) {
-			target = back
-		}
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
