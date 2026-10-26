@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -346,6 +347,64 @@ func TestOppositeLinksAcceptedTogetherNeverMakeACycle(t *testing.T) {
 		}
 		return accept(ab.ID, ben.ID), accept(ba.ID, ana.ID)
 	})
+}
+
+// The parent's Owner accepting and rejecting one request at the same moment,
+// as two tabs might: only one decision is kept, and the other is told why.
+// Either the link is accepted with no rejection recorded, or it is rejected
+// with no link left behind.
+func TestAcceptAndRejectTogetherHaveOneOutcome(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	for i := range 30 {
+		parent := h.CreateGoal(pat, fmt.Sprintf("Parent %d", i), "why")
+		child := h.CreateGoal(sam, fmt.Sprintf("Child %d", i), "why")
+		link := h.RequestLink(sam, child, parent, "")
+		var errAccept, errReject error
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(2)
+		go func() { defer wg.Done(); <-start; _, errAccept = h.Service.AcceptLink(ctx, link.ID, pat.ID) }()
+		go func() { defer wg.Done(); <-start; _, errReject = h.Service.RejectLink(ctx, link.ID, pat.ID) }()
+		close(start)
+		wg.Wait()
+
+		if (errAccept == nil) == (errReject == nil) {
+			t.Fatalf("round %d: accept err = %v, reject err = %v, want exactly one to win", i, errAccept, errReject)
+		}
+		if errAccept == nil && !errors.Is(errReject, domain.ErrValidation) {
+			t.Fatalf("round %d: Accept won and the losing Reject got %v, want ErrValidation", i, errReject)
+		}
+		if errReject == nil && !errors.Is(errAccept, domain.ErrNotFound) {
+			t.Fatalf("round %d: Reject won and the losing Accept got %v, want ErrNotFound", i, errAccept)
+		}
+		events, err := h.Service.LinkEvents(ctx, child.ID)
+		if err != nil {
+			t.Fatalf("LinkEvents: %v", err)
+		}
+		var kinds []string
+		for _, e := range events {
+			kinds = append(kinds, e.Kind)
+		}
+		pending, err := h.Service.PendingParentLinks(ctx, child.ID)
+		if err != nil {
+			t.Fatalf("PendingParentLinks: %v", err)
+		}
+		parents := h.ParentsOf(child)
+		if errAccept == nil {
+			if len(parents) != 1 || parents[0].ID != parent.ID || slices.Contains(kinds, domain.LinkEventRejected) {
+				t.Fatalf("round %d: Accept won, but parents = %+v and events = %v, want the link and no rejection", i, parents, kinds)
+			}
+		} else {
+			if len(parents) != 0 || len(pending) != 0 || slices.Contains(kinds, domain.LinkEventAccepted) {
+				t.Fatalf("round %d: Reject won, but parents = %+v, pending = %+v and events = %v, want no link and no acceptance", i, parents, pending, kinds)
+			}
+		}
+	}
 }
 
 // A Goal may have many parents and many children.

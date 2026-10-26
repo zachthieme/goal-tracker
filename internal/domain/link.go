@@ -245,20 +245,25 @@ type LinkRejection struct {
 
 // RejectLink rejects a pending request, deleting it and recording the
 // rejection so the rejecter can Undo it (RestoreLinkRequest) with the token it
-// returns, for UndoWindow. The actor must own the parent Goal.
+// returns, for UndoWindow. The actor must own the parent Goal. The checks read
+// inside the transaction that deletes the request, so a request accepted
+// meanwhile isn't deleted and recorded as rejected.
 func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRejection, error) {
-	row, parent, err := s.linkToDecide(ctx, linkID, actorID, "reject")
-	if err != nil {
-		return LinkRejection{}, err
-	}
-	child, err := s.queries.GetGoal(ctx, row.ChildID)
-	if err != nil {
-		return LinkRejection{}, fmt.Errorf("look up child goal: %w", err)
-	}
 	now := s.clock.Now()
+	var child, parent db.GetGoalRow
 	var rejection db.RejectedLinkRequest
 	var token string
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var row db.Link
+		var err error
+		row, parent, err = tx.linkToDecide(ctx, linkID, actorID, "reject")
+		if err != nil {
+			return err
+		}
+		child, err = tx.queries.GetGoal(ctx, row.ChildID)
+		if err != nil {
+			return fmt.Errorf("look up child goal: %w", err)
+		}
 		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
 			return fmt.Errorf("reject link: %w", err)
 		}

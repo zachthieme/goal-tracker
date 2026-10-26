@@ -346,11 +346,11 @@ func TestReassignAndAcceptTogetherHaveOneOutcome(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ViewGoal: %v", err)
 		}
-		// The loser is told why: a Handoff already accepted is no longer
-		// there to accept, and a Goal whose Owner has taken it no longer
-		// needs reassigning.
-		if errReassign == nil && !errors.Is(errAccept, domain.ErrNotFound) {
-			t.Fatalf("round %d: Reassign won and the losing Accept got %v, want ErrNotFound", i, errAccept)
+		// The loser is told why: a Handoff the Reassign cancelled is no
+		// longer there to accept, and a Goal whose Owner has taken it no
+		// longer needs reassigning.
+		if errReassign == nil && (!errors.Is(errAccept, domain.ErrValidation) || domain.Reason(errAccept) != "this Handoff was cancelled") {
+			t.Fatalf("round %d: Reassign won and the losing Accept got %v, want ErrValidation: the Handoff was cancelled", i, errAccept)
 		}
 		if errAccept == nil && !errors.Is(errReassign, domain.ErrValidation) {
 			t.Fatalf("round %d: Accept won and the losing Reassign got %v, want ErrValidation", i, errReassign)
@@ -404,8 +404,8 @@ func TestReassignAndAcceptOneAfterTheOtherTellTheSecondWhy(t *testing.T) {
 			if err := reassign(); err != nil {
 				t.Fatalf("Reassign: %v", err)
 			}
-			if err := accept(); !errors.Is(err, domain.ErrNotFound) {
-				t.Errorf("Accept after the Reassign got %v, want ErrNotFound", err)
+			if err := accept(); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "this Handoff was cancelled" {
+				t.Errorf("Accept after the Reassign got %v, want ErrValidation: the Handoff was cancelled", err)
 			}
 		} else {
 			if err := accept(); err != nil {
@@ -421,6 +421,88 @@ func TestReassignAndAcceptOneAfterTheOtherTellTheSecondWhy(t *testing.T) {
 		}
 		if want := map[bool]int64{true: cal.ID, false: pat.ID}[reassignFirst]; g.Owner.ID != want {
 			t.Errorf("Owner with Reassign first %t is %d, want %d", reassignFirst, g.Owner.ID, want)
+		}
+	}
+}
+
+// A Handoff already decided, accepted or rejected again by its new Owner, as
+// a second click or an old tab does: refused, saying how it was decided. Anyone
+// else is still told they may not decide it.
+func TestDecidingADecidedHandoffSaysHowItWasDecided(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	cal := h.SignIn("cal@example.com")
+	eve := h.SignIn("eve@example.com")
+
+	sam := h.SignIn("sam@example.com")
+	accepted := startHandoff(t, h, h.CreateGoal(sam, "Accepted", "why").ID, pat.ID, sam.ID)
+	if _, err := h.Service.AcceptHandoff(ctx, accepted.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+	rejected := startHandoff(t, h, h.CreateGoal(sam, "Rejected", "why").ID, pat.ID, sam.ID)
+	if _, err := h.Service.RejectHandoff(ctx, rejected.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+	// An Admin's Reassign of a departed Owner's Goal cancels its pending
+	// Handoff to Pat and records the Reassign to Cal.
+	lee := h.SignIn("lee@example.com")
+	goal := h.CreateGoal(lee, "Reassigned", "why")
+	cancelled := startHandoff(t, h, goal.ID, pat.ID, lee.ID)
+	if err := h.Service.MarkDeparted(ctx, boss.ID, lee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if _, err := h.Service.ReassignGoal(ctx, boss.ID, goal.ID, cal.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+	history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+	if err != nil || len(history) != 2 || history[1].Status != domain.HandoffReassigned {
+		t.Fatalf("OwnershipHistory = %+v, %v, want the cancelled Handoff then the Reassign", history, err)
+	}
+	reassigned := history[1]
+
+	for _, tc := range []struct {
+		name      string
+		handoffID int64
+		newOwner  domain.Account
+		reason    string
+	}{
+		{"accepted", accepted.ID, pat, "this Handoff was already accepted"},
+		{"rejected", rejected.ID, pat, "this Handoff was already rejected"},
+		{"cancelled", cancelled.ID, pat, "this Handoff was cancelled"},
+		{"reassigned", reassigned.ID, cal, "this Goal was already reassigned by an Admin"},
+	} {
+		decisions := map[string]func(actorID int64) error{
+			"AcceptHandoff": func(actorID int64) error {
+				_, err := h.Service.AcceptHandoff(ctx, tc.handoffID, actorID, nil)
+				return err
+			},
+			"RejectHandoff": func(actorID int64) error {
+				_, err := h.Service.RejectHandoff(ctx, tc.handoffID, actorID)
+				return err
+			},
+		}
+		for name, decide := range decisions {
+			err := decide(tc.newOwner.ID)
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("%s: %s by the new Owner: err = %v, want ErrValidation", tc.name, name, err)
+			} else if got := domain.Reason(err); got != tc.reason {
+				t.Errorf("%s: %s by the new Owner: Reason = %q, want %q", tc.name, name, got, tc.reason)
+			}
+			if err := decide(eve.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+				t.Errorf("%s: %s by someone else: err = %v, want ErrNotAuthorized", tc.name, name, err)
+			}
+		}
+	}
+	for name, err := range map[string]error{
+		"AcceptHandoff": func() error { _, err := h.Service.AcceptHandoff(ctx, 4242, pat.ID, nil); return err }(),
+		"RejectHandoff": func() error { _, err := h.Service.RejectHandoff(ctx, 4242, pat.ID); return err }(),
+	} {
+		if !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s of no Handoff: err = %v, want ErrNotFound", name, err)
 		}
 	}
 }
@@ -513,8 +595,8 @@ func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
 	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
 		t.Fatalf("history = %+v, want the one cancelled Handoff", history)
 	}
-	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("accept cancelled Handoff err = %v, want ErrNotFound", err)
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("accept cancelled Handoff err = %v, want ErrValidation", err)
 	}
 	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != sam.ID {
 		t.Errorf("Owner = %d, want %d", g.Owner.ID, sam.ID)
@@ -857,8 +939,8 @@ func TestReassignCancelsThePendingHandoff(t *testing.T) {
 	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 0 {
 		t.Errorf("pending for Pat after the Reassign = %+v, want none", pending)
 	}
-	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("Pat accepting the old Handoff err = %v, want ErrNotFound", err)
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("Pat accepting the old Handoff err = %v, want ErrValidation", err)
 	}
 	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != cal.ID {
 		t.Errorf("Owner = %d, want Cal (%d)", g.Owner.ID, cal.ID)

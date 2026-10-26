@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -663,9 +665,12 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 	}
 	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})
 	defer func() { _ = resp.Body.Close() }()
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("accept the cancelled Handoff: status %d, want 404", resp.StatusCode)
+	refused := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("accept the cancelled Handoff: status %d, want 422", resp.StatusCode)
+	}
+	if got, want := textOf(findByTestID(t, refused, "handoff-refused")), "This Handoff was cancelled."; got != want {
+		t.Errorf("accept the cancelled Handoff: handoff-refused = %q, want %q", got, want)
 	}
 
 	page := getBody(t, bossClient, goalURL)
@@ -686,6 +691,74 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
 			}
 		}
+	}
+}
+
+// Accepting a Handoff a second time, as a stale second click would, or
+// rejecting one already accepted, is refused with a page inside the app
+// saying how it was decided, linking back to the page it came from (#551).
+func TestADecisionOnADecidedHandoffSaysHowItWasDecided(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := h.StartHandoff(sam, goal.ID, pat)
+	patClient := signInClient(t, ts.URL, pat.Email)
+	if status := postFormStatus(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("first accept: status %d", status)
+	}
+
+	decisions := []struct {
+		decision, heading string
+		form              url.Values
+		back              string
+	}{
+		{"accept", "Can't accept Handoff", url.Values{}, "/handoffs"},
+		{"accept", "Can't accept Handoff", url.Values{"from": {"home"}}, "/home"},
+		{"reject", "Can't reject Handoff", url.Values{}, "/handoffs"},
+		{"reject", "Can't reject Handoff", url.Values{"from": {"home"}}, "/home"},
+	}
+	for _, d := range decisions {
+		resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/%s", ts.URL, ho.ID, d.decision), d.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s %v: status %d, want %d", d.decision, d.form, resp.StatusCode, http.StatusUnprocessableEntity)
+		}
+		if !hasTestID(page, "nav-home") {
+			t.Errorf("%s %v: refusal page is not inside the app's layout:\n%s", d.decision, d.form, renderNode(page))
+		}
+		if headingNamed(page, d.heading) == nil {
+			t.Errorf("%s %v: refusal page has no heading %q:\n%s", d.decision, d.form, d.heading, renderNode(page))
+		}
+		if got, want := textOf(findByTestID(t, page, "handoff-refused")), "This Handoff was already accepted."; got != want {
+			t.Errorf("%s %v: handoff-refused = %q, want %q", d.decision, d.form, got, want)
+		}
+		if backs := findAll(page, func(n *nethtml.Node) bool {
+			return n.Data == "a" && attrOf(n, "href") == d.back && textOf(n) == "Back"
+		}); len(backs) == 0 {
+			t.Errorf("%s %v: refusal page has no Back link to %s:\n%s", d.decision, d.form, d.back, renderNode(page))
+		}
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != pat.ID {
+		t.Errorf("Owner = %d after the refused decisions, want Pat (%d) still", g.Owner.ID, pat.ID)
+	}
+}
+
+// Accepting or rejecting a Handoff that doesn't exist is the Not found page.
+func TestADecisionOnAMissingHandoffShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("pat@example.com")
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	for _, decision := range []string{"accept", "reject"} {
+		assertNotFoundPageFor(t, pat, http.MethodPost, fmt.Sprintf("%s/handoffs/999999/%s", ts.URL, decision), "/home")
 	}
 }
 

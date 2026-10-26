@@ -60,7 +60,7 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 		keep = append(keep, delegateID)
 	}
 	if _, err := s.svc.AcceptHandoff(r.Context(), id, current.ID, keep); err != nil {
-		s.writeHandoffError(w, r, err)
+		s.writeHandoffDecisionError(w, r, current, "Can't accept Handoff", err)
 		return
 	}
 	http.Redirect(w, r, "/handoffs", http.StatusSeeOther)
@@ -76,7 +76,7 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 	}
 	token, err := s.svc.RejectHandoff(r.Context(), id, current.ID)
 	if err != nil {
-		s.writeHandoffError(w, r, err)
+		s.writeHandoffDecisionError(w, r, current, "Can't reject Handoff", err)
 		return
 	}
 	back := requestPage(r.FormValue("from"), "/handoffs")
@@ -201,6 +201,28 @@ func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int6
 		return 0, false
 	}
 	return id, true
+}
+
+// writeHandoffDecisionError refuses an Accept or Reject of a Handoff with a
+// page inside the app headed refused (e.g. "Can't accept Handoff"), saying why
+// and linking back to the page the decision came from (from: Home, or the
+// pending page). A Handoff that doesn't exist is the Not found page.
+func (s *Server) writeHandoffDecisionError(w http.ResponseWriter, r *http.Request, current domain.Account, refused string, err error) {
+	var status int
+	switch {
+	case errors.Is(err, domain.ErrValidation):
+		status = http.StatusUnprocessableEntity
+	case errors.Is(err, domain.ErrNotAuthorized):
+		status = http.StatusForbidden
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, r)
+		return
+	default:
+		s.serverError(w, r, "handoff action failed", err)
+		return
+	}
+	back := requestPage(r.FormValue("from"), "/handoffs")
+	render(w, r, status, handoffRefusedPage(&current, refused, sentence(plainReason(err)), back))
 }
 
 // writeHandoffError maps a domain Handoff/Ownerless error to an HTTP status.
