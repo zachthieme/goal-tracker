@@ -1886,6 +1886,42 @@ func TestDefineGoalRoutesAnswerOnlyTheOwnerOfAProposedGoal(t *testing.T) {
 	}
 }
 
+// Someone other than the Owner who opens, submits or checks the define page
+// is refused on the refusal page, 403, saying only the Owner may define it,
+// with a way Back to the Goal.
+func TestDefineGoalRoutesRefuseANonOwnerWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	kimClient := noRedirects(signInClient(t, ts.URL, "kim@example.com"))
+	define := fmt.Sprintf("%s/goals/%d/define", ts.URL, proposed.ID)
+	form := url.Values{"title": {proposed.Title}, "why_it_matters": {"Changed."}, "kind": {domain.GoalOngoing}}
+
+	for _, c := range []struct {
+		name string
+		send func() (*http.Response, error)
+	}{
+		{"GET the define page", func() (*http.Response, error) { return ctxGet(t, kimClient, define) }},
+		{"POST the define page", func() (*http.Response, error) { return ctxPostForm(t, kimClient, define, form) }},
+		{"POST its checklist", func() (*http.Response, error) { return ctxPostForm(t, kimClient, define+"/checklist", form) }},
+	} {
+		resp, err := c.send()
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by a non-Owner: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, "Can't define Goal", "Only the Goal's Owner may define it.", fmt.Sprintf("/goals/%d", proposed.ID))
+	}
+}
+
 // A submit ticking a value Retired after the page loaded comes back as the
 // define page, 422, naming the value, and keeps nothing it changed.
 func TestDefineGoalFormRefusesAValueRetiredSinceTheLoad(t *testing.T) {

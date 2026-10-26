@@ -549,7 +549,8 @@ func TestGoalPageDraftHighlightsCarryTheHighlightEditor(t *testing.T) {
 // answers with the refusal page, headed Can't change highlight: one refused
 // for what was sent, at 422, links Back to its Goal page; one refused for who
 // sent it, at 403, links Back to Home, as they may not see the Goal's Draft
-// Highlights (#573).
+// Highlights (#573). A log refused for who sent it, at 403, links Back to the
+// Goal its post named (#582).
 func TestARefusedDraftHighlightChangeAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -574,6 +575,7 @@ func TestARefusedDraftHighlightChangeAnswersWithTheRefusalPage(t *testing.T) {
 			"A Done Goal takes no more Check-ins, so it takes no Draft Highlights.", fmt.Sprintf("/goals/%d", ended.ID)},
 		{"an edit by someone else", "pat@example.com", fmt.Sprintf("/draft-highlights/%d", retries.ID), http.StatusForbidden, notTheirs, "/home"},
 		{"a delete by someone else", "pat@example.com", fmt.Sprintf("/draft-highlights/%d/delete", retries.ID), http.StatusForbidden, notTheirs, "/home"},
+		{"a log by someone else", "pat@example.com", fmt.Sprintf("/goals/%d/draft-highlights", active.ID), http.StatusForbidden, notTheirs, fmt.Sprintf("/goals/%d", active.ID)},
 	} {
 		client := noRedirects(signInClient(t, ts.URL, c.who))
 		resp := postForm(t, client, ts.URL+c.path, edit)

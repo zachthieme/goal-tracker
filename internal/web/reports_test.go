@@ -3785,8 +3785,8 @@ func reportBuilderHasID(root *nethtml.Node, id string) bool {
 }
 
 // Only the definition's creator, a Report Delegate or an Admin may edit it:
-// anyone else signed in gets 403 on both the page and the post, which changes
-// nothing. An unknown definition is Not found (tickets #151, #434).
+// anyone else signed in gets the refusal page, 403, saying who may, with a way
+// Back to its draft, on both the page and the post, which changes nothing. An unknown definition is Not found (tickets #151, #434).
 func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3803,18 +3803,22 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 	}
 
 	sam := signInClient(t, ts.URL, "sam@example.com")
+	refusedSays := "Only its creator, a Report Delegate or an Admin may edit Alice's MBR."
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
 	resp, err := ctxGet(t, sam, editURL)
 	if err != nil {
 		t.Fatalf("GET %s: %v", editURL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("Sam's GET of Alice's edit page: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's GET of Alice's edit page: status %d, want 403", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, readBody(t, resp)), "Can't edit Report", refusedSays, draft)
 	resp = postForm(t, noRedirects(sam), editURL, edit("Sam's now"))
-	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
-		t.Errorf("Sam's POST to Alice's edit: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's POST to Alice's edit: status %d, want 403", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, readBody(t, resp)), "Can't edit Report", refusedSays, draft)
 	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "Alice's MBR" {
 		t.Errorf("Sam's refused edit renamed it %q", got.Name)
 	}

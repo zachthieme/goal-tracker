@@ -221,8 +221,9 @@ func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, curren
 }
 
 // editableReport loads the Report Definition the path names for current to
-// edit, writing Not found when there is none and 403 when current is neither
-// its creator, a Report Delegate nor an Admin.
+// edit, writing Not found when there is none and the refusal page, 403,
+// linking Back to its draft, when current is neither its creator, a Report
+// Delegate nor an Admin.
 func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current domain.Account) (domain.ReportDefinition, bool) {
 	def, ok := s.reportFromPath(w, r)
 	if !ok {
@@ -234,7 +235,8 @@ func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current 
 		return domain.ReportDefinition{}, false
 	}
 	if !m.Manage {
-		http.Error(w, "only its creator, a Report Delegate or an Admin may edit "+def.Name, http.StatusForbidden)
+		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(def.ID, 10),
+			domain.Refuse(domain.ErrNotAuthorized, "only its creator, a Report Delegate or an Admin may edit %s", def.Name))
 		return domain.ReportDefinition{}, false
 	}
 	return def, true

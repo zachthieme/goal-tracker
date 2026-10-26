@@ -13,6 +13,8 @@ import (
 // the Goal page, and a refused note comes back on it, the reason in the Draft
 // Highlights block and what was typed still in its form. The Highlight
 // editor's htmx post gets the block back either way (renderDraftHighlights).
+// A log refused for anything but what was typed, plain or htmx, is the
+// refusal page, headed Can't change highlight and linking Back to the Goal.
 func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -26,6 +28,10 @@ func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request,
 	})
 	if r.Header.Get("HX-Request") == "true" && (err == nil || errors.Is(err, domain.ErrValidation)) {
 		s.renderDraftHighlights(w, r, goalID, current, draftHighlightRefusalOf(r, 0, err))
+		return
+	}
+	if err != nil && !errors.Is(err, domain.ErrValidation) {
+		s.refuse(w, r, "Can't change highlight", goalPath(goalID), err)
 		return
 	}
 	s.writeFormResult(w, r, goalID, current, formDraftHighlight, err)

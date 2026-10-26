@@ -20,7 +20,7 @@ func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.StartHandoffByEmail(r.Context(), goalID, r.FormValue("to_email"), current.ID); err != nil {
-		s.writeRefusedHandoff(w, r, goalID, current, formHandoff, err)
+		s.writeRefusedHandoff(w, r, goalID, current, formHandoff, "Can't hand off Goal", err)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -130,7 +130,7 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkDeparted(r.Context(), current.ID, id); err != nil {
-		s.writeHandoffError(w, r, err)
+		s.writeHandoffError(w, r, "Can't mark departed", "/home", err)
 		return
 	}
 	redirectBack(w, r)
@@ -146,7 +146,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkReturned(r.Context(), current.ID, id); err != nil {
-		s.writeHandoffError(w, r, err)
+		s.writeHandoffError(w, r, "Can't mark returned", "/home", err)
 		return
 	}
 	redirectBack(w, r)
@@ -160,7 +160,7 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.ReassignGoalByEmail(r.Context(), current.ID, goalID, r.FormValue("email")); err != nil {
-		s.writeRefusedHandoff(w, r, goalID, current, formReassign, err)
+		s.writeRefusedHandoff(w, r, goalID, current, formReassign, "Can't reassign Goal", err)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -168,13 +168,14 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 
 // writeRefusedHandoff answers a refused Hand off or Reassign from the Goal
 // page: a refused new Owner re-renders the page with the form open and the
-// reason beside it; anything else is writeHandoffError's.
-func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, err error) {
+// reason beside it; anything else is writeHandoffError's, headed refused and
+// linking Back to the Goal.
+func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, refused string, err error) {
 	if errors.Is(err, domain.ErrValidation) {
 		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
 		return
 	}
-	s.writeHandoffError(w, r, err)
+	s.writeHandoffError(w, r, refused, goalPath(goalID), err)
 }
 
 // redirectBack returns to wherever an action was triggered, usually a Goal page.
@@ -211,16 +212,10 @@ func (s *Server) writeHandoffDecisionError(w http.ResponseWriter, r *http.Reques
 	s.refuse(w, r, refused, requestPage(r.FormValue("from"), "/handoffs"), err)
 }
 
-// writeHandoffError maps a domain Handoff/Ownerless error to an HTTP status.
-func (s *Server) writeHandoffError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	case errors.Is(err, domain.ErrNotFound):
-		http.Error(w, "not found", http.StatusNotFound)
-	default:
-		s.serverError(w, r, "handoff action failed", err)
-	}
+// writeHandoffError refuses a Handoff, Reassign, Depart or Return with
+// refuse's page headed refused (e.g. "Can't mark departed"), linking Back to
+// back: a 422 for what was sent, a 403 for someone who may not, and the Not
+// found page for a thing that isn't there.
+func (s *Server) writeHandoffError(w http.ResponseWriter, r *http.Request, refused, back string, err error) {
+	s.refuse(w, r, refused, back, err)
 }
