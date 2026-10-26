@@ -490,7 +490,8 @@ func joinIDs(ids []int64) string {
 // changed from what it showed, by the Goal page's rules, all or nothing. A
 // saved edit lands back on the table out of edit mode. A refused one comes
 // back in edit mode as typed, each bad cell marked with why. An edit touching
-// a Goal the person may not set values on is refused outright.
+// a Goal the person may not set values on is refused outright, on the refusal
+// page linking Back to the table out of edit mode.
 func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form", http.StatusBadRequest)
@@ -504,14 +505,14 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	}
 	q := r.URL.Query()
 	q.Set("layout", layoutTable)
+	saved := string(goalsListData{Query: q}.queryURL(func(q url.Values) { q.Del("edit") }))
 	err = s.svc.EditGoalValues(r.Context(), current.ID, edits)
 	switch {
 	case err == nil:
-		q.Del("edit")
-		http.Redirect(w, r, string(goalsListData{Query: q}.queryURL(func(url.Values) {})), http.StatusSeeOther)
+		http.Redirect(w, r, saved, http.StatusSeeOther)
 		return
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
+		s.refuse(w, r, "Can't save Goals", saved, err)
 		return
 	case !errors.Is(err, domain.ErrValidation):
 		s.serverError(w, r, "could not save values", err)

@@ -5216,9 +5216,10 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 }
 
 // A crafted save of the Goal table touching a Goal the person may not set
-// values on — its row had no inputs — is refused with 403, and nothing in it is
-// saved, not even the cells of the person's own Goals (#80; CONTEXT.md:
-// Delegate).
+// values on — its row had no inputs — is refused with 403 on the refusal page,
+// naming the Goal, with a way Back to the table out of edit mode, and nothing
+// in it is saved, not even the cells of the person's own Goals (#80;
+// CONTEXT.md: Delegate).
 func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 	t.Parallel()
 
@@ -5242,9 +5243,11 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 
-	if resp.StatusCode != http.StatusForbidden || !strings.Contains(textOf(parsePage(t, body)), "Theirs") {
-		t.Errorf("status = %d, want 403 naming Theirs:\n%s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, body), "Can't save Goals",
+		"Only its Owner, a Delegate or an Admin may set the values of Theirs.", "/goals?layout=table")
 	for _, g := range []domain.Goal{mine, theirs} {
 		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
 			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)
@@ -5488,8 +5491,9 @@ func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
 }
 
 // A download that would include a value containing a semicolon, named so
-// before that was refused, is refused naming the Dimension and value so an
-// Admin can rename it, and returns no file (#101).
+// before that was refused, is refused on the refusal page naming the
+// Dimension and value so an Admin can rename it, with a way Back to the list
+// as it was, and returns no file (#101).
 func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 	t.Parallel()
 
@@ -5510,9 +5514,9 @@ func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("download status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	if !strings.Contains(body, `Pillar value "R&D; Ops"`) || !strings.Contains(body, "can't contain a semicolon") {
-		t.Errorf("download body = %q, want it to name Pillar's value R&D; Ops and the semicolon", body)
-	}
+	assertRefusalPage(t, parsePage(t, body), "Can't download Goals",
+		`Alpha launch carries the Pillar value "R&D; Ops", and a value can't contain a semicolon, because the import format uses it to separate values; an Admin can rename it on the Dimensions page.`,
+		"/goals?layout=table")
 	if cd := resp.Header.Get("Content-Disposition"); cd != "" || strings.Contains(body, "ID,Title") {
 		t.Errorf("refused download returned a file: Content-Disposition %q, body %q", cd, body)
 	}
