@@ -1534,8 +1534,9 @@ func TestFollowUpsPageScopedToADimensionValue(t *testing.T) {
 
 // Scoped to values of two Dimensions, the Follow-ups page keeps only the flagged
 // Goals carrying both, as the Goal list does; scoped to one, those carrying
-// it. Of two values in one Dimension it keeps the first, which its select
-// shows chosen, and a value naming no offered one scopes nothing.
+// it. Of two values in one Dimension it keeps the Goals carrying either, as
+// the Goal list does (#559), while its select shows the first chosen, and a
+// value naming no offered one scopes nothing.
 func TestFollowUpsPageScopedToValuesOfSeveralDimensions(t *testing.T) {
 	t.Parallel()
 
@@ -1565,7 +1566,7 @@ func TestFollowUpsPageScopedToValuesOfSeveralDimensions(t *testing.T) {
 		"value=" + id(q3) + "&value=" + id(platform):     {both},
 		"value=" + id(platform):                          {both, platformOnly},
 		"value=&value=" + id(q3):                         {both, growthInQ3},
-		"value=" + id(platform) + "&value=" + id(growth): {both, platformOnly},
+		"value=" + id(platform) + "&value=" + id(growth): {both, platformOnly, growthInQ3},
 		"value=bogus&value=" + id(growth) + "&value=999": {growthInQ3},
 	} {
 		doc := getPage(t, client, ts.URL+"/follow-ups?"+query)
@@ -1583,6 +1584,48 @@ func TestFollowUpsPageScopedToValuesOfSeveralDimensions(t *testing.T) {
 	}
 	if _, value, label := selectChoices(followUpsValueSelectIn(t, doc, "Quarter")); value != "" || label != "Quarter: any" {
 		t.Errorf("with no Quarter chosen, the Quarter select shows %q %q chosen, want Quarter: any", value, label)
+	}
+}
+
+// The same ?value= selects the same Goals on the Goal list and Follow-ups:
+// several values of one Dimension are ORed on both (#559, replacing #254's
+// first value only), though Follow-ups' one select per Dimension shows the
+// first.
+func TestGoalListAndFollowUpsKeepEveryValueOfADimension(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth", "Core")
+	platform, growth := team.Values[0], team.Values[1]
+	red := func(title string, v domain.DimensionValue) domain.Goal {
+		g := h.ActiveGoal(sam, title, "It matters.")
+		h.AssignGoalValue(g, v)
+		h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 0, 14))
+		return g
+	}
+	onPlatform, onGrowth, onCore := red("Platform work", platform), red("Growth work", growth), red("Core work", team.Values[2])
+	client := signInClient(t, ts.URL, "boss@example.com")
+	query := "?org=all&value=" + strconv.FormatInt(platform.ID, 10) + "&value=" + strconv.FormatInt(growth.ID, 10)
+
+	listed := goalRowTitlesIn(goalListRowsIn(getPage(t, client, ts.URL+"/goals"+query)), onPlatform, onGrowth, onCore)
+	slices.Sort(listed)
+	if want := []string{"Growth work", "Platform work"}; !slices.Equal(listed, want) {
+		t.Errorf("the Goal list at %s lists %q, want %q", query, listed, want)
+	}
+	doc := getPage(t, client, ts.URL+"/follow-ups"+query)
+	for _, g := range []domain.Goal{onPlatform, onGrowth, onCore} {
+		if got, want := hasFollowUpRowIn(doc, g), g.ID != onCore.ID; got != want {
+			t.Errorf("Follow-ups at %s lists %q: %v, want %v", query, g.Title, got, want)
+		}
+	}
+	if _, value, _ := selectChoices(followUpsValueSelectIn(t, doc, "Team")); value != strconv.FormatInt(platform.ID, 10) {
+		t.Errorf("the Team select shows %q chosen, want Platform, the first", value)
+	}
+	if href := attrOf(followUpsCardIn(t, doc, "health"), "href"); !strings.Contains(href, "value="+strconv.FormatInt(growth.ID, 10)) {
+		t.Errorf("the Not Green card's link %q drops Growth", href)
 	}
 }
 
