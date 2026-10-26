@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -99,6 +100,40 @@ func TestSwitchToOneValueAndAssigningASecondValueTogetherHaveOneOutcome(t *testi
 		}
 		if err := h.Service.SetDimensionSelection(ctx, boss.ID, teams.ID, domain.SelectionSeveral); err != nil {
 			t.Fatalf("round %d: switch back to several: %v", i, err)
+		}
+	}
+}
+
+// Two values each merged into the other at the same moment: one merge is made
+// and the other refused, so the Dimension keeps one of them, carried by every
+// Goal that carried either (CONTEXT.md: Extendable — merging values).
+func TestTwoValuesMergedIntoEachOtherTogetherOnlyOneMerges(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	for i := range 30 {
+		dim := h.CreateDimension(boss, fmt.Sprintf("Customer %d", i), "Acme", "ACME Corp")
+		acme, acmeCorp := dim.Values[0], dim.Values[1]
+		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "It matters.")
+		h.AssignGoalValue(goal, acme)
+		errOne, errOther := raceDimensionCommands(
+			func() error { return h.Service.MergeDimensionValue(ctx, boss.ID, acme.ID, acmeCorp.ID) },
+			func() error { return h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID) },
+		)
+		if (errOne == nil) == (errOther == nil) {
+			t.Fatalf("round %d: merge one way err = %v, the other way err = %v; want exactly one merged", i, errOne, errOther)
+		}
+		for _, err := range []error{errOne, errOther} {
+			if err != nil && !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("round %d: err = %v, want ErrValidation for the one refused", i, err)
+			}
+		}
+		if got := goalValueNames(t, h, goal.ID); len(got) != 1 {
+			t.Fatalf("round %d: Goal carries %v, want the one value left", i, got)
 		}
 	}
 }

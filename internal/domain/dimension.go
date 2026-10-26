@@ -515,24 +515,24 @@ func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) e
 // the value itself is refused. A merge is written to the Definition log naming
 // both values. Only an Admin may.
 func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, targetID int64) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
-	merged, err := s.queries.GetDimensionValue(ctx, mergedID)
-	if err != nil {
-		return Refuse(ErrValidation, "dimension value does not exist")
-	}
-	target, err := s.queries.GetDimensionValue(ctx, targetID)
-	if err != nil {
-		return Refuse(ErrValidation, "the value to merge into does not exist")
-	}
-	if merged.DimensionID != target.DimensionID {
-		return Refuse(ErrValidation, "%s and %s are in different Dimensions, so they can't be merged", merged.Value, target.Value)
-	}
-	if merged.ID == target.ID {
-		return Refuse(ErrValidation, "a value can't be merged into itself")
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		merged, err := tx.queries.GetDimensionValue(ctx, mergedID)
+		if err != nil {
+			return Refuse(ErrValidation, "dimension value does not exist")
+		}
+		target, err := tx.queries.GetDimensionValue(ctx, targetID)
+		if err != nil {
+			return Refuse(ErrValidation, "the value to merge into does not exist")
+		}
+		if merged.DimensionID != target.DimensionID {
+			return Refuse(ErrValidation, "%s and %s are in different Dimensions, so they can't be merged", merged.Value, target.Value)
+		}
+		if merged.ID == target.ID {
+			return Refuse(ErrValidation, "a value can't be merged into itself")
+		}
 		goals := db.RemoveMergedGoalValueWhereTargetCarriedParams{MergedID: mergedID, TargetID: targetID}
 		if err := tx.queries.RemoveMergedGoalValueWhereTargetCarried(ctx, goals); err != nil {
 			return fmt.Errorf("drop merged value from goals carrying the target: %w", err)
