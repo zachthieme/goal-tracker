@@ -158,6 +158,7 @@ func TestCheckinPageAgreesWithTheGoalPage(t *testing.T) {
 		sameAsGoalPage(t, "AskAddressee", cp.AskAddressee, gp.AskAddressee)
 		sameAsGoalPage(t, "DraftHighlights", cp.DraftHighlights, gp.DraftHighlights)
 		sameAsGoalPage(t, "CanCheckin", cp.CanCheckin, gp.CanCheckin)
+		sameAsGoalPage(t, "Permissions", cp.Permissions, gp.Permissions.CheckinPermissions)
 		sameAsGoalPage(t, "NoChangeRefusal", cp.NoChangeRefusal, gp.NoChangeRefusal)
 		sameAsGoalPage(t, "Now", cp.Now, gp.Now)
 		sameAsGoalPage(t, "Timezone", cp.Timezone, gp.Timezone)

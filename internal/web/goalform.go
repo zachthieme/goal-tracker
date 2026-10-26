@@ -639,32 +639,30 @@ type linkedParent struct {
 	Pending bool
 }
 
-// definableGoal is the Goal in the path, for its define page: one current
-// owns that is still Proposed. Otherwise it writes the answer — Not found,
-// 403 for anyone but the Owner, and a redirect to the Goal's page once it is
-// no longer Proposed — and ok is false.
+// definableGoal is the Goal in the path, for its define page, when the domain
+// says current may define it (domain.Service.DefinableGoal). Otherwise it
+// writes the answer — Not found, 403 for anyone the rule refuses for who they
+// are, and a redirect to the Goal's page once it is no longer Proposed — and
+// ok is false.
 func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current domain.Account) (g domain.Goal, ok bool) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return domain.Goal{}, false
 	}
-	g, err := s.svc.ViewGoal(r.Context(), id)
-	if errors.Is(err, domain.ErrNotFound) {
+	g, err := s.svc.DefinableGoal(r.Context(), current.ID, id)
+	switch {
+	case err == nil:
+		return g, true
+	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
-		return domain.Goal{}, false
-	} else if err != nil {
-		s.serverError(w, r, "could not load goal", err)
-		return domain.Goal{}, false
-	}
-	if g.Owner.ID != current.ID {
+	case errors.Is(err, domain.ErrNotAuthorized):
 		http.Error(w, "only the Goal's Owner may finish defining it", http.StatusForbidden)
-		return domain.Goal{}, false
+	case errors.Is(err, domain.ErrValidation):
+		http.Redirect(w, r, fmt.Sprintf("/goals/%d", id), http.StatusSeeOther)
+	default:
+		s.serverError(w, r, "could not load goal", err)
 	}
-	if g.Lifecycle != domain.LifecycleProposed {
-		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
-		return domain.Goal{}, false
-	}
-	return g, true
+	return domain.Goal{}, false
 }
 
 // handleDefineGoalForm renders the define page: the New goal form for a

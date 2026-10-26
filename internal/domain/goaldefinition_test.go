@@ -1040,3 +1040,36 @@ func TestDefineGoalRefusesAValueTheCallerCouldNotParse(t *testing.T) {
 		t.Errorf("Goal = %s %q, want it still Proposed with no Kind", got.Lifecycle, got.Kind)
 	}
 }
+
+// DefinableGoal gives the define page the Goal its viewer may define, by
+// DefineGoal's rule: its Owner, while it is Proposed. Anyone else is refused
+// with ErrNotAuthorized, the Owner of an Active Goal with ErrValidation, and a
+// missing Goal is ErrNotFound.
+func TestDefinableGoalFollowsDefineGoalsRule(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	active := h.ActiveGoal(sam, "Grow revenue", "The business needs it.")
+
+	g, err := h.Service.DefinableGoal(ctx, sam.ID, proposed.ID)
+	if err != nil || g.ID != proposed.ID || g.Title != proposed.Title {
+		t.Errorf("DefinableGoal for the Owner of a Proposed Goal = %+v, %v; want it", g, err)
+	}
+	for _, c := range []struct {
+		name   string
+		viewer domain.Account
+		goalID int64
+		want   error
+	}{
+		{"anyone but the Owner", kim, proposed.ID, domain.ErrNotAuthorized},
+		{"the Owner of an Active Goal", sam, active.ID, domain.ErrValidation},
+		{"a missing Goal", sam, active.ID + 1000, domain.ErrNotFound},
+	} {
+		if _, err := h.Service.DefinableGoal(ctx, c.viewer.ID, c.goalID); !errors.Is(err, c.want) {
+			t.Errorf("DefinableGoal for %s = %v, want %v", c.name, err, c.want)
+		}
+	}
+}

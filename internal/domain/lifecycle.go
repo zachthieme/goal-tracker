@@ -39,6 +39,16 @@ func LifecycleTakesDraftHighlights(lifecycle string) bool {
 	return lifecycle != LifecycleDone && lifecycle != LifecycleCancelled
 }
 
+// lifecycleKeepRefusal refuses a Check-in leaving a Goal in lifecycle as it
+// is where that Lifecycle must change in one: an On Hold Goal's Check-in
+// resumes or Cancels it (CONTEXT.md: Lifecycle).
+func lifecycleKeepRefusal(lifecycle string) error {
+	if lifecycle == LifecycleOnHold {
+		return inputError(CheckinInputLifecycle, "an On Hold Goal can only be resumed or Cancelled in a Check-in")
+	}
+	return nil
+}
+
 // planLifecycleChange validates a Check-in's requested Lifecycle against the
 // Goal's current one and returns the change to record, or the zero change when
 // the Check-in leaves it alone. It allows the moves LifecycleChangesFrom
@@ -51,10 +61,7 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 		return LifecycleChange{}, Refuse(ErrValidation, "only an Active Goal can be checked in on")
 	}
 	if to == "" || to == current {
-		if current == LifecycleOnHold {
-			return LifecycleChange{}, inputError(CheckinInputLifecycle, "an On Hold Goal can only be resumed or Cancelled in a Check-in")
-		}
-		return LifecycleChange{}, nil
+		return LifecycleChange{}, lifecycleKeepRefusal(current)
 	}
 
 	if !slices.Contains(LifecycleChangesFrom(current), to) {

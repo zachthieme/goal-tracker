@@ -353,6 +353,16 @@ func markReturnedRefusal(a goalActor, person Account) error {
 	return nil
 }
 
+// lifecycleKeptRefusal is SubmitCheckin's rule for a Check-in leaving g's
+// Lifecycle as it is: those checkInRefusal allows, unless g's Lifecycle must
+// change in one (lifecycleKeepRefusal).
+func lifecycleKeptRefusal(a goalActor, g Goal) error {
+	if err := checkInRefusal(a, g); err != nil {
+		return err
+	}
+	return lifecycleKeepRefusal(g.Lifecycle)
+}
+
 // LifecycleChangesFrom are the Lifecycles a Check-in may move a Goal in
 // lifecycle to (CONTEXT.md: Lifecycle): an Active Goal may go On Hold, be
 // marked Done or be Cancelled, and an On Hold one resumed to Active or

@@ -110,14 +110,17 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	}
 	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 
-	changes := []string{domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled}
+	checksIn := domain.CheckinPermissions{
+		CheckIn: true, KeepLifecycle: true,
+		LifecycleChanges: []string{domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled},
+	}
 	owner := domain.GoalPermissions{
-		CheckIn: true, LifecycleChanges: changes, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		CheckinPermissions: checksIn, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
 		AddContributor: true, ManageDelegates: true, LinkParent: true, EditMetrics: true, DecideSuggestions: true,
 		EditTitleAndWhyItMatters: true, HandOff: true,
 	}
 	delegate := domain.GoalPermissions{
-		CheckIn: true, LifecycleChanges: changes, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		CheckinPermissions: checksIn, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
 		SuggestParent: true,
 	}
 	anAdmin := domain.GoalPermissions{
@@ -126,12 +129,12 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	}
 	reader := domain.GoalPermissions{SuggestParent: true}
 	ownerOfProposed := owner
-	ownerOfProposed.CheckIn, ownerOfProposed.LifecycleChanges = false, nil
+	ownerOfProposed.CheckinPermissions = domain.CheckinPermissions{}
 	ownerOfProposed.DefineGoal, ownerOfProposed.Activate, ownerOfProposed.EditMilestones = true, true, true
 	delegateOnProposed := delegate
-	delegateOnProposed.CheckIn, delegateOnProposed.LifecycleChanges, delegateOnProposed.EditMilestones = false, nil, true
+	delegateOnProposed.CheckinPermissions, delegateOnProposed.EditMilestones = domain.CheckinPermissions{}, true
 	ownerOfDone := owner
-	ownerOfDone.CheckIn, ownerOfDone.LifecycleChanges, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = false, nil, false, false
+	ownerOfDone.CheckinPermissions, ownerOfDone.AddMilestone, ownerOfDone.LogDraftHighlight = domain.CheckinPermissions{}, false, false
 	adminOnDone := anAdmin
 	adminOnDone.SuggestParent = false
 	for _, v := range []struct {
@@ -239,6 +242,10 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 				in.Lifecycle = domain.LifecycleActive // an On Hold Goal's Check-in resumes or cancels it
 			}
 			_, err := tx.SubmitCheckin(ctx, in)
+			return err
+		}},
+		{"KeepLifecycle", func(p domain.GoalPermissions) bool { return p.KeepLifecycle }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
+			_, err := tx.SubmitCheckin(ctx, domain.SubmitCheckinInput{GoalID: g.ID, AuthorID: v.ID, Health: domain.HealthGreen, Status: "On track."})
 			return err
 		}},
 		{"NoChange", func(p domain.GoalPermissions) bool { return p.NoChange }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {

@@ -103,14 +103,7 @@ type GoalPage struct {
 // rule (goalrules.go) the command named beside it evaluates, so a page offers
 // just what that command would accept from them.
 type GoalPermissions struct {
-	// CheckIn: they write its Check-ins and it takes them now
-	// (SubmitCheckin), and LifecycleChanges the Lifecycles such a Check-in
-	// may move it to (LifecycleChangesFrom). NoChange: the same people, while
-	// it is Active, when the No change verdict would record one
-	// (SubmitNoChangeCheckin).
-	CheckIn          bool
-	LifecycleChanges []string
-	NoChange         bool
+	CheckinPermissions
 	// AddMilestone: the same people, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
 	// Proposed, on a Planned Milestone (EditMilestone).
@@ -150,6 +143,40 @@ type GoalPermissions struct {
 	MarkOwnerDeparted bool
 	MarkOwnerReturned bool
 	MarkTopLevel      bool
+}
+
+// CheckinPermissions says what one viewer may do with a Goal's Check-ins now,
+// each by the rule (goalrules.go) SubmitCheckin or SubmitNoChangeCheckin
+// evaluates, so the Goal page and the Check-in page offer just what they would
+// accept from them.
+type CheckinPermissions struct {
+	// CheckIn: they write its Check-ins and it takes them now
+	// (SubmitCheckin). KeepLifecycle: such a Check-in may leave its Lifecycle
+	// as it is, as an On Hold Goal's may not; LifecycleChanges are the
+	// Lifecycles it may move it to (LifecycleChangesFrom), in Lifecycle order.
+	CheckIn          bool
+	KeepLifecycle    bool
+	LifecycleChanges []string
+	// NoChange: the same people, while it is Active, when the No change
+	// verdict would record one (SubmitNoChangeCheckin).
+	NoChange bool
+}
+
+// permitCheckins is what actor may do with g's Check-ins, by the rule each
+// Check-in command evaluates, noChange being the verdict on a No change on g;
+// permits reads each rule's refusal as whether it allows.
+func permitCheckins(actor goalActor, g Goal, noChange noChangeVerdict, permits func(refusal error) bool) CheckinPermissions {
+	perms := CheckinPermissions{
+		CheckIn:       permits(checkInRefusal(actor, g)),
+		KeepLifecycle: permits(lifecycleKeptRefusal(actor, g)),
+		NoChange:      permits(noChangeCheckinRefusal(actor, g)) && noChange.refusal == nil,
+	}
+	for _, to := range lifecycles {
+		if permits(lifecycleChangeRefusal(actor, g, to)) {
+			perms.LifecycleChanges = append(perms.LifecycleChanges, to)
+		}
+	}
+	return perms
 }
 
 // GoalPage reads everything the Goal goalID's page shows actorID, running
@@ -523,8 +550,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	}
 	p.CanCheckin = permits(checkinAuthorRuleRefusal(actor, g))
 	perms := GoalPermissions{
-		CheckIn:                  permits(checkInRefusal(actor, g)),
-		NoChange:                 permits(noChangeCheckinRefusal(actor, g)) && noChange.refusal == nil,
+		CheckinPermissions:       permitCheckins(actor, g, noChange, permits),
 		AddMilestone:             permits(milestoneAdditionRefusal(actor, g)),
 		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
 		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
@@ -543,11 +569,6 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		MarkOwnerDeparted:        permits(markDepartedRefusal(actor, g.Owner)),
 		MarkOwnerReturned:        permits(markReturnedRefusal(actor, g.Owner)),
 		MarkTopLevel:             permits(goalAdminRefusal(actor)),
-	}
-	for _, to := range lifecycles {
-		if permits(lifecycleChangeRefusal(actor, g, to)) {
-			perms.LifecycleChanges = append(perms.LifecycleChanges, to)
-		}
 	}
 	if failed != nil {
 		return failed
