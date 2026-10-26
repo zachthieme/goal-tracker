@@ -1,0 +1,18 @@
+package web
+
+import "github.com/zachthieme/goal-tracker/internal/domain"
+
+// refusalPage says, inside the normal page, that an action was refused
+// (heading, e.g. "Can't accept link") and why, with a link back to the page
+// the action was on (refuse).
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
+templ refusalPage(current *domain.Account, heading, reason, back string) {
+	@layout(heading, current) {
+		<div data-testid="refusal" class="message-page">
+			<h1>{ heading }</h1>
+			<p data-testid="refused-reason">{ reason }</p>
+			<p><a href={ templ.SafeURL(back) }>Back</a></p>
+		</div>
+	}
+}

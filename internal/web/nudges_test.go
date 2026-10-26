@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"errors"
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -124,8 +123,8 @@ func TestNudgeOfAnOwnerlessGoalOnlyWithAPresentDelegate(t *testing.T) {
 }
 
 // A refused Nudge answers with the app's own page, its reason and a Back link
-// to the Follow-ups page: 422 when the Goal was already nudged today or nobody can
-// check in, 403 for its Owner.
+// to the Follow-ups page it was sent from, its filters and all: 422 when the
+// Goal was already nudged today or nobody can check in, 403 for its Owner.
 func TestARefusedNudgeSaysWhy(t *testing.T) {
 	t.Parallel()
 
@@ -149,26 +148,22 @@ func TestARefusedNudgeSaysWhy(t *testing.T) {
 	for _, c := range []struct {
 		viewer string
 		goal   domain.Goal
+		from   string
 		status int
 		reason string
 	}{
-		{"kim@example.com", silent, 422, "Pat Okafor already nudged this Goal today."},
-		{"kim@example.com", alone, 422, "Nobody can check in on this Goal; it needs an Admin to reassign it."},
-		{"sam@example.com", silent, 403, "You can check in on this Goal yourself, so there's no one to nudge."},
+		{"kim@example.com", silent, "/follow-ups", 422, "Pat Okafor already nudged this Goal today."},
+		{"kim@example.com", silent, "/follow-ups?org=all&signal=silent", 422, "Pat Okafor already nudged this Goal today."},
+		{"kim@example.com", alone, "/follow-ups", 422, "Nobody can check in on this Goal; it needs an Admin to reassign it."},
+		{"sam@example.com", silent, "/follow-ups", 403, "You can check in on this Goal yourself, so there's no one to nudge."},
 	} {
-		resp := postForm(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/goals/"+strconv.FormatInt(c.goal.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
+		resp := postForm(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/goals/"+strconv.FormatInt(c.goal.ID, 10)+"/nudge", url.Values{"return": {c.from}})
 		defer func() { _ = resp.Body.Close() }()
-		body := html.UnescapeString(readBody(t, resp))
+		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s nudging %q: status %d, want %d", c.viewer, c.goal.Title, resp.StatusCode, c.status)
 		}
-		if !strings.Contains(body, "<h1>Can't nudge</h1>") || !strings.Contains(body, `<a href="/follow-ups">Back</a>`) {
-			t.Errorf("%s nudging %q: no Can't nudge page with a Back link:\n%s", c.viewer, c.goal.Title, body)
-		}
-		reason := pageElement(t, body, "p", "nudge-refused")
-		if !strings.HasSuffix(reason, ">"+c.reason) {
-			t.Errorf("%s nudging %q: reason %s, want %q", c.viewer, c.goal.Title, reason, c.reason)
-		}
+		assertRefusalPage(t, page, "Can't nudge", c.reason, c.from)
 	}
 }
 
