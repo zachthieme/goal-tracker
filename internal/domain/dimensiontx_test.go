@@ -11,9 +11,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// raceDimensionCommands runs first and second at the same moment and waits for
+// raceAttributeCommands runs first and second at the same moment and waits for
 // both, returning their errors.
-func raceDimensionCommands(first, second func() error) (errFirst, errSecond error) {
+func raceAttributeCommands(first, second func() error) (errFirst, errSecond error) {
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	wg.Add(2)
@@ -47,7 +47,7 @@ func TestSwitchToOneValueAndSettingTwoValuesTogetherHaveOneOutcome(t *testing.T)
 	core, infra := teams.Values[0], teams.Values[1]
 	for i := range 30 {
 		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "It matters.")
-		errSwitch, errSet := raceDimensionCommands(
+		errSwitch, errSet := raceAttributeCommands(
 			func() error { return h.Service.SetDimensionSelection(ctx, boss.ID, teams.ID, domain.SelectionOne) },
 			func() error {
 				return h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{core.ID, infra.ID})
@@ -81,7 +81,7 @@ func TestSwitchToOneValueAndAssigningASecondValueTogetherHaveOneOutcome(t *testi
 	for i := range 30 {
 		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "It matters.")
 		h.AssignGoalValue(goal, core)
-		errSwitch, errAssign := raceDimensionCommands(
+		errSwitch, errAssign := raceAttributeCommands(
 			func() error { return h.Service.SetDimensionSelection(ctx, boss.ID, teams.ID, domain.SelectionOne) },
 			func() error { return h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, infra.ID) },
 		)
@@ -120,7 +120,7 @@ func TestTwoValuesMergedIntoEachOtherTogetherOnlyOneMerges(t *testing.T) {
 		acme, acmeCorp := dim.Values[0], dim.Values[1]
 		goal := h.CreateGoal(sam, fmt.Sprintf("Goal %d", i), "It matters.")
 		h.AssignGoalValue(goal, acme)
-		errOne, errOther := raceDimensionCommands(
+		errOne, errOther := raceAttributeCommands(
 			func() error { return h.Service.MergeDimensionValue(ctx, boss.ID, acme.ID, acmeCorp.ID) },
 			func() error { return h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID) },
 		)

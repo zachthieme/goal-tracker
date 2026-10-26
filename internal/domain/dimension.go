@@ -819,7 +819,7 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 			return Refuse(ErrValidation, "dimension does not exist")
 		}
 		dim := dimensionFromRow(dimRow)
-		valueIDs := dedupeIDs(valueIDs)
+		valueIDs = dedupeIDs(valueIDs)
 		if len(valueIDs) > 1 && !dim.TakesSeveral() {
 			return Refuse(ErrValidation, "%s takes one value per Goal", dim.Name)
 		}
