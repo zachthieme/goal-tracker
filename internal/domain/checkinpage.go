@@ -120,9 +120,11 @@ func (s *Service) permitCheckinPage(ctx context.Context, p *CheckinPage, actorID
 		return false, err
 	}
 	p.Viewer = viewer
-	return goalPagePermits(checkinAuthorRefusal(viewer, p.Goal.Owner.ID, func() (bool, error) {
-		return s.isDelegate(ctx, p.Goal.ID, actorID)
-	}))
+	return goalPagePermits(checkinAuthorRuleRefusal(goalActor{
+		id:       actorID,
+		account:  func() (Account, bool, error) { return viewer, true, nil },
+		delegate: func() (bool, error) { return s.isDelegate(ctx, p.Goal.ID, actorID) },
+	}, p.Goal))
 }
 
 // readCheckinPageLinks reads p.Goal's children and, in one read, its latest
