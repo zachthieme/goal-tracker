@@ -58,6 +58,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A refusal or form error whose reason opens with a value, such as an email or a Goal's title, shows the value as written: it reads "owner@example.com already owns this Action Item." and "iOS launch is Done, …", not "Owner@example.com …" and "IOS launch …" (#583).
 - [user] Publishing a Report refuses, saying "The Report changed while it was being published. Publish it again.", when its Report Definition or narrative changed while the Report was being drafted, or when someone else published it meanwhile. Before, the publication left out the change, and a narrative curated meanwhile was cleared without being published, so it was lost (#586).
 - [user] A Check-in refused when sent without JavaScript (a bad date, a missing Path to Green, an off-target Metric's warning) now comes back on the whole Check-in page, with the reason and everything typed, not as a bare form with no page around it (#587).
+- [user] A refused Milestone or Metric edit now links Back to the Goal it belongs to, not to whichever Goal shares the Milestone's or Metric's id (#581).
 
 **Security:**
 - [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
