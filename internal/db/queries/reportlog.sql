@@ -17,3 +17,10 @@ ORDER BY report_log.id DESC;
 -- narrative picked or dropped.
 SELECT id, note FROM highlights
 WHERE id IN (sqlc.slice(ids));
+
+-- name: LatestReportLogEntryID :one
+-- The id of a Report Definition's newest Report log entry, or 0 when it has
+-- none: a publish compares it before and after drafting to tell whether the
+-- Report changed meanwhile.
+SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) FROM report_log
+WHERE report_definition_id = ?;

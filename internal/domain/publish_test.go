@@ -1056,3 +1056,133 @@ func TestPublishRechecksThePublisherInsideItsTransaction(t *testing.T) {
 		}
 	}
 }
+
+// A narrative curated while the Report was being drafted is missing from the
+// draft, so the publish refuses rather than freeze the draft and clear the new
+// narrative unpublished: nothing is published, the narrative stays saved for
+// the next publish, and the Report log records no publication.
+func TestPublishRefusesWhenTheNarrativeIsCuratedDuringTheDraft(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	eu := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, eu.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	before, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	signed := highlightID(t, before, "Signed the first EU customer.")
+
+	_, err = domain.PublishReportChangedMidway(ctx, h.Service, boss.ID, def.ID, time.Time{}, func() {
+		if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+			Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
+			Notes: map[string][]string{domain.HighlightAccomplishment: {"EU is open for business."}},
+		}); err != nil {
+			t.Fatalf("CurateNarrative: %v", err)
+		}
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("PublishReport err = %v, want ErrValidation", err)
+	}
+	if want := "The Report changed while it was being published. Publish it again."; domain.Reason(err) != want {
+		t.Errorf("PublishReport err = %q, want it to say %q", err, want)
+	}
+	assertUnpublished(t, h, def)
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	wins, ok := section(draft, domain.HighlightAccomplishment)
+	if !ok || !slices.Equal(wins.Notes, []string{"EU is open for business."}) ||
+		!slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
+		t.Errorf("draft narrative after the refusal %+v, want the narrative curated during the draft", draft.Narrative)
+	}
+}
+
+// assertUnpublished fails the test if def has a publication or a "Published"
+// entry in its Report log.
+func assertUnpublished(t *testing.T, h *testsupport.Harness, def domain.ReportDefinition) {
+	t.Helper()
+	ctx := context.Background()
+	pubs, err := h.Service.ListPublications(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ListPublications: %v", err)
+	}
+	if len(pubs) != 0 {
+		t.Errorf("%d publications, want none", len(pubs))
+	}
+	log, err := h.Service.ReportLog(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
+	for _, e := range log {
+		if e.Kind == domain.ReportLogPublished {
+			t.Errorf("the Report log records a publication: %+v", e)
+		}
+	}
+}
+
+// A Report Definition edited while its Report was being drafted is refused
+// too, rather than published under the name and selection it had before.
+func TestPublishRefusesWhenTheDefinitionIsEditedDuringTheDraft(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	dana := h.SignIn("dana@example.com")
+	eu := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	h.AddReportDelegate(boss, dana, def)
+
+	_, err := domain.PublishReportChangedMidway(ctx, h.Service, dana.ID, def.ID, time.Time{}, func() {
+		if _, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{
+			Name: "Quarterly review", Mode: domain.ReportModePicked, Picked: []int64{eu.ID},
+		}); err != nil {
+			t.Fatalf("UpdateReportDefinition: %v", err)
+		}
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("PublishReport err = %v, want ErrValidation", err)
+	}
+	assertUnpublished(t, h, def)
+
+	// Published again, it reads as the Definition does now.
+	pub := publish(t, h, dana, def, time.Time{})
+	if pub.Report.Definition.Name != "Quarterly review" {
+		t.Errorf("publication titled %q, want the edited title %q", pub.Report.Definition.Name, "Quarterly review")
+	}
+}
+
+// Of two publishes of one Report Definition racing, both drafted before
+// either is written, only the first written is published: the second would
+// clear a narrative the first already froze and publish the same Report again.
+func TestOnlyOneOfTwoRacingPublishesSucceeds(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	dana := h.SignIn("dana@example.com")
+	eu := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	h.AddReportDelegate(boss, dana, def)
+
+	var first domain.Publication
+	_, err := domain.PublishReportChangedMidway(ctx, h.Service, dana.ID, def.ID, time.Time{}, func() {
+		first = publish(t, h, boss, def, time.Time{})
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("second PublishReport err = %v, want ErrValidation", err)
+	}
+	pubs, err := h.Service.ListPublications(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ListPublications: %v", err)
+	}
+	if len(pubs) != 1 || pubs[0].ID != first.ID || pubs[0].PublishedBy.ID != boss.ID {
+		t.Errorf("publications %+v, want only the first, by boss", pubs)
+	}
+}

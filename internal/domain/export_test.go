@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // HoldHashSlots fills every slot of s's hash limiter with a hash that blocks
 // until the returned func is called, and returns once all of them are held.
@@ -30,4 +33,16 @@ func OwnersMilestoneEditRefusal(g Goal, status string) error {
 		delegate: func() (bool, error) { return false, nil },
 	}
 	return milestoneEditRefusal(owner, g, status)
+}
+
+// PublishReportChangedMidway is PublishReport with between run after the
+// Report is drafted and before the publication is written, as a change made
+// by someone else while the Report was being drafted.
+func PublishReportChangedMidway(ctx context.Context, s *Service, actorID, defID int64, baseline time.Time, between func()) (Publication, error) {
+	draft, err := s.draftPublication(ctx, actorID, defID, baseline)
+	if err != nil {
+		return Publication{}, err
+	}
+	between()
+	return s.writePublication(ctx, draft)
 }

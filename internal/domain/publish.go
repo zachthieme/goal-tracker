@@ -58,46 +58,90 @@ type PreviousPublication struct {
 // Drafting reads a lot, so it runs before the transaction that writes the
 // publication (ADR 0009: nothing slow inside a transaction); that transaction
 // reads the Definition again and checks again who may publish it, so a Report
-// Delegate removed while the Report was drafted is refused.
+// Delegate removed while the Report was drafted is refused. It then refuses
+// (ErrValidation) if the Report log has anything newer than when drafting
+// began: every change to the Definition or its narrative is logged, so the
+// draft may be missing it, and clearing the narrative would lose a newly
+// curated one. That also refuses the second of two publishes racing.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
-	def, err := s.publishableDefinition(ctx, actorID, defID)
+	draft, err := s.draftPublication(ctx, actorID, defID, baseline)
 	if err != nil {
 		return Publication{}, err
+	}
+	return s.writePublication(ctx, draft)
+}
+
+// draftedPublication is a Report drafted and frozen for publishing, not yet
+// written: PublishReport's first step, run outside any transaction.
+type draftedPublication struct {
+	actorID int64
+	defID   int64
+	frozen  []byte
+	// logged is the id of the Definition's newest Report log entry when
+	// drafting began, 0 when it had none.
+	logged int64
+}
+
+// draftPublication drafts and freezes the Report Definition defID's Report
+// for actorID to publish, against baseline.
+func (s *Service) draftPublication(ctx context.Context, actorID, defID int64, baseline time.Time) (draftedPublication, error) {
+	// Noted before the Definition is read, so a change made at any point of
+	// the draft is newer.
+	logged, err := s.queries.LatestReportLogEntryID(ctx, defID)
+	if err != nil {
+		return draftedPublication{}, fmt.Errorf("latest report log entry: %w", err)
+	}
+	def, err := s.publishableDefinition(ctx, actorID, defID)
+	if err != nil {
+		return draftedPublication{}, err
 	}
 	report, err := s.DraftReport(ctx, def, baseline)
 	if err != nil {
-		return Publication{}, err
+		return draftedPublication{}, err
 	}
 	publisher, err := s.Account(ctx, actorID)
 	if err != nil {
-		return Publication{}, err
+		return draftedPublication{}, err
 	}
 	scope, err := s.reportScope(ctx, def)
 	if err != nil {
-		return Publication{}, err
+		return draftedPublication{}, err
 	}
 	frozen, err := json.Marshal(snapshot{Report: report, PublishedBy: &publisher, Scope: scope})
 	if err != nil {
-		return Publication{}, fmt.Errorf("freeze report: %w", err)
+		return draftedPublication{}, fmt.Errorf("freeze report: %w", err)
 	}
+	return draftedPublication{actorID: actorID, defID: def.ID, frozen: frozen, logged: logged}, nil
+}
+
+// writePublication writes draft as a publication, in its own transaction, and
+// starts the next publication's narrative empty.
+func (s *Service) writePublication(ctx context.Context, draft draftedPublication) (Publication, error) {
 	var row db.ReportPublication
 	if err := s.WithinTx(ctx, func(tx *Service) error {
-		if _, err := tx.publishableDefinition(ctx, actorID, defID); err != nil {
+		if _, err := tx.publishableDefinition(ctx, draft.actorID, draft.defID); err != nil {
 			return err
 		}
+		logged, err := tx.queries.LatestReportLogEntryID(ctx, draft.defID)
+		if err != nil {
+			return fmt.Errorf("latest report log entry: %w", err)
+		}
+		if logged != draft.logged {
+			return Refuse(ErrValidation, "The Report changed while it was being published. Publish it again.")
+		}
 		if row, err = tx.queries.CreateReportPublication(ctx, db.CreateReportPublicationParams{
-			ReportDefinitionID: def.ID,
-			PublishedBy:        actorID,
+			ReportDefinitionID: draft.defID,
+			PublishedBy:        draft.actorID,
 			PublishedAt:        s.clock.Now().Format(timeFormat),
-			Snapshot:           string(frozen),
+			Snapshot:           string(draft.frozen),
 		}); err != nil {
 			return fmt.Errorf("create publication: %w", err)
 		}
-		if err := tx.recordReportLog(ctx, def.ID, actorID, ReportLogPublished, "Published"); err != nil {
+		if err := tx.recordReportLog(ctx, draft.defID, draft.actorID, ReportLogPublished, "Published"); err != nil {
 			return err
 		}
 		// The narrative is frozen now; the next publication's starts empty.
-		return tx.clearNarrative(ctx, def.ID)
+		return tx.clearNarrative(ctx, draft.defID)
 	}); err != nil {
 		return Publication{}, err
 	}

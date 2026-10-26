@@ -10,6 +10,21 @@ import (
 	"strings"
 )
 
+const latestReportLogEntryID = `-- name: LatestReportLogEntryID :one
+SELECT CAST(COALESCE(MAX(id), 0) AS INTEGER) FROM report_log
+WHERE report_definition_id = ?
+`
+
+// The id of a Report Definition's newest Report log entry, or 0 when it has
+// none: a publish compares it before and after drafting to tell whether the
+// Report changed meanwhile.
+func (q *Queries) LatestReportLogEntryID(ctx context.Context, reportDefinitionID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, latestReportLogEntryID, reportDefinitionID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listReportLog = `-- name: ListReportLog :many
 SELECT report_log.id, report_log.report_definition_id, report_log.actor_id, report_log.kind, report_log.detail, report_log.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM report_log
