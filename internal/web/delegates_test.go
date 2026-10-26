@@ -233,6 +233,7 @@ func TestDelegateChangeBySomeoneNotTheOwnerAnswersTheRefusalPage(t *testing.T) {
 		form := url.Values{"email": {"tpm@example.com"}}
 		resp := postForm(t, mel, ts.URL+c.path, form)
 		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s by someone not the Owner: status %d, want 403", c.name, resp.StatusCode)
 		}
