@@ -168,12 +168,16 @@ func (sel ReportSelection) added() int {
 }
 
 // SaveReportDefinition saves a reusable Report Definition. Anyone signed in may
-// save one (CONTEXT.md: Report Definition); actorID records who created it. It
+// save one (CONTEXT.md: Report Definition), but a Departed person can't
+// (saveReportDefinitionRefusal); actorID records who created it. It
 // refuses each input it can't take with an *InputError naming it.
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
 	in = normalizeReportDefinition(in)
 	var id int64
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := saveReportDefinitionRefusal(tx.accountActor(ctx, actorID)); err != nil {
+			return err
+		}
 		if err := tx.validateReportDefinition(ctx, in, nil); err != nil {
 			return err
 		}
@@ -211,7 +215,7 @@ func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64,
 		if err != nil {
 			return err
 		}
-		if err := tx.requireReportManager(ctx, actorID, def, "edit"); err != nil {
+		if err := tx.reportRule(ctx, actorID, def, editReportRefusal); err != nil {
 			return err
 		}
 		if err := tx.validateReportDefinition(ctx, in, def.FieldIDs); err != nil {

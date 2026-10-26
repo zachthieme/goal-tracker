@@ -886,19 +886,23 @@ func TestUpdateReportDefinitionOnlyByItsCreatorADelegateOrAnAdmin(t *testing.T) 
 	if len(defs) != 1 || defs[0].CreatedBy != alice.ID {
 		t.Errorf("listed definitions = %+v, want Alice's, created by %d", defs, alice.ID)
 	}
+	dee := h.SignIn("dee@example.com")
+	h.AddReportDelegate(alice, dee, def)
 	for _, c := range []struct {
-		who       string
-		as        domain.Account
-		delegates []domain.Account
-		want      bool
+		who  string
+		as   domain.Account
+		want bool
 	}{
-		{"the creator", alice, nil, true},
-		{"an Admin", boss, nil, true},
-		{"a Report Delegate", sam, []domain.Account{sam}, true},
-		{"anyone else", sam, []domain.Account{boss}, false},
+		{"the creator", alice, true},
+		{"an Admin", boss, true},
+		{"a Report Delegate", dee, true},
+		{"anyone else", sam, false},
 	} {
-		if got := domain.CanManageReport(c.as, def, c.delegates); got != c.want {
-			t.Errorf("CanManageReport(%s) = %v, want %v", c.who, got, c.want)
+		if p, err := h.Service.ReportPermissions(ctx, c.as.ID, def); err != nil || p.Manage != c.want {
+			t.Errorf("ReportPermissions(%s).Manage = %v (err %v), want %v", c.who, p.Manage, err, c.want)
+		}
+		if err := h.Service.RequireReportEditor(ctx, c.as.ID, def); (err == nil) != c.want {
+			t.Errorf("RequireReportEditor(%s) = %v, want refused %v", c.who, err, !c.want)
 		}
 	}
 

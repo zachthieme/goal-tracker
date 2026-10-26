@@ -553,8 +553,8 @@ func TestWhoMayReassignAnActionItem(t *testing.T) {
 			w := newReassignWorld(t, "admin@example.com")
 			actor := who(t, &w)
 			ctx := context.Background()
-			if ok, err := w.h.Service.CanReassignActionItem(ctx, actor.ID, w.item); err != nil || !ok {
-				t.Errorf("CanReassignActionItem = %v (err %v), want true", ok, err)
+			if p, err := w.h.Service.ActionItemPermissions(ctx, actor.ID, []domain.ActionItem{w.item}); err != nil || !p[w.item.ID].Reassign {
+				t.Errorf("ActionItemPermissions = %+v (err %v), want Reassign", p, err)
 			}
 			got, err := w.h.Service.ReassignActionItem(ctx, actor.ID, w.item.ID, w.other.ID)
 			if err != nil {
@@ -581,8 +581,8 @@ func TestWhoMayReassignAnActionItem(t *testing.T) {
 		"a later publication's author": laterPublisher,
 		"the owner's Manager":          ownersManager,
 	} {
-		if ok, err := w.h.Service.CanReassignActionItem(ctx, actor.ID, w.item); err != nil || ok {
-			t.Errorf("%s: CanReassignActionItem = %v (err %v), want false", name, ok, err)
+		if p, err := w.h.Service.ActionItemPermissions(ctx, actor.ID, []domain.ActionItem{w.item}); err != nil || p[w.item.ID].Reassign {
+			t.Errorf("%s: ActionItemPermissions = %+v (err %v), want no Reassign", name, p, err)
 		}
 		if _, err := w.h.Service.ReassignActionItem(ctx, actor.ID, w.item.ID, w.other.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("%s: ReassignActionItem err %v, want ErrNotAuthorized", name, err)
@@ -631,6 +631,11 @@ func TestReassigningAnActionItemNeedsAnOpenItemAndANewOwner(t *testing.T) {
 		if err := try(); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("reassigning %s: err %v, want ErrValidation", name, err)
 		}
+	}
+	// The rule asks who first: someone who may not reassign any of the
+	// Report's items is refused for that, not for the item being closed.
+	if _, err := w.h.Service.ReassignActionItem(ctx, w.other.ID, closed.ID, w.creator.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger reassigning a closed item: err %v, want ErrNotAuthorized", err)
 	}
 	for _, id := range []int64{w.item.ID, closed.ID} {
 		if history, err := w.h.Service.ActionItemReassignments(ctx, id); err != nil || len(history) != 0 {

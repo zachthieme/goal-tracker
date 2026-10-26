@@ -80,7 +80,7 @@ var txDisciplineExempt = map[string]string{
 	"PasswordSignIn":              "it hashes the password outside any transaction, so the hash doesn't hold the write lock, then re-reads the lockout and writes in one",
 	"DeliverEmail":                "it sends outside any transaction, so a slow mail server doesn't hold the write lock, and writes each email's outcome in a short one",
 	"PublishReport":               "it drafts the Report outside the transaction, so the draft's reads don't hold the write lock, then re-checks who may publish in it",
-	"SyncDirectoryAsAdmin":        "it refuses a non-Admin before reading the directory, which mustn't hold the write lock, then checks again in the transaction that records it",
+	"SyncDirectoryAsAdmin":        "it refuses a non-Admin before reading the directory, which mustn't hold the write lock",
 }
 
 // Every command — an exported Service method that can reach a write — reads

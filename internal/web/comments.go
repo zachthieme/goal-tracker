@@ -29,8 +29,9 @@ type discussion struct {
 	// follow the live item: its owner now closes it, though the row shows the
 	// owner it froze with.
 	Open map[int64]domain.ActionItem
-	// Reassignable marks the open Action Items the reader may reassign.
-	Reassignable map[int64]bool
+	// Permissions are what the reader may do to each open Action Item, by
+	// id, as the domain offers it (domain.ActionItemPermissions).
+	Permissions map[int64]domain.ActionItemPermissions
 	// Author is set when the reader is the Report's author, who raises Action
 	// Items.
 	Author bool
@@ -49,17 +50,16 @@ func (d discussion) dates() displayDates {
 	return reportDates(d.Loc)
 }
 
-// canClose reports whether the reader may close the Action Item now: it is
-// still open and they own it now.
+// canClose reports whether the reader may close the Action Item now, as it is
+// live: still open, and theirs now.
 func (d discussion) canClose(item domain.ActionItem) bool {
-	live, open := d.Open[item.ID]
-	return d.Current != nil && open && d.Current.ID == live.Owner.ID
+	return d.Current != nil && d.Permissions[item.ID].Close
 }
 
 // canReassign reports whether the reader may hand the Action Item, still
 // open, to a new owner.
 func (d discussion) canReassign(item domain.ActionItem) bool {
-	return d.Current != nil && d.Reassignable[item.ID]
+	return d.Current != nil && d.Permissions[item.ID].Reassign
 }
 
 // closedSince reports whether an Action Item a frozen Report lists as open has
@@ -102,7 +102,7 @@ func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, 
 	if err != nil {
 		return discussion{}, err
 	}
-	open, reassignable, err := s.liveActionItems(r, current, pub.DefinitionID)
+	open, permissions, err := s.liveActionItems(r, current, pub.DefinitionID)
 	if err != nil {
 		return discussion{}, err
 	}
@@ -111,15 +111,15 @@ func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, 
 		return discussion{}, err
 	}
 	return discussion{
-		Current:      &current,
-		Pub:          &pub,
-		Threads:      byGoal,
-		Raised:       raised,
-		Open:         open,
-		Reassignable: reassignable,
-		Author:       author,
-		Return:       publicationPath(pub),
-		Loc:          s.svc.Timezone(),
+		Current:     &current,
+		Pub:         &pub,
+		Threads:     byGoal,
+		Raised:      raised,
+		Open:        open,
+		Permissions: permissions,
+		Author:      author,
+		Return:      publicationPath(pub),
+		Loc:         s.svc.Timezone(),
 	}, nil
 }
 
@@ -127,39 +127,35 @@ func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, 
 // read live, so their owners can close them from it, and those who may can
 // reassign them.
 func (s *Server) draftDiscussion(r *http.Request, current domain.Account, defID int64) (discussion, error) {
-	open, reassignable, err := s.liveActionItems(r, current, defID)
+	open, permissions, err := s.liveActionItems(r, current, defID)
 	if err != nil {
 		return discussion{}, err
 	}
 	return discussion{
-		Current:      &current,
-		Open:         open,
-		Reassignable: reassignable,
-		Return:       fmt.Sprintf("/reports/%d", defID),
-		Loc:          s.svc.Timezone(),
+		Current:     &current,
+		Open:        open,
+		Permissions: permissions,
+		Return:      fmt.Sprintf("/reports/%d", defID),
+		Loc:         s.svc.Timezone(),
 	}, nil
 }
 
 // liveActionItems are the Report Definition's Action Items open now, by id,
-// and which of them the reader current may reassign.
-func (s *Server) liveActionItems(r *http.Request, current domain.Account, defID int64) (map[int64]domain.ActionItem, map[int64]bool, error) {
+// and what the reader current may do to each of them.
+func (s *Server) liveActionItems(r *http.Request, current domain.Account, defID int64) (map[int64]domain.ActionItem, map[int64]domain.ActionItemPermissions, error) {
 	items, err := s.svc.OpenActionItems(r.Context(), defID)
 	if err != nil {
 		return nil, nil, err
 	}
 	open := make(map[int64]domain.ActionItem, len(items))
-	reassignable := map[int64]bool{}
 	for _, item := range items {
 		open[item.ID] = item
-		ok, err := s.svc.CanReassignActionItem(r.Context(), current.ID, item)
-		if err != nil {
-			return nil, nil, err
-		}
-		if ok {
-			reassignable[item.ID] = true
-		}
 	}
-	return open, reassignable, nil
+	permissions, err := s.svc.ActionItemPermissions(r.Context(), current.ID, items)
+	if err != nil {
+		return nil, nil, err
+	}
+	return open, permissions, nil
 }
 
 // handleAddComment comments on a Goal's block in a published Report and comes

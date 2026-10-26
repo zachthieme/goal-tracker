@@ -106,7 +106,7 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 		if err != nil {
 			return err
 		}
-		if err := tx.requireReportManager(ctx, actorID, def, "curate"); err != nil {
+		if err := tx.reportRule(ctx, actorID, def, curateNarrativeRefusal); err != nil {
 			return err
 		}
 		notes, err := tx.checkCuratedNarrative(ctx, def, in)
