@@ -549,9 +549,18 @@ beside it, and start the service.
 3. `sudo systemctl restart goal-tracker`.
 
 Database migrations run automatically on start and only move forward: to go
-back to an older binary, restore the backup taken before the upgrade. Read the
-top of [CHANGELOG.md](../CHANGELOG.md) first; anything tagged `[ops]`, and
-especially a **Breaking changes** entry, may need a settings change.
+back to an older binary, restore the backup taken before the upgrade.
+
+A database created before the migrations were squashed into one baseline
+(`0001_baseline.sql`) can't be upgraded: the app refuses to start on it, with
+an error saying the database predates the baseline, and changes nothing in it.
+Recreate it, as the error says: delete the database file (or point
+`GOAL_TRACKER_DB`, or `SEED_DB` for `make seed`, at a new one), then run
+`make seed`.
+
+Read the top of [CHANGELOG.md](../CHANGELOG.md) first; anything tagged
+`[ops]`, and especially a **Breaking changes** entry, may need a settings
+change.
 
 ### Making someone an Admin later
 
@@ -594,6 +603,7 @@ passwords, their passwords still work.
 | Symptom | Cause |
 | ------- | ----- |
 | `run migrations: … unable to open database file (14)` | The database's directory doesn't exist or isn't writable by `goal-tracker`. |
+| `run migrations: the database predates the baseline: …` | The database was created before the migrations were squashed into `0001_baseline.sql`. Recreate it (see [Upgrading](#upgrading)). |
 | `GOAL_TRACKER_SIGNIN must be one of oidc, password, dev` | The env file isn't being read, or the variable is misspelled. |
 | `GOAL_TRACKER_SIGNIN=password needs GOAL_TRACKER_SESSION_KEY: …` | The env file has no session key: generate one with `openssl rand -base64 32`. |
 | `GOAL_TRACKER_SESSION_KEY is N bytes, want at least 32` | Generate it with `openssl rand -base64 32`. |

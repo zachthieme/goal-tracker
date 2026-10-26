@@ -77,9 +77,8 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 }
 
 // MigratedDatabaseFile copies the migrated template database into a file of
-// t's own and returns its path, for a test that opens the database itself, as
-// internal/db's upgrade tests do to forget a migration and run it again. The
-// copy is in WAL mode, as the template is.
+// t's own and returns its path, for a test that opens the database file itself
+// rather than through a Harness. The copy is in WAL mode, as the template is.
 func MigratedDatabaseFile(t *testing.T) string {
 	t.Helper()
 	tmpl, err := template()

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,7 +26,9 @@ func Migrations() fs.FS { return migrationsFS }
 // order, each in its own transaction. Applied versions are tracked in
 // schema_migrations so it is safe to call on every startup. It is the single
 // source of schema for both the server and the test harness, so tests run the
-// same migrations production does.
+// same migrations production does. A database that applied a migration this
+// build doesn't hold, as every one built before 0001_baseline.sql did, is
+// refused before anything runs on it.
 //
 // Migrations run with foreign keys off, as SQLite advises for schema changes:
 // a table rebuilt by copy, drop and rename would otherwise trip its children's
@@ -75,6 +78,9 @@ func applyMigrations(ctx context.Context, conn *sql.Conn) error {
 		return fmt.Errorf("glob migrations: %w", err)
 	}
 	sort.Strings(entries)
+	if err := refuseUnknownVersions(ctx, conn, entries); err != nil {
+		return err
+	}
 
 	for _, path := range entries {
 		version := path
@@ -113,6 +119,42 @@ func applyMigrations(ctx context.Context, conn *sql.Conn) error {
 		}
 	}
 	return nil
+}
+
+// refuseUnknownVersions fails, before anything is applied, if schema_migrations
+// lists a version that isn't one of entries. Every database built by the
+// migrations 0001_baseline.sql replaced lists them, and can't be upgraded in
+// place: it is recreated instead.
+func refuseUnknownVersions(ctx context.Context, conn *sql.Conn, entries []string) error {
+	rows, err := conn.QueryContext(ctx, `SELECT version FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var unknown []string
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			return fmt.Errorf("read schema_migrations: %w", err)
+		}
+		if !slices.Contains(entries, version) {
+			unknown = append(unknown, version)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	applied := unknown[0]
+	if len(unknown) > 1 {
+		applied += fmt.Sprintf(" and %d more", len(unknown)-1)
+	}
+	return fmt.Errorf("the database predates the baseline: it applied %s, which this build doesn't hold, "+
+		"so it can't be upgraded and must be recreated: delete the database file "+
+		"(or point GOAL_TRACKER_DB, or SEED_DB for make seed, at a new one), then run make seed", applied)
 }
 
 // maxForeignKeyViolationsListed caps how many rows a failed foreign-key check

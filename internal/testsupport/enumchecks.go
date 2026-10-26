@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// EnumCheckTables are the tables migration 0064 rebuilt to add a CHECK on each
-// of their enum and 0/1 flag columns.
+// EnumCheckTables are the baseline's tables with a CHECK on each of their enum
+// and 0/1 flag columns.
 var EnumCheckTables = []string{
 	"accounts", "goals", "checkins", "milestones", "milestone_changes",
 	"date_slips", "links", "link_events", "parent_suggestions", "handoffs",
