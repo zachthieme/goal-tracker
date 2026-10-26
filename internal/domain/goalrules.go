@@ -178,9 +178,15 @@ func checkInRefusal(a goalActor, g Goal) error {
 		return err
 	}
 	if !LifecycleTakesCheckins(g.Lifecycle) {
-		return Refuse(ErrValidation, "only an Active Goal can be checked in on")
+		return lifecycleTakesNoCheckinsRefusal(g.Lifecycle)
 	}
 	return nil
+}
+
+// lifecycleTakesNoCheckinsRefusal refuses a Check-in on a Goal in lifecycle,
+// one LifecycleTakesCheckins says takes none, naming the Lifecycles that do.
+func lifecycleTakesNoCheckinsRefusal(lifecycle string) error {
+	return Refuse(ErrValidation, "a %s Goal can't be checked in on: only an Active or On Hold Goal takes Check-ins", lifecycle)
 }
 
 // noChangeCheckinRefusal is SubmitNoChangeCheckin's rule: those

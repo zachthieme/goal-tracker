@@ -1395,8 +1395,9 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Trying anyway."},
 	})
-	if msg := formTopError(t, parsePage(t, body)); !strings.Contains(msg, "Only an Active Goal") {
-		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
+	const want = "A Cancelled Goal can't be checked in on: only an Active or On Hold Goal takes Check-ins."
+	if msg := formTopError(t, parsePage(t, body)); !strings.Contains(msg, want) {
+		t.Errorf("the form's top error = %q, want %q", msg, want)
 	}
 }
 
@@ -2169,7 +2170,7 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 	onHold := h.OnHoldGoal(sam, "Ship search", "People can't find things.", "Waiting on budget.")
 	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Cut churn", "Customers leave."), domain.LifecycleCancelled)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	const reason = "Only an Active Goal can be checked in on."
+	const reason = "Only an Active Goal takes a No change."
 
 	for _, hx := range []bool{false, true} {
 		for _, goal := range []domain.Goal{onHold, cancelled} {
