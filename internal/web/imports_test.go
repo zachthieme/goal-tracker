@@ -104,6 +104,7 @@ func TestNonAdminCannotImportOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-Admin import: status %d, want 403", resp.StatusCode)
 	}
+	assertRefusalPage(t, parsePage(t, readBody(t, resp)), "Admins only", "Only an Admin may import Goals.", "/home")
 }
 
 // The Import page sits in the flat frame (DESIGN.md § Import Goals page), its
