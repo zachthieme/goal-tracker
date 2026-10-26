@@ -3,11 +3,9 @@ package domain
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
-	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
 // Nudge is a one-off request from someone else to a Goal's Owner and
@@ -96,13 +94,8 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 			return fmt.Errorf("record nudge: %w", err)
 		}
 		n = nudgeFromRow(row, sender)
-		for _, r := range to {
-			if err := tx.queueEmail(ctx, email.Message{
-				To:        r.Email,
-				AccountID: r.ID,
-				Subject:   "Check-in requested: " + goal.Title,
-				Body:      tx.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
-			}); err != nil {
+		for _, msg := range tx.composer.Nudges(sender, goal, fresh, conflicts, to) {
+			if err := tx.queueEmail(ctx, msg); err != nil {
 				return err
 			}
 		}
@@ -202,43 +195,6 @@ func nudgeRecipients(owner Account, delegates []Account) []Account {
 		}
 	}
 	return out
-}
-
-// nudgeBody is a Nudge's email: who asked, the Goal's line in the weekly
-// reminder's words (a Delegate's naming the Owner they check in for) with the
-// first of Check-in overdue, Path to Green overdue and Milestone overdue that
-// holds, or else Schedule conflict, a line for each of the Goal's Schedule
-// conflicts in the Goal page banner's words, and the link to check in,
-// opening its dates when there is a conflict. With no hover in an email,
-// people read Name (email) at their first mention.
-func (s *Service) nudgeBody(sender Account, goal Goal, f Freshness, conflicts []ScheduleConflict, asDelegate bool) string {
-	var people Mentions
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s asked for a Check-in on this Goal.\n\n", people.Of(sender))
-	title := goal.Title
-	if asDelegate {
-		title += ", as Delegate for " + people.Of(goal.Owner)
-	}
-	switch {
-	case f.CheckinOverdue:
-		fmt.Fprintf(&b, "%s: Check-in overdue, %s\n", title, f.LastCheckinAge())
-	case f.PathToGreenOverdue:
-		fmt.Fprintf(&b, "%s: Path to Green overdue since %s\n", title, f.PathTargetDate.Format(dateFormat))
-	case f.MilestoneOverdue:
-		fmt.Fprintf(&b, "%s: Milestone %q overdue since %s\n", title, f.OverdueMilestone, f.OverdueMilestoneDate.Format(dateFormat))
-	default:
-		fmt.Fprintf(&b, "%s: Schedule conflict\n", title)
-	}
-	for _, c := range conflicts {
-		fmt.Fprintf(&b, "Schedule conflict: %s (due %s) contributes to %s (due %s)\n",
-			c.Child.Title, c.Child.DeliveryDate.Format(dateFormat), c.Parent.Title, c.Parent.DeliveryDate.Format(dateFormat))
-	}
-	checkin := fmt.Sprintf("%s/goals/%d/checkin", s.baseURL, goal.ID)
-	if len(conflicts) > 0 {
-		checkin += "?open=dates"
-	}
-	fmt.Fprintln(&b, checkin)
-	return b.String()
 }
 
 // containsAccount reports whether id is one of accounts.

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
-	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
 // Comment is a question or answer about one Goal, made either on the Goal
@@ -255,51 +254,19 @@ func (s *Service) createComment(ctx context.Context, actorID, pubID, goalID, thr
 
 // alert queues an email of the new Comment c to the Goal's current Owner and
 // to others (everyone in its thread, for a reply), once each, skipping its
-// author and anyone who has left the org. pub is the published Report c was made on, or
-// nil for a Comment on the Goal itself.
+// author and anyone who has left the org (EmailComposer.CommentAlerts). pub is
+// the published Report c was made on, or nil for a Comment on the Goal itself.
 func (s *Service) alert(ctx context.Context, c Comment, pub *Publication, others []Account) error {
 	goal, err := s.queries.GetGoal(ctx, c.GoalID)
 	if err != nil {
 		return fmt.Errorf("look up goal: %w", err)
 	}
-	kind, verb := "Comment", "commented on"
-	if c.ThreadID != 0 {
-		kind, verb = "Reply", "replied about"
-	}
-	var subject, body string
-	if pub == nil {
-		subject = fmt.Sprintf("%s on %s", kind, goal.Goal.Title)
-		body = fmt.Sprintf("%s %s the Goal %q:\n\n%s\n\nRead and reply at %s\n",
-			c.Author.LongLabel(), verb, goal.Goal.Title, c.Body, s.commentURL(nil, c.GoalID))
-	} else {
-		report := pub.Report.Definition.Name
-		subject = fmt.Sprintf("%s on %s in %s", kind, goal.Goal.Title, report)
-		body = fmt.Sprintf("%s %s the Goal %q in the Report %s, published %s:\n\n%s\n\nRead and reply at %s\n",
-			c.Author.LongLabel(), verb, goal.Goal.Title, report,
-			orgDate(pub.PublishedAt, s.loc).Format(dateFormat), c.Body, s.commentURL(pub, c.GoalID))
-	}
-
-	sent := map[int64]bool{c.Author.ID: true}
-	for _, a := range append([]Account{accountFromRow(goal.Account)}, others...) {
-		if sent[a.ID] || a.Departed {
-			continue
-		}
-		sent[a.ID] = true
-		if err := s.queueEmail(ctx, email.Message{To: a.Email, AccountID: a.ID, Subject: subject, Body: body}); err != nil {
+	for _, msg := range s.composer.CommentAlerts(c, goalFromRow(goal.Goal, goal.Account), pub, others) {
+		if err := s.queueEmail(ctx, msg); err != nil {
 			return fmt.Errorf("queue comment alert: %w", err)
 		}
 	}
 	return nil
-}
-
-// commentURL is where a Comment is read and replied to, for the link in an
-// alert: the Goal page's Comments for one on the Goal itself (pub nil), or the
-// Goal's block in the published Report pub.
-func (s *Service) commentURL(pub *Publication, goalID int64) string {
-	if pub == nil {
-		return fmt.Sprintf("%s/goals/%d#comments", s.baseURL, goalID)
-	}
-	return fmt.Sprintf("%s/reports/%d/publications/%d#goal-%d", s.baseURL, pub.DefinitionID, pub.ID, goalID)
 }
 
 func commentFromRow(c db.Comment, author db.Account) Comment {
