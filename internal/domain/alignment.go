@@ -22,10 +22,9 @@ func (s *Service) UnmarkTopLevel(ctx context.Context, actorID, goalID int64) (Go
 
 func (s *Service) setTopLevel(ctx context.Context, actorID, goalID int64, topLevel bool) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireAdmin(ctx, actorID); err != nil {
-			return err
-		}
-		if _, err := tx.loadGoal(ctx, goalID); err != nil {
+		if err := tx.goalRule(ctx, actorID, goalID, func(a goalActor, _ Goal) error {
+			return goalAdminRefusal(a)
+		}); err != nil {
 			return err
 		}
 		var flag int64

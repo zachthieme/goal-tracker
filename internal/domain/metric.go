@@ -87,7 +87,7 @@ func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInpu
 			}
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, in.GoalID); err != nil {
+		if err := tx.goalRule(ctx, actorID, in.GoalID, metricEditRefusal); err != nil {
 			return err
 		}
 
@@ -141,7 +141,7 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 			}
 			return fmt.Errorf("look up metric: %w", err)
 		}
-		if err := tx.authorizeGoalOwnerWrite(ctx, actorID, current.GoalID); err != nil {
+		if err := tx.goalRule(ctx, actorID, current.GoalID, metricEditRefusal); err != nil {
 			return err
 		}
 
@@ -165,8 +165,9 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 	return metricFromRow(row), nil
 }
 
-// RequireMetricOwner is RequireGoalOwner for the Metric's Goal. It returns
-// ErrNotFound if no such Metric exists.
+// RequireMetricOwner allows actorID to change metricID only if they are its
+// Goal's Owner, by metricEditRefusal, the rule AddMetric and EditMetric
+// apply. It returns ErrNotFound if no such Metric exists.
 func (s *Service) RequireMetricOwner(ctx context.Context, actorID, metricID int64) error {
 	m, err := s.queries.GetMetric(ctx, metricID)
 	if err != nil {
@@ -175,7 +176,7 @@ func (s *Service) RequireMetricOwner(ctx context.Context, actorID, metricID int6
 		}
 		return fmt.Errorf("look up metric: %w", err)
 	}
-	return s.RequireGoalOwner(ctx, actorID, m.GoalID)
+	return s.goalRule(ctx, actorID, m.GoalID, metricEditRefusal)
 }
 
 // ListMetrics returns a Goal's Metrics, earliest target date first.

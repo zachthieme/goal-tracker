@@ -1,11 +1,6 @@
 package domain
 
-import (
-	"context"
-	"database/sql"
-	"errors"
-	"fmt"
-)
+import "context"
 
 // goalImport is an Admin's spreadsheet import in progress: the Admin running
 // it, and the Goals it has created so far (ticket #22).
@@ -51,30 +46,13 @@ func (s *Service) recordImportedGoal(goalID int64) {
 	}
 }
 
-// authorizeGoalOwnerWrite allows actorID to change goalID only if they are its
-// Owner (a Delegate and an Admin are refused), or the Admin whose import
-// created it; ErrNotFound if no such Goal exists. It guards the commands the
-// Goal page offers its Owner alone.
-func (s *Service) authorizeGoalOwnerWrite(ctx context.Context, actorID, goalID int64) error {
-	if s.importedBy(actorID, goalID) {
-		return nil
-	}
-	return s.RequireGoalOwner(ctx, actorID, goalID)
-}
-
 // RequireCheckinAuthor allows actorID to write goalID's Check-ins only if they
 // are its Owner or a Delegate and haven't Departed, by the rule SubmitCheckin
-// applies; anyone else is refused with ErrNotAuthorized, and a missing Goal is
-// ErrNotFound. The Goal page asks it before offering the Check-in form.
+// applies (checkinAuthorRuleRefusal), whatever its Lifecycle; anyone else is
+// refused with ErrNotAuthorized, and a missing Goal is ErrNotFound. The Goal
+// page asks it before offering the Check-in form.
 func (s *Service) RequireCheckinAuthor(ctx context.Context, actorID, goalID int64) error {
-	g, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-		}
-		return fmt.Errorf("look up goal: %w", err)
-	}
-	return s.authorizeCheckinAuthor(ctx, goalID, g.Goal.OwnerID, actorID)
+	return s.goalRule(ctx, actorID, goalID, checkinAuthorRuleRefusal)
 }
 
 // RequireGoalValueSetter allows actorID to set goalID's Dimension values and

@@ -200,14 +200,21 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 		}
 		return Checkin{}, fmt.Errorf("look up goal: %w", err)
 	}
-	lifecycle, err := planLifecycleChange(goal.Goal.Lifecycle, in.Lifecycle, in.LifecycleReason, in.Outcome)
-	if err != nil {
-		return Checkin{}, err
-	}
 	// The Owner writes a Goal's Check-ins, as may any Delegate the Owner has
 	// authorized; the Check-in records its author and still credits the Owner it
-	// speaks for (CONTEXT.md: Delegate).
-	if err := s.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, in.AuthorID); err != nil {
+	// speaks for (CONTEXT.md: Delegate). One that moves its Lifecycle moves it
+	// only as LifecycleChangesFrom allows.
+	g := goalFromRow(goal.Goal, goal.Account)
+	actor := s.goalActorFor(ctx, in.AuthorID, g.ID)
+	refusal := checkInRefusal(actor, g)
+	if in.Lifecycle != "" && in.Lifecycle != g.Lifecycle {
+		refusal = lifecycleChangeRefusal(actor, g, in.Lifecycle)
+	}
+	if refusal != nil {
+		return Checkin{}, refusal
+	}
+	lifecycle, err := planLifecycleChange(goal.Goal.Lifecycle, in.Lifecycle, in.LifecycleReason, in.Outcome)
+	if err != nil {
 		return Checkin{}, err
 	}
 
@@ -553,15 +560,18 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
 	var out Checkin
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.activeGoalForNoChange(ctx, goalID)
+		goal, err := tx.queries.GetGoal(ctx, goalID)
 		if err != nil {
-			return err
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "goal does not exist")
+			}
+			return fmt.Errorf("look up goal: %w", err)
 		}
-		if err := tx.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, authorID); err != nil {
+		g := goalFromRow(goal.Goal, goal.Account)
+		if err := noChangeCheckinRefusal(tx.goalActorFor(ctx, authorID, goalID), g); err != nil {
 			return err
 		}
 
-		g := goalFromRow(goal.Goal, goal.Account)
 		facts, err := tx.noChangeFactsByGoal(ctx, []Goal{g})
 		if err != nil {
 			return err
@@ -803,44 +813,6 @@ func noChangeRefusalOf(facts noChangeFacts) (string, error) {
 		return "", fmt.Errorf("%w — submit a Check-in to confirm or update it", &GreenOffTargetError{Metrics: facts.offTarget})
 	}
 	return explanation, nil
-}
-
-// authorizeCheckinAuthor allows a Check-in to be written only by the Goal's
-// Owner or a Delegate the Owner has authorized; anyone else is refused
-// (CONTEXT.md: Delegate; acceptance: Non-Delegates can't submit Check-ins). A
-// Departed person can't act, so is refused whichever they are (CONTEXT.md:
-// Departed).
-func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, authorID int64) error {
-	author, err := s.queries.GetAccount(ctx, authorID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrNotAuthorized, "the author does not exist")
-		}
-		return fmt.Errorf("look up author: %w", err)
-	}
-	return checkinAuthorRefusal(accountFromRow(author), ownerID, func() (bool, error) {
-		return s.isDelegate(ctx, goalID, authorID)
-	})
-}
-
-// checkinAuthorRefusal is authorizeCheckinAuthor's rule for author, an
-// Account that exists, on a Goal Owned by ownerID: delegate says whether they
-// are its Delegate, and is asked only when it decides.
-func checkinAuthorRefusal(author Account, ownerID int64, delegate func() (bool, error)) error {
-	if author.Departed {
-		return Refuse(ErrNotAuthorized, "a Departed person can't submit a Check-in")
-	}
-	if author.ID == ownerID {
-		return nil
-	}
-	ok, err := delegate()
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return Refuse(ErrNotAuthorized, "only the Owner or a Delegate may submit a Check-in")
-	}
-	return nil
 }
 
 // resolveRollupExplanation enforces ADR-0003's explanation rule for a Check-in

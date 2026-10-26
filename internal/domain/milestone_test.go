@@ -369,50 +369,6 @@ func TestCheckinRecordsItsMilestoneChanges(t *testing.T) {
 	}
 }
 
-// A Check-in's Milestone changes keep each Milestone's name as it was: renaming
-// the added, Done and Removed Milestones afterwards leaves the entry as it read.
-func TestCheckinMilestoneChangesKeepTheNameAtTheTime(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	goal, in := replanned(t, h)
-	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
-		t.Fatalf("SubmitCheckin: %v", err)
-	}
-	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
-	if err != nil || len(ms) != 3 {
-		t.Fatalf("ListMilestones: %v %v", ms, err)
-	}
-	for _, m := range ms {
-		if _, err := h.Service.EditMilestone(context.Background(), goal.Owner.ID, domain.EditMilestoneInput{
-			MilestoneID: m.ID,
-			Name:        m.Name + " (renamed)",
-			TargetDate:  m.TargetDate,
-		}); err != nil {
-			t.Fatalf("EditMilestone %q: %v", m.Name, err)
-		}
-	}
-
-	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
-	if err != nil || len(checkins) != 1 {
-		t.Fatalf("ListCheckins: %+v %v", checkins, err)
-	}
-	got := checkins[0].MilestoneChanges
-	want := []struct{ kind, name string }{
-		{domain.MilestoneChangeAdded, "GA"},
-		{domain.MilestoneChangeDone, "Beta"},
-		{domain.MilestoneChangeRemoved, "Rollout to 50%"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("MilestoneChanges = %+v, want %d", got, len(want))
-	}
-	for i, w := range want {
-		if got[i].Kind != w.kind || got[i].Name != w.name {
-			t.Errorf("change %d = %s %q, want %s %q", i, got[i].Kind, got[i].Name, w.kind, w.name)
-		}
-	}
-}
-
 // A Check-in that fails validation records none of its Milestone changes.
 func TestRejectedCheckinRecordsNoMilestoneChange(t *testing.T) {
 	t.Parallel()
@@ -722,6 +678,32 @@ func TestAddMilestoneAsAuthorRequiresNameAndDate(t *testing.T) {
 	}
 	if got := changesOutsideCheckins(t, h, goal.ID); len(got) != 0 {
 		t.Errorf("changes outside Check-ins = %+v, want none", got)
+	}
+}
+
+// A Milestone is edited, renamed or re-dated, only while its Goal is Proposed
+// and it is Planned: the rule refuses its Owner on a Goal in any other
+// Lifecycle, and a Done or Removed Milestone by its status alone, though such
+// a Milestone only exists once its Goal is past Proposed (CONTEXT.md:
+// Milestone).
+func TestAMilestoneIsEditedOnlyWhilePlannedOnAProposedGoal(t *testing.T) {
+	t.Parallel()
+
+	sam := domain.Account{ID: 1, Email: "sam@example.com"}
+	for _, lifecycle := range []string{domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled} {
+		for _, status := range []string{domain.MilestonePlanned, domain.MilestoneDone, domain.MilestoneRemoved} {
+			g := domain.Goal{ID: 7, Owner: sam, Lifecycle: lifecycle}
+			err := domain.OwnersMilestoneEditRefusal(g, status)
+			if lifecycle == domain.LifecycleProposed && status == domain.MilestonePlanned {
+				if err != nil {
+					t.Errorf("a Planned Milestone on a Proposed Goal: err = %v, want none", err)
+				}
+				continue
+			}
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("a %s Milestone on a %s Goal: err = %v, want ErrValidation", status, lifecycle, err)
+			}
+		}
 	}
 }
 

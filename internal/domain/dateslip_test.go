@@ -222,12 +222,15 @@ func TestCheckinRejectsMilestoneOnAnotherGoal(t *testing.T) {
 
 // Every date change on an Active Goal is explained: outside a Check-in, a
 // Milestone's date and the delivery date can't be moved (so no change skips its
-// Date Slip), though a Milestone can still be renamed.
+// Date Slip), and a Milestone isn't renamed either, for it is edited only while
+// its Goal is Proposed (CONTEXT.md: Milestone). Who may edit it is judged
+// first, so a stranger's rename is refused as theirs.
 func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	beta := onlyMilestone(t, h, goal.ID)
 	ctx := context.Background()
@@ -239,8 +242,16 @@ func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
 	}
 	if _, err := h.Service.EditMilestone(ctx, sam.ID, domain.EditMilestoneInput{
 		MilestoneID: beta.ID, Name: "Public beta", TargetDate: beta.TargetDate,
-	}); err != nil {
-		t.Errorf("EditMilestone renaming on an Active Goal: %v", err)
+	}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("EditMilestone renaming on an Active Goal: err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.EditMilestone(ctx, pat.ID, domain.EditMilestoneInput{
+		MilestoneID: beta.ID, Name: "Public beta", TargetDate: beta.TargetDate,
+	}); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger's EditMilestone renaming on an Active Goal: err = %v, want ErrNotAuthorized", err)
+	}
+	if m := onlyMilestone(t, h, goal.ID); m.Name != "Beta" {
+		t.Errorf("the Milestone is named %q after the refusals, want Beta", m.Name)
 	}
 	if _, err := h.Service.MarkGoalDated(ctx, goal.Owner.ID, goal.ID, goal.DeliveryDate.AddDate(0, 1, 0)); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("MarkGoalDated on an Active Goal: err = %v, want ErrValidation", err)

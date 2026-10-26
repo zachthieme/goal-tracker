@@ -2,8 +2,6 @@ package domain
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -127,22 +125,11 @@ func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]Title
 }
 
 // RequireGoalOwnerOrAdmin returns ErrNotAuthorized unless actorID is the Goal's
-// Owner or an Admin (a Delegate is refused), or ErrNotFound if no such Goal
-// exists. EditTitle and EditWhyItMatters check it for themselves.
+// Owner or an Admin (a Delegate is refused), by goalOwnerOrAdminRefusal, or
+// ErrNotFound if no such Goal exists. EditTitle and EditWhyItMatters check it
+// for themselves.
 func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
-	g, err := s.loadGoal(ctx, goalID)
-	if err != nil {
-		return err
-	}
-	if g.Owner.ID == actorID {
-		return nil
-	}
-	actor, err := s.queries.GetAccount(ctx, actorID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up actor: %w", err)
-	}
-	if err != nil || actor.IsAdmin == 0 {
-		return Refuse(ErrNotAuthorized, "only the Goal's Owner or an Admin may change it")
-	}
-	return nil
+	return s.goalRule(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+		return goalOwnerOrAdminRefusal(a, g, "change it")
+	})
 }

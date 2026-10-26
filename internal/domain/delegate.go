@@ -30,8 +30,8 @@ func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID in
 			}
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if actorID != goal.Goal.OwnerID {
-			return Refuse(ErrNotAuthorized, "only the Owner may authorize a Delegate")
+		if err := goalOwnerRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account), "authorize a Delegate"); err != nil {
+			return err
 		}
 		if accountID == goal.Goal.OwnerID {
 			return Refuse(ErrValidation, "the Owner already writes this Goal's Check-ins")
@@ -90,8 +90,8 @@ func (s *Service) RemoveDelegate(ctx context.Context, actorID, goalID, accountID
 			}
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if actorID != goal.Goal.OwnerID {
-			return Refuse(ErrNotAuthorized, "only the Owner may remove a Delegate")
+		if err := goalOwnerRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account), "remove a Delegate"); err != nil {
+			return err
 		}
 		if err := tx.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
 			GoalID:    goalID,

@@ -47,7 +47,7 @@ The one person accountable for a Goal, who writes its Check-ins and answers for 
 _Avoid_: co-owner, DRI, lead
 
 **Delegate**:
-A person an Owner authorizes to write and submit Check-ins for a Goal, to add and edit its Milestones, and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep. A Delegate is always a Goal's; a Report Definition has Report Delegates.
+A person an Owner authorizes to write and submit Check-ins for a Goal, to add its Milestones and edit them (only while the Goal is Proposed and the Milestone Planned, as for the Owner), and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep. A Delegate is always a Goal's; a Report Definition has Report Delegates.
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:
@@ -72,7 +72,7 @@ _Avoid_: KPI, key result, measure
 
 **Milestone**:
 A dated checkpoint within a Goal. A Milestone slip that doesn't move the Goal's delivery date does not affect Health.
-The Goal's Owner or a Delegate can add a Milestone at any time while the Goal is Proposed, Active or On Hold, from the Goal page or in a Check-in; one added from the Goal page once the Goal is Active is kept in the Goal's history with who added it. Moving a Milestone's date (a Date Slip) and marking it Done or Removed still happen only in a Check-in.
+The Goal's Owner or a Delegate can add a Milestone at any time while the Goal is Proposed, Active or On Hold, from the Goal page or in a Check-in; one added from the Goal page once the Goal is Active is kept in the Goal's history with who added it. A Milestone is edited (renamed or re-dated) only while its Goal is Proposed and it is Planned; after that, moving its date (a Date Slip) and marking it Done or Removed happen only in a Check-in, and it keeps its name.
 Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Overdue**, still Planned and past its date; **Slipped**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or on the Goal page by the Goal's latest Check-in or since it). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets, and though Overdue and Slipped are shown in the Red and Yellow tints, each shows its word rather than a Health's shape. An Active Goal whose latest Check-in is Green while a Milestone is overdue is marked Milestone overdue beside its Health on the Goal list and on Follow-ups. The Health stays the Owner's, and a No change is refused until they respond (see **Check-in**).
 _Avoid_: task, deliverable, phase
 

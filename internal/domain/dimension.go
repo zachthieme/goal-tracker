@@ -913,17 +913,13 @@ func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name str
 }
 
 // requireGoalValueSetter refuses anyone but the Goal's Owner, one of its
-// Delegates, or an Admin (CONTEXT.md: Delegate).
+// Delegates, or an Admin, by goalValueSetterRefusal (CONTEXT.md: Delegate).
 func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		return Refuse(ErrValidation, "goal does not exist")
 	}
-	return goalValueSetterRefusal(actorID, goal.Goal.OwnerID, func() (bool, error) {
-		return s.isDelegate(ctx, goalID, actorID)
-	}, func() error {
-		return s.requireAdmin(ctx, actorID)
-	})
+	return goalValueSetterRefusal(s.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account))
 }
 
 // ValueSettableGoals names those of goals whose Dimension values and Fields
@@ -947,11 +943,11 @@ func (s *Service) ValueSettableGoals(ctx context.Context, actor Account, goals [
 	}
 	settable := map[int64]bool{}
 	for _, g := range goals {
-		refusal := goalValueSetterRefusal(actor.ID, g.Owner.ID, func() (bool, error) {
-			return isDelegate(g.ID)
-		}, func() error {
-			return adminRefusal(actor)
-		})
+		refusal := goalValueSetterRefusal(goalActor{
+			id:       actor.ID,
+			account:  func() (Account, bool, error) { return actor, true, nil },
+			delegate: func() (bool, error) { return isDelegate(g.ID) },
+		}, g)
 		switch {
 		case refusal == nil:
 			settable[g.ID] = true
@@ -960,27 +956,6 @@ func (s *Service) ValueSettableGoals(ctx context.Context, actor Account, goals [
 		}
 	}
 	return settable, nil
-}
-
-// goalValueSetterRefusal is requireGoalValueSetter's rule for actorID on a
-// Goal Owned by ownerID: delegate says whether they are its Delegate and
-// admin refuses them unless they are an Admin, each asked only when it
-// decides.
-func goalValueSetterRefusal(actorID, ownerID int64, delegate func() (bool, error), admin func() error) error {
-	if ownerID == actorID {
-		return nil
-	}
-	if ok, err := delegate(); err != nil {
-		return err
-	} else if ok {
-		return nil
-	}
-	if err := admin(); errors.Is(err, ErrNotAuthorized) {
-		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Dimension values")
-	} else if err != nil {
-		return err
-	}
-	return nil
 }
 
 // GoalValues returns the Dimension values assigned to a Goal, retired ones

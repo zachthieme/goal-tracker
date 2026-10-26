@@ -2452,9 +2452,10 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 	}
 }
 
-// The Owner's Edit on a Proposed Goal's Milestone still changes its name and
-// date, and a Delegate may rename an Active Goal's Milestone; its date still
-// moves only in a Check-in (CONTEXT.md: Date Slip).
+// The Owner's Edit on a Proposed Goal's Milestone changes its name and date,
+// but a Delegate's on an Active Goal's Milestone is refused, rename and date
+// alike: a Milestone is edited only while its Goal is Proposed, and after that
+// its date moves only in a Check-in (CONTEXT.md: Milestone, Date Slip).
 func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2489,8 +2490,8 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	dana2 := signInClient(t, ts.URL, "dana@example.com")
 	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {beta.TargetDate.Format("2006-01-02")}})
 	_ = readBody(t, resp)
-	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusOK || got.Name != "Public beta" {
-		t.Errorf("a Delegate's rename answered %d and left %q", resp.StatusCode, got.Name)
+	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusUnprocessableEntity || got.Name != "Beta" {
+		t.Errorf("a Delegate's rename on an Active Goal answered %d and left %q, want 422 and Beta", resp.StatusCode, got.Name)
 	}
 	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {"2026-12-01"}})
 	_ = readBody(t, resp)

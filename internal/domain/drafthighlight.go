@@ -50,10 +50,7 @@ func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInp
 		if err != nil {
 			return err
 		}
-		if err := tx.authorizeDraftHighlighter(ctx, goal, in.AuthorID); err != nil {
-			return err
-		}
-		if err := draftHighlightsTaken(goal); err != nil {
+		if err := logDraftHighlightRefusal(tx.goalActorFor(ctx, in.AuthorID, goal.ID), goal); err != nil {
 			return err
 		}
 		note, err := draftHighlightValues(in.Kind, in.Note)
@@ -317,15 +314,9 @@ func (s *Service) discardedDraftHighlightsByCheckin(ctx context.Context, goalID 
 
 // authorizeDraftHighlighter allows only those who may write the Goal's
 // Check-ins — its Owner or a Delegate, neither Departed — to log, see, edit or
-// delete its pending Draft Highlights.
+// delete its pending Draft Highlights (draftHighlighterRefusal).
 func (s *Service) authorizeDraftHighlighter(ctx context.Context, goal Goal, actorID int64) error {
-	if err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.Owner.ID, actorID); err != nil {
-		if errors.Is(err, ErrNotAuthorized) {
-			return Refuse(ErrNotAuthorized, "only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights")
-		}
-		return err
-	}
-	return nil
+	return draftHighlighterRefusal(s.goalActorFor(ctx, actorID, goal.ID), goal)
 }
 
 func draftHighlightFromRow(d db.DraftHighlight, loggedBy db.Account) DraftHighlight {

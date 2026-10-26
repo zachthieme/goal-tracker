@@ -66,16 +66,21 @@ type GoalPage struct {
 	RunOffGreen   RunOffGreen
 	// Ask is its open Ask for help (OpenAskForHelp), nil when it has none, and
 	// AskAddressee whom an ask from its Owner goes to (AskAddressee).
-	Ask                *AskForHelp
-	AskAddressee       *Account
-	DateSlips          []DateSlip
-	MilestoneChurn     int
-	Signals            GoalSignals
-	Freshness          Freshness
-	Required           []RequiredValue
-	Incomplete         []string
-	HealthStrip        HealthStrip
+	Ask            *AskForHelp
+	AskAddressee   *Account
+	DateSlips      []DateSlip
+	MilestoneChurn int
+	Signals        GoalSignals
+	Freshness      Freshness
+	Required       []RequiredValue
+	Incomplete     []string
+	HealthStrip    HealthStrip
+	// Suggestions are every Parent suggestion made for the Goal, with its
+	// outcome, for its History (ParentSuggestions), and OpenSuggestions the
+	// open ones this viewer sees: all of them for one who may decide them,
+	// and their own, to withdraw, for anyone else.
 	Suggestions        []ParentSuggestion
+	OpenSuggestions    []ParentSuggestion
 	Nudges             []Nudge
 	LinkEvents         []LinkEvent
 	MilestoneAdditions []MilestoneChange
@@ -95,16 +100,20 @@ type GoalPage struct {
 }
 
 // GoalPermissions says what one viewer may do with a Goal now, each by the
-// rule the command named beside it enforces, so a page offers just what that
-// command would accept from them.
+// rule (goalrules.go) the command named beside it evaluates, so a page offers
+// just what that command would accept from them.
 type GoalPermissions struct {
 	// CheckIn: they write its Check-ins and it takes them now
-	// (SubmitCheckin).
-	CheckIn bool
+	// (SubmitCheckin), and LifecycleChanges the Lifecycles such a Check-in
+	// may move it to (LifecycleChangesFrom). NoChange: the same people, while
+	// it is Active, when the No change verdict would record one
+	// (SubmitNoChangeCheckin).
+	CheckIn          bool
+	LifecycleChanges []string
+	NoChange         bool
 	// AddMilestone: the same people, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
-	// Proposed, when a Milestone's date still moves outside a Check-in
-	// (EditMilestone).
+	// Proposed, on a Planned Milestone (EditMilestone).
 	AddMilestone   bool
 	EditMilestones bool
 	// LogDraftHighlight: the same people, while it takes Draft Highlights
@@ -112,13 +121,19 @@ type GoalPermissions struct {
 	LogDraftHighlight bool
 	// SetValues: its Owner, a Delegate or an Admin (RequireGoalValueSetter).
 	SetValues bool
-	// AddContributor, ManageDelegates and LinkParent: its Owner, in any
-	// Lifecycle (AddContributor, AddDelegate, RequestLink).
-	AddContributor  bool
-	ManageDelegates bool
-	LinkParent      bool
-	// DefineGoal: its Owner, while it is Proposed (DefineGoal, ActivateGoal).
+	// AddContributor, ManageDelegates, LinkParent, EditMetrics and
+	// DecideSuggestions: its Owner, in any Lifecycle (AddContributor,
+	// AddDelegate, RequestLink, AddMetric and EditMetric, AcceptSuggestion
+	// and DeclineSuggestion).
+	AddContributor    bool
+	ManageDelegates   bool
+	LinkParent        bool
+	EditMetrics       bool
+	DecideSuggestions bool
+	// DefineGoal and Activate: its Owner, while it is Proposed (DefineGoal,
+	// ActivateGoal).
 	DefineGoal bool
+	Activate   bool
 	// SuggestParent: anyone but its Owner, while it is Active or Proposed
 	// (SuggestParent).
 	SuggestParent bool
@@ -475,9 +490,11 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	return noChange
 }
 
-// permitGoalPage decides what p's viewer, actorID, may do on its Goal, and,
-// for one who may check in, reads the pending Draft Highlights only they see
-// and gives them noChange's refusal of a No change on it.
+// permitGoalPage decides what p's viewer, actorID, may do on its Goal, by
+// the rule each command evaluates (goalrules.go), judged from what the page
+// read; lists the open Parent suggestions they see; and, for one who may
+// check in, reads the pending Draft Highlights only they see and gives them
+// noChange's refusal of a No change on it.
 func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict) error {
 	g := p.Goal
 	viewer, err := account(actorID)
@@ -488,46 +505,61 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		return err
 	}
 	p.Viewer = viewer
-	delegate := func() (bool, error) {
-		return slices.ContainsFunc(p.Delegates, func(d Account) bool { return d.ID == actorID }), nil
+	actor := goalActor{
+		id:      actorID,
+		account: func() (Account, bool, error) { return viewer, found, nil },
+		delegate: func() (bool, error) {
+			return slices.ContainsFunc(p.Delegates, func(d Account) bool { return d.ID == actorID }), nil
+		},
 	}
-	refusal := Refuse(ErrNotAuthorized, "the author does not exist")
-	if found {
-		refusal = checkinAuthorRefusal(viewer, g.Owner.ID, delegate)
-	}
-	if p.CanCheckin, err = goalPagePermits(refusal); err != nil {
-		return err
-	}
-	admin := func() error {
-		if !found {
-			return Refuse(ErrNotAuthorized, "not an Admin")
+	// permits reads each rule's refusal as whether it allows, keeping the
+	// first error that is no refusal.
+	var failed error
+	permits := func(refusal error) bool {
+		ok, err := goalPagePermits(refusal)
+		if err != nil && failed == nil {
+			failed = err
 		}
-		return adminRefusal(viewer)
+		return ok
 	}
-	setValues, err := goalPagePermits(goalValueSetterRefusal(actorID, g.Owner.ID, delegate, admin))
-	if err != nil {
-		return err
+	p.CanCheckin = permits(checkinAuthorRuleRefusal(actor, g))
+	perms := GoalPermissions{
+		CheckIn:                  permits(checkInRefusal(actor, g)),
+		NoChange:                 permits(noChangeCheckinRefusal(actor, g)) && noChange.refusal == nil,
+		AddMilestone:             permits(milestoneAdditionRefusal(actor, g)),
+		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
+		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
+		SetValues:                permits(goalValueSetterRefusal(actor, g)),
+		AddContributor:           permits(goalOwnerRefusal(actor, g, "change it")),
+		ManageDelegates:          permits(goalOwnerRefusal(actor, g, "authorize a Delegate")),
+		LinkParent:               permits(goalOwnerRefusal(actor, g, "link it to a parent")),
+		EditMetrics:              permits(metricEditRefusal(actor, g)),
+		DecideSuggestions:        permits(decideSuggestionRefusal(actor, g)),
+		DefineGoal:               permits(defineGoalRefusal(actor, g)),
+		Activate:                 permits(activateGoalRefusal(actor, g)),
+		SuggestParent:            permits(suggestParentRefusal(actor, g)),
+		EditTitleAndWhyItMatters: permits(goalOwnerOrAdminRefusal(actor, g, "change it")),
+		HandOff:                  permits(handoffRefusal(actor, g)),
+		Reassign:                 permits(reassignRefusal(actor, g)),
+		MarkOwnerDeparted:        permits(markDepartedRefusal(actor, g.Owner)),
+		MarkOwnerReturned:        permits(markReturnedRefusal(actor, g.Owner)),
+		MarkTopLevel:             permits(goalAdminRefusal(actor)),
 	}
-	isAdmin := admin() == nil
-	owns := actorID == g.Owner.ID
-	proposed := g.Lifecycle == LifecycleProposed
-	p.Permissions = GoalPermissions{
-		CheckIn:                  p.CanCheckin && LifecycleTakesCheckins(g.Lifecycle),
-		AddMilestone:             p.CanCheckin && milestonesAddable(g.Lifecycle),
-		EditMilestones:           p.CanCheckin && proposed,
-		LogDraftHighlight:        p.CanCheckin && LifecycleTakesDraftHighlights(g.Lifecycle),
-		SetValues:                setValues,
-		AddContributor:           owns,
-		ManageDelegates:          owns,
-		LinkParent:               owns,
-		DefineGoal:               owns && proposed,
-		SuggestParent:            found && !owns && suggestable(g.Lifecycle),
-		EditTitleAndWhyItMatters: owns || isAdmin,
-		HandOff:                  (owns || isAdmin) && !g.Ownerless,
-		Reassign:                 isAdmin && g.Ownerless,
-		MarkOwnerDeparted:        isAdmin && !g.Owner.Departed,
-		MarkOwnerReturned:        isAdmin && g.Owner.Departed,
-		MarkTopLevel:             isAdmin,
+	for _, to := range lifecycles {
+		if permits(lifecycleChangeRefusal(actor, g, to)) {
+			perms.LifecycleChanges = append(perms.LifecycleChanges, to)
+		}
+	}
+	if failed != nil {
+		return failed
+	}
+	p.Permissions = perms
+	// The Owner decides every open suggestion; anyone else sees only their
+	// own, to withdraw (CONTEXT.md: Parent suggestion).
+	for _, sg := range p.Suggestions {
+		if sg.Status == SuggestionOpen && (perms.DecideSuggestions || sg.SuggestedBy.ID == actorID) {
+			p.OpenSuggestions = append(p.OpenSuggestions, sg)
+		}
 	}
 	if !p.CanCheckin {
 		return nil
@@ -541,14 +573,14 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	return nil
 }
 
-// goalPagePermits reads a refusal from one of the permission rules as whether
-// it allows: true for none, false for ErrNotAuthorized, and any other error
-// as it is.
+// goalPagePermits reads a refusal from one of the Goal rules as whether it
+// allows: true for none, false for ErrNotAuthorized or ErrValidation, and any
+// other error as it is.
 func goalPagePermits(refusal error) (bool, error) {
 	switch {
 	case refusal == nil:
 		return true, nil
-	case errors.Is(refusal, ErrNotAuthorized):
+	case errors.Is(refusal, ErrNotAuthorized), errors.Is(refusal, ErrValidation):
 		return false, nil
 	}
 	return false, refusal

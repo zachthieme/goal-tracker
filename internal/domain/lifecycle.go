@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -40,11 +41,9 @@ func LifecycleTakesDraftHighlights(lifecycle string) bool {
 
 // planLifecycleChange validates a Check-in's requested Lifecycle against the
 // Goal's current one and returns the change to record, or the zero change when
-// the Check-in leaves it alone. An Active Goal may go On Hold or be Cancelled,
-// each with a reason, or be marked Done with a one-line outcome; an On Hold Goal
-// may be resumed to Active or Cancelled with a reason. Every other Lifecycle is
-// closed to Check-ins: a Proposed Goal becomes Active through the activation
-// gate, and Done and Cancelled are end states.
+// the Check-in leaves it alone. It allows the moves LifecycleChangesFrom
+// offers: going On Hold or being Cancelled, each with a reason, being marked
+// Done with a one-line outcome, or being resumed to Active.
 func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, error) {
 	reason = strings.TrimSpace(reason)
 	outcome = strings.TrimSpace(outcome)
@@ -58,17 +57,20 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 		return LifecycleChange{}, nil
 	}
 
+	if !slices.Contains(LifecycleChangesFrom(current), to) {
+		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
+	}
 	change := LifecycleChange{From: current, To: to, Reason: reason}
-	switch {
-	case current == LifecycleActive && (to == LifecycleOnHold || to == LifecycleCancelled),
-		current == LifecycleOnHold && to == LifecycleCancelled:
-		if reason == "" && to == LifecycleCancelled {
+	switch to {
+	case LifecycleCancelled:
+		if reason == "" {
 			return LifecycleChange{}, inputError(CheckinInputLifecycleReason, "cancelling a Goal needs a reason")
 		}
+	case LifecycleOnHold:
 		if reason == "" {
 			return LifecycleChange{}, inputError(CheckinInputLifecycleReason, "putting a Goal On Hold needs a reason")
 		}
-	case current == LifecycleActive && to == LifecycleDone:
+	case LifecycleDone:
 		if outcome == "" {
 			return LifecycleChange{}, inputError(CheckinInputOutcome, "marking a Goal Done needs an outcome")
 		}
@@ -76,10 +78,8 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 			return LifecycleChange{}, inputError(CheckinInputOutcome, "a Goal's outcome is one line")
 		}
 		change.Outcome = outcome
-	case current == LifecycleOnHold && to == LifecycleActive:
+	case LifecycleActive:
 		// Resuming is not leaving Active, so no reason is needed.
-	default:
-		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
 	}
 	return change, nil
 }
