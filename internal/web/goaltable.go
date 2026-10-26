@@ -498,15 +498,15 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	edits, err := tableEdits(r.PostForm)
-	if err != nil {
-		// Not a refusal: tableEdits's own text quotes the bad cell as posted.
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-		return
-	}
 	q := r.URL.Query()
 	q.Set("layout", layoutTable)
 	saved := string(goalsListData{Query: q}.queryURL(func(q url.Values) { q.Del("edit") }))
+	edits, err := tableEdits(r.PostForm)
+	if err != nil {
+		// A cell or value no table posts, quoted as posted.
+		s.refuse(w, r, "Can't save Goals", saved, err)
+		return
+	}
 	err = s.svc.EditGoalValues(r.Context(), current.ID, edits)
 	switch {
 	case err == nil:
@@ -532,10 +532,10 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	if errors.As(err, &refusal) {
 		view.Table.Bad = map[string]string{}
 		for _, c := range refusal.Cells {
-			view.Table.Bad[cellNameOf(c.GoalID, c.DimensionID, c.FieldID)] = c.Message
+			view.Table.Bad[cellNameOf(c.GoalID, c.DimensionID, c.FieldID)] = sentence(c.Message)
 		}
 	} else {
-		view.Table.Refusal = domain.Reason(err)
+		view.Table.Refusal = refusalSentence(err)
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalsPage(&current, view))
 }
@@ -550,8 +550,10 @@ type tableCellRef struct {
 
 // tableEdits reads the Goal table's edit form into the cells that changed:
 // those whose input differs from its "was." twin, or that have no twin. They
-// come ordered by Goal, then Dimensions before Fields.
+// come ordered by Goal, then Dimensions before Fields. A cell or value that
+// doesn't parse is refused, quoted as posted.
 func tableEdits(form url.Values) ([]domain.ValueEdit, error) {
+	var problems formProblems
 	cells := map[tableCellRef]bool{}
 	for key := range form {
 		kind, rest, ok := strings.Cut(strings.TrimPrefix(key, wasPrefix), ".")
@@ -562,7 +564,8 @@ func tableEdits(form url.Values) ([]domain.ValueEdit, error) {
 		goalID, gerr := strconv.ParseInt(rawGoal, 10, 64)
 		attrID, aerr := strconv.ParseInt(rawAttr, 10, 64)
 		if !ok || gerr != nil || aerr != nil || goalID <= 0 || attrID <= 0 {
-			return nil, fmt.Errorf("invalid cell %q", key)
+			problems.add(key, "invalid cell %q", key)
+			return nil, problems.err()
 		}
 		if kind == "f" {
 			cells[tableCellRef{goalID: goalID, fieldID: attrID}] = true
@@ -592,7 +595,8 @@ func tableEdits(form url.Values) ([]domain.ValueEdit, error) {
 			}
 			id, err := strconv.ParseInt(raw, 10, 64)
 			if err != nil {
-				return nil, fmt.Errorf("invalid value %q", raw)
+				problems.add(name, "invalid value %q", raw)
+				return nil, problems.err()
 			}
 			ids = append(ids, id)
 		}
