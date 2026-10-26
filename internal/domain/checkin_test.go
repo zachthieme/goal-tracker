@@ -699,25 +699,31 @@ func assertOverdueNoChangeRefusal(t *testing.T, err error) {
 	}
 }
 
-// NoChangeRefusalsByGoal refuses a No change on each Goal exactly as
-// NoChangeRefusal refuses it on that Goal alone (#449).
-func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
+// NoChangeRefusalsByGoal judges a No change on each of many Goals at once,
+// with the refusal for each and none for a Goal it would be recorded on. Its
+// refusals come in order: one whose Health the roll-up now needs explaining is
+// refused for that even while a Milestone is overdue too (#449, #558).
+func TestNoChangeRefusalsByGoal(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	early := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	addPilot := func(g domain.Goal) {
+		t.Helper()
+		if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+			GoalID: g.ID, Name: "Pilot", TargetDate: early,
+		}); err != nil {
+			t.Fatalf("AddMilestone: %v", err)
+		}
+	}
 
 	allowed := h.ActiveGoal(sam, "Allowed", "It matters.")
 	h.Checkin(sam, allowed.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	noCheckin := h.ActiveGoal(sam, "No Check-in", "It matters.")
 	onHold := h.OnHoldGoal(sam, "On Hold", "It matters.", "Waiting on the vendor.")
 	milestoneOverdue := h.ActiveGoal(sam, "Milestone overdue", "It matters.")
-	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
-		GoalID: milestoneOverdue.ID, Name: "Pilot", TargetDate: early,
-	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
-	}
+	addPilot(milestoneOverdue)
 	h.Checkin(sam, milestoneOverdue.ID, domain.HealthGreen, "Pilot lined up.", "", time.Time{})
 	pathOverdue := h.ActiveGoal(sam, "Path overdue", "It matters.")
 	h.Checkin(sam, pathOverdue.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", early)
@@ -727,6 +733,12 @@ func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
 	h.Checkin(sam, unexplained.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	redChild := h.ActiveChildOf(sam, unexplained, "Red child", "It helps.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	// So does one whose Pilot is overdue too: the roll-up is judged first.
+	unexplainedOverdue := h.ActiveGoal(sam, "Unexplained and overdue", "It matters.")
+	addPilot(unexplainedOverdue)
+	h.Checkin(sam, unexplainedOverdue.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	thirdRedChild := h.ActiveChildOf(sam, unexplainedOverdue, "Third red child", "It helps.")
+	h.Checkin(sam, thirdRedChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 	// One checked in Green over its Red child with an explanation repeats it.
 	explained := h.ActiveGoal(sam, "Explained", "It matters.")
 	otherRedChild := h.ActiveChildOf(sam, explained, "Other red child", "It helps.")
@@ -742,17 +754,20 @@ func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
 	}
 	offTarget, _ := offTargetMetricGoal(t, h, sam) // moves the clock to Feb 2
 
-	wantRefused := map[int64]bool{
-		allowed.ID:          false,
-		noCheckin.ID:        true,
-		onHold.ID:           true,
-		milestoneOverdue.ID: true,
-		pathOverdue.ID:      true,
-		unexplained.ID:      true,
-		redChild.ID:         false,
-		explained.ID:        false,
-		otherRedChild.ID:    false,
-		offTarget.ID:        true,
+	// Each refused Goal's refusal reads as this; "" is a Goal it allows.
+	wantReason := map[int64]string{
+		allowed.ID:            "",
+		noCheckin.ID:          "there is no previous Check-in to repeat",
+		onHold.ID:             "only an Active Goal can be checked in on",
+		milestoneOverdue.ID:   `Milestone "Pilot" is overdue (due 2026-01-20): submit a Check-in to move its date, mark it Done or remove it`,
+		pathOverdue.ID:        "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health",
+		unexplained.ID:        "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
+		redChild.ID:           "",
+		unexplainedOverdue.ID: "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
+		thirdRedChild.ID:      "",
+		explained.ID:          "",
+		otherRedChild.ID:      "",
+		offTarget.ID:          "so the Goal's Green needs confirming — submit a Check-in to confirm or update it",
 	}
 	all, err := h.Service.ListGoals(ctx)
 	if err != nil {
@@ -760,7 +775,7 @@ func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
 	}
 	var goals []domain.Goal
 	for _, g := range all {
-		if _, ok := wantRefused[g.ID]; ok {
+		if _, ok := wantReason[g.ID]; ok {
 			goals = append(goals, g)
 		}
 	}
@@ -769,28 +784,17 @@ func TestNoChangeRefusalsByGoalMatchesNoChangeRefusal(t *testing.T) {
 		t.Fatalf("NoChangeRefusalsByGoal: %v", err)
 	}
 	for _, g := range goals {
-		want := h.Service.NoChangeRefusal(ctx, g.ID)
-		if (want != nil) != wantRefused[g.ID] {
-			t.Fatalf("%s: NoChangeRefusal = %v, want refused %v", g.Title, want, wantRefused[g.ID])
+		refusal, refused := got[g.ID]
+		switch want := wantReason[g.ID]; {
+		case want == "" && refused:
+			t.Errorf("%s: refused (%v), want it allowed", g.Title, refusal)
+		case want != "" && !refused:
+			t.Errorf("%s: allowed, want it refused: %s", g.Title, want)
+		case want != "" && !errors.Is(refusal, domain.ErrValidation):
+			t.Errorf("%s: refusal %v isn't ErrValidation", g.Title, refusal)
+		case want != "" && !strings.HasSuffix(domain.Reason(refusal), want):
+			t.Errorf("%s: refused with %q, want it to end %q", g.Title, domain.Reason(refusal), want)
 		}
-		if want != nil && !errors.Is(want, domain.ErrValidation) {
-			t.Fatalf("%s: NoChangeRefusal = %v, want ErrValidation", g.Title, want)
-		}
-		switch refusal, ok := got[g.ID]; {
-		case want == nil && ok:
-			t.Errorf("%s: NoChangeRefusalsByGoal refused it (%v); NoChangeRefusal allows it", g.Title, refusal)
-		case want != nil && !ok:
-			t.Errorf("%s: NoChangeRefusalsByGoal allows it; NoChangeRefusal refused it (%v)", g.Title, want)
-		case want != nil && refusal.Error() != want.Error():
-			t.Errorf("%s: NoChangeRefusalsByGoal refused it with %q, want %q", g.Title, refusal, want)
-		}
-		if refusal := got[g.ID]; refusal != nil && !errors.Is(refusal, domain.ErrValidation) {
-			t.Errorf("%s: NoChangeRefusalsByGoal refusal %v isn't ErrValidation", g.Title, refusal)
-		}
-	}
-	var milestone *domain.MilestoneOverdueError
-	if !errors.As(got[milestoneOverdue.ID], &milestone) || milestone.Milestone.Name != "Pilot" {
-		t.Errorf("Milestone overdue refusal = %v, want a *MilestoneOverdueError for Pilot", got[milestoneOverdue.ID])
 	}
 	var green *domain.GreenOffTargetError
 	if !errors.As(got[offTarget.ID], &green) {

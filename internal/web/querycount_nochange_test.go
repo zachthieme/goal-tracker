@@ -41,6 +41,7 @@ func TestNoChangeQueriesDontGrowWithMetrics(t *testing.T) {
 		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 		queries.take()
 		resp, _ := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, g.ID), false)
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusSeeOther {
 			t.Fatalf("No change with %d Metrics: status %d, want 303", n, resp.StatusCode)
 		}

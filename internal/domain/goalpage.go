@@ -46,8 +46,9 @@ type GoalPage struct {
 	CanCheckin  bool
 	Permissions GoalPermissions
 	// NoChangeRefusal is why a No change would be refused (NoChangeRefusal),
-	// asked only when the viewer may check in on the Active Goal and it has a
-	// Check-in to repeat; nil when one would be recorded or isn't on offer.
+	// judged from what the page read, given only when the viewer may check in
+	// on the Active Goal and it has a Check-in to repeat; nil when one would
+	// be recorded or isn't on offer.
 	NoChangeRefusal error
 	Revisions       []WhyItMattersRevision
 	TitleRevisions  []TitleRevision
