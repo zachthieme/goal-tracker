@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -322,19 +321,4 @@ func TestGoalPageWalksPastDepartedManagersInOneRead(t *testing.T) {
 	if page.AskAddressee == nil || page.AskAddressee.ID != line[4].ID {
 		t.Errorf("GoalPage's Ask for help addressee = %v, want %s", page.AskAddressee, line[4].Email)
 	}
-}
-
-// countQueryNames is how many times each named query among statements was
-// run, by the name sqlc gives it ("-- name: GetGoal :one"); a statement with
-// no name counts under its own text.
-func countQueryNames(statements []string) map[string]int {
-	out := map[string]int{}
-	for _, s := range statements {
-		name := s
-		if rest, ok := strings.CutPrefix(s, "-- name: "); ok {
-			name, _, _ = strings.Cut(rest, " ")
-		}
-		out[name]++
-	}
-	return out
 }
