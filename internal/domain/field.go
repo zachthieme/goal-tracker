@@ -39,23 +39,23 @@ const (
 // (CONTEXT.md: Admin). The name is required. Only a number Field keeps a unit.
 // It is written to the Definition log.
 func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldType, unit string) (Field, error) {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return Field{}, err
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return Field{}, Refuse(ErrValidation, "a Field needs a name")
-	}
-	switch fieldType {
-	case FieldNumber:
-		unit = strings.TrimSpace(unit)
-	case FieldShortText, FieldLongText, FieldDate:
-		unit = ""
-	default:
-		return Field{}, Refuse(ErrValidation, "a Field holds a number, a short text, a long text or a date")
-	}
 	var field Field
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return Refuse(ErrValidation, "a Field needs a name")
+		}
+		switch fieldType {
+		case FieldNumber:
+			unit = strings.TrimSpace(unit)
+		case FieldShortText, FieldLongText, FieldDate:
+			unit = ""
+		default:
+			return Refuse(ErrValidation, "a Field holds a number, a short text, a long text or a date")
+		}
 		// The name is checked in the transaction that creates the Field, so
 		// a Dimension or Field given the name meanwhile is seen.
 		if err := tx.requireFreeAttributeName(ctx, name); err != nil {
@@ -101,10 +101,10 @@ func (s *Service) RestoreField(ctx context.Context, actorID, fieldID int64) erro
 }
 
 func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, retired bool) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
 		before, err := tx.queries.GetField(ctx, fieldID)
 		if err != nil {
 			return Refuse(ErrValidation, "field does not exist")
@@ -130,10 +130,10 @@ func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, r
 // already is (CONTEXT.md: Retired). It is written to the Definition log. Only
 // an Admin may.
 func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, required bool) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
 		before, err := tx.queries.GetField(ctx, fieldID)
 		if err != nil {
 			return Refuse(ErrValidation, "field does not exist")
@@ -171,33 +171,33 @@ func OfferedFields(fields []Field) []Field {
 // date Field's as a YYYY-MM-DD date, or it is refused naming the Field. A Retired Field can't be set. Only the
 // Goal's Owner, a Delegate or an Admin may (CONTEXT.md: Delegate).
 func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int64, value string) error {
-	if err := s.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
-		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Fields")
-	} else if err != nil {
-		return err
-	}
-	row, err := s.queries.GetField(ctx, fieldID)
-	if err != nil {
-		return Refuse(ErrValidation, "field does not exist")
-	}
-	field := fieldFromRow(row)
-	if field.Retired {
-		return Refuse(ErrValidation, "%s is retired, so it can't be set", field.Name)
-	}
-	value = strings.TrimSpace(value)
-	before, err := s.goalFieldValue(ctx, goalID, fieldID)
-	if err != nil {
-		return err
-	}
-	if value == before {
-		return nil
-	}
-	if value != "" {
-		if err := field.Check(value); err != nil {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
+			return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Fields")
+		} else if err != nil {
 			return err
 		}
-	}
-	return s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.GetField(ctx, fieldID)
+		if err != nil {
+			return Refuse(ErrValidation, "field does not exist")
+		}
+		field := fieldFromRow(row)
+		if field.Retired {
+			return Refuse(ErrValidation, "%s is retired, so it can't be set", field.Name)
+		}
+		value = strings.TrimSpace(value)
+		before, err := tx.goalFieldValue(ctx, goalID, fieldID)
+		if err != nil {
+			return err
+		}
+		if value == before {
+			return nil
+		}
+		if value != "" {
+			if err := field.Check(value); err != nil {
+				return err
+			}
+		}
 		if value == "" {
 			if err := tx.queries.ClearGoalFieldValue(ctx, db.ClearGoalFieldValueParams{GoalID: goalID, FieldID: fieldID}); err != nil {
 				return fmt.Errorf("clear field value: %w", err)
