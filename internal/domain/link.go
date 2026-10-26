@@ -66,33 +66,30 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
 
-	child, err := s.queries.GetGoal(ctx, in.ChildID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, Refuse(ErrValidation, "child goal does not exist")
-		}
-		return Link{}, fmt.Errorf("look up child goal: %w", err)
-	}
-	parent, err := s.queries.GetGoal(ctx, in.ParentID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, Refuse(ErrValidation, "parent goal does not exist")
-		}
-		return Link{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-
-	if err := goalOwnerRefusal(s.goalActorFor(ctx, in.RequesterID, in.ChildID), goalFromRow(child.Goal, child.Account), "link it to a parent"); err != nil {
-		return Link{}, err
-	}
-
-	status := LinkPending
-	if parent.Goal.OwnerID == in.RequesterID {
-		status = LinkAccepted
-	}
-
 	now := s.clock.Now()
+	var child, parent db.GetGoalRow
 	var row db.Link
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		if child, err = tx.queries.GetGoal(ctx, in.ChildID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "child goal does not exist")
+			}
+			return fmt.Errorf("look up child goal: %w", err)
+		}
+		if parent, err = tx.queries.GetGoal(ctx, in.ParentID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "parent goal does not exist")
+			}
+			return fmt.Errorf("look up parent goal: %w", err)
+		}
+		if err := goalOwnerRefusal(tx.goalActorFor(ctx, in.RequesterID, in.ChildID), goalFromRow(child.Goal, child.Account), "link it to a parent"); err != nil {
+			return err
+		}
+		status := LinkPending
+		if parent.Goal.OwnerID == in.RequesterID {
+			status = LinkAccepted
+		}
 		// The duplicate and cycle checks read inside the transaction that
 		// writes the link, so two requests sent together (A→B and B→A) can't
 		// both pass them (ADR-0001).
