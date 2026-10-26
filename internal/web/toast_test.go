@@ -13,6 +13,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"golang.org/x/net/html"
 )
 
 // The toast is fixed to the bottom of the window, above the page content, and
@@ -453,5 +454,64 @@ func TestAnUndoThatNoLongerFitsSaysWhatChanged(t *testing.T) {
 			defer func() { _ = resp.Body.Close() }()
 			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, tc.reason, tc.undo.back(t, h))
 		})
+	}
+}
+
+// An Undo offer made to a page whose return carries a query is scoped to that
+// page's path alone, so the page, query and all, shows the toast; its Undo
+// puts the request back as pending and lands on Home, where the toast posts
+// its return (#597).
+func TestAnUndoOfferReachesAReturnWithAQuery(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "displays cause outages")
+	client := signInClient(t, ts.URL, "pat@example.com")
+
+	resp := postForm(t, noRedirects(client), fmt.Sprintf("%s/links/%d/reject", ts.URL, link.ID), url.Values{"return": {"/home?x=1"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("reject: status %d, want 303", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Location"); got != "/home?x=1" {
+		t.Errorf("reject redirects to %q, want /home?x=1", got)
+	}
+	var offer *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_undo" {
+			offer = c
+		}
+	}
+	if offer == nil {
+		t.Fatal("reject offers no Undo")
+	}
+	if offer.Path != "/home" {
+		t.Errorf("Undo offer's Path = %q, want /home", offer.Path)
+	}
+
+	toast := findByTestID(t, getPage(t, client, ts.URL+"/home?x=1"), "toast")
+	forms := findAll(toast, func(n *html.Node) bool { return n.Data == "form" })
+	if len(forms) != 1 || buttonNamed(forms[0], "Undo") == nil {
+		t.Fatalf("the toast has no Undo form:\n%s", renderNode(toast))
+	}
+
+	undone := postForm(t, client, ts.URL+attrOf(forms[0], "action"), formSubmission(forms[0]))
+	defer func() { _ = undone.Body.Close() }()
+	if undone.StatusCode != http.StatusOK {
+		t.Fatalf("Undo: status %d", undone.StatusCode)
+	}
+	if got := undone.Request.URL.Path; got != "/home" {
+		t.Errorf("Undo landed on %s, want /home", got)
+	}
+	pending, err := h.Service.PendingLinkRequests(context.Background(), pat.ID)
+	if err != nil {
+		t.Fatalf("PendingLinkRequests: %v", err)
+	}
+	if len(pending) != 1 {
+		t.Errorf("%d pending link requests after the Undo, want 1", len(pending))
 	}
 }

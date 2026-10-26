@@ -28,8 +28,12 @@ const (
 )
 
 // offerUndo has the page at path offer Undo for kind's record id, once, with
-// the token the domain issued for it.
+// the token the domain issued for it. The offer is scoped to path's path part
+// alone: a browser never sends a cookie whose Path holds a query or fragment,
+// so a return like /home?x=1 is offered at /home (#597).
 func offerUndo(w http.ResponseWriter, path, kind string, id int64, token string) {
+	path, _, _ = strings.Cut(path, "#")
+	path, _, _ = strings.Cut(path, "?")
 	http.SetCookie(w, &http.Cookie{
 		Name:     undoCookie,
 		Value:    kind + ":" + strconv.FormatInt(id, 10) + ":" + token,
