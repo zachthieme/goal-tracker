@@ -7827,7 +7827,7 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 		{"edit metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
-		}, "refused-reason", `The baseline must be a number, not "lots".`},
+		}, "refused-reason", `"lots" isn't a number for the baseline.`},
 		{"activate", fmt.Sprintf("/goals/%d/activate", bare.ID), nil,
 			"refused-reason", "A Goal must be marked Dated or Ongoing to become Active."},
 	} {
@@ -7920,7 +7920,7 @@ func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 		{"edit metric", metricID, "/metrics/%d", url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
-		}, "Only the Goal's Owner may change its Metrics.", `The baseline must be a number, not "lots".`},
+		}, "Only the Goal's Owner may change its Metrics.", `"lots" isn't a number for the baseline.`},
 	} {
 		for _, by := range []struct {
 			who    string
