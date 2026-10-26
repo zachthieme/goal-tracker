@@ -22,15 +22,13 @@ type Notifier struct {
 	svc *domain.Service
 	// baseURL is where the web app is reached, so emails can link into it.
 	baseURL string
-	// loc is the company's timezone, the calendar a week is counted in.
-	loc *time.Location
 }
 
 // New returns a Notifier reading from svc and queueing in its email outbox.
 // baseURL is the web app's address (e.g. http://localhost:8080) that links in
-// emails point at; loc is the company's timezone.
-func New(svc *domain.Service, baseURL string, loc *time.Location) *Notifier {
-	return &Notifier{svc: svc, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
+// emails point at.
+func New(svc *domain.Service, baseURL string) *Notifier {
+	return &Notifier{svc: svc, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 // WeeklyJob is the scheduled job the weekly emails' runs are recorded under
@@ -157,10 +155,6 @@ func reminderSubject(items []reminderItem) string {
 // dateFormat is how calendar dates read in emails.
 const dateFormat = "2006-01-02"
 
-// daysPerWeek is how far apart the weekly emails are, in days of the company's
-// calendar.
-const daysPerWeek = 7
-
 // reminderBody lists the Goals needing a Check-in, then the open Action Items
 // the person owns. With no hover in an email, the Owner a Delegate writes for
 // reads Name (email) at their first mention and by Name after that
@@ -231,20 +225,6 @@ func (n *Notifier) checkinURL(goalID int64) string {
 	return fmt.Sprintf("%s/goals/%d/checkin", n.baseURL, goalID)
 }
 
-// digestEntry is one item on a parent Owner's digest: a link request waiting
-// on them, or a problem with a Goal that contributes to one of theirs.
-type digestEntry struct {
-	pendingLink *domain.Link
-	problem     *childProblem
-}
-
-// childProblem is a Goal contributing to one of the recipient's Goals, and what
-// went wrong with it.
-type childProblem struct {
-	parent, child domain.Goal
-	reasons       []string
-}
-
 // SendDigests queues an email to each parent Owner, a digest of what needs
 // their attention: the link requests waiting on them, and problems among the
 // Goals that contribute to theirs. Someone with nothing to report gets no
@@ -258,75 +238,57 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	return n.svc.QueueEmails(ctx, msgs)
 }
 
-// digests composes the digests SendDigests describes.
+// digests composes the digests SendDigests describes, one email for each the
+// domain reads (Service.WeeklyDigests).
 func (n *Notifier) digests(ctx context.Context) ([]email.Message, error) {
-	goals, err := n.svc.ListGoals(ctx)
+	digests, err := n.svc.WeeklyDigests(ctx)
 	if err != nil {
 		return nil, err
 	}
-	weekStart := n.svc.Now().In(n.loc).AddDate(0, 0, -daysPerWeek)
-	var out byRecipient[digestEntry]
-	seen := map[int64]bool{}
-	for _, g := range goals {
-		if seen[g.Owner.ID] {
-			continue
-		}
-		seen[g.Owner.ID] = true
-		links, err := n.svc.PendingLinkRequests(ctx, g.Owner.ID)
-		if err != nil {
-			return nil, err
-		}
-		for i := range links {
-			out.add(g.Owner, digestEntry{pendingLink: &links[i]})
-		}
+	out := make([]email.Message, 0, len(digests))
+	for _, d := range digests {
+		out = append(out, email.Message{
+			To:        d.Recipient.Email,
+			AccountID: d.Recipient.ID,
+			Subject:   "Your weekly digest",
+			Body:      n.digestBody(d),
+		})
 	}
-	for _, parent := range goals {
-		children, err := n.svc.ChildrenOf(ctx, parent.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, child := range children {
-			reasons, err := n.childProblems(ctx, child, weekStart)
-			if err != nil {
-				return nil, err
-			}
-			if len(reasons) > 0 {
-				out.add(parent.Owner, digestEntry{problem: &childProblem{parent: parent, child: child, reasons: reasons}})
-			}
-		}
-	}
-	return out.messages(func([]digestEntry) string { return "Your weekly digest" }, n.digestBody), nil
+	return out, nil
 }
 
-// childProblems says what's wrong with child, a Goal that contributes to one of
-// the recipient's. Some are changes since weekStart, a week ago: its Health got
-// worse, to Yellow or to Red; it recorded a Date Slip; its Check-in went
-// overdue. Others hold for as long as they last, so the digest names them every
-// week: the child is Ownerless (no record says when its Owner left), or one of
-// its parents is On Hold or Cancelled. A Done or Cancelled child has nothing
-// left at risk.
-func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
-	if child.Lifecycle == domain.LifecycleDone || child.Lifecycle == domain.LifecycleCancelled {
-		return nil, nil
+// digestBody lists the link requests and problems awaiting the parent Owner,
+// each child's Owner reading Name (email) at their first mention and by Name
+// after that (CONTEXT.md: Name).
+func (n *Notifier) digestBody(d domain.WeeklyDigest) string {
+	var b strings.Builder
+	var people domain.Mentions
+	if len(d.PendingLinks) > 0 {
+		fmt.Fprintf(&b, "Link requests waiting on you (%s/links):\n\n", n.baseURL)
+		for _, l := range d.PendingLinks {
+			fmt.Fprintf(&b, "- %s, owned by %s, asks to contribute to %s\n", l.Child.Title, people.Of(l.Child.Owner), l.Parent.Title)
+		}
+		b.WriteString("\n")
 	}
+	if len(d.Problems) > 0 {
+		b.WriteString("Updates on Goals contributing to yours:\n\n")
+		for _, p := range d.Problems {
+			fmt.Fprintf(&b, "- %s, owned by %s, contributing to %s: %s\n  %s\n",
+				p.Child.Title, people.Of(p.Child.Owner), p.Parent.Title, strings.Join(problemReasons(p), "; "), n.goalURL(p.Child.ID))
+		}
+	}
+	return b.String()
+}
+
+// problemReasons says what went wrong with a child, in the digest's order: its
+// Health got worse, its Date Slips, its Check-in went overdue, it is
+// Ownerless, and its halted parents.
+func problemReasons(p domain.WeeklyDigestProblem) []string {
 	var reasons []string
-	if child.Lifecycle == domain.LifecycleActive {
-		checkins, err := n.svc.ListCheckins(ctx, child.ID)
-		if err != nil {
-			return nil, err
-		}
-		if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
-			reasons = append(reasons, "went "+now)
-		}
+	if p.WorsenedTo != "" {
+		reasons = append(reasons, "went "+p.WorsenedTo)
 	}
-	slips, err := n.svc.ListDateSlips(ctx, child.ID)
-	if err != nil {
-		return nil, err
-	}
-	for _, sl := range slips {
-		if !sl.CreatedAt.After(weekStart) {
-			continue
-		}
+	for _, sl := range p.DateSlips {
 		what := "its delivery date"
 		switch {
 		case sl.BackToGreen:
@@ -337,84 +299,17 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 		reasons = append(reasons, fmt.Sprintf("slipped %s from %s to %s (%s)",
 			what, sl.OldDate.Format(dateFormat), sl.NewDate.Format(dateFormat), sl.Reason))
 	}
-	f, err := n.svc.Freshness(ctx, child.ID)
-	if err != nil {
-		return nil, err
+	if p.WentCheckinOverdue {
+		reasons = append(reasons, "Check-in went overdue, "+p.Freshness.LastCheckinAge())
 	}
-	if wentCheckinOverdueThisWeek(f) {
-		reasons = append(reasons, "Check-in went overdue, "+f.LastCheckinAge())
-	}
-	if child.Ownerless {
+	if p.Ownerless {
 		// The digest has already introduced the Owner on the child's line.
-		reasons = append(reasons, "is Ownerless: "+child.Owner.Label()+" has left the company")
+		reasons = append(reasons, "is Ownerless: "+p.Child.Owner.Label()+" has left the company")
 	}
-	signals, err := n.svc.GoalSignals(ctx, child.ID)
-	if err != nil {
-		return nil, err
-	}
-	for _, hp := range signals.HaltedParents {
+	for _, hp := range p.HaltedParents {
 		reasons = append(reasons, fmt.Sprintf("contributes to %s, which is %s", hp.Parent.Title, hp.Parent.Lifecycle))
 	}
-	return reasons, nil
-}
-
-// wentCheckinOverdueThisWeek reports whether a Goal is Check-in overdue now
-// but wasn't a week ago: it has been overdue for no more than a week's days
-// (CONTEXT.md: Check-in overdue).
-func wentCheckinOverdueThisWeek(f domain.Freshness) bool {
-	return f.CheckinOverdue && f.DaysSince-daysPerWeek <= f.CadenceDays
-}
-
-// healthAt is the Health a Goal's Check-ins (newest first) had set as of t, or
-// its current Health when t is the zero time. It is "" when none had set one.
-func healthAt(checkins []domain.Checkin, t time.Time) string {
-	for _, c := range checkins {
-		if c.Health == "" || (!t.IsZero() && c.CreatedAt.After(t)) {
-			continue
-		}
-		return c.Health
-	}
-	return ""
-}
-
-// worsened reports whether Health went from before to a worse now that is
-// Yellow or Red: Green to Yellow, Yellow to Red, or no Health yet to either.
-func worsened(before, now string) bool {
-	rank := map[string]int{domain.HealthGreen: 1, domain.HealthYellow: 2, domain.HealthRed: 3}
-	return (now == domain.HealthYellow || now == domain.HealthRed) && rank[now] > rank[before]
-}
-
-// digestBody lists the link requests and problems awaiting the parent Owner,
-// each child's Owner reading Name (email) at their first mention and by Name
-// after that (CONTEXT.md: Name).
-func (n *Notifier) digestBody(entries []digestEntry) string {
-	var b strings.Builder
-	var people domain.Mentions
-	var pending []*domain.Link
-	var problems []*childProblem
-	for _, e := range entries {
-		if e.pendingLink != nil {
-			pending = append(pending, e.pendingLink)
-		}
-		if e.problem != nil {
-			problems = append(problems, e.problem)
-		}
-	}
-	if len(pending) > 0 {
-		fmt.Fprintf(&b, "Link requests waiting on you (%s/links):\n\n", n.baseURL)
-		for _, l := range pending {
-			fmt.Fprintf(&b, "- %s, owned by %s, asks to contribute to %s\n", l.Child.Title, people.Of(l.Child.Owner), l.Parent.Title)
-		}
-		b.WriteString("\n")
-	}
-	if len(problems) > 0 {
-		b.WriteString("Updates on Goals contributing to yours:\n\n")
-		for _, p := range problems {
-			fmt.Fprintf(&b, "- %s, owned by %s, contributing to %s: %s\n  %s\n",
-				p.child.Title, people.Of(p.child.Owner), p.parent.Title, strings.Join(p.reasons, "; "), n.goalURL(p.child.ID))
-		}
-	}
-	return b.String()
+	return reasons
 }
 
 // byRecipient collects the items bound for each recipient, in the order

@@ -212,8 +212,10 @@ The server sends two emails once a week, at the configured day and time:
 - **Parent digest**, to each parent Owner. It lists the link requests waiting
   on them. It also lists problems with the Goals that contribute to theirs: a
   child whose Health went Yellow or Red, that recorded a Date Slip, or whose
-  Check-in went overdue in the past week. A child that is Ownerless or has a
-  parent On Hold or Cancelled is listed every week until that's resolved.
+  Check-in went overdue in the past week. The past week is counted in the
+  parent Owner's Timezone, or the company's when they have none. A child that
+  is Ownerless or has a parent On Hold or Cancelled is listed every week until
+  that's resolved.
 
 People with nothing to report get no email, and people marked departed get
 none. The prototype has no mail transport, so it logs each email's recipient

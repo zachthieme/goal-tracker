@@ -19,9 +19,9 @@ const (
 )
 
 // newNotifier wires a Notifier over the harness's Service and its recording
-// email sender, on the company's default UTC calendar.
+// email sender.
 func newNotifier(h *testsupport.Harness) *notify.Notifier {
-	return notify.New(h.Service, baseURL, time.UTC)
+	return notify.New(h.Service, baseURL)
 }
 
 // sentTo returns the messages recorded for the address.
