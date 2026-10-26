@@ -68,8 +68,8 @@ func TestWriteOutsideTransactionPanicsWithTheQueryName(t *testing.T) {
 	}
 }
 
-// txDisciplineExempt are the commands that touch the database before their
-// first WithinTx on purpose, each with why.
+// txDisciplineExempt are the commands that read outside the transaction they
+// write in on purpose, each with why.
 var txDisciplineExempt = map[string]string{
 	"RestoreLinkRequest":          "an Undo spends its token in a commit of its own, so a refused restore can't roll the spending back (spendUndo)",
 	"RestoreLink":                 "an Undo spends its token in a commit of its own, so a refused restore can't roll the spending back (spendUndo)",
@@ -84,11 +84,15 @@ var txDisciplineExempt = map[string]string{
 }
 
 // Every command — an exported Service method that can reach a write — reads
-// nothing before its first WithinTx, so what it checks and what it writes are
-// in one transaction (#554). It may look someone up by email first, and may
-// hand over to another command, which is held to the same rule; what it reads
-// after its transaction has committed is its own business. A command in
-// txDisciplineExempt is skipped, for the reason it gives there.
+// nothing outside the transaction it writes in, so what it checks and what it
+// writes are in one transaction (#554). It reads nothing before its first
+// transaction-opening call, a WithinTx or a hand-over to another command, which
+// is held to the same rule; and it opens no later one once it has read since
+// the last, or inside an earlier WithinTx, so a check isn't in one transaction
+// and the write it guards in another. It may look someone up by email first,
+// and what it reads after its last transaction has committed is its own
+// business. A command in txDisciplineExempt is skipped, for the reason it gives
+// there.
 func TestCommandsCheckInsideTheirTransaction(t *testing.T) {
 	t.Parallel()
 	pkg := parseTxDisciplinePackage(t, nil)
@@ -100,7 +104,7 @@ func TestCommandsCheckInsideTheirTransaction(t *testing.T) {
 			continue
 		}
 		if v := pkg.walk(name); v.violation != "" {
-			t.Errorf("%s touches the database before its first WithinTx: %s", name, v.violation)
+			t.Errorf("%s checks outside the transaction it writes in: %s", name, v.violation)
 		}
 	}
 	for name, reason := range txDisciplineExempt {
@@ -111,8 +115,10 @@ func TestCommandsCheckInsideTheirTransaction(t *testing.T) {
 }
 
 // The analysis flags a command that checks before its transaction, however
-// the check is reached, and passes one that checks inside it, looks someone
-// up by email first, or hands over to another command.
+// the check is reached, or checks after handing over to another command, or in
+// one transaction and then writes in another; and passes one that checks
+// inside its transaction, looks someone up by email first, hands over to
+// another command, or reads after its transaction has committed.
 func TestCommandsCheckInsideTheirTransactionFlagsACheckBeforeIt(t *testing.T) {
 	t.Parallel()
 	pkg := parseTxDisciplinePackage(t, map[string]string{"planted.go": `package domain
@@ -167,14 +173,52 @@ func (s *Service) PlantedReadAfterCommit(ctx context.Context, id int64) (Account
 	}
 	return s.Account(ctx, id)
 }
+
+func (s *Service) PlantedHandOverThenCheckThenWrite(ctx context.Context, id int64) error {
+	if err := s.PlantedCheckInside(ctx, id); err != nil {
+		return err
+	}
+	if _, err := s.queries.GetGoal(ctx, id); err != nil {
+		return err
+	}
+	return s.WithinTx(ctx, func(tx *Service) error {
+		return tx.queries.SetAccountName(ctx, db.SetAccountNameParams{})
+	})
+}
+
+func (s *Service) PlantedCheckInOneTxWriteInAnother(ctx context.Context, id int64) error {
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		_, err := tx.queries.GetGoal(ctx, id)
+		return err
+	}); err != nil {
+		return err
+	}
+	return s.WithinTx(ctx, func(tx *Service) error {
+		return tx.queries.SetAccountName(ctx, db.SetAccountNameParams{})
+	})
+}
+
+func (s *Service) PlantedReadAfterItsTx(ctx context.Context, id int64) (Account, error) {
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.GetGoal(ctx, id); err != nil {
+			return err
+		}
+		return tx.queries.SetAccountName(ctx, db.SetAccountNameParams{})
+	}); err != nil {
+		return Account{}, err
+	}
+	return s.Account(ctx, id)
+}
 `})
 	for name, flagged := range map[string]bool{
-		"PlantedCheckThenWrite":       true,
-		"PlantedHelperCheckThenWrite": true,
-		"PlantedWriteWithoutTx":       true,
-		"PlantedCheckInside":          false,
-		"PlantedByEmail":              false,
-		"PlantedReadAfterCommit":      false,
+		"PlantedCheckThenWrite":             true,
+		"PlantedHelperCheckThenWrite":       true,
+		"PlantedWriteWithoutTx":             true,
+		"PlantedHandOverThenCheckThenWrite": true,
+		"PlantedCheckInOneTxWriteInAnother": true,
+		"PlantedCheckInside":                false,
+		"PlantedByEmail":                    false,
+		"PlantedReadAfterCommit":            false,
 	} {
 		if !slices.Contains(pkg.commands(), name) {
 			t.Errorf("%s isn't found to be a command", name)
@@ -198,11 +242,14 @@ type txDisciplinePackage struct {
 }
 
 // txDisciplineWalk is what walking a function's calls in the order they run
-// found before its first transaction: a violation, naming the database call
-// made before it, or whether it reached one at all.
+// found: a violation, naming a database call made before a transaction it
+// isn't in, whether it opens a transaction at all, and the read that a
+// transaction its caller opens next would come after — before its first
+// transaction if it opens none, or else since its last.
 type txDisciplineWalk struct {
 	violation string
-	inTx      bool
+	opensTx   bool
+	read      string
 }
 
 // parseTxDisciplinePackage parses the domain package's non-test files, plus
@@ -356,29 +403,51 @@ func (p *txDisciplinePackage) decl(name string, method bool) *ast.FuncDecl {
 // reachesWrite reports whether the Service method name, or a function it
 // calls, closures included, calls a query that writes.
 func (p *txDisciplinePackage) reachesWrite(name string) bool {
-	return p.reaches(name, true)
+	return p.reaches(name, true, true)
 }
 
-func (p *txDisciplinePackage) reaches(name string, method bool) bool {
-	key := txDisciplineKey(name, method)
+// reaches reports whether the method or func name, or a function it calls,
+// closures included, calls a query that writes, or with writesOnly false, any
+// query or statement on s.db but a lookup by email.
+func (p *txDisciplinePackage) reaches(name string, method, writesOnly bool) bool {
+	key := txDisciplineKey(name, method) + "/" + strconv.FormatBool(writesOnly)
 	if r, ok := p.reached[key]; ok {
 		return r != nil && *r
 	}
 	p.reached[key] = nil // in progress: a recursive call adds nothing
-	found := false
-	ast.Inspect(p.decl(name, method).Body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok || found {
-			return !found
-		}
-		if q := txDisciplineQuery(call); q != "" && p.writes[q] {
-			found = true
-		} else if callee, m := p.callee(call); callee != "" && p.reaches(callee, m) {
-			found = true
-		}
-		return !found
-	})
+	found := p.firstReach(p.decl(name, method).Body, writesOnly) != ""
 	p.reached[key] = &found
+	return found
+}
+
+// firstReach is the first call in n, closures included, that calls a query
+// that writes, or with writesOnly false, any query or statement on s.db but a
+// lookup by email, itself or through a function it calls; or "".
+func (p *txDisciplinePackage) firstReach(n ast.Node, writesOnly bool) string {
+	found := ""
+	ast.Inspect(n, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || found != "" {
+			return found == ""
+		}
+		q := txDisciplineQuery(call)
+		callee, m := p.callee(call)
+		switch {
+		case writesOnly && q != "":
+			if p.writes[q] {
+				found = "queries." + q
+			}
+		case q == "GetAccountByEmail", m && callee == "AccountByEmail":
+		case q != "":
+			found = "queries." + q
+		case !writesOnly && txDisciplineRawDB(call):
+			found = "a statement on s.db"
+		}
+		if found == "" && callee != "" && p.reaches(callee, m, writesOnly) {
+			found = callee
+		}
+		return found == ""
+	})
 	return found
 }
 
@@ -389,18 +458,26 @@ func txDisciplineKey(name string, method bool) string {
 	return name
 }
 
-// walk follows the Service method name's calls in the order they run until
-// it opens a transaction.
+// walk follows the Service method name's calls in the order they run; a
+// command that reads before its first transaction, or opens none, is a
+// violation too.
 func (p *txDisciplinePackage) walk(name string) txDisciplineWalk {
-	return p.walkFunc(name, true)
+	w := p.walkFunc(name, true)
+	if w.violation == "" && !w.opensTx && w.read != "" {
+		w.violation = w.read + " before its first transaction"
+	}
+	return w
 }
 
 // walkFunc follows the calls in the body of the method or func name, each
-// call's receiver and arguments before the call itself, until the first that
-// opens a transaction: a WithinTx, a call to a command, which is held to this
-// rule itself, or a call to a function whose own walk opens one. A call before
-// that to a sqlc query, or to a function whose walk reaches one, is a
-// violation, unless it looks someone up by email.
+// call's receiver and arguments before the call itself. A call that opens a
+// transaction — a WithinTx, a call to a command, which is held to this rule
+// itself, or a call to a function whose own walk opens one — is a violation
+// when a read comes before it that isn't in a transaction it opens: a call to
+// a sqlc query, a statement on s.db, or a call to a function whose walk
+// reaches one, unless it looks someone up by email, since the start or the
+// last transaction-opening call. A read with no transaction-opening call after
+// it is the caller's to judge.
 func (p *txDisciplinePackage) walkFunc(name string, method bool) txDisciplineWalk {
 	key := txDisciplineKey(name, method)
 	if w, ok := p.walked[key]; ok {
@@ -411,11 +488,26 @@ func (p *txDisciplinePackage) walkFunc(name string, method bool) txDisciplineWal
 	}
 	p.walked[key] = nil
 	var result txDisciplineWalk
-	done := func() bool { return result.violation != "" || result.inTx }
+	read := func(what string) {
+		if result.read == "" {
+			result.read = what
+		}
+	}
+	openTx := func(readInIt string) {
+		if result.read != "" {
+			if result.opensTx {
+				result.violation = result.read + ", then a later transaction"
+			} else {
+				result.violation = result.read + " before its first transaction"
+			}
+		}
+		result.opensTx = true
+		result.read = readInIt
+	}
 	var visit func(n ast.Node)
 	visit = func(n ast.Node) {
 		ast.Inspect(n, func(n ast.Node) bool {
-			if done() {
+			if result.violation != "" {
 				return false
 			}
 			call, ok := n.(*ast.CallExpr)
@@ -424,7 +516,13 @@ func (p *txDisciplinePackage) walkFunc(name string, method bool) txDisciplineWal
 			}
 			callee, m := p.callee(call)
 			if m && callee == "WithinTx" {
-				result.inTx = true
+				readInIt := ""
+				for _, arg := range call.Args {
+					if r := p.firstReach(arg, false); r != "" && readInIt == "" {
+						readInIt = "WithinTx → " + r
+					}
+				}
+				openTx(readInIt)
 				return false
 			}
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
@@ -435,23 +533,29 @@ func (p *txDisciplinePackage) walkFunc(name string, method bool) txDisciplineWal
 			for _, arg := range call.Args {
 				visit(arg)
 			}
-			if done() {
+			if result.violation != "" {
 				return false
 			}
 			switch {
 			case txDisciplineQuery(call) == "GetAccountByEmail", m && callee == "AccountByEmail":
 			case txDisciplineQuery(call) != "":
-				result.violation = "queries." + txDisciplineQuery(call)
+				read("queries." + txDisciplineQuery(call))
 			case txDisciplineRawDB(call):
-				result.violation = "a statement on s.db"
+				read("a statement on s.db")
 			case m && ast.IsExported(callee) && p.reachesWrite(callee):
-				result.inTx = true
+				openTx("")
 			case callee != "":
 				switch w := p.walkFunc(callee, m); {
 				case w.violation != "":
 					result.violation = callee + " → " + w.violation
-				case w.inTx:
-					result.inTx = true
+				case w.opensTx:
+					if w.read != "" {
+						openTx(callee + " → " + w.read)
+					} else {
+						openTx("")
+					}
+				case w.read != "":
+					read(callee + " → " + w.read)
 				}
 			}
 			return false

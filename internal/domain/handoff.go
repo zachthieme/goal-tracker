@@ -482,8 +482,9 @@ func (s *Service) handoffToDecide(ctx context.Context, handoffID, actorID int64,
 }
 
 // decidePendingHandoff records a Handoff's outcome, only while it is still
-// pending. A Handoff decided meanwhile is refused as Not found, so the
-// caller's transaction rolls back and keeps nothing else it wrote.
+// pending. Each caller has read it pending in the same transaction, so the
+// n == 0 branch is a guard that shouldn't fire; if it does, the error rolls
+// the caller's transaction back, keeping nothing else it wrote.
 func (s *Service) decidePendingHandoff(ctx context.Context, handoffID int64, status string) error {
 	n, err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
 		Status: status,
@@ -493,7 +494,7 @@ func (s *Service) decidePendingHandoff(ctx context.Context, handoffID int64, sta
 		return fmt.Errorf("set handoff %s: %w", status, err)
 	}
 	if n == 0 {
-		return fmt.Errorf("%w: handoff %d is not pending", ErrNotFound, handoffID)
+		return fmt.Errorf("set handoff %d %s: it is no longer pending", handoffID, status)
 	}
 	return nil
 }
