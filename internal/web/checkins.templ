@@ -722,7 +722,7 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 				if len(v.Children) > 0 {
 					<section data-testid="checkin-children" class="checkin-context-children">
 						<h3 class="checkin-rail-head">Contributed to by</h3>
-						@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
+						@linkList(g, v.Children, v.LinkHealth, nil, "no-children", "")
 					</section>
 				}
 				<section data-testid="checkin-context-dates" class="checkin-context-dates">

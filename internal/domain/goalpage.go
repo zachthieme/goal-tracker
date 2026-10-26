@@ -23,6 +23,9 @@ type GoalPage struct {
 	Parents    []GoalLink
 	Children   []GoalLink
 	LinkHealth map[int64]string
+	// RemovableLinks says, for each of its parent and child links, keyed by
+	// link ID, whether the viewer may remove it (RemoveLink).
+	RemovableLinks map[int64]bool
 	// Candidates are every other Goal, newest first, as ListGoals lists them:
 	// the parents the Goal could be linked to. Linking refuses a duplicate or
 	// a cycle when it is asked for.
@@ -513,9 +516,9 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	return noChange
 }
 
-// permitGoalPage decides what p's viewer, actorID, may do on its Goal, by
-// the rule each command evaluates (goalrules.go), judged from what the page
-// read; lists the open Parent suggestions they see; and, for one who may
+// permitGoalPage decides what p's viewer, actorID, may do on its Goal and
+// which of its links they may remove, by the rule each command evaluates
+// (goalrules.go), judged from what the page read; lists the open Parent suggestions they see; and, for one who may
 // check in, reads the pending Draft Highlights only they see and gives them
 // noChange's refusal of a No change on it.
 func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict) error {
@@ -566,10 +569,18 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		MarkOwnerReturned:        permits(markReturnedRefusal(actor, g.Owner)),
 		MarkTopLevel:             permits(goalAdminRefusal(actor)),
 	}
+	removable := make(map[int64]bool, len(p.Parents)+len(p.Children))
+	for _, l := range p.Parents {
+		removable[l.LinkID] = permits(linkRemoveRefusal(actor, l.Goal, g))
+	}
+	for _, l := range p.Children {
+		removable[l.LinkID] = permits(linkRemoveRefusal(actor, g, l.Goal))
+	}
 	if failed != nil {
 		return failed
 	}
 	p.Permissions = perms
+	p.RemovableLinks = removable
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	for _, sg := range p.Suggestions {
