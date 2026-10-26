@@ -206,16 +206,9 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 // can't both pass, and a request rejected meanwhile isn't accepted.
 func (s *Service) AcceptLink(ctx context.Context, linkID, actorID int64) (Link, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		row, err := tx.getPendingLink(ctx, linkID)
+		row, _, err := tx.linkToDecide(ctx, linkID, actorID, "accept")
 		if err != nil {
 			return err
-		}
-		parent, err := tx.queries.GetGoal(ctx, row.ParentID)
-		if err != nil {
-			return fmt.Errorf("look up parent goal: %w", err)
-		}
-		if parent.Goal.OwnerID != actorID {
-			return Refuse(ErrNotAuthorized, "only the parent's Owner may accept a link")
 		}
 		if err := tx.ensureNoCycle(ctx, row.ChildID, row.ParentID); err != nil {
 			return err
@@ -254,20 +247,13 @@ type LinkRejection struct {
 // rejection so the rejecter can Undo it (RestoreLinkRequest) with the token it
 // returns, for UndoWindow. The actor must own the parent Goal.
 func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRejection, error) {
-	row, err := s.getPendingLink(ctx, linkID)
+	row, parent, err := s.linkToDecide(ctx, linkID, actorID, "reject")
 	if err != nil {
 		return LinkRejection{}, err
 	}
 	child, err := s.queries.GetGoal(ctx, row.ChildID)
 	if err != nil {
 		return LinkRejection{}, fmt.Errorf("look up child goal: %w", err)
-	}
-	parent, err := s.queries.GetGoal(ctx, row.ParentID)
-	if err != nil {
-		return LinkRejection{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-	if parent.Goal.OwnerID != actorID {
-		return LinkRejection{}, Refuse(ErrNotAuthorized, "only the parent's Owner may reject a link")
 	}
 	now := s.clock.Now()
 	var rejection db.RejectedLinkRequest
@@ -815,19 +801,30 @@ func (s *Service) childrenByGoal(ctx context.Context, goalIDs []int64) (map[int6
 	return out, nil
 }
 
-// getPendingLink loads a link that must exist and still be pending.
-func (s *Service) getPendingLink(ctx context.Context, linkID int64) (db.Link, error) {
+// linkToDecide loads the link request actorID would decide (decision:
+// "accept" or "reject"), with its parent Goal. The link must exist (a rejected
+// one is gone), and only the parent's Owner may decide it, which is checked
+// before whether it is still pending, so nobody else learns that it was
+// accepted.
+func (s *Service) linkToDecide(ctx context.Context, linkID, actorID int64, decision string) (db.Link, db.GetGoalRow, error) {
 	row, err := s.queries.GetLink(ctx, linkID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return db.Link{}, fmt.Errorf("%w: link %d", ErrNotFound, linkID)
+			return db.Link{}, db.GetGoalRow{}, fmt.Errorf("%w: link %d", ErrNotFound, linkID)
 		}
-		return db.Link{}, fmt.Errorf("look up link: %w", err)
+		return db.Link{}, db.GetGoalRow{}, fmt.Errorf("look up link: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, row.ParentID)
+	if err != nil {
+		return db.Link{}, db.GetGoalRow{}, fmt.Errorf("look up parent goal: %w", err)
+	}
+	if parent.Goal.OwnerID != actorID {
+		return db.Link{}, db.GetGoalRow{}, Refuse(ErrNotAuthorized, "only the parent's Owner may %s a link", decision)
 	}
 	if row.Status != LinkPending {
-		return db.Link{}, fmt.Errorf("%w: link %d is not pending", ErrNotFound, linkID)
+		return db.Link{}, db.GetGoalRow{}, Refuse(ErrValidation, "this link request has already been accepted")
 	}
-	return row, nil
+	return row, parent, nil
 }
 
 // ensureNewAcyclicLink refuses a link from childID to parentID when one

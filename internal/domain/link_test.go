@@ -143,6 +143,43 @@ func TestAcceptLinkRequiresParentOwner(t *testing.T) {
 	}
 }
 
+// A link request already accepted can't be accepted or rejected again: the
+// parent's Owner is told so, and anyone else is refused as before, learning
+// nothing about the link (#549).
+func TestDecidingAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	ctx := context.Background()
+	if _, err := h.Service.AcceptLink(ctx, link.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+
+	decisions := map[string]func(actorID int64) error{
+		"AcceptLink": func(actorID int64) error { _, err := h.Service.AcceptLink(ctx, link.ID, actorID); return err },
+		"RejectLink": func(actorID int64) error { _, err := h.Service.RejectLink(ctx, link.ID, actorID); return err },
+	}
+	for name, decide := range decisions {
+		err := decide(pat.ID)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s by the parent's Owner: err = %v, want ErrValidation", name, err)
+		} else if got, want := domain.Reason(err), "this link request has already been accepted"; got != want {
+			t.Errorf("%s by the parent's Owner: Reason = %q, want %q", name, got, want)
+		}
+		if err := decide(sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s by someone else: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
+		t.Errorf("ParentsOf(child) = %+v, want the accepted parent still", got)
+	}
+}
+
 // The parent's Owner can reject a request, which removes it entirely.
 func TestRejectLinkRemovesTheRequest(t *testing.T) {
 	t.Parallel()
