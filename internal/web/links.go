@@ -59,19 +59,20 @@ func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, curr
 	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, toast))
 }
 
-// handleAcceptLink accepts a pending request; only the parent's Owner may. A
-// refusal links back to the page the Accept came from (from: Home, or the
-// pending page).
+// handleAcceptLink accepts a pending request; only the parent's Owner may. It
+// returns to the page the Accept came from (from: Home, or the pending page),
+// and a refusal links back there.
 func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
+	back := requestPage(r.FormValue("from"), "/links")
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
-		s.writeLinkError(w, r, current, "Can't accept link", requestPage(r.FormValue("from"), "/links"), err)
+		s.writeLinkError(w, r, current, "Can't accept link", back, err)
 		return
 	}
-	http.Redirect(w, r, "/links", http.StatusSeeOther)
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // handleRejectLink rejects a pending request; only the parent's Owner may. It

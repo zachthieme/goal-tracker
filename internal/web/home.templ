@@ -351,10 +351,11 @@ templ acceptReject(base string) {
 
 // rejectAccept is Home's pair of buttons deciding a pending request at base:
 // Reject as a text button, then Accept outlined. Reject sends at once; Home
-// then offers Undo in a toast.
+// then offers Undo in a toast. Both say they came from Home.
 templ rejectAccept(base string) {
 	@rejectButton(base)
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
+		<input type="hidden" name="from" value={ fromHome }/>
 		<button type="submit" class="btn sm">Accept</button>
 	</form>
 }
