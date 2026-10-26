@@ -102,10 +102,10 @@ func Markdown(p domain.Publication) string {
 // ("2026-10-03 ~~2026-09-12~~ (2)") and marked Overdue once that date has
 // passed ("— **Overdue**"), whom it asks for help, Milestones, Metrics against
 // target, and the Rolled-up Health with how many children are Red, Yellow and
-// Check-in overdue, the Goals behind it, and the Owner's explanation. Each
-// Milestone, and the Path to Green (domain.PathToGreenOverdueAt), is marked as
-// of asOf, the instant the Report was published, read in the zone the block's
-// Goal was judged in.
+// Check-in overdue, the Goals behind it, and the Owner's explanation when the
+// block shows it (domain.ReportBlock.ShowsExplanation). Each Milestone, and the
+// Path to Green (domain.PathToGreenOverdueAt), is marked as of asOf, the instant
+// the Report was published, read in the zone the block's Goal was judged in.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
 	fmt.Fprintf(b, "\n### %s · %s", health(blk.Health), text(g.Title))
@@ -192,7 +192,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	if len(blk.Behind) > 0 {
 		fmt.Fprintf(b, "\n**Supported by:** %s\n", linkedGoals(blk.Behind))
 	}
-	if (blk.RolledUp.Present || blk.RolledUp.CheckinOverdueChildren > 0) && blk.Explanation != "" {
+	if blk.ShowsExplanation() {
 		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
 	}
 }

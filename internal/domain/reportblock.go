@@ -135,6 +135,14 @@ func (b ReportBlock) Location() *time.Location {
 	return time.UTC
 }
 
+// ShowsExplanation reports whether b shows the Owner's explanation of why its
+// Health differs from the Rolled-up Health: only when it has one and a
+// Rolled-up Health shows beside it, set by its children or counting them
+// Check-in overdue. Every surface asks it, so they show it alike.
+func (b ReportBlock) ShowsExplanation() bool {
+	return b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0)
+}
+
 // PathToGreenOverdueAt reports whether b's Path to Green had missed its
 // back-to-Green date as of asOf — the instant its Report was published, or now
 // on a draft — judged in b's Location as Freshness judges a Goal's
