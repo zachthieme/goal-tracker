@@ -10,6 +10,10 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
+// errLinkWouldCycle is a link refused for making a cycle, as a form beside it
+// says it: ErrCycle's own text names the two Goals by ID.
+var errLinkWouldCycle = errors.New("that Goal already contributes to this one, so linking them would make a cycle")
+
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.
 // A refused request, a cycle included, comes back as the Goal page with the
@@ -33,13 +37,13 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	})
 	switch {
 	case errors.Is(err, domain.ErrCycle):
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, err)
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, errLinkWouldCycle)
 	case errors.Is(err, domain.ErrValidation):
 		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
 	case err != nil:
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't request link", goalPath(childID), err)
 	default:
-		http.Redirect(w, r, "/goals/"+strconv.FormatInt(childID, 10), http.StatusSeeOther)
+		http.Redirect(w, r, goalPath(childID), http.StatusSeeOther)
 	}
 }
 
@@ -55,14 +59,16 @@ func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, curr
 	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, toast))
 }
 
-// handleAcceptLink accepts a pending request; only the parent's Owner may.
+// handleAcceptLink accepts a pending request; only the parent's Owner may. A
+// refusal links back to the page the Accept came from (from: Home, or the
+// pending page).
 func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't accept link", requestPage(r.FormValue("from"), "/links"), err)
 		return
 	}
 	http.Redirect(w, r, "/links", http.StatusSeeOther)
@@ -70,18 +76,18 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 
 // handleRejectLink rejects a pending request; only the parent's Owner may. It
 // returns to the page the reject came from (from: Home, or the pending page),
-// which offers Undo once in a toast.
+// which offers Undo once in a toast. A refusal links back there.
 func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
+	back := requestPage(r.FormValue("from"), "/links")
 	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
 	if err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't reject link", back, err)
 		return
 	}
-	back := requestPage(r.FormValue("from"), "/links")
 	offerUndo(w, back, undoLinkRejection, rejection.ID, rejection.UndoToken)
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
@@ -133,16 +139,12 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	removal, err := s.svc.RemoveLink(r.Context(), linkID, current.ID)
-	if errors.Is(err, domain.ErrNotAuthorized) {
+	if err != nil {
 		back := "/home"
 		if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
-			back = "/goals/" + strconv.FormatInt(goalID, 10)
+			back = goalPath(goalID)
 		}
-		render(w, r, http.StatusForbidden, linkRefusedPage(&current, sentence(plainReason(err)), back))
-		return
-	}
-	if err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't remove link", back, err)
 		return
 	}
 	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))
@@ -213,20 +215,28 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 	return id, true
 }
 
-// writeLinkError maps a domain link error to an HTTP status.
-func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, err error) {
+// writeLinkError answers a refused link action with a page inside the app,
+// headed by what was refused (e.g. "Can't accept link"), saying why and
+// linking back: a cycle 409, a validation 422, someone else's action 403. A
+// link or suggestion that isn't there is the Not found page.
+func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, current domain.Account, refused, back string, err error) {
+	var status int
+	var reason string
 	switch {
 	case errors.Is(err, domain.ErrCycle):
 		// ErrCycle's own text names the two Goals by ID, so a person reads
 		// this sentence instead.
-		http.Error(w, "Linking these Goals would make a cycle: the parent already contributes to the child.", http.StatusConflict)
+		status, reason = http.StatusConflict, "Linking these Goals would make a cycle: the parent already contributes to the child."
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
+		status, reason = http.StatusUnprocessableEntity, sentence(plainReason(err))
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
+		status, reason = http.StatusForbidden, sentence(plainReason(err))
 	case errors.Is(err, domain.ErrNotFound):
-		http.Error(w, "not found", http.StatusNotFound)
+		s.notFound(w, r)
+		return
 	default:
 		s.serverError(w, r, "link action failed", err)
+		return
 	}
+	render(w, r, status, linkRefusedPage(&current, refused, reason, back))
 }

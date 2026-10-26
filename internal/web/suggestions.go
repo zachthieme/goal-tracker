@@ -53,7 +53,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	case errors.Is(err, domain.ErrCycle):
-		s.renderSuggestParent(w, r, current, goalID, http.StatusConflict, errors.New("that Goal already contributes to this one, so linking them would make a cycle"))
+		s.renderSuggestParent(w, r, current, goalID, http.StatusConflict, errLinkWouldCycle)
 	case errors.Is(err, domain.ErrValidation):
 		s.renderSuggestParent(w, r, current, goalID, http.StatusUnprocessableEntity, err)
 	case errors.Is(err, domain.ErrNotAuthorized):
@@ -92,14 +92,15 @@ func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, cur
 
 // handleAcceptParentSuggestion accepts the open suggestion in the path, which
 // requests its link as the Goal's Owner; only they may. It returns to the page
-// the Accept came from (from: Home, or the Goal page).
+// the Accept came from (from: Home, or the Goal page), or refuses with a page
+// saying why, linking back there.
 func (s *Server) handleAcceptParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	p, ok := s.suggestionFromPath(w, r)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.AcceptParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't accept suggestion", requestPage(r.FormValue("from"), goalPath(p.Goal.ID)), err)
 		return
 	}
 	http.Redirect(w, r, requestPage(r.FormValue("from"), goalPath(p.Goal.ID)), http.StatusSeeOther)
@@ -107,18 +108,19 @@ func (s *Server) handleAcceptParentSuggestion(w http.ResponseWriter, r *http.Req
 
 // handleDeclineParentSuggestion declines the open suggestion in the path;
 // only the Goal's Owner may. It returns to the page the Decline came from
-// (from: Home, or the Goal page), which offers Undo once in a toast.
+// (from: Home, or the Goal page), which offers Undo once in a toast, or
+// refuses with a page saying why, linking back there.
 func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	p, ok := s.suggestionFromPath(w, r)
 	if !ok {
 		return
 	}
+	back := requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
 	token, err := s.svc.DeclineParentSuggestion(r.Context(), current.ID, p.ID)
 	if err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't decline suggestion", back, err)
 		return
 	}
-	back := requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
 	offerUndo(w, back, undoSuggestionDecline, p.ID, token)
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
@@ -148,14 +150,15 @@ func (s *Server) handleUndoDeclineParentSuggestion(w http.ResponseWriter, r *htt
 }
 
 // handleWithdrawParentSuggestion withdraws the open suggestion in the path;
-// only the person who made it may. It returns to the Goal page.
+// only the person who made it may. It returns to the Goal page, or refuses
+// with a page saying why, linking back there.
 func (s *Server) handleWithdrawParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	p, ok := s.suggestionFromPath(w, r)
 	if !ok {
 		return
 	}
 	if err := s.svc.WithdrawParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		s.writeLinkError(w, r, err)
+		s.writeLinkError(w, r, current, "Can't withdraw suggestion", goalPath(p.Goal.ID), err)
 		return
 	}
 	http.Redirect(w, r, goalPath(p.Goal.ID), http.StatusSeeOther)

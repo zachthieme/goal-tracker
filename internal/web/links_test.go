@@ -755,8 +755,9 @@ func TestARefusedLinkDecisionLeavesTheRequestPending(t *testing.T) {
 	}
 }
 
-// A link accept by someone other than the parent's Owner is refused with the
-// reason alone, not the error's "not authorized:" prefix.
+// A link accept by someone other than the parent's Owner is refused with a
+// page inside the app giving the reason alone, not the error's "not
+// authorized:" prefix, and linking back to the pending links (#546).
 func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 	t.Parallel()
 
@@ -770,17 +771,19 @@ func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 
 	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/links/%d/accept", ts.URL, link.ID), url.Values{})
 	defer func() { _ = resp.Body.Close() }()
-	body := readBody(t, resp)
+	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
-	if got, want := strings.TrimSpace(body), "only the parent's Owner may accept a link"; got != want {
-		t.Errorf("body = %q, want %q", got, want)
+	assertLinkRefusedPage(t, page, "Can't accept link", "Only the parent's Owner may accept a link.", "/links")
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after a refused accept, want none", got)
 	}
 }
 
 // A link accept refused for making a cycle says so in a sentence a person can
-// read, naming no Goal by its ID (#544).
+// read, naming no Goal by its ID (#544), on a page inside the app linking back
+// to the pending links (#546).
 func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	t.Parallel()
 
@@ -800,14 +803,139 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 
 	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), fmt.Sprintf("%s/links/%d/accept", ts.URL, link.ID), url.Values{})
 	defer func() { _ = resp.Body.Close() }()
-	body := readBody(t, resp)
+	page := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	if got, want := strings.TrimSpace(body), "Linking these Goals would make a cycle: the parent already contributes to the child."; got != want {
-		t.Errorf("body = %q, want %q", got, want)
+	assertLinkRefusedPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/links")
+	for _, id := range []int64{parent.ID, child.ID} {
+		if reason := textOf(findByTestID(t, page, "link-refused")); strings.Contains(reason, fmt.Sprint(id)) {
+			t.Errorf("link-refused %q names Goal %d by its ID", reason, id)
+		}
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
 		t.Errorf("ParentsOf(child) = %+v after a refused accept, want none", got)
+	}
+}
+
+// A link request refused for making a cycle says so in the form, in the
+// sentence Suggest a parent uses, naming no Goal by its ID (#546).
+func TestALinkRequestThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com") // owns the parent
+	sam := h.SignIn("sam@example.com") // owns the child
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	// Pat links the parent under the child and Sam accepts, so the child
+	// asking to contribute to the parent would close a cycle.
+	other := h.RequestLink(pat, parent, child, "")
+	if _, err := h.Service.AcceptLink(context.Background(), other.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+
+	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
+		"parent_id": {fmt.Sprint(parent.ID)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
+	}
+	got := textOf(findByTestID(t, page, "form-error"))
+	if want := "That Goal already contributes to this one, so linking them would make a cycle."; got != want {
+		t.Errorf("form-error = %q, want %q", got, want)
+	}
+	for _, id := range []int64{parent.ID, child.ID} {
+		if strings.Contains(got, fmt.Sprint(id)) {
+			t.Errorf("form-error %q names Goal %d by its ID", got, id)
+		}
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after a refused request, want none", got)
+	}
+}
+
+// A refused Parent suggestion decision or withdrawal is a page inside the app
+// saying why, linking back to the page it came from: Home when its from says
+// so, the Goal page otherwise. The suggestion stays open (#546).
+func TestARefusedSuggestionActionShowsAPageLinkingBack(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, _, sug := suggestionScene(t, h)
+	pat := signInClient(t, ts.URL, "pat@example.com") // made the suggestion
+	sam := signInClient(t, ts.URL, "sam@example.com") // owns the Goal
+
+	refusals := []struct {
+		client  *http.Client
+		action  string
+		form    url.Values
+		heading string
+		reason  string
+		back    string
+	}{
+		{pat, "decline", url.Values{"from": {"home"}}, "Can't decline suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
+		{pat, "accept", url.Values{"from": {"home"}}, "Can't accept suggestion", "Only the Goal's Owner may decide a parent suggestion.", "/home"},
+		{pat, "decline", url.Values{}, "Can't decline suggestion", "Only the Goal's Owner may decide a parent suggestion.", fmt.Sprintf("/goals/%d", goal.ID)},
+		{sam, "withdraw", url.Values{}, "Can't withdraw suggestion", "Only the person who made a suggestion may withdraw it.", fmt.Sprintf("/goals/%d", goal.ID)},
+	}
+	for _, c := range refusals {
+		resp := postForm(t, c.client, fmt.Sprintf("%s/parent-suggestions/%d/%s", ts.URL, sug.ID, c.action), c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %v: status %d, want 403", c.action, c.form, resp.StatusCode)
+		}
+		assertLinkRefusedPage(t, page, c.heading, c.reason, c.back)
+	}
+	if got, _ := h.Service.ParentSuggestion(context.Background(), sug.ID); got.Status != domain.SuggestionOpen {
+		t.Errorf("Status = %q after refused actions, want open", got.Status)
+	}
+}
+
+// A decision on a link that isn't there answers with the app's Not found page.
+func TestALinkDecisionOnNoLinkIsTheNotFoundPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("pat@example.com")
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	for _, decision := range []string{"accept", "reject"} {
+		resp := postForm(t, pat, fmt.Sprintf("%s/links/999999/%s", ts.URL, decision), url.Values{})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", decision, resp.StatusCode)
+		}
+		if !hasTestID(page, "not-found") {
+			t.Errorf("%s: not the Not found page:\n%s", decision, renderNode(page))
+		}
+	}
+}
+
+// assertLinkRefusedPage checks page is a refused link action's page inside
+// the app: heading names what was refused, reason says why, and Back links to
+// back.
+func assertLinkRefusedPage(t *testing.T, page *html.Node, heading, reason, back string) {
+	t.Helper()
+	if !hasTestID(page, "nav-home") {
+		t.Errorf("refusal page is not inside the app's layout:\n%s", renderNode(page))
+	}
+	if headingNamed(page, heading) == nil {
+		t.Errorf("refusal page has no heading %q:\n%s", heading, renderNode(page))
+	}
+	if got := textOf(findByTestID(t, page, "link-refused")); got != reason {
+		t.Errorf("link-refused = %q, want %q", got, reason)
+	}
+	if backs := findAll(page, func(n *html.Node) bool {
+		return n.Data == "a" && attrOf(n, "href") == back && textOf(n) == "Back"
+	}); len(backs) == 0 {
+		t.Errorf("refusal page has no Back link to %s:\n%s", back, renderNode(page))
 	}
 }
