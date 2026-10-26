@@ -4459,7 +4459,7 @@ func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
 		shows func(t *testing.T, doc *html.Node)
 	}{
 		{
-			name: "invalid target date",
+			name: "unparseable target date",
 			submit: func(t *testing.T, h *testsupport.Harness, sam domain.Account) (domain.Goal, url.Values) {
 				return h.ActiveGoal(sam, "Reduce outages", "Outages cost trust."), url.Values{
 					"health":           {domain.HealthYellow},
@@ -4469,8 +4469,9 @@ func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
 				}
 			},
 			shows: func(t *testing.T, doc *html.Node) {
-				if msg := textOf(findByTestID(t, doc, "checkin-error")); !strings.Contains(msg, "invalid target date") {
-					t.Errorf("the form's error = %q, want it to say the target date is invalid", msg)
+				const want = `"not-a-date" isn't a date.`
+				if msg := fieldError(t, doc, "path_target_date"); msg != want {
+					t.Errorf("Path to Green field's error = %q, want %q", msg, want)
 				}
 			},
 		},

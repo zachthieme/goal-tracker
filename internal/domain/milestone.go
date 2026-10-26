@@ -214,6 +214,10 @@ type AddMilestoneInput struct {
 	GoalID     int64
 	Name       string
 	TargetDate time.Time
+	// Unparsed are the values the caller couldn't parse, each refused under
+	// its input's name, as DefinedGoalInput.Unparsed are. Only
+	// AddMilestoneAsAuthor reads them.
+	Unparsed []*InputError
 }
 
 // AddMilestone adds a Milestone to a Goal as part of planning it, recording no
@@ -266,7 +270,9 @@ func milestonesAddable(lifecycle string) bool {
 
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
 // Goal page, as authorID: only its Owner or a Delegate may, and only while the
-// Goal is Proposed, Active or On Hold. Name and target date are required. An
+// Goal is Proposed, Active or On Hold. Those are checked first, so no one else
+// learns what's wrong with what they sent; then a value the caller couldn't
+// parse (see in.Unparsed) is refused, and then a missing name or date. An
 // addition while the Goal is Active or On Hold is recorded as a Milestone
 // change with its author and no Check-in, for the Goal's history; one while it
 // is Proposed is part of its planning, and isn't. Only an addition while
@@ -285,6 +291,9 @@ func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in A
 		}
 		g := goalFromRow(goal.Goal, goal.Account)
 		if err := milestoneAdditionRefusal(tx.goalActorFor(ctx, authorID, g.ID), g); err != nil {
+			return err
+		}
+		if err := unparsedRefusal(in.Unparsed); err != nil {
 			return err
 		}
 		lifecycle := g.Lifecycle
