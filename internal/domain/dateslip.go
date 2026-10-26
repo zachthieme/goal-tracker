@@ -84,17 +84,21 @@ func (p slipPlan) later() bool { return p.newDate.After(p.oldDate) }
 // planDeliverySlip validates a Check-in's delivery date against the Goal's
 // current one. A zero or unchanged date is no slip (nil). A change needs a
 // reason, and only a Dated Goal has a delivery date to move.
-func planDeliverySlip(goal db.Goal, newDate time.Time, reason string) (*slipPlan, error) {
-	if !newDate.IsZero() && newDate.Format(dateFormat) != goal.DeliveryDate && goal.Kind != GoalDated {
+func planDeliverySlip(goal Goal, newDate time.Time, reason string) (*slipPlan, error) {
+	var current string
+	if !goal.DeliveryDate.IsZero() {
+		current = goal.DeliveryDate.Format(dateFormat)
+	}
+	if !newDate.IsZero() && newDate.Format(dateFormat) != current && goal.Kind != GoalDated {
 		return nil, Refuse(ErrValidation, "only a Dated Goal has a delivery date to change")
 	}
-	return planSlip(0, "the delivery date", CheckinInputDeliveryDateReason, goal.DeliveryDate, newDate, reason)
+	return planSlip(0, "the delivery date", CheckinInputDeliveryDateReason, current, newDate, reason)
 }
 
 // planMilestoneSlip validates a Check-in's new date for a Milestone. A zero or
 // unchanged date is no slip (nil); a change needs a reason.
-func planMilestoneSlip(m db.Milestone, newDate time.Time, reason string) (*slipPlan, error) {
-	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), CheckinMilestoneInput(m.ID, "date_reason"), m.TargetDate, newDate, reason)
+func planMilestoneSlip(m Milestone, newDate time.Time, reason string) (*slipPlan, error) {
+	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), CheckinMilestoneInput(m.ID, "date_reason"), m.TargetDate.Format(dateFormat), newDate, reason)
 }
 
 // planBackToGreenSlip validates a Check-in's back-to-Green date against the

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -191,7 +192,8 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 }
 
 // submitCheckinInTx is SubmitCheckin's work, on a Service already inside its
-// transaction.
+// transaction: it reads the Goal, judges the Check-in from its facts
+// (judgeCheckin) and writes what the judgement planned.
 func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) (Checkin, error) {
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
@@ -200,138 +202,15 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 		}
 		return Checkin{}, fmt.Errorf("look up goal: %w", err)
 	}
-	// The Owner writes a Goal's Check-ins, as may any Delegate the Owner has
-	// authorized; the Check-in records its author and still credits the Owner it
-	// speaks for (CONTEXT.md: Delegate). One that moves its Lifecycle moves it
-	// only as LifecycleChangesFrom allows.
-	g := goalFromRow(goal.Goal, goal.Account)
-	actor := s.goalActorFor(ctx, in.AuthorID, g.ID)
-	refusal := checkInRefusal(actor, g)
-	if in.Lifecycle != "" && in.Lifecycle != g.Lifecycle {
-		refusal = lifecycleChangeRefusal(actor, g, in.Lifecycle)
-	}
-	if refusal != nil {
-		return Checkin{}, refusal
-	}
-	lifecycle, err := planLifecycleChange(goal.Goal.Lifecycle, in.Lifecycle, in.LifecycleReason, in.Outcome)
+	plan, err := judgeCheckin(in, s.checkinFactsFor(ctx, goalFromRow(goal.Goal, goal.Account), in.AuthorID))
 	if err != nil {
 		return Checkin{}, err
 	}
-
-	status := strings.TrimSpace(in.Status)
-	path := strings.TrimSpace(in.PathToGreen)
-	explanation := strings.TrimSpace(in.Explanation)
-	// Health is how an Active Goal is tracking, so only a Check-in that leaves
-	// the Goal Active sets one; the rest record just their status.
-	health := in.Health
-	tracked := lifecycle.resultingLifecycle(goal.Goal.Lifecycle) == LifecycleActive
-	if tracked {
-		if err := validateCheckin(health, status, path, in.PathTargetDate); err != nil {
-			return Checkin{}, err
-		}
-		// The Owner has to explain why their Health differs from the Rolled-up
-		// Health — the worst among the Goal's Active children (ADR-0003). When
-		// there is nothing to roll up, or the two match, no explanation is
-		// required and any stray one is dropped.
-		explanation, err = s.resolveRollupExplanation(ctx, goal.Goal.ID, health, explanation)
-		if err != nil {
-			return Checkin{}, err
-		}
-	} else {
-		if status == "" {
-			return Checkin{}, inputError(CheckinInputStatus, "a Check-in needs a status")
-		}
-		health, path, explanation = "", "", ""
-	}
-
-	// A reading may only name a Metric on this Goal (CONTEXT.md: a Check-in
-	// records the current value of the Goal's Metrics).
-	if err := s.validateReadings(ctx, goal.Goal.ID, in.Readings); err != nil {
-		return Checkin{}, err
-	}
-	if lifecycle.To == LifecycleDone {
-		if err := s.requireFinalValues(ctx, goal.Goal.ID, in.Readings); err != nil {
-			return Checkin{}, err
-		}
-	}
-	deliverySlip, err := planDeliverySlip(goal.Goal, in.DeliveryDate, in.DeliveryDateReason)
+	c, err := s.createCheckin(ctx, plan.row)
 	if err != nil {
 		return Checkin{}, err
 	}
-	// A slip is never hidden behind a Green: moving the delivery date later
-	// means the Goal is not on track (CONTEXT.md: Date Slip).
-	if health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
-		return Checkin{}, inputError(CheckinInputDeliveryDate, "a Check-in that moves the delivery date later can't be Green")
-	}
-	// A Milestone slip that doesn't move the delivery date doesn't affect Health
-	// (CONTEXT.md: Milestone), so it is recorded but never gates the Health.
-	milestones, err := s.planMilestoneChanges(ctx, goal.Goal.ID, in.Milestones, in.NewMilestones)
-	if err != nil {
-		return Checkin{}, err
-	}
-	if err := s.rejectGreenWhileOverdue(goalFromRow(goal.Goal, goal.Account), health, milestones.resulting); err != nil {
-		return Checkin{}, err
-	}
-	// Health is the Owner's call (ADR-0003), so a Metric that missed its target
-	// only asks them to confirm a Green; an overdue Milestone, refused above,
-	// wins over it.
-	if health == HealthGreen && !in.ConfirmOffTarget {
-		if err := s.rejectGreenWhileOffTarget(ctx, goalFromRow(goal.Goal, goal.Account), in.Readings); err != nil {
-			return Checkin{}, err
-		}
-	}
-
-	// Moving the back-to-Green date later than the latest Check-in had it is a
-	// Date Slip of that date (CONTEXT.md: Date Slip).
-	var pathSlip *slipPlan
-	if needsPathToGreen(health) {
-		pathSlip, err = s.planPathSlip(ctx, goal.Goal.ID, in.PathTargetDate, in.PathTargetDateReason)
-		if err != nil {
-			return Checkin{}, err
-		}
-	}
-
-	pathTargetDate := ""
-	asksForHelp := int64(0)
-	if needsPathToGreen(health) {
-		pathTargetDate = in.PathTargetDate.Format(dateFormat)
-		if in.AsksForHelp {
-			asksForHelp = 1
-		}
-	} else {
-		// A Green Check-in carries no Path to Green, so no ask for help.
-		path = ""
-	}
-
-	// Which Draft Highlights are still pending decides which offered rows
-	// count, and they are cleared below, so two Check-ins can't both keep one.
-	picks, err := s.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
-	if err != nil {
-		return Checkin{}, err
-	}
-	highlights, err := planHighlights(picks.rows)
-	if err != nil {
-		return Checkin{}, err
-	}
-	c, err := s.createCheckin(ctx, db.CreateCheckinParams{
-		GoalID:          goal.Goal.ID,
-		AuthorID:        in.AuthorID,
-		OwnerID:         goal.Goal.OwnerID,
-		Health:          health,
-		Status:          status,
-		PathToGreen:     path,
-		PathTargetDate:  pathTargetDate,
-		Explanation:     explanation,
-		LifecycleFrom:   lifecycle.From,
-		LifecycleTo:     lifecycle.To,
-		LifecycleReason: lifecycle.Reason,
-		Outcome:         lifecycle.Outcome,
-		AsksForHelp:     asksForHelp,
-	})
-	if err != nil {
-		return Checkin{}, err
-	}
-	if lifecycle.Changed() {
+	if lifecycle := plan.lifecycle; lifecycle.Changed() {
 		if err := s.setGoalLifecycle(ctx, goal.Goal.ID, lifecycle); err != nil {
 			return Checkin{}, err
 		}
@@ -344,7 +223,7 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 	if err := s.recordReadings(ctx, c.ID, in.Readings); err != nil {
 		return Checkin{}, err
 	}
-	for _, slip := range []*slipPlan{deliverySlip, pathSlip} {
+	for _, slip := range []*slipPlan{plan.deliverySlip, plan.pathSlip} {
 		if slip == nil {
 			continue
 		}
@@ -352,16 +231,72 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 			return Checkin{}, err
 		}
 	}
-	if err := milestones.apply(ctx, s, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
+	if err := plan.milestones.apply(ctx, s, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
 		return Checkin{}, err
 	}
-	if err := s.recordHighlights(ctx, c.ID, highlights); err != nil {
+	if err := s.recordHighlights(ctx, c.ID, plan.highlights); err != nil {
 		return Checkin{}, err
 	}
-	if err := picks.apply(ctx, s, c.ID); err != nil {
+	if err := plan.picks.apply(ctx, s, c.ID); err != nil {
 		return Checkin{}, err
 	}
 	return c, nil
+}
+
+// checkinFactsFor is the facts a Check-in on g by authorID is judged from,
+// read through s. Each fact is read only when a rule asks for it, and at most
+// once: the Goal's Metrics, which the readings, a Done's final values and an
+// off-target Green all ask for, run one query between them.
+func (s *Service) checkinFactsFor(ctx context.Context, g Goal, authorID int64) checkinFacts {
+	return checkinFacts{
+		goal:  g,
+		actor: s.goalActorFor(ctx, authorID, g.ID),
+		today: s.goalToday(g),
+		rollup: sync.OnceValues(func() (RolledUpHealth, error) {
+			return s.RolledUpHealth(ctx, g.ID)
+		}),
+		metrics: sync.OnceValues(func() ([]Metric, error) {
+			return s.ListMetrics(ctx, g.ID)
+		}),
+		readings: sync.OnceValues(func() (map[int64][]MetricReading, error) {
+			return s.metricReadingsByMetric(ctx, []int64{g.ID})
+		}),
+		metricExists: s.metricExistsOnce(ctx),
+		milestones: sync.OnceValues(func() ([]Milestone, error) {
+			return s.ListMilestones(ctx, g.ID)
+		}),
+		latestCheckin: sync.OnceValues(func() (*Checkin, error) {
+			latest, ok, err := s.LatestCheckin(ctx, g.ID)
+			if err != nil || !ok {
+				return nil, err
+			}
+			return &latest, nil
+		}),
+		pendingDraftHighlights: sync.OnceValues(func() ([]DraftHighlight, error) {
+			return s.pendingDraftHighlights(ctx, g.ID)
+		}),
+	}
+}
+
+// metricExistsOnce says whether a Metric exists, looking each one up at most
+// once.
+func (s *Service) metricExistsOnce(ctx context.Context) func(id int64) (bool, error) {
+	exists := map[int64]bool{}
+	return func(id int64) (bool, error) {
+		if ok, seen := exists[id]; seen {
+			return ok, nil
+		}
+		_, err := s.queries.GetMetric(ctx, id)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			exists[id] = false
+		case err != nil:
+			return false, fmt.Errorf("look up metric: %w", err)
+		default:
+			exists[id] = true
+		}
+		return exists[id], nil
+	}
 }
 
 // setGoalLifecycle makes a Check-in's Lifecycle change on goalID, but only
@@ -389,17 +324,6 @@ func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change Lif
 		return Refuse(ErrValidation, "the Goal's Lifecycle changed meanwhile: reload it and try again")
 	}
 	return nil
-}
-
-// planPathSlip plans the Date Slip, if any, of a Check-in on goalID whose
-// back-to-Green date is newDate, against the Goal's latest Check-in, read
-// before the new one is written; see planBackToGreenSlip.
-func (s *Service) planPathSlip(ctx context.Context, goalID int64, newDate time.Time, reason string) (*slipPlan, error) {
-	latest, ok, err := s.LatestCheckin(ctx, goalID)
-	if err != nil || !ok {
-		return nil, err
-	}
-	return planBackToGreenSlip(latest.PathTargetDate, newDate, reason)
 }
 
 // ErrGreenOffTarget is a Green Check-in refused because a Metric on the Goal is
@@ -439,36 +363,17 @@ func formatMetricValue(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// rejectGreenWhileOffTarget refuses a Green on g with a *GreenOffTargetError
-// while any of its Metrics is off target today, in the Goal's timezone; see
-// Service.GoalTimezone and OffTargetMetrics.
-func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, g Goal, readings []MetricReadingInput) error {
-	missed, err := s.offTargetMetricsOf(ctx, g, readings)
-	if err != nil {
-		return err
-	}
-	if len(missed) > 0 {
-		return &GreenOffTargetError{Metrics: missed}
-	}
-	return nil
-}
-
 // OffTargetMetrics returns goalID's Metrics that are off target today, in the
 // Goal's timezone (see GoalTimezone), each with the reading that missed; none
 // when none is. Each Metric is judged by the reading in readings (as entered in
 // a Check-in) or, when there is none, its latest recorded one; a Metric never
-// read is not off target.
+// read is not off target. It reads the Goal's Metrics and all their readings,
+// one query each.
 func (s *Service) OffTargetMetrics(ctx context.Context, goalID int64, readings []MetricReadingInput) ([]OffTargetMetric, error) {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {
 		return nil, err
 	}
-	return s.offTargetMetricsOf(ctx, g, readings)
-}
-
-// offTargetMetricsOf is OffTargetMetrics for a Goal already loaded. It reads
-// the Goal's Metrics and all their readings, one query each.
-func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []MetricReadingInput) ([]OffTargetMetric, error) {
 	metrics, err := s.ListMetrics(ctx, g.ID)
 	if err != nil {
 		return nil, err
@@ -477,11 +382,7 @@ func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []Met
 	if err != nil {
 		return nil, err
 	}
-	entered := make(map[int64]float64, len(readings))
-	for _, rd := range readings {
-		entered[rd.MetricID] = rd.Value
-	}
-	return offTargetMetricsAmong(metrics, recorded, entered, s.goalToday(g)), nil
+	return checkinOffTargetMetrics(metrics, recorded, readings, s.goalToday(g)), nil
 }
 
 // offTargetMetricsAmong are those of metrics, one Goal's, off target as of
@@ -506,20 +407,13 @@ func offTargetMetricsAmong(metrics []Metric, recorded map[int64][]MetricReading,
 	return missed
 }
 
-// validateReadings checks that each reading names a Metric on goalID; a reading
-// for a Metric that does not exist or belongs to another Goal is rejected, and
-// so is a second reading for one Metric: a Check-in records one value each. It
-// reads the Goal's Metrics once, however many readings there are; only a
-// reading naming none of them is looked up by itself, to say which it is.
-func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
-	if len(readings) == 0 {
-		return nil
-	}
-	metrics, err := s.queries.ListMetrics(ctx, goalID)
-	if err != nil {
-		return fmt.Errorf("list metrics: %w", err)
-	}
-	onGoal := make(map[int64]db.Metric, len(metrics))
+// validateReadings checks that each reading names one of metrics, the Goal's;
+// a reading for a Metric that does not exist or belongs to another Goal is
+// rejected, and so is a second reading for one Metric: a Check-in records one
+// value each. Only a reading naming none of metrics is looked up through
+// exists, to say which it is.
+func validateReadings(readings []MetricReadingInput, metrics []Metric, exists func(id int64) (bool, error)) error {
+	onGoal := make(map[int64]Metric, len(metrics))
 	for _, m := range metrics {
 		onGoal[m.ID] = m
 	}
@@ -527,11 +421,12 @@ func (s *Service) validateReadings(ctx context.Context, goalID int64, readings [
 	for _, rd := range readings {
 		m, ok := onGoal[rd.MetricID]
 		if !ok {
-			if _, err := s.queries.GetMetric(ctx, rd.MetricID); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					return Refuse(ErrValidation, "metric %d does not exist", rd.MetricID)
-				}
-				return fmt.Errorf("look up metric: %w", err)
+			found, err := exists(rd.MetricID)
+			if err != nil {
+				return err
+			}
+			if !found {
+				return Refuse(ErrValidation, "metric %d does not exist", rd.MetricID)
 			}
 			return Refuse(ErrValidation, "metric %d is not on this Goal", rd.MetricID)
 		}
@@ -829,20 +724,11 @@ func noChangeRefusalOf(facts noChangeFacts) (string, error) {
 	return explanation, nil
 }
 
-// resolveRollupExplanation enforces ADR-0003's explanation rule for a Check-in
-// setting health on goalID: when the Goal's Rolled-up Health is present and
-// differs from health, a non-empty explanation is required; otherwise none is,
-// and any stray explanation is dropped. It returns the explanation to store.
-func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, health, explanation string) (string, error) {
-	rollup, err := s.RolledUpHealth(ctx, goalID)
-	if err != nil {
-		return "", err
-	}
-	return rollupExplanation(rollup, health, explanation)
-}
-
-// rollupExplanation is resolveRollupExplanation's rule for a Goal whose
-// Rolled-up Health is rollup.
+// rollupExplanation enforces ADR-0003's explanation rule, judgeCheckin's and
+// judgeNoChange's, for a Check-in setting health on a Goal whose Rolled-up
+// Health is rollup: when rollup is present and differs from health, a
+// non-empty explanation is required; otherwise none is, and any stray
+// explanation is dropped. It returns the explanation to store.
 func rollupExplanation(rollup RolledUpHealth, health, explanation string) (string, error) {
 	if rollup.Present && rollup.Health != health {
 		if explanation == "" {
