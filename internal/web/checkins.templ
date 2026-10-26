@@ -827,21 +827,6 @@ func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 	return d
 }
 
-// checkinUnavailablePage says, inside the normal page, why the Check-in
-// couldn't be reached: the Goal doesn't exist, or the reader may not check in
-// on it.
-//
-//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ checkinUnavailablePage(current *domain.Account, title, message string) {
-	@layout(title, current) {
-		<div class="message-page">
-			<h1>{ title }</h1>
-			<p data-testid="checkin-unavailable">{ message }</p>
-			<p><a href="/home">Back to Home</a></p>
-		</div>
-	}
-}
-
 // checkinForm is the Owner's Check-in form. It posts with htmx and targets
 // itself, so a validation error re-renders it in place with the message next to
 // the field it is about. Health, status, and readings are always shown; the
