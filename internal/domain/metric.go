@@ -70,17 +70,13 @@ type AddMetricInput struct {
 	TargetDate time.Time
 }
 
-// AddMetric adds a Metric to a Goal. Name, unit, a valid direction, and a
-// target date are required. Only the Goal's Owner may add one
-// (ErrNotAuthorized).
+// AddMetric adds a Metric to a Goal. Only the Goal's Owner may add one
+// (ErrNotAuthorized), and that is checked first, so no one else learns what's
+// wrong with what they sent. Name, unit, a valid direction, and a target date
+// are required.
 func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInput) (Metric, error) {
 	var row db.Metric
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		name := strings.TrimSpace(in.Name)
-		unit := strings.TrimSpace(in.Unit)
-		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
-			return err
-		}
 		if _, err := tx.queries.GetGoal(ctx, in.GoalID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return Refuse(ErrValidation, "goal does not exist")
@@ -88,6 +84,11 @@ func (s *Service) AddMetric(ctx context.Context, actorID int64, in AddMetricInpu
 			return fmt.Errorf("look up goal: %w", err)
 		}
 		if err := tx.goalRule(ctx, actorID, in.GoalID, metricEditRefusal); err != nil {
+			return err
+		}
+		name := strings.TrimSpace(in.Name)
+		unit := strings.TrimSpace(in.Unit)
+		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
 			return err
 		}
 
@@ -122,18 +123,17 @@ type EditMetricInput struct {
 	Baseline   float64
 	Target     float64
 	TargetDate time.Time
+	// Unparsed are the values the caller couldn't parse, each refused under
+	// its input's name, as DefinedGoalInput.Unparsed are.
+	Unparsed []*InputError
 }
 
 // EditMetric changes a Metric's fields. The same rules as AddMetric apply,
-// its Goal's Owner alone included.
+// its Goal's Owner alone, checked first, included. A value the caller couldn't
+// parse (see in.Unparsed) is refused before the rest is checked.
 func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricInput) (Metric, error) {
 	var row db.Metric
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		name := strings.TrimSpace(in.Name)
-		unit := strings.TrimSpace(in.Unit)
-		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
-			return err
-		}
 		current, err := tx.queries.GetMetric(ctx, in.MetricID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -142,6 +142,14 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 			return fmt.Errorf("look up metric: %w", err)
 		}
 		if err := tx.goalRule(ctx, actorID, current.GoalID, metricEditRefusal); err != nil {
+			return err
+		}
+		if err := unparsedRefusal(in.Unparsed); err != nil {
+			return err
+		}
+		name := strings.TrimSpace(in.Name)
+		unit := strings.TrimSpace(in.Unit)
+		if err := validateMetric(name, unit, in.Direction, in.TargetDate); err != nil {
 			return err
 		}
 
@@ -163,20 +171,6 @@ func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricIn
 		return Metric{}, err
 	}
 	return metricFromRow(row), nil
-}
-
-// RequireMetricOwner allows actorID to change metricID only if they are its
-// Goal's Owner, by metricEditRefusal, the rule AddMetric and EditMetric
-// apply. It returns ErrNotFound if no such Metric exists.
-func (s *Service) RequireMetricOwner(ctx context.Context, actorID, metricID int64) error {
-	m, err := s.queries.GetMetric(ctx, metricID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: metric %d", ErrNotFound, metricID)
-		}
-		return fmt.Errorf("look up metric: %w", err)
-	}
-	return s.goalRule(ctx, actorID, m.GoalID, metricEditRefusal)
 }
 
 // ListMetrics returns a Goal's Metrics, earliest target date first.

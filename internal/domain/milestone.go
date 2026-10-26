@@ -253,22 +253,6 @@ func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilesto
 // Owner or a Delegate who tries to change its Milestones.
 var errMilestonesOwnerOrDelegateOnly = Refuse(ErrNotAuthorized, "only the Owner or a Delegate may change this Goal's Milestones")
 
-// RequireMilestoneEditor allows actorID to change milestoneID only if they are
-// its Goal's Owner or a Delegate, by milestoneEditorRefusal; anyone else is
-// refused with ErrNotAuthorized, and a missing Milestone is ErrNotFound.
-// EditMilestone checks it for itself, with the Goal's Lifecycle and the
-// Milestone's status (milestoneEditRefusal).
-func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestoneID int64) error {
-	m, err := s.queries.GetMilestone(ctx, milestoneID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: milestone %d", ErrNotFound, milestoneID)
-		}
-		return fmt.Errorf("look up milestone: %w", err)
-	}
-	return s.goalRule(ctx, actorID, m.GoalID, milestoneEditorRefusal)
-}
-
 // milestonesAddable reports whether a Goal in lifecycle takes a Milestone
 // added outside a Check-in: until it is Done or Cancelled (CONTEXT.md:
 // Milestone).
@@ -354,23 +338,21 @@ type EditMilestoneInput struct {
 	MilestoneID int64
 	Name        string
 	TargetDate  time.Time
+	// Unparsed are the values the caller couldn't parse, each refused under
+	// its input's name, as DefinedGoalInput.Unparsed are.
+	Unparsed []*InputError
 }
 
-// EditMilestone changes a Milestone's name and date. Both are required. Only
-// its Goal's Owner or a Delegate may edit it (ErrNotAuthorized; see
-// RequireMilestoneEditor), and only while the Goal is Proposed and the
-// Milestone Planned (ErrValidation), by milestoneEditRefusal: after that its
-// date moves in a Check-in as a Date Slip, and it keeps its name.
+// EditMilestone changes a Milestone's name and date. Only its Goal's Owner or
+// a Delegate may edit it (ErrNotAuthorized), and only while the Goal is
+// Proposed and the Milestone Planned (ErrValidation), by milestoneEditRefusal:
+// after that its date moves in a Check-in as a Date Slip, and it keeps its
+// name. Those are checked first, so no one else learns what's wrong with what
+// they sent; then a value the caller couldn't parse (see in.Unparsed) is
+// refused, and then a missing name or date.
 func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMilestoneInput) (Milestone, error) {
 	var row db.Milestone
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		name := strings.TrimSpace(in.Name)
-		if name == "" {
-			return Refuse(ErrValidation, "a Milestone needs a name")
-		}
-		if in.TargetDate.IsZero() {
-			return Refuse(ErrValidation, "a Milestone needs a date")
-		}
 		current, err := tx.queries.GetMilestone(ctx, in.MilestoneID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -382,6 +364,16 @@ func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMiles
 			return milestoneEditRefusal(a, g, current.Status)
 		}); err != nil {
 			return err
+		}
+		if err := unparsedRefusal(in.Unparsed); err != nil {
+			return err
+		}
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return Refuse(ErrValidation, "a Milestone needs a name")
+		}
+		if in.TargetDate.IsZero() {
+			return Refuse(ErrValidation, "a Milestone needs a date")
 		}
 		row, err = tx.queries.UpdateMilestone(ctx, db.UpdateMilestoneParams{
 			Name:       name,

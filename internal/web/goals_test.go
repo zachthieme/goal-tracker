@@ -101,9 +101,9 @@ func findGoalLink(t *testing.T, root *nethtml.Node) *nethtml.Node {
 }
 
 // TestSmokeDefineAndActivateGoal is the define-and-activate HTTP smoke test: an
-// Owner marks a Proposed Goal Dated, adds a Milestone and a Metric, sets the
-// cadence, revises the Why it matters, adds a Contributor, and activates it — then sees
-// it rendered Active with everything it filled in.
+// Owner defines a Proposed Goal as Dated with a Metric and a cadence, adds a
+// Milestone, revises the Why it matters, adds a Contributor, and activates it
+// — then sees it rendered Active with everything it filled in.
 func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	t.Parallel()
 
@@ -130,20 +130,23 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	goalPath := attrOf(findGoalLink(t, parsePage(t, readBody(t, resp))), "href")
 	goalURL := ts.URL + goalPath
 
-	postFormStatus(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	postFormStatus(t, client, goalURL+"/define", url.Values{
+		"title":                  {"Cut checkout latency"},
+		"why_it_matters":         {"Shoppers abandon slow carts."},
+		"kind":                   {domain.GoalDated},
+		"delivery_date":          {"2026-06-15"},
+		"cadence":                {"14"},
+		"metrics[0].name":        {"p95 checkout latency"},
+		"metrics[0].unit":        {"ms"},
+		"metrics[0].direction":   {"down"},
+		"metrics[0].baseline":    {"1200"},
+		"metrics[0].target":      {"400"},
+		"metrics[0].target_date": {"2026-06-15"},
+	})
 	postFormStatus(t, client, goalURL+"/milestones", url.Values{
 		"name":        {"Beta cut"},
 		"target_date": {"2026-03-16"},
 	})
-	postFormStatus(t, client, goalURL+"/metrics", url.Values{
-		"name":        {"p95 checkout latency"},
-		"unit":        {"ms"},
-		"direction":   {"down"},
-		"baseline":    {"1200"},
-		"target":      {"400"},
-		"target_date": {"2026-06-15"},
-	})
-	postFormStatus(t, client, goalURL+"/cadence", url.Values{"cadence_days": {"14"}})
 	postFormStatus(t, client, goalURL+"/why-it-matters", url.Values{"why_it_matters": {"Faster checkout lifts conversion."}})
 	postFormStatus(t, client, goalURL+"/contributors", url.Values{"email": {"dana@example.com"}})
 
@@ -2999,7 +3002,9 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 		t.Errorf("Activate is enabled with items missing: %s", renderNode(button))
 	}
 
-	postFormStatus(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	if _, err := h.Service.MarkGoalDated(t.Context(), sam.ID, goal.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
 	page = getPage(t, client, goalURL)
 	if got := goalActivationChecklistIn(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
 		t.Errorf("Dated Goal with no Milestone or Metric: checklist = %v", got)
@@ -3168,7 +3173,9 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	postFormStatus(t, client, goalURL+"/ongoing", nil)
+	if _, err := h.Service.MarkGoalOngoing(t.Context(), sam.ID, goal.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
 	postFormStatus(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
 	page := getPage(t, client, goalURL)
 	if done, listed := goalActivationChecklistIn(t, page)["A Metric"]; !listed || done {
@@ -6766,13 +6773,6 @@ func ownerOnlyRoutes() []ownerOnlyRoute {
 		return func(goalID, _ int64) string { return fmt.Sprintf("/goals/%d/%s", goalID, suffix) }
 	}
 	return []ownerOnlyRoute{
-		{"dated", onGoal("dated"), url.Values{"delivery_date": {"2026-09-14"}}},
-		{"ongoing", onGoal("ongoing"), nil},
-		{"cadence", onGoal("cadence"), url.Values{"cadence_days": {"14"}}},
-		{"add metric", onGoal("metrics"), url.Values{
-			"name": {"Error rate"}, "unit": {"%"}, "direction": {"down"},
-			"baseline": {"5"}, "target": {"1"}, "target_date": {"2026-06-15"},
-		}},
 		{"edit metric", func(_, metricID int64) string { return fmt.Sprintf("/metrics/%d", metricID) }, url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"1500"}, "target": {"500"}, "target_date": {"2026-06-15"},
@@ -6826,8 +6826,8 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	return fmt.Sprintf("goal %+v\ncontributors %+v\nmetrics %+v\nrevisions %+v", g, contributors, metrics, revisions)
 }
 
-// Setting a Goal's Kind, delivery date, cadence, Contributors and Metrics, and
-// Activating it, are the Owner's alone, and its Why it matters the Owner's or an
+// Setting a Goal's Contributors and editing its Metrics, and Activating it,
+// are the Owner's alone, and its Why it matters the Owner's or an
 // Admin's (#281): anyone else, a Delegate included, is refused with 403 and
 // the Goal is left as it was (#191).
 func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
@@ -7664,22 +7664,121 @@ func TestARefusedGoalCommandAnswersWithTheRefusalPage(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	h.SignIn("pat@example.com")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
-	datedURL := goalPageURL(ts.URL, goal) + "/dated"
+	activateURL := goalPageURL(ts.URL, goal) + "/activate"
 
 	for _, c := range []struct {
-		who, date string
-		status    int
-		reason    string
+		who    string
+		status int
+		reason string
 	}{
-		{"sam@example.com", "", http.StatusUnprocessableEntity, "A Dated Goal needs a delivery date."},
-		{"pat@example.com", "2026-06-15", http.StatusForbidden, "Only the Goal's Owner may change it."},
+		{"sam@example.com", http.StatusUnprocessableEntity, "A Goal must be marked Dated or Ongoing to become Active."},
+		{"pat@example.com", http.StatusForbidden, "Only the Goal's Owner may activate it."},
 	} {
-		resp := postForm(t, signInClient(t, ts.URL, c.who), datedURL, url.Values{"delivery_date": {c.date}})
+		resp := postForm(t, signInClient(t, ts.URL, c.who), activateURL, nil)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s: status %d, want %d", c.who, resp.StatusCode, c.status)
 		}
 		assertRefusalPage(t, page, "Can't change Goal", c.reason, fmt.Sprintf("/goals/%d", goal.ID))
+	}
+}
+
+// Marking a Goal Dated or Ongoing, setting its cadence and adding a Metric on
+// their own have no form on any page, so their routes are gone (#577): the
+// Goal page's define form does all four.
+func TestGoalSetupRoutesNoPageOffersAreGone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	before := ownerOnlyGoalState(t, h, goal.ID)
+
+	for suffix, form := range map[string]url.Values{
+		"dated":   {"delivery_date": {"2026-06-15"}},
+		"ongoing": nil,
+		"cadence": {"cadence_days": {"14"}},
+		"metrics": {
+			"name": {"Error rate"}, "unit": {"%"}, "direction": {"down"},
+			"baseline": {"5"}, "target": {"1"}, "target_date": {"2026-06-15"},
+		},
+	} {
+		resp := postForm(t, client, goalPageURL(ts.URL, goal)+"/"+suffix, form)
+		defer func() { _ = resp.Body.Close() }()
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("POST /goals/%d/%s answered %d, want it gone", goal.ID, suffix, resp.StatusCode)
+		}
+	}
+	if after := ownerOnlyGoalState(t, h, goal.ID); after != before {
+		t.Errorf("a post to a gone route changed the Goal:\nbefore %s\nafter  %s", before, after)
+	}
+}
+
+// Each Goal command authorizes before it validates, so what someone sent
+// matters only once they may send it (#577): a stranger posting a malformed
+// form is refused with 403, and the one permitted to post it is answered with
+// 422 and the reason, beside the form or on the refusal page.
+func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	g, metricID := ownerOnlyGoal(t, h, sam)
+	milestone, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: g.ID, Name: "Beta cut", TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	bare := h.CreateGoal(sam, "Bare goal", "Some reason.")
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{
+		"sam@example.com": signInClient(t, ts.URL, "sam@example.com"),
+		"pat@example.com": signInClient(t, ts.URL, "pat@example.com"),
+	}
+
+	for _, c := range []struct {
+		name, path string
+		form       url.Values
+		shownAt    string
+		reason     string
+	}{
+		{"add contributor", fmt.Sprintf("/goals/%d/contributors", g.ID), url.Values{"email": {"nobody@example.com"}},
+			"form-error", `No account with email "nobody@example.com".`},
+		{"edit milestone", fmt.Sprintf("/milestones/%d", milestone.ID), url.Values{"name": {"Beta"}, "target_date": {"soon"}},
+			"refused-reason", `"soon" isn't a date.`},
+		{"edit metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
+			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
+			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
+		}, "refused-reason", `The baseline must be a number, not "lots".`},
+		{"activate", fmt.Sprintf("/goals/%d/activate", bare.ID), nil,
+			"refused-reason", "A Goal must be marked Dated or Ongoing to become Active."},
+	} {
+		before := ownerOnlyGoalState(t, h, g.ID) + ownerOnlyGoalState(t, h, bare.ID)
+
+		resp := postForm(t, clients["pat@example.com"], ts.URL+c.path, c.form)
+		defer func() { _ = resp.Body.Close() }()
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by a stranger: status %d, want 403", c.name, resp.StatusCode)
+		}
+
+		resp = postForm(t, clients["sam@example.com"], ts.URL+c.path, c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s by the Owner: status %d, want 422", c.name, resp.StatusCode)
+		}
+		if got := textOf(findByTestID(t, page, c.shownAt)); !strings.Contains(got, c.reason) {
+			t.Errorf("%s by the Owner: %s reads %q, want %q", c.name, c.shownAt, got, c.reason)
+		}
+		if after := ownerOnlyGoalState(t, h, g.ID) + ownerOnlyGoalState(t, h, bare.ID); after != before {
+			t.Errorf("%s changed a Goal:\nbefore %s\nafter  %s", c.name, before, after)
+		}
 	}
 }
