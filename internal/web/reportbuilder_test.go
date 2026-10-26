@@ -863,6 +863,71 @@ func TestBuilderMatchesMarkAlsoIncludeAndShowHealthOrLifecycleOverHTTP(t *testin
 	}
 }
 
+// The rail selects once, taking each Goal's "added" mark and the left-out
+// count from that one selection: for a Definition with both Also include and
+// Leave out, it marks only the Goal Also include alone brings in, and counts
+// only the Leave out Goal the rules would have selected. Every Goal's
+// Dimension values, which only selecting reads, are read once per render.
+func TestBuilderMatchesSelectOnceOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Mobile")
+	matched := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	listed := h.ActiveGoal(boss, "Platform latency", "Matters.")
+	added := h.ActiveGoal(sam, "Mobile SDK auth update", "Matters.")
+	leftOut := h.ActiveGoal(boss, "Platform migration", "Matters.")
+	unmatched := h.ActiveGoal(sam, "Mobile onboarding", "Matters.")
+	for _, g := range []domain.Goal{matched, listed, leftOut} {
+		h.AssignGoalValue(g, team.Values[0])
+	}
+	for _, g := range []domain.Goal{added, unmatched} {
+		h.AssignGoalValue(g, team.Values[1])
+	}
+	ts, _, queries := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	dim := "dimension:" + id(team.ID)
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + id(team.Values[0].ID)},
+		"include":            {id(listed.ID), id(added.ID)},
+		"exclude":            {id(leftOut.ID), id(unmatched.ID)},
+	}
+
+	queries.take()
+	rail, status := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if status != http.StatusOK {
+		t.Fatalf("matches: status %d, want 200; body:\n%s", status, rail)
+	}
+	if got := countQueryNames(queries.take())["ListAllGoalValues"]; got != 1 {
+		t.Errorf("the rail read every Goal's Dimension values %d times, want once", got)
+	}
+	page := parsePage(t, rail)
+	if got := textOf(findByTestID(t, page, "matches-count")); got != "Matches 3 Goals" {
+		t.Errorf("the rail's count is %q, want Matches 3 Goals", got)
+	}
+	addedBy := map[string]bool{}
+	for _, li := range findAllByTestID(page, "match") {
+		for _, g := range []domain.Goal{matched, listed, added} {
+			if strings.Contains(textOf(li), g.Title) {
+				addedBy[g.Title] = len(findAllByTestID(li, "match-added")) > 0
+			}
+		}
+	}
+	want := map[string]bool{matched.Title: false, listed.Title: false, added.Title: true}
+	if !maps.Equal(addedBy, want) {
+		t.Errorf("the rail lists Goals marked added %v, want %v", addedBy, want)
+	}
+	if got := textOf(findByTestID(t, page, "matches-more")); got != "1 left out" {
+		t.Errorf("the rail's closing line is %q, want 1 left out", got)
+	}
+}
+
 // railMatches are the rail's listed Goals, each its markup by title.
 func railMatches(rail string) map[string]string {
 	out := map[string]string{}

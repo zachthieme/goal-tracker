@@ -113,7 +113,7 @@ func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary,
 		}
 		sum.Changes = &changes
 	}
-	scope, err := s.reportScope(ctx, def)
+	scope, err := s.reportScope(ctx, r)
 	if err != nil {
 		return ReportSummary{}, err
 	}
@@ -162,11 +162,13 @@ func (s *Service) changedGoals(ctx context.Context, r Report) (int, error) {
 	return len(changed), nil
 }
 
-// reportScope says what def selects in plain words, its parts joined with
-// " · ": a picked definition's count of Goals, or a rules definition's rules
-// in order, then how many Goals it lists to Also include and to Leave out,
-// each left off when none.
-func (s *Service) reportScope(ctx context.Context, def ReportDefinition) (string, error) {
+// reportScope says what the drafted Report r's Definition selects in plain
+// words, its parts joined with " · ": a picked definition's count of Goals,
+// or a rules definition's rules in order, then how many Goals are in only
+// through Also include and how many Leave out kept out that the rules would
+// otherwise have selected, each left off when none.
+func (s *Service) reportScope(ctx context.Context, r Report) (string, error) {
+	def := r.Definition
 	if def.Mode == ReportModePicked {
 		return pluralGoals(len(def.Picked)) + " picked by hand", nil
 	}
@@ -179,10 +181,10 @@ func (s *Service) reportScope(ctx context.Context, def ReportDefinition) (string
 		parts = append(parts, part)
 	}
 	var overrides []string
-	if n := len(def.Include); n > 0 {
+	if n := r.Added; n > 0 {
 		overrides = append(overrides, fmt.Sprintf("%d added", n))
 	}
-	if n := len(def.Exclude); n > 0 {
+	if n := r.LeftOut; n > 0 {
 		overrides = append(overrides, fmt.Sprintf("%d left out", n))
 	}
 	if len(overrides) > 0 {

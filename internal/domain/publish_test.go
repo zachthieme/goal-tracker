@@ -688,6 +688,41 @@ func TestPublicationFreezesItsSelection(t *testing.T) {
 	}
 }
 
+// A publication's selection counts only the Also include and Leave out Goals
+// that changed what it selected: one the rules match anyway isn't added, and
+// one the rules don't match isn't left out. Only the words are frozen, not
+// the counts they were drafted from.
+func TestPublicationSelectionCountsOnlyOverridesThatChangeIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	lee := h.SignInNamed("lee@example.com", "Lee Chen")
+	matched := h.ActiveGoal(boss, "Dana's, matched anyway", "why")
+	added := h.ActiveGoal(lee, "Lee's, added", "why")
+	leftOut := h.ActiveGoal(boss, "Dana's, left out", "why")
+	unmatched := h.ActiveGoal(lee, "Lee's, never matched", "why")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:    "MBR",
+		Mode:    domain.ReportModeRules,
+		Rules:   []domain.ReportRule{ownerRule(domain.RuleIs, boss)},
+		Include: []int64{matched.ID, added.ID},
+		Exclude: []int64{leftOut.ID, unmatched.ID},
+	})
+	pub := h.PublishReport(boss, def)
+	if got, want := pub.Scope, "Owner: Dana Okafor · 1 added, 1 left out"; got != want {
+		t.Errorf("published selection %q, want %q", got, want)
+	}
+	var counts int
+	if err := h.DB.QueryRow(`SELECT count(*) FROM report_publications p, json_tree(p.snapshot) t
+		WHERE p.id = ? AND t.key IN ('Added', 'LeftOut', 'Via')`, pub.ID).Scan(&counts); err != nil {
+		t.Fatalf("read the snapshot: %v", err)
+	}
+	if counts != 0 {
+		t.Errorf("snapshot froze %d of the counts or ways in, want none", counts)
+	}
+}
+
 // A picked definition's publication says how many Goals were picked by hand.
 func TestPickedPublicationFreezesItsSelection(t *testing.T) {
 	t.Parallel()

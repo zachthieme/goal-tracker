@@ -2944,7 +2944,7 @@ func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vp@example.com")
-	const want = "Owner is in the org of Priya Raman · 2 added"
+	const want = "Owner is in the org of Priya Raman · 1 added"
 
 	meta := textOf(findByTestID(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), "report-meta"))
 	if !strings.HasPrefix(meta, want+" · 2 Goals · ") {

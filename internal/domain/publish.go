@@ -103,7 +103,7 @@ func (s *Service) draftPublication(ctx context.Context, actorID, defID int64, ba
 	if err != nil {
 		return draftedPublication{}, err
 	}
-	scope, err := s.reportScope(ctx, def)
+	scope, err := s.reportScope(ctx, report)
 	if err != nil {
 		return draftedPublication{}, err
 	}

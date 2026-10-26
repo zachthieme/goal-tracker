@@ -16,7 +16,8 @@ import (
 // <values>" for "is not"), an Org rule as "Owner is in the org of
 // <people>" ("is not in" for "is not"), a Lifecycle rule as its values alone, and a
 // Top-level rule as "Top-level" or "Not top-level". Also include and Leave out
-// close it as "n added, m left out", each left off when empty.
+// close it as "n added, m left out", each left off when none changed the
+// selection.
 func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 	t.Parallel()
 
@@ -26,6 +27,8 @@ func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 	team := h.CreateDimension(boss, "Team", "Platform", "Identity", "Growth")
 	platform, identity := team.Values[0], team.Values[1]
 	extra := h.ActiveGoal(boss, "Also included", "why")
+	matchedOut := h.ActiveGoal(boss, "Left out of Platform", "why")
+	h.AssignGoalValue(matchedOut, platform)
 	out := h.ActiveGoal(boss, "Left out", "why")
 	out2 := h.ActiveGoal(boss, "Left out too", "why")
 
@@ -39,7 +42,7 @@ func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 			name:    "dimension and lifecycle with overrides",
 			rules:   []domain.ReportRule{dimensionRule(team, domain.RuleIsAnyOf, platform, identity), namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive)},
 			include: []int64{extra.ID},
-			exclude: []int64{out.ID},
+			exclude: []int64{matchedOut.ID},
 			want:    "Team: Platform or Identity · Active · 1 added, 1 left out",
 		},
 		{
@@ -49,9 +52,9 @@ func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 		},
 		{
 			name:    "only added",
-			rules:   []domain.ReportRule{namedRule(domain.RuleLifecycle, domain.RuleIsNot, domain.LifecycleDone)},
+			rules:   []domain.ReportRule{ownerRule(domain.RuleIs, lee)},
 			include: []int64{extra.ID},
-			want:    "not Done · 1 added",
+			want:    "Owner: Lee Chen · 1 added",
 		},
 		{
 			name:    "only left out",
@@ -87,6 +90,50 @@ func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 	} {
 		def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
 			Name: c.name, Mode: domain.ReportModeRules, Rules: c.rules, Include: c.include, Exclude: c.exclude,
+		})
+		if got := reportSummary(t, h, def).Scope; got != c.want {
+			t.Errorf("%s: scope %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// A rules definition's scope counts only the Also include and Leave out Goals
+// that changed its selection: an Also include Goal the rules match anyway
+// isn't added, and a Leave out Goal is left out only if the rules would
+// otherwise have selected it — not one they don't match, nor one finished
+// before the baseline, which would have dropped out anyway.
+func TestReportSummaryScopeCountsOnlyOverridesThatChangeTheSelection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	lee := h.SignInNamed("lee@example.com", "Lee Chen")
+	finished := h.ActiveGoal(boss, "Finished long ago", "why")
+	moveLifecycle(t, h, boss, finished, domain.LifecycleDone)
+	settle(h)
+	matched := h.ActiveGoal(boss, "Dana's, matched anyway", "why")
+	unmatched := h.ActiveGoal(lee, "Lee's, never matched", "why")
+	added := h.ActiveGoal(lee, "Lee's, added", "why")
+	leftOut := h.ActiveGoal(boss, "Dana's, left out", "why")
+
+	for _, c := range []struct {
+		name             string
+		include, exclude []int64
+		want             string
+	}{
+		{name: "Also include the rules match", include: []int64{matched.ID}, want: "Owner: Dana Okafor"},
+		{name: "Leave out the rules don't match", exclude: []int64{unmatched.ID}, want: "Owner: Dana Okafor"},
+		{name: "Leave out finished before the baseline", exclude: []int64{finished.ID}, want: "Owner: Dana Okafor"},
+		{
+			name:    "each kind together",
+			include: []int64{matched.ID, added.ID},
+			exclude: []int64{unmatched.ID, finished.ID, leftOut.ID},
+			want:    "Owner: Dana Okafor · 1 added, 1 left out",
+		},
+	} {
+		def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+			Name: c.name, Mode: domain.ReportModeRules, Rules: []domain.ReportRule{ownerRule(domain.RuleIs, boss)},
+			Include: c.include, Exclude: c.exclude,
 		})
 		if got := reportSummary(t, h, def).Scope; got != c.want {
 			t.Errorf("%s: scope %q, want %q", c.name, got, c.want)

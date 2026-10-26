@@ -133,6 +133,38 @@ type SelectedGoal struct {
 	Goal   Goal
 	Health string
 	Fields []FieldValue `json:",omitempty"`
+	// Via is how the Goal came into the selection: SelectedByRules,
+	// SelectedByAlsoInclude or SelectedByPicking. It isn't frozen with a
+	// publication.
+	Via string `json:"-"`
+}
+
+// The ways a Goal comes into a Report Definition's selection: a rules
+// definition's rules match it, or only its Also include adds it; or a picked
+// definition picks it.
+const (
+	SelectedByRules       = "rules"
+	SelectedByAlsoInclude = "also include"
+	SelectedByPicking     = "picked"
+)
+
+// ReportSelection is what a Report Definition selects (ADR 0007): its Goals,
+// each saying how it came in, and LeftOut, the Goals its Leave out keeps out
+// that its rules would otherwise have selected.
+type ReportSelection struct {
+	Goals   []SelectedGoal
+	LeftOut []Goal
+}
+
+// added counts the Goals in only through Also include.
+func (sel ReportSelection) added() int {
+	n := 0
+	for _, sg := range sel.Goals {
+		if sg.Via == SelectedByAlsoInclude {
+			n++
+		}
+	}
+	return n
 }
 
 // SaveReportDefinition saves a reusable Report Definition. Anyone signed in may
@@ -533,66 +565,78 @@ func (s *Service) reportDefinitionFromRow(ctx context.Context, row db.ReportDefi
 	return def, nil
 }
 
-// SelectGoals returns the Goals a Report Definition selects, each once, with the
-// fields the live draft lists per line (CONTEXT.md: Report Definition): the
-// picked list, or the Goals that meet every rule, with Also include added and
-// Leave out taken away. A Goal that was Done or Cancelled before the baseline
-// drops out however it came in, so finished work is reported once. since
-// reports whether an instant falls after the baseline, as DraftReport reads
-// changes.
-func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since func(time.Time) bool) ([]SelectedGoal, error) {
-	candidates, err := s.reportCandidates(ctx, def, since)
+// SelectGoals returns what a Report Definition selects, each Goal once, with
+// the fields the live draft lists per line (CONTEXT.md: Report Definition):
+// the picked list, or the Goals that meet every rule, with Also include added
+// and Leave out taken away. A Goal that was Done or Cancelled before the
+// baseline drops out however it came in, so finished work is reported once,
+// and isn't among the Goals Leave out kept out either. since reports whether
+// an instant falls after the baseline, as DraftReport reads changes.
+func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since func(time.Time) bool) (ReportSelection, error) {
+	candidates, excluded, err := s.reportCandidates(ctx, def, since)
 	if err != nil {
-		return nil, err
+		return ReportSelection{}, err
 	}
 	var ended []int64
-	for _, sg := range candidates {
+	for _, sg := range slices.Concat(candidates, excluded) {
 		if hasEnded(sg.Goal) {
 			ended = append(ended, sg.Goal.ID)
 		}
 	}
 	checkins, err := s.checkinsByGoal(ctx, ended)
 	if err != nil {
-		return nil, err
+		return ReportSelection{}, err
 	}
-	out := make([]SelectedGoal, 0, len(candidates))
+	finished := func(sg SelectedGoal) bool { return finishedBeforeGiven(sg.Goal, checkins[sg.Goal.ID], since) }
+	sel := ReportSelection{Goals: make([]SelectedGoal, 0, len(candidates))}
 	for _, sg := range candidates {
-		if !finishedBeforeGiven(sg.Goal, checkins[sg.Goal.ID], since) {
-			out = append(out, sg)
+		if !finished(sg) {
+			sel.Goals = append(sel.Goals, sg)
 		}
 	}
-	return out, nil
+	for _, sg := range excluded {
+		if !finished(sg) {
+			sel.LeftOut = append(sel.LeftOut, sg.Goal)
+		}
+	}
+	return sel, nil
 }
 
 // reportCandidates returns the Goals def selects before finished work drops
 // out: its picked list, or the Goals that meet every rule or are in Also
-// include, less those in Leave out. It runs the same few queries however many
-// Goals there are.
-func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, since func(time.Time) bool) ([]SelectedGoal, error) {
+// include, less those in Leave out; and those in Leave out that meet every
+// rule. It runs the same few queries however many Goals there are.
+func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, since func(time.Time) bool) (candidates, excluded []SelectedGoal, err error) {
 	if def.Mode == ReportModePicked {
 		goals, err := s.goalsByID(ctx, def.Picked)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return s.selectedGoals(ctx, goals)
+		picked, err := s.selectedGoals(ctx, goals)
+		if err != nil {
+			return nil, nil, err
+		}
+		for i := range picked {
+			picked[i].Via = SelectedByPicking
+		}
+		return picked, nil, nil
 	}
 
 	goals, err := s.ListGoals(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	goals = slices.DeleteFunc(goals, func(g Goal) bool { return slices.Contains(def.Exclude, g.ID) })
 	selected, err := s.selectedGoals(ctx, goals)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	valuesByGoal, err := s.goalValuesByGoal(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	orgs, err := s.ruleOrgs(ctx, def.Rules)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	subjects := make([]ruleSubject, 0, len(selected))
 	var decidedByHistory []int64
@@ -605,16 +649,25 @@ func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, si
 	}
 	checkins, err := s.checkinsByGoal(ctx, decidedByHistory)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var out []SelectedGoal
 	for _, subject := range subjects {
 		h := goalHistory{goal: subject.Goal, checkins: checkins[subject.Goal.ID]}
-		if meetsRulesGiven(def.Rules, subject, h, since) || slices.Contains(def.Include, subject.Goal.ID) {
-			out = append(out, subject.SelectedGoal)
+		sg, matched := subject.SelectedGoal, meetsRulesGiven(def.Rules, subject, h, since)
+		switch {
+		case slices.Contains(def.Exclude, sg.Goal.ID):
+			if matched {
+				excluded = append(excluded, sg)
+			}
+		case matched:
+			sg.Via = SelectedByRules
+			candidates = append(candidates, sg)
+		case slices.Contains(def.Include, sg.Goal.ID):
+			sg.Via = SelectedByAlsoInclude
+			candidates = append(candidates, sg)
 		}
 	}
-	return out, nil
+	return candidates, excluded, nil
 }
 
 // lifecycleHistoryDecides reports whether the Goal meets rules turns on
