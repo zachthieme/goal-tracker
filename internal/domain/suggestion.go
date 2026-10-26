@@ -198,7 +198,11 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 		return err
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.ensureNotLinkedSinceDecline(ctx, p); err != nil {
+		history, err := tx.linkPairHistory(ctx, p.Goal.ID, p.Parent.ID)
+		if err != nil {
+			return err
+		}
+		if err := history.declineUndoRefusal(p.ClosedAt); err != nil {
 			return err
 		}
 		goal, err := tx.loadGoal(ctx, p.Goal.ID)
@@ -229,43 +233,6 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 		}
 		return nil
 	})
-}
-
-// ensureNotLinkedSinceDecline refuses to reopen declined suggestion p when the
-// link it proposes has been requested or made since the decline: it exists
-// now, or a request for it was rejected or the link removed since. (While a
-// suggestion is open its link doesn't exist, so any rejection or removal no
-// earlier than the decline is of a request made since.)
-func (s *Service) ensureNotLinkedSinceDecline(ctx context.Context, p ParentSuggestion) error {
-	since := Refuse(ErrValidation, "this link has been requested since the suggestion was declined")
-	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-		ChildID:  p.Goal.ID,
-		ParentID: p.Parent.ID,
-	}); err == nil {
-		return since
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up existing link: %w", err)
-	}
-	rejections, err := s.queries.ListLinkRejectionTimes(ctx, db.ListLinkRejectionTimesParams{
-		ChildID:  p.Goal.ID,
-		ParentID: p.Parent.ID,
-	})
-	if err != nil {
-		return fmt.Errorf("look up link rejections: %w", err)
-	}
-	removals, err := s.queries.ListLinkRemovalTimes(ctx, db.ListLinkRemovalTimesParams{
-		ChildID:  p.Goal.ID,
-		ParentID: p.Parent.ID,
-	})
-	if err != nil {
-		return fmt.Errorf("look up link removals: %w", err)
-	}
-	for _, raw := range append(rejections, removals...) {
-		if at, _ := time.Parse(timeFormat, raw); !at.Before(p.ClosedAt) {
-			return since
-		}
-	}
-	return nil
 }
 
 // WithdrawParentSuggestion withdraws an open suggestion on behalf of actorID,

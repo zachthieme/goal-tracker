@@ -319,88 +319,44 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 	if _, err := s.spendUndo(ctx, token, undoLinkRejection, rejectionID, actorID); err != nil {
 		return Link{}, err
 	}
+	rejectedAt, err := time.Parse(timeFormat, rejection.RejectedAt)
+	if err != nil {
+		return Link{}, fmt.Errorf("link rejection %d: rejected_at %q: %w", rejection.ID, rejection.RejectedAt, err)
+	}
 	var linkID int64
 	err = s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.ensureNotRequestedSince(ctx, rejection); err != nil {
-			return err
-		}
-		if err := tx.ensureNoCycle(ctx, rejection.ChildID, rejection.ParentID); err != nil {
-			return err
-		}
-		now := tx.clock.Now()
-		restoredAt := now.Format(timeFormat)
-		n, err := tx.queries.MarkRejectedLinkRequestRestored(ctx, db.MarkRejectedLinkRequestRestoredParams{
-			RestoredAt: &restoredAt,
-			ID:         rejectionID,
-		})
+		history, err := tx.linkPairHistory(ctx, rejection.ChildID, rejection.ParentID)
 		if err != nil {
-			return fmt.Errorf("mark link rejection restored: %w", err)
-		}
-		if n == 0 {
-			return Refuse(ErrValidation, "this rejection has already been undone")
-		}
-		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
-			ChildID:     rejection.ChildID,
-			ParentID:    rejection.ParentID,
-			Status:      LinkPending,
-			Note:        rejection.Note,
-			RequestedBy: rejection.RequestedBy,
-			CreatedAt:   rejection.RequestCreatedAt,
-		})
-		if err != nil {
-			return fmt.Errorf("restore link request: %w", err)
-		}
-		linkID = row.ID
-		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRejectionUndone, actorID, now); err != nil {
 			return err
 		}
-		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
+		if err := history.requestRestoreRefusal(rejection.ID, rejectedAt); err != nil {
+			return err
+		}
+		linkID, err = tx.restoreUndoneLink(ctx, undoneLink{
+			childID:     rejection.ChildID,
+			parentID:    rejection.ParentID,
+			status:      LinkPending,
+			note:        rejection.Note,
+			requestedBy: rejection.RequestedBy,
+			createdAt:   rejection.RequestCreatedAt,
+			event:       LinkEventRejectionUndone,
+			actorID:     actorID,
+			record:      "link rejection",
+			markRestored: func(restoredAt *string) (int64, error) {
+				return tx.queries.MarkRejectedLinkRequestRestored(ctx, db.MarkRejectedLinkRequestRestoredParams{
+					RestoredAt: restoredAt,
+					ID:         rejectionID,
+				})
+			},
+			alreadyUndone: "this rejection has already been undone",
+			what:          "link request",
+		})
+		return err
 	})
 	if err != nil {
 		return Link{}, err
 	}
 	return s.loadLink(ctx, linkID)
-}
-
-// ensureNotRequestedSince refuses to restore rejection when the same link has
-// been requested or accepted again since: it exists now, a later request for
-// it was rejected too, or it was accepted and has since been removed.
-func (s *Service) ensureNotRequestedSince(ctx context.Context, rejection db.RejectedLinkRequest) error {
-	again := Refuse(ErrValidation, "this link has been requested again since it was rejected")
-	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-		ChildID:  rejection.ChildID,
-		ParentID: rejection.ParentID,
-	}); err == nil {
-		return again
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("look up existing link: %w", err)
-	}
-	later, err := s.queries.CountLaterRejectedLinkRequests(ctx, db.CountLaterRejectedLinkRequestsParams{
-		ChildID:  rejection.ChildID,
-		ParentID: rejection.ParentID,
-		ID:       rejection.ID,
-	})
-	if err != nil {
-		return fmt.Errorf("look up later rejections: %w", err)
-	}
-	if later > 0 {
-		return again
-	}
-	removals, err := s.queries.ListLinkRemovalTimes(ctx, db.ListLinkRemovalTimesParams{
-		ChildID:  rejection.ChildID,
-		ParentID: rejection.ParentID,
-	})
-	if err != nil {
-		return fmt.Errorf("look up link removals: %w", err)
-	}
-	rejectedAt, _ := time.Parse(timeFormat, rejection.RejectedAt)
-	for _, raw := range removals {
-		// A removal no earlier than the rejection is of a link made since.
-		if removedAt, _ := time.Parse(timeFormat, raw); !removedAt.Before(rejectedAt) {
-			return again
-		}
-	}
-	return nil
 }
 
 // LinkRejection returns the record of a rejected request, with both Goals
@@ -579,50 +535,42 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 	if _, err := s.spendUndo(ctx, token, undoLinkRemoval, removalID, actorID); err != nil {
 		return Link{}, err
 	}
+	removedAt, err := time.Parse(timeFormat, removal.RemovedAt)
+	if err != nil {
+		return Link{}, fmt.Errorf("link removal %d: removed_at %q: %w", removal.ID, removal.RemovedAt, err)
+	}
 	var linkID int64
 	err = s.WithinTx(ctx, func(tx *Service) error {
-		if _, err := tx.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
-			ChildID:  removal.ChildID,
-			ParentID: removal.ParentID,
-		}); err == nil {
+		history, err := tx.linkPairHistory(ctx, removal.ChildID, removal.ParentID)
+		if err != nil {
+			return err
+		}
+		if history.linked {
 			return Refuse(ErrValidation, "a link between these Goals already exists again")
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("look up existing link: %w", err)
 		}
-		if err := tx.ensureNotLinkedSince(ctx, removal); err != nil {
+		if err := history.linkRestoreRefusal(removal.ID, removedAt); err != nil {
 			return err
 		}
-		if err := tx.ensureNoCycle(ctx, removal.ChildID, removal.ParentID); err != nil {
-			return err
-		}
-		now := tx.clock.Now()
-		restoredAt := now.Format(timeFormat)
-		n, err := tx.queries.MarkLinkRemovalRestored(ctx, db.MarkLinkRemovalRestoredParams{
-			RestoredAt: &restoredAt,
-			ID:         removalID,
+		linkID, err = tx.restoreUndoneLink(ctx, undoneLink{
+			childID:     removal.ChildID,
+			parentID:    removal.ParentID,
+			status:      LinkAccepted,
+			note:        removal.Note,
+			requestedBy: removal.RequestedBy,
+			createdAt:   removal.LinkCreatedAt,
+			event:       LinkEventRemovalUndone,
+			actorID:     actorID,
+			record:      "link removal",
+			markRestored: func(restoredAt *string) (int64, error) {
+				return tx.queries.MarkLinkRemovalRestored(ctx, db.MarkLinkRemovalRestoredParams{
+					RestoredAt: restoredAt,
+					ID:         removalID,
+				})
+			},
+			alreadyUndone: "this removal has already been undone",
+			what:          "link",
 		})
-		if err != nil {
-			return fmt.Errorf("mark link removal restored: %w", err)
-		}
-		if n == 0 {
-			return Refuse(ErrValidation, "this removal has already been undone")
-		}
-		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
-			ChildID:     removal.ChildID,
-			ParentID:    removal.ParentID,
-			Status:      LinkAccepted,
-			Note:        removal.Note,
-			RequestedBy: removal.RequestedBy,
-			CreatedAt:   removal.LinkCreatedAt,
-		})
-		if err != nil {
-			return fmt.Errorf("restore link: %w", err)
-		}
-		linkID = row.ID
-		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRemovalUndone, actorID, now); err != nil {
-			return err
-		}
-		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
+		return err
 	})
 	if err != nil {
 		return Link{}, err
@@ -630,38 +578,66 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 	return s.loadLink(ctx, linkID)
 }
 
-// ensureNotLinkedSince refuses to restore removal when the same link has been
-// made or asked for again since: a later removal of it, or a request for it
-// rejected no earlier than the removal. (A link that exists again is refused
-// on its own.)
-func (s *Service) ensureNotLinkedSince(ctx context.Context, removal db.LinkRemoval) error {
-	again := Refuse(ErrValidation, "this link has been requested again since it was removed")
-	later, err := s.queries.CountLaterLinkRemovals(ctx, db.CountLaterLinkRemovalsParams{
-		ChildID:  removal.ChildID,
-		ParentID: removal.ParentID,
-		ID:       removal.ID,
+// undoneLink is a link an Undo brings back, as restoreUndoneLink makes it:
+// the link's own fields, the link event that records the Undo, and how to
+// mark the undone rejection or removal restored.
+type undoneLink struct {
+	childID, parentID int64
+	status            string
+	note              string
+	requestedBy       int64
+	// createdAt is when the link was first requested, as stored.
+	createdAt string
+	// event is the kind of the link event that records the Undo, by actorID.
+	event   string
+	actorID int64
+	// record names the undone rejection or removal in an error.
+	record string
+	// markRestored marks the undone record restored at restoredAt, only if it
+	// isn't already, and says how many rows it touched.
+	markRestored func(restoredAt *string) (int64, error)
+	// alreadyUndone is the refusal when markRestored touched no row.
+	alreadyUndone string
+	// what names the link being restored in an error.
+	what string
+}
+
+// restoreUndoneLink brings back link l inside the caller's transaction, once
+// the caller has judged the pair's history: it refuses a link that would now
+// close a cycle (ADR-0001), marks the undone record restored, makes the link,
+// records the Undo, and closes any open Parent suggestion of the same parent
+// for the child. It returns the new link's id.
+func (s *Service) restoreUndoneLink(ctx context.Context, l undoneLink) (int64, error) {
+	if err := s.ensureNoCycle(ctx, l.childID, l.parentID); err != nil {
+		return 0, err
+	}
+	now := s.clock.Now()
+	restoredAt := now.Format(timeFormat)
+	n, err := l.markRestored(&restoredAt)
+	if err != nil {
+		return 0, fmt.Errorf("mark %s restored: %w", l.record, err)
+	}
+	if n == 0 {
+		return 0, Refuse(ErrValidation, "%s", l.alreadyUndone)
+	}
+	row, err := s.queries.CreateLink(ctx, db.CreateLinkParams{
+		ChildID:     l.childID,
+		ParentID:    l.parentID,
+		Status:      l.status,
+		Note:        l.note,
+		RequestedBy: l.requestedBy,
+		CreatedAt:   l.createdAt,
 	})
 	if err != nil {
-		return fmt.Errorf("look up later removals: %w", err)
+		return 0, fmt.Errorf("restore %s: %w", l.what, err)
 	}
-	if later > 0 {
-		return again
+	if err := s.recordLinkEvent(ctx, row.ChildID, row.ParentID, l.event, l.actorID, now); err != nil {
+		return 0, err
 	}
-	rejections, err := s.queries.ListLinkRejectionTimes(ctx, db.ListLinkRejectionTimesParams{
-		ChildID:  removal.ChildID,
-		ParentID: removal.ParentID,
-	})
-	if err != nil {
-		return fmt.Errorf("look up link rejections: %w", err)
+	if err := s.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID); err != nil {
+		return 0, err
 	}
-	removedAt, _ := time.Parse(timeFormat, removal.RemovedAt)
-	for _, raw := range rejections {
-		// A rejection no earlier than the removal is of a request made since.
-		if rejectedAt, _ := time.Parse(timeFormat, raw); !rejectedAt.Before(removedAt) {
-			return again
-		}
-	}
-	return nil
+	return row.ID, nil
 }
 
 // PendingLinkRequests returns the requests awaiting a decision from ownerID, the

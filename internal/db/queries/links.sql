@@ -103,12 +103,15 @@ SELECT * FROM rejected_link_requests WHERE id = ? LIMIT 1;
 -- Marks a rejection undone, only if it isn't already, so an Undo succeeds once.
 UPDATE rejected_link_requests SET restored_at = ? WHERE id = ? AND restored_at IS NULL;
 
--- name: CountLaterRejectedLinkRequests :one
--- How many requests between the same two Goals were rejected after this one:
--- any means the link was requested again since.
-SELECT COUNT(*) FROM rejected_link_requests
-WHERE child_id = @child_id AND parent_id = @parent_id AND id > @id;
+-- name: ListLinkPairRejections :many
+-- Every rejected request for the link between two Goals: its id and when it
+-- was rejected.
+SELECT id, rejected_at FROM rejected_link_requests
+WHERE child_id = ? AND parent_id = ?
+ORDER BY id;
 
--- name: ListLinkRemovalTimes :many
--- When each removal of the link between two Goals happened.
-SELECT removed_at FROM link_removals WHERE child_id = ? AND parent_id = ?;
+-- name: ListLinkPairRemovals :many
+-- Every removal of the link between two Goals: its id and when it happened.
+SELECT id, removed_at FROM link_removals
+WHERE child_id = ? AND parent_id = ?
+ORDER BY id;
