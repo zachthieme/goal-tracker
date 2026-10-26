@@ -897,25 +897,76 @@ func TestARefusedSuggestionActionShowsAPageLinkingBack(t *testing.T) {
 	}
 }
 
-// A decision on a link that isn't there answers with the app's Not found page.
+// A decision on a link that isn't there, never made or since rejected,
+// answers with the app's Not found page.
 func TestALinkDecisionOnNoLinkIsTheNotFoundPage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
-	h.SignIn("pat@example.com")
+	patAcc := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	rejected := h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(patAcc, "Reduce outages", "Outages cost trust."), "")
+	if _, err := h.Service.RejectLink(context.Background(), rejected.ID, patAcc.ID); err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
 	pat := signInClient(t, ts.URL, "pat@example.com")
 
-	for _, decision := range []string{"accept", "reject"} {
-		resp := postForm(t, pat, fmt.Sprintf("%s/links/999999/%s", ts.URL, decision), url.Values{})
+	for _, linkID := range []int64{999999, rejected.ID} {
+		for _, decision := range []string{"accept", "reject"} {
+			resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/%s", ts.URL, linkID, decision), url.Values{})
+			defer func() { _ = resp.Body.Close() }()
+			page := parsePage(t, readBody(t, resp))
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s link %d: status %d, want 404", decision, linkID, resp.StatusCode)
+			}
+			if !hasTestID(page, "not-found") {
+				t.Errorf("%s link %d: not the Not found page:\n%s", decision, linkID, renderNode(page))
+			}
+		}
+	}
+}
+
+// Accepting a link request a second time, as a stale second click would, or
+// rejecting one already accepted, is refused with a page inside the app
+// saying it was already accepted, linking back to the page it came from, and
+// leaves the link in place (#549).
+func TestADecisionOnAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	patAcc := h.SignIn("pat@example.com") // owns the parent
+	sam := h.SignIn("sam@example.com")    // owns the child
+	parent := h.CreateGoal(patAcc, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	if status := postFormStatus(t, pat, fmt.Sprintf("%s/links/%d/accept", ts.URL, link.ID), url.Values{}); status != http.StatusOK {
+		t.Fatalf("first accept: status %d", status)
+	}
+
+	decisions := []struct {
+		decision, heading string
+		form              url.Values
+		back              string
+	}{
+		{"accept", "Can't accept link", url.Values{}, "/links"},
+		{"accept", "Can't accept link", url.Values{"from": {"home"}}, "/home"},
+		{"reject", "Can't reject link", url.Values{}, "/links"},
+		{"reject", "Can't reject link", url.Values{"from": {"home"}}, "/home"},
+	}
+	for _, d := range decisions {
+		resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/%s", ts.URL, link.ID, d.decision), d.form)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("%s: status %d, want 404", decision, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s %v: status %d, want %d", d.decision, d.form, resp.StatusCode, http.StatusUnprocessableEntity)
 		}
-		if !hasTestID(page, "not-found") {
-			t.Errorf("%s: not the Not found page:\n%s", decision, renderNode(page))
-		}
+		assertLinkRefusedPage(t, page, d.heading, "This link request has already been accepted.", d.back)
+	}
+	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
+		t.Errorf("ParentsOf(child) = %+v after the refused decisions, want %q still", got, parent.Title)
 	}
 }
 
@@ -937,5 +988,70 @@ func assertLinkRefusedPage(t *testing.T, page *html.Node, heading, reason, back 
 		return n.Data == "a" && attrOf(n, "href") == back && textOf(n) == "Back"
 	}); len(backs) == 0 {
 		t.Errorf("refusal page has no Back link to %s:\n%s", back, renderNode(page))
+	}
+}
+
+// homeLinkAcceptForm is the Accept form on Pat's Home for the pending link
+// request putting child under a parent of Pat's, failing the test unless
+// there is one.
+func homeLinkAcceptForm(t *testing.T, pat *http.Client, baseURL string, child domain.Goal, link domain.Link) *html.Node {
+	t.Helper()
+	row := homeRowIn(t, findByTestID(t, getPage(t, pat, baseURL+"/home"), "home-requests"), child)
+	accept := homeFormTo(row, fmt.Sprintf("/links/%d/accept", link.ID))
+	if accept == nil || buttonNamed(accept, "Accept") == nil {
+		t.Fatalf("Home's row for %q has no Accept for link %d:\n%s", child.Title, link.ID, renderNode(row))
+	}
+	return accept
+}
+
+// Accepting a link request on Home returns to Home, and an Accept refused
+// there, for making a cycle, links Back to Home; one posted from the pending
+// page still returns there (#549).
+func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	patAcc := h.SignIn("pat@example.com") // owns the parents
+	sam := h.SignIn("sam@example.com")    // owns the children
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	parent := h.CreateGoal(patAcc, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	resp := postForm(t, pat, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), formSubmission(homeLinkAcceptForm(t, pat, ts.URL, child, link)))
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
+		t.Errorf("Accept on Home: status %d at %s, want 200 at /home", resp.StatusCode, resp.Request.URL.Path)
+	}
+	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
+		t.Errorf("ParentsOf(child) = %+v after Accept on Home, want %q", got, parent.Title)
+	}
+
+	// Pat links a Goal of Sam's under one of Pat's own and Sam accepts, so
+	// accepting Sam's request the other way round would close a cycle.
+	upper := h.CreateGoal(patAcc, "Cut costs", "Spend less.")
+	lower := h.CreateGoal(sam, "Renegotiate contracts", "Vendors overcharge.")
+	cyclic := h.RequestLink(sam, lower, upper, "")
+	other := h.RequestLink(patAcc, upper, lower, "")
+	if _, err := h.Service.AcceptLink(context.Background(), other.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	resp = postForm(t, pat, ts.URL+fmt.Sprintf("/links/%d/accept", cyclic.ID), formSubmission(homeLinkAcceptForm(t, pat, ts.URL, lower, cyclic)))
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("refused Accept on Home: status %d, want %d", resp.StatusCode, http.StatusConflict)
+	}
+	assertLinkRefusedPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
+
+	third := h.CreateGoal(sam, "Replace cabling", "Cables fray.")
+	fromLinks := h.RequestLink(sam, third, parent, "")
+	resp = postForm(t, pat, ts.URL+fmt.Sprintf("/links/%d/accept", fromLinks.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/links" {
+		t.Errorf("Accept without from: status %d at %s, want 200 at /links", resp.StatusCode, resp.Request.URL.Path)
 	}
 }
