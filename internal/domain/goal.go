@@ -543,17 +543,19 @@ func (s *Service) AddContributor(ctx context.Context, actorID, goalID, accountID
 // tool identifies people by email (CONTEXT.md: development sign-in by email). An
 // email with no account is rejected, as is anyone but the Goal's Owner.
 func (s *Service) AddContributorByEmail(ctx context.Context, actorID, goalID int64, email string) error {
-	if err := s.RequireGoalOwner(ctx, actorID, goalID); err != nil {
-		return err
-	}
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "no account with email %q", email)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
+			return err
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	return s.AddContributor(ctx, actorID, goalID, acc.ID)
+		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "no account with email %q", email)
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		return tx.AddContributor(ctx, actorID, goalID, acc.ID)
+	})
 }
 
 // ListContributors returns the Accounts listed as Contributors on the Goal,

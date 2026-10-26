@@ -54,35 +54,45 @@ func (s *Service) issueUndo(ctx context.Context, kind string, subjectID, account
 
 // spendUndo checks token is actorID's Undo of the kind of action done to
 // subjectID, unused and no older than UndoWindow, and spends it. It commits
-// the spending on its own, before the caller attempts the restore, so a
-// refused restore can't roll it back: a token is presented once. It returns
-// the token's detail. A missing token, or one for another action or person, is
-// ErrNotAuthorized; an expired or used one is ErrValidation.
+// the spending in a transaction of its own, before the caller attempts the
+// restore, so a refused restore can't roll it back: a token is presented once.
+// It returns the token's detail. A missing token, or one for another action or
+// person, is ErrNotAuthorized; an expired or used one is ErrValidation.
 func (s *Service) spendUndo(ctx context.Context, token, kind string, subjectID, actorID int64) (string, error) {
 	notYours := Refuse(ErrNotAuthorized, "this Undo isn't yours to use")
 	if token == "" {
 		return "", notYours
 	}
-	row, err := s.queries.GetUndoToken(ctx, token)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", notYours
-	}
-	if err != nil {
-		return "", fmt.Errorf("look up undo token: %w", err)
-	}
-	if row.Kind != kind || row.SubjectID != subjectID || row.AccountID != actorID {
-		return "", notYours
-	}
 	now := s.clock.Now()
-	usedAt := now.Format(timeFormat)
-	n, err := s.queries.UseUndoToken(ctx, db.UseUndoTokenParams{
-		UsedAt: &usedAt,
-		ID:     row.ID,
+	var row db.UndoToken
+	var spent bool
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		row, err = tx.queries.GetUndoToken(ctx, token)
+		if errors.Is(err, sql.ErrNoRows) {
+			return notYours
+		}
+		if err != nil {
+			return fmt.Errorf("look up undo token: %w", err)
+		}
+		if row.Kind != kind || row.SubjectID != subjectID || row.AccountID != actorID {
+			return notYours
+		}
+		usedAt := now.Format(timeFormat)
+		n, err := tx.queries.UseUndoToken(ctx, db.UseUndoTokenParams{
+			UsedAt: &usedAt,
+			ID:     row.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("spend undo token: %w", err)
+		}
+		spent = n > 0
+		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("spend undo token: %w", err)
+		return "", err
 	}
-	if n == 0 {
+	if !spent {
 		return "", errUndoUnavailable
 	}
 	issuedAt, err := time.Parse(timeFormat, row.IssuedAt)

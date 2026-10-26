@@ -59,12 +59,21 @@ type InvalidTimezone struct {
 // a directory that can't be read, or a person that can't be recorded, leaves
 // every Account as it was.
 func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySyncResult, error) {
+	return s.syncDirectory(ctx, dir, func(*Service) error { return nil })
+}
+
+// syncDirectory is SyncDirectory, recording the people only if allowed, run in
+// the transaction that records them, returns nil.
+func (s *Service) syncDirectory(ctx context.Context, dir Directory, allowed func(tx *Service) error) (DirectorySyncResult, error) {
 	people, err := dir.People(ctx)
 	if err != nil {
 		return DirectorySyncResult{}, fmt.Errorf("read the directory: %w", err)
 	}
 	var out DirectorySyncResult
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := allowed(tx); err != nil {
+			return err
+		}
 		for _, p := range people {
 			if strings.TrimSpace(p.Email) == "" {
 				continue
@@ -90,12 +99,14 @@ func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySy
 
 // SyncDirectoryAsAdmin is SyncDirectory on an Admin's behalf, like Sync now.
 // It returns ErrNotAuthorized unless actorID is an Admin, without reading dir
-// or changing anything.
+// or changing anything: it checks before reading dir, outside any
+// transaction, so reading it doesn't hold the write lock, and again in the
+// transaction that records what it read.
 func (s *Service) SyncDirectoryAsAdmin(ctx context.Context, actorID int64, dir Directory) (DirectorySyncResult, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DirectorySyncResult{}, err
 	}
-	return s.SyncDirectory(ctx, dir)
+	return s.syncDirectory(ctx, dir, func(tx *Service) error { return tx.requireAdmin(ctx, actorID) })
 }
 
 // recordDirectoryPerson gives p an Account, their Name, their Manager, and

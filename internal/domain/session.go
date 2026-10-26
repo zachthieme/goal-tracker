@@ -26,8 +26,10 @@ func (s *Service) SessionGeneration(ctx context.Context, accountID int64) (int64
 // sign-in issues one for the new generation. Signing out, a password reset and
 // MarkDeparted call it.
 func (s *Service) EndSessions(ctx context.Context, accountID int64) error {
-	if err := s.queries.EndAccountSessions(ctx, accountID); err != nil {
-		return fmt.Errorf("end sessions: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.EndAccountSessions(ctx, accountID); err != nil {
+			return fmt.Errorf("end sessions: %w", err)
+		}
+		return nil
+	})
 }

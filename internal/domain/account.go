@@ -187,10 +187,12 @@ func (s *Service) SetName(ctx context.Context, accountID int64, name string) err
 	if name = strings.TrimSpace(name); name != "" {
 		stored = &name
 	}
-	if err := s.queries.SetAccountName(ctx, db.SetAccountNameParams{Name: stored, ID: accountID}); err != nil {
-		return fmt.Errorf("set name: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetAccountName(ctx, db.SetAccountNameParams{Name: stored, ID: accountID}); err != nil {
+			return fmt.Errorf("set name: %w", err)
+		}
+		return nil
+	})
 }
 
 // MarkDeparted records that the person behind accountID has left the company, so the
@@ -237,26 +239,28 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 // someone who has Departed (markReturnedRefusal); actorID identifies the
 // acting Account.
 func (s *Service) MarkReturned(ctx context.Context, actorID, accountID int64) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
-	person, err := s.queries.GetAccount(ctx, accountID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "account does not exist")
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	if err := markReturnedRefusal(s.accountActor(ctx, actorID), accountFromRow(person)); err != nil {
-		return err
-	}
-	if err := s.queries.SetAccountDeparted(ctx, db.SetAccountDepartedParams{
-		Departed: 0,
-		ID:       accountID,
-	}); err != nil {
-		return fmt.Errorf("mark returned: %w", err)
-	}
-	return nil
+		person, err := tx.queries.GetAccount(ctx, accountID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "account does not exist")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if err := markReturnedRefusal(tx.accountActor(ctx, actorID), accountFromRow(person)); err != nil {
+			return err
+		}
+		if err := tx.queries.SetAccountDeparted(ctx, db.SetAccountDepartedParams{
+			Departed: 0,
+			ID:       accountID,
+		}); err != nil {
+			return fmt.Errorf("mark returned: %w", err)
+		}
+		return nil
+	})
 }
 
 // DepartedAccounts lists every Departed person, whether or not they still own
@@ -302,27 +306,34 @@ func (s *Service) Admins(ctx context.Context) ([]Account, error) {
 // Departed person is ErrDeparted. Only an Admin may do this; actorID
 // identifies the acting Account.
 func (s *Service) MakeAdmin(ctx context.Context, actorID int64, emailAddr string) (Account, error) {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
+	var acc Account
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		row, err := tx.queries.GetAccountByEmail(ctx, emailAddr)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "no one with that email has an account")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		acc = accountFromRow(row)
+		if acc.Departed {
+			return fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+		}
+		if acc.IsAdmin {
+			return nil
+		}
+		if err := tx.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 1, ID: row.ID}); err != nil {
+			return fmt.Errorf("make admin: %w", err)
+		}
+		acc.IsAdmin = true
+		return nil
+	})
+	if err != nil {
 		return Account{}, err
 	}
-	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Account{}, Refuse(ErrValidation, "no one with that email has an account")
-		}
-		return Account{}, fmt.Errorf("look up account: %w", err)
-	}
-	acc := accountFromRow(row)
-	if acc.Departed {
-		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
-	}
-	if acc.IsAdmin {
-		return acc, nil
-	}
-	if err := s.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 1, ID: row.ID}); err != nil {
-		return Account{}, fmt.Errorf("make admin: %w", err)
-	}
-	acc.IsAdmin = true
 	return acc, nil
 }
 
@@ -331,26 +342,28 @@ func (s *Service) MakeAdmin(ctx context.Context, actorID int64, emailAddr string
 // themselves, so there is always at least one (CONTEXT.md: Admin). Only an
 // Admin may do this; actorID identifies the acting Account.
 func (s *Service) RemoveAdmin(ctx context.Context, actorID, accountID int64) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
-	if accountID == actorID {
-		return Refuse(ErrValidation, "you can't remove your own Admin role")
-	}
-	row, err := s.queries.GetAccount(ctx, accountID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "account does not exist")
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	if row.IsAdmin == 0 {
+		if accountID == actorID {
+			return Refuse(ErrValidation, "you can't remove your own Admin role")
+		}
+		row, err := tx.queries.GetAccount(ctx, accountID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "account does not exist")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if row.IsAdmin == 0 {
+			return nil
+		}
+		if err := tx.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 0, ID: accountID}); err != nil {
+			return fmt.Errorf("remove admin: %w", err)
+		}
 		return nil
-	}
-	if err := s.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 0, ID: accountID}); err != nil {
-		return fmt.Errorf("remove admin: %w", err)
-	}
-	return nil
+	})
 }
 
 // requireAdmin returns ErrNotAuthorized unless actorID is an Admin.
@@ -398,44 +411,48 @@ func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error)
 //     racing this one links subject to another Account first, nothing: the
 //     sign-in is refused with an *OIDCSubjectConflictError.
 //
-// A Departed Account is refused with ErrDeparted, and isn't linked.
+// A Departed Account is refused with ErrDeparted, and isn't linked. The
+// lookups and the link are one transaction, so a sign-in racing this one
+// waits for it.
 func (s *Service) SignInWithOIDC(ctx context.Context, subject, emailAddr string) (Account, error) {
 	if subject == "" {
 		return Account{}, errors.New("OIDC sign-in has no subject")
 	}
-	linked, err := s.queries.GetAccountByOIDCSubject(ctx, &subject)
-	if err == nil {
-		acc := accountFromRow(linked)
-		if acc.Departed {
-			return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+	var acc Account
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		linked, err := tx.queries.GetAccountByOIDCSubject(ctx, &subject)
+		if err == nil {
+			acc = accountFromRow(linked)
+			if acc.Departed {
+				return fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+			}
+			return nil
 		}
-		return acc, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return Account{}, fmt.Errorf("look up account by OIDC subject: %w", err)
-	}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up account by OIDC subject: %w", err)
+		}
 
-	acc, err := s.SignIn(ctx, emailAddr)
+		if acc, err = tx.SignIn(ctx, emailAddr); err != nil {
+			return err
+		}
+		n, err := tx.queries.LinkAccountOIDCSubject(ctx, db.LinkAccountOIDCSubjectParams{OidcSubject: &subject, ID: acc.ID})
+		var sqliteErr *sqlite.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			// Another Account is linked to subject already.
+			return &OIDCSubjectConflictError{AccountID: acc.ID}
+		}
+		if err != nil {
+			return fmt.Errorf("link account to OIDC subject: %w", err)
+		}
+		if n == 0 {
+			// Already linked: to another subject, since this transaction
+			// found no Account linked to this one.
+			return &OIDCSubjectConflictError{AccountID: acc.ID}
+		}
+		return nil
+	})
 	if err != nil {
 		return Account{}, err
-	}
-	n, err := s.queries.LinkAccountOIDCSubject(ctx, db.LinkAccountOIDCSubjectParams{OidcSubject: &subject, ID: acc.ID})
-	var sqliteErr *sqlite.Error
-	if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		// A sign-in racing this one linked subject to another Account
-		// between the lookup and this link.
-		return Account{}, &OIDCSubjectConflictError{AccountID: acc.ID}
-	}
-	if err != nil {
-		return Account{}, fmt.Errorf("link account to OIDC subject: %w", err)
-	}
-	if n == 0 {
-		// Already linked: to this subject by a sign-in racing this one, or to
-		// another.
-		if again, err := s.queries.GetAccountByOIDCSubject(ctx, &subject); err == nil && again.ID == acc.ID {
-			return acc, nil
-		}
-		return Account{}, &OIDCSubjectConflictError{AccountID: acc.ID}
 	}
 	return acc, nil
 }
@@ -453,25 +470,34 @@ func adminKey(emailAddr string) string {
 // performs, exposed on its own so the spreadsheet import can give an account to
 // every person it names (ticket #22: people named in the file get accounts).
 func (s *Service) EnsureAccount(ctx context.Context, emailAddr string) (Account, error) {
-	existing, err := s.queries.GetAccountByEmail(ctx, emailAddr)
-	if err == nil {
-		return accountFromRow(existing), nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return Account{}, fmt.Errorf("look up account: %w", err)
-	}
+	var acc Account
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		existing, err := tx.queries.GetAccountByEmail(ctx, emailAddr)
+		if err == nil {
+			acc = accountFromRow(existing)
+			return nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up account: %w", err)
+		}
 
-	isAdmin := int64(0)
-	if s.admins[adminKey(emailAddr)] {
-		isAdmin = 1
-	}
-	created, err := s.queries.CreateAccount(ctx, db.CreateAccountParams{
-		Email:     emailAddr,
-		IsAdmin:   isAdmin,
-		CreatedAt: s.clock.Now().Format(timeFormat),
+		isAdmin := int64(0)
+		if tx.admins[adminKey(emailAddr)] {
+			isAdmin = 1
+		}
+		created, err := tx.queries.CreateAccount(ctx, db.CreateAccountParams{
+			Email:     emailAddr,
+			IsAdmin:   isAdmin,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create account: %w", err)
+		}
+		acc = accountFromRow(created)
+		return nil
 	})
 	if err != nil {
-		return Account{}, fmt.Errorf("create account: %w", err)
+		return Account{}, err
 	}
-	return accountFromRow(created), nil
+	return acc, nil
 }

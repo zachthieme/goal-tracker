@@ -146,24 +146,23 @@ func (s *Service) ImportLink(ctx context.Context, actorID, childID, parentID int
 	if childID == parentID {
 		return Link{}, Refuse(ErrValidation, "a Goal cannot contribute to itself")
 	}
-	child, err := s.queries.GetGoal(ctx, childID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, Refuse(ErrValidation, "child goal does not exist")
-		}
-		return Link{}, fmt.Errorf("look up child goal: %w", err)
-	}
-	parent, err := s.queries.GetGoal(ctx, parentID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Link{}, Refuse(ErrValidation, "parent goal does not exist")
-		}
-		return Link{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-
 	now := s.clock.Now()
+	var child, parent db.GetGoalRow
 	var row db.Link
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		if child, err = tx.queries.GetGoal(ctx, childID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "child goal does not exist")
+			}
+			return fmt.Errorf("look up child goal: %w", err)
+		}
+		if parent, err = tx.queries.GetGoal(ctx, parentID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "parent goal does not exist")
+			}
+			return fmt.Errorf("look up parent goal: %w", err)
+		}
 		if err := tx.ensureNewAcyclicLink(ctx, childID, parentID); err != nil {
 			return err
 		}
@@ -452,33 +451,34 @@ type LinkRemoval struct {
 
 // RemoveLink removes an accepted link, deleting it and recording the removal so
 // the remover can Undo it (RestoreLink) with the token it returns, for
-// UndoWindow. Either the child's Owner or the parent's Owner may remove it.
+// UndoWindow. Either the child's Owner or the parent's Owner may remove it. The
+// checks read inside the transaction that deletes the link, so a link removed
+// or handed off meanwhile isn't removed by someone no longer entitled to.
 func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRemoval, error) {
-	row, err := s.queries.GetLink(ctx, linkID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return LinkRemoval{}, fmt.Errorf("%w: link %d", ErrNotFound, linkID)
-		}
-		return LinkRemoval{}, fmt.Errorf("look up link: %w", err)
-	}
-	if row.Status != LinkAccepted {
-		return LinkRemoval{}, fmt.Errorf("%w: link %d is not accepted", ErrNotFound, linkID)
-	}
-	child, err := s.queries.GetGoal(ctx, row.ChildID)
-	if err != nil {
-		return LinkRemoval{}, fmt.Errorf("look up child goal: %w", err)
-	}
-	parent, err := s.queries.GetGoal(ctx, row.ParentID)
-	if err != nil {
-		return LinkRemoval{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-		return LinkRemoval{}, Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may remove the link")
-	}
 	now := s.clock.Now()
+	var child, parent db.GetGoalRow
 	var removal db.LinkRemoval
 	var token string
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.GetLink(ctx, linkID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: link %d", ErrNotFound, linkID)
+			}
+			return fmt.Errorf("look up link: %w", err)
+		}
+		if row.Status != LinkAccepted {
+			return fmt.Errorf("%w: link %d is not accepted", ErrNotFound, linkID)
+		}
+		if child, err = tx.queries.GetGoal(ctx, row.ChildID); err != nil {
+			return fmt.Errorf("look up child goal: %w", err)
+		}
+		if parent, err = tx.queries.GetGoal(ctx, row.ParentID); err != nil {
+			return fmt.Errorf("look up parent goal: %w", err)
+		}
+		if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
+			return Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may remove the link")
+		}
 		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
 			return fmt.Errorf("remove link: %w", err)
 		}

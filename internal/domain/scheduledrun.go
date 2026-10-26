@@ -36,13 +36,22 @@ func (s *Service) LastScheduledRun(ctx context.Context, job string) (slot time.T
 // been run, by an earlier run or another process, and is not recorded again.
 // A job calls it in the transaction that does its work, doing the work only
 // when it records the slot, so a slot's work is done once and is never lost
-// to a crash partway.
+// to a crash partway. Called outside one, it records the slot in one of its
+// own.
 func (s *Service) RecordScheduledRun(ctx context.Context, job string, slot time.Time) (bool, error) {
-	n, err := s.queries.RecordScheduledRun(ctx, db.RecordScheduledRunParams{
-		Job: job, Slot: slot.UTC().Format(scheduledSlotFormat),
+	var n int64
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		n, err = tx.queries.RecordScheduledRun(ctx, db.RecordScheduledRunParams{
+			Job: job, Slot: slot.UTC().Format(scheduledSlotFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("record %s's run: %w", job, err)
+		}
+		return nil
 	})
 	if err != nil {
-		return false, fmt.Errorf("record %s's run: %w", job, err)
+		return false, err
 	}
 	return n > 0, nil
 }
