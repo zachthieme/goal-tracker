@@ -103,8 +103,9 @@ type GoalPage struct {
 // rule (goalrules.go) the command named beside it evaluates, so a page offers
 // just what that command would accept from them.
 type GoalPermissions struct {
+	// CheckinPermissions: what they may do with its Check-ins.
 	CheckinPermissions
-	// AddMilestone: the same people, until it is Done or Cancelled
+	// AddMilestone: those who write its Check-ins, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
 	// Proposed, on a Planned Milestone (EditMilestone).
 	AddMilestone   bool
