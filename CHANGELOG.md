@@ -19,6 +19,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A link request refused for making a cycle now says "That Goal already contributes to this one, so linking them would make a cycle." in the Goal page's form, as Suggest a parent does, instead of naming both Goals by their IDs (#546).
 - [user] A refused Accept, Reject or Request link, and a refused Accept, Decline or Withdraw of a parent suggestion, now answer with a page inside the app headed by what was refused (such as "Can't accept link"), saying why and linking Back to the page the action came from, instead of a bare line of text; acting on a link that isn't there shows the Not found page (#546).
 - [ops] The weekly emails' scheduler no longer names a slot when it fails to read the job's last run after a restart: the ERROR line carries the job and the error only, since the slot it named may already have been sent (#547).
+- [user] Accepting a link request on Home returns to Home, and a refused Accept there links Back to Home, not to Pending links (#549).
+- [user] Accepting or rejecting a link request that was already accepted, as a second click from another tab does, says "This link request has already been accepted." instead of Not found (#549).
 
 **Security:**
 - [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
