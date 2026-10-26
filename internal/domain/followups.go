@@ -86,7 +86,11 @@ func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, err
 	if err != nil {
 		return FollowUps{}, fmt.Errorf("list active goals: %w", err)
 	}
-	reads, err := s.readFollowUpSignals(ctx, active)
+	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	if err != nil {
+		return FollowUps{}, err
+	}
+	reads, err := s.readFollowUpSignals(ctx, active, overdue)
 	if err != nil {
 		return FollowUps{}, err
 	}
@@ -192,13 +196,11 @@ type followUpReads struct {
 }
 
 // readFollowUpSignals reads, beside active, every Active Goal with its latest
-// Check-in, the rest of followUpReads but the open Asks for help.
-func (s *Service) readFollowUpSignals(ctx context.Context, active []db.ListActiveGoalsWithLatestCheckinRow) (followUpReads, error) {
-	reads := followUpReads{active: active}
+// Check-in, and overdue, the Planned Milestones any of them could be overdue
+// by, the rest of followUpReads but the open Asks for help.
+func (s *Service) readFollowUpSignals(ctx context.Context, active []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone) (followUpReads, error) {
+	reads := followUpReads{active: active, overdueMilestones: overdue}
 	var err error
-	if reads.overdueMilestones, err = s.listFreshnessOverdueMilestones(ctx); err != nil {
-		return followUpReads{}, err
-	}
 	if reads.edges, err = s.acceptedEdges(ctx); err != nil {
 		return followUpReads{}, err
 	}

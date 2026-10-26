@@ -169,9 +169,9 @@ func TestSidebarListsThePeopleDirectlyUnderSomeone(t *testing.T) {
 
 // A failed read leaves out only what it feeds: Sidebar reports the error and
 // still returns, as it read them, the parts the read doesn't feed. The
-// Handoffs feed only the needs-you count, the overdue Milestones only the
-// Follow-ups count, the Delegate Goals and the Active Goals both counts, and
-// every Account all three. Without checkins the Active Goals, read with their
+// Handoffs feed only the needs-you count; the Delegate Goals, the Active
+// Goals and the overdue Milestones, which judge each Goal's Freshness whole
+// for both, both counts; and every Account all three. Without checkins the Active Goals, read with their
 // latest Check-in, are the first read to fail.
 func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
 	t.Parallel()
@@ -180,7 +180,7 @@ func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
 		needsYou, followUps, underRead bool
 	}{
 		{"handoffs", false, true, true},
-		{"milestones", true, false, true},
+		{"milestones", false, false, true},
 		{"delegates", false, false, true},
 		{"checkins", false, false, true},
 		{"accounts", false, false, false},

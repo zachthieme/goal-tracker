@@ -226,6 +226,14 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	if err != nil {
 		return Report{}, err
 	}
+	last := make(map[int64]lastCheckin, len(goals))
+	for _, g := range goals {
+		last[g.ID] = histories[g.ID].last()
+	}
+	freshness, err := s.freshnessGivenLast(ctx, goals, last)
+	if err != nil {
+		return Report{}, err
+	}
 	type exceptionGoal struct {
 		h      goalHistory
 		fresh  Freshness
@@ -236,7 +244,7 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 		sg.Fields = fields[sg.Goal.ID]
 		h := histories[sg.Goal.ID]
 		r.Highlights = append(r.Highlights, scopedHighlights(sg.Goal, highlights[sg.Goal.ID], since)...)
-		fresh := s.judgeFreshness(sg.Goal, h.last())
+		fresh := freshness[sg.Goal.ID]
 		if !h.exception(since, fresh) {
 			r.Lines = append(r.Lines, sg)
 			continue

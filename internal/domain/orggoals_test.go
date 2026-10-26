@@ -109,6 +109,29 @@ func TestOrgSignalsCountOnlyActiveGoalsOwnedUnderTheViewer(t *testing.T) {
 	}
 }
 
+// My org counts no Milestone overdue: a Green Goal past a Planned Milestone
+// adds to none of the counts (CONTEXT.md: Milestone).
+func TestOrgSignalsCountNoGreenGoalPastAMilestone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	viewer := h.SignIn("viewer@example.com")
+	a := h.SignIn("a@example.com")
+	h.SetManager(a, viewer)
+	g, _ := h.GreenGoalWithOverdueMilestone(a, "Ship search")
+	if f := h.Freshness(g.ID); !f.MilestoneOverdue {
+		t.Fatalf("%q isn't Milestone overdue; Freshness = %+v", g.Title, f)
+	}
+
+	sig := orgSignals(t, h, viewer.ID)
+	if sig.Total.Any() {
+		t.Errorf("Total = %+v, want nothing flagged", sig.Total)
+	}
+	if got := signalsFor(t, sig, a.ID); got.Any() {
+		t.Errorf("A's counts = %+v, want nothing flagged", got)
+	}
+}
+
 // A Departed person directly under the viewer keeps their entry, and an
 // Ownerless Goal stays in the Org its Departed Owner was in (ADR 0008).
 func TestOrgSignalsKeepDepartedPeopleWhereTheyWere(t *testing.T) {

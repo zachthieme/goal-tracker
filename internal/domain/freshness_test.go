@@ -415,6 +415,32 @@ func TestGreenGoalWithAnOverdueMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
 	}
 }
 
+// Home's Goals read the whole of each Goal's Freshness: a Green Goal past a
+// Planned Milestone is Milestone overdue there too, as Freshness judges it.
+func TestActiveGoalsForMarksAGreenGoalPastAMilestoneMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g, beta := h.GreenGoalWithOverdueMilestone(sam, "Ship search")
+
+	home, err := h.Service.ActiveGoalsFor(context.Background(), sam.ID)
+	if err != nil {
+		t.Fatalf("ActiveGoalsFor: %v", err)
+	}
+	if len(home) != 1 || home[0].Goal.ID != g.ID {
+		t.Fatalf("ActiveGoalsFor = %+v, want only %q", home, g.Title)
+	}
+	f := home[0].Freshness
+	if !f.MilestoneOverdue || f.OverdueMilestone != "Beta" || !f.OverdueMilestoneDate.Equal(beta.TargetDate) {
+		t.Errorf("MilestoneOverdue, OverdueMilestone, OverdueMilestoneDate = %v, %q, %v; want true, \"Beta\", %v",
+			f.MilestoneOverdue, f.OverdueMilestone, f.OverdueMilestoneDate, beta.TargetDate)
+	}
+	if want := h.Freshness(g.ID); f != want {
+		t.Errorf("ActiveGoalsFor's Freshness = %+v, want Freshness's %+v", f, want)
+	}
+}
+
 // Only a Green Goal is marked Milestone overdue: a Yellow one with the same
 // overdue Milestone isn't, nor is a Green one whose Milestone is due today,
 // not before, nor an On Hold one. None is listed.
