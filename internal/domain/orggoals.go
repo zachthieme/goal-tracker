@@ -58,32 +58,22 @@ type OrgSignals struct {
 // Active Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md:
 // Org). A Goal is in the Org by its Owner alone, never its Delegates; an
 // Ownerless Goal stays where its Departed Owner was. Each person below personID
-// counts toward the person directly under personID through whom a
-// level-by-level walk first reaches them, so a Manager cycle (ADR 0008) counts
-// no one twice.
+// counts toward the person directly under personID through whom orgWalk
+// first reaches them, so a Manager cycle (ADR 0008) counts no one twice.
 func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, error) {
+	accounts, err := s.orgWalkAccounts(ctx)
+	if err != nil {
+		return OrgSignals{}, err
+	}
 	var out OrgSignals
 	// row maps each person under personID to their entry in out.Under.
 	row := map[int64]int{}
-	reached := map[int64]bool{personID: true}
-	for level := []*int64{&personID}; len(level) > 0; {
-		under, err := s.queries.ListAccountsUnder(ctx, level)
-		if err != nil {
-			return OrgSignals{}, fmt.Errorf("list org: %w", err)
-		}
-		level = nil
-		for _, r := range under {
-			if reached[r.ID] {
-				continue
-			}
-			reached[r.ID] = true
-			if *r.ManagerID == personID {
-				row[r.ID] = len(out.Under)
-				out.Under = append(out.Under, PersonSignals{Person: accountFromRow(r)})
-			} else {
-				row[r.ID] = row[*r.ManagerID]
-			}
-			level = append(level, &r.ID)
+	for _, r := range orgWalk(personID, accounts) {
+		if r.via == r.ID {
+			row[r.ID] = len(out.Under)
+			out.Under = append(out.Under, PersonSignals{Person: r.Account})
+		} else {
+			row[r.ID] = row[r.via]
 		}
 	}
 	goals, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)

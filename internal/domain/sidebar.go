@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
@@ -41,9 +42,10 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 		return Sidebar{}, fmt.Errorf("list accounts: %w", err)
 	}
 	sb := Sidebar{DirectlyUnder: directlyUnderAmong(accountID, accounts), DirectlyUnderRead: true}
-	byID := make(map[int64]Account, len(accounts))
-	for _, a := range accounts {
-		byID[a.ID] = accountFromRow(a)
+	all := orgWalkAccountsOf(accounts)
+	byID := make(map[int64]Account, len(all))
+	for _, a := range all {
+		byID[a.ID] = a
 	}
 	delegated, err := s.queries.ListDelegatedGoals(ctx, accountID)
 	if err != nil {
@@ -61,7 +63,7 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 	if needsErr == nil {
 		sb.NeedsYou, sb.NeedsYouRead = needsYou, true
 	}
-	followUps, followErr := s.sidebarFollowUps(ctx, accountID, active, isDelegate, byID)
+	followUps, followErr := s.sidebarFollowUps(ctx, accountID, active, isDelegate, all)
 	if followErr == nil {
 		sb.FollowUps, sb.FollowUpsRead = followUps, true
 	}
@@ -71,16 +73,16 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 // sidebarFollowUps counts the Goals the Follow-ups page flags in accountID's
 // default scope (Sidebar.FollowUps), given active, every Active Goal with its
 // latest Check-in, isDelegate, the IDs of the Goals accountID is a Delegate
-// on, and byID, every Account by ID. It decides which Goals are flagged as
+// on, and accounts, every Account by ID. It decides which Goals are flagged as
 // Service.FollowUps does (followUpRowsAmong), reading only what that needs
 // beyond active, and not the open Asks for help, which flag only Goals Not
 // Green flags already.
-func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active []db.ListActiveGoalsWithLatestCheckinRow, isDelegate map[int64]bool, byID map[int64]Account) (int, error) {
+func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active []db.ListActiveGoalsWithLatestCheckinRow, isDelegate map[int64]bool, accounts []Account) (int, error) {
 	reads, err := s.readFollowUpSignals(ctx, active)
 	if err != nil {
 		return 0, err
 	}
-	keeps := sidebarDefaultScope(accountID, isDelegate, byID)
+	keeps := sidebarDefaultScope(accountID, isDelegate, accounts)
 	n := 0
 	for _, r := range s.followUpRowsAmong(reads) {
 		if keeps(r.Goal) {
@@ -91,34 +93,17 @@ func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active 
 }
 
 // sidebarDefaultScope is whether accountID's default scope on the Follow-ups
-// page keeps a Goal: My org, by its Owner, when anyone in byID has accountID
-// as their Manager, else Mine, the Goals they Own and, by isDelegate, the
-// ones they are a Delegate on. It walks the Org in byID as Org walks it a
-// level at a time, stopping at anyone reached.
-func sidebarDefaultScope(accountID int64, isDelegate map[int64]bool, byID map[int64]Account) func(Goal) bool {
-	under := map[int64][]int64{}
-	for _, a := range byID {
-		if a.ManagerID != nil && *a.ManagerID != a.ID {
-			under[*a.ManagerID] = append(under[*a.ManagerID], a.ID)
-		}
+// page keeps a Goal, as GoalScope resolves it over accounts, every Account by
+// ID, with isDelegate, the IDs of the Goals they are a Delegate on, for
+// Mine.
+func sidebarDefaultScope(accountID int64, isDelegate map[int64]bool, accounts []Account) func(Goal) bool {
+	viewer := Account{ID: accountID}
+	if i := slices.IndexFunc(accounts, func(a Account) bool { return a.ID == accountID }); i >= 0 {
+		viewer = accounts[i]
 	}
-	if len(under[accountID]) == 0 {
-		return func(g Goal) bool { return g.Owner.ID == accountID || isDelegate[g.ID] }
-	}
-	in := map[int64]bool{accountID: true}
-	for level := []int64{accountID}; len(level) > 0; {
-		var next []int64
-		for _, id := range level {
-			for _, u := range under[id] {
-				if !in[u] {
-					in[u] = true
-					next = append(next, u)
-				}
-			}
-		}
-		level = next
-	}
-	return func(g Goal) bool { return in[g.Owner.ID] }
+	sc := goalScopeAmong(viewer, GoalScopeRequest{}, nil, nil, accounts)
+	sc.delegated = isDelegate
+	return sc.InScope
 }
 
 // sidebarNeedsYou counts what is waiting on accountID (Sidebar.NeedsYou),
