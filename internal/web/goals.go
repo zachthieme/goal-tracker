@@ -195,8 +195,8 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	}
 	// Parsed before the input is built, so Unparsed holds every append.
 	var unparsed formProblems
-	baseline := metricNumber(&unparsed, "baseline", r.FormValue("baseline"))
-	target := metricNumber(&unparsed, "target", r.FormValue("target"))
+	baseline, _ := readMetricNumber(&unparsed, "baseline", "baseline", r.FormValue("baseline"))
+	target, _ := readMetricNumber(&unparsed, "target", "target", r.FormValue("target"))
 	targetDate := unparsed.date("target_date", r.FormValue("target_date"), "")
 	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
@@ -219,17 +219,10 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
-// metricNumber reads input, a Metric's baseline or target on the Goal page,
-// as a number into unparsed, or 0 when it can't (metricRowNumber).
-func metricNumber(unparsed *formProblems, input, typed string) float64 {
-	n, _ := metricRowNumber(unparsed, input, input, typed)
-	return n
-}
-
-// metricRowNumber reads input, a Metric's baseline or target (what), as a
-// number into unparsed. A blank one is refused, as one that doesn't parse is,
+// readMetricNumber reads input, a Metric's baseline or target (what) on the
+// Goal page or the New goal form, as a number into unparsed. A blank one is refused, as one that doesn't parse is,
 // and neither is read.
-func metricRowNumber(unparsed *formProblems, input, what, typed string) (float64, bool) {
+func readMetricNumber(unparsed *formProblems, input, what, typed string) (float64, bool) {
 	if strings.TrimSpace(typed) == "" {
 		unparsed.add(input, "a Metric needs a %s", what)
 		return 0, false

@@ -891,8 +891,8 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 	for i, row := range formRows(r.PostForm, "metrics") {
 		m := metricRow{Name: row["name"], Unit: row["unit"], Baseline: row["baseline"], Target: row["target"], Direction: row["direction"], TargetDate: row["target_date"]}
 		v.Metrics = append(v.Metrics, m)
-		baseline, baselineOK := metricRowNumber(&unparsed, domain.MetricInput(i, "baseline"), "baseline", m.Baseline)
-		target, targetOK := metricRowNumber(&unparsed, domain.MetricInput(i, "target"), "target", m.Target)
+		baseline, baselineOK := readMetricNumber(&unparsed, domain.MetricInput(i, "baseline"), "baseline", m.Baseline)
+		target, targetOK := readMetricNumber(&unparsed, domain.MetricInput(i, "target"), "target", m.Target)
 		in.Metrics = append(in.Metrics, domain.MetricDefinition{
 			Name:       m.Name,
 			Unit:       m.Unit,
