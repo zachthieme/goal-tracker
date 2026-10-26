@@ -6690,6 +6690,59 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 	}
 }
 
+// Add Milestone answers a date that doesn't parse by naming it, as Edit
+// Milestone does, and only once it has checked who sent it: the Owner or a
+// Delegate gets the form back with the reason beside it, a stranger only the
+// refusal, and an empty date is still no date (#595).
+func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dana, goal.ID)
+	ts := newServer(t, h)
+	action := fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID)
+
+	for _, tc := range []struct {
+		who, email, date string
+		status           int
+		// reason is the open form's error, or the refusal page's for a 403.
+		reason string
+	}{
+		{"the Owner", "sam@example.com", "soon", http.StatusUnprocessableEntity, `"soon" isn't a date.`},
+		{"a Delegate", "dana@example.com", "soon", http.StatusUnprocessableEntity, `"soon" isn't a date.`},
+		{"the Owner", "sam@example.com", "", http.StatusUnprocessableEntity, "A Milestone needs a date."},
+		{"a stranger", "pat@example.com", "soon", http.StatusForbidden, "Only the Owner or a Delegate may change this Goal's Milestones."},
+	} {
+		resp := postForm(t, signInClient(t, ts.URL, tc.email), action, url.Values{"name": {"GA"}, "target_date": {tc.date}})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != tc.status {
+			t.Errorf("%s adding with date %q: status %d, want %d", tc.who, tc.date, resp.StatusCode, tc.status)
+			continue
+		}
+		var reason string
+		if tc.status == http.StatusForbidden {
+			reason = textOf(findByTestID(t, page, "refused-reason"))
+		} else {
+			open := goalOpenFormIn(t, page, "milestones")
+			reason = textOf(findByTestID(t, open, "form-error"))
+			if typed := formFields(open, "name"); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == "GA" }) {
+				t.Errorf("%s adding with date %q: open form lost the typed name: %s", tc.who, tc.date, renderNode(open))
+			}
+		}
+		if reason != tc.reason {
+			t.Errorf("%s adding with date %q: reason %q, want %q", tc.who, tc.date, reason, tc.reason)
+		}
+	}
+	if ms, _ := h.Service.ListMilestones(t.Context(), goal.ID); len(ms) != 1 {
+		t.Errorf("ListMilestones = %+v, want only the one the Goal began with", ms)
+	}
+}
+
 // goalPageNestedControls returns every interactive element, a link, button,
 // label or summary, that page opens inside another one, which HTML forbids.
 // It reads the tags as html's tokenizer reads them, since the parser would

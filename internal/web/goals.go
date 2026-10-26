@@ -138,18 +138,20 @@ func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, 
 }
 
 // handleAddMilestone adds a Milestone from the Goal page's Add Milestone form,
-// as its Owner or a Delegate. A date that doesn't parse is sent on as no
-// date, so the domain refuses it beside the form like any other.
+// as its Owner or a Delegate. A date that doesn't parse is sent on unparsed,
+// so AddMilestoneAsAuthor refuses it beside the form only once it has checked
+// who sent it, as handleEditMilestone's is.
 func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	date, _ := parseDate(r.FormValue("target_date"))
+	var unparsed unparsedGoalFields
 	_, err := s.svc.AddMilestoneAsAuthor(r.Context(), current.ID, domain.AddMilestoneInput{
 		GoalID:     id,
 		Name:       r.FormValue("name"),
-		TargetDate: date,
+		TargetDate: unparsed.date(r, "target_date"),
+		Unparsed:   unparsed,
 	})
 	s.writeFormResult(w, r, id, current, formMilestones, err)
 }

@@ -849,3 +849,37 @@ func TestEditMilestoneAuthorizesBeforeItValidates(t *testing.T) {
 		t.Errorf("Milestones after refusals = %+v, want just Beta, unedited", ms)
 	}
 }
+
+// Adding a Milestone from the Goal page authorizes before it refuses a date
+// that didn't parse: a stranger is refused as not authorized, and only the
+// Owner hears what's wrong with the date (#595).
+func TestAddMilestoneAsAuthorAuthorizesBeforeItRefusesAnUnparsedDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "why")
+	ctx := context.Background()
+	in := domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "GA",
+		Unparsed: []*domain.InputError{{Input: "target_date", Message: `"soon" isn't a date`}},
+	}
+
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, pat.ID, in); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger adding with a date that didn't parse: err = %v, want ErrNotAuthorized", err)
+	}
+	_, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, in)
+	if !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `"soon" isn't a date` {
+		t.Errorf("the Owner adding with a date that didn't parse: err = %v, want it refused under the date", err)
+	}
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != "target_date" {
+		t.Errorf("InputErrors = %+v, want the one under target_date", problems)
+	}
+	if ms, _ := h.Service.ListMilestones(ctx, goal.ID); len(ms) != 1 {
+		t.Errorf("ListMilestones = %+v, want only Beta", ms)
+	}
+	if got := changesOutsideCheckins(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("changes outside Check-ins = %+v, want none", got)
+	}
+}

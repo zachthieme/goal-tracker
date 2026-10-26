@@ -189,7 +189,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 	date, err := parseDate(rawDate)
 	if err != nil {
-		s.renderCheckinFormError(w, r, current, view, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
+		s.renderCheckinFormError(w, r, current, view, formData(checkinError{Field: "path_to_green", Message: fmt.Sprintf("%q isn't a date.", rawDate)}))
 		return
 	}
 	readings, err := readingsFromForm(metrics, rawReadings)
