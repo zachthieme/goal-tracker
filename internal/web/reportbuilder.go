@@ -255,7 +255,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		s.serverError(w, r, "could not save the report", err)
 		return
 	}
-	v.Problems = reportBuilderProblems(err)
+	v.Problems = problemsOf(err)
 	if err := s.loadReportBuilder(r, &v); err != nil {
 		s.serverError(w, r, "could not load the builder", err)
 		return
@@ -634,16 +634,6 @@ func goalsByID(goals []domain.Goal, ids []int64) []domain.Goal {
 		}
 	}
 	return out
-}
-
-// reportBuilderProblems are a refused save's problems, each naming its input,
-// or the refusal itself when it names none.
-func reportBuilderProblems(err error) []*domain.InputError {
-	problems := domain.InputErrors(err)
-	if len(problems) == 0 {
-		problems = []*domain.InputError{{Message: domain.Reason(err)}}
-	}
-	return problems
 }
 
 // title is the builder's heading: Edit report for a saved definition, New
