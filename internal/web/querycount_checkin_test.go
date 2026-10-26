@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -14,8 +16,9 @@ import (
 // The Check-in page and every response that renders its form read through
 // one page loader, once (ADR 0010, #560): Service.CheckinPage runs no query
 // twice for Goal 04 shown to its Owner, and the page, Add another, a submit
-// the form's own parsing refuses, one the domain refuses and a refused No
-// change each run it once, and as many queries for 50 Goals as for 10.
+// the form's own parsing refuses, one the domain refuses — with no readings,
+// with 1 and with 3 — and a refused No change each run it once, and as many
+// queries for 50 Goals as for 10.
 //
 // Around the loader each adds the session's and the sidebar's reads, which
 // share one query with it: every Account, which the loader walks the Ask for
@@ -23,10 +26,15 @@ import (
 // A post the domain refuses adds its command's own reads, made again inside
 // the transaction that writes, of which these repeat the loader's or the
 // session's:
-//   - SubmitCheckin, refusing a Green for Goal 04's overdue Milestone: the
-//     Goal (GetGoal), its author (GetAccount), and its children and their
-//     latest Check-ins for its Rolled-up Health (ListChildGoals,
+//   - SubmitCheckin, refusing a Green Goal 04's Rolled-up Health asks it to
+//     explain: the Goal (GetGoal), its author (GetAccount), and its children
+//     and their latest Check-ins for its Rolled-up Health (ListChildGoals,
 //     ListLatestCheckinsForGoals);
+//   - SubmitCheckin, refusing an explained Green with readings for Goal 04's
+//     overdue Milestone: those, the Goal's Metrics (ListMetrics) and its
+//     Milestones (ListMilestones). The readings' Metrics are read once,
+//     however many there are, so one reading and three run as many queries
+//     and neither looks a Metric up by itself (GetMetric, #591);
 //   - SubmitNoChangeCheckin, refusing for the same Milestone: the Goal
 //     (GetGoal), its author (GetAccount), its and its children's latest
 //     Check-ins (ListLatestCheckinsForGoals) and its Metrics' readings
@@ -47,9 +55,14 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 	const checkinPageMax = 24
 	// A post the domain refuses adds its command's reads.
 	const checkinSubmitRefusedMax = 28
+	const checkinSubmitReadingsRefusedMax = 30
 	const checkinNoChangeRefusedMax = 31
 	sidebarShared := []string{"ListAskWalkAccounts"}
 	submitCheckinRereads := []string{"GetGoal", "GetAccount", "ListChildGoals", "ListLatestCheckinsForGoals"}
+	submitReadingsRereads := append([]string{"ListMetrics", "ListMilestones"}, submitCheckinRereads...)
+	// goalMetrics are Goal 04's three Metrics, set by countFor for the
+	// fixture it seeds: the fixture's one and the two added here.
+	var goalMetrics []domain.Metric
 	noChangeRereads := []string{"GetGoal", "GetAccount", "ListLatestCheckinsForGoals", "ListMetricReadingsForGoals"}
 
 	type checkinPath struct {
@@ -62,6 +75,25 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 	submit := func(form url.Values) func(t *testing.T, client *http.Client, base string, goalID int64) int {
 		return func(t *testing.T, client *http.Client, base string, goalID int64) int {
 			_, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", base, goalID), form)
+			return status
+		}
+	}
+	// A Green with readings, explained against the Rolled-up Health, gets as
+	// far as the overdue Milestone, past the readings' check.
+	greenWithReadings := func(n int) func(t *testing.T, client *http.Client, base string, goalID int64) int {
+		return func(t *testing.T, client *http.Client, base string, goalID int64) int {
+			form := url.Values{"health": {domain.HealthGreen}, "status": {"On track."}, "explanation": {"The child's vendor isn't ours."}}
+			for _, m := range goalMetrics[:n] {
+				form.Set(domain.CheckinReadingInput(m.ID), "5")
+			}
+			body, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", base, goalID), form)
+			var refusals []string
+			for _, e := range findAllByTestID(parsePage(t, body), "checkin-error") {
+				refusals = append(refusals, textOf(e))
+			}
+			if !slices.ContainsFunc(refusals, func(r string) bool { return strings.Contains(r, `"Security review" is overdue`) }) {
+				t.Errorf("a Green with %d readings was refused with %q; want the overdue Milestone's refusal", n, refusals)
+			}
 			return status
 		}
 	}
@@ -88,9 +120,11 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 		{"a date that isn't one", checkinPageMax, nil, submit(url.Values{
 			"health": {domain.HealthRed}, "status": {"Still blocked."}, "path_to_green": {"A second vendor."}, "path_target_date": {"not-a-date"},
 		})},
-		{"a Green the overdue Milestone refuses", checkinSubmitRefusedMax, submitCheckinRereads, submit(url.Values{
+		{"a Green the Rolled-up Health refuses", checkinSubmitRefusedMax, submitCheckinRereads, submit(url.Values{
 			"health": {domain.HealthGreen}, "status": {"On track."},
 		})},
+		{"a Green with 1 reading the overdue Milestone refuses", checkinSubmitReadingsRefusedMax, submitReadingsRereads, greenWithReadings(1)},
+		{"a Green with 3 readings the overdue Milestone refuses", checkinSubmitReadingsRefusedMax, submitReadingsRereads, greenWithReadings(3)},
 		{"a refused No change", checkinNoChangeRefusedMax, noChangeRereads, func(t *testing.T, client *http.Client, base string, goalID int64) int {
 			resp, _ := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", base, goalID), true)
 			defer func() { _ = resp.Body.Close() }()
@@ -106,6 +140,18 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 		h := testsupport.New(t, queryCountAdmin)
 		fx := seedGoalPageFixture(t, h, n)
 		owner := h.SignIn("sam@example.com")
+		for _, name := range []string{"Vendors shortlisted", "Vendor demos"} {
+			if _, err := h.Service.AddMetric(context.Background(), owner.ID, domain.AddMetricInput{
+				GoalID: fx.red.ID, Name: name, Unit: "vendors", Direction: domain.MetricUp,
+				Baseline: 0, Target: 4, TargetDate: h.Clock.Now().AddDate(0, 0, 30),
+			}); err != nil {
+				t.Fatalf("AddMetric: %v", err)
+			}
+		}
+		var err error
+		if goalMetrics, err = h.Service.ListMetrics(context.Background(), fx.red.ID); err != nil || len(goalMetrics) != 3 {
+			t.Fatalf("ListMetrics = %d Metrics, %v; want Goal 04's 3", len(goalMetrics), err)
+		}
 		ts, svc, queries := newQueryCountingServer(t, h)
 		client := signInClient(t, ts.URL, "sam@example.com")
 		queries.take()
@@ -138,6 +184,11 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 					t.Errorf("%s ran %s %d times for %d Goals; want it at most %d", p.name, name, times, n, want)
 				}
 			}
+			// A reading's Metric is found among the Goal's, never looked up
+			// by itself.
+			if got := names["GetMetric"]; got != 0 {
+				t.Errorf("%s ran GetMetric %d times for %d Goals; want none", p.name, got, n)
+			}
 			// Only the loader reads the pending Draft Highlights, so it ran
 			// once.
 			if got := names["ListPendingDraftHighlights"]; got != 1 {
@@ -161,5 +212,9 @@ func TestCheckinPageReadsEachThingOnce(t *testing.T) {
 		if ten.paths[p.name] != fifty.paths[p.name] {
 			t.Errorf("%s ran %d queries for 10 Goals and %d for 50; want the same", p.name, ten.paths[p.name], fifty.paths[p.name])
 		}
+	}
+	one, three := ten.paths["a Green with 1 reading the overdue Milestone refuses"], ten.paths["a Green with 3 readings the overdue Milestone refuses"]
+	if one != three {
+		t.Errorf("a refused Green ran %d queries with 1 reading and %d with 3; want the same", one, three)
 	}
 }

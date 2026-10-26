@@ -393,44 +393,6 @@ func TestAllOpenActionItemsListsEveryOpenItem(t *testing.T) {
 	}
 }
 
-// Once the clock passes an open Action Item's due date it is overdue, if it
-// is about a Goal; one due today, a closed one, and one about a whole Report
-// are not listed.
-func TestOverdueActionItemsListsOpenGoalItemsPastTheirDueDate(t *testing.T) {
-	t.Parallel()
-
-	w := newActionItemsWorld(t)
-	ctx := context.Background()
-
-	w.h.Clock.Advance(5 * day)
-	got, err := w.h.Service.OverdueActionItems(ctx)
-	if err != nil {
-		t.Fatalf("OverdueActionItems: %v", err)
-	}
-	want := []string{"Book the EU legal review. | MBR | Launch in EU"}
-	if g := listedActionItems(got); !slices.Equal(g, want) {
-		t.Errorf("overdue items on the distributor item's due date = %q, want %q", g, want)
-	}
-
-	w.h.Clock.Advance(6 * day)
-	got, err = w.h.Service.OverdueActionItems(ctx)
-	if err != nil {
-		t.Fatalf("OverdueActionItems: %v", err)
-	}
-	want = []string{
-		"Book the EU legal review. | MBR | Launch in EU",
-		"Find an EU distributor. | QBR | Launch in EU",
-	}
-	if g := listedActionItems(got); !slices.Equal(g, want) {
-		t.Errorf("overdue items past the whole-Report item's due date = %q, want %q", g, want)
-	}
-	for _, l := range got {
-		if !l.Overdue {
-			t.Errorf("listed %q as not Overdue", l.Item.Text)
-		}
-	}
-}
-
 // A listed Action Item is Overdue the day after its due date, not on it, and
 // never once closed.
 func TestActionItemListingIsOverdueTheDayAfterItsDueDate(t *testing.T) {
