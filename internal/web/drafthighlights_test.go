@@ -544,3 +544,50 @@ func TestGoalPageDraftHighlightsCarryTheHighlightEditor(t *testing.T) {
 	highlightEditorPart(t, page, "highlight-editor")
 	highlightEditorPart(t, page, "highlight-item")
 }
+
+// A refused change to a Draft Highlight, plain or from the Highlight editor,
+// answers with the refusal page, headed Can't change highlight: one refused
+// for what was sent, at 422, links Back to its Goal page; one refused for who
+// sent it, at 403, links Back to Home, as they may not see the Goal's Draft
+// Highlights (#573).
+func TestARefusedDraftHighlightChangeAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	ended := h.ActiveGoal(sam, "Migrate billing", "Billing is brittle.")
+	late := h.LogDraftHighlight(sam, ended.ID, domain.HighlightMiss, "Runbook was late.")
+	h.EndGoalInCheckin(sam, ended.ID, domain.LifecycleDone)
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	retries := h.LogDraftHighlight(sam, active.ID, domain.HighlightInsight, "Retries mask the root cause.")
+	edit := url.Values{"kind": {domain.HighlightInsight}, "note": {"Changed."}}
+	const notTheirs = "Only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights."
+
+	for _, c := range []struct {
+		name, who, path string
+		status          int
+		reason, back    string
+	}{
+		{"an edit on a Done Goal", "sam@example.com", fmt.Sprintf("/draft-highlights/%d", late.ID), http.StatusUnprocessableEntity,
+			"A Done Goal takes no more Check-ins, so it takes no Draft Highlights.", fmt.Sprintf("/goals/%d", ended.ID)},
+		{"an edit by someone else", "pat@example.com", fmt.Sprintf("/draft-highlights/%d", retries.ID), http.StatusForbidden, notTheirs, "/home"},
+		{"a delete by someone else", "pat@example.com", fmt.Sprintf("/draft-highlights/%d/delete", retries.ID), http.StatusForbidden, notTheirs, "/home"},
+	} {
+		client := noRedirects(signInClient(t, ts.URL, c.who))
+		resp := postForm(t, client, ts.URL+c.path, edit)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, "Can't change highlight", c.reason, c.back)
+
+		body, status := postFormHX(t, client, ts.URL+c.path, edit)
+		if status != c.status {
+			t.Errorf("%s, from the editor: status %d, want %d", c.name, status, c.status)
+		}
+		assertRefusalPage(t, parsePage(t, body), "Can't change highlight", c.reason, c.back)
+	}
+}

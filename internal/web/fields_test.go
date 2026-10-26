@@ -559,3 +559,34 @@ func TestADateFieldShowsInTheDateFormat(t *testing.T) {
 		t.Errorf("the Report doesn't show the Kickoff as Mar 1, 2026:\n%s", fields)
 	}
 }
+
+// A refused Field change answers with the refusal page, headed Can't change
+// Field and linking Back to the Fields page, at its refusal's status: one
+// that isn't there is 422, as the domain refuses it for its input, and
+// someone not an Admin is 403 (#573).
+func TestARefusedFieldChangeAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+
+	for _, c := range []struct {
+		name, who, path string
+		status          int
+		reason          string
+	}{
+		{"a Field that isn't there", "boss@example.com", "/fields/99999/retire", http.StatusUnprocessableEntity, "Field does not exist."},
+		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/fields/%d/retire", budget.ID), http.StatusForbidden, "Only an Admin may do this."},
+	} {
+		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, url.Values{})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, "Can't change Field", c.reason, "/fields")
+	}
+}

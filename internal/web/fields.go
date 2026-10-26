@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -68,16 +67,11 @@ func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current dom
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
 }
 
-// writeFieldError maps a domain Field error to an HTTP status.
+// writeFieldError answers a refused Field change with the refusal page,
+// linking Back to the Fields page. The domain refuses a Field that isn't
+// there for its input, but a missing record would be the Not found page.
 func (s *Server) writeFieldError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	default:
-		s.serverError(w, r, "field action failed", err)
-	}
+	s.refuse(w, r, "Can't change Field", "/fields", err)
 }
 
 // handleSetGoalField sets the Goal's value in the form's field_id, or clears it

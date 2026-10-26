@@ -194,9 +194,9 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
 	}
-	// The refusal is plain text, not a page.
-	if body := readBody(t, resp); !strings.Contains(body, "Dated") {
-		t.Errorf("rejection should explain the missing Dated/Ongoing choice; body:\n%s", body)
+	// The refusal page says why.
+	if reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason")); !strings.Contains(reason, "Dated") {
+		t.Errorf("rejection should explain the missing Dated/Ongoing choice; it says %q", reason)
 	}
 }
 
@@ -219,8 +219,8 @@ func TestActivateDoneGoalLeavesItDone(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
 	}
-	if body := readBody(t, resp); !strings.Contains(body, "Ship v2 is Done, so it can't be activated") {
-		t.Errorf("refusal should say the Goal is Done; body:\n%s", body)
+	if reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason")); !strings.Contains(reason, "Ship v2 is Done, so it can't be activated") {
+		t.Errorf("refusal should say the Goal is Done; it says %q", reason)
 	}
 
 	page := getPage(t, client, goalURL)
@@ -2404,9 +2404,9 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 			before := rows(g)
 			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
 			defer func() { _ = resp.Body.Close() }()
-			body := textOf(parsePage(t, readBody(t, resp)))
-			if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "only the Owner or a Delegate may change this Goal's Milestones") {
-				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, body)
+			reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason"))
+			if resp.StatusCode != http.StatusForbidden || reason != "Only the Owner or a Delegate may change this Goal's Milestones." {
+				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, reason)
 			}
 			m := onlyMilestone(t, h, g)
 			resp = postForm(t, client, fmt.Sprintf("%s/milestones/%d", ts.URL, m.ID), url.Values{"name": {"Renamed"}, "target_date": {m.TargetDate.Format("2006-01-02")}})

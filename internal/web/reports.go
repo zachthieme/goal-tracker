@@ -380,7 +380,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 			w.Header().Set("HX-Reswap", "none")
 			render(w, r, http.StatusOK, saveStatus("Not saved: "+domain.Reason(err), true))
 		default:
-			s.writeReportError(w, r, err)
+			s.writeReportError(w, r, "Can't save narrative", target, err)
 		}
 		return
 	}
@@ -527,7 +527,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		}
 		report = posted
 	case err != nil:
-		s.writeReportError(w, r, err)
+		s.writeReportError(w, r, "Can't save narrative", narrativeDraftPath(r, def.ID), err)
 		return
 	default:
 		if status, err = s.narrativeStatus(r, def.ID, in); err != nil {
@@ -676,7 +676,7 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 			s.notFound(w, r)
 			return
 		}
-		s.writeReportError(w, r, err)
+		s.writeReportError(w, r, "Can't publish Report", narrativeDraftPath(r, id), err)
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub), http.StatusSeeOther)
@@ -900,16 +900,13 @@ func formInt64s(r *http.Request, key string) []int64 {
 	return out
 }
 
-// writeReportError maps a domain Report error to an HTTP status.
-func (s *Server) writeReportError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
-	default:
-		s.serverError(w, r, "report action failed", err)
-	}
+// writeReportError answers a refused Report action with the refusal page,
+// headed by what was refused (heading, e.g. "Can't publish Report") and
+// linking Back to draft, the Report's draft page. Its callers send a missing
+// Report to the Not found page first, but one that reaches here is that page
+// too.
+func (s *Server) writeReportError(w http.ResponseWriter, r *http.Request, heading, draft string, err error) {
+	s.refuse(w, r, heading, draft, err)
 }
 
 // handleAddReportDelegate makes the Account named by email a Report Delegate on
@@ -961,6 +958,6 @@ func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Reques
 		m.Email, m.Refused = email, domain.Reason(err)
 		s.renderReportDraft(w, r, current, def, m, draft, http.StatusUnprocessableEntity)
 	default:
-		s.writeReportError(w, r, err)
+		s.writeReportError(w, r, "Can't change Report Delegates", draft, err)
 	}
 }

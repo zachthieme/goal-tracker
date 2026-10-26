@@ -5384,3 +5384,38 @@ func baselineChipLabel(t *testing.T, chip *nethtml.Node) string {
 	t.Helper()
 	return textOf(findByTestID(t, chip, "baseline-label"))
 }
+
+// A Report action refused for who is asking answers with the refusal page,
+// 403, headed by what was refused and linking Back to the draft: saving its
+// narrative, Add another included, publishing it, and changing its Report
+// Delegates (#573).
+func TestARefusedReportActionAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	h.SignIn("eve@example.com")
+	g := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	eve := noRedirects(signInClient(t, ts.URL, "eve@example.com"))
+	draft := fmt.Sprintf("/reports/%d", def.ID)
+
+	for _, c := range []struct {
+		name, path, heading, reason string
+		form                        url.Values
+	}{
+		{"save narrative", draft + "/narrative", "Can't save narrative", "Only its creator, a Report Delegate or an Admin may curate MBR.", url.Values{"text-" + domain.HighlightInsight: {"All good."}}},
+		{"add another", draft + "/narrative", "Can't save narrative", "Only its creator, a Report Delegate or an Admin may curate MBR.", url.Values{"text-" + domain.HighlightInsight: {"All good."}, "add_note": {domain.HighlightInsight}}},
+		{"publish", draft + "/publications", "Can't publish Report", "Only its creator, a Report Delegate or an Admin may publish MBR.", url.Values{}},
+		{"add a Report Delegate", draft + "/delegates", "Can't change Report Delegates", "Only its creator or an Admin may change who are Report Delegates on MBR.", url.Values{"email": {"eve@example.com"}}},
+	} {
+		resp := postForm(t, eve, ts.URL+c.path, c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, draft)
+	}
+}
