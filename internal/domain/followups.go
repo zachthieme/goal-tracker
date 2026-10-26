@@ -249,11 +249,11 @@ func (s *Service) followUpRowsAmong(reads followUpReads) []FollowUpRow {
 	// A Path to Green's overdue days are counted in the Goal's timezone, the
 	// one its flag was judged in.
 	for _, gf := range fresh.OverduePaths {
-		add(gf.Goal, FollowUpSignal{Kind: "path-overdue", Days: followUpCalendarDays(gf.Freshness.PathTargetDate, s.goalNow(gf.Goal))})
+		add(gf.Goal, FollowUpSignal{Kind: "path-overdue", Days: followUpCalendarDays(gf.Freshness.PathTargetDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
 	}
 	// So are a Milestone's.
 	for _, gf := range fresh.OverdueMilestones {
-		add(gf.Goal, FollowUpSignal{Kind: "milestone-overdue", Days: followUpCalendarDays(gf.Freshness.OverdueMilestoneDate, s.goalNow(gf.Goal))})
+		add(gf.Goal, FollowUpSignal{Kind: "milestone-overdue", Days: followUpCalendarDays(gf.Freshness.OverdueMilestoneDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
 	}
 	// An Action Item's are counted in the org's timezone, the one it is
 	// judged overdue in.
@@ -294,11 +294,6 @@ func (s *Service) followUpRowsAmong(reads followUpReads) []FollowUpRow {
 		}
 	}
 	return rows
-}
-
-// goalNow is now in g's timezone (GoalTimezone).
-func (s *Service) goalNow(g Goal) time.Time {
-	return s.clock.Now().In(s.GoalTimezone(g))
 }
 
 // followUpCalendarDays counts the calendar days from one date to a later one,
