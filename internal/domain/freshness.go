@@ -348,9 +348,22 @@ func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
 		CheckedIn:          !latest.at.IsZero(),
 		DaysSince:          days,
 		CadenceDays:        g.CadenceDays,
-		PathToGreenOverdue: active && needsPathToGreen(latest.health) && !target.IsZero() && orgDate(now, loc).After(target),
+		PathToGreenOverdue: pathToGreenPastTarget(g.Lifecycle, latest.health, target, now, loc),
 		PathTargetDate:     target,
 	}
+}
+
+// pathToGreenPastTarget is the overdue-Path-to-Green rule: a Goal of the
+// given Lifecycle and Health has missed its Path to Green's target date as of
+// asOf when it is Active, isn't Green, has a target, and asOf falls on a later
+// date in loc, the Goal's Owner's Timezone — so overdue from the day after the
+// target (CONTEXT.md: Path to Green). Freshness and a Report block's
+// PathToGreenOverdueAt both judge by it.
+func pathToGreenPastTarget(lifecycle, health string, target, asOf time.Time, loc *time.Location) bool {
+	if lifecycle != LifecycleActive || !needsPathToGreen(health) || target.IsZero() {
+		return false
+	}
+	return orgDate(asOf, loc).After(orgDate(target, target.Location()))
 }
 
 // daysBetween counts the calendar days from one instant to a later one, each

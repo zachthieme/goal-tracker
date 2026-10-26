@@ -756,6 +756,33 @@ func TestMarkdownStrikesTheBackToGreenDateItSlippedFrom(t *testing.T) {
 	}
 }
 
+// A Path to Green whose back-to-Green date had passed when the Report was
+// published is marked Overdue, flagged as prominently as Red (CONTEXT.md: Path
+// to Green), as its page and PDF mark it; one still on time has no mark.
+func TestMarkdownMarksAnOverduePathToGreen(t *testing.T) {
+	t.Parallel()
+
+	block := func(target time.Time) domain.ReportBlock {
+		return domain.ReportBlock{
+			Goal:           domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health:         domain.HealthRed,
+			PathToGreen:    "Hire counsel.",
+			PathTargetDate: target,
+		}
+	}
+	for _, tc := range []struct {
+		target time.Time
+		want   string
+	}{
+		{date(2026, 2, 12), "\n**Path to Green:** Hire counsel. (back to Green by 2026-02-12) — **Overdue**\n"},
+		{date(2026, 2, 21), "\n**Path to Green:** Hire counsel. (back to Green by 2026-02-21)\n"},
+	} {
+		if got := export.Markdown(publication([]domain.ReportBlock{block(tc.target)}, nil)); !strings.Contains(got, tc.want) {
+			t.Errorf("Markdown of a block due back to Green by %s, published 2026-02-21, lacks %q:\n%s", tc.target.Format("2006-01-02"), tc.want, got)
+		}
+	}
+}
+
 // A date is never struck through beside itself (CONTEXT.md: Date Slip): a
 // back-to-Green date moved back to one it slipped from strikes the most recent
 // prior date that differs, keeping the count, and a delivery date leaves its

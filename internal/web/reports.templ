@@ -1238,11 +1238,11 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			}
 		</dl>
 		if tint := pathTintClass(b); tint != "" {
-			<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", pathOverdueAt(b, asOf)) }>
+			<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", domain.PathToGreenOverdueAt(b, asOf)) }>
 				if b.PathToGreen != "" {
 					<p data-testid="report-path-to-green">
 						<strong class="rp-tint-label">Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PathTargetDate, b.PriorPathTargetDates))
-						if pathOverdueAt(b, asOf) {
+						if domain.PathToGreenOverdueAt(b, asOf) {
 							{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
 						}
 					</p>
@@ -1522,20 +1522,6 @@ func badgeClass(badge string) string {
 		return "y"
 	}
 	return "lc"
-}
-
-// pathOverdueAt reports whether an Active exception's Path to Green had missed
-// its target date as of asOf — the instant it was published, or now on the
-// draft — in the zone the block's Goal was judged in (CONTEXT.md: Path to
-// Green, Timezone).
-func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
-	if b.Goal.Lifecycle != domain.LifecycleActive || b.PathTargetDate.IsZero() {
-		return false
-	}
-	if b.Health != domain.HealthRed && b.Health != domain.HealthYellow {
-		return false
-	}
-	return fmtDate(asOf.In(b.Location())) > fmtDate(b.PathTargetDate)
 }
 
 // healthTile is one count on a Report's Health summary.
