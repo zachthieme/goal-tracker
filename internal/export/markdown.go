@@ -14,7 +14,8 @@ import (
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
 // how it selected its Goals as it read when published (nothing for a
-// publication frozen before selections were), the line counting what moved
+// publication frozen before selections were), its Goals counted by Health and
+// Check-in overdue (domain.Report.HealthCounts), the line counting what moved
 // since then, its open Action Items, the introduction, the narrative curated
 // from Highlights, each exception's full MBR block opening with what changed on
 // it and naming the Goals it links to, most urgent first, and every other
@@ -34,6 +35,10 @@ func Markdown(p domain.Publication) string {
 	}
 	if p.Scope != "" {
 		fmt.Fprintf(&b, "\n**Selection:** %s\n", text(p.Scope))
+	}
+	if len(r.Exceptions) > 0 || len(r.Lines) > 0 {
+		h := r.HealthCounts()
+		fmt.Fprintf(&b, "\n**Health:** %d Red · %d Yellow · %d Green · %d %s\n", h.Red, h.Yellow, h.Green, h.CheckinOverdue, domain.BadgeCheckinOverdue)
 	}
 	if r.Movement != nil {
 		since := fmtDate(r.Baseline)
@@ -102,10 +107,10 @@ func Markdown(p domain.Publication) string {
 // ("2026-10-03 ~~2026-09-12~~ (2)") and marked Overdue once that date has
 // passed ("— **Overdue**"), whom it asks for help, Milestones, Metrics against
 // target, and the Rolled-up Health with how many children are Red, Yellow and
-// Check-in overdue, the Goals behind it, and the Owner's explanation. Each
-// Milestone, and the Path to Green (domain.PathToGreenOverdueAt), is marked as
-// of asOf, the instant the Report was published, read in the zone the block's
-// Goal was judged in.
+// Check-in overdue, the Goals behind it, and the Owner's explanation when the
+// block shows it (domain.ReportBlock.ShowsExplanation). Each Milestone, and the
+// Path to Green (domain.PathToGreenOverdueAt), is marked as of asOf, the instant
+// the Report was published, read in the zone the block's Goal was judged in.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
 	fmt.Fprintf(b, "\n### %s · %s", health(blk.Health), text(g.Title))
@@ -192,7 +197,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	if len(blk.Behind) > 0 {
 		fmt.Fprintf(b, "\n**Supported by:** %s\n", linkedGoals(blk.Behind))
 	}
-	if (blk.RolledUp.Present || blk.RolledUp.CheckinOverdueChildren > 0) && blk.Explanation != "" {
+	if blk.ShowsExplanation() {
 		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
 	}
 }

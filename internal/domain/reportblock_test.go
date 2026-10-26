@@ -614,6 +614,34 @@ func TestReportBlockLocationIsItsTimezoneOrUTC(t *testing.T) {
 	}
 }
 
+// A block shows the Owner's explanation of why its Health differs only when
+// it has one and there is a Rolled-up Health for it to differ from: one set by
+// its children, or a count of them Check-in overdue (CONTEXT.md: Rolled-up
+// Health).
+func TestReportBlockShowsItsExplanationBesideARolledUpHealth(t *testing.T) {
+	t.Parallel()
+
+	const why = "The Red child is a stretch item."
+	cases := []struct {
+		name string
+		b    domain.ReportBlock
+		want bool
+	}{
+		{"explained beside a Rolled-up Health", domain.ReportBlock{Explanation: why, RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true}}, true},
+		{"explained beside children Check-in overdue", domain.ReportBlock{Explanation: why, RolledUp: domain.RolledUpHealth{CheckinOverdueChildren: 1, ActiveChildren: 2}}, true},
+		{"explained with nothing rolled up", domain.ReportBlock{Explanation: why}, false},
+		{"unexplained beside a Rolled-up Health", domain.ReportBlock{RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true}}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := c.b.ShowsExplanation(); got != c.want {
+				t.Errorf("ShowsExplanation() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // A block's Path to Green is overdue from the day after its back-to-Green
 // date, as of the instant given read in the block's Timezone — and never on a
 // Green, non-Active or undated block (CONTEXT.md: Path to Green).

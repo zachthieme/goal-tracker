@@ -35,7 +35,8 @@ func publication(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) d
 }
 
 // The export opens with the Report's name, who published it and when, what it
-// read its changes against, and the introduction; every Goal that is not an
+// read its changes against, its Goals counted by Health, and the introduction;
+// every Goal that is not an
 // exception takes one line with its Health first, then its title, Owner and
 // due date; with no Health yet, a dash takes its place (#453).
 func TestMarkdownHeaderAndOneLineGoals(t *testing.T) {
@@ -49,6 +50,8 @@ func TestMarkdownHeaderAndOneLineGoals(t *testing.T) {
 	want := `# EU MBR
 
 Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
+
+**Health:** 0 Red · 0 Yellow · 1 Green · 0 Check-in overdue
 
 Quarterly business review.
 
@@ -382,6 +385,8 @@ func TestMarkdownIntroducesEachPersonAtFirstMention(t *testing.T) {
 
 	want := `Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
 
+**Health:** 0 Red · 0 Yellow · 3 Green · 0 Check-in overdue
+
 Quarterly business review.
 
 ## Other Goals
@@ -573,6 +578,44 @@ func TestMarkdownOpensWithWhatMovedSinceTheBaseline(t *testing.T) {
 				t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, tc.want)
 			}
 		})
+	}
+}
+
+// The export counts the Report's Goals by Health — Red, Yellow, Green — and
+// how many are Check-in overdue in one line under its selection and before
+// what moved, as the snapshot page's Health summary does, zeros included; a
+// Report that selects no Goals says so instead.
+func TestMarkdownCountsTheReportsGoalsByHealth(t *testing.T) {
+	t.Parallel()
+
+	block := func(health string, badges ...string) domain.ReportBlock {
+		return domain.ReportBlock{Goal: domain.Goal{Title: health + " Goal", Owner: boss, Lifecycle: domain.LifecycleActive}, Health: health, Badges: badges}
+	}
+	pub := publication(
+		[]domain.ReportBlock{block(domain.HealthRed, domain.BadgeCheckinOverdue), block(domain.HealthRed), block(domain.HealthYellow)},
+		[]domain.SelectedGoal{
+			{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{Title: "Ship billing", Owner: boss}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{Title: "Hire a PM", Owner: boss}, Health: domain.HealthGreen},
+		},
+	)
+	pub.Scope = "Team: Platform"
+	pub.Report.Movement = &domain.ReportMovement{New: 1}
+
+	want := "Changes since 2026-01-12.\n\n**Selection:** Team: Platform\n\n" +
+		"**Health:** 2 Red · 1 Yellow · 3 Green · 1 Check-in overdue\n\n" +
+		"**Since 2026-01-12:** 1 new\n"
+	if got := export.Markdown(pub); !strings.Contains(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, want)
+	}
+
+	green := publication(nil, []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen}})
+	if got, want := export.Markdown(green), "\n**Health:** 0 Red · 0 Yellow · 1 Green · 0 Check-in overdue\n"; !strings.Contains(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, want)
+	}
+
+	if got := export.Markdown(publication(nil, nil)); strings.Contains(got, "**Health:**") {
+		t.Errorf("Markdown of a Report with no Goals counts their Health:\n%s", got)
 	}
 }
 
