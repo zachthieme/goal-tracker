@@ -438,11 +438,10 @@ func (d lifecycleFormData) summary() string {
 // never hidden behind a Green (CONTEXT.md: Date Slip), and opens the dates and
 // Milestones section, with or without a latest Check-in: the Check-in may
 // still be Green once it moves the Milestone, marks it Done or removes it.
-func checkinFormFromLatest(v goalView) checkinFormData {
+func checkinFormFromLatest(v checkinView) checkinFormData {
 	g := v.Goal
-	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, RunOffGreen: v.RunOffGreen, Metrics: v.Metrics, Shown: v.dates()}
+	d := v.withContext(checkinFormData{GoalID: g.ID, Health: domain.HealthGreen})
 	d.AsksForHelp = v.Ask != nil
-	d.AskAddressee = v.AskAddressee
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
 	}
@@ -450,7 +449,6 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 	if d.Overdue && d.Health == domain.HealthGreen {
 		d.Health = ""
 	}
-	d.Previous = checkinPreviousFrom(v.LatestCheckin, v.Trends)
 	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)
 	d.Lifecycle.Current = g.Lifecycle
 	if g.Lifecycle == domain.LifecycleOnHold {
@@ -470,6 +468,25 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 			})
 		}
 	}
+	return d
+}
+
+// withContext is d, a Check-in form as typed or as it starts, with the
+// context the Check-in page's loader read for it: the Goal's Metrics, its
+// Rolled-up Health and Run off Green, whom an ask would go to, the latest
+// Check-in's answers and each Metric's latest reading as ghost text, and the
+// clock its dates show against. Every path that renders the form fills it so.
+func (v checkinView) withContext(d checkinFormData) checkinFormData {
+	d.Metrics = v.Metrics
+	d.RolledUp = v.RolledUp
+	d.RunOffGreen = v.RunOffGreen
+	d.AskAddressee = v.AskAddressee
+	trends := make([]metricTrend, 0, len(v.Metrics))
+	for _, m := range v.Metrics {
+		trends = append(trends, metricTrend{Metric: m, Readings: v.Readings[m.ID]})
+	}
+	d.Previous = checkinPreviousFrom(v.LatestCheckin, trends)
+	d.Shown = v.Shown
 	return d
 }
 
@@ -625,7 +642,7 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // answers.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
+templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@framedLayout("Check in · "+g.Title, current, pageHeader(pageHead{Parent: g.Title, ParentHref: fmt.Sprintf("/goals/%d", g.ID), Title: "Check in"})) {
 		@checkinStyles()
@@ -634,29 +651,29 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 				<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
 				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
 					<div data-testid="no-change-card" class="checkin-no-change">
-						<span class="muted">{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
-						if v.NoChangeRefusal == "" {
+						<span class="muted">{ "Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
+						if v.NoChangeReason == "" {
 							@noChangeCheckinButton(g.ID, "No change", "btn")
 						} else if form.Error.Message == "" || form.Error.Field != "" {
-							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
+							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeReason }</p>
 						}
 					</div>
 				}
 			</div>
-			if v.Permissions.CheckIn {
+			if v.checksIn() {
 				@checkinAddBar(form.Lifecycle)
 			}
 			<aside data-testid="checkin-context" class="checkin-context">
 				if c := v.LatestCheckin; c != nil {
 					<section data-testid="checkin-last-time" class="checkin-context-last">
-						<h3 class="checkin-rail-head">{ "Last time · " + v.dates().dayOf(c.CreatedAt) }</h3>
+						<h3 class="checkin-rail-head">{ "Last time · " + v.Shown.dayOf(c.CreatedAt) }</h3>
 						if c.Health != "" || c.PathToGreen != "" {
 							<p class="checkin-context-health">
 								if c.Health != "" {
 									@healthChip("", c.Health)
 								}
 								if c.PathToGreen != "" {
-									<span class="muted">{ "back to Green by " + v.dates().date(c.PathTargetDate) }</span>
+									<span class="muted">{ "back to Green by " + v.Shown.date(c.PathTargetDate) }</span>
 								}
 							</p>
 						}
@@ -671,10 +688,10 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 				}
 				<section data-testid="checkin-context-dates" class="checkin-context-dates">
 					<h3 class="checkin-rail-head">Dates</h3>
-					<p>{ checkinContextDates(g, v.Milestones, v.dates()) }</p>
+					<p>{ checkinContextDates(g, v.Milestones, v.Shown) }</p>
 				</section>
 			</aside>
-			if v.Permissions.CheckIn {
+			if v.checksIn() {
 				@checkinForm(form)
 			} else {
 				@checkinFieldError(form.Error, "")
@@ -707,8 +724,8 @@ templ checkinAddBar(l lifecycleFormData) {
 // named by its Monday in the org's timezone as History's week headings are
 // ("Week of Oct 19"), how often the Goal checks in, and the day of its latest
 // Check-in when it has one.
-func (v goalView) checkinPageMeta() string {
-	dates := v.dates()
+func (v checkinView) checkinPageMeta() string {
+	dates := v.Shown
 	y, m, d := v.Now.In(dates.Loc).Date()
 	today := time.Date(y, m, d, 0, 0, 0, 0, dates.Loc)
 	monday := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
@@ -765,7 +782,7 @@ func checkinContextDates(g domain.Goal, milestones []domain.Milestone, dates dis
 
 // checkinFormRefused is the Goal's Check-in form, started from its latest
 // Check-in, with a refusal shown at the top.
-func checkinFormRefused(v goalView, refusal string) checkinFormData {
+func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 	d := checkinFormFromLatest(v)
 	d.Error = checkinError{Message: refusal}
 	return d
