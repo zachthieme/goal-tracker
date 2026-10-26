@@ -665,13 +665,7 @@ func TestRefusedLinkRemovalShowsAPageSayingWhy(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("remove by a non-Owner: status %d, want 403", resp.StatusCode)
 	}
-	pageElement(t, body, "a", "nav-home")
-	if got, want := pageElement(t, body, "p", "link-refused"), "Only an Owner of the linked Goals may remove the link."; !strings.Contains(got, want) {
-		t.Errorf("link-refused = %s, want %q", got, want)
-	}
-	if want := fmt.Sprintf(`<a href="/goals/%d">Back</a>`, parent.ID); !strings.Contains(body, want) {
-		t.Errorf("refusal page has no %s:\n%s", want, body)
-	}
+	assertRefusalPage(t, parsePage(t, body), "Can't remove link", "Only an Owner of the linked Goals may remove the link.", fmt.Sprintf("/goals/%d", parent.ID))
 	if strings.Contains(body, "not authorized:") {
 		t.Errorf("refusal page shows the raw error:\n%s", body)
 	}
@@ -775,7 +769,7 @@ func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
-	assertLinkRefusedPage(t, page, "Can't accept link", "Only the parent's Owner may accept a link.", "/links")
+	assertRefusalPage(t, page, "Can't accept link", "Only the parent's Owner may accept a link.", "/links")
 	if got := h.ParentsOf(child); len(got) != 0 {
 		t.Errorf("ParentsOf(child) = %+v after a refused accept, want none", got)
 	}
@@ -807,10 +801,10 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	assertLinkRefusedPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/links")
+	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/links")
 	for _, id := range []int64{parent.ID, child.ID} {
-		if reason := textOf(findByTestID(t, page, "link-refused")); strings.Contains(reason, fmt.Sprint(id)) {
-			t.Errorf("link-refused %q names Goal %d by its ID", reason, id)
+		if reason := textOf(findByTestID(t, page, "refused-reason")); strings.Contains(reason, fmt.Sprint(id)) {
+			t.Errorf("refused-reason %q names Goal %d by its ID", reason, id)
 		}
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
@@ -890,7 +884,7 @@ func TestARefusedSuggestionActionShowsAPageLinkingBack(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s %v: status %d, want 403", c.action, c.form, resp.StatusCode)
 		}
-		assertLinkRefusedPage(t, page, c.heading, c.reason, c.back)
+		assertRefusalPage(t, page, c.heading, c.reason, c.back)
 	}
 	if got, _ := h.Service.ParentSuggestion(context.Background(), sug.ID); got.Status != domain.SuggestionOpen {
 		t.Errorf("Status = %q after refused actions, want open", got.Status)
@@ -963,31 +957,10 @@ func TestADecisionOnAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("%s %v: status %d, want %d", d.decision, d.form, resp.StatusCode, http.StatusUnprocessableEntity)
 		}
-		assertLinkRefusedPage(t, page, d.heading, "This link request has already been accepted.", d.back)
+		assertRefusalPage(t, page, d.heading, "This link request has already been accepted.", d.back)
 	}
 	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
 		t.Errorf("ParentsOf(child) = %+v after the refused decisions, want %q still", got, parent.Title)
-	}
-}
-
-// assertLinkRefusedPage checks page is a refused link action's page inside
-// the app: heading names what was refused, reason says why, and Back links to
-// back.
-func assertLinkRefusedPage(t *testing.T, page *html.Node, heading, reason, back string) {
-	t.Helper()
-	if !hasTestID(page, "nav-home") {
-		t.Errorf("refusal page is not inside the app's layout:\n%s", renderNode(page))
-	}
-	if headingNamed(page, heading) == nil {
-		t.Errorf("refusal page has no heading %q:\n%s", heading, renderNode(page))
-	}
-	if got := textOf(findByTestID(t, page, "link-refused")); got != reason {
-		t.Errorf("link-refused = %q, want %q", got, reason)
-	}
-	if backs := findAll(page, func(n *html.Node) bool {
-		return n.Data == "a" && attrOf(n, "href") == back && textOf(n) == "Back"
-	}); len(backs) == 0 {
-		t.Errorf("refusal page has no Back link to %s:\n%s", back, renderNode(page))
 	}
 }
 
@@ -1044,7 +1017,7 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("refused Accept on Home: status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	assertLinkRefusedPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
+	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
 
 	third := h.CreateGoal(sam, "Replace cabling", "Cables fray.")
 	fromLinks := h.RequestLink(sam, third, parent, "")

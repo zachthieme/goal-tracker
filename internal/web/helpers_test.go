@@ -1324,6 +1324,26 @@ func headingNamed(root *html.Node, text string) *html.Node {
 	return nil
 }
 
+// assertRefusalPage checks page is a refused action's page inside the app:
+// heading names what was refused, its one refused-reason says why, as reason,
+// and its Back links to back.
+func assertRefusalPage(t *testing.T, page *html.Node, heading, reason, back string) {
+	t.Helper()
+	if !hasTestID(page, "nav-home") {
+		t.Errorf("refusal page is not inside the app's layout:\n%s", renderNode(page))
+	}
+	refusal := findByTestID(t, page, "refusal")
+	if headingNamed(refusal, heading) == nil {
+		t.Errorf("refusal page has no heading %q:\n%s", heading, renderNode(page))
+	}
+	if got := textOf(findByTestID(t, refusal, "refused-reason")); got != reason {
+		t.Errorf("refused-reason = %q, want %q", got, reason)
+	}
+	if link := linkTo(refusal, back); link == nil || textOf(link) != "Back" {
+		t.Errorf("refusal page has no Back link to %s:\n%s", back, renderNode(page))
+	}
+}
+
 // precedes reports whether a comes before b reading the page top to bottom:
 // a opens first.
 func precedes(a, b *html.Node) bool {

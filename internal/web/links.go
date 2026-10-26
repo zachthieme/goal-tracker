@@ -216,28 +216,10 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 	return id, true
 }
 
-// writeLinkError answers a refused link action with a page inside the app,
-// headed by what was refused (e.g. "Can't accept link"), saying why and
-// linking back: a cycle 409, a validation 422, someone else's action 403. A
-// link or suggestion that isn't there is the Not found page.
-func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, current domain.Account, refused, back string, err error) {
-	var status int
-	var reason string
-	switch {
-	case errors.Is(err, domain.ErrCycle):
-		// ErrCycle's own text names the two Goals by ID, so a person reads
-		// this sentence instead.
-		status, reason = http.StatusConflict, "Linking these Goals would make a cycle: the parent already contributes to the child."
-	case errors.Is(err, domain.ErrValidation):
-		status, reason = http.StatusUnprocessableEntity, sentence(plainReason(err))
-	case errors.Is(err, domain.ErrNotAuthorized):
-		status, reason = http.StatusForbidden, sentence(plainReason(err))
-	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, r)
-		return
-	default:
-		s.serverError(w, r, "link action failed", err)
-		return
-	}
-	render(w, r, status, linkRefusedPage(&current, refused, reason, back))
+// writeLinkError answers a refused link action with refuse's page, headed by
+// what was refused (e.g. "Can't accept link") and linking back. A link or
+// suggestion that isn't there is the Not found page. refuse resolves the
+// signed-in Account itself, so the one passed in goes unused.
+func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, _ domain.Account, refused, back string, err error) {
+	s.refuse(w, r, refused, back, err)
 }

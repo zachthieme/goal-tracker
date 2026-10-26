@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -184,34 +183,16 @@ func goalTitled(t *testing.T, h *testsupport.Harness, title string) domain.Goal 
 	return domain.Goal{}
 }
 
-// assertUndoRefused checks a refused Undo came back as status inside the
-// site's chrome: a "Can't undo" page whose one sentence says why, plainly,
-// containing reason, with a Back link to back.
+// assertUndoRefused checks a refused Undo came back as status on the refusal
+// page inside the app: headed "Can't undo", saying why as reason, plainly,
+// with a Back link to back.
 func assertUndoRefused(t *testing.T, resp *http.Response, status int, reason, back string) {
 	t.Helper()
 	page := readBody(t, resp)
 	if resp.StatusCode != status {
 		t.Errorf("status %d, want %d; body:\n%s", resp.StatusCode, status, page)
 	}
-	if !strings.Contains(page, `data-testid="nav-home"`) || !strings.Contains(page, "Can't undo") {
-		t.Fatalf("refusal is not a Can't undo page inside the site's chrome; body:\n%s", page)
-	}
-	element := pageElement(t, page, "p", "undo-refused")
-	sentence := html.UnescapeString(element[strings.Index(element, ">")+1:])
-	if !strings.Contains(sentence, reason) {
-		t.Errorf("refusal says %q, want it to say %q", sentence, reason)
-	}
-	for _, internal := range []string{"validation failed", "not authorized", "not found:"} {
-		if strings.Contains(sentence, internal) {
-			t.Errorf("refusal %q carries the internal %q", sentence, internal)
-		}
-	}
-	if regexp.MustCompile(`[0-9]`).MatchString(sentence) {
-		t.Errorf("refusal %q carries a raw ID", sentence)
-	}
-	if !strings.Contains(page, `<a href="`+back+`">Back</a>`) {
-		t.Errorf("refusal has no Back link to %s; body:\n%s", back, page)
-	}
+	assertRefusalPage(t, parsePage(t, page), "Can't undo", reason, back)
 }
 
 // Each Undo succeeds from its toast, once: the same Undo submitted a second
@@ -341,7 +322,7 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 }
 
 // An Undo that would now close a cycle is refused with 409, on a page saying
-// so with a link back, and restores nothing.
+// so as a refused link would, with a link back, and restores nothing.
 func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 	t.Parallel()
 
@@ -359,7 +340,7 @@ func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
 			defer func() { _ = resp.Body.Close() }()
-			assertUndoRefused(t, resp, http.StatusConflict, "Restoring it now would make a cycle.", tc.back(t, h))
+			assertUndoRefused(t, resp, http.StatusConflict, "Linking these Goals would make a cycle: the parent already contributes to the child.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by an Undo that would make a cycle")
 			}

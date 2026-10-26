@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,26 +81,14 @@ func takeUndo(w http.ResponseWriter, r *http.Request) undoOffer {
 	return undoOffer{kind: parts[0], id: id, token: parts[2]}
 }
 
-// refuseUndo shows why an Undo was refused, inside the normal page, with a
-// link back to the page it was offered on, and the status the area's own
-// error writer would give: a cycle 409, a validation 422, someone else's Undo
-// 403, nothing to undo 404. The reason is the domain's, said plainly, without
-// its internal prefix.
-func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, current domain.Account, back string, err error) {
-	status, reason := http.StatusInternalServerError, "The Undo couldn't be done, so nothing changed. Try again."
-	switch {
-	case errors.Is(err, domain.ErrCycle):
-		status, reason = http.StatusConflict, "Restoring it now would make a cycle."
-	case errors.Is(err, domain.ErrValidation):
-		status, reason = http.StatusUnprocessableEntity, sentence(plainReason(err))
-	case errors.Is(err, domain.ErrNotAuthorized):
-		status, reason = http.StatusForbidden, sentence(plainReason(err))
-	case errors.Is(err, domain.ErrNotFound):
-		status, reason = http.StatusNotFound, "There's nothing here to undo."
-	default:
-		s.logServerError(r, err)
-	}
-	render(w, r, status, undoRefusedPage(&current, reason, back))
+// refuseUndo shows why an Undo was refused on refuse's page, with a link back
+// to the page it was offered on: nothing to undo is a 404 saying so, and a
+// failure a 500 saying nothing changed. refuse resolves the signed-in Account
+// itself, so the one passed in goes unused.
+func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, _ domain.Account, back string, err error) {
+	s.refuse(w, r, "Can't undo", back, err,
+		refuseNotFoundSaying("There's nothing here to undo."),
+		refuseFailureSaying("The Undo couldn't be done, so nothing changed. Try again."))
 }
 
 // sentence is msg capitalised and ending in a full stop.

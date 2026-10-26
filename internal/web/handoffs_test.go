@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	nethtml "golang.org/x/net/html"
-
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -669,9 +667,7 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("accept the cancelled Handoff: status %d, want 422", resp.StatusCode)
 	}
-	if got, want := textOf(findByTestID(t, refused, "handoff-refused")), "This Handoff was cancelled."; got != want {
-		t.Errorf("accept the cancelled Handoff: handoff-refused = %q, want %q", got, want)
-	}
+	assertRefusalPage(t, refused, "Can't accept Handoff", "This Handoff was cancelled.", "/handoffs")
 
 	page := getBody(t, bossClient, goalURL)
 	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("cal@example.com", "cal")) {
@@ -728,20 +724,7 @@ func TestADecisionOnADecidedHandoffSaysHowItWasDecided(t *testing.T) {
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("%s %v: status %d, want %d", d.decision, d.form, resp.StatusCode, http.StatusUnprocessableEntity)
 		}
-		if !hasTestID(page, "nav-home") {
-			t.Errorf("%s %v: refusal page is not inside the app's layout:\n%s", d.decision, d.form, renderNode(page))
-		}
-		if headingNamed(page, d.heading) == nil {
-			t.Errorf("%s %v: refusal page has no heading %q:\n%s", d.decision, d.form, d.heading, renderNode(page))
-		}
-		if got, want := textOf(findByTestID(t, page, "handoff-refused")), "This Handoff was already accepted."; got != want {
-			t.Errorf("%s %v: handoff-refused = %q, want %q", d.decision, d.form, got, want)
-		}
-		if backs := findAll(page, func(n *nethtml.Node) bool {
-			return n.Data == "a" && attrOf(n, "href") == d.back && textOf(n) == "Back"
-		}); len(backs) == 0 {
-			t.Errorf("%s %v: refusal page has no Back link to %s:\n%s", d.decision, d.form, d.back, renderNode(page))
-		}
+		assertRefusalPage(t, page, d.heading, "This Handoff was already accepted.", d.back)
 	}
 	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != pat.ID {
 		t.Errorf("Owner = %d after the refused decisions, want Pat (%d) still", g.Owner.ID, pat.ID)

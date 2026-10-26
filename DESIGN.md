@@ -480,8 +480,8 @@ and so on).
     (no internal prefixes or IDs) and a **Back** link to the page the Undo was
     offered on: the Goal page for a link removal (Home when it names none),
     Home, the pending page or the Goal page for a rejection or a decline, and
-    Dimensions for a retired value. The page is `undoRefusedPage` in
-    `toast.templ`.
+    Dimensions for a retired value. The page is `refusalPage` in
+    `refusal.templ`, the one page every refused action shows (`refuse`).
   - **Announced politely:** an `<aside role="status">`, so a screen reader
     reads it without moving focus.
   - **Where:** removing a link (Goal page), retiring a Dimension value

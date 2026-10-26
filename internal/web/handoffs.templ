@@ -88,18 +88,3 @@ templ handoffStyles() {
 		</style>
 	}
 }
-
-// handoffRefusedPage says, inside the normal page, that a Handoff decision was
-// refused (refused, e.g. "Can't accept Handoff") and why, with a link back to
-// the page the decision was on.
-//
-//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ handoffRefusedPage(current *domain.Account, refused, reason, back string) {
-	@layout(refused, current) {
-		<div class="message-page">
-			<h1>{ refused }</h1>
-			<p data-testid="handoff-refused">{ reason }</p>
-			<p><a href={ templ.SafeURL(back) }>Back</a></p>
-		</div>
-	}
-}

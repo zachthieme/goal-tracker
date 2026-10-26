@@ -464,7 +464,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
       maxRedirects: 0,
     });
     expect(again.status(), "a second Nudge the same day is refused").toBe(422);
-    expect(await again.text()).toMatch(/data-testid="nudge-refused">[^<]*already nudged this Goal today/);
+    expect(await again.text()).toMatch(/data-testid="refused-reason">[^<]*already nudged this Goal today/);
 
     // The Goal's History shows the Nudge.
     await page.goto(`/goals/${checkinOverdue.id}`);

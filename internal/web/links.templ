@@ -52,21 +52,6 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link, toast *to
 	}
 }
 
-// linkRefusedPage says, inside the normal page, that a link action was refused
-// (refused, e.g. "Can't remove link") and why, with a link back to the page the
-// action was on.
-//
-//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ linkRefusedPage(current *domain.Account, refused, reason, back string) {
-	@layout(refused, current) {
-		<div class="message-page">
-			<h1>{ refused }</h1>
-			<p data-testid="link-refused">{ reason }</p>
-			<p><a href={ templ.SafeURL(back) }>Back</a></p>
-		</div>
-	}
-}
-
 // pendingStyles are the rules the Pending links and Pending handoffs pages share
 // on top of app.css: a section of hairline rows, the decision buttons at the
 // right.
