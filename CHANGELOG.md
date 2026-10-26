@@ -15,12 +15,24 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 26, 2026
 
+**Improvements:**
+- [ops] Follow-ups reads each thing once: it no longer reads every Goal twice, nor the Unlinked Goals apart from the Active ones, nor each overdue Action Item's Goal, nor each Ownerless Goal's Delegates one Goal at a time, so for a lead it runs 33 queries however many Goals there are, down from 37 for 10 Goals and 45 for 50 (#557).
+
 **Bug fixes:**
 - [user] A link request refused for making a cycle now says "That Goal already contributes to this one, so linking them would make a cycle." in the Goal page's form, as Suggest a parent does, instead of naming both Goals by their IDs (#546).
 - [user] A refused Accept, Reject or Request link, and a refused Accept, Decline or Withdraw of a parent suggestion, now answer with a page inside the app headed by what was refused (such as "Can't accept link"), saying why and linking Back to the page the action came from, instead of a bare line of text; acting on a link that isn't there shows the Not found page (#546).
 - [ops] The weekly emails' scheduler no longer names a slot when it fails to read the job's last run after a restart: the ERROR line carries the job and the error only, since the slot it named may already have been sent (#547).
 - [user] Accepting a link request on Home returns to Home, and a refused Accept there links Back to Home, not to Pending links (#549).
 - [user] Accepting or rejecting a link request that was already accepted, as a second click from another tab does, says "This link request has already been accepted." instead of Not found (#549).
+- [user] Accepting and rejecting one link request at the same moment, as two tabs can, no longer deletes the link the Accept just made and records it as rejected: only one decision is kept, and the other says why it was refused (#551).
+- [user] Accepting or rejecting a Handoff that was already decided says how: "This Handoff was already accepted.", "already rejected", "cancelled", or "This Goal was already reassigned by an Admin.", instead of Not found (#551).
+- [user] A refused Accept or Reject of a Handoff now answers with a page inside the app headed by what was refused ("Can't accept Handoff", "Can't reject Handoff"), saying why and linking Back to the page it came from, instead of a bare line of text; a Handoff that isn't there shows the Not found page (#551).
+- [user] Activating a Goal that isn't Proposed is refused, so an Owner can no longer bring back a Done or Cancelled Goal, or reset an Active or On Hold Goal's activation time, by activating it again (#565).
+- [user] The Check-in form no longer starts from a Green it would refuse while a Milestone is overdue: it picks no Health and opens the dates and Milestones section even when the Goal has no Check-in yet or its Rolled-up Health also stands in the way of a No change (#566).
+- [user] A published Report's Markdown export marks a Path to Green whose back-to-Green date has passed ` — **Overdue**`, as its page and PDF do (#567).
+- [user] Dimension and Field changes made at the same moment no longer slip past each other's checks, because each one now checks and writes in a single transaction. A Dimension switched to one value while a Goal is given a second value in it now refuses one of the two, where before both went through and the Goal ended up with two values. Two values merged into each other together merge once and refuse the other; the losing merge used to fail with an internal error. Adding one value twice with different capitals (an Admin double-submit) adds it once; the second add used to fail with an internal error. A Goal's Field set by two people together keeps a Value history in which the second change starts from the first change's value (#569).
+- [user] A Report Delegate removed while they publish the Report is now refused, where before the publication went through after the removal: publishing still drafts the Report first, then checks again who may publish inside the transaction that keeps the publication (#570).
+- [user] Saving and editing a Report Definition, adding and removing Report Delegates, curating a narrative, commenting and replying, raising, closing and reassigning an Action Item, and sending a Nudge now make their checks in the same transaction as their write, so a change that lands at the same moment can no longer slip in between the check and the write (#570).
 
 **Security:**
 - [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
@@ -28,9 +40,13 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Infrastructure:**
 - [internal] Claude Code sessions in this repo show vetinari's status line: `.claude/settings.json` runs `vetinari statusline`, which adds the 🏰 campaign line under the branch. A personal status line goes in the git-ignored `.claude/settings.local.json`, which wins over the shared one (#550).
 
+**Architecture:**
+- [internal] Which Goals Follow-ups flags, with their signals, days and order, is decided once, in the domain: the page reads it through one page loader, `Service.FollowUps` (ADR 0010), and the sidebar's Follow-ups count comes from the same merge, so the test that kept the two in agreement is gone (#557).
+
 **Testing:**
 - [internal] The Handoff tests run a Reassign and an Accept one after the other, in each order, so the error each loser gets is checked on every run, not only when the race lands that way (#547).
 - [internal] The test database template's cache name now also covers the Go code that builds it (`internal/db/migrate.go`, `open.go` and the harness's new `template.go`) and the `modernc.org/sqlite` version, so a change to any of them builds a new template without bumping a constant (`templateFormat` is gone). Building a template now deletes only other templates unused for a day, and each read marks its template used, so two checkouts testing at once keep sharing their own (#540).
+- [internal] The test harness's template database cache name now also covers the `modernc.org/libc` version, a test pins the error naming a builder file the harness can't read, the cache-name test varies each of the three builder files, and running the tests with `-trimpath` fails with a message saying `-trimpath` hides the harness's source rather than a bare "no such file" (#552).
 
 **Code quality:**
 - [internal] `.golangci.yml` notes that contextcheck doesn't check inside a templ component's body, so a helper called there that drops the context isn't reported (#547).
