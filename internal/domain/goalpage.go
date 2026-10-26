@@ -86,6 +86,11 @@ type GoalPage struct {
 	// (GoalTimezone), its Milestones are judged in.
 	Now      time.Time
 	Timezone *time.Location
+	// OverdueMilestone is the Goal's first overdue Milestone — Planned and
+	// past its date as of today in Timezone — whatever its Health and with or
+	// without a Check-in, as a Green Check-in is refused for it; nil when none
+	// is.
+	OverdueMilestone *Milestone
 }
 
 // GoalPermissions says what one viewer may do with a Goal now, each by the
@@ -459,6 +464,10 @@ func (s *Service) deriveGoalPage(p *GoalPage, milestones []db.Milestone) {
 		last = lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 	}
 	p.Freshness = s.judgeFreshness(g, last)
+	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
+		overdue := milestoneFromRow(m)
+		p.OverdueMilestone = &overdue
+	}
 	s.markMilestoneOverdue(&p.Freshness, g, last.health, milestones)
 	p.RunOffGreen = s.runOffGreen(g, p.Checkins)
 	p.HealthStrip = s.healthStrip(g, p.Checkins)

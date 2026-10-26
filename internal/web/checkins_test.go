@@ -1977,6 +1977,48 @@ func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
 	}
 }
 
+// The Check-in page picks no Health and opens the dates and Milestones section
+// while a Milestone is overdue, whatever else refuses a No change: when the
+// roll-up refusal comes first, and when the Goal has no Check-in to repeat
+// (#566).
+func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdueWhateverRefusesNoChange(t *testing.T) {
+	t.Parallel()
+
+	for name, arrange := range map[string]func(h *testsupport.Harness, owner domain.Account) domain.Goal{
+		"Red child since a Green Check-in": func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			goal := h.ActiveGoal(owner, "Blue-green deploys for the monolith", "Deploys take the site down.")
+			h.Checkin(owner, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+			child := h.ActiveChildOf(owner, goal, "Split the database", "The monolith shares one.")
+			h.Checkin(owner, child.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+			h.Clock.Advance(100 * day) // past the Beta Milestone's date
+			return goal
+		},
+		"no Check-in yet": func(h *testsupport.Harness, owner domain.Account) domain.Goal {
+			goal := h.ActiveGoal(owner, "Blue-green deploys for the monolith", "Deploys take the site down.")
+			h.Clock.Advance(100 * day) // past the Beta Milestone's date
+			return goal
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			sam := h.SignIn("sam@example.com")
+			goal := arrange(h, sam)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+			if got := checkedRadio(page, "health"); got != "" {
+				t.Errorf("Health checked = %q, want none while Beta is overdue", got)
+			}
+			if !hasAttr(findByTestID(t, page, "checkin-dates-section"), "open") {
+				t.Errorf("the dates and Milestones section is collapsed while Beta is overdue")
+			}
+		})
+	}
+}
+
 // A No change refused because a Metric is off target leaves Green picked: the
 // full form can confirm that Green (#342).
 func TestCheckinPageKeepsGreenWhileMetricOffTarget(t *testing.T) {

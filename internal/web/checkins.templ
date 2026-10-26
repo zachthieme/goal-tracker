@@ -72,8 +72,8 @@ type checkinFormData struct {
 	// while Green is picked, a re-rendered form carries the confirmation, so
 	// the next submit counts as confirmed and the form shows no warning.
 	OffTargetConfirmed bool
-	// Overdue is set when the form starts on a Goal whose No change is
-	// refused for an overdue Milestone: the dates and Milestones section
+	// Overdue is set when the form starts on a Goal with an overdue
+	// Milestone, with or without a Check-in: the dates and Milestones section
 	// opens, so the Owner can move it, mark it Done or remove it.
 	Overdue bool
 	// OpenDates is set when the page was opened with ?open=dates, from a
@@ -434,10 +434,10 @@ func (d lifecycleFormData) summary() string {
 // while the Goal's ask is open, so closing it is a deliberate act. It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
 // date and Planned Milestones so the Owner can move or close them. While a
-// Milestone is overdue it picks no Health over a latest Green, as a slip is
+// Milestone is overdue it picks no Health over a Green, as a slip is
 // never hidden behind a Green (CONTEXT.md: Date Slip), and opens the dates and
-// Milestones section: the Check-in may still be Green once it moves the
-// Milestone, marks it Done or removes it.
+// Milestones section, with or without a latest Check-in: the Check-in may
+// still be Green once it moves the Milestone, marks it Done or removes it.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
 	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, RunOffGreen: v.RunOffGreen, Metrics: v.Metrics, Shown: v.dates()}
@@ -446,7 +446,7 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
 	}
-	d.Overdue = v.NoChangeOverdue
+	d.Overdue = v.OverdueMilestone != nil
 	if d.Overdue && d.Health == domain.HealthGreen {
 		d.Health = ""
 	}
