@@ -77,9 +77,9 @@ func (s *Server) writeDraftHighlightResult(w http.ResponseWriter, r *http.Reques
 	case err == nil:
 		http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
 	case errors.Is(err, domain.ErrValidation):
-		http.Error(w, sentence(plainReason(err)), http.StatusUnprocessableEntity)
+		http.Error(w, sentence(domain.Reason(err)), http.StatusUnprocessableEntity)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, plainReason(err), http.StatusForbidden)
+		http.Error(w, domain.Reason(err), http.StatusForbidden)
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	default:
@@ -104,7 +104,7 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 	if !errors.Is(err, domain.ErrValidation) {
 		return draftHighlightRefusal{}
 	}
-	return draftHighlightRefusal{ID: id, Reason: sentence(plainReason(err)), Kind: r.PostForm.Get("kind"), Note: r.PostForm.Get("note")}
+	return draftHighlightRefusal{ID: id, Reason: sentence(domain.Reason(err)), Kind: r.PostForm.Get("kind"), Note: r.PostForm.Get("note")}
 }
 
 // renderDraftHighlights answers the Highlight editor's htmx post with the Goal

@@ -84,7 +84,7 @@ func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	}
 	v := suggestParentView{Goal: goal, Candidates: candidates}
 	if refused != nil {
-		v.Error = sentence(plainReason(refused))
+		v.Error = sentence(domain.Reason(refused))
 		v.Input = r.PostForm
 	}
 	render(w, r, status, suggestParentPage(&current, v))

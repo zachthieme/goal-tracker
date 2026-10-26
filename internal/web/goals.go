@@ -21,7 +21,8 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
+			// No Goal exists yet, so the way back is the new Goal form.
+			s.refuse(w, r, "Can't create Goal", "/goals/new", err)
 			return
 		}
 		s.serverError(w, r, "could not create goal", err)
@@ -65,22 +66,13 @@ func parseDate(value string) (time.Time, error) {
 	return time.Parse(dateLayout, value)
 }
 
-// writeCommandResult redirects back to the Goal on success and surfaces a
-// validation error (e.g. an activation gate failure) as 422 and a refusal to act
-// on someone else's Goal as 403, each with its message, and a missing record as
-// the Not found page.
+// writeCommandResult redirects back to the Goal on success and answers a
+// refusal with the refusal page, linking Back to the Goal: a validation error
+// (e.g. an activation gate failure) as 422, a refusal to act on someone else's
+// Goal as 403, and a missing record as the Not found page.
 func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrValidation):
-			http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
-		case errors.Is(err, domain.ErrNotAuthorized):
-			http.Error(w, domain.Reason(err), http.StatusForbidden)
-		case errors.Is(err, domain.ErrNotFound):
-			s.notFound(w, r)
-		default:
-			s.serverError(w, r, "could not update goal", err)
-		}
+		s.refuse(w, r, "Can't change Goal", goalPath(goalID), err)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -100,8 +92,9 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 // renderRefusedForm re-renders the Goal page with status and form open,
 // carrying why its submit was refused and what it sent. When the page no
 // longer offers the viewer that form, such as Add Milestone once the Goal is
-// Done, there is nowhere beside it to say why, so the reason comes back on
-// its own. Either way the reason is a sentence without its internal prefix.
+// Done, there is nowhere beside it to say why, so the refusal page says it,
+// at the status refused's kind has, linking Back to the Goal. Either way the
+// reason is a sentence without its internal prefix.
 func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
@@ -112,12 +105,11 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
-	reason := sentence(plainReason(refused))
 	if !view.offers(form) {
-		http.Error(w, reason, status)
+		s.refuse(w, r, "Can't change Goal", goalPath(goalID), refused)
 		return
 	}
-	view.Open, view.FormError, view.FormInput = form, reason, r.PostForm
+	view.Open, view.FormError, view.FormInput = form, sentence(domain.Reason(refused)), r.PostForm
 	render(w, r, status, goalPage(&current, view))
 }
 

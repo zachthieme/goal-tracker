@@ -378,7 +378,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 			s.notFound(w, r)
 		case hx && errors.Is(err, domain.ErrValidation):
 			w.Header().Set("HX-Reswap", "none")
-			render(w, r, http.StatusOK, saveStatus("Not saved: "+plainReason(err), true))
+			render(w, r, http.StatusOK, saveStatus("Not saved: "+domain.Reason(err), true))
 		default:
 			s.writeReportError(w, r, err)
 		}
@@ -520,7 +520,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
 	switch {
 	case errors.Is(err, domain.ErrValidation):
-		status, code = "Not saved: "+plainReason(err), http.StatusUnprocessableEntity
+		status, code = "Not saved: "+domain.Reason(err), http.StatusUnprocessableEntity
 		if posted, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
 			s.serverError(w, r, "could not build the draft", err)
 			return
@@ -958,7 +958,7 @@ func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Reques
 			s.serverError(w, r, "could not load Report Delegates", lerr)
 			return
 		}
-		m.Email, m.Refused = email, plainReason(err)
+		m.Email, m.Refused = email, domain.Reason(err)
 		s.renderReportDraft(w, r, current, def, m, draft, http.StatusUnprocessableEntity)
 	default:
 		s.writeReportError(w, r, err)

@@ -644,3 +644,96 @@ func TestReplyToAReportCommentReturnsToThePublication(t *testing.T) {
 		t.Errorf("reply: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), want)
 	}
 }
+
+// A refused Comment or Action Item answers with the refusal page, headed
+// Can't comment, at its refusal's status, linking Back to the page the form
+// posted as its return, when that is a page of the app's own, or else the
+// page the Comment or Action Item is on: the Goal page for one on the Goal,
+// the publication's page for one on a publication (#573).
+func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	h.SignIn("other@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	onPub, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	onGoal, err := h.Service.AddGoalComment(context.Background(), author.ID, g.ID, "Who is the vendor?")
+	if err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	goalPath := fmt.Sprintf("/goals/%d", g.ID)
+	draftPath := fmt.Sprintf("/reports/%d", def.ID)
+
+	for _, c := range []struct {
+		name, who, path string
+		form            url.Values
+		status          int
+		reason, back    string
+	}{
+		{"a blank comment on a publication", "owner@example.com", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(g.ID)}, "body": {" "}},
+			http.StatusUnprocessableEntity, "A comment cannot be blank.", pubPath},
+		{"an Action Item raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"owner@example.com"}, "due": {"2026-02-01"}},
+			http.StatusForbidden, "Only the Report's author raises Action Items.", pubPath},
+		{"a blank comment on the Goal", "owner@example.com", goalPath + "/comments", url.Values{"body": {" "}},
+			http.StatusUnprocessableEntity, "A comment cannot be blank.", goalPath},
+		{"a blank reply on the Goal", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onGoal.ID), url.Values{"body": {" "}},
+			http.StatusUnprocessableEntity, "A reply cannot be blank.", goalPath},
+		{"a blank reply on a publication", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onPub.ID), url.Values{"body": {" "}},
+			http.StatusUnprocessableEntity, "A reply cannot be blank.", pubPath},
+		{"a close by someone not its owner, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {"Done."}, "return": {draftPath}},
+			http.StatusForbidden, "Only the Action Item's owner closes it.", draftPath},
+		{"a close with no note", "owner@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {""}},
+			http.StatusUnprocessableEntity, "Closing an Action Item needs a note.", pubPath},
+		{"a close returning off the site", "owner@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {""}, "return": {"//evil.example"}},
+			http.StatusUnprocessableEntity, "Closing an Action Item needs a note.", pubPath},
+		{"a reassign by someone who may not, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/reassign", item.ID), url.Values{"owner": {"other@example.com"}, "return": {draftPath}},
+			http.StatusForbidden, "Only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item.", draftPath},
+	} {
+		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, "Can't comment", c.reason, c.back)
+	}
+}
+
+// A reply, an Action Item's close or reassign, or a comment on a Goal, that
+// names a Comment, Action Item or Goal that isn't there answers with the Not
+// found page (#573).
+func TestADiscussionActionOnAMissingRecordIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("owner@example.com")
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "owner@example.com"))
+
+	for _, path := range []string{"/comments/99999/replies", "/action-items/99999/close", "/action-items/99999/reassign", "/goals/99999/comments"} {
+		resp := postForm(t, client, ts.URL+path, url.Values{"body": {"Why?"}, "note": {"Done."}, "owner": {"owner@example.com"}})
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", path, resp.StatusCode)
+		}
+		if !hasTestID(page, "not-found") {
+			t.Errorf("%s: not the Not found page:\n%s", path, renderNode(page))
+		}
+	}
+}
