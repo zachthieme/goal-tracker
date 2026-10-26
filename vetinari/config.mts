@@ -39,8 +39,9 @@ export default defineConfig({
   // suite itself: a template, a non-test Go file in internal/web (handlers and
   // generated templ code), internal/web/static/, e2e/, or the seed the suite's
   // template databases are built from. It also runs on a change under
-  // internal/db/ (migrations, queries, generated code), because the specs read
-  // the schema directly through seedLookup (e2e/fixtures.ts). `when` is tested
+  // internal/db/ (migrations, queries, generated code), because the seed and
+  // its manifest, which picks the specs' Goals and people (e2e/manifest.ts),
+  // are built on the schema and the generated queries. `when` is tested
   // against the changed files, one per line, hence the `m` flag. `when` scopes
   // the gate on a branch only: the merged-base gate after each wave runs every
   // gate, e2e included, whatever the wave changed (vetinari's gateMergedBase

@@ -84,8 +84,10 @@ test-scripts: ## Run the scripts/ tests: shots.mjs and contrast.py's doctest
 # The Playwright end-to-end suite in e2e/ (see e2e/README.md): it builds the
 # binaries, seeds template databases, and drives each test's own server in
 # headless Chromium. A vetinari gate for changes that reach the browser, the
-# seed, whose manifest picks the specs' Goals (e2e/manifest.ts), and the
-# database; the paths are the e2e gate's `when` in vetinari/config.mts.
+# seed, whose manifest picks the specs' Goals (e2e/manifest.ts), and
+# internal/db/, since the seed and its manifest are built on the schema and
+# the generated queries; the paths are the e2e gate's `when` in
+# vetinari/config.mts.
 # `make check` doesn't run it.
 # Needs outbound network to install Playwright and its npm packages; the pages
 # themselves load nothing from other hosts.

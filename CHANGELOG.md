@@ -16,8 +16,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 ### Collected changes — October 26, 2026
 
 **Breaking changes:**
-- [ops] **Database schema / migrations**: migration 0065 drops the `contributors` table and its two indexes, with every Contributor ever listed; nothing reads them any more, and there's no way back short of restoring a backup taken before upgrading (#593).
-- [ops] **Database schema / migrations**: the 66 migrations are squashed into one baseline, `0001_baseline.sql`, holding today's schema exactly. A database created before it is refused on start, before anything is changed, with an error saying it predates the baseline; recreate it: delete the database file (or point `GOAL_TRACKER_DB`, or `SEED_DB` for `make seed`, at a new one), then run `make seed`. There are no installs to upgrade in place (#617).
+- [ops] **Database schema / migrations**: the 66 migrations are squashed into one baseline, `0001_baseline.sql`, holding today's schema exactly, which no longer has the `contributors` table (#593). A database created before it is refused on start, before anything is changed, with an error saying it predates the baseline; recreate it: delete the database file (or point `GOAL_TRACKER_DB`, or `SEED_DB` for `make seed`, at a new one), then run `make seed`. There are no installs to upgrade in place (#617).
 
 **Improvements:**
 - [ops] Follow-ups reads each thing once: it no longer reads every Goal twice, nor the Unlinked Goals apart from the Active ones, nor each overdue Action Item's Goal, nor each Ownerless Goal's Delegates one Goal at a time, so for a lead it runs 33 queries however many Goals there are, down from 37 for 10 Goals and 45 for 50 (#557).
@@ -99,7 +98,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Infrastructure:**
 - [internal] Claude Code sessions in this repo show vetinari's status line: `.claude/settings.json` runs `vetinari statusline`, which adds the 🏰 campaign line under the branch. A personal status line goes in the git-ignored `.claude/settings.local.json`, which wins over the shared one (#550).
-- [internal] The e2e gate now also runs on a branch that changes anything under `internal/db/` (migrations, queries, generated code), since the e2e specs read the schema directly through `seedLookup`; a schema change that breaks them is caught on its own branch instead of at the merged-base run after the wave (#614).
+- [internal] The e2e gate now also runs on a branch that changes anything under `internal/db/` (migrations, queries, generated code), since the seed the specs run on, and its manifest that picks their Goals, are built on the schema and the generated queries; a schema or query change that breaks them is caught on its own branch instead of at the merged-base run after the wave (#614, #622).
 
 **Architecture:**
 - [internal] Which Goals Follow-ups flags, with their signals, days and order, is decided once, in the domain: the page reads it through one page loader, `Service.FollowUps` (ADR 0010), and the sidebar's Follow-ups count comes from the same merge, so the test that kept the two in agreement is gone (#557).
