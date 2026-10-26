@@ -140,12 +140,11 @@ type SelectedGoal struct {
 // refuses each input it can't take with an *InputError naming it.
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
 	in = normalizeReportDefinition(in)
-	if err := s.validateReportDefinition(ctx, in, nil); err != nil {
-		return ReportDefinition{}, err
-	}
-
 	var id int64
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.validateReportDefinition(ctx, in, nil); err != nil {
+			return err
+		}
 		row, err := tx.queries.CreateReportDefinition(ctx, db.CreateReportDefinitionParams{
 			Name:         in.Name,
 			Introduction: strings.TrimSpace(in.Introduction),
@@ -174,18 +173,18 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 // Only its creator, a Report Delegate or an Admin may edit it
 // (ErrNotAuthorized); ErrNotFound when there is no such definition.
 func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
-	def, err := s.GetReportDefinition(ctx, id)
-	if err != nil {
-		return ReportDefinition{}, err
-	}
-	if err := s.requireReportManager(ctx, actorID, def, "edit"); err != nil {
-		return ReportDefinition{}, err
-	}
 	in = normalizeReportDefinition(in)
-	if err := s.validateReportDefinition(ctx, in, def.FieldIDs); err != nil {
-		return ReportDefinition{}, err
-	}
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		def, err := tx.GetReportDefinition(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := tx.requireReportManager(ctx, actorID, def, "edit"); err != nil {
+			return err
+		}
+		if err := tx.validateReportDefinition(ctx, in, def.FieldIDs); err != nil {
+			return err
+		}
 		edits, err := tx.reportDefinitionEdits(ctx, def, in)
 		if err != nil {
 			return err

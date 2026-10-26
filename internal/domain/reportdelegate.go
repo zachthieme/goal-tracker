@@ -76,31 +76,31 @@ func (s *Service) reportDelegatesDefinition(ctx context.Context, actorID, defID 
 // be added, and neither can someone already a Report Delegate, a Departed
 // person or an Account that doesn't exist (ErrValidation).
 func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, accountID int64) error {
-	def, err := s.reportDelegatesDefinition(ctx, actorID, defID)
-	if err != nil {
-		return err
-	}
-	if accountID == def.CreatedBy {
-		return Refuse(ErrValidation, "the creator already manages %s", def.Name)
-	}
-	acc, err := s.queries.GetAccount(ctx, accountID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "account does not exist")
-		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	if acc.Departed != 0 {
-		return Refuse(ErrValidation, "%s has left the company", acc.Email)
-	}
-	delegates, err := s.ListReportDelegates(ctx, defID)
-	if err != nil {
-		return err
-	}
-	if isReportDelegate(delegates, accountID) {
-		return Refuse(ErrValidation, "%s is already a Report Delegate", acc.Email)
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		def, err := tx.reportDelegatesDefinition(ctx, actorID, defID)
+		if err != nil {
+			return err
+		}
+		if accountID == def.CreatedBy {
+			return Refuse(ErrValidation, "the creator already manages %s", def.Name)
+		}
+		acc, err := tx.queries.GetAccount(ctx, accountID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "account does not exist")
+			}
+			return fmt.Errorf("look up account: %w", err)
+		}
+		if acc.Departed != 0 {
+			return Refuse(ErrValidation, "%s has left the company", acc.Email)
+		}
+		delegates, err := tx.ListReportDelegates(ctx, defID)
+		if err != nil {
+			return err
+		}
+		if isReportDelegate(delegates, accountID) {
+			return Refuse(ErrValidation, "%s is already a Report Delegate", acc.Email)
+		}
 		if err := tx.queries.AddReportDelegate(ctx, db.AddReportDelegateParams{
 			ReportDefinitionID: defID,
 			AccountID:          accountID,
@@ -116,14 +116,16 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 // Report Delegate on the Report Definition defID. It is the web-facing
 // convenience over AddReportDelegate; an email with no account is rejected.
 func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID int64, email string) error {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "no account with email %q", email)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "no account with email %q", email)
+			}
+			return fmt.Errorf("look up account: %w", err)
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	return s.AddReportDelegate(ctx, actorID, defID, acc.ID)
+		return tx.AddReportDelegate(ctx, actorID, defID, acc.ID)
+	})
 }
 
 // RemoveReportDelegate revokes accountID's authorization on the Report
@@ -131,10 +133,10 @@ func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID i
 // Removing someone who is not a Report Delegate is a no-op. The Report log
 // records each one added or removed (CONTEXT.md: Report log).
 func (s *Service) RemoveReportDelegate(ctx context.Context, actorID, defID, accountID int64) error {
-	if _, err := s.reportDelegatesDefinition(ctx, actorID, defID); err != nil {
-		return err
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.reportDelegatesDefinition(ctx, actorID, defID); err != nil {
+			return err
+		}
 		removed, err := tx.queries.RemoveReportDelegate(ctx, db.RemoveReportDelegateParams{
 			ReportDefinitionID: defID,
 			AccountID:          accountID,

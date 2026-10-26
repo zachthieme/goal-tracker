@@ -101,18 +101,18 @@ type CurateNarrativeInput struct {
 // log records with what changed. Re-saving the same narrative changes nothing. Publishing
 // freezes the narrative with the snapshot and starts the next one empty.
 func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in CurateNarrativeInput) error {
-	def, err := s.GetReportDefinition(ctx, defID)
-	if err != nil {
-		return err
-	}
-	if err := s.requireReportManager(ctx, actorID, def, "curate"); err != nil {
-		return err
-	}
-	notes, err := s.checkCuratedNarrative(ctx, def, in)
-	if err != nil {
-		return err
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		def, err := tx.GetReportDefinition(ctx, defID)
+		if err != nil {
+			return err
+		}
+		if err := tx.requireReportManager(ctx, actorID, def, "curate"); err != nil {
+			return err
+		}
+		notes, err := tx.checkCuratedNarrative(ctx, def, in)
+		if err != nil {
+			return err
+		}
 		picks, err := tx.narrativePicksSaved(ctx, def.ID, in)
 		if err != nil {
 			return err

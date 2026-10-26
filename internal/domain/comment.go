@@ -47,16 +47,15 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 	if body == "" {
 		return Comment{}, Refuse(ErrValidation, "a comment cannot be blank")
 	}
-	pub, err := s.GetPublication(ctx, pubID)
-	if err != nil {
-		return Comment{}, err
-	}
-	if !pub.Report.covers(goalID) {
-		return Comment{}, Refuse(ErrValidation, "goal %d is not in this publication", goalID)
-	}
 	var c Comment
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		var err error
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		pub, err := tx.GetPublication(ctx, pubID)
+		if err != nil {
+			return err
+		}
+		if !pub.Report.covers(goalID) {
+			return Refuse(ErrValidation, "goal %d is not in this publication", goalID)
+		}
 		if c, err = tx.createComment(ctx, actorID, pubID, goalID, 0, body); err != nil {
 			return err
 		}
@@ -75,14 +74,14 @@ func (s *Service) AddGoalComment(ctx context.Context, actorID, goalID int64, bod
 	if body == "" {
 		return Comment{}, Refuse(ErrValidation, "a comment cannot be blank")
 	}
-	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Comment{}, fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
-		}
-		return Comment{}, fmt.Errorf("get goal: %w", err)
-	}
 	var c Comment
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.GetGoal(ctx, goalID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+			}
+			return fmt.Errorf("get goal: %w", err)
+		}
 		var err error
 		if c, err = tx.createComment(ctx, actorID, 0, goalID, 0, body); err != nil {
 			return err
@@ -103,25 +102,24 @@ func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, 
 	if body == "" {
 		return Comment{}, Refuse(ErrValidation, "a reply cannot be blank")
 	}
-	parent, err := s.GetComment(ctx, commentID)
-	if err != nil {
-		return Comment{}, err
-	}
-	threadID := parent.ID
-	if parent.ThreadID != 0 {
-		threadID = parent.ThreadID
-	}
-	var pub *Publication
-	if parent.PublicationID != 0 {
-		p, err := s.GetPublication(ctx, parent.PublicationID)
-		if err != nil {
-			return Comment{}, err
-		}
-		pub = &p
-	}
 	var c Comment
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		var err error
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		parent, err := tx.GetComment(ctx, commentID)
+		if err != nil {
+			return err
+		}
+		threadID := parent.ID
+		if parent.ThreadID != 0 {
+			threadID = parent.ThreadID
+		}
+		var pub *Publication
+		if parent.PublicationID != 0 {
+			p, err := tx.GetPublication(ctx, parent.PublicationID)
+			if err != nil {
+				return err
+			}
+			pub = &p
+		}
 		if c, err = tx.createComment(ctx, actorID, parent.PublicationID, parent.GoalID, threadID, body); err != nil {
 			return err
 		}

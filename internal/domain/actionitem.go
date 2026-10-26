@@ -65,55 +65,55 @@ type RaiseActionItemInput struct {
 // the publication covers. The owner is emailed it unless they raised it
 // themselves, once it is kept (see queueEmail).
 func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseActionItemInput) (ActionItem, error) {
-	pub, err := s.GetPublication(ctx, in.PublicationID)
-	if err != nil {
-		return ActionItem{}, err
-	}
-	author, err := s.isReportAuthor(ctx, actorID, pub)
-	if err != nil {
-		return ActionItem{}, err
-	}
-	if !author {
-		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Report's author raises Action Items")
-	}
-	text := strings.TrimSpace(in.Text)
-	goalID := in.GoalID
-	if in.CommentID != 0 {
-		c, err := s.GetComment(ctx, in.CommentID)
-		if err != nil {
-			return ActionItem{}, err
-		}
-		if c.PublicationID != pub.ID {
-			return ActionItem{}, Refuse(ErrValidation, "comment %d is not on this publication", c.ID)
-		}
-		if goalID != 0 && goalID != c.GoalID {
-			return ActionItem{}, Refuse(ErrValidation, "an Action Item raised from a comment is about the comment's Goal")
-		}
-		goalID = c.GoalID
-		if text == "" {
-			text = c.Body
-		}
-	} else if goalID != 0 && !pub.Report.covers(goalID) {
-		return ActionItem{}, Refuse(ErrValidation, "goal %d is not in this publication", goalID)
-	}
-	if text == "" {
-		return ActionItem{}, Refuse(ErrValidation, "an Action Item needs a description")
-	}
-	if in.DueDate.IsZero() {
-		return ActionItem{}, Refuse(ErrValidation, "an Action Item needs a due date")
-	}
-	owner, err := s.queries.GetAccount(ctx, in.OwnerID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, Refuse(ErrValidation, "an Action Item needs an owner")
-		}
-		return ActionItem{}, fmt.Errorf("look up owner: %w", err)
-	}
-	if owner.Departed != 0 {
-		return ActionItem{}, Refuse(ErrValidation, "%s has left the company", owner.Email)
-	}
 	var item ActionItem
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		pub, err := tx.GetPublication(ctx, in.PublicationID)
+		if err != nil {
+			return err
+		}
+		author, err := tx.isReportAuthor(ctx, actorID, pub)
+		if err != nil {
+			return err
+		}
+		if !author {
+			return Refuse(ErrNotAuthorized, "only the Report's author raises Action Items")
+		}
+		text := strings.TrimSpace(in.Text)
+		goalID := in.GoalID
+		if in.CommentID != 0 {
+			c, err := tx.GetComment(ctx, in.CommentID)
+			if err != nil {
+				return err
+			}
+			if c.PublicationID != pub.ID {
+				return Refuse(ErrValidation, "comment %d is not on this publication", c.ID)
+			}
+			if goalID != 0 && goalID != c.GoalID {
+				return Refuse(ErrValidation, "an Action Item raised from a comment is about the comment's Goal")
+			}
+			goalID = c.GoalID
+			if text == "" {
+				text = c.Body
+			}
+		} else if goalID != 0 && !pub.Report.covers(goalID) {
+			return Refuse(ErrValidation, "goal %d is not in this publication", goalID)
+		}
+		if text == "" {
+			return Refuse(ErrValidation, "an Action Item needs a description")
+		}
+		if in.DueDate.IsZero() {
+			return Refuse(ErrValidation, "an Action Item needs a due date")
+		}
+		owner, err := tx.queries.GetAccount(ctx, in.OwnerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "an Action Item needs an owner")
+			}
+			return fmt.Errorf("look up owner: %w", err)
+		}
+		if owner.Departed != 0 {
+			return Refuse(ErrValidation, "%s has left the company", owner.Email)
+		}
 		row, err := tx.queries.CreateActionItem(ctx, db.CreateActionItemParams{
 			ReportDefinitionID: pub.DefinitionID,
 			PublicationID:      pub.ID,
@@ -188,42 +188,54 @@ func (s *Service) isReportAuthor(ctx context.Context, actorID int64, pub Publica
 // given email. It is the web-facing convenience over RaiseActionItem, since
 // the tool identifies people by email. An email with no account is rejected.
 func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in RaiseActionItemInput, ownerEmail string) (ActionItem, error) {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(ownerEmail))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, Refuse(ErrValidation, "no account with email %q", ownerEmail)
+	var item ActionItem
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(ownerEmail))
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "no account with email %q", ownerEmail)
+			}
+			return fmt.Errorf("look up owner: %w", err)
 		}
-		return ActionItem{}, fmt.Errorf("look up owner: %w", err)
-	}
-	in.OwnerID = acc.ID
-	return s.RaiseActionItem(ctx, actorID, in)
+		in.OwnerID = acc.ID
+		item, err = tx.RaiseActionItem(ctx, actorID, in)
+		return err
+	})
+	return item, err
 }
 
 // CloseActionItem closes an open Action Item with a note on how it was
 // resolved. Only its owner may close it, and the note cannot be blank.
 func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note string) (ActionItem, error) {
-	item, err := s.GetActionItem(ctx, id)
-	if err != nil {
+	var closed ActionItem
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		item, err := tx.GetActionItem(ctx, id)
+		if err != nil {
+			return err
+		}
+		if actorID != item.Owner.ID {
+			return Refuse(ErrNotAuthorized, "only the Action Item's owner closes it")
+		}
+		if item.Closed {
+			return Refuse(ErrValidation, "the Action Item is already closed")
+		}
+		note = strings.TrimSpace(note)
+		if note == "" {
+			return Refuse(ErrValidation, "closing an Action Item needs a note")
+		}
+		if err := tx.queries.CloseActionItem(ctx, db.CloseActionItemParams{
+			ClosedAt:    s.clock.Now().Format(timeFormat),
+			ClosingNote: note,
+			ID:          id,
+		}); err != nil {
+			return fmt.Errorf("close action item: %w", err)
+		}
+		closed, err = tx.GetActionItem(ctx, id)
+		return err
+	}); err != nil {
 		return ActionItem{}, err
 	}
-	if actorID != item.Owner.ID {
-		return ActionItem{}, Refuse(ErrNotAuthorized, "only the Action Item's owner closes it")
-	}
-	if item.Closed {
-		return ActionItem{}, Refuse(ErrValidation, "the Action Item is already closed")
-	}
-	note = strings.TrimSpace(note)
-	if note == "" {
-		return ActionItem{}, Refuse(ErrValidation, "closing an Action Item needs a note")
-	}
-	if err := s.queries.CloseActionItem(ctx, db.CloseActionItemParams{
-		ClosedAt:    s.clock.Now().Format(timeFormat),
-		ClosingNote: note,
-		ID:          id,
-	}); err != nil {
-		return ActionItem{}, fmt.Errorf("close action item: %w", err)
-	}
-	return s.GetActionItem(ctx, id)
+	return closed, nil
 }
 
 // ActionItemReassignment records one open Action Item handed to a new owner
@@ -247,25 +259,25 @@ type ActionItemReassignment struct {
 // The new owner is emailed it unless they reassigned it to themselves, once
 // the reassignment is kept (see queueEmail).
 func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOwnerID int64) (ActionItem, error) {
-	item, err := s.reassignableActionItem(ctx, actorID, itemID)
-	if err != nil {
-		return ActionItem{}, err
-	}
-	owner, err := s.queries.GetAccount(ctx, newOwnerID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, Refuse(ErrValidation, "an Action Item needs an owner")
-		}
-		return ActionItem{}, fmt.Errorf("look up new owner: %w", err)
-	}
-	if owner.Departed != 0 {
-		return ActionItem{}, Refuse(ErrValidation, "%s has left the company", owner.Email)
-	}
-	if owner.ID == item.Owner.ID {
-		return ActionItem{}, Refuse(ErrValidation, "%s already owns this Action Item", owner.Email)
-	}
 	var reassigned ActionItem
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		item, err := tx.reassignableActionItem(ctx, actorID, itemID)
+		if err != nil {
+			return err
+		}
+		owner, err := tx.queries.GetAccount(ctx, newOwnerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return Refuse(ErrValidation, "an Action Item needs an owner")
+			}
+			return fmt.Errorf("look up new owner: %w", err)
+		}
+		if owner.Departed != 0 {
+			return Refuse(ErrValidation, "%s has left the company", owner.Email)
+		}
+		if owner.ID == item.Owner.ID {
+			return Refuse(ErrValidation, "%s already owns this Action Item", owner.Email)
+		}
 		n, err := tx.queries.ReassignActionItem(ctx, db.ReassignActionItemParams{OwnerID: owner.ID, ID: item.ID})
 		if err != nil {
 			return fmt.Errorf("reassign action item: %w", err)
@@ -305,18 +317,23 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 // the given email, the web-facing convenience over ReassignActionItem. An
 // email with no account is rejected.
 func (s *Service) ReassignActionItemByEmail(ctx context.Context, actorID, itemID int64, email string) (ActionItem, error) {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			return ActionItem{}, fmt.Errorf("look up new owner: %w", err)
+	var item ActionItem
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("look up new owner: %w", err)
+			}
+			// Report a missing or unreassignable item before the email.
+			if _, err := tx.reassignableActionItem(ctx, actorID, itemID); err != nil {
+				return err
+			}
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
-		// Report a missing or unreassignable item before the email.
-		if _, err := s.reassignableActionItem(ctx, actorID, itemID); err != nil {
-			return ActionItem{}, err
-		}
-		return ActionItem{}, Refuse(ErrValidation, "no account with email %q", email)
-	}
-	return s.ReassignActionItem(ctx, actorID, itemID, acc.ID)
+		item, err = tx.ReassignActionItem(ctx, actorID, itemID, acc.ID)
+		return err
+	})
+	return item, err
 }
 
 // reassignableActionItem returns the Action Item itemID if it exists, is open,

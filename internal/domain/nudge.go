@@ -34,48 +34,48 @@ type Nudge struct {
 // is tried again while it fails: a mail server that is down doesn't fail the
 // Nudge.
 func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, error) {
-	goal, err := s.loadGoal(ctx, goalID)
-	if err != nil {
-		return Nudge{}, err
-	}
-	sender, err := s.Account(ctx, actorID)
-	if err != nil {
-		return Nudge{}, err
-	}
-	delegates, err := s.ListDelegates(ctx, goalID)
-	if err != nil {
-		return Nudge{}, err
-	}
-	if goal.Owner.ID == actorID || containsAccount(delegates, actorID) {
-		return Nudge{}, Refuse(ErrNotAuthorized, "you can check in on this Goal yourself, so there's no one to nudge")
-	}
-	fresh, err := s.Freshness(ctx, goalID)
-	if err != nil {
-		return Nudge{}, err
-	}
-	signals, err := s.GoalSignals(ctx, goalID)
-	if err != nil {
-		return Nudge{}, err
-	}
-	// Only an Active Goal takes the ordinary Check-in a Schedule conflict asks
-	// for.
-	conflicted := goal.Lifecycle == LifecycleActive && len(signals.ScheduleConflicts) > 0
-	if !fresh.CheckinOverdue && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue && !conflicted {
-		return Nudge{}, Refuse(ErrValidation, "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged")
-	}
-	var conflicts []ScheduleConflict
-	if conflicted {
-		conflicts = signals.ScheduleConflicts
-	}
-	to := nudgeRecipients(goal.Owner, delegates)
-	if len(to) == 0 {
-		return Nudge{}, Refuse(ErrValidation, "nobody can check in on this Goal; it needs an Admin to reassign it")
-	}
-
-	now := s.clock.Now()
-	today := orgDate(now, s.loc).Format(dateFormat)
 	var n Nudge
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.loadGoal(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		sender, err := tx.Account(ctx, actorID)
+		if err != nil {
+			return err
+		}
+		delegates, err := tx.ListDelegates(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		if goal.Owner.ID == actorID || containsAccount(delegates, actorID) {
+			return Refuse(ErrNotAuthorized, "you can check in on this Goal yourself, so there's no one to nudge")
+		}
+		fresh, err := tx.Freshness(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		signals, err := tx.GoalSignals(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		// Only an Active Goal takes the ordinary Check-in a Schedule conflict
+		// asks for.
+		conflicted := goal.Lifecycle == LifecycleActive && len(signals.ScheduleConflicts) > 0
+		if !fresh.CheckinOverdue && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue && !conflicted {
+			return Refuse(ErrValidation, "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged")
+		}
+		var conflicts []ScheduleConflict
+		if conflicted {
+			conflicts = signals.ScheduleConflicts
+		}
+		to := nudgeRecipients(goal.Owner, delegates)
+		if len(to) == 0 {
+			return Refuse(ErrValidation, "nobody can check in on this Goal; it needs an Admin to reassign it")
+		}
+
+		now := s.clock.Now()
+		today := orgDate(now, s.loc).Format(dateFormat)
 		earlier, err := tx.queries.ListNudgesOn(ctx, today)
 		if err != nil {
 			return fmt.Errorf("list today's nudges: %w", err)
