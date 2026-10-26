@@ -48,8 +48,7 @@ func (s *Service) AskAddressee(ctx context.Context, owner Account) (*Account, er
 //     no addressee, as ADR 0008's Chain stops at anyone it has already reached;
 //   - a Manager naming no Account: it stops with no addressee, since nothing
 //     records who is above them. The directory sync gives every Manager it
-//     names an Account, so this can't happen today; unlike loadPageOrgScope,
-//     it isn't an error;
+//     names an Account, so this can't happen today;
 //   - a Departed Manager: it moves on to their Manager;
 //   - anyone else is the addressee.
 func askAddressee(owner Account, account func(id int64) (Account, bool, error)) (*Account, error) {

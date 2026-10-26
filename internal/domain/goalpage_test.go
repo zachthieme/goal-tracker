@@ -180,13 +180,16 @@ type goalCommand struct {
 var errRolledBack = errors.New("rolled back")
 
 // For each Goal command, each kind of viewer — the Owner, a Delegate, an
-// Admin, anyone else and a Departed Delegate — and each Lifecycle, and on an
-// Ownerless Goal, the Goal page offers the command exactly when the command,
-// made with input it would otherwise take, doesn't refuse for who the viewer
-// is or for the Goal's Lifecycle or state: what it offers is accepted, and
-// what it doesn't is refused with ErrNotAuthorized or ErrValidation. Each
-// Lifecycle a Check-in may move the Goal to is a command of its own, and
-// deciding a Parent suggestion is made where the Goal has an open one.
+// Admin, anyone else, a Departed Delegate and a Departed Admin — and each
+// Lifecycle, and on an Ownerless Goal, the Goal page offers the command
+// exactly when the command, made with input it would otherwise take, doesn't
+// refuse for who the viewer is or for the Goal's Lifecycle or state: what it
+// offers is accepted, and what it doesn't is refused with ErrNotAuthorized or
+// ErrValidation. A command no viewer was both offered and had accepted on some
+// Goal fails the test, since its refusals would then prove nothing of its
+// rule. Each Lifecycle a Check-in may move the Goal to is a command of its
+// own, and deciding a Parent suggestion is made where the Goal has an open
+// one.
 func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
