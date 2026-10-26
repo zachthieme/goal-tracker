@@ -26,26 +26,6 @@ func (q *Queries) CountLaterHandoffs(ctx context.Context, arg CountLaterHandoffs
 	return count, err
 }
 
-const countLaterLinkRemovals = `-- name: CountLaterLinkRemovals :one
-SELECT COUNT(*) FROM link_removals
-WHERE child_id = ?1 AND parent_id = ?2 AND id > ?3
-`
-
-type CountLaterLinkRemovalsParams struct {
-	ChildID  int64
-	ParentID int64
-	ID       int64
-}
-
-// How many removals of the link between two Goals came after this one: any
-// means the link was made and removed again since.
-func (q *Queries) CountLaterLinkRemovals(ctx context.Context, arg CountLaterLinkRemovalsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countLaterLinkRemovals, arg.ChildID, arg.ParentID, arg.ID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createUndoToken = `-- name: CreateUndoToken :one
 INSERT INTO undo_tokens (token, kind, subject_id, account_id, detail, issued_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -116,39 +96,6 @@ func (q *Queries) GetUndoToken(ctx context.Context, token string) (UndoToken, er
 		&i.UsedAt,
 	)
 	return i, err
-}
-
-const listLinkRejectionTimes = `-- name: ListLinkRejectionTimes :many
-SELECT rejected_at FROM rejected_link_requests WHERE child_id = ? AND parent_id = ?
-`
-
-type ListLinkRejectionTimesParams struct {
-	ChildID  int64
-	ParentID int64
-}
-
-// When each rejected request for the link between two Goals was rejected.
-func (q *Queries) ListLinkRejectionTimes(ctx context.Context, arg ListLinkRejectionTimesParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listLinkRejectionTimes, arg.ChildID, arg.ParentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var rejected_at string
-		if err := rows.Scan(&rejected_at); err != nil {
-			return nil, err
-		}
-		items = append(items, rejected_at)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const useUndoToken = `-- name: UseUndoToken :execrows

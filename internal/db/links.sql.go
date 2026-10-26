@@ -10,26 +10,6 @@ import (
 	"strings"
 )
 
-const countLaterRejectedLinkRequests = `-- name: CountLaterRejectedLinkRequests :one
-SELECT COUNT(*) FROM rejected_link_requests
-WHERE child_id = ?1 AND parent_id = ?2 AND id > ?3
-`
-
-type CountLaterRejectedLinkRequestsParams struct {
-	ChildID  int64
-	ParentID int64
-	ID       int64
-}
-
-// How many requests between the same two Goals were rejected after this one:
-// any means the link was requested again since.
-func (q *Queries) CountLaterRejectedLinkRequests(ctx context.Context, arg CountLaterRejectedLinkRequestsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countLaterRejectedLinkRequests, arg.ChildID, arg.ParentID, arg.ID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createLink = `-- name: CreateLink :one
 INSERT INTO links (child_id, parent_id, status, note, requested_by, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -379,29 +359,77 @@ func (q *Queries) ListChildGoalsForGoals(ctx context.Context, parentIds []int64)
 	return items, nil
 }
 
-const listLinkRemovalTimes = `-- name: ListLinkRemovalTimes :many
-SELECT removed_at FROM link_removals WHERE child_id = ? AND parent_id = ?
+const listLinkPairRejections = `-- name: ListLinkPairRejections :many
+SELECT id, rejected_at FROM rejected_link_requests
+WHERE child_id = ? AND parent_id = ?
+ORDER BY id
 `
 
-type ListLinkRemovalTimesParams struct {
+type ListLinkPairRejectionsParams struct {
 	ChildID  int64
 	ParentID int64
 }
 
-// When each removal of the link between two Goals happened.
-func (q *Queries) ListLinkRemovalTimes(ctx context.Context, arg ListLinkRemovalTimesParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listLinkRemovalTimes, arg.ChildID, arg.ParentID)
+type ListLinkPairRejectionsRow struct {
+	ID         int64
+	RejectedAt string
+}
+
+// Every rejected request for the link between two Goals: its id and when it
+// was rejected.
+func (q *Queries) ListLinkPairRejections(ctx context.Context, arg ListLinkPairRejectionsParams) ([]ListLinkPairRejectionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLinkPairRejections, arg.ChildID, arg.ParentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []string
+	var items []ListLinkPairRejectionsRow
 	for rows.Next() {
-		var removed_at string
-		if err := rows.Scan(&removed_at); err != nil {
+		var i ListLinkPairRejectionsRow
+		if err := rows.Scan(&i.ID, &i.RejectedAt); err != nil {
 			return nil, err
 		}
-		items = append(items, removed_at)
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinkPairRemovals = `-- name: ListLinkPairRemovals :many
+SELECT id, removed_at FROM link_removals
+WHERE child_id = ? AND parent_id = ?
+ORDER BY id
+`
+
+type ListLinkPairRemovalsParams struct {
+	ChildID  int64
+	ParentID int64
+}
+
+type ListLinkPairRemovalsRow struct {
+	ID        int64
+	RemovedAt string
+}
+
+// Every removal of the link between two Goals: its id and when it happened.
+func (q *Queries) ListLinkPairRemovals(ctx context.Context, arg ListLinkPairRemovalsParams) ([]ListLinkPairRemovalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLinkPairRemovals, arg.ChildID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLinkPairRemovalsRow
+	for rows.Next() {
+		var i ListLinkPairRemovalsRow
+		if err := rows.Scan(&i.ID, &i.RemovedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
