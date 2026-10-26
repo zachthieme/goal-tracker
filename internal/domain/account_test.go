@@ -282,6 +282,36 @@ func TestDepartedAccountsListsEveryDepartedPersonByLabel(t *testing.T) {
 	}
 }
 
+// Accounts is everyone with an Account, by ID: a Departed person and an Admin
+// with the rest.
+func TestAccountsListsEveryAccountByIDDepartedIncluded(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	zed := h.SignInNamed("zed@example.com", "Zed Okafor")
+	amy := h.SignIn("amy@example.com")
+	if err := h.Service.MarkDeparted(ctx, boss.ID, zed.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	got, err := h.Service.Accounts(ctx)
+	if err != nil {
+		t.Fatalf("Accounts: %v", err)
+	}
+	var emails []string
+	for _, a := range got {
+		emails = append(emails, a.Email)
+	}
+	if want := []string{"boss@example.com", "zed@example.com", "amy@example.com"}; !slices.Equal(emails, want) {
+		t.Fatalf("Accounts = %q, want %q, by ID", emails, want)
+	}
+	if !got[0].IsAdmin || !got[1].Departed || got[1].Name != "Zed Okafor" || got[2].ID != amy.ID {
+		t.Errorf("Accounts = %+v, want each as Account reads it", got)
+	}
+}
+
 // A Handoff cancelled when its new Owner departed stays cancelled after they
 // return, so the Goal stays with the Owner who started it.
 func TestMarkReturnedLeavesACancelledHandoffCancelled(t *testing.T) {

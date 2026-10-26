@@ -164,6 +164,20 @@ func (s *Service) AccountsByIDs(ctx context.Context, ids []int64) (map[int64]Acc
 	return out, nil
 }
 
+// Accounts lists every Account, Departed ones included, by ID, as Account
+// reads each.
+func (s *Service) Accounts(ctx context.Context) ([]Account, error) {
+	rows, err := s.queries.ListOrgWalkAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list accounts: %w", err)
+	}
+	out := make([]Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, accountFromRow(r))
+	}
+	return out, nil
+}
+
 // AccountByEmail returns the Account with the given email, whatever its case
 // or surrounding spaces (CONTEXT.md: Account), without creating one. It returns
 // ErrNotFound if there is none.
