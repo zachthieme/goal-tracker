@@ -1234,6 +1234,9 @@ func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 			if draft, err := h.Service.DraftReport(context.Background(), def, time.Time{}); err != nil || len(draft.Narrative) != 0 {
 				t.Errorf("narrative after a refusal %+v (err %v), want nothing saved", draft.Narrative, err)
 			}
+			if tc.name == "plain" && !hasTestID(answer, "report-draft") {
+				t.Errorf("refused add another without script doesn't answer the whole draft page; body:\n%s", body)
+			}
 			if tc.name == "htmx" {
 				for _, untouched := range []string{"report-draft", "publish-summary", "draft-header"} {
 					if hasTestID(answer, untouched) {
