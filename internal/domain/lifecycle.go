@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"context"
-	"fmt"
 	"slices"
 	"strings"
 )
@@ -101,12 +99,8 @@ func (c LifecycleChange) resultingLifecycle(current string) string {
 }
 
 // requireFinalValues checks that a Done Check-in's readings give a final value
-// for every Metric on the Goal, naming the first Metric that has none.
-func (s *Service) requireFinalValues(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
-	metrics, err := s.queries.ListMetrics(ctx, goalID)
-	if err != nil {
-		return fmt.Errorf("list metrics: %w", err)
-	}
+// for every one of metrics, the Goal's, naming the first Metric that has none.
+func requireFinalValues(metrics []Metric, readings []MetricReadingInput) error {
 	read := make(map[int64]bool, len(readings))
 	for _, rd := range readings {
 		read[rd.MetricID] = true

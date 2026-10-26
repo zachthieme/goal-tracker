@@ -210,9 +210,5 @@ func (s *Service) readCheckinPageAsk(ctx context.Context, p *CheckinPage, accoun
 // Metric with none, its latest, as Service.OffTargetMetrics judges them, from
 // what p read.
 func (p CheckinPage) OffTargetMetrics(typed []MetricReadingInput) []OffTargetMetric {
-	entered := make(map[int64]float64, len(typed))
-	for _, rd := range typed {
-		entered[rd.MetricID] = rd.Value
-	}
-	return offTargetMetricsAmong(p.Metrics, p.Readings, entered, orgDate(p.Now, p.Timezone))
+	return checkinOffTargetMetrics(p.Metrics, p.Readings, typed, orgDate(p.Now, p.Timezone))
 }

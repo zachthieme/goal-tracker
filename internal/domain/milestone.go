@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -170,29 +171,28 @@ func (e *MilestoneOverdueError) logDetail() string {
 	return msg
 }
 
-// rejectGreenWhileOverdue refuses a Green Health while any of g's Milestones,
-// as they will stand after the Check-in, is overdue as of today in g's
-// timezone (see GoalTimezone): a slip is never hidden behind a Green
-// (CONTEXT.md: Date Slip). Its InputError's Message is the overdue refusal's
-// log text: a page composes the sentence from the *MilestoneOverdueError.
-func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db.Milestone) error {
+// rejectGreenWhileOverdue refuses a Green Health while any of milestones, the
+// Goal's as they will stand after the Check-in, is overdue as of today, a date
+// in the Goal's timezone (see overdueMilestone): a slip is never hidden behind
+// a Green (CONTEXT.md: Date Slip). Its InputError's Message is the overdue
+// refusal's log text: a page composes the sentence from the
+// *MilestoneOverdueError.
+func rejectGreenWhileOverdue(health string, milestones []Milestone, today time.Time) error {
 	if health != HealthGreen {
 		return nil
 	}
-	today := s.goalToday(g)
-	for _, m := range milestones {
-		if milestone := milestoneFromRow(m); milestone.OverdueOn(today) {
-			overdue := &MilestoneOverdueError{Milestone: milestone, RulesOut: OverdueRulesOutGreen}
-			return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.logDetail(), Err: overdue}
-		}
+	m, ok := overdueMilestone(milestones, today)
+	if !ok {
+		return nil
 	}
-	return nil
+	overdue := &MilestoneOverdueError{Milestone: m, RulesOut: OverdueRulesOutGreen}
+	return &InputError{Input: milestoneDateInput(milestones, m), Message: overdue.logDetail(), Err: overdue}
 }
 
 // milestoneDateInput names the Check-in input that dates m, one of milestones
 // as a Check-in leaves them: the Goal's Milestones, then those it adds, which
 // have no ID yet and are named by their place among the added.
-func milestoneDateInput(milestones []db.Milestone, m db.Milestone) string {
+func milestoneDateInput(milestones []Milestone, m Milestone) string {
 	if m.ID != 0 {
 		return CheckinMilestoneInput(m.ID, "date")
 	}
@@ -443,7 +443,7 @@ type milestoneStatusChange struct {
 
 // planMilestoneStatus validates a Check-in's new status for a Planned Milestone.
 // Empty or Planned is no change (nil); Removed needs a reason.
-func planMilestoneStatus(m db.Milestone, status, removedReason string) (*milestoneStatusChange, error) {
+func planMilestoneStatus(m Milestone, status, removedReason string) (*milestoneStatusChange, error) {
 	switch status {
 	case "", MilestonePlanned:
 		return nil, nil
@@ -467,23 +467,20 @@ type milestonePlan struct {
 	slips     []slipPlan
 	statuses  []milestoneStatusChange
 	added     []NewMilestoneInput
-	resulting []db.Milestone
+	resulting []Milestone
 }
 
-// planMilestoneChanges validates a Check-in's Milestone changes against the
-// Goal's Milestones — each must name a Milestone on this Goal, at most once —
+// planMilestoneChanges validates a Check-in's Milestone changes against
+// current, the Goal's Milestones — each must name one of them, at most once —
 // and the Milestones it adds, each of which needs a name and a date.
-func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, changes []MilestoneChangeInput, added []NewMilestoneInput) (milestonePlan, error) {
-	rows, err := s.queries.ListMilestones(ctx, goalID)
-	if err != nil {
-		return milestonePlan{}, fmt.Errorf("list milestones: %w", err)
-	}
-	index := make(map[int64]int, len(rows))
-	for i, r := range rows {
-		index[r.ID] = i
+func planMilestoneChanges(current []Milestone, changes []MilestoneChangeInput, added []NewMilestoneInput) (milestonePlan, error) {
+	index := make(map[int64]int, len(current))
+	for i, m := range current {
+		index[m.ID] = i
 	}
 	seen := make(map[int64]bool, len(changes))
-	plan := milestonePlan{resulting: rows}
+	// The plan changes its own copy: current is the Goal's, as read.
+	plan := milestonePlan{resulting: slices.Clone(current)}
 	for _, ch := range changes {
 		i, ok := index[ch.MilestoneID]
 		if !ok {
@@ -503,7 +500,7 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 		}
 		if slip != nil {
 			plan.slips = append(plan.slips, *slip)
-			m.TargetDate = slip.newDate.Format(dateFormat)
+			m.TargetDate = calendarDate(slip.newDate)
 		}
 		change, err := planMilestoneStatus(*m, ch.Status, ch.RemovedReason)
 		if err != nil {
@@ -523,7 +520,7 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 			return milestonePlan{}, inputError(CheckinNewMilestoneInput(i), "new Milestone %q needs a date", name)
 		}
 		plan.added = append(plan.added, NewMilestoneInput{Name: name, TargetDate: a.TargetDate})
-		plan.resulting = append(plan.resulting, db.Milestone{Name: name, TargetDate: a.TargetDate.Format(dateFormat), Status: MilestonePlanned})
+		plan.resulting = append(plan.resulting, Milestone{Name: name, TargetDate: calendarDate(a.TargetDate), Status: MilestonePlanned})
 	}
 	return plan, nil
 }
@@ -692,6 +689,12 @@ func milestoneChangeFromRow(r db.ListMilestoneChangesByGoalRow) MilestoneChange 
 		AddedDate:   addedDate,
 		CreatedAt:   createdAt,
 	}
+}
+
+// calendarDate is the calendar date t falls on in its own location, as a
+// Milestone's date is stored and read back.
+func calendarDate(t time.Time) time.Time {
+	return orgDate(t, t.Location())
 }
 
 func milestoneFromRow(m db.Milestone) Milestone {

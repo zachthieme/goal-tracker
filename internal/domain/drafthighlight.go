@@ -237,36 +237,38 @@ type draftHighlightPicks struct {
 	discarded []int64
 }
 
-// planDraftHighlightPicks works out what a Check-in on goalID does with each
-// row offered from a Draft Highlight. Called within the Check-in's
-// transaction, so the rows it reads as pending are the ones the Check-in clears. A row naming one that is no longer
-// pending on this Goal — deleted, or cleared by another Check-in — is ignored.
-// A kept row with a note becomes a Highlight; one left out, or kept with its
-// note blanked, records nothing and discards its Draft Highlight. Ignored and
-// left-out rows stay in rows, blanked, so planHighlights still names each row
-// by its position on the form. A Draft Highlight no row names, such as one
-// logged after the form opened, stays pending.
-func (s *Service) planDraftHighlightPicks(ctx context.Context, goalID int64, rows []HighlightInput) (draftHighlightPicks, error) {
+// planDraftHighlightPicks works out what a Check-in does with each row offered
+// from a Draft Highlight, given pending, the Goal's pending Draft Highlights,
+// asked for only when a row names one. The Check-in reads them within its
+// transaction, so the ones it reads as pending are the ones it clears. A row
+// naming one that is no longer pending on this Goal — deleted, or cleared by
+// another Check-in — is ignored. A kept row with a note becomes a Highlight;
+// one left out, or kept with its note blanked, records nothing and discards
+// its Draft Highlight. Ignored and left-out rows stay in rows, blanked, so
+// planHighlights still names each row by its position on the form. A Draft
+// Highlight no row names, such as one logged after the form opened, stays
+// pending.
+func planDraftHighlightPicks(rows []HighlightInput, pending func() ([]DraftHighlight, error)) (draftHighlightPicks, error) {
 	var out draftHighlightPicks
-	var pending map[int64]bool
+	var isPending map[int64]bool
 	for _, row := range rows {
 		if row.DraftHighlightID == 0 {
 			out.rows = append(out.rows, row)
 			continue
 		}
-		if pending == nil {
-			drafts, err := s.pendingDraftHighlights(ctx, goalID)
+		if isPending == nil {
+			drafts, err := pending()
 			if err != nil {
 				return draftHighlightPicks{}, err
 			}
-			pending = make(map[int64]bool, len(drafts))
+			isPending = make(map[int64]bool, len(drafts))
 			for _, d := range drafts {
-				pending[d.ID] = true
+				isPending[d.ID] = true
 			}
 		}
 		id := row.DraftHighlightID
 		switch {
-		case !pending[id]:
+		case !isPending[id]:
 			out.rows = append(out.rows, HighlightInput{})
 		case row.LeftOut || strings.TrimSpace(row.Note) == "":
 			out.rows = append(out.rows, HighlightInput{})
@@ -276,7 +278,7 @@ func (s *Service) planDraftHighlightPicks(ctx context.Context, goalID int64, row
 			out.kept = append(out.kept, id)
 		}
 		// A form naming the same Draft Highlight twice offers it once.
-		delete(pending, id)
+		delete(isPending, id)
 	}
 	return out, nil
 }
