@@ -438,70 +438,55 @@ func TestDecidingADecidedHandoffSaysHowItWasDecided(t *testing.T) {
 	cal := h.SignIn("cal@example.com")
 	eve := h.SignIn("eve@example.com")
 
-	accepted := func() (int64, domain.Account) {
-		sam := h.SignIn("sam-accepted@example.com")
-		ho := startHandoff(t, h, h.CreateGoal(sam, "Accepted", "why").ID, pat.ID, sam.ID)
-		if _, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID, nil); err != nil {
-			t.Fatalf("AcceptHandoff: %v", err)
-		}
-		return ho.ID, pat
+	sam := h.SignIn("sam@example.com")
+	accepted := startHandoff(t, h, h.CreateGoal(sam, "Accepted", "why").ID, pat.ID, sam.ID)
+	if _, err := h.Service.AcceptHandoff(ctx, accepted.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
 	}
-	rejected := func() (int64, domain.Account) {
-		sam := h.SignIn("sam-rejected@example.com")
-		ho := startHandoff(t, h, h.CreateGoal(sam, "Rejected", "why").ID, pat.ID, sam.ID)
-		if _, err := h.Service.RejectHandoff(ctx, ho.ID, pat.ID); err != nil {
-			t.Fatalf("RejectHandoff: %v", err)
-		}
-		return ho.ID, pat
+	rejected := startHandoff(t, h, h.CreateGoal(sam, "Rejected", "why").ID, pat.ID, sam.ID)
+	if _, err := h.Service.RejectHandoff(ctx, rejected.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
 	}
-	// An Admin's Reassign of an Ownerless Goal cancels its pending Handoff to
-	// Pat and records the Reassign to Cal.
-	reassign := func(email string) []domain.Handoff {
-		sam := h.SignIn(email)
-		goal := h.CreateGoal(sam, "Reassigned", "why")
-		startHandoff(t, h, goal.ID, pat.ID, sam.ID)
-		if err := h.Service.MarkDeparted(ctx, boss.ID, sam.ID); err != nil {
-			t.Fatalf("MarkDeparted: %v", err)
-		}
-		if _, err := h.Service.ReassignGoal(ctx, boss.ID, goal.ID, cal.ID); err != nil {
-			t.Fatalf("ReassignGoal: %v", err)
-		}
-		history, err := h.Service.OwnershipHistory(ctx, goal.ID)
-		if err != nil || len(history) != 2 {
-			t.Fatalf("OwnershipHistory = %+v, %v, want the cancelled Handoff then the Reassign", history, err)
-		}
-		return history
+	// An Admin's Reassign of a departed Owner's Goal cancels its pending
+	// Handoff to Pat and records the Reassign to Cal.
+	lee := h.SignIn("lee@example.com")
+	goal := h.CreateGoal(lee, "Reassigned", "why")
+	cancelled := startHandoff(t, h, goal.ID, pat.ID, lee.ID)
+	if err := h.Service.MarkDeparted(ctx, boss.ID, lee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
 	}
-	cancelled := func() (int64, domain.Account) {
-		return reassign("sam-cancelled@example.com")[0].ID, pat
+	if _, err := h.Service.ReassignGoal(ctx, boss.ID, goal.ID, cal.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
 	}
-	reassigned := func() (int64, domain.Account) {
-		return reassign("sam-reassigned@example.com")[1].ID, cal
+	history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+	if err != nil || len(history) != 2 || history[1].Status != domain.HandoffReassigned {
+		t.Fatalf("OwnershipHistory = %+v, %v, want the cancelled Handoff then the Reassign", history, err)
 	}
+	reassigned := history[1]
 
 	for _, tc := range []struct {
-		name   string
-		decide func() (int64, domain.Account)
-		reason string
+		name      string
+		handoffID int64
+		newOwner  domain.Account
+		reason    string
 	}{
-		{"accepted", accepted, "this Handoff was already accepted"},
-		{"rejected", rejected, "this Handoff was already rejected"},
-		{"cancelled", cancelled, "this Handoff was cancelled"},
-		{"reassigned", reassigned, "this Goal was already reassigned by an Admin"},
+		{"accepted", accepted.ID, pat, "this Handoff was already accepted"},
+		{"rejected", rejected.ID, pat, "this Handoff was already rejected"},
+		{"cancelled", cancelled.ID, pat, "this Handoff was cancelled"},
+		{"reassigned", reassigned.ID, cal, "this Goal was already reassigned by an Admin"},
 	} {
-		handoffID, newOwner := tc.decide()
 		decisions := map[string]func(actorID int64) error{
 			"AcceptHandoff": func(actorID int64) error {
-				_, err := h.Service.AcceptHandoff(ctx, handoffID, actorID, nil)
+				_, err := h.Service.AcceptHandoff(ctx, tc.handoffID, actorID, nil)
 				return err
 			},
 			"RejectHandoff": func(actorID int64) error {
-				_, err := h.Service.RejectHandoff(ctx, handoffID, actorID)
+				_, err := h.Service.RejectHandoff(ctx, tc.handoffID, actorID)
 				return err
 			},
 		}
 		for name, decide := range decisions {
-			err := decide(newOwner.ID)
+			err := decide(tc.newOwner.ID)
 			if !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("%s: %s by the new Owner: err = %v, want ErrValidation", tc.name, name, err)
 			} else if got := domain.Reason(err); got != tc.reason {
