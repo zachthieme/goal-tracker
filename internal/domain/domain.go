@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -31,9 +30,11 @@ type Service struct {
 	// in. A Goal's own dates are read in it too when its Owner has no Timezone
 	// or it is Ownerless (see GoalTimezone).
 	loc *time.Location
-	// baseURL is where people reach the web app, for the links in the emails
-	// the Service sends itself (a comment alert). Empty leaves links relative.
-	baseURL string
+	// links builds the links into the web app that emails carry, from where
+	// people reach it (WithBaseURL); without one they are relative.
+	links AppLinks
+	// composer builds every email the Service and the weekly emails send.
+	composer EmailComposer
 	// hashes is the limit every argon2id hash runs under: at most one per CPU
 	// at once, so a burst of sign-ins, each taking argonMemory, can't exhaust
 	// the server's memory.
@@ -69,7 +70,7 @@ func WithTimezone(loc *time.Location) Option {
 // WithBaseURL sets where people reach the web app (e.g.
 // http://localhost:8080), so links in the emails the Service sends point there.
 func WithBaseURL(url string) Option {
-	return func(s *Service) { s.baseURL = strings.TrimRight(url, "/") }
+	return func(s *Service) { s.links = NewAppLinks(url) }
 }
 
 // NewService builds a Service over sqlDB. adminEmails are the addresses that
@@ -94,6 +95,7 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.composer = EmailComposer{links: s.links, loc: s.loc}
 	return s
 }
 
@@ -125,7 +127,8 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		email:       s.email,
 		admins:      s.admins,
 		loc:         s.loc,
-		baseURL:     s.baseURL,
+		links:       s.links,
+		composer:    s.composer,
 		hashes:      s.hashes,
 		inTx:        true,
 		goalImport:  s.goalImport,

@@ -198,7 +198,7 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	}})
 	// The weekly emails are queued in the outbox for each week's slot. A slot
 	// missed while the app was down is sent once, late, as it starts.
-	notifier := notify.New(svc, cfg.baseURL)
+	notifier := notify.New(svc)
 	scheduler := notify.NewScheduler(svc, notify.WeeklyJob, weekly, notifier.SendWeekly)
 	background.Add(jobs.Job{Name: notify.WeeklyJob, Every: time.Minute, Run: scheduler.Tick})
 	background.Start(ctx)

@@ -18,10 +18,13 @@ const (
 	baseURL = "http://goals.test"
 )
 
-// newNotifier wires a Notifier over the harness's Service and its recording
-// email sender.
+// newNotifier wires a Notifier over a Service on the harness's database and
+// recording email sender, whose emails link to the web app at baseURL (the
+// harness's own Service has no base URL) and are sent, as the harness's are,
+// once queued.
 func newNotifier(h *testsupport.Harness) *notify.Notifier {
-	return notify.New(h.Service, baseURL)
+	return notify.New(domain.NewService(h.DB, h.Clock, h.Email, nil,
+		domain.WithBaseURL(baseURL), domain.WithEmailDeliveredOnCommit()))
 }
 
 // sentTo returns the messages recorded for the address.
@@ -575,9 +578,9 @@ func TestReminderListsOpenActionItemsAfterCheckins(t *testing.T) {
 	body := msgs[0].Body
 	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Check-in overdue, no Check-in since activation 10 days ago (every 7 days)\n  http://goals.test/goals/%d/checkin\n", g.ID)
 	items := fmt.Sprintf("\nAction Items you own:\n\n"+
-		"- Book the legal review (MBR, about Ship search): overdue since 2026-01-05\n  http://goals.test/goals/%d#action-items\n"+
+		"- Book the legal review (MBR, about Ship search): overdue since 2026-01-05\n  http://goals.test/reports/%d/publications/%d#action-items\n"+
 		"- Move the MBR to Tuesdays (MBR): due 2026-01-20\n  http://goals.test/reports/%d/publications/%d#action-items\n",
-		g.ID, pub.DefinitionID, pub.ID)
+		pub.DefinitionID, pub.ID, pub.DefinitionID, pub.ID)
 	if want := checkin + items; body != want {
 		t.Errorf("reminder body =\n%s\nwant\n%s", body, want)
 	}
@@ -607,7 +610,7 @@ func TestReminderReachesAnActionItemOwnerWithNoCheckinDue(t *testing.T) {
 		t.Errorf("subject = %q, want %q", got, want)
 	}
 	want := fmt.Sprintf("Action Items you own:\n\n"+
-		"- Book the legal review (MBR, about Ship search): due 2026-01-09\n  http://goals.test/goals/%d#action-items\n", g.ID)
+		"- Book the legal review (MBR, about Ship search): due 2026-01-09\n  http://goals.test/reports/%d/publications/%d#action-items\n", pub.DefinitionID, pub.ID)
 	if body := msgs[0].Body; body != want {
 		t.Errorf("reminder body =\n%s\nwant\n%s", body, want)
 	}

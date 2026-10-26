@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
-	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
 // ActionItem is a follow-up raised while a Report is discussed (CONTEXT.md:
@@ -136,23 +135,15 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 	return item, err
 }
 
-// emailActionItemOwner queues an email of the Action Item to its owner: intro, saying who
-// gave it to them, then what it is, its Report and Goal, its due date, and a
-// link to it.
+// emailActionItemOwner queues the email of the Action Item to its owner
+// (EmailComposer.ActionItem): intro, saying who gave it to them, then what it
+// is, its Report and Goal, its due date, and a link to it.
 func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, intro string) error {
 	def, err := s.queries.GetReportDefinition(ctx, item.DefinitionID)
 	if err != nil {
 		return fmt.Errorf("get report definition: %w", err)
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s in the Report %s:\n\n%s\n\n", intro, def.Name, item.Text)
-	if item.GoalTitle != "" {
-		fmt.Fprintf(&b, "Goal: %s\n", item.GoalTitle)
-	}
-	fmt.Fprintf(&b, "Due: %s\n\n", item.DueDate.Format(dateFormat))
-	fmt.Fprintf(&b, "%s/reports/%d/publications/%d#action-items\n", s.baseURL, item.DefinitionID, item.PublicationID)
-	subject := "Action Item: " + strings.Join(strings.Fields(item.Text), " ")
-	if err := s.queueEmail(ctx, email.Message{To: item.Owner.Email, AccountID: item.Owner.ID, Subject: subject, Body: b.String()}); err != nil {
+	if err := s.queueEmail(ctx, s.composer.ActionItem(item, def.Name, intro)); err != nil {
 		return fmt.Errorf("queue action item email: %w", err)
 	}
 	return nil

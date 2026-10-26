@@ -329,7 +329,7 @@ const dummyPasswordHash = "$argon2id$v=19$m=65536,t=1,p=4$Z29hbC10cmFja2VyLWR1bQ
 // PasswordLinkURL is the set-password link for token, at the web app's base
 // URL.
 func (s *Service) PasswordLinkURL(token string) string {
-	return s.baseURL + "/set-password?token=" + token
+	return s.links.SetPassword(token)
 }
 
 // passwordLinkHash is how a set-password link's token is stored: its SHA-256,
