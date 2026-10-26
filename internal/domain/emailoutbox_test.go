@@ -13,6 +13,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
+	"github.com/zachthieme/goal-tracker/internal/jobs"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -324,26 +325,37 @@ func TestOutboxLogsASendErrorWithoutAQuotedLocalPart(t *testing.T) {
 	}
 }
 
-// The outbox, run in the background, sends a command's email once the
-// command commits, without waiting for its next round, and stops when its
-// context is done.
-func TestRunEmailOutboxSendsQueuedEmailOnceItsCommandCommits(t *testing.T) {
+// The email outbox job, run in the background, sends a command's email once
+// the command commits, woken by EmailWake without waiting for its next Every.
+func TestTheEmailOutboxJobSendsQueuedEmailOnceItsCommandCommits(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	ctx, cancel := context.WithCancel(context.Background())
 	sender := &flakySender{}
 	svc := domain.NewService(h.DB, h.Clock, sender, nil)
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		svc.RunEmailOutbox(ctx, time.Hour)
-	}()
+	runner := jobs.New(h.Clock, slog.New(slog.DiscardHandler))
+	delivered := make(chan struct{}, 1)
+	runner.Add(jobs.Job{Name: "email outbox", Every: time.Hour, Wake: svc.EmailWake(), Run: func(ctx context.Context) error {
+		err := svc.DeliverEmail(ctx)
+		select {
+		case delivered <- struct{}{}:
+		default:
+		}
+		return err
+	}})
+	runner.Start(t.Context())
+	t.Cleanup(runner.Stop)
+	// The run at start has sent what there was, nothing, before the comment.
+	select {
+	case <-delivered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the email outbox job didn't run within 5s of starting")
+	}
 
-	if _, err := svc.AddGoalComment(ctx, reader.ID, g.ID, "Why?"); err != nil {
+	if _, err := svc.AddGoalComment(t.Context(), reader.ID, g.ID, "Why?"); err != nil {
 		t.Fatalf("AddGoalComment: %v", err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
@@ -353,13 +365,6 @@ func TestRunEmailOutboxSendsQueuedEmailOnceItsCommandCommits(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("the comment's alert wasn't sent within 5s of it committing")
 		}
-	}
-
-	cancel()
-	select {
-	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("RunEmailOutbox still running 5s after its context was done")
 	}
 }
 

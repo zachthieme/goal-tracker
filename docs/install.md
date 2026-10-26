@@ -33,12 +33,14 @@ Read these first; some may decide whether the install goes ahead now.
 - **A week missed while the server is down is sent late.** The database keeps
   which week's slot the weekly emails last went out for. Started after a slot
   that passed while it was down, the server sends that week's emails once,
-  within a minute of starting, however many weeks it missed. On the very first
+  as it starts, however many weeks it missed. On the very first
   start it sends none until the next slot.
 - **A weekly run that fails is tried again a minute later.** A run that fails,
-  such as on a database error, is logged at ERROR and queues none of its
-  emails. The server tries it again at each minute's poll until it succeeds,
-  without waiting for a restart or the next week's slot.
+  such as on a database error, queues none of its emails. The server tries it
+  again each minute until it succeeds, without waiting for a restart or the
+  next week's slot. Its first failure is logged at ERROR at once, and a run
+  that keeps failing is logged again only after a wait that doubles, as for
+  any [background job](#background-jobs).
 
 ## Requirements
 
@@ -398,6 +400,19 @@ the same `request_id`, which the response also returns in `X-Request-ID`. A
 proxy that sends its own `X-Request-ID` of 1 to 64 letters, digits, `_` and
 `-` has it reused; any other is replaced.
 
+### Background jobs
+
+Four jobs run in the background from startup until the server stops: the
+email outbox (`job="email outbox"`), the prune (`job=prune`), the weekly
+emails (`job="weekly emails"`) and, with a directory set, the directory sync
+(`job="directory sync"`). Each runs as the server starts, then on its own
+pace, and a run that fails is tried again at its next turn. A failure is
+logged at `ERROR` as `msg="background job failed"`, naming the `job`, the
+`err` and the count of `failures` in a row: the first at once, then, while
+the job keeps failing, only after a wait that doubles from a minute up to an
+hour. Once it succeeds again it logs `msg="background job recovered"` at
+`INFO`, once, with the count of failures.
+
 ## 7. Put a reverse proxy in front
 
 The proxy terminates TLS and forwards to `127.0.0.1:8080`. Nothing special is
@@ -586,7 +601,8 @@ given up on after its fifth failed try, is kept 90 days, then deleted. An
 email still being tried is never deleted. The one-time token behind each Undo
 is deleted once its 15 minutes have passed. The app looks for what to delete
 when it starts and then hourly, and logs an `INFO` line, `msg="pruned stale
-rows"`, saying how many of each it deleted, or an `ERROR` if it couldn't.
+rows"`, saying how many of each it deleted, or, if it couldn't, an `ERROR`
+for the `prune` [background job](#background-jobs).
 
 Email log lines name the recipient by their Account ID (`account_id`), never
 by their email address: the development sender's line, and the `WARN` and

@@ -280,7 +280,7 @@ func TestAFailingJobIsLoggedWithABackoff(t *testing.T) {
 			name, _ := attrOf(rec, "job")
 			logged, hasErr := attrOf(rec, "err")
 			if rec.Level != slog.LevelError || rec.Message != "background job failed" || name.String() != "test job" ||
-				!hasErr || logged.Any() != failure || n.Int64() != int64(m) {
+				!hasErr || logged.String() != failure.Error() || n.Int64() != int64(m) {
 				t.Fatalf("minute %d logged %q %v, want an ERROR naming the job, the error and %d failures", m-1, rec.Message, rec, m)
 			}
 			loggedAt = append(loggedAt, m-1)

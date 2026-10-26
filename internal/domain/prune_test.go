@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -119,61 +118,27 @@ func TestPruneStaleDeletesOldEmailAndExpiredUndoTokens(t *testing.T) {
 	}
 }
 
-// The prune, run in the background, prunes as it starts, logs what it
-// deleted, and stops when its context is done.
-func TestRunPrunePrunesAtOnceAndStopsWithItsContext(t *testing.T) {
+// The prune job's run prunes and logs at INFO what it deleted.
+func TestPruneStaleAndLogLogsWhatItDeleted(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	h.Clock.Advance(100 * 24 * time.Hour)
 	pruneQueueEmail(t, h, owner, "Sent long ago", h.Clock.Now().Add(-95*24*time.Hour), h.Clock.Now().Add(-95*24*time.Hour), 0)
-	var log pruneLogBuffer
-	ctx, cancel := context.WithCancel(context.Background())
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		h.Service.RunPrune(ctx, time.Hour, slog.New(slog.NewTextHandler(&log, nil)))
-	}()
+	var log bytes.Buffer
 
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if strings.Contains(log.String(), "level=INFO") {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("RunPrune logged no prune within 5s of starting")
-		}
-	}
-	cancel()
-	select {
-	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("RunPrune still running 5s after its context was done")
+	if err := h.Service.PruneStaleAndLog(t.Context(), slog.New(slog.NewTextHandler(&log, nil))); err != nil {
+		t.Fatalf("PruneStaleAndLog: %v", err)
 	}
 
-	if line := log.String(); !strings.Contains(line, "email=1") || !strings.Contains(line, "undo_tokens=0") {
-		t.Errorf("RunPrune logged %q, want it to say it deleted one email and no Undo tokens", line)
+	line := log.String()
+	for _, want := range []string{"level=INFO", `msg="pruned stale rows"`, "email=1", "undo_tokens=0"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("logged %q, want %s: it deleted one email and no Undo tokens", line, want)
+		}
 	}
 	if got := pruneOutboxSubjects(t, h); len(got) != 0 {
-		t.Errorf("outbox holds %q after RunPrune started, want it pruned", got)
+		t.Errorf("outbox holds %q after the prune, want it pruned", got)
 	}
-}
-
-// pruneLogBuffer is a bytes.Buffer safe to write from one goroutine while another
-// reads it.
-type pruneLogBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (b *pruneLogBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
-}
-
-func (b *pruneLogBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
 }

@@ -289,9 +289,8 @@ func TestSyncSkipsServiceAccountsAndUsersWithoutAnEmail(t *testing.T) {
 	}
 }
 
-// A sync that fails part-way, here on its second page, changes nothing, logs
-// the cause at ERROR, and reports the error as its outcome. The next run tries
-// again.
+// A sync that fails part-way, here on its second page, changes nothing and
+// reports its cause as its outcome. The next run tries again.
 func TestAFailedSyncLeavesManagersAsTheyWere(t *testing.T) {
 	t.Parallel()
 
@@ -311,11 +310,10 @@ func TestAFailedSyncLeavesManagersAsTheyWere(t *testing.T) {
 		person("hire@example.com", "New Hire", "lead@example.com"),
 	}
 	f.fake.set(moved, 2)
-	f.log.Reset()
 
 	out := f.sync.Run(t.Context())
-	if out.Err == nil {
-		t.Fatal("a sync whose second page fails succeeded")
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "500") {
+		t.Fatalf("a sync whose second page fails: err %v, want its cause, the 500", out.Err)
 	}
 	if last, ok := f.sync.Last(); !ok || last.Err == nil {
 		t.Errorf("Last after a failed sync = %+v, %v; want the failure", last, ok)
@@ -328,9 +326,6 @@ func TestAFailedSyncLeavesManagersAsTheyWere(t *testing.T) {
 	}
 	if _, err := f.h.Service.AccountByEmail(t.Context(), "hire@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a failed sync created an Account for hire@example.com (err %v)", err)
-	}
-	if log := f.log.String(); !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "500") {
-		t.Errorf("a failed sync didn't log its cause at ERROR:\n%s", log)
 	}
 
 	f.fake.set(moved, 0)
@@ -363,7 +358,6 @@ func TestASyncWithAMalformedPageChangesNothing(t *testing.T) {
 		person("hire@example.com", "New Hire", "lead@example.com"),
 	}, 0)
 	f.fake.breakPages(2, 0)
-	f.log.Reset()
 
 	out := f.sync.Run(t.Context())
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "page 2") {
@@ -383,9 +377,6 @@ func TestASyncWithAMalformedPageChangesNothing(t *testing.T) {
 	}
 	if _, err := f.h.Service.AccountByEmail(t.Context(), "hire@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a failed sync created an Account for hire@example.com (err %v)", err)
-	}
-	if log := f.log.String(); !strings.Contains(log, "level=ERROR") {
-		t.Errorf("a failed sync didn't log its cause at ERROR:\n%s", log)
 	}
 
 	f.fake.breakPages(0, 0)
@@ -413,9 +404,6 @@ func TestASyncWithAnUnreachableDirectoryFails(t *testing.T) {
 	}
 	if _, err := f.h.Service.AccountByEmail(t.Context(), "ceo@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a failed sync created an Account (err %v)", err)
-	}
-	if log := f.log.String(); !strings.Contains(log, "level=ERROR") {
-		t.Errorf("a failed sync didn't log its cause at ERROR:\n%s", log)
 	}
 }
 

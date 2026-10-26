@@ -41,8 +41,9 @@ func NewSync(svc *domain.Service, dir domain.Directory, logger *slog.Logger) *Sy
 }
 
 // Run syncs the directory now and returns how it went, which Last then
-// reports. A failed run changes nothing and logs its cause at ERROR; the next
-// run tries again. Each cycle among the Managers is logged at WARN, naming the
+// reports. A failed run changes nothing, and its Outcome's Err says why; the
+// next run tries again. It doesn't log the failure: in the background, the
+// job runner does. Each cycle among the Managers is logged at WARN, naming the
 // people in it, and so is each timezone the directory gives that isn't an IANA
 // name, naming the person and the value.
 func (s *Sync) Run(ctx context.Context) Outcome {
@@ -52,26 +53,26 @@ func (s *Sync) Run(ctx context.Context) Outcome {
 // RunWith is Run logging to logger instead of the one NewSync was given. It
 // takes its turn with every other run.
 func (s *Sync) RunWith(ctx context.Context, logger *slog.Logger) Outcome {
-	return s.run(ctx, logger, func() (domain.DirectorySyncResult, error) {
+	return s.run(ctx, logger, false, func() (domain.DirectorySyncResult, error) {
 		return s.svc.SyncDirectory(ctx, s.dir)
 	})
 }
 
 // RunForAdmin is RunWith on the behalf of actorID, who must be an Admin, so a
 // run on demand, like an Admin's Sync now, logs as part of the request it
-// serves. For anyone else, it returns an Outcome whose Err is
+// serves, its failure included, at ERROR. For anyone else, it returns an Outcome whose Err is
 // ErrNotAuthorized, without reading the directory or changing anything, and
 // Last still reports the run before.
 func (s *Sync) RunForAdmin(ctx context.Context, logger *slog.Logger, actorID int64) Outcome {
-	return s.run(ctx, logger, func() (domain.DirectorySyncResult, error) {
+	return s.run(ctx, logger, true, func() (domain.DirectorySyncResult, error) {
 		return s.svc.SyncDirectoryAsAdmin(ctx, actorID, s.dir)
 	})
 }
 
 // run syncs the directory through syncDirectory, once no other run is, logs
-// how it went to logger, and records it for Last. A refusal is neither logged
-// nor recorded.
-func (s *Sync) run(ctx context.Context, logger *slog.Logger, syncDirectory func() (domain.DirectorySyncResult, error)) Outcome {
+// how it went to logger, a failure only with logFailure, and records it for
+// Last. A refusal is neither logged nor recorded.
+func (s *Sync) run(ctx context.Context, logger *slog.Logger, logFailure bool, syncDirectory func() (domain.DirectorySyncResult, error)) Outcome {
 	s.running.Lock()
 	defer s.running.Unlock()
 
@@ -80,9 +81,10 @@ func (s *Sync) run(ctx context.Context, logger *slog.Logger, syncDirectory func(
 	if errors.Is(err, domain.ErrNotAuthorized) {
 		return out
 	}
-	if err != nil {
+	switch {
+	case err != nil && logFailure:
 		logger.Error("directory sync failed; Accounts and Managers are as they were, and the next sync tries again", "err", err)
-	} else {
+	case err == nil:
 		logger.Info("directory sync read the company's people", "people", res.People)
 		for _, cycle := range res.Cycles {
 			logger.Warn("the directory's Managers form a cycle; each Org in it stops where it began", "people", cycleNames(cycle))
@@ -113,19 +115,4 @@ func (s *Sync) Last() (Outcome, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.last, s.ran
-}
-
-// RunEvery runs a sync now and then every interval until ctx is done.
-func (s *Sync) RunEvery(ctx context.Context, interval time.Duration) {
-	s.Run(ctx)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.Run(ctx)
-		}
-	}
 }

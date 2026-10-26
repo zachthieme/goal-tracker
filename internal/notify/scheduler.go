@@ -2,9 +2,7 @@ package notify
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -76,16 +74,7 @@ type Scheduler struct {
 	// next is when the job runs next; zero until the first Tick reads the
 	// job's last run.
 	next time.Time
-	// failures counts the polls failed in a row; Poll logs the next failure
-	// once the clock reaches logAfter, then waits logWait more.
-	failures int
-	logAfter time.Time
-	logWait  time.Duration
 }
-
-// schedulerMaxLogWait is the longest Poll goes without logging a run that
-// keeps failing.
-const schedulerMaxLogWait = time.Hour
 
 // NewScheduler returns a Scheduler that runs job, by calling run with the slot
 // it is due for, at each occurrence of when. run records the slot as the job's
@@ -105,33 +94,27 @@ func NewScheduler(svc *domain.Service, job string, when Weekly, run func(ctx con
 // then schedules the next run for the slot after. A job missed while the
 // process was asleep, or down (see NewScheduler), runs once, late, not once
 // per missed week. A run that fails is tried again at the next Tick, for the
-// slot then most recently due.
+// slot then most recently due, and its error names the slot it was for. A
+// failure to read the job's last run names no slot: until it is read, no slot
+// is known to be due.
 func (s *Scheduler) Tick(ctx context.Context) error {
-	_, err := s.tick(ctx)
-	return err
-}
-
-// tick is Tick, also returning the slot most recently due: the one a run
-// would be, or was, for. It returns the zero time with start's error: until
-// the job's last run is read, no slot is known to be due.
-func (s *Scheduler) tick(ctx context.Context) (time.Time, error) {
 	now := s.svc.Now()
 	if s.next.IsZero() {
 		next, err := s.start(ctx, now)
 		if err != nil {
-			return time.Time{}, err
+			return err
 		}
 		s.next = next
 	}
-	slot := s.when.Prev(now)
 	if now.Before(s.next) {
-		return slot, nil
+		return nil
 	}
+	slot := s.when.Prev(now)
 	if err := s.run(ctx, slot); err != nil {
-		return slot, err
+		return fmt.Errorf("the run for the slot %s: %w", slot.Format(time.RFC3339), err)
 	}
 	s.next = s.when.Next(now)
-	return slot, nil
+	return nil
 }
 
 // start is when the job first runs: now, when a slot has passed since its last
@@ -153,52 +136,4 @@ func (s *Scheduler) start(ctx context.Context, now time.Time) (time.Time, error)
 		return now, nil
 	}
 	return s.when.Next(now), nil
-}
-
-// Run calls Poll every poll interval until ctx is done.
-func (s *Scheduler) Run(ctx context.Context, poll time.Duration, logger *slog.Logger) {
-	ticker := time.NewTicker(poll)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			s.Poll(ctx, logger)
-		}
-	}
-}
-
-// Poll is one of Run's polls: it calls Tick and logs the outcome to logger,
-// each line naming the job and the slot; a failure to read the job's last run
-// names no slot, since none is known to be due. A run that keeps failing is tried at
-// every poll but logged at its first failure and then only after a wait that
-// doubles from a minute up to an hour, with the count of polls failed so far;
-// its recovery is logged once.
-func (s *Scheduler) Poll(ctx context.Context, logger *slog.Logger) {
-	slot, err := s.tick(ctx)
-	if errors.Is(err, context.Canceled) {
-		return
-	}
-	if err == nil {
-		if s.failures > 0 {
-			logger.Info("weekly emails recovered", "job", s.job, "slot", slot, "failures", s.failures)
-			s.failures = 0
-		}
-		return
-	}
-	now := s.svc.Now()
-	s.failures++
-	if s.failures == 1 {
-		s.logWait = time.Minute
-	} else if now.Before(s.logAfter) {
-		return
-	}
-	attrs := []any{"job", s.job}
-	if !slot.IsZero() {
-		attrs = append(attrs, "slot", slot)
-	}
-	logger.Error("weekly emails failed", append(attrs, "failures", s.failures, "err", err)...)
-	s.logAfter = now.Add(s.logWait)
-	s.logWait = min(2*s.logWait, schedulerMaxLogWait)
 }

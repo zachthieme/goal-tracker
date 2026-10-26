@@ -18,7 +18,6 @@ import (
 	"os/signal"
 	"slices"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
@@ -28,6 +27,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
+	"github.com/zachthieme/goal-tracker/internal/jobs"
 	"github.com/zachthieme/goal-tracker/internal/notify"
 	"github.com/zachthieme/goal-tracker/internal/pdf"
 	"github.com/zachthieme/goal-tracker/internal/web"
@@ -111,16 +111,15 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer func() { _ = sqlDB.Close() }()
+	defer func() {
+		_ = sqlDB.Close()
+		logger.Debug("database closed")
+	}()
 	// The email outbox, the prune, the weekly emails and the directory sync
 	// run until ctx is done, or run returns, and the database closes only once
 	// they have stopped.
-	ctx, stopBackground := context.WithCancel(ctx)
-	var background sync.WaitGroup
-	defer func() {
-		stopBackground()
-		background.Wait()
-	}()
+	background := jobs.New(clk, logger)
+	defer background.Stop()
 
 	if err := db.Migrate(ctx, sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
@@ -171,10 +170,10 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	case cfg.directory == nil:
 		logger.Info("neither GOAL_TRACKER_DIRECTORY_FILE nor GOAL_TRACKER_DIRECTORY_URL is set: no directory sync, so no one has a Manager")
 	case cfg.directory.file != "":
-		webOpts = append(webOpts, startDirectorySync(ctx, &background, svc, directory.NewFile(cfg.directory.file), logger))
+		webOpts = append(webOpts, startDirectorySync(background, svc, directory.NewFile(cfg.directory.file), logger))
 		logger.Info("syncing people and their Managers from the directory file, now and hourly", "file", cfg.directory.file)
 	default:
-		webOpts = append(webOpts, startDirectorySync(ctx, &background, svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
+		webOpts = append(webOpts, startDirectorySync(background, svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
 	}
 	var metrics *web.RequestMetrics
@@ -191,16 +190,18 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 
 	// The email commands queue, such as comment alerts, is sent once each
 	// command commits, and retried while it fails.
-	background.Go(func() { svc.RunEmailOutbox(ctx, emailOutboxInterval) })
+	background.Add(jobs.Job{Name: "email outbox", Every: emailOutboxInterval, Wake: svc.EmailWake(), Run: svc.DeliverEmail})
 	// Sent and given-up email, and expired Undo tokens, are deleted as they
 	// go stale.
-	background.Go(func() { svc.RunPrune(ctx, pruneInterval, logger) })
-
+	background.Add(jobs.Job{Name: "prune", Every: pruneInterval, Run: func(ctx context.Context) error {
+		return svc.PruneStaleAndLog(ctx, logger)
+	}})
 	// The weekly emails are queued in the outbox for each week's slot. A slot
-	// missed while the app was down is sent once, late, when it next starts.
+	// missed while the app was down is sent once, late, as it starts.
 	notifier := notify.New(svc, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(svc, notify.WeeklyJob, weekly, notifier.SendWeekly)
-	background.Go(func() { scheduler.Run(ctx, time.Minute, logger) })
+	background.Add(jobs.Job{Name: notify.WeeklyJob, Every: time.Minute, Run: scheduler.Tick})
+	background.Start(ctx)
 
 	// Both listeners are open before either serves, so one that can't listen
 	// stops startup.
@@ -389,11 +390,13 @@ func checkHealth(ctx context.Context, addr string, timeout time.Duration) error 
 	return nil
 }
 
-// startDirectorySync syncs from dir now and hourly, in background, until ctx
-// is done, and gives the web app the sync for the Admin page's Sync now.
-func startDirectorySync(ctx context.Context, background *sync.WaitGroup, svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
+// startDirectorySync has background sync from dir as it starts and hourly,
+// and gives the web app the sync for the Admin page's Sync now.
+func startDirectorySync(background *jobs.Runner, svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
 	dirSync := directory.NewSync(svc, dir, logger)
-	background.Go(func() { dirSync.RunEvery(ctx, time.Hour) })
+	background.Add(jobs.Job{Name: "directory sync", Every: time.Hour, Run: func(ctx context.Context) error {
+		return dirSync.Run(ctx).Err
+	}})
 	return web.WithDirectorySync(dirSync)
 }
 

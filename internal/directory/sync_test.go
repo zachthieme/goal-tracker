@@ -13,11 +13,9 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/jobs"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
-
-// runEveryWait is how long a RunEvery test waits for something before failing.
-const runEveryWait = 10 * time.Second
 
 // countingDirectory lists one person, and counts how often it's been read.
 type countingDirectory struct {
@@ -29,93 +27,65 @@ func (d *countingDirectory) People(context.Context) ([]domain.DirectoryPerson, e
 	return []domain.DirectoryPerson{{Email: "ceo@example.com", Name: "Dana Whitfield"}}, nil
 }
 
-// startRunEvery runs s.RunEvery(interval) in a goroutine, and returns a cancel
-// that stops it and a channel closed once it has returned. The test's cleanup
-// stops it too.
-func startRunEvery(t *testing.T, s *directory.Sync, interval time.Duration) (cancel func(), done <-chan struct{}) {
-	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	finished := make(chan struct{})
-	go func() {
-		defer close(finished)
-		s.RunEvery(ctx, interval)
-	}()
-	t.Cleanup(func() {
-		cancel()
-		<-finished
-	})
-	return cancel, finished
-}
-
-// waitFor polls cond until it holds, failing the test if it doesn't within
-// runEveryWait.
-func waitFor(t *testing.T, what string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(runEveryWait)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("waited %v for %s", runEveryWait, what)
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-// waitReturned waits for done to close, failing the test if it doesn't within
-// runEveryWait.
-func waitReturned(t *testing.T, done <-chan struct{}) {
-	t.Helper()
-	select {
-	case <-done:
-	case <-time.After(runEveryWait):
-		t.Fatalf("RunEvery didn't return within %v of its context being cancelled", runEveryWait)
-	}
-}
-
-// RunEvery syncs straight away, without waiting for its first interval, and
-// returns once its context is done.
-func TestRunEverySyncsAtOnceAndStopsWithItsContext(t *testing.T) {
+// A directory sync job, run in the background, reads the directory as the
+// runner starts, without waiting for its first Every.
+func TestTheDirectorySyncJobReadsTheDirectoryAtStart(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	dir := &countingDirectory{}
 	s := directory.NewSync(h.Service, dir, slog.New(slog.DiscardHandler))
+	runner := jobs.New(h.Clock, slog.New(slog.DiscardHandler))
+	runner.Add(jobs.Job{Name: "directory sync", Every: time.Hour, Run: func(ctx context.Context) error { return s.Run(ctx).Err }})
+	runner.Start(t.Context())
+	t.Cleanup(runner.Stop)
 
-	cancel, done := startRunEvery(t, s, time.Hour)
-	waitFor(t, "the first sync", func() bool { _, ok := s.Last(); return ok })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+		if _, ok := s.Last(); ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the directory sync job didn't sync within 10s of starting")
+		}
+	}
 	if last, _ := s.Last(); last.Err != nil || last.People != 1 {
 		t.Errorf("the first sync: %+v, want 1 person read", last)
 	}
-	if got := dir.reads.Load(); got != 1 {
-		t.Errorf("the directory was read %d times before the first interval, want 1", got)
-	}
-
-	cancel()
-	waitReturned(t, done)
-}
-
-// RunEvery syncs again on each interval, and stops syncing once it has
-// returned.
-func TestRunEverySyncsAgainEachInterval(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	dir := &countingDirectory{}
-	s := directory.NewSync(h.Service, dir, slog.New(slog.DiscardHandler))
-
-	cancel, done := startRunEvery(t, s, 10*time.Millisecond)
-	waitFor(t, "three syncs", func() bool { return dir.reads.Load() >= 3 })
-
-	cancel()
-	waitReturned(t, done)
-	// One more sync may have run between the cancel and RunEvery returning,
-	// but none runs after it: the count stays put while the test checks the
-	// synced Account.
-	stopped := dir.reads.Load()
 	if _, err := h.Service.AccountByEmail(t.Context(), "ceo@example.com"); err != nil {
 		t.Errorf("the synced person has no Account: %v", err)
 	}
-	if got := dir.reads.Load(); got != stopped {
-		t.Errorf("the directory was read %d times after RunEvery returned", got-stopped)
+}
+
+// failingDirectory can't be read.
+type failingDirectory struct{}
+
+func (failingDirectory) People(context.Context) ([]domain.DirectoryPerson, error) {
+	return nil, errors.New("directory unreachable")
+}
+
+// A failed Run, in the background, leaves logging its failure to the job
+// runner, so it is logged once; an Admin's failed Sync now logs its own, as
+// part of the request it serves.
+func TestOnlyAnAdminsFailedSyncLogsItsFailure(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	var own, admins bytes.Buffer
+	s := directory.NewSync(h.Service, failingDirectory{}, slog.New(slog.NewTextHandler(&own, nil)))
+
+	if out := s.Run(t.Context()); out.Err == nil {
+		t.Fatal("a sync of a directory that can't be read succeeded")
+	}
+	if own.Len() != 0 {
+		t.Errorf("a failed Run logged %q, want nothing: the job runner logs it", own.String())
+	}
+
+	if out := s.RunForAdmin(t.Context(), slog.New(slog.NewTextHandler(&admins, nil)), ada.ID); out.Err == nil {
+		t.Fatal("an Admin's sync of a directory that can't be read succeeded")
+	}
+	if log := admins.String(); !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "directory unreachable") {
+		t.Errorf("an Admin's failed sync logged %q, want its cause at ERROR", log)
 	}
 }
 
