@@ -323,6 +323,98 @@ func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
 	}
 }
 
+// A Hand off or Reassign from someone who may not, naming a person who has an
+// Account, is refused on the refusal page, 403, saying who may, with a way
+// Back to the Goal.
+func TestHandoffAndReassignByOneWhoMayNotAnswerTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	leo := h.SignIn("leo@example.com")
+	h.SignIn("pat@example.com")
+	owned := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ownerless := h.CreateGoal(leo, "Migrate displays", "Displays fail often.")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, leo.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	for _, c := range []struct {
+		name, path, field, heading, reason string
+		goal                               domain.Goal
+	}{
+		{"Hand off", "handoff", "to_email", "Can't hand off Goal", "Only the Goal's Owner or an Admin may start a Handoff.", owned},
+		{"Reassign", "reassign", "email", "Can't reassign Goal", "Only an Admin may do this.", ownerless},
+	} {
+		resp := postForm(t, pat, fmt.Sprintf("%s/goals/%d/%s", ts.URL, c.goal.ID, c.path), url.Values{c.field: {"pat@example.com"}})
+		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by someone who may not: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, fmt.Sprintf("/goals/%d", c.goal.ID))
+	}
+	if pending, _ := h.Service.PendingHandoffs(t.Context(), h.SignIn("pat@example.com").ID); len(pending) != 0 {
+		t.Errorf("pending Handoffs to Pat = %+v, want none", pending)
+	}
+}
+
+// A Depart or Return that is refused answers the refusal page, linking Back to
+// Home: 403 for someone who isn't an Admin, and 422 for an Admin's that can't
+// be done to that person. A path that names no Account by number is the Not
+// found page.
+func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	leo := h.SignIn("leo@example.com")
+	h.SignIn("pat@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, leo.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, c := range []struct {
+		name    string
+		client  *http.Client
+		path    string
+		status  int
+		heading string
+		reason  string
+	}{
+		{"a Depart by a non-Admin", pat, fmt.Sprintf("/accounts/%d/depart", sam.ID), http.StatusForbidden, "Can't mark departed", "Only an Admin may do this."},
+		{"a Return by a non-Admin", pat, fmt.Sprintf("/accounts/%d/return", leo.ID), http.StatusForbidden, "Can't mark returned", "Only an Admin may do this."},
+		{"a Depart of someone Departed", bossClient, fmt.Sprintf("/accounts/%d/depart", leo.ID), http.StatusUnprocessableEntity, "Can't mark departed", "Leo has already left the company."},
+		{"a Return of someone not Departed", bossClient, fmt.Sprintf("/accounts/%d/return", sam.ID), http.StatusUnprocessableEntity, "Can't mark returned", "Sam hasn't left the company."},
+		{"a Depart of no Account", bossClient, "/accounts/999999/depart", http.StatusUnprocessableEntity, "Can't mark departed", "Account does not exist."},
+		{"a Return of no Account", bossClient, "/accounts/999999/return", http.StatusUnprocessableEntity, "Can't mark returned", "Account does not exist."},
+	} {
+		resp := postForm(t, c.client, ts.URL+c.path, url.Values{})
+		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
+		if resp.StatusCode != c.status {
+			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, "/home")
+	}
+	for _, action := range []string{"depart", "return"} {
+		assertNotFoundPageFor(t, bossClient, http.MethodPost, ts.URL+"/accounts/sam/"+action, "/home")
+	}
+	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || acc.Departed {
+		t.Errorf("Sam after a refused Depart = %+v, %v; want still present", acc, err)
+	}
+	if acc, err := h.Service.Account(t.Context(), leo.ID); err != nil || !acc.Departed {
+		t.Errorf("Leo after a refused Return = %+v, %v; want still Departed", acc, err)
+	}
+}
+
 // Only an Admin may mark someone returned: anyone else is refused with 403 and
 // the person stays Departed.
 func TestNonAdminCannotMarkReturned(t *testing.T) {

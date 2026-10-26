@@ -641,8 +641,8 @@ type linkedParent struct {
 
 // definableGoal is the Goal in the path, for its define page, when the domain
 // says current may define it (domain.Service.DefinableGoal). Otherwise it
-// writes the answer — Not found, 403 for anyone the rule refuses for who they
-// are, and a redirect to the Goal's page once it is no longer Proposed — and
+// writes the answer — Not found, the refusal page, 403, for anyone the rule
+// refuses for who they are, and a redirect to the Goal's page once it is no longer Proposed — and
 // ok is false.
 func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current domain.Account) (g domain.Goal, ok bool) {
 	id, ok := s.goalIDFromPath(w, r)
@@ -656,7 +656,7 @@ func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current d
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		http.Error(w, "only the Goal's Owner may finish defining it", http.StatusForbidden)
+		s.refuse(w, r, "Can't define Goal", goalPath(id), err)
 	case errors.Is(err, domain.ErrValidation):
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", id), http.StatusSeeOther)
 	default:
