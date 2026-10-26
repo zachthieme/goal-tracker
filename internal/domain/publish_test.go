@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -1001,5 +1002,57 @@ func TestSnapshotFromBeforeBackToGreenSlipsHasNone(t *testing.T) {
 	}
 	if b := got.Report.Exceptions; len(b) != 1 || !b[0].PathTargetDate.Equal(date(2026, 3, 13)) || len(b[0].PriorPathTargetDates) != 0 {
 		t.Errorf("pre-back-to-Green-slips blocks %+v, want one back to Green by 2026-03-13 with no prior dates", b)
+	}
+}
+
+// A Report Delegate publishing at the same moment the creator removes them:
+// the Report is drafted outside the transaction that publishes it, so who may
+// publish is checked again inside it. Either the publication is kept and
+// logged before the removal, or it is refused (ErrNotAuthorized); never kept
+// after its publisher stopped being a Report Delegate (#570).
+func TestPublishRechecksThePublisherInsideItsTransaction(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	alice := h.SignIn("alice@example.com")
+	dana := h.SignIn("dana@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Revenue funds the roadmap.")
+	for i := range 30 {
+		def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{
+			Name: fmt.Sprintf("MBR %d", i), Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+		})
+		h.AddReportDelegate(alice, dana, def)
+		publish := func() error {
+			_, err := h.Service.PublishReport(ctx, dana.ID, def.ID, time.Time{})
+			return err
+		}
+		remove := func() error {
+			return h.Service.RemoveReportDelegate(ctx, alice.ID, def.ID, dana.ID)
+		}
+		errPublish, errRemove := raceHandoffCommands(publish, remove)
+		if errRemove != nil {
+			t.Fatalf("round %d: RemoveReportDelegate: %v", i, errRemove)
+		}
+		if errPublish != nil {
+			if !errors.Is(errPublish, domain.ErrNotAuthorized) {
+				t.Fatalf("round %d: PublishReport err = %v, want ErrNotAuthorized or kept", i, errPublish)
+			}
+			continue
+		}
+		log, err := h.Service.ReportLog(ctx, def.ID)
+		if err != nil {
+			t.Fatalf("ReportLog: %v", err)
+		}
+		// Newest first: the removal must come before (newer than) the publication.
+		kinds := make([]string, 0, len(log))
+		for _, e := range log {
+			kinds = append(kinds, e.Kind)
+		}
+		removed := slices.Index(kinds, domain.ReportLogDelegate)
+		published := slices.Index(kinds, domain.ReportLogPublished)
+		if removed > published {
+			t.Fatalf("round %d: the Report log (newest first) reads %v: published by Dana after being removed", i, kinds)
+		}
 	}
 }
