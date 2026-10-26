@@ -207,10 +207,10 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 // a new one when its ID is 0: save stores it as typed, and a stored definition lands
 // on its draft. A refused save comes back as the builder, 422, as typed, with
 // each problem beside its input; one refused to its sender is the refusal
-// page, 403, linking Back to the definition's draft, or Reports for a new
-// one. Add rule, a rule row's × and Show matches
-// save nothing: the builder comes back as typed with a blank row added,
-// without that row, or as it is, its rail listing the Goals as typed.
+// page, 403, linking Back to the definition's draft, or Reports for a new one.
+// Add rule, a rule row's × and Show matches save nothing: the builder comes
+// back as typed with a blank row added, without that row, or as it is, its
+// rail listing the Goals as typed.
 func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, saved domain.ReportDefinition,
 	save func(in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
 ) {
