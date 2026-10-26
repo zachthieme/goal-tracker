@@ -5255,6 +5255,30 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 	}
 }
 
+// A crafted save of the Goal table touching a Goal that doesn't exist gets the
+// Not found page, and nothing in it is saved.
+func TestGoalTableSaveForAMissingGoalIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	mine := h.CreateGoal(sam, "Mine", "M matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
+	action, form := goalTableFormIn(t, page)
+	form.Set(goalTableControlName(t, page, "Budget of Mine"), "10")
+	form.Set(fmt.Sprintf("f.%d.%d", mine.ID+1000, budget.ID), "99")
+
+	assertNotFoundPageWithForm(t, client, http.MethodPost, ts.URL+action, form, "/home")
+	if changes, err := h.Service.ValueHistory(context.Background(), mine.ID); err != nil || len(changes) != 0 {
+		t.Errorf("Mine's history = %+v (%v), want nothing saved", changes, err)
+	}
+}
+
 // A Retired value a Goal carries stays offered, marked retired, in the Goal
 // table's edit form, so saving another cell keeps it, and Retired values the
 // Goal doesn't carry aren't offered, as on the Goal page (#80; CONTEXT.md:
