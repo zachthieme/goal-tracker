@@ -182,8 +182,9 @@ func (o *emailOutbox) log() *slog.Logger {
 // emailAddressShaped matches anything shaped like an email address: an @ and
 // the run of characters on either side of it up to a space, bracket, quote or
 // separator. A quoted local part, such as "john doe"@example.com, is matched
-// quotes and all, spaces and escaped quotes inside it included.
-var emailAddressShaped = regexp.MustCompile(`(?:"(?:[^"\\]|\\.)*"|[^\s<>()\[\]"',;:])*@[^\s<>()\[\]"',;:]*`)
+// quotes and all, spaces and escaped quotes inside it included. A bracketed
+// IP-literal domain, such as jane@[192.0.2.1], is matched brackets and all.
+var emailAddressShaped = regexp.MustCompile(`(?:"(?:[^"\\]|\\.)*"|[^\s<>()\[\]"',;:])*@(?:\[[^\s\[\]]*\]|[^\s<>()\[\]"',;:]*)`)
 
 // withoutEmailAddresses is msg, a failed send's error, with anything shaped
 // like an email address in it redacted, so a mail server's error that quotes

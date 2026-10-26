@@ -290,6 +290,39 @@ func TestSchedulerLogsAFailingRunWithABackoff(t *testing.T) {
 	}
 }
 
+// Restarted after Monday's slot was sent, the app that can't read the job's
+// last run logs the failure without naming a slot: it doesn't know which slot
+// is due, and Monday's is already done (ticket #547).
+func TestSchedulerLogsAFailureToReadTheLastRunWithoutASlot(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	when := mondays9am(t)
+	tick := ticker(t, h)
+	sent := weeklyScheduler(h, when)
+	tick(sent, mondayAt9(0).Add(-time.Minute))
+	tick(sent, mondayAt9(0))
+
+	restarted := weeklyScheduler(h, when)
+	if err := h.DB.Close(); err != nil {
+		t.Fatalf("closing the database: %v", err)
+	}
+	h.Clock.Set(mondayAt9(0).Add(time.Hour))
+	var log bytes.Buffer
+	restarted.Poll(context.Background(), slog.New(slog.NewJSONHandler(&log, nil)))
+
+	var rec map[string]any
+	if err := json.Unmarshal(log.Bytes(), &rec); err != nil {
+		t.Fatalf("log %q: want one JSON line: %v", log.String(), err)
+	}
+	if rec["level"] != "ERROR" || rec["job"] != notify.WeeklyJob || rec["err"] == nil {
+		t.Errorf("logged %v, want an ERROR naming the job and the error", rec)
+	}
+	if slot, ok := rec["slot"]; ok {
+		t.Errorf("logged slot %v for failing to read the last run, want no slot", slot)
+	}
+}
+
 // Two Schedulers on one database, such as two copies of the app, both run
 // Monday's slot, and each of its emails is queued once.
 func TestSchedulerRunningASlotTwiceQueuesItsEmailsOnce(t *testing.T) {
