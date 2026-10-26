@@ -6,7 +6,9 @@ scenarios in [`docs/scenarios.md`](../docs/scenarios.md) are checked in a
 browser. It's a vetinari gate, after `make check`'s three, for a branch that
 changes what the browser gets or the suite itself: a `.templ` file or a Go file
 other than a `_test.go` in `internal/web/`, anything in `internal/web/static/`,
-`e2e/`, `internal/seed/` or `cmd/seed/`. The pattern is the e2e gate's `when` in
+`e2e/`, `internal/seed/` or `cmd/seed/`. It also runs on a change to anything in
+`internal/db/`, because the specs read the schema directly through `seedLookup`
+([`fixtures.ts`](fixtures.ts)). The pattern is the e2e gate's `when` in
 [`vetinari/config.mts`](../vetinari/config.mts). That pattern only decides
 whether it runs on a branch: after each wave, vetinari runs the suite on the
 merged result whatever the wave changed. `make check` doesn't run it.

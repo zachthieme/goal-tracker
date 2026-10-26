@@ -54,8 +54,8 @@ files by hand to match the surrounding code.
 `make e2e` runs the Playwright suite in `e2e/` over a freshly seeded app (see
 `e2e/README.md`), in about 25 seconds. It's a gate too, alongside `make check`,
 for a change to a `.templ` file or a non-test Go file in `internal/web/`, or to
-anything in `internal/web/static/`, `e2e/`, `internal/seed/` or `cmd/seed/`
-(the e2e gate's `when` in `vetinari/config.mts`). For such a change, run
+anything in `internal/web/static/`, `e2e/`, `internal/seed/`, `cmd/seed/` or
+`internal/db/` (the e2e gate's `when` in `vetinari/config.mts`). For such a change, run
 `make e2e` in the foreground after `make check`, read it to the end, and commit
 only when it passes. `make check` doesn't run it. `make e2e-typecheck`
 type-checks `e2e/` with `tsc` in strict mode, and isn't a gate.
