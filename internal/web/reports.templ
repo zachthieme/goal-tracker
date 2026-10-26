@@ -191,6 +191,7 @@ templ reportHealthBar(h domain.HealthCounts) {
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, history []draftHistoryEntry, form narrativeForm, status string) {
+	{{ facts := r.Facts() }}
 	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, chip, panel, m, status)) {
 		@reportStyles()
 		<div class="rp-draft-page">
@@ -199,20 +200,22 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 					<p data-testid="report-meta" class="muted">{ draftMeta(r, panel) }</p>
 				</header>
-				@reportIntroduction(r)
+				for _, f := range facts {
+					if f.Kind == domain.ReportFactIntroduction {
+						@reportIntroduction(f)
+					}
+				}
 				@healthSummary(r)
-				@reportMovement(r)
+				@reportLead(facts)
 				// A div, not a section: .rp-body section's 12px gap would
 				// otherwise space the Report's sections closer than on a
 				// publication.
 				<div data-testid="report-snapshot" class="rp-body">
-					@reportActionItems(r.ActionItems, d)
 					if m.Manage {
-						@narrativeCuration(form)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), asOf, d, &form)
 					} else {
-						@reportNarrative(r.Narrative)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), asOf, d, nil)
 					}
-					@reportGoalSections(r, asOf, d)
 				</div>
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
@@ -235,8 +238,8 @@ func draftMeta(r domain.Report, panel goalsPanel) string {
 		parts = append(parts, panel.Scope)
 	}
 	since := "changes since " + showDateYear(r.Baseline)
-	if r.Previous.ID != 0 {
-		since = "changes since the previous publication, " + showDateYear(r.Baseline)
+	if words := r.Since().Words(); words != "" {
+		since = "changes since " + words + ", " + showDateYear(r.Baseline)
 	}
 	return strings.Join(append(parts, plural(len(r.Exceptions)+len(r.Lines), "Goal"), since), " · ")
 }
@@ -593,8 +596,8 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 		<div class="rp-read">
 			<header class="rp-head">
 				<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-				@publishedLine(p, d.Loc)
-				@publicationSelection(p)
+				@publishedLine(p.Facts(), d.Loc)
+				@publicationSelection(p.Facts())
 			</header>
 			@reportContent(p.Report, p.PublishedAt, d)
 			@publicationActionItems(d)
@@ -754,11 +757,11 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				<a href={ templ.SafeURL(publicationPath(p)) }>Back to the publication</a>
 			</p>
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-			@publishedLine(p, loc)
-			@publicationSelection(p)
-			@reportMovement(p.Report)
+			@publishedLine(p.Facts(), loc)
+			@publicationSelection(p.Facts())
+			@reportLead(p.Report.Facts())
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc, Print: true})
+				@reportBody(p.Report.Facts(), p.PublishedAt, discussion{Loc: loc, Print: true}, nil)
 			</section>
 		</body>
 	</html>
@@ -766,12 +769,15 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 
 // reportContent is what a reader of a published Report sees: the Health
 // summary, the line counting what moved since the baseline, then the Report's
-// body. The draft's main column reads the same parts.
+// body, each part as its facts list it (domain.Report.Facts). The Health
+// summary shows whether or not they count its Goals by Health: a Report that
+// selects none shows its zeros.
 templ reportContent(r domain.Report, asOf time.Time, d discussion) {
+	{{ facts := r.Facts() }}
 	@healthSummary(r)
-	@reportMovement(r)
+	@reportLead(facts)
 	<section data-testid="report-snapshot" class="rp-body">
-		@reportBody(r, asOf, d)
+		@reportBody(facts, asOf, d, nil)
 	</section>
 }
 
@@ -798,168 +804,224 @@ templ healthSummary(r domain.Report) {
 	</section>
 }
 
+// reportLead is the line a Report's facts open with under its Health summary:
+// the movement line, when they hold one. The Health counts fact itself it
+// skips, the Health summary standing for it on screen and the print page
+// having none.
+templ reportLead(facts []domain.ReportFact) {
+	for _, f := range facts {
+		if f.Kind == domain.ReportFactMovement {
+			@reportMovement(f)
+		}
+	}
+}
+
 // reportMovement is the line counting the Goals that moved since the Report's
 // baseline, its previous publication or a date ("Since the previous
 // publication: 2 turned Red · 1 back to Green"). A Report frozen before
 // Reports counted it has none to show.
-templ reportMovement(r domain.Report) {
-	if r.Movement != nil {
-		<p data-testid="report-movement">
-			if parts := r.Movement.Parts(); len(parts) > 0 {
-				<strong>{ reportMovementLead(r) + ":" }</strong>{ " " + strings.Join(parts, " · ") }
-			} else {
-				{ "No movement since " + reportMovementSince(r) + "." }
-			}
-		</p>
-	}
-}
-
-// reportMovementLead opens the movement line with what it counts against:
-// "Since the previous publication", or "Since" its baseline date.
-func reportMovementLead(r domain.Report) string {
-	return "Since " + reportMovementSince(r)
-}
-
-// reportMovementSince is what the Report reads changes against, as the
-// movement line names it: "the previous publication", or its baseline date.
-func reportMovementSince(r domain.Report) string {
-	if r.Previous.ID != 0 {
-		return "the previous publication"
-	}
-	return showDateYear(r.Baseline)
-}
-
-// publishedLine says who published a Report and when, and what it read its
-// changes against, its times in the company's timezone (loc).
-templ publishedLine(p domain.Publication, loc *time.Location) {
-	<p data-testid="report-published" class="muted">
-		{ "Published " + showTimeYear(p.PublishedAt, loc) + " by " }
-		@person(p.PublishedBy)
-		if p.Report.Previous.ID != 0 {
-			{ " · changes since the previous publication, " }{ showTimeYear(p.Report.Previous.PublishedAt, loc) }
+templ reportMovement(f domain.ReportFact) {
+	<p data-testid="report-movement">
+		if parts := f.Movement.Parts; len(parts) > 0 {
+			<strong>{ f.Label + " " + reportSince(f.Movement.Since) + ":" }</strong>{ " " + strings.Join(parts, " · ") }
 		} else {
-			{ " · changes since " }{ showDateYear(p.Report.Baseline) }
+			{ "No movement since " + reportSince(f.Movement.Since) + "." }
 		}
 	</p>
 }
 
+// reportSince is what a Report reads changes against, as the movement line
+// names it: "the previous publication", or its baseline date.
+func reportSince(s domain.ReportSince) string {
+	if words := s.Words(); words != "" {
+		return words
+	}
+	return showDateYear(s.At)
+}
+
+// publishedLine says who published a Report and when, and what it read its
+// changes against, from its byline fact (domain.Publication.Facts), its times
+// in the company's timezone (loc).
+templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
+	for _, f := range facts {
+		if f.Kind == domain.ReportFactByline {
+			<p data-testid="report-published" class="muted">
+				{ f.Label + " " + showTimeYear(f.Byline.PublishedAt, loc) + " by " }
+				@person(f.Byline.PublishedBy)
+				if words := f.Byline.Since.Words(); words != "" {
+					{ " · changes since " + words + ", " }{ showTimeYear(f.Byline.Since.At, loc) }
+				} else {
+					{ " · changes since " }{ showDateYear(f.Byline.Since.At) }
+				}
+			</p>
+		}
+	}
+}
+
 // publicationSelection says how a published Report selected its Goals, as it
 // read when published ("Selection: Owner is in the org of Dana Okafor ·
-// Active"). A publication frozen before selections were has none to show.
-templ publicationSelection(p domain.Publication) {
-	if p.Scope != "" {
-		<p data-testid="report-selection" class="muted">Selection: { p.Scope }</p>
+// Active"), from its Selection fact. A publication frozen before selections
+// were has none to show.
+templ publicationSelection(facts []domain.ReportFact) {
+	for _, f := range facts {
+		if f.Kind == domain.ReportFactSelection {
+			<p data-testid="report-selection" class="muted">{ f.Label + ": " + f.Text }</p>
+		}
 	}
 }
 
-// reportBody is a published Report's content: its open Action Items, the
-// introduction, the narrative curated from Highlights, then its Goals (see
-// reportGoalSections) (CONTEXT.md: Report). The draft reads the same parts,
-// its introduction under its name and its narrative composed in place.
-templ reportBody(r domain.Report, asOf time.Time, d discussion) {
-	@reportActionItems(r.ActionItems, d)
-	@reportIntroduction(r)
-	@reportNarrative(r.Narrative)
-	@reportGoalSections(r, asOf, d)
-}
-
-// reportIntroduction is the Report Definition's Introduction, read-only, when
-// it has one; it is edited only with the definition.
-templ reportIntroduction(r domain.Report) {
-	if r.Definition.Introduction != "" {
-		<p data-testid="report-introduction" class="rp-intro">{ r.Definition.Introduction }</p>
+// reportBody is a Report's content, as its facts list it: its open Action
+// Items, the introduction, the narrative curated from Highlights, then its
+// Goals — the exceptions, the Goals On track, and those that entered or left —
+// or, when it selects none, "No Goals selected." in their place (CONTEXT.md:
+// Report). The draft reads the same parts, its introduction under its name;
+// for a reader who may manage it, compose is the form composing its narrative
+// in place, which stands before its Goals.
+templ reportBody(facts []domain.ReportFact, asOf time.Time, d discussion, compose *narrativeForm) {
+	{{ story, goals := splitReportGoals(facts) }}
+	for _, f := range story {
+		@reportFact(f, asOf, d)
 	}
-}
-
-// reportGoalSections are a Report's Goals: the exceptions, counted and most
-// urgent first, each an entry with the full MBR block opening with what
-// changed on it since the baseline, and every other selected Goal on track,
-// one table row with its Health, title, Owner, and due date, and last the
-// Goals that entered or left since the latest publication. A Path to Green is
-// judged overdue as of asOf. On a publication, each Goal carries its
-// discussion.
-templ reportGoalSections(r domain.Report, asOf time.Time, d discussion) {
-	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
+	if compose != nil {
+		@narrativeCuration(*compose)
+	}
+	if !reportSelectsGoals(facts) {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
-	if len(r.Exceptions) > 0 {
-		<section data-testid="needs-attention" class="rp-exceptions">
-			<h2>Exceptions{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(r.Exceptions)) }</span></h2>
-			for _, b := range r.Exceptions {
-				@reportBlock(b, asOf, d)
-			}
-		</section>
+	for _, f := range goals {
+		@reportFact(f, asOf, d)
 	}
-	if len(r.Lines) > 0 {
-		<section data-testid="on-track-section">
-			<h2>On track</h2>
-			<div class="rp-scroll">
-				<table data-testid="on-track" class="rp-track">
-					<thead>
-						<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
-					</thead>
-					<tbody>
-						for _, sg := range r.Lines {
-							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
-								<td class="rp-track-health">
-									@reportHealthBadge("selected-health", sg.Health, d)
-								</td>
-								<td class="rp-track-goal">
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-									@reportFields(sg.Fields, d.dates())
-								</td>
-								<td data-testid="selected-owner" class="rp-track-owner">
-									@person(sg.Goal.Owner)
-								</td>
-								<td class="rp-track-due">
-									if !sg.Goal.DeliveryDate.IsZero() {
-										<span data-testid="selected-due" class="rp-date">{ showDateYear(sg.Goal.DeliveryDate) }</span>
-									} else {
-										<span class="muted">—</span>
-									}
+}
+
+// reportGoalFacts are the kinds of fact about a Report's Goals.
+var reportGoalFacts = []domain.ReportFactKind{domain.ReportFactExceptions, domain.ReportFactOnTrack, domain.ReportFactMembershipChanges}
+
+// splitReportGoals splits a Report's facts, in order, into those before its
+// Goals and those about them.
+func splitReportGoals(facts []domain.ReportFact) (story, goals []domain.ReportFact) {
+	for _, f := range facts {
+		if slices.Contains(reportGoalFacts, f.Kind) {
+			goals = append(goals, f)
+		} else {
+			story = append(story, f)
+		}
+	}
+	return story, goals
+}
+
+// reportSelectsGoals reports whether a Report's facts hold any of its Goals,
+// exceptions or On track.
+func reportSelectsGoals(facts []domain.ReportFact) bool {
+	return slices.ContainsFunc(facts, func(f domain.ReportFact) bool {
+		return f.Kind == domain.ReportFactExceptions || f.Kind == domain.ReportFactOnTrack
+	})
+}
+
+// withoutReportFacts is facts without those of the given kinds.
+func withoutReportFacts(facts []domain.ReportFact, kinds ...domain.ReportFactKind) []domain.ReportFact {
+	return slices.DeleteFunc(slices.Clone(facts), func(f domain.ReportFact) bool { return slices.Contains(kinds, f.Kind) })
+}
+
+// reportFact is one fact of a Report's body. Each exception is counted under
+// the heading, most urgent first, an entry with the full MBR block opening
+// with what changed on it since the baseline, its Path to Green judged overdue
+// as of asOf; every Goal On track is one table row with its Health, title,
+// Owner, and due date. On a publication, each Goal carries its discussion.
+templ reportFact(f domain.ReportFact, asOf time.Time, d discussion) {
+	switch f.Kind {
+		case domain.ReportFactActionItems:
+			@reportActionItems(f.ActionItems, d)
+		case domain.ReportFactIntroduction:
+			@reportIntroduction(f)
+		case domain.ReportFactNarrative:
+			@reportNarrative(f.Narrative)
+		case domain.ReportFactExceptions:
+			<section data-testid="needs-attention" class="rp-exceptions">
+				<h2>{ f.Label }{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(f.Exceptions)) }</span></h2>
+				for _, b := range f.Exceptions {
+					@reportBlock(b, asOf, d)
+				}
+			</section>
+		case domain.ReportFactOnTrack:
+			@reportOnTrack(f, d)
+		case domain.ReportFactMembershipChanges:
+			@membershipChanges(f)
+	}
+}
+
+// reportIntroduction is the Report Definition's Introduction, read-only; it is
+// edited only with the definition.
+templ reportIntroduction(f domain.ReportFact) {
+	<p data-testid="report-introduction" class="rp-intro">{ f.Text }</p>
+}
+
+// reportOnTrack is the table of a Report's Goals On track, one row each.
+templ reportOnTrack(f domain.ReportFact, d discussion) {
+	<section data-testid="on-track-section">
+		<h2>{ f.Label }</h2>
+		<div class="rp-scroll">
+			<table data-testid="on-track" class="rp-track">
+				<thead>
+					<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
+				</thead>
+				<tbody>
+					for _, sg := range f.Lines {
+						<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
+							<td class="rp-track-health">
+								@reportHealthBadge("selected-health", sg.Health, d)
+							</td>
+							<td class="rp-track-goal">
+								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
+								@reportFields(sg.Fields, d.dates())
+							</td>
+							<td data-testid="selected-owner" class="rp-track-owner">
+								@person(sg.Goal.Owner)
+							</td>
+							<td class="rp-track-due">
+								if !sg.Goal.DeliveryDate.IsZero() {
+									<span data-testid="selected-due" class="rp-date">{ showDateYear(sg.Goal.DeliveryDate) }</span>
+								} else {
+									<span class="muted">—</span>
+								}
+							</td>
+						</tr>
+						if d.Pub != nil {
+							<tr>
+								<td colspan="4" class="rp-track-talk">
+									@goalDiscussion(sg.Goal.ID, d)
 								</td>
 							</tr>
-							if d.Pub != nil {
-								<tr>
-									<td colspan="4" class="rp-track-talk">
-										@goalDiscussion(sg.Goal.ID, d)
-									</td>
-								</tr>
-							}
 						}
-					</tbody>
-				</table>
-			</div>
-		</section>
-	}
-	@membershipChanges(r.MembershipChanges)
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
 }
 
 // membershipChanges lists the Goals that entered or left the Report since its
 // Definition's latest publication, each linking to the Goal, with Added or
-// Left and why. It shows only when there are some.
-templ membershipChanges(changes []domain.MembershipChange) {
-	if len(changes) > 0 {
-		<section data-testid="membership-changes">
-			<h2>Goals that entered or left this report</h2>
-			<div class="rp-scroll">
-				<table>
-					<thead>
-						<tr><th>Goal</th><th>Change</th><th>Why</th></tr>
-					</thead>
-					<tbody>
-						for _, c := range changes {
-							<tr data-testid="membership-change" id={ fmt.Sprintf("membership-%d", c.Goal.ID) }>
-								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.Goal.ID)) }>{ c.Goal.Title }</a></td>
-								<td data-testid="membership-direction">{ c.Direction }</td>
-								<td data-testid="membership-reason">{ c.Reason }</td>
-							</tr>
-						}
-					</tbody>
-				</table>
-			</div>
-		</section>
-	}
+// Left and why.
+templ membershipChanges(f domain.ReportFact) {
+	<section data-testid="membership-changes">
+		<h2>{ f.Label }</h2>
+		<div class="rp-scroll">
+			<table>
+				<thead>
+					<tr><th>Goal</th><th>Change</th><th>Why</th></tr>
+				</thead>
+				<tbody>
+					for _, c := range f.MembershipChanges {
+						<tr data-testid="membership-change" id={ fmt.Sprintf("membership-%d", c.Goal.ID) }>
+							<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.Goal.ID)) }>{ c.Goal.Title }</a></td>
+							<td data-testid="membership-direction">{ c.Direction }</td>
+							<td data-testid="membership-reason">{ c.Reason }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
 }
 
 // narrativeCuration is the draft page's Narrative section for a reader who
@@ -1147,25 +1209,25 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 }
 
 // reportBlock is an exception Goal's full MBR block, an entry ruled off from
-// the next by a hairline: its head reads Health first, with its Run off Green
-// and earlier Health, then the title over its Owner, Lifecycle, and due date
-// with its history struck through, then its other badges; under them, when it
-// changed since the baseline, a line saying what changed ("Changed: Turned
-// Red · 1 Milestone slipped"), and under that the Goals in the Report it
-// contributes to ("Contributes to: [Red] Growth ↓"); Why it
-// matters and latest status as plain labelled rows; then, on a Red or Yellow
-// Goal, the block's one tinted box, in its Health's tint (pathTintClass): its
-// Path to Green, its back-to-Green date followed by the date it last slipped
-// from in the Run off Green struck through and the count of slips once more
-// than one, as drafted (see reportBackToGreenPrior), and marked Overdue when
-// its target date passed before asOf, and after it an Ask for help open when
-// the Report was drafted (reportAskForHelp); then labelled rows of Milestones,
-// each marked as of asOf, Metrics against target, and the Rolled-up Health with
-// how many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1
-// Yellow · 1 overdue"), the Goals behind it, and the Owner's explanation when
-// the block shows it (domain.ReportBlock.ShowsExplanation). Each row's label
-// sits in a column beside it (DESIGN.md § A publication). It reads asOf in the
-// zone the block's Goal was judged in when drafted (see
+// the next by a hairline, laid out from its facts (domain.ReportBlock.Facts):
+// its head reads Health first, with its Run off Green and earlier Health, then
+// the title over its Owner, Lifecycle, and due date with its history struck
+// through, then its other badges; under them, when it changed since the
+// baseline, a line saying what changed ("Changed: Turned Red · 1 Milestone
+// slipped"), and under that the Goals in the Report it contributes to
+// ("Contributes to: [Red] Growth ↓"); Why it matters and latest status as
+// plain labelled rows; then, on a Red or Yellow Goal, the block's one tinted
+// box, in its Health's tint (pathTintClass): its Path to Green, its
+// back-to-Green date followed by the date it last slipped from in the Run off
+// Green struck through and the count of slips once more than one, as drafted
+// (see reportBackToGreenPrior), and marked Overdue when its target date passed
+// before asOf, and after it an Ask for help open when the Report was drafted;
+// then labelled rows of Milestones, each marked as of asOf, Metrics against
+// target, and the Rolled-up Health with how many children are Red, Yellow and
+// Check-in overdue ("2 of 6 Red · 1 Yellow · 1 overdue"), the Goals behind it,
+// and the Owner's explanation when the block shows it. Each row's label sits
+// in a column beside it (DESIGN.md § A publication). It reads asOf in the zone
+// the block's Goal was judged in when drafted (see
 // domain.ReportBlock.Timezone). Each Goal it names links to its place in the
 // Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
 // A Yellow or Red Health reads with its Run off Green as drafted, and one that
@@ -1174,198 +1236,255 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // On a publication it ends with the Goal's discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
-		<div class="rp-card-head">
-			<span class="rp-health">
-				@reportHealthBadge("report-health", b.Health, d)
-				if b.RunOffGreenWeeks > 0 {
-					<span data-testid="report-run-off-green" class="small muted">{ "· " + domain.RunOffGreenLabel(b.RunOffGreenWeeks) }</span>
-				}
-				if b.PriorHealth != "" {
-					<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
-				}
-			</span>
-			<div class="rp-card-title">
-				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
-				<p class="small muted">
-					<span data-testid="report-owner">
-						@person(b.Goal.Owner)
-					</span>
-					{ " · " }{ b.Goal.Lifecycle }
-					if !b.Goal.DeliveryDate.IsZero() {
-						{ " · due " }
-						<span data-testid="report-due" class="rp-dates">
-							@struckDates(b.Goal.DeliveryDate, b.PriorDueDates, d.dates())
-							<span>{ showDateYear(b.Goal.DeliveryDate) }</span>
-						</span>
+		for _, run := range reportBlockRuns(b.Facts(asOf)) {
+			switch run.layout {
+				case reportBlockAbout, reportBlockDetail:
+					<dl class="rp-facts">
+						for _, f := range run.facts {
+							@reportBlockFact(f, d)
+						}
+					</dl>
+				case reportBlockPath:
+					if tint := pathTintClass(b.Health); tint != "" {
+						<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", reportPathOverdue(run.facts)) }>
+							for _, f := range run.facts {
+								@reportBlockFact(f, d)
+							}
+						</div>
+					} else {
+						for _, f := range run.facts {
+							@reportBlockFact(f, d)
+						}
 					}
-				</p>
-			</div>
-			if len(b.Badges) > 0 {
-				<div class="rp-badges">
-					for _, badge := range b.Badges {
-						<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
+				default:
+					for _, f := range run.facts {
+						@reportBlockFact(f, d)
 					}
-				</div>
 			}
-		</div>
-		if len(b.Changes) > 0 {
+		}
+		@goalDiscussion(b.Goal.ID, d)
+	</article>
+}
+
+// How an exception block's page lays out a run of its facts: the head and the
+// lines under it each on its own; Why it matters and the status in a label
+// column; the Path to Green and the Ask for help in the tinted box on a Red or
+// Yellow block; and the rest in a second label column.
+const (
+	reportBlockLoose  = "loose"
+	reportBlockAbout  = "about"
+	reportBlockPath   = "path"
+	reportBlockDetail = "detail"
+)
+
+// reportBlockRun is a run of an exception block's facts its page lays out
+// together.
+type reportBlockRun struct {
+	layout string
+	facts  []domain.ReportFact
+}
+
+// reportBlockRuns gathers an exception block's facts, in order, into the runs
+// its page lays out together.
+func reportBlockRuns(facts []domain.ReportFact) []reportBlockRun {
+	var runs []reportBlockRun
+	for _, f := range facts {
+		layout := reportBlockLoose
+		switch f.Kind {
+		case domain.ReportFactWhyItMatters, domain.ReportFactStatus:
+			layout = reportBlockAbout
+		case domain.ReportFactPathToGreen, domain.ReportFactAskForHelp:
+			layout = reportBlockPath
+		case domain.ReportFactMilestones, domain.ReportFactMetrics, domain.ReportFactRolledUp,
+			domain.ReportFactSupportedBy, domain.ReportFactExplanation:
+			layout = reportBlockDetail
+		}
+		if n := len(runs); n > 0 && runs[n-1].layout == layout {
+			runs[n-1].facts = append(runs[n-1].facts, f)
+			continue
+		}
+		runs = append(runs, reportBlockRun{layout: layout, facts: []domain.ReportFact{f}})
+	}
+	return runs
+}
+
+// reportPathOverdue reports whether a run of a block's facts holds an overdue
+// Path to Green.
+func reportPathOverdue(facts []domain.ReportFact) bool {
+	return slices.ContainsFunc(facts, func(f domain.ReportFact) bool {
+		return f.Kind == domain.ReportFactPathToGreen && f.PathToGreen.Overdue
+	})
+}
+
+// reportBlockFact is one of an exception block's facts, under its label.
+templ reportBlockFact(f domain.ReportFact, d discussion) {
+	switch f.Kind {
+		case domain.ReportFactBlockHead:
+			@reportBlockHead(f.Head, d)
+		case domain.ReportFactChanged:
 			<p data-testid="report-changes" class="small">
-				<strong>Changed:</strong>{ " " }
-				for i, c := range b.Changes {
+				<strong>{ f.Label + ":" }</strong>{ " " }
+				for i, c := range f.Changes {
 					if i > 0 {
 						{ " · " }
 					}
 					<span data-testid="report-change">{ c }</span>
 				}
 			</p>
-		}
-		if len(b.ContributesTo) > 0 {
+		case domain.ReportFactContributesTo:
 			<p data-testid="report-contributes-to" class="small">
-				<strong>Contributes to:</strong>{ " " }
-				@linkedGoals(b.ContributesTo, d)
+				<strong>{ f.Label + ":" }</strong>{ " " }
+				@linkedGoals(f.Goals, d)
 			</p>
-		}
-		@reportFields(b.Fields, d.dates())
-		<dl class="rp-facts">
+		case domain.ReportFactFields:
+			@reportFields(f.Fields, d.dates())
+		case domain.ReportFactWhyItMatters:
 			<div>
-				<dt class="label">Why it matters</dt>
-				<dd data-testid="report-why-it-matters">{ b.Goal.WhyItMatters }</dd>
+				<dt class="label">{ f.Label }</dt>
+				<dd data-testid="report-why-it-matters">{ f.Text }</dd>
 			</div>
-			if b.Status != "" {
-				<div>
-					<dt class="label">Status</dt>
-					<dd data-testid="report-status">{ b.Status }</dd>
-				</div>
-			}
-		</dl>
-		if tint := pathTintClass(b); tint != "" {
-			<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", domain.PathToGreenOverdueAt(b, asOf)) }>
-				if b.PathToGreen != "" {
-					<p data-testid="report-path-to-green">
-						<strong class="rp-tint-label">Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PathTargetDate, b.PriorPathTargetDates))
-						if domain.PathToGreenOverdueAt(b, asOf) {
-							{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
+		case domain.ReportFactStatus:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd data-testid="report-status">{ f.Text }</dd>
+			</div>
+		case domain.ReportFactPathToGreen:
+			{{ path := f.PathToGreen }}
+			<p data-testid="report-path-to-green">
+				<strong class="rp-tint-label">{ f.Label + ":" }</strong> { path.Plan } ({ path.ByWords() } { showDateYear(path.By) }@reportBackToGreenPrior(path))
+				if path.Overdue {
+					{ " " }<strong data-testid="path-overdue" class="badge r">{ path.OverdueWords() }</strong>
+				}
+			</p>
+		case domain.ReportFactAskForHelp:
+			<p data-testid="report-ask-for-help">
+				<strong>{ f.Label }</strong>
+				if f.Ask.Addressee != nil {
+					{ " of " }@person(*f.Ask.Addressee)
+				} else {
+					{ " · " + f.Ask.Words() }
+				}
+			</p>
+		case domain.ReportFactMilestones:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd>
+					<ul data-testid="report-milestones">
+						for _, m := range f.Milestones {
+							<li data-testid="report-milestone">
+								if m.Mark != domain.MilestoneMarkNone {
+									@milestoneMarkBadge(m.Mark)
+									{ " " }
+								}
+								<span class="rp-dates">
+									@milestoneDates(m.Milestone.TargetDate, m.PriorDates, d.dates())
+								</span>
+								{ " " }
+								if m.Milestone.Status == domain.MilestoneRemoved {
+									<del>{ m.Milestone.Name }</del>
+								} else {
+									{ m.Milestone.Name }
+								}
+								if m.Milestone.RemovedReason != "" {
+									{ " " }
+									<span>— { m.Milestone.RemovedReason }</span>
+								}
+							</li>
 						}
-					</p>
-				}
-				@reportAskForHelp(b)
+					</ul>
+				</dd>
 			</div>
-		} else {
-			@reportAskForHelp(b)
-		}
-		if len(b.Milestones) > 0 || len(b.Metrics) > 0 || b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0 || len(b.Behind) > 0 {
-			<dl class="rp-facts">
-				if len(b.Milestones) > 0 {
-					<div>
-						<dt class="label">Milestones</dt>
-						<dd>
-							<ul data-testid="report-milestones">
-								for _, m := range b.Milestones {
-									<li data-testid="report-milestone">
-										if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(b.Location())); mark != domain.MilestoneMarkNone {
-											@milestoneMarkBadge(mark)
-											{ " " }
-										}
-										<span class="rp-dates">
-											@milestoneDates(m.Milestone.TargetDate, m.PriorDates, d.dates())
-										</span>
-										{ " " }
-										if m.Milestone.Status == domain.MilestoneRemoved {
-											<del>{ m.Milestone.Name }</del>
-										} else {
-											{ m.Milestone.Name }
-										}
-										if m.Milestone.RemovedReason != "" {
-											{ " " }
-											<span>— { m.Milestone.RemovedReason }</span>
-										}
-									</li>
-								}
-							</ul>
-						</dd>
-					</div>
-				}
-				if len(b.Metrics) > 0 {
-					<div>
-						<dt class="label">Metrics</dt>
-						<dd>
-							<ul data-testid="report-metrics">
-								for _, m := range b.Metrics {
-									<li data-testid="report-metric">
-										{ m.Metric.Name }:
-										if m.Read {
-											{ fmtNum(m.Current) }
-										} else {
-											no reading yet
-										}
-										{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
-										{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
-									</li>
-								}
-							</ul>
-						</dd>
-					</div>
-				}
-				if count := b.RolledUp.CountLine(); b.RolledUp.Present || count != "" {
-					<div>
-						<dt class="label">Rolled-up Health</dt>
-						<dd data-testid="report-rollup">
-							if b.RolledUp.Present {
-								@reportHealthBadge("rollup-health", b.RolledUp.Health, d)
-								if count != "" {
-									{ "· " }
-								}
-							}
-							if count != "" {
-								<span data-testid="report-rollup-count">{ count }</span>
-							}
-						</dd>
-					</div>
-				}
-				if len(b.Behind) > 0 {
-					<div>
-						<dt class="label">Supported by</dt>
-						<dd data-testid="report-behind-it">
-							@linkedGoals(b.Behind, d)
-						</dd>
-					</div>
-				}
-				if b.ShowsExplanation() {
-					<div>
-						<dt class="label">Why the Health differs</dt>
-						<dd data-testid="report-health-explanation">{ b.Explanation }</dd>
-					</div>
-				}
-			</dl>
-		}
-		@goalDiscussion(b.Goal.ID, d)
-	</article>
+		case domain.ReportFactMetrics:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd>
+					<ul data-testid="report-metrics">
+						for _, m := range f.Metrics {
+							<li data-testid="report-metric">
+								{ m.Metric.Name }:
+								{ m.Reading(fmtNum) }
+								{ " " + domain.ReportAgainstATargetOf + " " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
+								{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
+							</li>
+						}
+					</ul>
+				</dd>
+			</div>
+		case domain.ReportFactRolledUp:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd data-testid="report-rollup">
+					if f.RolledUp.Present {
+						@reportHealthBadge("rollup-health", f.RolledUp.Health, d)
+						if f.RolledUp.Count != "" {
+							{ "· " }
+						}
+					}
+					if f.RolledUp.Count != "" {
+						<span data-testid="report-rollup-count">{ f.RolledUp.Count }</span>
+					}
+				</dd>
+			</div>
+		case domain.ReportFactSupportedBy:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd data-testid="report-behind-it">
+					@linkedGoals(f.Goals, d)
+				</dd>
+			</div>
+		case domain.ReportFactExplanation:
+			<div>
+				<dt class="label">{ f.Label }</dt>
+				<dd data-testid="report-health-explanation">{ f.Text }</dd>
+			</div>
+	}
 }
 
-// reportAskForHelp is a block's Ask for help, open when the Report was
-// drafted, naming whom it asks or saying no one is above the Owner; it says
-// nothing when the Goal doesn't ask.
-templ reportAskForHelp(b domain.ReportBlock) {
-	if b.AsksForHelp {
-		<p data-testid="report-ask-for-help">
-			<strong>Asks for help</strong>
-			if b.AskAddressee != nil {
-				{ " of " }@person(*b.AskAddressee)
-			} else {
-				{ " · no one above the Owner" }
+// reportBlockHead is an exception block's head: its Health with its Run off
+// Green and what it was, then its title over its Owner, Lifecycle and due
+// date, then its badges.
+templ reportBlockHead(h domain.ReportBlockHead, d discussion) {
+	<div class="rp-card-head">
+		<span class="rp-health">
+			@reportHealthBadge("report-health", h.Health, d)
+			if h.RunOffGreen != "" {
+				<span data-testid="report-run-off-green" class="small muted">{ "· " + h.RunOffGreen }</span>
 			}
-		</p>
-	}
+			if h.WasHealth != "" {
+				<span data-testid="report-prior-health" class="small muted">{ "· " + h.WasHealth }</span>
+			}
+		</span>
+		<div class="rp-card-title">
+			<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", h.GoalID)) }>{ h.Title }</a></h3>
+			<p class="small muted">
+				<span data-testid="report-owner">
+					@person(h.Owner)
+				</span>
+				{ " · " }{ h.Lifecycle }
+				if !h.Due.IsZero() {
+					{ " · due " }
+					<span data-testid="report-due" class="rp-dates">
+						@struckDates(h.Due, h.PriorDue, d.dates())
+						<span>{ showDateYear(h.Due) }</span>
+					</span>
+				}
+			</p>
+		</div>
+		if len(h.Badges) > 0 {
+			<div class="rp-badges">
+				for _, badge := range h.Badges {
+					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
+				}
+			</div>
+		}
+	</div>
 }
 
-// pathTintClass is the tint of a block's Path to Green box: Red's or Yellow's
-// on a Red or Yellow Goal with a Path to Green or an Ask for help to show, and
-// "" otherwise, when the block has no tinted box (DESIGN.md § A publication).
-func pathTintClass(b domain.ReportBlock) string {
-	if b.PathToGreen == "" && !b.AsksForHelp {
-		return ""
-	}
-	switch b.Health {
+// pathTintClass is the tint of a block's Path to Green box, by its Health:
+// Red's or Yellow's on a Red or Yellow Goal, and "" otherwise, when the block
+// has no tinted box (DESIGN.md § A publication).
+func pathTintClass(health string) string {
+	switch health {
 	case domain.HealthRed:
 		return "rp-tint-r"
 	case domain.HealthYellow:
@@ -1374,17 +1493,17 @@ func pathTintClass(b domain.ReportBlock) string {
 	return ""
 }
 
-// reportBackToGreenPrior follows a block's back-to-Green date, current, with
-// the date it last slipped from within the Run off Green struck through, and
-// the number of times it slipped once that is more than one, as a Milestone's
-// date reads: Oct 3, 2026 ~~Sep 12, 2026~~ (3). prior comes earliest first; with
-// none it renders nothing. A date equal to the current one is never struck
-// through: the most recent that differs is, or none.
-templ reportBackToGreenPrior(current time.Time, prior []time.Time) {
-	if struck := domain.StruckDates(current, prior); len(struck) > 0 {
+// reportBackToGreenPrior follows a block's back-to-Green date with the date it
+// last slipped from within the Run off Green struck through, and the number of
+// times it slipped once that is more than one, as a Milestone's date reads:
+// Oct 3, 2026 ~~Sep 12, 2026~~ (3). Prior dates come earliest first; with none
+// it renders nothing. A date equal to the current one is never struck through:
+// the most recent that differs is, or none.
+templ reportBackToGreenPrior(path domain.ReportPathToGreen) {
+	if struck := domain.StruckDates(path.By, path.PriorDates); len(struck) > 0 {
 		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(struck[len(struck)-1]) }</del>
 	}
-	@reportBackToGreenSlips(len(prior))
+	@reportBackToGreenSlips(path.Slips)
 }
 
 // reportBackToGreenSlips is how many times a block's back-to-Green date slipped
