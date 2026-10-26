@@ -500,12 +500,12 @@ func suggestedParents(v goalView) templ.Component {
 			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if len(v.Suggested) > 0 {
+		if len(v.OpenSuggestions) > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<h3 class=\"label\">Suggested parents</h3><ul data-testid=\"goal-suggestions\" class=\"gp-list\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			for _, p := range v.Suggested {
+			for _, p := range v.OpenSuggestions {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<li data-testid=\"goal-suggestion\" class=\"gp-link\"><a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

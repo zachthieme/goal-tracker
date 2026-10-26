@@ -55,201 +55,25 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	for _, m := range p.Metrics {
 		trends = append(trends, metricTrend{Metric: m, Readings: p.Readings[m.ID]})
 	}
-	// The Owner and Delegates are offered a No change only where it would be
-	// recorded; where it wouldn't, the Check-in page says why.
-	noChangeRefusal, err := s.noChangeSentence(p.NoChangeRefusal)
-	if err != nil {
-		return goalView{}, err
-	}
-
-	view := goalView{
-		Goal:               p.Goal,
-		Parents:            p.Parents,
-		Children:           p.Children,
-		LinkHealth:         p.LinkHealth,
-		Candidates:         p.Candidates,
-		Milestones:         p.Milestones,
-		Metrics:            p.Metrics,
-		Trends:             trends,
-		Highlights:         p.Highlights,
-		DraftHighlights:    p.DraftHighlights,
-		Contributors:       p.Contributors,
-		Delegates:          p.Delegates,
-		CanCheckin:         p.CanCheckin,
-		NoChangeRefusal:    noChangeRefusal,
-		OverdueMilestone:   p.OverdueMilestone,
-		Permissions:        p.Permissions,
-		Revisions:          p.Revisions,
-		TitleRevisions:     p.TitleRevisions,
-		Ownership:          p.Ownership,
-		ValueHistory:       p.ValueHistory,
-		Dimensions:         p.Dimensions,
-		Values:             p.Values,
-		Fields:             p.Fields,
-		FieldValues:        p.FieldValues,
-		Checkins:           p.Checkins,
-		LatestCheckin:      p.LatestCheckin,
-		RolledUp:           p.RolledUp,
-		Ask:                p.Ask,
-		AskAddressee:       p.AskAddressee,
-		DateSlips:          p.DateSlips,
-		MilestoneChurn:     p.MilestoneChurn,
-		Signals:            p.Signals,
-		Freshness:          p.Freshness,
-		Required:           p.Required,
-		Incomplete:         p.Incomplete,
-		HealthStrip:        p.HealthStrip,
-		RunOffGreen:        p.RunOffGreen,
-		Suggestions:        p.Suggestions,
-		Suggested:          p.OpenSuggestions,
-		Nudges:             p.Nudges,
-		LinkEvents:         p.LinkEvents,
-		MilestoneAdditions: p.MilestoneAdditions,
-		ActionItems:        p.ActionItems,
-		ActionReassigns:    p.ActionReassigns,
-		Threads:            p.Threads,
-		Comments:           p.Comments,
-		Now:                p.Now,
-		Timezone:           p.Timezone,
-	}
+	view := goalView{GoalPage: p, Trends: trends}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil
 }
 
-// goalView is everything the single-Goal page renders: the Goal itself, its
-// graph links, and the Milestones, Metrics, Contributors, and Why it matters history an
-// Owner fills in before activating it.
+// goalView is everything the single-Goal page renders: what the Goal page's
+// loader read for the viewer (domain.GoalPage), and what web works out for
+// the page itself.
 type goalView struct {
-	Goal     domain.Goal
-	Parents  []domain.GoalLink
-	Children []domain.GoalLink
-	// LinkHealth is the Health of each Active parent and child with a
-	// Check-in, keyed by Goal ID.
-	LinkHealth map[int64]string
-	Candidates []domain.Goal
-	Milestones []domain.Milestone
-	Metrics    []domain.Metric
-	// Trends pairs each Metric with its readings over time, for the trend against
-	// target shown on the Goal page. Highlights are the Goal's flagged notes,
-	// newest first (CONTEXT.md: Metric, Highlight). DraftHighlights are its
-	// pending Draft Highlights, oldest first, loaded only for its Owner and
-	// Delegates, who alone may see them (CONTEXT.md: Draft Highlight).
-	Trends          []metricTrend
-	Highlights      []domain.Highlight
-	DraftHighlights []domain.DraftHighlight
-	Contributors    []domain.Account
-	// Delegates are the Accounts the Owner has authorized to write Check-ins on
-	// this Goal, and CanCheckin is true when the viewer may write one — the Owner
-	// or one of those Delegates (CONTEXT.md: Delegate) — whatever its
-	// Lifecycle. Permissions are what the viewer may do with it now.
-	Delegates   []domain.Account
-	CanCheckin  bool
-	Permissions domain.GoalPermissions
-	Revisions   []domain.WhyItMattersRevision
-	// NoChangeRefusal is why a No change on this Active Goal would be
-	// refused, as a sentence, or "" when one would be recorded or isn't on
-	// offer: there's no Check-in to repeat or the viewer can't check in.
-	NoChangeRefusal string
-	// OverdueMilestone is the Goal's first overdue Milestone, whatever its
-	// Health and with or without a Check-in, or nil when none is, so the
-	// Check-in form doesn't start from a Green the Milestone rules out.
-	OverdueMilestone *domain.Milestone
-	// TitleRevisions are every change to the Goal's title, newest first, for
-	// its History.
-	TitleRevisions []domain.TitleRevision
-	// Ownership is the Goal's ownership history, oldest first: every Handoff
-	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff). The page
-	// shows it, and the rest of the Goal's history, as History.
-	Ownership []domain.Handoff
-	// ValueHistory is every change to the Goal's Dimension values and Fields,
-	// oldest first (CONTEXT.md: Field).
-	ValueHistory []domain.ValueChange
-	// Dimensions are all defined Dimensions, Retired ones included so the values
-	// the Goal carries in them stay readable; only the rest get value-assignment
-	// controls. Values are the values this Goal currently carries, retired ones
-	// included so they stay readable. Fields are all defined Fields, Retired
-	// ones included, and FieldValues the values this Goal has in them.
-	Dimensions  []domain.Dimension
-	Values      []domain.DimensionValue
-	Fields      []domain.Field
-	FieldValues []domain.FieldValue
+	domain.GoalPage
+	// Trends pairs each Metric with its readings over time, for the trend
+	// against target shown on the Goal page (CONTEXT.md: Metric).
+	Trends []metricTrend
 	// Open is the one form the page shows open in place, from its ?open=
 	// address, or "" for none. FormError is why that form's last submit was
 	// refused and FormInput what it sent, so it comes back as it was left.
 	Open      goalForm
 	FormError string
 	FormInput url.Values
-	// Checkins is the Goal's Check-in history (newest first) and LatestCheckin is
-	// the most recent one, carrying the Goal's current Health, status, and Path to
-	// Green. LatestCheckin is nil when the Goal has no Check-ins yet.
-	Checkins      []domain.Checkin
-	LatestCheckin *domain.Checkin
-	// RolledUp is the Goal's Rolled-up Health — the worst Owner-set Health among
-	// its Active children — shown next to the Owner-set Health (ADR-0003). Its
-	// Present is false when there is nothing to roll up.
-	RolledUp domain.RolledUpHealth
-	// RunOffGreen is how long the Goal has been Yellow or Red, shown beside
-	// the Owner's Health; it isn't running unless the Goal is Active and off
-	// Green (CONTEXT.md: Run off Green).
-	RunOffGreen domain.RunOffGreen
-	// Ask is the Goal's open Ask for help, nil when it has none. AskAddressee
-	// is whom an ask from its Owner goes to, open or not, for the Check-in
-	// form's hint; nil when no one is above the Owner (CONTEXT.md: Ask for
-	// help).
-	Ask          *domain.AskForHelp
-	AskAddressee *domain.Account
-	// DateSlips is the Goal's Date Slip history, earliest first, covering its
-	// delivery date, its Milestones' dates and its back-to-Green date; its
-	// length is the slip count.
-	// MilestoneChurn counts Milestones added or removed since the Goal became
-	// Active (CONTEXT.md: Date Slip, Milestone Churn).
-	DateSlips      []domain.DateSlip
-	MilestoneChurn int
-	// Signals are those found in how this Goal is linked and dated:
-	// Unlinked, schedule conflicts it is either side of, and parents that are On
-	// Hold or Cancelled.
-	Signals domain.GoalSignals
-	// Freshness says whether the Goal is Check-in overdue or its Path to Green
-	// is overdue, flagged as prominently as Red (CONTEXT.md: Check-in overdue,
-	// Path to Green).
-	Freshness domain.Freshness
-	// Required are the Dimensions and Fields an Admin has marked required, each
-	// saying whether the Goal has a value in it, for the activation checklist.
-	// Incomplete names those an Active Goal lacks, empty when it lacks none or
-	// isn't Active (CONTEXT.md: Incomplete).
-	Required   []domain.RequiredValue
-	Incomplete []string
-	// HealthStrip is the Goal's Health over its last Check-in periods, shown
-	// above its History; it has no periods until the Goal has been Active.
-	HealthStrip domain.HealthStrip
-	// Suggestions are every Parent suggestion made for the Goal with its
-	// outcome, oldest first, for its History. Suggested are the open ones the
-	// viewer is shown under Suggested parents, as the domain lists them
-	// (domain.GoalPage.OpenSuggestions): all of them for one who may decide
-	// them, and their own for anyone else, to withdraw.
-	Suggestions []domain.ParentSuggestion
-	Suggested   []domain.ParentSuggestion
-	// Nudges are every Nudge of the Goal, oldest first, for its History.
-	Nudges []domain.Nudge
-	// LinkEvents are every change to the Goal's links, as their child or
-	// their parent, oldest first, for its History.
-	LinkEvents []domain.LinkEvent
-	// MilestoneAdditions are the Milestones the Owner or a Delegate added
-	// from the Goal page while it was Active or On Hold, oldest first, each
-	// with who added it and when, for its History and New marks.
-	MilestoneAdditions []domain.MilestoneChange
-	// ActionItems are every Action Item about the Goal, open and closed, from
-	// every Report, soonest due first; the page lists the open ones.
-	ActionItems []domain.ActionItemListing
-	// ActionReassigns are the reassignments of the Action Items
-	// about the Goal, oldest first, for its History.
-	ActionReassigns []domain.ActionItemReassignment
-	// Threads are the comment threads started on the Goal itself, oldest
-	// first, for its Comments block. Comments are every Comment and reply
-	// about the Goal, on the Goal or on a Report, oldest first, for its
-	// History (CONTEXT.md: Comment).
-	Threads  []domain.Thread
-	Comments []domain.CommentListing
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
@@ -257,13 +81,6 @@ type goalView struct {
 	// removed one of its links or declined one of its Parent suggestions, with
 	// an Undo; nil on any other visit.
 	Toast *toast
-	// Now is when the page was loaded; its Milestones are marked overdue as of
-	// its date in Timezone.
-	Now time.Time
-	// Timezone is the Goal's timezone (domain.Service.GoalTimezone), its
-	// Owner's or the company's, that its Milestones are judged in. History
-	// keeps the company's.
-	Timezone *time.Location
 }
 
 // goalForm names a form on the Goal page that opens in place: following
