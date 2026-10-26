@@ -25,7 +25,7 @@ func (s *Server) handleFields(w http.ResponseWriter, r *http.Request, current do
 // optional unit. Only an Admin may.
 func (s *Server) handleCreateField(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if _, err := s.svc.CreateField(r.Context(), current.ID, r.FormValue("name"), r.FormValue("type"), r.FormValue("unit")); err != nil {
-		s.writeFieldError(w, r, err)
+		s.refuse(w, r, "Can't change Field", "/fields", err)
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
@@ -61,17 +61,10 @@ func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current dom
 		return
 	}
 	if err := set(r.Context(), current.ID, id); err != nil {
-		s.writeFieldError(w, r, err)
+		s.refuse(w, r, "Can't change Field", "/fields", err)
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
-}
-
-// writeFieldError answers a refused Field change with the refusal page,
-// linking Back to the Fields page. The domain refuses a Field that isn't
-// there for its input, but a missing record would be the Not found page.
-func (s *Server) writeFieldError(w http.ResponseWriter, r *http.Request, err error) {
-	s.refuse(w, r, "Can't change Field", "/fields", err)
 }
 
 // handleSetGoalField sets the Goal's value in the form's field_id, or clears it

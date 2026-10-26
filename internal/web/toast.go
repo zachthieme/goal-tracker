@@ -212,11 +212,11 @@ func (s *Server) handleUndo(kind undoKind) func(http.ResponseWriter, *http.Reque
 		back := returnTo(r, kind.fallback)
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil {
-			s.refuseUndo(w, r, current, back, domain.ErrNotFound)
+			s.refuseUndo(w, r, back, domain.ErrNotFound)
 			return
 		}
 		if err := kind.undo(s, r, current, id, r.FormValue(undoField)); err != nil {
-			s.refuseUndo(w, r, current, back, err)
+			s.refuseUndo(w, r, back, err)
 			return
 		}
 		http.Redirect(w, r, back, http.StatusSeeOther)
@@ -257,9 +257,8 @@ func takeUndo(w http.ResponseWriter, r *http.Request) undoOffer {
 
 // refuseUndo shows why an Undo was refused on refuse's page, with a link back
 // to the page it was offered on: nothing to undo is a 404 saying so, and a
-// failure a 500 saying nothing changed. refuse resolves the signed-in Account
-// itself, so the one passed in goes unused.
-func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, _ domain.Account, back string, err error) {
+// failure a 500 saying nothing changed.
+func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, back string, err error) {
 	s.refuse(w, r, "Can't undo", back, err,
 		refuseNotFoundSaying("There's nothing here to undo."),
 		refuseFailureSaying("The Undo couldn't be done, so nothing changed. Try again."))

@@ -95,7 +95,7 @@ func (s *Server) handleAcceptParentSuggestion(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if _, err := s.svc.AcceptParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		s.writeLinkError(w, r, current, "Can't accept suggestion", returnTo(r, goalPath(p.Goal.ID)), err)
+		s.refuse(w, r, "Can't accept suggestion", returnTo(r, goalPath(p.Goal.ID)), err)
 		return
 	}
 	http.Redirect(w, r, returnTo(r, goalPath(p.Goal.ID)), http.StatusSeeOther)
@@ -113,7 +113,7 @@ func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Re
 	back := returnTo(r, goalPath(p.Goal.ID))
 	token, err := s.svc.DeclineParentSuggestion(r.Context(), current.ID, p.ID)
 	if err != nil {
-		s.writeLinkError(w, r, current, "Can't decline suggestion", back, err)
+		s.refuse(w, r, "Can't decline suggestion", back, err)
 		return
 	}
 	s.offerUndo(w, r, undoSuggestionDecline, p.ID, token, back)
@@ -128,7 +128,7 @@ func (s *Server) handleWithdrawParentSuggestion(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err := s.svc.WithdrawParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		s.writeLinkError(w, r, current, "Can't withdraw suggestion", goalPath(p.Goal.ID), err)
+		s.refuse(w, r, "Can't withdraw suggestion", goalPath(p.Goal.ID), err)
 		return
 	}
 	http.Redirect(w, r, goalPath(p.Goal.ID), http.StatusSeeOther)

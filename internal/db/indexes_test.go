@@ -148,7 +148,7 @@ func TestEveryForeignKeyColumnLeadsAnIndex(t *testing.T) {
 var fkIndexHotQueries = map[string]string{
 	"ListOpenParentSuggestionsForOwner": listOpenParentSuggestionsForOwner,
 	"ListPendingLinksForOwner":          listPendingLinksForOwner,
-	"GetLatestCheckin":                  getLatestCheckin,
+	"ListLatestCheckinsForGoals":        listLatestCheckinsForGoals,
 	"ListMetrics":                       listMetrics,
 	"ListMilestones":                    listMilestones,
 	"ListGoalComments":                  listGoalComments,
@@ -314,7 +314,6 @@ func TestHotQueriesScanNoGrowingTable(t *testing.T) {
 // fkIndexLatestCheckinQueries are the queries that pick a Goal's latest
 // Check-in: its Check-ins newest first, the first of them.
 var fkIndexLatestCheckinQueries = map[string]string{
-	"GetLatestCheckin":                 getLatestCheckin,
 	"ListLatestCheckinsForGoals":       listLatestCheckinsForGoals,
 	"ListActiveGoalsWithLatestCheckin": listActiveGoalsWithLatestCheckin,
 	"ListOpenAsksForHelp":              listOpenAsksForHelp,

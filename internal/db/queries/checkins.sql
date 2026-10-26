@@ -4,16 +4,12 @@ INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_gree
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
--- name: GetLatestCheckin :one
--- The most recent Check-in on a Goal, which carries the Goal's current Health,
--- status, and Path to Green (CONTEXT.md: current values come from the latest
--- Check-in).
-SELECT * FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1;
-
 -- name: ListLatestCheckinsForGoals :many
--- Each given Goal's most recent Check-in, picked as GetLatestCheckin picks it,
--- with its author and the Owner it was written for resolved. A Goal with no
--- Check-in has no row.
+-- Each given Goal's most recent Check-in, the one with the newest created_at
+-- and, of those, the highest id, which carries the Goal's current Health,
+-- status, and Path to Green (CONTEXT.md: current values come from the latest
+-- Check-in). Its author and the Owner it was written for are resolved. A Goal
+-- with no Check-in has no row.
 SELECT sqlc.embed(checkins), sqlc.embed(author), sqlc.embed(owner)
 FROM checkins
 JOIN accounts author ON author.id = checkins.author_id

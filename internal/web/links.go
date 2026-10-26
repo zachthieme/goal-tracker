@@ -50,7 +50,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	case errors.Is(err, domain.ErrValidation):
 		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
 	case err != nil:
-		s.writeLinkError(w, r, current, "Can't request link", goalPath(childID), err)
+		s.refuse(w, r, "Can't request link", goalPath(childID), err)
 	default:
 		http.Redirect(w, r, goalPath(childID), http.StatusSeeOther)
 	}
@@ -77,7 +77,7 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 	}
 	back := returnTo(r, "/links")
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
-		s.writeLinkError(w, r, current, "Can't accept link", back, err)
+		s.refuse(w, r, "Can't accept link", back, err)
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -95,7 +95,7 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 	back := returnTo(r, "/links")
 	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
 	if err != nil {
-		s.writeLinkError(w, r, current, "Can't reject link", back, err)
+		s.refuse(w, r, "Can't reject link", back, err)
 		return
 	}
 	s.offerUndo(w, r, undoLinkRejection, rejection.ID, rejection.UndoToken, back)
@@ -116,7 +116,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 		if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
 			back = goalPath(goalID)
 		}
-		s.writeLinkError(w, r, current, "Can't remove link", back, err)
+		s.refuse(w, r, "Can't remove link", back, err)
 		return
 	}
 	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))
@@ -141,12 +141,4 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 		return 0, false
 	}
 	return id, true
-}
-
-// writeLinkError answers a refused link action with refuse's page, headed by
-// what was refused (e.g. "Can't accept link") and linking back. A link or
-// suggestion that isn't there is the Not found page. refuse resolves the
-// signed-in Account itself, so the one passed in goes unused.
-func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, _ domain.Account, refused, back string, err error) {
-	s.refuse(w, r, refused, back, err)
 }
