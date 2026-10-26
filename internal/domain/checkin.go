@@ -218,7 +218,7 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 		if err := s.setGoalLifecycle(ctx, goal.ID, lifecycle); err != nil {
 			return Checkin{}, err
 		}
-		if lifecycle.To == LifecycleDone || lifecycle.To == LifecycleCancelled {
+		if LifecycleEnded(lifecycle.To) {
 			if err := s.closeSuggestionsOfEndedGoal(ctx, goal.ID); err != nil {
 				return Checkin{}, err
 			}
@@ -305,9 +305,9 @@ func (s *Service) metricExistsOnce(ctx context.Context) func(id int64) (bool, er
 
 // setGoalLifecycle makes a Check-in's Lifecycle change on goalID, but only
 // while the Goal is still in the Lifecycle the change was planned from. When
-// it has left it, the Check-in is refused with ErrValidation, as one checked
-// in on the Goal's Lifecycle now would be, or else saying the Lifecycle
-// changed meanwhile, so the caller's transaction keeps nothing it wrote.
+// it has left it, the Check-in is refused with ErrValidation, as one leaving
+// the Goal's Lifecycle now as it is would be (lifecycleTakesNoCheckinsRefusal,
+// lifecycleKeepRefusal), or else saying the Lifecycle changed meanwhile, so the caller's transaction keeps nothing it wrote.
 func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change LifecycleChange) error {
 	n, err := s.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{
 		Lifecycle:     change.To,
@@ -322,7 +322,11 @@ func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change Lif
 		if err != nil {
 			return fmt.Errorf("look up goal: %w", err)
 		}
-		if _, err := planLifecycleChange(goal.Goal.Lifecycle, "", "", ""); err != nil {
+		now := goal.Goal.Lifecycle
+		if !LifecycleTakesCheckins(now) {
+			return lifecycleTakesNoCheckinsRefusal(now)
+		}
+		if err := lifecycleKeepRefusal(now); err != nil {
 			return err
 		}
 		return Refuse(ErrValidation, "the Goal's Lifecycle changed meanwhile: reload it and try again")

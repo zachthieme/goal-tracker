@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -445,26 +446,59 @@ func TestLifecycleChangesAppearInCheckinHistory(t *testing.T) {
 	}
 }
 
-// A Goal takes Check-ins only while it is Active or On Hold, and Draft
-// Highlights until it is Done or Cancelled (CONTEXT.md: Lifecycle, Draft
-// Highlight).
+// The Lifecycle says what a Goal in it takes, in Lifecycle order: Check-ins
+// only while it is Active or On Hold, Draft Highlights and Milestones until it
+// has ended, Done or Cancelled, and a parent suggestion only while it is
+// Proposed or Active; and where a Check-in may move it (CONTEXT.md: Lifecycle,
+// Draft Highlight, Milestone). The refusals that list Lifecycles name them in
+// that order.
 func TestLifecycleSaysWhatAGoalTakes(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct {
-		lifecycle                 string
-		checkins, draftHighlights bool
+	want := []string{domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled}
+	if got := domain.Lifecycles(); !slices.Equal(got, want) {
+		t.Errorf("Lifecycles() = %q, want %q", got, want)
+	}
+	rows := map[string]struct {
+		checkins, ended, draftHighlights, milestones, suggestable bool
+		changesTo                                                 []string
 	}{
-		{domain.LifecycleProposed, false, true},
-		{domain.LifecycleActive, true, true},
-		{domain.LifecycleOnHold, true, true},
-		{domain.LifecycleDone, false, false},
-		{domain.LifecycleCancelled, false, false},
-	} {
-		if got := domain.LifecycleTakesCheckins(c.lifecycle); got != c.checkins {
-			t.Errorf("LifecycleTakesCheckins(%s) = %t, want %t", c.lifecycle, got, c.checkins)
+		domain.LifecycleProposed:  {false, false, true, true, true, nil},
+		domain.LifecycleActive:    {true, false, true, true, true, []string{domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled}},
+		domain.LifecycleOnHold:    {true, false, true, true, false, []string{domain.LifecycleActive, domain.LifecycleCancelled}},
+		domain.LifecycleDone:      {false, true, false, false, false, nil},
+		domain.LifecycleCancelled: {false, true, false, false, false, nil},
+	}
+	for _, l := range domain.Lifecycles() {
+		c, ok := rows[l]
+		if !ok {
+			t.Errorf("Lifecycle %q has no row in the test", l)
+			continue
 		}
-		if got := domain.LifecycleTakesDraftHighlights(c.lifecycle); got != c.draftHighlights {
-			t.Errorf("LifecycleTakesDraftHighlights(%s) = %t, want %t", c.lifecycle, got, c.draftHighlights)
+		if got := domain.LifecycleTakesCheckins(l); got != c.checkins {
+			t.Errorf("LifecycleTakesCheckins(%s) = %t, want %t", l, got, c.checkins)
 		}
+		if got := domain.LifecycleEnded(l); got != c.ended {
+			t.Errorf("LifecycleEnded(%s) = %t, want %t", l, got, c.ended)
+		}
+		if got := domain.LifecycleTakesDraftHighlights(l); got != c.draftHighlights {
+			t.Errorf("LifecycleTakesDraftHighlights(%s) = %t, want %t", l, got, c.draftHighlights)
+		}
+		if got := domain.LifecycleTakesMilestones(l); got != c.milestones {
+			t.Errorf("LifecycleTakesMilestones(%s) = %t, want %t", l, got, c.milestones)
+		}
+		if got := domain.LifecycleSuggestable(l); got != c.suggestable {
+			t.Errorf("LifecycleSuggestable(%s) = %t, want %t", l, got, c.suggestable)
+		}
+		if got := domain.LifecycleChangesFrom(l); !slices.Equal(got, c.changesTo) {
+			t.Errorf("LifecycleChangesFrom(%s) = %q, want %q", l, got, c.changesTo)
+		}
+	}
+
+	if got, want := domain.Reason(domain.LifecycleTakesNoCheckinsRefusal(domain.LifecycleProposed)),
+		"a Proposed Goal can't be checked in on: only an Active or On Hold Goal takes Check-ins"; got != want {
+		t.Errorf("takes-no-Check-ins refusal = %q, want %q", got, want)
+	}
+	if got, want := domain.SuggestParentLifecycleSentence(), "a parent can only be suggested for a Proposed or Active Goal"; got != want {
+		t.Errorf("suggest-parent sentence = %q, want %q", got, want)
 	}
 }

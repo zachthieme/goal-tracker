@@ -720,7 +720,7 @@ func (o *manifestOrg) teamReport(team string) (inReport, finishedEarlier []*mani
 		if g.team != team {
 			continue
 		}
-		if g.Lifecycle == domain.LifecycleDone || g.Lifecycle == domain.LifecycleCancelled {
+		if domain.LifecycleEnded(g.Lifecycle) {
 			var finished time.Time
 			for _, c := range g.checkins {
 				if c.LifecycleChange.To == g.Lifecycle && c.CreatedAt.After(finished) {

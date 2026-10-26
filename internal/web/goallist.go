@@ -159,14 +159,8 @@ type goalFilter struct {
 }
 
 // lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
-// moves through them.
-var lifecycleFilters = []string{
-	domain.LifecycleProposed,
-	domain.LifecycleActive,
-	domain.LifecycleOnHold,
-	domain.LifecycleDone,
-	domain.LifecycleCancelled,
-}
+// moves through them (domain.Lifecycles).
+var lifecycleFilters = domain.Lifecycles()
 
 // healthFilters are the Health filter's choices, each keyed by its URL value to
 // the Health it keeps; "none" keeps the Goals with no Health.

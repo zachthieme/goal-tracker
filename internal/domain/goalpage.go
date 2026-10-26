@@ -131,7 +131,7 @@ type GoalPermissions struct {
 	// ActivateGoal).
 	DefineGoal bool
 	Activate   bool
-	// SuggestParent: anyone but its Owner, while it is Active or Proposed
+	// SuggestParent: anyone but its Owner, while it is Proposed or Active
 	// (SuggestParent).
 	SuggestParent bool
 	// EditTitleAndWhyItMatters: its Owner or an Admin
@@ -176,7 +176,7 @@ func permitCheckins(actor goalActor, g Goal, noChange *noChangeVerdict, permits 
 		KeepLifecycle: permits(lifecycleKeptRefusal(actor, g)),
 		NoChange:      permits(noChangeCheckinRefusal(actor, g)) && noChange != nil && noChange.refusal == nil,
 	}
-	for _, to := range lifecycles {
+	for _, to := range Lifecycles() {
 		if permits(lifecycleChangeRefusal(actor, g, to)) {
 			perms.LifecycleChanges = append(perms.LifecycleChanges, to)
 		}

@@ -206,7 +206,7 @@ func isUnlinked(g Goal, parents int) bool {
 func scheduleConflicts(edges []edge) []ScheduleConflict {
 	var out []ScheduleConflict
 	for _, e := range edges {
-		if ended(e.child) || ended(e.parent) {
+		if LifecycleEnded(e.child.Lifecycle) || LifecycleEnded(e.parent.Lifecycle) {
 			continue
 		}
 		if e.child.DeliveryDate.IsZero() || e.parent.DeliveryDate.IsZero() {
@@ -219,17 +219,12 @@ func scheduleConflicts(edges []edge) []ScheduleConflict {
 	return out
 }
 
-// ended reports whether a Goal has reached an end state of its Lifecycle.
-func ended(g Goal) bool {
-	return g.Lifecycle == LifecycleDone || g.Lifecycle == LifecycleCancelled
-}
-
 // haltedParents keeps the edges whose parent is On Hold or Cancelled. A child
 // that is itself Done or Cancelled has nothing left at risk, so it isn't flagged.
 func haltedParents(edges []edge) []HaltedParent {
 	var out []HaltedParent
 	for _, e := range edges {
-		if ended(e.child) {
+		if LifecycleEnded(e.child.Lifecycle) {
 			continue
 		}
 		if e.parent.Lifecycle == LifecycleOnHold || e.parent.Lifecycle == LifecycleCancelled {

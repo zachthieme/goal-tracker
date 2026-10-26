@@ -22,19 +22,147 @@ func (c LifecycleChange) Changed() bool {
 	return c.To != ""
 }
 
+// Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle). A Goal starts
+// Proposed and is activated through the activation gate; after that its
+// Lifecycle changes only in a Check-in (planLifecycleChange).
+//
+// Each name starts Lifecycle: the CHECK test on goals.lifecycle and a
+// Check-in's lifecycle_from and lifecycle_to finds its values by that prefix
+// (enumchecks_test.go), so a value named otherwise goes unchecked, and a
+// string constant so named that is no Lifecycle is checked as one.
+const (
+	LifecycleProposed  = "Proposed"
+	LifecycleActive    = "Active"
+	LifecycleOnHold    = "On Hold"
+	LifecycleDone      = "Done"
+	LifecycleCancelled = "Cancelled"
+)
+
+// lifecycleRow is one Lifecycle in lifecycleTable: what a Goal in it takes,
+// and where a Check-in may move it.
+type lifecycleRow struct {
+	name string
+	// checkins is whether it takes Check-ins.
+	checkins bool
+	// ended is whether it is an end state, after which the Goal takes no
+	// more Draft Highlights or Milestones.
+	ended bool
+	// suggestable is whether a parent may be suggested for it, or it be
+	// suggested as one.
+	suggestable bool
+	// changesTo are the Lifecycles a Check-in may move it to.
+	changesTo []string
+}
+
+// lifecycleTable is every Lifecycle, in Lifecycle order, and what a Goal in
+// each takes (CONTEXT.md: Lifecycle). Only an Active or On Hold Goal takes
+// Check-ins: a Proposed Goal becomes Active through the activation gate, and
+// Done and Cancelled are end states. A Check-in may put an Active Goal On
+// Hold, mark it Done or Cancel it, and resume an On Hold one to Active or
+// Cancel it. A parent is suggested only for a Proposed or Active Goal. Every
+// Lifecycle predicate, and every refusal listing Lifecycles, reads it.
+var lifecycleTable = []lifecycleRow{
+	{name: LifecycleProposed, suggestable: true},
+	{name: LifecycleActive, checkins: true, suggestable: true, changesTo: []string{LifecycleOnHold, LifecycleDone, LifecycleCancelled}},
+	{name: LifecycleOnHold, checkins: true, changesTo: []string{LifecycleActive, LifecycleCancelled}},
+	{name: LifecycleDone, ended: true},
+	{name: LifecycleCancelled, ended: true},
+}
+
+// lifecycleRowOf is lifecycle's row of lifecycleTable, the zero row, which
+// takes nothing and hasn't ended, for a value that is no Lifecycle.
+func lifecycleRowOf(lifecycle string) lifecycleRow {
+	for _, r := range lifecycleTable {
+		if r.name == lifecycle {
+			return r
+		}
+	}
+	return lifecycleRow{}
+}
+
+// Lifecycles are every Lifecycle a Goal can be in, in Lifecycle order:
+// Proposed, Active, On Hold, Done, Cancelled.
+func Lifecycles() []string {
+	out := make([]string, len(lifecycleTable))
+	for i, r := range lifecycleTable {
+		out[i] = r.name
+	}
+	return out
+}
+
 // LifecycleTakesCheckins reports whether a Goal in lifecycle takes
-// Check-ins: only an Active or On Hold one does, for a Proposed Goal becomes
-// Active through the activation gate, and Done and Cancelled are end states
-// (CONTEXT.md: Lifecycle).
+// Check-ins: only an Active or On Hold one does (lifecycleTable).
 func LifecycleTakesCheckins(lifecycle string) bool {
-	return lifecycle == LifecycleActive || lifecycle == LifecycleOnHold
+	return lifecycleRowOf(lifecycle).checkins
+}
+
+// LifecycleEnded reports whether lifecycle is an end state of the Lifecycle:
+// Done or Cancelled (lifecycleTable).
+func LifecycleEnded(lifecycle string) bool {
+	return lifecycleRowOf(lifecycle).ended
 }
 
 // LifecycleTakesDraftHighlights reports whether a Goal in lifecycle takes
-// Draft Highlights: it does until it is Done or Cancelled, when it takes no
-// more Check-ins to offer them at (CONTEXT.md: Draft Highlight).
+// Draft Highlights: it does until it has ended (LifecycleEnded), when it takes
+// no more Check-ins to offer them at (CONTEXT.md: Draft Highlight).
 func LifecycleTakesDraftHighlights(lifecycle string) bool {
-	return lifecycle != LifecycleDone && lifecycle != LifecycleCancelled
+	return !LifecycleEnded(lifecycle)
+}
+
+// LifecycleTakesMilestones reports whether a Goal in lifecycle takes a
+// Milestone added outside a Check-in: until it has ended (LifecycleEnded)
+// (CONTEXT.md: Milestone).
+func LifecycleTakesMilestones(lifecycle string) bool {
+	return !LifecycleEnded(lifecycle)
+}
+
+// LifecycleSuggestable reports whether a Goal in lifecycle may have a parent
+// suggested for it, or be suggested as one: only while it is Proposed or
+// Active (lifecycleTable).
+func LifecycleSuggestable(lifecycle string) bool {
+	return lifecycleRowOf(lifecycle).suggestable
+}
+
+// LifecycleChangesFrom are the Lifecycles a Check-in may move a Goal in
+// lifecycle to (lifecycleTable): an Active Goal may go On Hold, be marked
+// Done or be Cancelled, and an On Hold one resumed to Active or Cancelled.
+// Every other Lifecycle is closed to Check-ins, so has none.
+func LifecycleChangesFrom(lifecycle string) []string {
+	return slices.Clone(lifecycleRowOf(lifecycle).changesTo)
+}
+
+// lifecycleNamesWhere joins the Lifecycles selects picks with " or ", in
+// Lifecycle order, as a refusal names them: Proposed or Active.
+func lifecycleNamesWhere(selects func(string) bool) string {
+	var names []string
+	for _, l := range Lifecycles() {
+		if selects(l) {
+			names = append(names, l)
+		}
+	}
+	return strings.Join(names, " or ")
+}
+
+// lifecycleNamesWhereWithArticle is lifecycleNamesWhere with "a" or "an"
+// before it, agreeing with the first name: an Active or On Hold.
+func lifecycleNamesWhereWithArticle(selects func(string) bool) string {
+	names := lifecycleNamesWhere(selects)
+	if names != "" && strings.ContainsRune("AEIOU", rune(names[0])) {
+		return "an " + names
+	}
+	return "a " + names
+}
+
+// lifecycleTakesNoCheckinsRefusal refuses a Check-in on a Goal in lifecycle,
+// one LifecycleTakesCheckins says takes none, naming the Lifecycles that do.
+func lifecycleTakesNoCheckinsRefusal(lifecycle string) error {
+	return Refuse(ErrValidation, "a %s Goal can't be checked in on: only %s Goal takes Check-ins", lifecycle, lifecycleNamesWhereWithArticle(LifecycleTakesCheckins))
+}
+
+// lifecycleMoveRefusal refuses a Check-in moving a Goal in from to to, a
+// Lifecycle LifecycleChangesFrom doesn't offer.
+func lifecycleMoveRefusal(from, to string) error {
+	return inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", from, to)
 }
 
 // lifecycleKeepRefusal refuses a Check-in leaving a Goal in lifecycle as it
@@ -47,23 +175,18 @@ func lifecycleKeepRefusal(lifecycle string) error {
 	return nil
 }
 
-// planLifecycleChange validates a Check-in's requested Lifecycle against the
-// Goal's current one and returns the change to record, or the zero change when
-// the Check-in leaves it alone. It allows the moves LifecycleChangesFrom
-// offers: going On Hold or being Cancelled, each with a reason, being marked
-// Done with a one-line outcome, or being resumed to Active.
+// planLifecycleChange plans a Check-in's move of a Goal from its current
+// Lifecycle to to, one the Check-in's rule has already allowed
+// (lifecycleKeptRefusal, lifecycleChangeRefusal): it returns the change to
+// record, or the zero change when the Check-in leaves the Lifecycle alone,
+// refusing a move that lacks its reason or outcome. Going On Hold and being
+// Cancelled each need a reason, and being marked Done a one-line outcome;
+// being resumed to Active needs neither.
 func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, error) {
 	reason = strings.TrimSpace(reason)
 	outcome = strings.TrimSpace(outcome)
-	if !LifecycleTakesCheckins(current) {
-		return LifecycleChange{}, lifecycleTakesNoCheckinsRefusal(current)
-	}
 	if to == "" || to == current {
-		return LifecycleChange{}, lifecycleKeepRefusal(current)
-	}
-
-	if !slices.Contains(LifecycleChangesFrom(current), to) {
-		return LifecycleChange{}, inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", current, to)
+		return LifecycleChange{}, nil
 	}
 	change := LifecycleChange{From: current, To: to, Reason: reason}
 	switch to {

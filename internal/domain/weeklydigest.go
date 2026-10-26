@@ -144,7 +144,7 @@ func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[i
 	var live []Goal
 	for _, e := range edges {
 		childrenOf[e.parent.ID] = append(childrenOf[e.parent.ID], e.child)
-		if ended(e.child) {
+		if LifecycleEnded(e.child.Lifecycle) {
 			continue
 		}
 		if _, ok := up[e.child.ID]; !ok {
