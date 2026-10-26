@@ -149,7 +149,7 @@ func followUpsPage(current *domain.Account, v followUpsPageView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = followUpsTable(current, v.Today, v.Here(), shown).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpsTable(v.Today, v.Here(), shown).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -768,7 +768,7 @@ func followUpCardLink(c followUpCard) templ.Component {
 // followUpsTable is the flagged Goals, one row each, most urgent first: a
 // full-bleed list, scrolling sideways inside itself should it outgrow the
 // page. A Fix that posts returns to here, the page's address.
-func followUpsTable(current *domain.Account, today time.Time, here string, rows []followUpGoalRow) templ.Component {
+func followUpsTable(today time.Time, here string, rows []followUpGoalRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -794,7 +794,7 @@ func followUpsTable(current *domain.Account, today time.Time, here string, rows 
 			return templ_7745c5c3_Err
 		}
 		for _, r := range rows {
-			templ_7745c5c3_Err = followUpRow(current, today, here, r).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpRow(today, here, r).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -863,7 +863,7 @@ func followUpsTable(current *domain.Account, today time.Time, here string, rows 
 // ("Back to Green Oct 3 ~~Sep 12~~ (3)"), which isn't a signal; its Owner
 // ("You" for the viewer's own), and a cell for its fix: a link, a form
 // posting back to here, or a disabled button saying why it can't be used.
-func followUpRow(current *domain.Account, today time.Time, here string, r followUpGoalRow) templ.Component {
+func followUpRow(today time.Time, here string, r followUpGoalRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -974,7 +974,7 @@ func followUpRow(current *domain.Account, today time.Time, here string, r follow
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if r.Goal.Owner.ID == current.ID {
+		if r.OwnedByViewer {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "You")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
