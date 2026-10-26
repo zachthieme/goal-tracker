@@ -26,12 +26,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 		return
 	}
 	v.Dates = s.displayDates()
-	offer := takeUndo(w, r)
-	v.Toast = cmp.Or(
-		s.linkRejectionToast(r.Context(), offer, current, "/home"),
-		s.handoffRejectionToast(r.Context(), offer, current, "/home"),
-		s.suggestionDeclineToast(r.Context(), offer, current, 0, "/home"),
-	)
+	v.Toast = s.undoToast(w, r, current)
 	render(w, r, http.StatusOK, homePage(&current, v))
 }
 
@@ -83,16 +78,6 @@ type homeOrg struct {
 	Flagged []domain.PersonSignals
 	// Clear counts the people directly under the viewer with nothing flagged.
 	Clear int
-}
-
-// undoReturnFields is the hidden return that has an Undo come back to back,
-// as the decision it undoes did, or none when back is "", for the request's
-// pending page, which returnTo falls back to.
-func undoReturnFields(back string) []toastField {
-	if back == "" {
-		return nil
-	}
-	return []toastField{{Name: "return", Value: back}}
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, the

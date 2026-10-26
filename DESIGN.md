@@ -478,8 +478,9 @@ and so on).
   - **A refused Undo shows a page, not bare text.** It keeps its status and
     renders a "Can't undo" Message page, with one plain sentence saying why
     (no internal prefixes or IDs) and a **Back** link to the page the Undo was
-    offered on: the Goal page for a link removal (Home when it names none),
-    Home, the pending page or the Goal page for a rejection or a decline, and
+    offered on, query included. An Undo that is done lands back on that same
+    page, query included. An Undo posted without that page goes to Home for a
+    link removal or a decline, the pending page for a rejection, and
     Dimensions for a retired value. The page is `refusalPage` in
     `refusal.templ`, the one page every refused action shows (`refuse`).
   - **Announced politely:** an `<aside role="status">`, so a screen reader

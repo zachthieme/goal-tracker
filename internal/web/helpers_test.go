@@ -1344,6 +1344,30 @@ func assertRefusalPage(t *testing.T, page *html.Node, heading, reason, back stri
 	}
 }
 
+// undoForm is the Undo form in a page's toast, failing the test when the page
+// carries no toast or its toast has no Undo.
+func undoForm(t *testing.T, page string) *html.Node {
+	t.Helper()
+	toast := findByTestID(t, parsePage(t, page), "toast")
+	forms := findAll(toast, func(n *html.Node) bool { return n.Data == "form" })
+	if len(forms) != 1 || buttonNamed(forms[0], "Undo") == nil {
+		t.Fatalf("the toast has no Undo form:\n%s", renderNode(toast))
+	}
+	return forms[0]
+}
+
+// undoAction is where a page's toast posts its Undo.
+func undoAction(t *testing.T, page string) string {
+	t.Helper()
+	return attrOf(undoForm(t, page), "action")
+}
+
+// toastFields are what a page's toast posts with its Undo.
+func toastFields(t *testing.T, page string) url.Values {
+	t.Helper()
+	return formSubmission(undoForm(t, page))
+}
+
 // precedes reports whether a comes before b reading the page top to bottom:
 // a opens first.
 func precedes(a, b *html.Node) bool {

@@ -2,7 +2,6 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,31 +18,7 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 		s.serverError(w, r, "could not list dimensions", err)
 		return
 	}
-	toast := valueRetireToast(takeUndo(w, r), current, dims)
-	render(w, r, http.StatusOK, dimensionsPage(&current, dims, nil, toast))
-}
-
-// valueRetireToast is the toast the Dimensions page carries straight after an
-// Admin retired a value (offer), with the Undo that restores it — or nil when
-// the offer isn't for a value among dims that is still Retired and that
-// current may restore.
-func valueRetireToast(offer undoOffer, current domain.Account, dims []domain.Dimension) *toast {
-	id, ok := offer.of(undoValueRetire)
-	if !ok || !current.IsAdmin {
-		return nil
-	}
-	for _, d := range dims {
-		for _, v := range d.Values {
-			if v.ID == id && v.Retired {
-				return &toast{
-					Message: fmt.Sprintf("Retired %s from %s.", v.Value, d.Name),
-					Undo:    fmt.Sprintf("/dimension-values/%d/undo-retire", v.ID),
-					Fields:  offer.fields(),
-				}
-			}
-		}
-	}
-	return nil
+	render(w, r, http.StatusOK, dimensionsPage(&current, dims, nil, s.undoToast(w, r, current)))
 }
 
 // handleCreateDimension defines a Dimension from a name, a comma-separated
@@ -159,25 +134,7 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 		s.writeDimensionError(w, r, err)
 		return
 	}
-	offerUndo(w, "/dimensions", undoValueRetire, id, token)
-	s.redirectToDimensions(w, r)
-}
-
-// handleUndoRetireDimensionValue is the toast's Undo of retiring the value in
-// the path: only the Admin who retired it may, with the toast's token, once,
-// and only while the value is unchanged since; refused, it shows a page saying
-// why, linking back to Dimensions. The Retired value's own Restore
-// button needs none of that (handleRestoreDimensionValue).
-func (s *Server) handleUndoRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.undoIDFromPath(w, r, current, "/dimensions")
-	if !ok {
-		return
-	}
-	if err := s.svc.UndoRetireDimensionValue(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
-		s.refuseUndo(w, r, current, "/dimensions", err)
-		return
-	}
-	s.redirectToDimensions(w, r)
+	s.offerUndo(w, r, undoValueRetire, id, token, "/dimensions")
 }
 
 // handleRestoreDimensionValue reverses the retirement of the value in the path,

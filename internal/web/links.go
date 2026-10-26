@@ -1,9 +1,7 @@
 package web
 
 import (
-	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -66,8 +64,7 @@ func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, curr
 		s.serverError(w, r, "could not list pending requests", err)
 		return
 	}
-	toast := s.linkRejectionToast(r.Context(), takeUndo(w, r), current, "")
-	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, toast))
+	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, s.undoToast(w, r, current)))
 }
 
 // handleAcceptLink accepts a pending request; only the parent's Owner may. It
@@ -101,46 +98,7 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 		s.writeLinkError(w, r, current, "Can't reject link", back, err)
 		return
 	}
-	offerUndo(w, back, undoLinkRejection, rejection.ID, rejection.UndoToken)
-	http.Redirect(w, r, back, http.StatusSeeOther)
-}
-
-// handleUndoLinkRejection puts the rejected request in the path back as
-// pending; only the person who rejected it may, with the toast's token, and
-// only once. It returns to the page the Undo came from (its return), or
-// refuses with a page saying why, linking back there, and changes nothing.
-func (s *Server) handleUndoLinkRejection(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	back := returnTo(r, "/links")
-	rejectionID, ok := s.undoIDFromPath(w, r, current, back)
-	if !ok {
-		return
-	}
-	if _, err := s.svc.RestoreLinkRequest(r.Context(), rejectionID, current.ID, r.FormValue(undoField)); err != nil {
-		s.refuseUndo(w, r, current, back, err)
-		return
-	}
-	http.Redirect(w, r, back, http.StatusSeeOther)
-}
-
-// linkRejectionToast is the toast a page carries straight after current
-// rejected a link request (offer), with the Undo that puts it back — or nil
-// when the offer isn't for a rejection current can still undo. back is the
-// page for the Undo to return to, as the reject's own return did, or "" for
-// the pending page.
-func (s *Server) linkRejectionToast(ctx context.Context, offer undoOffer, current domain.Account, back string) *toast {
-	id, ok := offer.of(undoLinkRejection)
-	if !ok {
-		return nil
-	}
-	rejection, err := s.svc.LinkRejection(ctx, id)
-	if err != nil || rejection.Restored || rejection.RejectedBy != current.ID {
-		return nil
-	}
-	return &toast{
-		Message: fmt.Sprintf("Request rejected: %s won't contribute to %s.", rejection.Child.Title, rejection.Parent.Title),
-		Undo:    fmt.Sprintf("/link-rejections/%d/undo", rejection.ID),
-		Fields:  offer.fields(undoReturnFields(back)...),
-	}
+	s.offerUndo(w, r, undoLinkRejection, rejection.ID, rejection.UndoToken, back)
 }
 
 // handleRemoveLink removes an accepted link; either linked Goal's Owner may.
@@ -162,30 +120,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))
-	offerUndo(w, back, undoLinkRemoval, removal.ID, removal.UndoToken)
-	http.Redirect(w, r, back, http.StatusSeeOther)
-}
-
-// handleUndoLinkRemoval restores the removed link in the path as accepted; only
-// the person who removed it may, with the toast's token, and only once. It
-// returns to the Goal page the Undo came from (goal_id), or refuses with a
-// page saying why, linking back to that Goal page (Home without one), and
-// changes nothing.
-func (s *Server) handleUndoLinkRemoval(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	back := "/home"
-	if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
-		back = "/goals/" + strconv.FormatInt(goalID, 10)
-	}
-	removalID, ok := s.undoIDFromPath(w, r, current, back)
-	if !ok {
-		return
-	}
-	link, err := s.svc.RestoreLink(r.Context(), removalID, current.ID, r.FormValue(undoField))
-	if err != nil {
-		s.refuseUndo(w, r, current, back, err)
-		return
-	}
-	http.Redirect(w, r, linkPage(link.Child.ID, link.Parent.ID, r.FormValue("goal_id")), http.StatusSeeOther)
+	s.offerUndo(w, r, undoLinkRemoval, removal.ID, removal.UndoToken, back)
 }
 
 // linkPage is the Goal page to return to after acting on the link from childID
@@ -197,27 +132,6 @@ func linkPage(childID, parentID int64, from string) string {
 		id = childID
 	}
 	return "/goals/" + strconv.FormatInt(id, 10)
-}
-
-// linkRemovalToast is the toast the Goal page goalID carries straight after
-// current removed one of its links (offer), with the Undo that restores it —
-// or nil when the offer isn't for a removal of this Goal's link that current
-// can still undo.
-func (s *Server) linkRemovalToast(ctx context.Context, offer undoOffer, current domain.Account, goalID int64) *toast {
-	id, ok := offer.of(undoLinkRemoval)
-	if !ok {
-		return nil
-	}
-	removal, err := s.svc.LinkRemoval(ctx, id)
-	if err != nil || removal.Restored || removal.RemovedBy != current.ID ||
-		(removal.Child.ID != goalID && removal.Parent.ID != goalID) {
-		return nil
-	}
-	return &toast{
-		Message: fmt.Sprintf("Link removed: %s no longer contributes to %s.", removal.Child.Title, removal.Parent.Title),
-		Undo:    fmt.Sprintf("/link-removals/%d/undo", removal.ID),
-		Fields:  offer.fields(toastField{Name: "goal_id", Value: strconv.FormatInt(goalID, 10)}),
-	}
 }
 
 func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {

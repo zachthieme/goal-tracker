@@ -47,20 +47,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /links/{id}/accept", s.requireAuth(s.handleAcceptLink))
 	s.mux.HandleFunc("POST /links/{id}/reject", s.requireAuth(s.handleRejectLink))
 	s.mux.HandleFunc("POST /links/{id}/remove", s.requireAuth(s.handleRemoveLink))
-	s.mux.HandleFunc("POST /link-removals/{id}/undo", s.requireAuth(s.handleUndoLinkRemoval))
-	s.mux.HandleFunc("POST /link-rejections/{id}/undo", s.requireAuth(s.handleUndoLinkRejection))
 	s.mux.HandleFunc("GET /goals/{id}/suggest-parent", s.requireAuth(s.handleSuggestParentForm))
 	s.mux.HandleFunc("POST /goals/{id}/suggest-parent", s.requireAuth(s.handleSuggestParent))
 	s.mux.HandleFunc("POST /parent-suggestions/{id}/accept", s.requireAuth(s.handleAcceptParentSuggestion))
 	s.mux.HandleFunc("POST /parent-suggestions/{id}/decline", s.requireAuth(s.handleDeclineParentSuggestion))
-	s.mux.HandleFunc("POST /parent-suggestions/{id}/undo-decline", s.requireAuth(s.handleUndoDeclineParentSuggestion))
 	s.mux.HandleFunc("POST /parent-suggestions/{id}/withdraw", s.requireAuth(s.handleWithdrawParentSuggestion))
 	s.mux.HandleFunc("POST /goals/{id}/handoff", s.requireAuth(s.handleStartHandoff))
 	s.mux.HandleFunc("POST /goals/{id}/reassign", s.requireAuth(s.handleReassignGoal))
 	s.mux.HandleFunc("GET /handoffs", s.requireAuth(s.handlePendingHandoffs))
 	s.mux.HandleFunc("POST /handoffs/{id}/accept", s.requireAuth(s.handleAcceptHandoff))
 	s.mux.HandleFunc("POST /handoffs/{id}/reject", s.requireAuth(s.handleRejectHandoff))
-	s.mux.HandleFunc("POST /handoffs/{id}/restore", s.requireAuth(s.handleRestoreHandoff))
 	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
 	s.mux.HandleFunc("POST /accounts/{id}/return", s.requireAuth(s.handleReturnAccount))
 	if s.directorySync != nil {
@@ -85,7 +81,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /dimensions/{id}/retire", s.requireAuth(s.handleRetireDimension))
 	s.mux.HandleFunc("POST /dimensions/{id}/restore", s.requireAuth(s.handleRestoreDimension))
 	s.mux.HandleFunc("POST /dimension-values/{id}/restore", s.requireAuth(s.handleRestoreDimensionValue))
-	s.mux.HandleFunc("POST /dimension-values/{id}/undo-retire", s.requireAuth(s.handleUndoRetireDimensionValue))
 	s.mux.HandleFunc("GET /fields", s.requireAuth(s.handleFields))
 	s.mux.HandleFunc("POST /fields", s.requireAuth(s.handleCreateField))
 	s.mux.HandleFunc("POST /fields/{id}/retire", s.requireAuth(s.handleRetireField))
@@ -130,4 +125,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
 	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
 	s.mux.HandleFunc("GET /definition-log", s.requireAuth(s.handleDefinitionLog))
+	for _, kind := range undoKinds {
+		s.mux.HandleFunc("POST "+kind.route, s.requireAuth(s.handleUndo(kind)))
+	}
 }

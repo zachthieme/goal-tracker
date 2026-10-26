@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -988,17 +987,6 @@ func rejectHandoff(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 		t.Errorf("reject landed on %s, want %s, where it came from", resp.Request.URL.Path, from)
 	}
 	return goal, ho, pat, readBody(t, resp)
-}
-
-// toastFields are the hidden inputs a page's toast posts with its Undo.
-func toastFields(t *testing.T, page string) url.Values {
-	t.Helper()
-	fields := url.Values{}
-	toast := pageElement(t, page, "aside", "toast")
-	for _, m := range regexp.MustCompile(`name="([^"]+)" value="([^"]*)"`).FindAllStringSubmatch(toast, -1) {
-		fields.Set(m[1], m[2])
-	}
-	return fields
 }
 
 // After rejecting a Handoff, from the pending page or from Home, the page
