@@ -25,6 +25,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Security:**
 - [ops] An email address with a bracketed IP-literal domain, such as `"john doe"@[192.0.2.1]`, is now redacted whole from a failed send's log line, domain included (#547).
 
+**Infrastructure:**
+- [internal] Claude Code sessions in this repo show vetinari's status line: `.claude/settings.json` runs `vetinari statusline`, which adds the 🏰 campaign line under the branch. A personal status line goes in the git-ignored `.claude/settings.local.json`, which wins over the shared one (#550).
+
 **Testing:**
 - [internal] The Handoff tests run a Reassign and an Accept one after the other, in each order, so the error each loser gets is checked on every run, not only when the race lands that way (#547).
 - [internal] The test database template's cache name now also covers the Go code that builds it (`internal/db/migrate.go`, `open.go` and the harness's new `template.go`) and the `modernc.org/sqlite` version, so a change to any of them builds a new template without bumping a constant (`templateFormat` is gone). Building a template now deletes only other templates unused for a day, and each read marks its template used, so two checkouts testing at once keep sharing their own (#540).
@@ -34,9 +37,6 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
-
-**Infrastructure:**
-- [internal] Claude Code sessions in this repo show vetinari's status line: `.claude/settings.json` runs `vetinari statusline`, which adds the 🏰 campaign line under the branch. A personal status line goes in the git-ignored `.claude/settings.local.json`, which wins over the shared one (#550).
 
 ### Collected changes — October 25, 2026
 
