@@ -66,15 +66,15 @@ type GoalPage struct {
 	RunOffGreen   RunOffGreen
 	// Ask is its open Ask for help (OpenAskForHelp), nil when it has none, and
 	// AskAddressee whom an ask from its Owner goes to (AskAddressee).
-	Ask                *AskForHelp
-	AskAddressee       *Account
-	DateSlips          []DateSlip
-	MilestoneChurn     int
-	Signals            GoalSignals
-	Freshness          Freshness
-	Required           []RequiredValue
-	Incomplete         []string
-	HealthStrip        HealthStrip
+	Ask            *AskForHelp
+	AskAddressee   *Account
+	DateSlips      []DateSlip
+	MilestoneChurn int
+	Signals        GoalSignals
+	Freshness      Freshness
+	Required       []RequiredValue
+	Incomplete     []string
+	HealthStrip    HealthStrip
 	// Suggestions are every Parent suggestion made for the Goal, with its
 	// outcome, for its History (ParentSuggestions), and OpenSuggestions the
 	// open ones this viewer sees: all of them for one who may decide them,
