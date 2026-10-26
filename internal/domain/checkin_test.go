@@ -476,7 +476,7 @@ func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	}
 	assertMilestoneOverdueError(t, err, beta)
 	assertOverdueRulesOut(t, err, domain.OverdueRulesOutGreen)
-	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), so the Goal can't be Green`; err.Error() != want {
+	if want := `validation failed: milestone "Beta" overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), rules out green`; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
 
@@ -537,7 +537,7 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	assertOverdueNoChangeRefusal(t, err)
 	assertMilestoneOverdueError(t, err, beta)
 	assertOverdueRulesOut(t, err, domain.OverdueRulesOutNoChange)
-	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `): submit a Check-in to move its date, mark it Done or remove it`; err.Error() != want {
+	if want := `validation failed: milestone "Beta" overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), rules out no change`; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
 	}
 }
@@ -685,17 +685,23 @@ func TestNoChangeRefusal(t *testing.T) {
 		if !errors.As(err, &offTarget) {
 			t.Fatalf("NoChangeRefusal = %v, want a *GreenOffTargetError", err)
 		}
+		if want := "validation failed: green off target: Idle capacity 40.88 percent, target 20 by 2026-01-30"; err.Error() != want {
+			t.Errorf("NoChangeRefusal = %q, want %q", err, want)
+		}
 	})
 }
 
 // assertOverdueNoChangeRefusal checks a No change refused for the overdue Beta
-// Milestone names it and says how to respond to the missed date.
+// Milestone names it and that its missed date rules out a No change, so a page
+// can say how to respond to it.
 func assertOverdueNoChangeRefusal(t *testing.T, err error) {
 	t.Helper()
-	for _, want := range []string{`Milestone "Beta" is overdue`, "move its date, mark it Done or remove it"} {
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %v, want it to contain %q", err, want)
-		}
+	var overdue *domain.MilestoneOverdueError
+	if !errors.As(err, &overdue) {
+		t.Fatalf("err = %v, want a *MilestoneOverdueError", err)
+	}
+	if overdue.Milestone.Name != "Beta" || overdue.RulesOut != domain.OverdueRulesOutNoChange {
+		t.Errorf("overdue = %+v, want Beta ruling out a No change", overdue)
 	}
 }
 
@@ -759,7 +765,7 @@ func TestNoChangeRefusalsByGoal(t *testing.T) {
 		allowed.ID:            "",
 		noCheckin.ID:          "there is no previous Check-in to repeat",
 		onHold.ID:             "only an Active Goal can be checked in on",
-		milestoneOverdue.ID:   `Milestone "Pilot" is overdue (due 2026-01-20): submit a Check-in to move its date, mark it Done or remove it`,
+		milestoneOverdue.ID:   `milestone "Pilot" overdue (due 2026-01-20), rules out no change`,
 		pathOverdue.ID:        "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health",
 		unexplained.ID:        "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
 		redChild.ID:           "",
@@ -767,7 +773,7 @@ func TestNoChangeRefusalsByGoal(t *testing.T) {
 		thirdRedChild.ID:      "",
 		explained.ID:          "",
 		otherRedChild.ID:      "",
-		offTarget.ID:          "so the Goal's Green needs confirming — submit a Check-in to confirm or update it",
+		offTarget.ID:          "green off target: Idle capacity 40.88 percent, target 20 by 2026-01-30",
 	}
 	all, err := h.Service.ListGoals(ctx)
 	if err != nil {
@@ -883,6 +889,9 @@ func TestGreenWithOffTargetMetricNeedsConfirming(t *testing.T) {
 	}
 	if len(offTarget.Metrics) != 1 || offTarget.Metrics[0].Metric.ID != idle.ID || offTarget.Metrics[0].Reading != 40.88 {
 		t.Errorf("off-target Metrics = %+v, want Idle capacity at 40.88", offTarget.Metrics)
+	}
+	if want := "validation failed: green off target: Idle capacity 40.88 percent, target 20 by 2026-01-30"; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
 	}
 	if latest, _, _ := h.Service.LatestCheckin(context.Background(), goal.ID); latest.ID != before.ID {
 		t.Errorf("an unconfirmed Green was recorded")
@@ -1653,7 +1662,7 @@ func TestGreenWhileMilestoneOverdueNamesItsDate(t *testing.T) {
 		})
 		assertMilestoneOverdueError(t, err, beta)
 		assertNamesInput(t, err, domain.CheckinMilestoneInput(beta.ID, "date"))
-		if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), so the Goal can't be Green`; err.Error() != want {
+		if want := `validation failed: milestone "Beta" overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), rules out green`; err.Error() != want {
 			t.Errorf("err = %q, want %q", err, want)
 		}
 	})

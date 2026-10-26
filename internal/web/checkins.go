@@ -502,7 +502,8 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 // noChangeReason is why a No change was refused, as the Check-in form shows it,
 // with an overdue Milestone's due date as the page shows dates. A Green
 // refused for an off-target Metric names each miss as the form's off-target
-// warning does, with its dates as the page shows them.
+// warning does, with its dates as the page shows them, and says how to keep
+// the Green; the domain's refusal only carries the Metrics.
 func (s *Server) noChangeReason(err error) string {
 	var offTarget *domain.GreenOffTargetError
 	if !errors.As(err, &offTarget) {
@@ -516,9 +517,9 @@ func (s *Server) noChangeReason(err error) string {
 }
 
 // plainReasonShown is why a domain refusal refused, as a page shows it
-// (domain.Reason), but an overdue Milestone's refusal is
-// composed from the Milestone and what its missed date rules out, with its due
-// date as the page shows dates.
+// (domain.Reason), but an overdue Milestone's refusal, whose own text is only
+// a log form, is composed from the Milestone and what its missed date rules
+// out, with its due date as the page shows dates.
 func plainReasonShown(err error, shown displayDates) string {
 	var overdue *domain.MilestoneOverdueError
 	if !errors.As(err, &overdue) {
