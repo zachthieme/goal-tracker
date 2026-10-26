@@ -48,30 +48,31 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		if err != nil {
 			return err
 		}
-		if goal.Owner.ID == actorID || containsAccount(delegates, actorID) {
-			return Refuse(ErrNotAuthorized, "you can check in on this Goal yourself, so there's no one to nudge")
+		actor := goalActor{
+			id:       actorID,
+			account:  func() (Account, bool, error) { return sender, true, nil },
+			delegate: func() (bool, error) { return containsAccount(delegates, actorID), nil },
 		}
 		fresh, err := tx.Freshness(ctx, goalID)
 		if err != nil {
 			return err
 		}
+		// The Goal is in a Schedule conflict as the child or as the parent.
 		signals, err := tx.GoalSignals(ctx, goalID)
 		if err != nil {
 			return err
 		}
-		// Only an Active Goal takes the ordinary Check-in a Schedule conflict
-		// asks for.
-		conflicted := goal.Lifecycle == LifecycleActive && len(signals.ScheduleConflicts) > 0
-		if !fresh.CheckinOverdue && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue && !conflicted {
-			return Refuse(ErrValidation, "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged")
+		to := nudgeRecipients(goal.Owner, delegates)
+		if err := nudgeRuleRefusal(actor, goal, nudgeFacts{
+			overdue:          fresh.CheckinOverdue || fresh.PathToGreenOverdue || fresh.MilestoneOverdue,
+			scheduleConflict: len(signals.ScheduleConflicts) > 0,
+			anyoneLeft:       len(to) > 0,
+		}); err != nil {
+			return err
 		}
 		var conflicts []ScheduleConflict
-		if conflicted {
+		if nudgeAsksForScheduleConflict(goal, len(signals.ScheduleConflicts) > 0) {
 			conflicts = signals.ScheduleConflicts
-		}
-		to := nudgeRecipients(goal.Owner, delegates)
-		if len(to) == 0 {
-			return Refuse(ErrValidation, "nobody can check in on this Goal; it needs an Admin to reassign it")
 		}
 
 		now := s.clock.Now()
@@ -145,6 +146,49 @@ func (s *Service) Nudges(ctx context.Context, goalID int64) ([]Nudge, error) {
 		out = append(out, nudgeFromRow(r.Nudge, accountFromRow(r.Account)))
 	}
 	return out, nil
+}
+
+// nudgeFacts are what the Nudge rule judges a Goal by beside who asks and its
+// Lifecycle, as its caller reads them: whether it is Check-in overdue, past
+// its Path to Green or has a Milestone overdue, whether it is in a Schedule
+// conflict, and whether anyone is left to check in on it (nudgeRecipients).
+type nudgeFacts struct {
+	overdue          bool
+	scheduleConflict bool
+	anyoneLeft       bool
+}
+
+// nudgeRuleRefusal is Nudge's rule for a on g, judged from facts: anyone but
+// g's Owner and its Delegates, who can check in on it themselves, while g is
+// overdue or Active in a Schedule conflict (nudgeAsksForScheduleConflict) and
+// someone is left to check in on it. Service.Nudge and Follow-ups both ask
+// it. Whether g was nudged today is left to Service.Nudge.
+func nudgeRuleRefusal(a goalActor, g Goal, facts nudgeFacts) error {
+	if a.id == g.Owner.ID {
+		return errNudgerChecksIn
+	}
+	if ok, err := a.delegate(); err != nil {
+		return err
+	} else if ok {
+		return errNudgerChecksIn
+	}
+	if !facts.overdue && !nudgeAsksForScheduleConflict(g, facts.scheduleConflict) {
+		return Refuse(ErrValidation, "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged")
+	}
+	if !facts.anyoneLeft {
+		return Refuse(ErrValidation, "nobody can check in on this Goal; it needs an Admin to reassign it")
+	}
+	return nil
+}
+
+// errNudgerChecksIn refuses a Nudge from g's Owner or a Delegate.
+var errNudgerChecksIn = Refuse(ErrNotAuthorized, "you can check in on this Goal yourself, so there's no one to nudge")
+
+// nudgeAsksForScheduleConflict reports whether a Nudge of g asks for its
+// Schedule conflict, conflicted saying whether it is in one: only an Active
+// Goal takes the ordinary Check-in a Schedule conflict asks for.
+func nudgeAsksForScheduleConflict(g Goal, conflicted bool) bool {
+	return conflicted && g.Lifecycle == LifecycleActive
 }
 
 // nudgeRecipients are who a Nudge of a Goal goes to: its Owner, then its

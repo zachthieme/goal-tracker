@@ -107,6 +107,9 @@ type GoalPage struct {
 type GoalPermissions struct {
 	// CheckinPermissions: what they may do with its Check-ins.
 	CheckinPermissions
+	// WritesCheckins: they write its Check-ins, whatever its Lifecycle
+	// (RequireCheckinAuthor), as GoalPage.CanCheckin says.
+	WritesCheckins bool
 	// AddMilestone: those who write its Check-ins, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
 	// Proposed, on a Planned Milestone (EditMilestone).
@@ -164,13 +167,14 @@ type CheckinPermissions struct {
 }
 
 // permitCheckins is what actor may do with g's Check-ins, by the rule each
-// Check-in command evaluates, noChange being the verdict on a No change on g;
-// permits reads each rule's refusal as whether it allows.
-func permitCheckins(actor goalActor, g Goal, noChange noChangeVerdict, permits func(refusal error) bool) CheckinPermissions {
+// Check-in command evaluates, noChange being the verdict on a No change on g,
+// nil when there is none, which offers no No change; permits reads each rule's
+// refusal as whether it allows.
+func permitCheckins(actor goalActor, g Goal, noChange *noChangeVerdict, permits func(refusal error) bool) CheckinPermissions {
 	perms := CheckinPermissions{
 		CheckIn:       permits(checkInRefusal(actor, g)),
 		KeepLifecycle: permits(lifecycleKeptRefusal(actor, g)),
-		NoChange:      permits(noChangeCheckinRefusal(actor, g)) && noChange.refusal == nil,
+		NoChange:      permits(noChangeCheckinRefusal(actor, g)) && noChange != nil && noChange.refusal == nil,
 	}
 	for _, to := range lifecycles {
 		if permits(lifecycleChangeRefusal(actor, g, to)) {
@@ -178,6 +182,35 @@ func permitCheckins(actor goalActor, g Goal, noChange noChangeVerdict, permits f
 		}
 	}
 	return perms
+}
+
+// goalPermissionsFor is what actor may do with g now, by the rule each Goal
+// command evaluates (goalrules.go), noChange being the verdict on a No change
+// on g as permitCheckins takes it; permits reads each rule's refusal as
+// whether it allows. The Goal page and Follow-ups both ask it, so each offers
+// just what the commands would accept.
+func goalPermissionsFor(actor goalActor, g Goal, noChange *noChangeVerdict, permits func(refusal error) bool) GoalPermissions {
+	return GoalPermissions{
+		CheckinPermissions:       permitCheckins(actor, g, noChange, permits),
+		WritesCheckins:           permits(checkinAuthorRuleRefusal(actor, g)),
+		AddMilestone:             permits(milestoneAdditionRefusal(actor, g)),
+		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
+		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
+		SetValues:                permits(goalValueSetterRefusal(actor, g)),
+		ManageDelegates:          permits(goalOwnerRefusal(actor, g, "authorize a Delegate")),
+		LinkParent:               permits(goalOwnerRefusal(actor, g, "link it to a parent")),
+		EditMetrics:              permits(metricEditRefusal(actor, g)),
+		DecideSuggestions:        permits(decideSuggestionRefusal(actor, g)),
+		DefineGoal:               permits(defineGoalRefusal(actor, g)),
+		Activate:                 permits(activateGoalRefusal(actor, g)),
+		SuggestParent:            permits(suggestParentRefusal(actor, g)),
+		EditTitleAndWhyItMatters: permits(goalOwnerOrAdminRefusal(actor, g, "change it")),
+		HandOff:                  permits(handoffRefusal(actor, g)),
+		Reassign:                 permits(reassignRefusal(actor, g)),
+		MarkOwnerDeparted:        permits(markDepartedRefusal(actor, g.Owner)),
+		MarkOwnerReturned:        permits(markReturnedRefusal(actor, g.Owner)),
+		MarkTopLevel:             permits(goalAdminRefusal(actor)),
+	}
 }
 
 // GoalPage reads everything the Goal goalID's page shows actorID, running
@@ -549,26 +582,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		return ok
 	}
 	p.CanCheckin = permits(checkinAuthorRuleRefusal(actor, g))
-	perms := GoalPermissions{
-		CheckinPermissions:       permitCheckins(actor, g, noChange, permits),
-		AddMilestone:             permits(milestoneAdditionRefusal(actor, g)),
-		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
-		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
-		SetValues:                permits(goalValueSetterRefusal(actor, g)),
-		ManageDelegates:          permits(goalOwnerRefusal(actor, g, "authorize a Delegate")),
-		LinkParent:               permits(goalOwnerRefusal(actor, g, "link it to a parent")),
-		EditMetrics:              permits(metricEditRefusal(actor, g)),
-		DecideSuggestions:        permits(decideSuggestionRefusal(actor, g)),
-		DefineGoal:               permits(defineGoalRefusal(actor, g)),
-		Activate:                 permits(activateGoalRefusal(actor, g)),
-		SuggestParent:            permits(suggestParentRefusal(actor, g)),
-		EditTitleAndWhyItMatters: permits(goalOwnerOrAdminRefusal(actor, g, "change it")),
-		HandOff:                  permits(handoffRefusal(actor, g)),
-		Reassign:                 permits(reassignRefusal(actor, g)),
-		MarkOwnerDeparted:        permits(markDepartedRefusal(actor, g.Owner)),
-		MarkOwnerReturned:        permits(markReturnedRefusal(actor, g.Owner)),
-		MarkTopLevel:             permits(goalAdminRefusal(actor)),
-	}
+	perms := goalPermissionsFor(actor, g, &noChange, permits)
 	removable := make(map[int64]bool, len(p.Parents)+len(p.Children))
 	for _, l := range p.Parents {
 		removable[l.LinkID] = permits(linkRemoveRefusal(actor, l.Goal, g))

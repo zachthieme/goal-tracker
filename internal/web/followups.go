@@ -41,7 +41,7 @@ func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current do
 	rows := make([]followUpGoalRow, 0, len(f.Rows))
 	for _, r := range f.Rows {
 		row := followUpGoalRow{FollowUpRow: r}
-		row.Fix = row.fix(current, f.Delegated)
+		row.Fix = row.fix()
 		rows = append(rows, row)
 	}
 	dims, err := s.svc.ListDimensions(ctx)
@@ -438,52 +438,51 @@ type followUpFix struct {
 	Disabled bool
 }
 
-// fix is the row's Fix for current, given the Goals current is a Delegate on,
-// by the row's Goal's Nudge today, if any, and whether nobody is left to check
-// in on it. It is the first that applies of:
-//  1. Reassign, for an Ownerless Goal and an Admin;
+// fix is the row's Fix, picked among what the row offers its viewer, each
+// right as Service.FollowUps judged it by the Goal rules (Permissions, Nudge),
+// with the row's Goal's Nudge today, if any. It is the first that applies of:
+//  1. Reassign, for an Ownerless Goal the viewer may reassign (an Admin);
 //  2. Check in, for a Check-in overdue, Path to Green overdue or Milestone
-//     overdue Goal current Owns or is a Delegate on (an Admin has no Check-in
+//     overdue Goal the viewer may check in on (an Admin has no Check-in
 //     right);
-//  3. Nudge, for someone else's Check-in overdue, Path to Green overdue or
-//     Milestone overdue Goal that someone can check in on (CONTEXT.md:
-//     Nudge); once it has been nudged today, a disabled "Nudged today by"
-//     whoever did.
+//  3. Nudge, for such a Goal the viewer may nudge, someone else's that
+//     someone can check in on (CONTEXT.md: Nudge); once it has been nudged
+//     today, a disabled "Nudged today by" whoever did.
 //     Freshness outranks alignment, as 2 outranks 4;
-//  4. Link to a parent, for an Unlinked Goal current Owns;
+//  4. Link to a parent, for an Unlinked Goal the viewer may link (its Owner);
 //  5. For a Schedule conflict, see scheduleConflictFix: Check in, its dates
-//     open, on current's own Goal in the conflict, or Nudge on the row's Goal
-//     for anyone else (CONTEXT.md: Schedule conflict, Nudge);
+//     open, on the viewer's own Goal in the conflict, or Nudge on the row's
+//     Goal for anyone else (CONTEXT.md: Schedule conflict, Nudge);
 //  6. Open parent, for a Goal under a halted parent: the first by title;
-//  7. Suggest a parent, for an Unlinked Goal current doesn't Own, a Delegate
-//     on it included (CONTEXT.md: Parent suggestion);
+//  7. Suggest a parent, for an Unlinked Goal the viewer may suggest one for,
+//     anyone but its Owner, a Delegate on it included (CONTEXT.md: Parent
+//     suggestion);
 //  8. See Action Items, the Goal page's, for a Goal with an overdue Action
 //     Item;
 //  9. Open Goal, for anything else, a Check-in overdue Goal nobody can check in
 //     on and a Goal flagged only for its Health, Red or Yellow, among them.
-func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool) followUpFix {
-	nudged, unreachable := r.NudgedToday, r.Unreachable
+func (r followUpGoalRow) fix() followUpFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
-	if _, ownerless := r.Signal("ownerless"); ownerless && current.IsAdmin {
+	if _, ownerless := r.Signal("ownerless"); ownerless && r.Permissions.Reassign {
 		return followUpFix{Label: "Reassign", Href: goal + "?open=reassign"}
 	}
 	_, checkinOverdue := r.Signal("checkin-overdue")
 	_, pathOverdue := r.Signal("path-overdue")
 	_, milestoneOverdue := r.Signal("milestone-overdue")
-	overdue := pathOverdue || milestoneOverdue
-	if (checkinOverdue || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
-		return followUpFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
+	if checkinOverdue || pathOverdue || milestoneOverdue {
+		switch {
+		case r.Permissions.CheckIn:
+			return followUpFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
+		case r.NudgedToday != nil:
+			return followUpFix{Label: "Nudged today by " + r.NudgedToday.Sender.Label(), Disabled: true}
+		case r.Nudge:
+			return followUpFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
+		}
 	}
-	if (checkinOverdue || overdue) && nudged != nil {
-		return followUpFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}
-	}
-	if (checkinOverdue || overdue) && !unreachable {
-		return followUpFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
-	}
-	if _, unlinked := r.Signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
+	if _, unlinked := r.Signal("unlinked"); unlinked && r.Permissions.LinkParent {
 		return followUpFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
-	if f, ok := r.scheduleConflictFix(current, delegate); ok {
+	if f, ok := r.scheduleConflictFix(); ok {
 		return f
 	}
 	var parent *domain.Goal
@@ -495,7 +494,7 @@ func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool) fo
 	if parent != nil {
 		return followUpFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
-	if _, unlinked := r.Signal("unlinked"); unlinked {
+	if _, unlinked := r.Signal("unlinked"); unlinked && r.Permissions.SuggestParent {
 		return followUpFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
 	if _, overdue := r.Signal("action-item-overdue"); overdue {
@@ -506,56 +505,53 @@ func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool) fo
 
 // scheduleConflictFix is the Fix for a row in a Schedule conflict, and
 // whether it has one. Its candidates are the row's Goal, the child, then each
-// conflict's parent by title; current can act on those they Own or are a
-// Delegate on. It is the first that applies of:
-//  1. Check in, its dates open, on the first candidate current can act on
-//     that is Active;
-//  2. Open Goal on the first candidate current can act on, when none is
-//     Active, as only an Active Goal takes an ordinary Check-in;
-//  3. for anyone else, while the row's Goal is Active, a disabled "Nudged
-//     today by" whoever nudged it today, or else Nudge unless nobody is left
-//     to check in on it.
+// conflict's parent by title, each with what the viewer may do with it
+// (Permissions, RelatedPermissions). It is the first that applies of:
+//  1. Check in, its dates open, on the first candidate taking the ordinary
+//     Check-in a Schedule conflict asks for from the viewer: one leaving its
+//     Lifecycle as it is, as only an Active Goal's may;
+//  2. Open Goal on the first candidate whose Check-ins the viewer writes,
+//     when none takes one;
+//  3. while the row's Nudge lets the viewer nudge its Goal, a disabled
+//     "Nudged today by" whoever nudged it today, or else Nudge.
 //
 // Otherwise the row has none here, and falls through to the later Fixes.
-func (r followUpGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool) (followUpFix, bool) {
-	nudged, unreachable := r.NudgedToday, r.Unreachable
-	var parents []domain.Goal
+func (r followUpGoalRow) scheduleConflictFix() (followUpFix, bool) {
+	type candidate struct {
+		goal  domain.Goal
+		perms domain.GoalPermissions
+	}
+	var parents []candidate
 	for _, sig := range r.Signals {
 		if sig.Kind == "schedule-conflicts" {
-			parents = append(parents, *sig.Related)
+			parents = append(parents, candidate{*sig.Related, sig.RelatedPermissions})
 		}
 	}
 	if len(parents) == 0 {
 		return followUpFix{}, false
 	}
-	slices.SortStableFunc(parents, func(a, b domain.Goal) int {
-		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+	slices.SortStableFunc(parents, func(a, b candidate) int {
+		return strings.Compare(strings.ToLower(a.goal.Title), strings.ToLower(b.goal.Title))
 	})
-	var mine *domain.Goal
-	for _, g := range append([]domain.Goal{r.Goal}, parents...) {
-		if g.Owner.ID != current.ID && !delegate[g.ID] {
-			continue
+	var writes *domain.Goal
+	for _, c := range append([]candidate{{r.Goal, r.Permissions}}, parents...) {
+		if c.perms.CheckIn && c.perms.KeepLifecycle {
+			return followUpFix{Label: "Check in", Href: fmt.Sprintf("/goals/%d/checkin?open=dates", c.goal.ID), Primary: true}, true
 		}
-		if g.Lifecycle == domain.LifecycleActive {
-			return followUpFix{Label: "Check in", Href: fmt.Sprintf("/goals/%d/checkin?open=dates", g.ID), Primary: true}, true
-		}
-		if mine == nil {
-			mine = &g
+		if writes == nil && c.perms.WritesCheckins {
+			writes = &c.goal
 		}
 	}
-	if mine != nil {
-		return followUpFix{Label: "Open Goal", Href: fmt.Sprintf("/goals/%d", mine.ID)}, true
+	if writes != nil {
+		return followUpFix{Label: "Open Goal", Href: fmt.Sprintf("/goals/%d", writes.ID)}, true
 	}
-	if r.Goal.Lifecycle != domain.LifecycleActive {
+	if !r.Nudge {
 		return followUpFix{}, false
 	}
-	if nudged != nil {
-		return followUpFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}, true
+	if r.NudgedToday != nil {
+		return followUpFix{Label: "Nudged today by " + r.NudgedToday.Sender.Label(), Disabled: true}, true
 	}
-	if !unreachable {
-		return followUpFix{Label: "Nudge", Href: fmt.Sprintf("/goals/%d/nudge", r.Goal.ID), Post: true}, true
-	}
-	return followUpFix{}, false
+	return followUpFix{Label: "Nudge", Href: fmt.Sprintf("/goals/%d/nudge", r.Goal.ID), Post: true}, true
 }
 
 // followUpDays says a count of days in words: "1 day", "22 days".

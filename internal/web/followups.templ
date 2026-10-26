@@ -41,7 +41,7 @@ templ followUpsPage(current *domain.Account, v followUpsPageView) {
 				if v.Group != "" {
 					<p class="rk-show-all"><a data-testid="follow-ups-show-all" href={ v.ShowAllURL() }>Show all</a></p>
 				}
-				@followUpsTable(current, v.Today, v.Here(), shown)
+				@followUpsTable(v.Today, v.Here(), shown)
 			}
 		</div>
 	}
@@ -166,7 +166,7 @@ templ followUpCardLink(c followUpCard) {
 // followUpsTable is the flagged Goals, one row each, most urgent first: a
 // full-bleed list, scrolling sideways inside itself should it outgrow the
 // page. A Fix that posts returns to here, the page's address.
-templ followUpsTable(current *domain.Account, today time.Time, here string, rows []followUpGoalRow) {
+templ followUpsTable(today time.Time, here string, rows []followUpGoalRow) {
 	<div class="rk-list">
 		<table id="follow-ups-table" class="rk-table" data-testid="follow-ups-table">
 			<thead>
@@ -174,7 +174,7 @@ templ followUpsTable(current *domain.Account, today time.Time, here string, rows
 			</thead>
 			<tbody>
 				for _, r := range rows {
-					@followUpRow(current, today, here, r)
+					@followUpRow(today, here, r)
 				}
 			</tbody>
 		</table>
@@ -191,7 +191,7 @@ templ followUpsTable(current *domain.Account, today time.Time, here string, rows
 // ("Back to Green Oct 3 ~~Sep 12~~ (3)"), which isn't a signal; its Owner
 // ("You" for the viewer's own), and a cell for its fix: a link, a form
 // posting back to here, or a disabled button saying why it can't be used.
-templ followUpRow(current *domain.Account, today time.Time, here string, r followUpGoalRow) {
+templ followUpRow(today time.Time, here string, r followUpGoalRow) {
 	<tr data-testid="follow-up-row">
 		<td class="rk-health">
 			@healthBadge("follow-up-health", r.Health)
@@ -214,7 +214,7 @@ templ followUpRow(current *domain.Account, today time.Time, here string, r follo
 			</span>
 		</td>
 		<td data-testid="follow-up-owner" class="rk-owner">
-			if r.Goal.Owner.ID == current.ID {
+			if r.OwnedByViewer {
 				You
 			} else {
 				@person(r.Goal.Owner)

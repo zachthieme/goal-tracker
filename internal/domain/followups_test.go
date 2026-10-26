@@ -2,6 +2,8 @@ package domain_test
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -319,5 +321,102 @@ func TestFollowUpsSayWhatTheFixesTurnOn(t *testing.T) {
 		if got := followUpRowOf(t, f.Rows, c.goal).Unreachable; got != c.unreachable {
 			t.Errorf("%q unreachable = %v, want %v", c.goal.Title, got, c.unreachable)
 		}
+	}
+}
+
+// Each row carries what its viewer may do with its Goal, the Goal page's
+// Permissions for them but No change, which Follow-ups doesn't offer, and each
+// Schedule conflict what they may do with its parent; whether they own the
+// Goal; and whether they may nudge it, as Service.Nudge would judge a Goal
+// nobody has nudged today that isn't a parent in a Schedule conflict: for the
+// Owner, a Delegate, an Admin and a reader alike.
+func TestFollowUpsRowsCarryTheirViewersPermissions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	rita := h.SignIn("rita@example.com")
+	pat := h.SignIn("pat@example.com")
+	olga := h.SignIn("olga@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(pat, "Launch", june))
+	h.AddDelegate(pat, morgan, launch.ID)
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 0, 30))
+	h.AddDelegate(sam, morgan, late.ID)
+	link := h.RequestLink(sam, late, launch, "")
+	if _, err := h.Service.AcceptLink(ctx, link.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	lapsed := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Lapsed", "It matters."))
+	h.AddDelegate(sam, morgan, lapsed.ID)
+	alone := h.MarkTopLevel(ada, h.ActiveGoal(olga, "Alone", "It matters."))
+	blocked := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Blocked", "It matters."))
+	h.MarkDeparted(ada, olga)
+	h.Clock.Advance(10 * day)
+	// Only Lapsed and Alone are Check-in overdue: Late piece is flagged for its
+	// Schedule conflict alone, Launch not at all, and Blocked for its Health.
+	h.Checkin(pat, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, late.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, blocked.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+
+	// permissionsOn are the Goal page's Permissions for viewer on g, but No
+	// change.
+	permissionsOn := func(viewer domain.Account, g domain.Goal) domain.GoalPermissions {
+		t.Helper()
+		p, err := h.Service.GoalPage(ctx, viewer.ID, g.ID)
+		if err != nil {
+			t.Fatalf("GoalPage for %s on %q: %v", viewer.Email, g.Title, err)
+		}
+		perms := p.Permissions
+		perms.NoChange = false
+		return perms
+	}
+	nudges := map[bool]int{}
+	for _, viewer := range []domain.Account{sam, morgan, ada, rita} {
+		rows := followUpsFor(t, h, viewer).Rows
+		for _, g := range []domain.Goal{late, lapsed, alone, blocked} {
+			followUpRowOf(t, rows, g)
+		}
+		for _, r := range rows {
+			if r.Goal.ID == launch.ID {
+				t.Fatalf("%q, a Schedule conflict's parent, is flagged: %v", launch.Title, followUpKinds(r))
+			}
+			if r.Permissions.NoChange {
+				t.Errorf("%s's row for %q offers No change", viewer.Email, r.Goal.Title)
+			}
+			if want := permissionsOn(viewer, r.Goal); !reflect.DeepEqual(r.Permissions, want) {
+				t.Errorf("%s's row for %q has Permissions %+v, want the Goal page's %+v", viewer.Email, r.Goal.Title, r.Permissions, want)
+			}
+			for _, sig := range r.Signals {
+				if sig.Kind != "schedule-conflicts" {
+					continue
+				}
+				if want := permissionsOn(viewer, *sig.Related); !reflect.DeepEqual(sig.RelatedPermissions, want) {
+					t.Errorf("%s's row for %q has RelatedPermissions on %q %+v, want the Goal page's %+v", viewer.Email, r.Goal.Title, sig.Related.Title, sig.RelatedPermissions, want)
+				}
+			}
+			if owned := r.Goal.Owner.ID == viewer.ID; r.OwnedByViewer != owned {
+				t.Errorf("%s's row for %q: OwnedByViewer = %t, want %t", viewer.Email, r.Goal.Title, r.OwnedByViewer, owned)
+			}
+			var nudged error
+			if err := h.Service.WithinTx(ctx, func(tx *domain.Service) error {
+				_, nudged = tx.Nudge(ctx, viewer.ID, r.Goal.ID)
+				return errRolledBack
+			}); !errors.Is(err, errRolledBack) {
+				t.Fatalf("Nudge by %s on %q: the transaction ended %v", viewer.Email, r.Goal.Title, err)
+			}
+			if refused := errors.Is(nudged, domain.ErrNotAuthorized) || errors.Is(nudged, domain.ErrValidation); nudged != nil && !refused {
+				t.Fatalf("Nudge by %s on %q: %v", viewer.Email, r.Goal.Title, nudged)
+			}
+			if r.Nudge != (nudged == nil) {
+				t.Errorf("%s's row for %q: Nudge = %t, but Service.Nudge answers %v", viewer.Email, r.Goal.Title, r.Nudge, nudged)
+			}
+			nudges[r.Nudge]++
+		}
+	}
+	if nudges[true] == 0 || nudges[false] == 0 {
+		t.Errorf("rows offering a Nudge: %d, not offering one: %d; want some of each", nudges[true], nudges[false])
 	}
 }

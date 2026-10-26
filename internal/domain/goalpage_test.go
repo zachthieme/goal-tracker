@@ -94,6 +94,7 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 // define and activate it, and its Owner and Delegates edit its Milestones, and
 // no one checks in on it yet. Once the Goal is Done no one may check in, add a
 // Milestone, log a Draft Highlight or suggest a parent, the Owner included.
+// Its Owner and Delegates write its Check-ins in every Lifecycle.
 func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -115,12 +116,12 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 		LifecycleChanges: []string{domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled},
 	}
 	owner := domain.GoalPermissions{
-		CheckinPermissions: checksIn, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		CheckinPermissions: checksIn, WritesCheckins: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
 		ManageDelegates: true, LinkParent: true, EditMetrics: true, DecideSuggestions: true,
 		EditTitleAndWhyItMatters: true, HandOff: true,
 	}
 	delegate := domain.GoalPermissions{
-		CheckinPermissions: checksIn, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
+		CheckinPermissions: checksIn, WritesCheckins: true, AddMilestone: true, LogDraftHighlight: true, SetValues: true,
 		SuggestParent: true,
 	}
 	anAdmin := domain.GoalPermissions{
@@ -152,7 +153,7 @@ func TestGoalPagePermissionsFollowEachCommandsRule(t *testing.T) {
 		{"an Admin on the Active Goal", admin, active, anAdmin},
 		{"a reader of the Active Goal", rita, active, reader},
 		{"the Owner of the Done Goal", sam, done, ownerOfDone},
-		{"a Delegate on the Done Goal", morgan, done, domain.GoalPermissions{SetValues: true}},
+		{"a Delegate on the Done Goal", morgan, done, domain.GoalPermissions{WritesCheckins: true, SetValues: true}},
 		{"an Admin on the Done Goal", admin, done, adminOnDone},
 		{"a reader of the Done Goal", rita, done, domain.GoalPermissions{}},
 	} {
@@ -264,6 +265,17 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 		}},
 		{"KeepLifecycle", func(p domain.GoalPermissions) bool { return p.KeepLifecycle }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
 			_, err := tx.SubmitCheckin(ctx, domain.SubmitCheckinInput{GoalID: g.ID, AuthorID: v.ID, Health: domain.HealthGreen, Status: "On track."})
+			return err
+		}},
+		// WritesCheckins holds whatever the Goal's Lifecycle, so it is checked
+		// against a Check-in on an Active Goal the viewer stands to as they do
+		// to g: g itself when it is Active, else sam's Active one.
+		{"WritesCheckins", func(p domain.GoalPermissions) bool { return p.WritesCheckins }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
+			on := g
+			if g.Lifecycle != domain.LifecycleActive {
+				on = active
+			}
+			_, err := tx.SubmitCheckin(ctx, domain.SubmitCheckinInput{GoalID: on.ID, AuthorID: v.ID, Health: domain.HealthGreen, Status: "On track."})
 			return err
 		}},
 		{"NoChange", func(p domain.GoalPermissions) bool { return p.NoChange }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {

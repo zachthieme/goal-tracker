@@ -113,7 +113,7 @@ func (s *Service) CheckinPage(ctx context.Context, actorID, goalID int64) (Check
 		p.NoChangeRefusal = noChange.refusal
 	}
 	var failed error
-	p.Permissions = permitCheckins(actor, g, noChange, func(refusal error) bool {
+	p.Permissions = permitCheckins(actor, g, &noChange, func(refusal error) bool {
 		ok, err := goalPagePermits(refusal)
 		if err != nil && failed == nil {
 			failed = err
