@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // A reader comments on a Goal's block from the publication page, the Owner is
@@ -255,6 +257,36 @@ func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 		want := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
 		if got := resp.Header.Get("Location"); got != want {
 			t.Errorf("return %q: redirected to %q, want %q", back, got, want)
+		}
+	}
+}
+
+// A form's return is the page it sends someone back to, but only when it is
+// a path on this site: anything a browser could read as another site, or that
+// isn't a path at all, answers the route's fallback instead.
+func TestReturnToAcceptsOnlyAPathOnThisSite(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		back, want string
+	}{
+		{"/goals/5", "/goals/5"},
+		{"/follow-ups?org=all", "/follow-ups?org=all"},
+		{"/home", "/home"},
+		{"", "/fallback"},
+		{"goals", "/fallback"},
+		{"//evil.example", "/fallback"},
+		{`/\evil.example`, "/fallback"},
+		{"https://evil.example/x", "/fallback"},
+		{"/goals/5\n", "/fallback"},
+		{"/goals/5\t", "/fallback"},
+		{"/a\x7f", "/fallback"},
+	} {
+		r := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/anywhere",
+			strings.NewReader(url.Values{"return": {tc.back}}.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if got := web.ReturnTo(r, "/fallback"); got != tc.want {
+			t.Errorf("return %q: answered %q, want %q", tc.back, got, tc.want)
 		}
 	}
 }

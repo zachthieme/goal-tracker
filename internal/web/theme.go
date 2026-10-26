@@ -3,8 +3,6 @@ package web
 import (
 	"context"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 )
 
@@ -114,16 +112,5 @@ func (s *Server) handleSetTheme(w http.ResponseWriter, r *http.Request) {
 		c.MaxAge = -1
 	}
 	http.SetCookie(w, c)
-	http.Redirect(w, r, returnPath(r.FormValue("return")), http.StatusSeeOther)
-}
-
-// returnPath is where to send someone back to: back when it is a path on this
-// site, Home otherwise, so the form can't be used to send people elsewhere.
-func returnPath(back string) string {
-	u, err := url.Parse(back)
-	if err != nil || u.Scheme != "" || u.Host != "" ||
-		!strings.HasPrefix(back, "/") || strings.HasPrefix(back, "//") || strings.Contains(back, `\`) {
-		return "/home"
-	}
-	return back
+	http.Redirect(w, r, returnTo(r, "/home"), http.StatusSeeOther)
 }
