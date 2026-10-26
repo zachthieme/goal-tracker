@@ -35,7 +35,8 @@ type Sidebar struct {
 // Sidebar reads accountID's sidebar, reading each thing once and only what
 // the sidebar shows (ADR 0010). When a read fails it returns, along with the
 // error, the parts that read doesn't feed: every Account feeds all three, the
-// Delegate Goals and Active Goals both counts, and the rest one count each.
+// Delegate Goals, Active Goals and overdue Milestones both counts, and the
+// rest one count each.
 func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error) {
 	accounts, err := s.queries.ListAskWalkAccounts(ctx)
 	if err != nil {
@@ -59,11 +60,15 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 	if err != nil {
 		return sb, fmt.Errorf("list active goals: %w", err)
 	}
-	needsYou, needsErr := s.sidebarNeedsYou(ctx, accountID, s.personalGoalsAmong(active, accountID, isDelegate), byID)
+	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	if err != nil {
+		return sb, err
+	}
+	needsYou, needsErr := s.sidebarNeedsYou(ctx, accountID, s.personalGoalsAmong(active, overdue, accountID, isDelegate), byID)
 	if needsErr == nil {
 		sb.NeedsYou, sb.NeedsYouRead = needsYou, true
 	}
-	followUps, followErr := s.sidebarFollowUps(ctx, accountID, active, isDelegate, all)
+	followUps, followErr := s.sidebarFollowUps(ctx, accountID, active, overdue, isDelegate, all)
 	if followErr == nil {
 		sb.FollowUps, sb.FollowUpsRead = followUps, true
 	}
@@ -72,13 +77,14 @@ func (s *Service) Sidebar(ctx context.Context, accountID int64) (Sidebar, error)
 
 // sidebarFollowUps counts the Goals the Follow-ups page flags in accountID's
 // default scope (Sidebar.FollowUps), given active, every Active Goal with its
-// latest Check-in, isDelegate, the IDs of the Goals accountID is a Delegate
-// on, and accounts, every Account by ID. It decides which Goals are flagged as
+// latest Check-in, overdue, as listFreshnessOverdueMilestones reads them,
+// isDelegate, the IDs of the Goals accountID is a Delegate on, and accounts,
+// every Account by ID. It decides which Goals are flagged as
 // Service.FollowUps does (followUpRowsAmong), reading only what that needs
-// beyond active, and not the open Asks for help, which flag only Goals Not
-// Green flags already.
-func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active []db.ListActiveGoalsWithLatestCheckinRow, isDelegate map[int64]bool, accounts []Account) (int, error) {
-	reads, err := s.readFollowUpSignals(ctx, active)
+// beyond active and overdue, and not the open Asks for help, which flag only
+// Goals Not Green flags already.
+func (s *Service) sidebarFollowUps(ctx context.Context, accountID int64, active []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone, isDelegate map[int64]bool, accounts []Account) (int, error) {
+	reads, err := s.readFollowUpSignals(ctx, active, overdue)
 	if err != nil {
 		return 0, err
 	}

@@ -233,6 +233,11 @@ func TestReportPutsItsExceptionsMostUrgentFirst(t *testing.T) {
 		{title: "Red due later", due: date(2026, 9, 1), before: domain.HealthRed, after: domain.HealthRed},
 		{title: "Yellow overdue", due: date(2026, 7, 2), before: domain.HealthYellow, pathTarget: date(2026, 1, 7)},
 		{title: "Yellow", due: date(2026, 7, 2), before: domain.HealthYellow, after: domain.HealthYellow},
+		// Never checked in on, so Check-in overdue and with no Health.
+		{title: "No Health", due: date(2026, 7, 2)},
+		// Not checked in on since the baseline, so Check-in overdue, which
+		// puts it ahead of a Green Goal that changed since the baseline.
+		{title: "Green overdue", due: date(2026, 7, 2), before: domain.HealthGreen},
 		{title: "Back to Green", due: date(2026, 7, 2), before: domain.HealthYellow, after: domain.HealthGreen},
 	}
 	reversed := slices.Clone(want)

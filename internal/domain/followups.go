@@ -86,7 +86,11 @@ func (s *Service) FollowUps(ctx context.Context, viewerID int64) (FollowUps, err
 	if err != nil {
 		return FollowUps{}, fmt.Errorf("list active goals: %w", err)
 	}
-	reads, err := s.readFollowUpSignals(ctx, active)
+	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	if err != nil {
+		return FollowUps{}, err
+	}
+	reads, err := s.readFollowUpSignals(ctx, active, overdue)
 	if err != nil {
 		return FollowUps{}, err
 	}
@@ -192,13 +196,11 @@ type followUpReads struct {
 }
 
 // readFollowUpSignals reads, beside active, every Active Goal with its latest
-// Check-in, the rest of followUpReads but the open Asks for help.
-func (s *Service) readFollowUpSignals(ctx context.Context, active []db.ListActiveGoalsWithLatestCheckinRow) (followUpReads, error) {
-	reads := followUpReads{active: active}
+// Check-in, and overdue, the Planned Milestones any of them could be overdue
+// by, the rest of followUpReads but the open Asks for help.
+func (s *Service) readFollowUpSignals(ctx context.Context, active []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone) (followUpReads, error) {
+	reads := followUpReads{active: active, overdueMilestones: overdue}
 	var err error
-	if reads.overdueMilestones, err = s.listFreshnessOverdueMilestones(ctx); err != nil {
-		return followUpReads{}, err
-	}
 	if reads.edges, err = s.acceptedEdges(ctx); err != nil {
 		return followUpReads{}, err
 	}
@@ -328,20 +330,6 @@ func followUpSignalKinds(r FollowUpRow) int {
 	return len(seen)
 }
 
-// followUpHealthRank orders Health most urgent first: Red, Yellow, none, then
-// Green.
-func followUpHealthRank(health string) int {
-	switch health {
-	case HealthRed:
-		return 0
-	case HealthYellow:
-		return 1
-	case HealthGreen:
-		return 3
-	}
-	return 2
-}
-
 // followUpRank orders true before false.
 func followUpRank(b bool) int {
 	if b {
@@ -352,7 +340,7 @@ func followUpRank(b bool) int {
 
 // sortFollowUpRows puts the most urgent Goals first, key by key: Active Goals
 // before the Proposed and On Hold ones, which nothing has gone wrong with yet;
-// then Ownerless first; then by Health (followUpHealthRank); then a Path to
+// then Ownerless first; then by Health (HealthUrgencyRank); then a Path to
 // Green overdue first, longest overdue first; then a Milestone overdue first,
 // longest overdue first; then an overdue Action Item first, longest overdue
 // first; then Check-in overdue first, furthest past its cadence first; then
@@ -369,7 +357,7 @@ func sortFollowUpRows(rows []FollowUpRow) {
 		if c := cmp.Compare(followUpRank(aOwnerless), followUpRank(bOwnerless)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(followUpHealthRank(a.Health), followUpHealthRank(b.Health)); c != 0 {
+		if c := cmp.Compare(HealthUrgencyRank(a.Health), HealthUrgencyRank(b.Health)); c != 0 {
 			return c
 		}
 		aPath, aOverdue := a.Signal("path-overdue")

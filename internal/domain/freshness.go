@@ -39,8 +39,9 @@ type Freshness struct {
 	// in the Goal's Owner's Timezone (see Service.GoalTimezone). The Health
 	// stays the Owner's (CONTEXT.md: Milestone). OverdueMilestone and
 	// OverdueMilestoneDate are that Milestone's name and date, the
-	// earliest-dated when several are overdue. Only Service.Freshness,
-	// Service.FreshnessByGoal and Service.FreshnessSignals set these three.
+	// earliest-dated when several are overdue. Every Freshness is judged
+	// whole, from the Goal's Milestones too (judgeFreshness), so these three
+	// are always answered.
 	MilestoneOverdue     bool
 	OverdueMilestone     string
 	OverdueMilestoneDate time.Time
@@ -107,11 +108,20 @@ func (s *Service) FreshnessByGoal(ctx context.Context, goals []Goal) (map[int64]
 		return nil, err
 	}
 	last := make(map[int64]lastCheckin, len(goals))
-	var green []int64
 	for _, g := range goals {
 		if c, ok := latest[g.ID]; ok {
 			last[g.ID] = lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 		}
+	}
+	return s.freshnessGivenLast(ctx, goals, last)
+}
+
+// freshnessGivenLast is FreshnessByGoal given last, each of goals' latest
+// Check-in by Goal ID (none for a Goal with no Check-in). It reads the
+// Milestones of the Goals that could be Milestone overdue in one query.
+func (s *Service) freshnessGivenLast(ctx context.Context, goals []Goal, last map[int64]lastCheckin) (map[int64]Freshness, error) {
+	var green []int64
+	for _, g := range goals {
 		if greenWhileActive(g, last[g.ID].health) {
 			green = append(green, g.ID)
 		}
@@ -123,9 +133,7 @@ func (s *Service) FreshnessByGoal(ctx context.Context, goals []Goal) (map[int64]
 	}
 	out := make(map[int64]Freshness, len(goals))
 	for _, g := range goals {
-		f := s.judgeFreshness(g, last[g.ID])
-		s.markMilestoneOverdue(&f, g, last[g.ID].health, milestones[g.ID])
-		out[g.ID] = f
+		out[g.ID] = s.judgeFreshness(g, last[g.ID], milestones[g.ID])
 	}
 	return out, nil
 }
@@ -140,7 +148,8 @@ func greenWhileActive(g Goal, health string) bool {
 // markMilestoneOverdue sets f's Milestone overdue fields (see
 // Freshness.MilestoneOverdue) for g, whose latest Check-in's Health is health,
 // from g's milestones sorted by date, judging each by Milestone.OverdueOn as of
-// today in g's timezone, as the Check-in refusals judge it.
+// today in g's timezone, as the Check-in refusals judge it. Only
+// judgeFreshness calls it.
 func (s *Service) markMilestoneOverdue(f *Freshness, g Goal, health string, milestones []Milestone) {
 	if !greenWhileActive(g, health) {
 		return
@@ -195,8 +204,8 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 // listFreshnessOverdueMilestones reads the Planned Milestones any Active Goal
 // could be Milestone overdue by. Each Goal's today is its Owner's (see
 // GoalTimezone), never later than the day after the UTC date, so reading the
-// Milestones due before that misses none; markMilestoneOverdue then judges
-// each in its Goal's today.
+// Milestones due before that misses none; judgeFreshness then judges each in
+// its Goal's today.
 func (s *Service) listFreshnessOverdueMilestones(ctx context.Context) ([]db.Milestone, error) {
 	overdue, err := s.queries.ListOverdueMilestones(ctx, s.clock.Now().UTC().AddDate(0, 0, 1).Format(dateFormat))
 	if err != nil {
@@ -209,15 +218,11 @@ func (s *Service) listFreshnessOverdueMilestones(ctx context.Context) ([]db.Mile
 // its latest Check-in, given overdue, as listFreshnessOverdueMilestones reads
 // them.
 func (s *Service) freshnessSignalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone) FreshnessSignals {
-	milestones := map[int64][]Milestone{}
-	for _, m := range overdue {
-		milestones[m.GoalID] = append(milestones[m.GoalID], milestoneFromRow(m))
-	}
+	milestones := freshnessMilestonesByGoal(overdue)
 	var out FreshnessSignals
 	for _, r := range rows {
 		g := goalFromRow(r.Goal, r.Account)
-		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r)), Health: r.CheckinHealth}
-		s.markMilestoneOverdue(&gf.Freshness, g, gf.Health, milestones[g.ID])
+		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r), milestones[g.ID]), Health: r.CheckinHealth}
 		if gf.Freshness.MilestoneOverdue {
 			out.OverdueMilestones = append(out.OverdueMilestones, gf)
 		}
@@ -240,6 +245,16 @@ func (s *Service) freshnessSignalsAmong(rows []db.ListActiveGoalsWithLatestCheck
 	slices.SortStableFunc(out.OverdueMilestones, func(a, b GoalFreshness) int {
 		return a.Freshness.OverdueMilestoneDate.Compare(b.Freshness.OverdueMilestoneDate)
 	})
+	return out
+}
+
+// freshnessMilestonesByGoal keys overdue, as listFreshnessOverdueMilestones
+// reads them, by Goal ID, each Goal's earliest first.
+func freshnessMilestonesByGoal(overdue []db.Milestone) map[int64][]Milestone {
+	out := map[int64][]Milestone{}
+	for _, m := range overdue {
+		out[m.GoalID] = append(out[m.GoalID], milestoneFromRow(m))
+	}
 	return out
 }
 
@@ -271,13 +286,18 @@ func (s *Service) ActiveGoalsFor(ctx context.Context, accountID int64) ([]Person
 	if err != nil {
 		return nil, fmt.Errorf("list active goals: %w", err)
 	}
-	return s.personalGoalsAmong(rows, accountID, isDelegate), nil
+	overdue, err := s.listFreshnessOverdueMilestones(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.personalGoalsAmong(rows, overdue, accountID, isDelegate), nil
 }
 
 // personalGoalsAmong is ActiveGoalsFor over rows, every Active Goal with its
-// latest Check-in, given isDelegate, the IDs of the Goals accountID is a
-// Delegate on.
-func (s *Service) personalGoalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, accountID int64, isDelegate map[int64]bool) []PersonalGoal {
+// latest Check-in, given overdue, as listFreshnessOverdueMilestones reads
+// them, and isDelegate, the IDs of the Goals accountID is a Delegate on.
+func (s *Service) personalGoalsAmong(rows []db.ListActiveGoalsWithLatestCheckinRow, overdue []db.Milestone, accountID int64, isDelegate map[int64]bool) []PersonalGoal {
+	milestones := freshnessMilestonesByGoal(overdue)
 	var out []PersonalGoal
 	for _, r := range rows {
 		owns := r.Goal.OwnerID == accountID
@@ -288,7 +308,7 @@ func (s *Service) personalGoalsAmong(rows []db.ListActiveGoalsWithLatestCheckinR
 		last := lastCheckinFromRow(r)
 		out = append(out, PersonalGoal{
 			Goal:       g,
-			Freshness:  s.judgeFreshness(g, last),
+			Freshness:  s.judgeFreshness(g, last, milestones[g.ID]),
 			Health:     r.CheckinHealth,
 			CheckedIn:  !last.at.IsZero(),
 			AsDelegate: !owns,
@@ -318,26 +338,26 @@ func lastCheckinFromRow(r db.ListActiveGoalsWithLatestCheckinRow) lastCheckin {
 	return last
 }
 
-// judgeFreshness applies the Check-in overdue and overdue-Path-to-Green rules
-// to g, given its latest Check-in. Days are counted on the calendar of g's
-// Owner's Timezone (see GoalTimezone), so a Check-in late on Monday and one
-// early on Monday both count from Monday, and a Path to Green is overdue from
-// the day after its target date.
-func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
-	last := latest.at
-	if last.IsZero() {
-		last = g.ActivatedAt
-	}
+// judgeFreshness is the whole of g's Freshness, given its latest Check-in and
+// milestones, its Milestones sorted by date: at least those still Planned past
+// their date, or none when it can't be Milestone overdue (greenWhileActive).
+// It applies the Check-in overdue, overdue-Path-to-Green and Milestone overdue
+// rules. Days are counted on the calendar of g's Owner's Timezone (see
+// GoalTimezone), so a Check-in late on Monday and one early on Monday both
+// count from Monday, and a Path to Green is overdue from the day after its
+// target date. A count that needs only one rule's answer, and no Milestones,
+// asks checkinOverdueSince or pathToGreenPastTarget instead.
+func (s *Service) judgeFreshness(g Goal, latest lastCheckin, milestones []Milestone) Freshness {
+	last := lastUpdateOf(g, latest)
 	if last.IsZero() {
 		return Freshness{}
 	}
 	now := s.clock.Now()
 	loc := s.GoalTimezone(g)
-	active := g.Lifecycle == LifecycleActive
 	days := daysBetween(last, now, loc)
 	target := latest.pathTargetDate
-	return Freshness{
-		CheckinOverdue:     active && days > g.CadenceDays,
+	f := Freshness{
+		CheckinOverdue:     checkinOverdueAfter(g, days),
 		LastUpdate:         last,
 		CheckedIn:          !latest.at.IsZero(),
 		DaysSince:          days,
@@ -345,6 +365,38 @@ func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
 		PathToGreenOverdue: pathToGreenPastTarget(g.Lifecycle, latest.health, target, now, loc),
 		PathTargetDate:     target,
 	}
+	s.markMilestoneOverdue(&f, g, latest.health, milestones)
+	return f
+}
+
+// lastUpdateOf is g's last update, given its latest Check-in: that Check-in,
+// or g's activation when it has none, the zero time when it was never
+// activated (Freshness.LastUpdate).
+func lastUpdateOf(g Goal, latest lastCheckin) time.Time {
+	if latest.at.IsZero() {
+		return g.ActivatedAt
+	}
+	return latest.at
+}
+
+// checkinOverdueSince is the Check-in overdue rule alone (see
+// Freshness.CheckinOverdue): whether g, whose latest Check-in was written at
+// lastCheckinAt (the zero time when it has none), is Check-in overdue now. A
+// count of Check-in overdue Goals asks it rather than judging a whole
+// Freshness.
+func (s *Service) checkinOverdueSince(g Goal, lastCheckinAt time.Time) bool {
+	last := lastUpdateOf(g, lastCheckin{at: lastCheckinAt})
+	if last.IsZero() {
+		return false
+	}
+	return checkinOverdueAfter(g, daysBetween(last, s.clock.Now(), s.GoalTimezone(g)))
+}
+
+// checkinOverdueAfter is whether g is Check-in overdue when days of its
+// Owner's Timezone have passed since its last update: it is Active and more
+// than its cadence has.
+func checkinOverdueAfter(g Goal, days int) bool {
+	return g.Lifecycle == LifecycleActive && days > g.CadenceDays
 }
 
 // pathToGreenPastTarget is the overdue-Path-to-Green rule: a Goal of the

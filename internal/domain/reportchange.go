@@ -101,19 +101,24 @@ type reportException struct {
 	pathOverdue, slipped, movedLifecycle bool
 }
 
-// sortReportExceptions puts the most urgent exceptions first, key by key, as
-// the Follow-ups page ranks Goals: Ownerless first; then by Health, Red, Yellow,
-// none, then Green; then a Path to Green overdue first; then Check-in overdue
-// first. Then those that changed since the baseline come first, new trouble
-// ahead of standing trouble; then the soonest delivery date, with none last;
-// then by title, ignoring case, then by Goal id.
+// sortReportExceptions puts the most urgent exceptions first, key by key, in
+// the Report's order (CONTEXT.md: Report): Ownerless first; then by Health
+// (HealthUrgencyRank); then a Path to Green overdue first; then Check-in
+// overdue first. Then those that changed since the baseline come first, new
+// trouble ahead of standing trouble; then the soonest delivery date, with none
+// last; then by title, ignoring case, then by Goal id. The Follow-ups page
+// ranks otherwise (sortFollowUpRows): it puts Active Goals ahead of the rest
+// before any of these keys, and a Milestone overdue and then an overdue Action
+// Item between a Path to Green overdue and Check-in overdue, none of which a
+// Report ranks by; and a Report's ranking by change and delivery date is its
+// own.
 func sortReportExceptions(xs []reportException) {
 	slices.SortStableFunc(xs, func(a, b reportException) int {
 		ga, gb := a.block.Goal, b.block.Goal
 		if c := cmp.Compare(reportFlagRank(ga.Ownerless), reportFlagRank(gb.Ownerless)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(reportHealthRank(a.block.Health), reportHealthRank(b.block.Health)); c != 0 {
+		if c := cmp.Compare(HealthUrgencyRank(a.block.Health), HealthUrgencyRank(b.block.Health)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(reportFlagRank(a.pathOverdue), reportFlagRank(b.pathOverdue)); c != 0 {
@@ -146,9 +151,9 @@ func reportFlagRank(holds bool) int {
 	return 1
 }
 
-// reportHealthRank orders Health most urgent first: Red, Yellow, none, then
-// Green.
-func reportHealthRank(health string) int {
+// HealthUrgencyRank orders Health most urgent first: Red, Yellow, none, then
+// Green. The Follow-ups page and a Report both rank by it.
+func HealthUrgencyRank(health string) int {
 	switch health {
 	case HealthRed:
 		return 0

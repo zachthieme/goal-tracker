@@ -20,15 +20,16 @@ func (c SignalCounts) Any() bool {
 	return c.Red+c.PathOverdue+c.CheckinOverdue+c.Yellow > 0
 }
 
-// add counts one Goal, with its latest Check-in's Health and its freshness.
-func (c *SignalCounts) add(health string, f Freshness) {
+// add counts one Goal, with its latest Check-in's Health and whether its Path
+// to Green and its Check-in are overdue.
+func (c *SignalCounts) add(health string, pathOverdue, checkinOverdue bool) {
 	if health == HealthRed {
 		c.Red++
 	}
-	if f.PathToGreenOverdue {
+	if pathOverdue {
 		c.PathOverdue++
 	}
-	if f.CheckinOverdue {
+	if checkinOverdue {
 		c.CheckinOverdue++
 	}
 	if health == HealthYellow {
@@ -80,15 +81,20 @@ func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, e
 	if err != nil {
 		return OrgSignals{}, fmt.Errorf("list active goals: %w", err)
 	}
+	// Home's My org shows no Milestone overdue, so no Milestones are read and
+	// no Freshness is judged: only the rules for the signals it counts.
+	now := s.clock.Now()
 	for _, r := range goals {
 		i, ok := row[r.Goal.OwnerID]
 		if !ok {
 			continue
 		}
 		g := goalFromRow(r.Goal, r.Account)
-		f := s.judgeFreshness(g, lastCheckinFromRow(r))
-		out.Under[i].Counts.add(r.CheckinHealth, f)
-		out.Total.add(r.CheckinHealth, f)
+		last := lastCheckinFromRow(r)
+		pathOverdue := pathToGreenPastTarget(g.Lifecycle, last.health, last.pathTargetDate, now, s.GoalTimezone(g))
+		checkinOverdue := s.checkinOverdueSince(g, last.at)
+		out.Under[i].Counts.add(r.CheckinHealth, pathOverdue, checkinOverdue)
+		out.Total.add(r.CheckinHealth, pathOverdue, checkinOverdue)
 	}
 	slices.SortFunc(out.Under, func(a, b PersonSignals) int {
 		x, y := a.Counts, b.Counts

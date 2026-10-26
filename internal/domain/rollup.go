@@ -102,11 +102,7 @@ func (s *Service) rollUp(children []Goal, latest map[int64]Checkin) RolledUpHeal
 		}
 		c, ok := latest[child.ID]
 		out.ActiveChildren++
-		var last lastCheckin
-		if ok {
-			last.at = c.CreatedAt
-		}
-		if s.judgeFreshness(child, last).CheckinOverdue {
+		if s.checkinOverdueSince(child, c.CreatedAt) {
 			out.CheckinOverdueChildren++
 		}
 		if !ok {

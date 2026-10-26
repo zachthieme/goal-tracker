@@ -480,8 +480,7 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	if c := p.LatestCheckin; c != nil {
 		last = lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 	}
-	p.Freshness = s.judgeFreshness(g, last)
-	s.markMilestoneOverdue(&p.Freshness, g, last.health, p.Milestones)
+	p.Freshness = s.judgeFreshness(g, last, p.Milestones)
 	p.RunOffGreen = s.runOffGreen(g, p.Checkins)
 	p.HealthStrip = s.healthStrip(g, p.Checkins)
 	p.Signals = goalSignalsOf(g, goalsOf(p.Parents), goalsOf(p.Children))
