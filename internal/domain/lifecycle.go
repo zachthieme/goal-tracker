@@ -58,7 +58,7 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 	reason = strings.TrimSpace(reason)
 	outcome = strings.TrimSpace(outcome)
 	if !LifecycleTakesCheckins(current) {
-		return LifecycleChange{}, Refuse(ErrValidation, "only an Active Goal can be checked in on")
+		return LifecycleChange{}, lifecycleTakesNoCheckinsRefusal(current)
 	}
 	if to == "" || to == current {
 		return LifecycleChange{}, lifecycleKeepRefusal(current)

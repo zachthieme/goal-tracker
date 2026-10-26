@@ -356,6 +356,41 @@ func TestCheckinCantReopenEndedGoal(t *testing.T) {
 	assertLifecycle(t, h, goal.ID, domain.LifecycleDone)
 }
 
+// A Goal whose Lifecycle takes no Check-ins, Proposed, Done or Cancelled,
+// refuses one with a reason naming its Lifecycle and saying which take them.
+func TestCheckinRefusedOnLifecycleTakingNoCheckins(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	proposed := h.CreateGoal(sam, "Ship search", "People can't find things.")
+	done := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	cancelled := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
+
+	for _, c := range []struct {
+		lifecycle string
+		goalID    int64
+	}{
+		{domain.LifecycleProposed, proposed.ID},
+		{domain.LifecycleDone, done.ID},
+		{domain.LifecycleCancelled, cancelled.ID},
+	} {
+		_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+			GoalID: c.goalID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track.",
+		})
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s: err = %v, want ErrValidation", c.lifecycle, err)
+			continue
+		}
+		want := "a " + c.lifecycle + " Goal can't be checked in on: only an Active or On Hold Goal takes Check-ins"
+		if got := domain.Reason(err); got != want {
+			t.Errorf("%s: reason = %q, want %q", c.lifecycle, got, want)
+		}
+	}
+}
+
 // Lifecycle changes appear in the Goal's Check-in history, newest first, each
 // with where the Goal moved from and to and its reason.
 func TestLifecycleChangesAppearInCheckinHistory(t *testing.T) {

@@ -367,8 +367,8 @@ func (s *Service) submitCheckinInTx(ctx context.Context, in SubmitCheckinInput) 
 // setGoalLifecycle makes a Check-in's Lifecycle change on goalID, but only
 // while the Goal is still in the Lifecycle the change was planned from. When
 // it has left it, the Check-in is refused with ErrValidation, as one checked
-// in on the Goal's Lifecycle now would be, so the caller's transaction keeps
-// nothing it wrote.
+// in on the Goal's Lifecycle now would be, or else saying the Lifecycle
+// changed meanwhile, so the caller's transaction keeps nothing it wrote.
 func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change LifecycleChange) error {
 	n, err := s.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{
 		Lifecycle:     change.To,
@@ -386,7 +386,7 @@ func (s *Service) setGoalLifecycle(ctx context.Context, goalID int64, change Lif
 		if _, err := planLifecycleChange(goal.Goal.Lifecycle, "", "", ""); err != nil {
 			return err
 		}
-		return Refuse(ErrValidation, "only an Active Goal can be checked in on")
+		return Refuse(ErrValidation, "the Goal's Lifecycle changed meanwhile: reload it and try again")
 	}
 	return nil
 }
@@ -727,7 +727,7 @@ func (s *Service) noChangeFactsByGoal(ctx context.Context, goals []Goal) (map[in
 // errNotActiveForNoChange and errNoCheckinToRepeat refuse a No change on a
 // Goal that isn't Active, and on one with no previous Check-in to repeat.
 var (
-	errNotActiveForNoChange = Refuse(ErrValidation, "only an Active Goal can be checked in on")
+	errNotActiveForNoChange = Refuse(ErrValidation, "only an Active Goal takes a No change")
 	errNoCheckinToRepeat    = Refuse(ErrValidation, "there is no previous Check-in to repeat")
 )
 

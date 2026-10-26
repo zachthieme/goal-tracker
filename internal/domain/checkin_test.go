@@ -808,7 +808,7 @@ func TestNoChangeRefusalsByGoal(t *testing.T) {
 	wantReason := map[int64]string{
 		allowed.ID:            "",
 		noCheckin.ID:          "there is no previous Check-in to repeat",
-		onHold.ID:             "only an Active Goal can be checked in on",
+		onHold.ID:             "only an Active Goal takes a No change",
 		milestoneOverdue.ID:   `milestone "Pilot" overdue (due 2026-01-20), rules out no change`,
 		pathOverdue.ID:        "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health",
 		unexplained.ID:        "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
