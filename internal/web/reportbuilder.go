@@ -601,34 +601,17 @@ func (s *Server) matchReport(r *http.Request, goals []domain.Goal, v reportBuild
 		}
 		def.Include, def.Exclude = existing(v.IncludeIDs), existing(v.ExcludeIDs)
 	}
-	selected, err := s.svc.SelectGoalsAgainst(r.Context(), def, time.Time{})
+	sel, err := s.svc.SelectGoalsAgainst(r.Context(), def, time.Time{})
 	if err != nil {
 		return reportMatches{}, err
 	}
-	// What the rules alone select tells Also include's Goals from the rest,
-	// and which of Leave out's the rules would have selected.
-	var matched []domain.SelectedGoal
-	if def.Mode == domain.ReportModeRules {
-		bare := def
-		bare.Include, bare.Exclude = nil, nil
-		if matched, err = s.svc.SelectGoalsAgainst(r.Context(), bare, time.Time{}); err != nil {
-			return reportMatches{}, err
-		}
-	}
-	isMatched := func(goalID int64) bool {
-		return slices.ContainsFunc(matched, func(sg domain.SelectedGoal) bool { return sg.Goal.ID == goalID })
-	}
-	m := reportMatches{Count: len(selected)}
-	for _, goalID := range def.Exclude {
-		if isMatched(goalID) {
-			m.LeftOut++
-		}
-	}
+	selected := sel.Goals
+	m := reportMatches{Count: len(selected), LeftOut: len(sel.LeftOut)}
 	slices.SortStableFunc(selected, func(a, b domain.SelectedGoal) int {
 		return cmp.Or(strings.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title)), cmp.Compare(a.Goal.ID, b.Goal.ID))
 	})
 	for _, sg := range selected[:min(len(selected), railLength)] {
-		m.Shown = append(m.Shown, reportMatch{SelectedGoal: sg, Added: def.Mode == domain.ReportModeRules && !isMatched(sg.Goal.ID)})
+		m.Shown = append(m.Shown, reportMatch{SelectedGoal: sg, Added: sg.Via == domain.SelectedByAlsoInclude})
 	}
 	return m, nil
 }

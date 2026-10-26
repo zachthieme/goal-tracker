@@ -246,12 +246,12 @@ func (s *Service) definitionHighlights(ctx context.Context, def ReportDefinition
 	if err != nil {
 		return nil, err
 	}
-	selected, err := s.SelectGoals(ctx, def, since)
+	sel, err := s.SelectGoals(ctx, def, since)
 	if err != nil {
 		return nil, err
 	}
-	goals := make([]Goal, 0, len(selected))
-	for _, sg := range selected {
+	goals := make([]Goal, 0, len(sel.Goals))
+	for _, sg := range sel.Goals {
 		goals = append(goals, sg.Goal)
 	}
 	byGoal, err := s.highlightsByGoal(ctx, goalIDsOf(goals))

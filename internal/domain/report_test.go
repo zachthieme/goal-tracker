@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -395,6 +396,74 @@ func TestReportRulesAndOverrides(t *testing.T) {
 	})
 	if got, want := selectByDefault(t, h, overridden), []int64{bossPlatform.ID, samWeb.ID}; !sameSet(got, want) {
 		t.Errorf("with Also include and Leave out selected %v, want %v", got, want)
+	}
+}
+
+// A rules definition's selection says how each Goal came in: matched by the
+// rules, even if Also include lists it too, or added by Also include alone.
+// It gives the Leave out Goals the rules would otherwise have selected, not
+// one they don't match nor one finished before the baseline. A picked
+// definition's Goals are all picked.
+func TestReportSelectionSaysHowEachGoalCameIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	finished := h.ActiveGoal(boss, "Boss, finished long ago", "why")
+	moveLifecycle(t, h, boss, finished, domain.LifecycleDone)
+	settle(h)
+	matched := h.ActiveGoal(boss, "Boss, matched", "why")
+	listedAndMatched := h.ActiveGoal(boss, "Boss, also listed", "why")
+	added := h.ActiveGoal(sam, "Sam, added", "why")
+	leftOut := h.ActiveGoal(boss, "Boss, left out", "why")
+	unmatched := h.ActiveGoal(sam, "Sam, never matched", "why")
+
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:    "Overridden",
+		Mode:    domain.ReportModeRules,
+		Rules:   []domain.ReportRule{ownerRule(domain.RuleIs, boss)},
+		Include: []int64{listedAndMatched.ID, added.ID},
+		Exclude: []int64{leftOut.ID, unmatched.ID, finished.ID},
+	})
+	sel, err := h.Service.SelectGoalsAgainst(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("SelectGoalsAgainst: %v", err)
+	}
+	via := map[int64]string{}
+	for _, sg := range sel.Goals {
+		via[sg.Goal.ID] = sg.Via
+	}
+	want := map[int64]string{
+		matched.ID:          domain.SelectedByRules,
+		listedAndMatched.ID: domain.SelectedByRules,
+		added.ID:            domain.SelectedByAlsoInclude,
+	}
+	if !maps.Equal(via, want) {
+		t.Errorf("selected %v, want %v", via, want)
+	}
+	var leftOutIDs []int64
+	for _, g := range sel.LeftOut {
+		leftOutIDs = append(leftOutIDs, g.ID)
+	}
+	if want := []int64{leftOut.ID}; !slices.Equal(leftOutIDs, want) {
+		t.Errorf("left out %v, want %v", leftOutIDs, want)
+	}
+
+	picked := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "Picked", Mode: domain.ReportModePicked, Picked: []int64{matched.ID, added.ID},
+	})
+	if sel, err = h.Service.SelectGoalsAgainst(ctx, picked, time.Time{}); err != nil {
+		t.Fatalf("SelectGoalsAgainst: %v", err)
+	}
+	for _, sg := range sel.Goals {
+		if sg.Via != domain.SelectedByPicking {
+			t.Errorf("picked %q came in by %q, want %q", sg.Goal.Title, sg.Via, domain.SelectedByPicking)
+		}
+	}
+	if len(sel.Goals) != 2 || len(sel.LeftOut) != 0 {
+		t.Errorf("picked selected %d Goals and left out %d, want 2 and 0", len(sel.Goals), len(sel.LeftOut))
 	}
 }
 

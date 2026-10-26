@@ -24,6 +24,12 @@ type Report struct {
 	ActionItems []ActionItem
 	Exceptions  []ReportBlock
 	Lines       []SelectedGoal
+	// Added counts the selected Goals in only through the Definition's Also
+	// include, and LeftOut its Leave out Goals the rules would otherwise have
+	// selected, for its scope. They aren't frozen with the snapshot; only the
+	// scope they are said in is.
+	Added   int `json:"-"`
+	LeftOut int `json:"-"`
 	// Highlights are every Highlight in scope since the baseline, for the
 	// author to curate while preparing a publication. They are not frozen
 	// with the snapshot; only the narrative the author curates from them is.
@@ -201,10 +207,12 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	if err != nil {
 		return Report{}, err
 	}
-	selected, err := s.SelectGoals(ctx, def, since)
+	sel, err := s.SelectGoals(ctx, def, since)
 	if err != nil {
 		return Report{}, err
 	}
+	selected := sel.Goals
+	r.Added, r.LeftOut = sel.added(), len(sel.LeftOut)
 	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
 		return Report{}, err
 	}
@@ -289,13 +297,13 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	return r, nil
 }
 
-// SelectGoalsAgainst returns the Goals def selects on a draft read against
+// SelectGoalsAgainst returns what def selects on a draft read against
 // baseline, as DraftReport reads it: a date, or zero for def's default — its
 // previous publication, or 30 days before today when there is none.
-func (s *Service) SelectGoalsAgainst(ctx context.Context, def ReportDefinition, baseline time.Time) ([]SelectedGoal, error) {
+func (s *Service) SelectGoalsAgainst(ctx context.Context, def ReportDefinition, baseline time.Time) (ReportSelection, error) {
 	since, err := s.readAgainst(ctx, &Report{Definition: def}, baseline)
 	if err != nil {
-		return nil, err
+		return ReportSelection{}, err
 	}
 	return s.SelectGoals(ctx, def, since)
 }
