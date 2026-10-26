@@ -584,33 +584,33 @@ func (e *SeveralValuesError) Unwrap() error { return ErrValidation }
 // more than one value in the Dimension. It is written to the Definition log.
 // Only an Admin may.
 func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionID int64, selection string) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
-	if selection != SelectionOne && selection != SelectionSeveral {
-		return Refuse(ErrValidation, "a Dimension takes one value or several")
-	}
-	dim, err := s.queries.GetDimension(ctx, dimensionID)
-	if err != nil {
-		return Refuse(ErrValidation, "dimension does not exist")
-	}
-	if dim.Selection == selection {
-		return nil
-	}
-	if selection == SelectionOne {
-		rows, err := s.queries.ListGoalsWithSeveralValuesInDimension(ctx, dimensionID)
-		if err != nil {
-			return fmt.Errorf("list goals with several values: %w", err)
-		}
-		if len(rows) > 0 {
-			refusal := &SeveralValuesError{Dimension: dim.Name}
-			for _, r := range rows {
-				refusal.Goals = append(refusal.Goals, goalFromRow(r.Goal, r.Account))
-			}
-			return refusal
-		}
-	}
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireAdmin(ctx, actorID); err != nil {
+			return err
+		}
+		if selection != SelectionOne && selection != SelectionSeveral {
+			return Refuse(ErrValidation, "a Dimension takes one value or several")
+		}
+		dim, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
+			return Refuse(ErrValidation, "dimension does not exist")
+		}
+		if dim.Selection == selection {
+			return nil
+		}
+		if selection == SelectionOne {
+			rows, err := tx.queries.ListGoalsWithSeveralValuesInDimension(ctx, dimensionID)
+			if err != nil {
+				return fmt.Errorf("list goals with several values: %w", err)
+			}
+			if len(rows) > 0 {
+				refusal := &SeveralValuesError{Dimension: dim.Name}
+				for _, r := range rows {
+					refusal.Goals = append(refusal.Goals, goalFromRow(r.Goal, r.Account))
+				}
+				return refusal
+			}
+		}
 		row, err := tx.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{
 			Selection: selection,
 			ID:        dimensionID,
@@ -810,42 +810,42 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
 // Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
-	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
-		return err
-	}
-	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
-	if err != nil {
-		return Refuse(ErrValidation, "dimension does not exist")
-	}
-	dim := dimensionFromRow(dimRow)
-	valueIDs = dedupeIDs(valueIDs)
-	if len(valueIDs) > 1 && !dim.TakesSeveral() {
-		return Refuse(ErrValidation, "%s takes one value per Goal", dim.Name)
-	}
-	carried, err := s.GoalValues(ctx, goalID)
-	if err != nil {
-		return err
-	}
-	carries := make(map[int64]bool, len(carried))
-	for _, v := range carried {
-		carries[v.ID] = true
-	}
-	keep := make(map[int64]bool, len(valueIDs))
-	for _, id := range valueIDs {
-		val, err := s.queries.GetDimensionValue(ctx, id)
-		if err != nil || val.DimensionID != dimensionID {
-			return Refuse(ErrValidation, "that value is not in %s", dim.Name)
-		}
-		if val.Retired != 0 && !carries[id] {
-			return Refuse(ErrValidation, "%s is retired and cannot be newly assigned", val.Value)
-		}
-		if dim.Retired && !carries[id] {
-			return retiredDimensionError(dim)
-		}
-		keep[id] = true
-	}
-
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
+			return err
+		}
+		dimRow, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
+			return Refuse(ErrValidation, "dimension does not exist")
+		}
+		dim := dimensionFromRow(dimRow)
+		valueIDs := dedupeIDs(valueIDs)
+		if len(valueIDs) > 1 && !dim.TakesSeveral() {
+			return Refuse(ErrValidation, "%s takes one value per Goal", dim.Name)
+		}
+		carried, err := tx.GoalValues(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		carries := make(map[int64]bool, len(carried))
+		for _, v := range carried {
+			carries[v.ID] = true
+		}
+		keep := make(map[int64]bool, len(valueIDs))
+		for _, id := range valueIDs {
+			val, err := tx.queries.GetDimensionValue(ctx, id)
+			if err != nil || val.DimensionID != dimensionID {
+				return Refuse(ErrValidation, "that value is not in %s", dim.Name)
+			}
+			if val.Retired != 0 && !carries[id] {
+				return Refuse(ErrValidation, "%s is retired and cannot be newly assigned", val.Value)
+			}
+			if dim.Retired && !carries[id] {
+				return retiredDimensionError(dim)
+			}
+			keep[id] = true
+		}
+
 		for _, v := range carried {
 			if v.DimensionID != dimensionID || keep[v.ID] {
 				continue
