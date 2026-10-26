@@ -38,11 +38,13 @@ export default defineConfig({
   // a branch it runs only when the branch changes what the browser gets or the
   // suite itself: a template, a non-test Go file in internal/web (handlers and
   // generated templ code), internal/web/static/, e2e/, or the seed the suite's
-  // template databases are built from. `when` is tested against the changed
-  // files, one per line, hence the `m` flag. `when` scopes the gate on a branch
-  // only: the merged-base gate after each wave runs every gate, e2e included,
-  // whatever the wave changed (vetinari's gateMergedBase passes `all`), so a
-  // change `when` skips, such as one to internal/domain or the queries, is
+  // template databases are built from. It also runs on a change under
+  // internal/db/ (migrations, queries, generated code), because the specs read
+  // the schema directly through seedLookup (e2e/fixtures.ts). `when` is tested
+  // against the changed files, one per line, hence the `m` flag. `when` scopes
+  // the gate on a branch only: the merged-base gate after each wave runs every
+  // gate, e2e included, whatever the wave changed (vetinari's gateMergedBase
+  // passes `all`), so a change `when` skips, such as one to internal/domain, is
   // still covered there. budgetSeconds: `make e2e` took 21-25s (73 tests) in
   // the campaign container, so 180 leaves room for parallel sandboxes and a
   // cold Go build. The image sets PLAYWRIGHT_BROWSERS_PATH to its installed
@@ -54,7 +56,7 @@ export default defineConfig({
     {
       cmd: "make e2e",
       label: "e2e",
-      when: /^(?:internal\/web\/.*\.templ$|internal\/web\/[^/]*(?<!_test)\.go$|internal\/web\/static\/|e2e\/|internal\/seed\/|cmd\/seed\/)/m,
+      when: /^(?:internal\/web\/.*\.templ$|internal\/web\/[^/]*(?<!_test)\.go$|internal\/web\/static\/|e2e\/|internal\/seed\/|cmd\/seed\/|internal\/db\/)/m,
       budgetSeconds: 180,
     },
   ],
