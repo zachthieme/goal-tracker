@@ -200,6 +200,35 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 	}
 }
 
+// The Owner posting activate on a Done Goal is refused with a 422 that says
+// why, and the Goal page still shows it Done: an ended Goal can't be brought
+// back by activating it again.
+func TestActivateDoneGoalLeavesItDone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	owner := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(owner, "Ship v2", "Customers wait too long for v2.")
+	h.EndGoalInCheckin(owner, g.ID, domain.LifecycleDone)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, g)
+
+	resp := postForm(t, client, goalURL+"/activate", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("activate status = %d, want 422", resp.StatusCode)
+	}
+	if body := readBody(t, resp); !strings.Contains(body, "Ship v2 is Done, so it can't be activated") {
+		t.Errorf("refusal should say the Goal is Done; body:\n%s", body)
+	}
+
+	page := getPage(t, client, goalURL)
+	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleDone {
+		t.Errorf("Goal page shows the Goal %q, want it still Done", got)
+	}
+}
+
 // goalDimensionValuesIn is what each Dimension value shown under root reads,
 // in order.
 func goalDimensionValuesIn(root *nethtml.Node) []string {
