@@ -19,7 +19,8 @@ import (
 // freshness and graph signals flag, by problem type, scoped by its address to
 // Everyone (?org=all), the viewer's own Goals (?org=mine) or an Org's
 // (?org=), else the viewer's default scope, and to the Goals with an offered
-// Dimension's value (?value=, one per Dimension). The scope narrows the rows
+// Dimension's values (?value=), any of a Dimension's and every Dimension's
+// with one, as on the Goal list (domain.GoalScope). The scope narrows the rows
 // only after Service.FollowUps has read them: its rows are the company's, for
 // Needs an Admin.
 func (s *Server) handleFollowUps(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -48,7 +49,7 @@ func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current do
 		return followUpsPageView{}, err
 	}
 	group := followUpGroupKey(q.Get("group"))
-	org, err := s.loadPageOrgScope(ctx, q, current, f.Goals)
+	org, err := s.loadPageOrgScope(ctx, q, current, dims, f.Goals)
 	if err != nil {
 		return followUpsPageView{}, err
 	}
@@ -58,55 +59,28 @@ func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current do
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
 	}
-	page.Values = followUpValues(q["value"], page.Dimensions)
-	var valued map[int64]bool
-	if len(page.Values) > 0 {
+	// Rows hold no values, so with values to narrow to they're read again.
+	var values map[int64]domain.GoalWithValues
+	if len(org.Values) > 0 {
 		goals, err := s.svc.ListGoalsWithValues(ctx)
 		if err != nil {
 			return followUpsPageView{}, err
 		}
-		byDimension := map[int64][]int64{}
-		for _, v := range page.Values {
-			byDimension[v.DimensionID] = []int64{v.ID}
-		}
-		valued = map[int64]bool{}
-		for _, gv := range domain.FilterGoals(goals, byDimension) {
-			valued[gv.Goal.ID] = true
+		values = make(map[int64]domain.GoalWithValues, len(goals))
+		for _, gv := range goals {
+			values[gv.Goal.ID] = gv
 		}
 	}
 	for _, row := range rows {
-		if valued != nil && !valued[row.Goal.ID] {
+		if values != nil && !org.HasValues(values[row.Goal.ID]) {
 			continue
 		}
 		page.CompanyRows = append(page.CompanyRows, row)
-		if org.keeps(row.Goal) {
+		if org.InScope(row.Goal) {
 			page.Rows = append(page.Rows, row)
 		}
 	}
 	return page, nil
-}
-
-// followUpValues are the offered Dimensions' values raw names by their IDs, in
-// the Dimensions' order, at most one per Dimension: the first raw names there.
-// A raw naming none of them is ignored.
-func followUpValues(raw []string, dims []domain.Dimension) []domain.DimensionValue {
-	var values []domain.DimensionValue
-	for _, d := range dims {
-	value:
-		for _, r := range raw {
-			id, err := strconv.ParseInt(r, 10, 64)
-			if err != nil {
-				continue
-			}
-			for _, v := range d.Values {
-				if v.ID == id {
-					values = append(values, v)
-					break value
-				}
-			}
-		}
-	}
-	return values
 }
 
 // followUpValueLabel is how the value select names a value: a Retired one says so.
@@ -119,23 +93,24 @@ func followUpValueLabel(v domain.DimensionValue) string {
 
 // followUpsPageView is the Follow-ups page: its rows in scope, its rows
 // with its values in any scope, which Needs an Admin's card and table hold, the
-// group its address filters it to, "" for every group, its Scope, the offered
-// Dimensions and the values of theirs it is scoped to, at most one each, in
-// the Dimensions' order, and today, which its dates are read against.
+// group its address filters it to, "" for every group, its scope, with the
+// values it narrows to, the offered Dimensions, and today, which its dates are
+// read against.
 type followUpsPageView struct {
 	Rows        []followUpGoalRow
 	CompanyRows []followUpGoalRow
 	Group       string
 	Org         pageOrgScope
 	Dimensions  []domain.Dimension
-	Values      []domain.DimensionValue
 	Today       time.Time
 }
 
-// valueIn is the value of the Dimension dimID the page is scoped to, or the
-// zero value when it is scoped to none of that Dimension's.
+// valueIn is the first value of the Dimension dimID the page is scoped to,
+// the one its select shows, or the zero value when it is scoped to none of
+// that Dimension's. A second reaches the page only by its address, as from
+// the Goal list, and narrows it all the same.
 func (p followUpsPageView) valueIn(dimID int64) domain.DimensionValue {
-	for _, v := range p.Values {
+	for _, v := range p.Org.Values {
 		if v.DimensionID == dimID {
 			return v
 		}
@@ -144,7 +119,7 @@ func (p followUpsPageView) valueIn(dimID int64) domain.DimensionValue {
 }
 
 // url is the Follow-ups page's address filtered to group ("" for every group),
-// keeping the page's scope and every value it is scoped to.
+// keeping the page's scope and every value it narrows to.
 func (p followUpsPageView) url(group string) string {
 	q := url.Values{}
 	if sc := p.Org.Value(); sc != "" {
@@ -153,7 +128,7 @@ func (p followUpsPageView) url(group string) string {
 	if group != "" {
 		q.Set("group", group)
 	}
-	for _, v := range p.Values {
+	for _, v := range p.Org.Values {
 		q.Add("value", strconv.FormatInt(v.ID, 10))
 	}
 	if len(q) == 0 {
@@ -214,7 +189,7 @@ func (p followUpsPageView) Shown() []followUpGoalRow {
 // Filtered reports whether the page is scoped to Mine, an Org or values, or
 // filtered to a group.
 func (p followUpsPageView) Filtered() bool {
-	return p.Org.Name() != "" || len(p.Values) > 0 || p.Group != ""
+	return p.Org.Name() != "" || len(p.Org.Values) > 0 || p.Group != ""
 }
 
 // CardsWhenEmpty reports whether the page shows its cards after its empty
@@ -240,8 +215,9 @@ func (p followUpsPageView) OffersShowEverything() bool {
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
-// needs attention, naming Mine or the Org, each value with its Dimension's
-// name, in the Dimensions' order, and the group's card's title, in that order.
+// needs attention, naming Mine or the Org, each value it narrows to with its
+// Dimension's name, in the Dimensions' order, and the group's card's title, in
+// that order.
 // Needs an Admin, company-wide, names only the values: "Nothing needs an
 // Admin in Team Platform."
 func (p followUpsPageView) Empty() string {
@@ -249,9 +225,11 @@ func (p followUpsPageView) Empty() string {
 	if name := p.Org.Name(); name != "" && p.Group != followUpGroupAdmin {
 		parts = append(parts, name)
 	}
-	for _, d := range p.Dimensions {
-		if v := p.valueIn(d.ID); v.ID != 0 {
-			parts = append(parts, d.Name+" "+v.Value)
+	for _, v := range p.Org.Values {
+		for _, d := range p.Dimensions {
+			if d.ID == v.DimensionID {
+				parts = append(parts, d.Name+" "+v.Value)
+			}
 		}
 	}
 	if p.Group == followUpGroupAdmin {

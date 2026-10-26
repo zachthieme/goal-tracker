@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -109,7 +108,7 @@ func (v goalsListData) moreFiltersSet() bool {
 // a Scope other than the viewer's default, or any other filter or grouping —
 // so Clear, which goes back to it, is offered (#376).
 func (v goalsListData) anyGoalFilterSet() bool {
-	return v.moreFiltersSet() || (v.GroupID != 0 && v.Table == nil) || v.Filter != goalFilter{} || !v.Org.isDefault()
+	return v.moreFiltersSet() || (v.GroupID != 0 && v.Table == nil) || v.Filter != goalFilter{} || !v.Org.IsDefault()
 }
 
 // filtered reports whether any filter is narrowing the list, so an empty list
@@ -341,9 +340,10 @@ func sortGoalRows(rows []goalRow) {
 }
 
 // goalsListView reads the Goal list's filters (the filter bar's fields and
-// ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
-// and (optionally) groups the Goals. Only the Dimensions still offered filter
-// and group: a ?value= or ?group= on a Retired one is ignored, since the list
+// its scope, ?org= and ?value=) and grouping (?group=) from the request, then
+// loads, filters, sorts, and (optionally) groups the Goals. Only the
+// Dimensions still offered group, as only their values filter
+// (domain.GoalScope): a ?group= on a Retired one is ignored, since the list
 // has no control to undo it (CONTEXT.md: Retired).
 func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsListData, error) {
 	ctx := r.Context()
@@ -357,34 +357,17 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		return goalsListData{}, err
 	}
 
-	// Resolve each ?value= to its Dimension, so filtering ORs within a Dimension
-	// and ANDs across them.
-	dimOfValue := map[int64]int64{}
-	for _, d := range dims {
-		for _, v := range d.Values {
-			dimOfValue[v.ID] = d.ID
-		}
-	}
-	selected := map[int64]bool{}
-	byDimension := map[int64][]int64{}
-	for _, raw := range r.URL.Query()["value"] {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			continue
-		}
-		if dimID, ok := dimOfValue[id]; ok {
-			selected[id] = true
-			byDimension[dimID] = append(byDimension[dimID], id)
-		}
-	}
-	org, err := s.loadPageOrgScope(ctx, r.URL.Query(), current, goalsOfValues(goals))
+	org, err := s.loadPageOrgScope(ctx, r.URL.Query(), current, all, goalsOfValues(goals))
 	if err != nil {
 		return goalsListData{}, err
 	}
-	goals = domain.FilterGoals(goals, byDimension)
+	selected := map[int64]bool{}
+	for _, v := range org.Values {
+		selected[v.ID] = true
+	}
 	filter := readGoalFilter(r.URL.Query())
 
-	goals = slices.DeleteFunc(goals, func(gv domain.GoalWithValues) bool { return !org.keeps(gv.Goal) })
+	goals = slices.DeleteFunc(goals, func(gv domain.GoalWithValues) bool { return !org.Keeps(gv) })
 	rows, err := s.loadGoalRows(ctx, goals)
 	if err != nil {
 		return goalsListData{}, err
@@ -434,158 +417,37 @@ func goalsOfValues(gvs []domain.GoalWithValues) []domain.Goal {
 	return goals
 }
 
-// pageOrgScope is the Scope of a page of Goals (?org=): Everyone, Mine, or
-// an Org, by each Goal's Owner and never its Delegates, and the Orgs the
-// page offers to scope to (CONTEXT.md: Org). An Org adds no access, only a
-// way to find Goals, so anyone may scope to anyone's (ADR 0002, ADR 0008).
-// An address naming no scope opens on the viewer's default: My org for
-// someone with anyone under them, Mine for everyone else. The Goals pages and
-// Follow-ups share it.
+// pageOrgScope is a page of Goals' domain.GoalScope, its Scope (?org=) and
+// the Dimension values it narrows to (?value=), with how its address
+// encodes it and how the page names it. The Goals pages and Follow-ups share
+// it.
 type pageOrgScope struct {
-	// Of is the person whose Org the page is scoped to, nil when it isn't.
-	Of *domain.Account
-	// in holds the Account IDs in Of's org.
-	in map[int64]bool
-	// Mine is whether the page is scoped to the Goals the viewer Owns or is
-	// a Delegate on, delegated holding the latter's IDs. It is false when
-	// the page is scoped to an Org.
-	Mine      bool
-	delegated map[int64]bool
-	// Default is whether the address named no scope, or one naming no one,
-	// so the page is on the viewer's default scope.
-	Default bool
-	// Viewer is who is looking, so their own Org reads as My org.
-	Viewer domain.Account
-	// OffersMine is whether the viewer has anyone under them, so My org is
-	// offered; with no one, it would be Mine without the Delegate Goals.
-	OffersMine bool
-	// managed is whether anyone has a Manager other than themselves
-	// (Service.AnyoneHasManager), so the page offers Orgs at all.
-	managed bool
-	// People are the others whose Org the page offers, by Label: every Owner
-	// of a Goal and everyone above them, whose Orgs are the ones holding
-	// Goals. It is empty when no one has a Manager other than themselves,
-	// whoever is looking.
-	People []domain.Account
+	domain.GoalScope
 }
 
-// loadPageOrgScope reads the Scope of the address q into the scope current
-// sees over goals, with the Orgs it offers. Whether the page offers Orgs is
-// the company's answer, the same for every viewer: whether anyone has a
-// Manager other than themselves.
-func (s *Server) loadPageOrgScope(ctx context.Context, q url.Values, current domain.Account, goals []domain.Goal) (pageOrgScope, error) {
-	scope, err := s.resolvePageOrgScope(ctx, q, current)
-	if err != nil || !scope.managed {
-		return scope, err
-	}
-	// Each Owner, then their Managers and on up a level at a time, stopping at
-	// anyone reached: the directory's cycles are stored as it gives them (ADR
-	// 0008).
-	reached := map[int64]bool{}
-	level := make([]domain.Account, 0, len(goals))
-	for _, g := range goals {
-		level = append(level, g.Owner)
-	}
-	for len(level) > 0 {
-		var managerIDs []int64
-		for _, a := range level {
-			if reached[a.ID] {
-				continue
-			}
-			reached[a.ID] = true
-			scope.People = append(scope.People, a)
-			if a.ManagerID != nil && !reached[*a.ManagerID] {
-				managerIDs = append(managerIDs, *a.ManagerID)
-			}
-		}
-		managers, err := s.svc.AccountsByIDs(ctx, managerIDs)
-		if err != nil {
-			return pageOrgScope{}, err
-		}
-		level = slices.Collect(maps.Values(managers))
-	}
-	scope.People = slices.DeleteFunc(scope.People, func(a domain.Account) bool { return a.ID == current.ID })
-	slices.SortFunc(scope.People, func(a, b domain.Account) int {
-		return cmp.Or(cmp.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label())), cmp.Compare(a.Email, b.Email))
-	})
-	return scope, nil
+// loadPageOrgScope reads the scope of the address q into the scope current
+// sees over dims, every Dimension, and goals, with the Orgs it offers.
+func (s *Server) loadPageOrgScope(ctx context.Context, q url.Values, current domain.Account, dims []domain.Dimension, goals []domain.Goal) (pageOrgScope, error) {
+	sc, err := s.svc.GoalScope(ctx, current, readGoalScopeRequest(q), dims, goals)
+	return pageOrgScope{sc}, err
 }
 
-// resolvePageOrgScope reads the Scope of the address q for current, without
-// the Orgs it offers, from ?org= alone. An Account ID that names someone
-// scopes to their Org. Otherwise ?org=all is Everyone, and ?org=mine is Mine.
-// Anything else, no ?org= or one that is malformed or names no one, is the
-// viewer's default (Default): My org when they have anyone under them, else
-// Mine. When no one has a Manager, any ID names no one: the page then offers
-// no Org, so has no control to undo it.
-func (s *Server) resolvePageOrgScope(ctx context.Context, q url.Values, current domain.Account) (pageOrgScope, error) {
-	scope := pageOrgScope{Viewer: current}
-	var err error
-	if scope.managed, err = s.svc.AnyoneHasManager(ctx); err != nil {
-		return pageOrgScope{}, err
-	}
-	if scope.managed {
-		if scope.OffersMine, err = s.svc.HasAnyoneUnder(ctx, current.ID); err != nil {
-			return pageOrgScope{}, err
-		}
-	}
+// readGoalScopeRequest reads the scope the address q asks for: ?org=all for
+// Everyone, ?org=mine for Mine, and an Account ID for that person's Org,
+// anything else asking for the viewer's default; and each ?value= that is an
+// ID, in order.
+func readGoalScopeRequest(q url.Values) domain.GoalScopeRequest {
 	raw := q.Get("org")
-	if id, err := strconv.ParseInt(raw, 10, 64); err == nil && scope.managed {
-		if ok, err := scope.scopeToOrg(ctx, s.svc, id); err != nil || ok {
-			return scope, err
+	req := domain.GoalScopeRequest{Everyone: raw == scopeEveryoneValue, Mine: raw == scopeMineValue}
+	if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		req.OrgOf = id
+	}
+	for _, raw := range q["value"] {
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			req.Values = append(req.Values, id)
 		}
 	}
-	switch {
-	case raw == scopeEveryoneValue:
-		return scope, nil
-	case raw == scopeMineValue:
-	case scope.OffersMine:
-		scope.Default = true
-		_, err := scope.scopeToOrg(ctx, s.svc, current.ID)
-		return scope, err
-	default:
-		scope.Default = true
-	}
-	scope.Mine = true
-	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-	if err != nil {
-		return pageOrgScope{}, fmt.Errorf("load delegated goals: %w", err)
-	}
-	scope.delegated = map[int64]bool{}
-	for _, g := range delegated {
-		scope.delegated[g.ID] = true
-	}
-	return scope, nil
-}
-
-// scopeToOrg scopes c to the Org of the person id names, reporting whether
-// it names anyone.
-func (c *pageOrgScope) scopeToOrg(ctx context.Context, svc *domain.Service, id int64) (bool, error) {
-	org, err := svc.Org(ctx, id)
-	if errors.Is(err, domain.ErrNotFound) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	c.Of = &org[0]
-	c.in = map[int64]bool{}
-	for _, a := range org {
-		c.in[a.ID] = true
-	}
-	return true, nil
-}
-
-// isDefault reports whether c is the viewer's default scope, whether the
-// address named no scope or named the same one: My org when they have anyone
-// under them, else Mine.
-func (c pageOrgScope) isDefault() bool {
-	if c.Default {
-		return true
-	}
-	if c.OffersMine {
-		return c.Of != nil && c.Of.ID == c.Viewer.ID
-	}
-	return c.Mine
+	return req
 }
 
 // scopeMineValue is the ?org= scoping a page of Goals to Mine.
@@ -593,35 +455,6 @@ const scopeMineValue = "mine"
 
 // scopeEveryoneValue is the ?org= scoping a page of Goals to Everyone.
 const scopeEveryoneValue = "all"
-
-// keeps reports whether g is in the scope: its Owner is in the scope's Org,
-// the viewer Owns it or is a Delegate on it for Mine, or the scope is
-// Everyone. An Ownerless Goal's Departed Owner keeps their Manager, so the
-// Goal stays in the Org its Owner was in.
-func (c pageOrgScope) keeps(g domain.Goal) bool {
-	switch {
-	case c.Of != nil:
-		return c.in[g.Owner.ID]
-	case c.Mine:
-		return g.Owner.ID == c.Viewer.ID || c.delegated[g.ID]
-	}
-	return true
-}
-
-// Offered reports whether the page offers any Org to scope to: not when no
-// one has a Manager.
-func (c pageOrgScope) Offered() bool {
-	return c.OffersMine || len(c.People) > 0
-}
-
-// Others are the people the picker offers beside My Org: People, and
-// whoever the page is scoped to if a link named someone else.
-func (c pageOrgScope) Others() []domain.Account {
-	if c.Of == nil || c.Of.ID == c.Viewer.ID || slices.ContainsFunc(c.People, func(a domain.Account) bool { return a.ID == c.Of.ID }) {
-		return c.People
-	}
-	return append([]domain.Account{*c.Of}, c.People...)
-}
 
 // Value is the ?org= the scope keeps in its page's address: "all" for
 // Everyone, "mine" for Mine, the ID of the person whose Org it is, or "" for
