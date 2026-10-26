@@ -649,8 +649,8 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	}
 	doc := parsePage(t, body)
 	msg := fieldError(t, doc, reading)
-	if !strings.Contains(msg, `"Signups" needs a number`) {
-		t.Errorf("error = %q, want it to say \"Signups\" needs a number", msg)
+	if want := `"abc" isn't a number for "Signups".`; msg != want {
+		t.Errorf("error = %q, want %q", msg, want)
 	}
 	if strings.Contains(msg, "metric") {
 		t.Errorf("error = %q, still names the Metric by its id", msg)
@@ -1116,8 +1116,92 @@ func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) 
 		"status": {"All good."},
 		fmt.Sprintf("milestone_date_%d", beta.ID): {"next spring"},
 	})
-	if msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_date_%d", beta.ID)); !strings.Contains(msg, "invalid date") {
-		t.Errorf("Milestone date field's error = %q, want the invalid date one", msg)
+	const want = `"next spring" isn't a date for Milestone "Beta".`
+	if msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_date_%d", beta.ID)); msg != want {
+		t.Errorf("Milestone date field's error = %q, want %q", msg, want)
+	}
+}
+
+// A date or reading the Check-in form can't read is refused with a sentence
+// beside its field that quotes what was typed, posted by htmx or by a browser
+// without JS (#598).
+func TestCheckinUnreadableValueErrorQuotesWhatWasTyped(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		// submit returns what the form posts on goal, and the field whose
+		// error it expects.
+		submit func(t *testing.T, h *testsupport.Harness, goal domain.Goal) (url.Values, string)
+		want   string
+	}{
+		{
+			name: "delivery date",
+			submit: func(t *testing.T, h *testsupport.Harness, goal domain.Goal) (url.Values, string) {
+				return url.Values{"delivery_date": {"someday"}}, "delivery_date"
+			},
+			want: `"someday" isn't a date.`,
+		},
+		{
+			name: "Planned Milestone date",
+			submit: func(t *testing.T, h *testsupport.Harness, goal domain.Goal) (url.Values, string) {
+				field := fmt.Sprintf("milestone_date_%d", onlyMilestone(t, h, goal).ID)
+				return url.Values{field: {"next spring"}}, field
+			},
+			want: `"next spring" isn't a date for Milestone "Beta".`,
+		},
+		{
+			name: "new Milestone date",
+			submit: func(t *testing.T, h *testsupport.Harness, goal domain.Goal) (url.Values, string) {
+				return url.Values{"new_milestone_name": {"Docs"}, "new_milestone_date": {"May-ish"}}, "new_milestone_date"
+			},
+			want: `"May-ish" isn't a date for new Milestone "Docs".`,
+		},
+		{
+			name: "reading",
+			submit: func(t *testing.T, h *testsupport.Harness, goal domain.Goal) (url.Values, string) {
+				metric, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
+					GoalID: goal.ID, Name: "Signups", Unit: "per week", Direction: domain.MetricUp,
+					Baseline: 100, Target: 500, TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+				})
+				if err != nil {
+					t.Fatalf("AddMetric: %v", err)
+				}
+				field := fmt.Sprintf("reading_%d", metric.ID)
+				return url.Values{field: {"lots"}}, field
+			},
+			want: `"lots" isn't a number for "Signups".`,
+		},
+	} {
+		for _, transport := range []struct {
+			name string
+			post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
+		}{
+			{"htmx", postFormHX},
+			{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
+				resp := postForm(t, client, rawURL, form)
+				defer func() { _ = resp.Body.Close() }()
+				return readBody(t, resp), resp.StatusCode
+			}},
+		} {
+			t.Run(tc.name+"/"+transport.name, func(t *testing.T) {
+				t.Parallel()
+
+				h := testsupport.New(t)
+				ts := newServer(t, h)
+				sam := h.SignIn("sam@example.com")
+				goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+				form, field := tc.submit(t, h, goal)
+				form.Set("health", domain.HealthGreen)
+				form.Set("status", "On track.")
+				client := signInClient(t, ts.URL, "sam@example.com")
+
+				body, _ := transport.post(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+				if msg := fieldError(t, parsePage(t, body), field); msg != tc.want {
+					t.Errorf("%s field's error = %q, want %q", field, msg, tc.want)
+				}
+			})
+		}
 	}
 }
 
