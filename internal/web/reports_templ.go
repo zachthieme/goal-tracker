@@ -3766,13 +3766,13 @@ func highlightCredit(nh domain.NarrativeHighlight) templ.Component {
 // Path to Green, its back-to-Green date followed by the date it last slipped
 // from in the Run off Green struck through and the count of slips once more
 // than one, as drafted (see reportBackToGreenPrior), and marked Overdue when
-// its target date passed before asOf, and after it an Ask for help open when
-// the Report was drafted (reportAskForHelp); then labelled rows of Milestones,
-// each marked as of asOf, Metrics against target, and the Rolled-up Health with
-// how many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1
-// Yellow · 1 overdue"), the Goals behind it, and the Owner's explanation. Each
-// row's label sits in a column beside it (DESIGN.md § A publication). It reads asOf
-// in the zone the block's Goal was judged in when drafted (see
+// its target date passed before asOf (domain.PathToGreenOverdueAt), and after
+// it an Ask for help open when the Report was drafted (reportAskForHelp); then
+// labelled rows of Milestones, each marked as of asOf, Metrics against target,
+// and the Rolled-up Health with how many children are Red, Yellow and Check-in
+// overdue ("2 of 6 Red · 1 Yellow · 1 overdue"), the Goals behind it, and the
+// Owner's explanation. Each row's label sits in a column beside it (DESIGN.md
+// § A publication). It reads asOf in the zone the block's Goal was judged in when drafted (see
 // domain.ReportBlock.Timezone). Each Goal it names links to its place in the
 // Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
 // A Yellow or Red Health reads with its Run off Green as drafted, and one that
@@ -4131,7 +4131,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 			return templ_7745c5c3_Err
 		}
 		if tint := pathTintClass(b); tint != "" {
-			var templ_7745c5c3_Var179 = []any{"rp-tint", tint, templ.KV("overdue", pathOverdueAt(b, asOf))}
+			var templ_7745c5c3_Var179 = []any{"rp-tint", tint, templ.KV("overdue", domain.PathToGreenOverdueAt(b, asOf))}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var179...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -4188,7 +4188,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if pathOverdueAt(b, asOf) {
+				if domain.PathToGreenOverdueAt(b, asOf) {
 					var templ_7745c5c3_Var183 string
 					templ_7745c5c3_Var183, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 					if templ_7745c5c3_Err != nil {
@@ -5398,20 +5398,6 @@ func badgeClass(badge string) string {
 		return "y"
 	}
 	return "lc"
-}
-
-// pathOverdueAt reports whether an Active exception's Path to Green had missed
-// its target date as of asOf — the instant it was published, or now on the
-// draft — in the zone the block's Goal was judged in (CONTEXT.md: Path to
-// Green, Timezone).
-func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
-	if b.Goal.Lifecycle != domain.LifecycleActive || b.PathTargetDate.IsZero() {
-		return false
-	}
-	if b.Health != domain.HealthRed && b.Health != domain.HealthYellow {
-		return false
-	}
-	return fmtDate(asOf.In(b.Location())) > fmtDate(b.PathTargetDate)
 }
 
 // healthTile is one count on a Report's Health summary.

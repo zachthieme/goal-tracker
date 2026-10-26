@@ -135,6 +135,16 @@ func (b ReportBlock) Location() *time.Location {
 	return time.UTC
 }
 
+// PathToGreenOverdueAt reports whether b's Path to Green had missed its
+// back-to-Green date as of asOf — the instant its Report was published, or now
+// on a draft — judged in b's Location as Freshness judges a Goal's
+// (pathToGreenPastTarget): never on a Green, non-Active or undated block. It
+// needs only what a frozen Report snapshot holds, so every surface marks it the
+// same way, older publications included.
+func PathToGreenOverdueAt(b ReportBlock, asOf time.Time) bool {
+	return pathToGreenPastTarget(b.Goal.Lifecycle, b.Health, b.PathTargetDate, asOf, b.Location())
+}
+
 // ReportMilestone is a Milestone as an exception block shows it: marked New
 // when added since the baseline, Done or Removed by its Status, and with the
 // dates it held before its Date Slips to strike through.

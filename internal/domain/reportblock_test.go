@@ -614,6 +614,50 @@ func TestReportBlockLocationIsItsTimezoneOrUTC(t *testing.T) {
 	}
 }
 
+// A block's Path to Green is overdue from the day after its back-to-Green
+// date, as of the instant given read in the block's Timezone — and never on a
+// Green, non-Active or undated block (CONTEXT.md: Path to Green).
+func TestPathToGreenOverdueAtTheDayAfterTheTargetInTheBlocksTimezone(t *testing.T) {
+	t.Parallel()
+
+	target := time.Date(2026, 2, 12, 0, 0, 0, 0, time.UTC)
+	block := func(health, lifecycle, tz string, target time.Time) domain.ReportBlock {
+		return domain.ReportBlock{
+			Goal:           domain.Goal{Title: "Launch in EU", Lifecycle: lifecycle},
+			Health:         health,
+			PathToGreen:    "Hire counsel.",
+			PathTargetDate: target,
+			Timezone:       tz,
+		}
+	}
+	nextDay := time.Date(2026, 2, 13, 9, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		b    domain.ReportBlock
+		asOf time.Time
+		want bool
+	}{
+		{"red on its date is not overdue", block(domain.HealthRed, domain.LifecycleActive, "", target), time.Date(2026, 2, 12, 23, 0, 0, 0, time.UTC), false},
+		{"red the day after is overdue", block(domain.HealthRed, domain.LifecycleActive, "", target), nextDay, true},
+		{"yellow the day after is overdue", block(domain.HealthYellow, domain.LifecycleActive, "", target), nextDay, true},
+		{"still its date in Honolulu is not overdue", block(domain.HealthRed, domain.LifecycleActive, "Pacific/Honolulu", target), nextDay, false},
+		{"the day after in Honolulu is overdue", block(domain.HealthRed, domain.LifecycleActive, "Pacific/Honolulu", target), time.Date(2026, 2, 13, 11, 0, 0, 0, time.UTC), true},
+		{"already the day after in Tokyo is overdue", block(domain.HealthRed, domain.LifecycleActive, "Asia/Tokyo", target), time.Date(2026, 2, 12, 16, 0, 0, 0, time.UTC), true},
+		{"green is never overdue", block(domain.HealthGreen, domain.LifecycleActive, "", target), nextDay, false},
+		{"on hold is never overdue", block(domain.HealthRed, domain.LifecycleOnHold, "", target), nextDay, false},
+		{"done is never overdue", block(domain.HealthRed, domain.LifecycleDone, "", target), nextDay, false},
+		{"undated is never overdue", block(domain.HealthRed, domain.LifecycleActive, "", time.Time{}), nextDay, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := domain.PathToGreenOverdueAt(c.b, c.asOf); got != c.want {
+				t.Errorf("PathToGreenOverdueAt = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
 // A slip of the back-to-Green date isn't one of the delivery date: a Goal
 // whose only slip moved its back-to-Green date strikes no due date and has no
 // New date badge.
