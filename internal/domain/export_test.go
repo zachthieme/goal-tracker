@@ -20,3 +20,14 @@ func HoldHashSlots(s *Service) (release func()) {
 	}
 	return func() { close(freed) }
 }
+
+// OwnersMilestoneEditRefusal is milestoneEditRefusal for g's Owner on one of
+// its Milestones whose status is status.
+func OwnersMilestoneEditRefusal(g Goal, status string) error {
+	owner := goalActor{
+		id:       g.Owner.ID,
+		account:  func() (Account, bool, error) { return g.Owner, true, nil },
+		delegate: func() (bool, error) { return false, nil },
+	}
+	return milestoneEditRefusal(owner, g, status)
+}
