@@ -49,10 +49,9 @@ func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current do
 		return followUpsPageView{}, err
 	}
 	group := followUpGroupKey(q.Get("group"))
-	org, err := s.loadPageOrgScope(ctx, q, current, dims, f.Goals)
-	if err != nil {
-		return followUpsPageView{}, err
-	}
+	// The scope is resolved over the loader's Accounts and Delegate Goals,
+	// not read again.
+	org := pageOrgScope{domain.GoalScopeAmong(current, readGoalScopeRequest(q), dims, f.Goals, f.Accounts, f.Delegated)}
 	page := followUpsPageView{
 		Group:      group,
 		Org:        org,

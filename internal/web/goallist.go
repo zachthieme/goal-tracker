@@ -300,8 +300,9 @@ func (r goalRow) health() string {
 }
 
 // lastCheckin says how long ago the Goal's latest Check-in was, counted on the
-// company's calendar, or a dash when it has none. With a Check-in, the Goal's last
-// update is that Check-in, so its freshness has already counted the days.
+// calendar of its Owner's Timezone (GoalTimezone), or a dash when it has
+// none. With a Check-in, the Goal's last update is that Check-in, so its
+// freshness has already counted the days.
 func (r goalRow) lastCheckin() string {
 	if r.Latest == nil {
 		return "—"

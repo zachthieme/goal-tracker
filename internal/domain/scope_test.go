@@ -104,6 +104,60 @@ func TestGoalScopeMineHoldsTheViewersDelegateGoals(t *testing.T) {
 	}
 }
 
+// GoalScopeAmong, over the Accounts and Delegate Goals the Follow-ups page
+// loader has already read, resolves the same Scope as GoalScope, which reads
+// them itself (#592): for Mine, My org, a named Org and Everyone.
+func TestGoalScopeAmongTheFollowUpsReadsIsGoalScope(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t)
+	ceo := h.SignIn("ceo@example.com")
+	lead := h.SignIn("lead@example.com")
+	dev := h.SignIn("dev@example.com")
+	other := h.SignIn("other@example.com")
+	h.SetManager(lead, ceo)
+	h.SetManager(dev, lead)
+	h.SetManager(other, ceo)
+	h.ActiveGoal(ceo, "CEO's goal", "It matters.")
+	h.ActiveGoal(lead, "Lead's goal", "It matters.")
+	h.ActiveGoal(dev, "Dev's goal", "It matters.")
+	delegated := h.ActiveGoal(other, "Delegated goal", "It matters.")
+	h.ActiveGoal(other, "Other's goal", "It matters.")
+	h.AddDelegate(other, lead, delegated.ID)
+
+	f, err := h.Service.FollowUps(t.Context(), lead.ID)
+	if err != nil {
+		t.Fatalf("FollowUps: %v", err)
+	}
+	if got, want := emailsOf(f.Accounts), []string{"ceo@example.com", "lead@example.com", "dev@example.com", "other@example.com"}; !slices.Equal(got, want) {
+		t.Errorf("FollowUps' Accounts = %q, want %q", got, want)
+	}
+	dims, err := h.Service.ListDimensions(t.Context())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, c := range []struct {
+		name string
+		req  domain.GoalScopeRequest
+		kept []string
+	}{
+		{"Mine", domain.GoalScopeRequest{Mine: true}, []string{"Delegated goal", "Lead's goal"}},
+		{"My org", domain.GoalScopeRequest{}, []string{"Dev's goal", "Lead's goal"}},
+		{"a named Org", domain.GoalScopeRequest{OrgOf: other.ID}, []string{"Delegated goal", "Other's goal"}},
+		{"Everyone", domain.GoalScopeRequest{Everyone: true}, []string{"CEO's goal", "Delegated goal", "Dev's goal", "Lead's goal", "Other's goal"}},
+	} {
+		want := goalScope(t, h, lead, c.req)
+		got := domain.GoalScopeAmong(lead, c.req, dims, f.Goals, f.Accounts, f.Delegated)
+		if got.Default != want.Default || got.Mine != want.Mine || got.OffersMine != want.OffersMine ||
+			(got.Of == nil) != (want.Of == nil) || (got.Of != nil && got.Of.ID != want.Of.ID) ||
+			!slices.Equal(emailsOf(got.People), emailsOf(want.People)) || !slices.Equal(got.Values, want.Values) {
+			t.Errorf("%s: GoalScopeAmong = %+v, want GoalScope's %+v", c.name, got, want)
+		}
+		if g, w := keptTitles(t, h, got), keptTitles(t, h, want); !slices.Equal(g, w) || !slices.Equal(g, c.kept) {
+			t.Errorf("%s: GoalScopeAmong keeps %q and GoalScope %q, want %q", c.name, g, w, c.kept)
+		}
+	}
+}
+
 // emailsOf is the emails of people, in order.
 func emailsOf(people []domain.Account) []string {
 	out := make([]string, 0, len(people))
