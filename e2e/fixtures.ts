@@ -1,18 +1,19 @@
 // The suite's fixtures and helpers: each test gets its own copy of a seeded
-// database and its own server, and these helpers sign people in and look
-// things up in the seed. See README.md for how the specs use them.
+// database and its own server, and these helpers sign people in and hand each
+// spec the seed's picks for it. See README.md for how the specs use them.
 import { type ChildProcess, spawn } from "node:child_process";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
 import { type Browser, type Page, test as base, type TestInfo } from "@playwright/test";
 
-import { admin, e2eDirEnv, referenceDate, startAt, type Template, templatePath } from "./global-setup";
+import { admin, e2eDirEnv, manifestPath, referenceDate, startAt, type Template, templatePath } from "./global-setup";
+import type { Manifest } from "./manifest";
 
 export { expect } from "@playwright/test";
 export { admin, startAt, type Template } from "./global-setup";
+export { type Manifest, requirePick } from "./manifest";
 
 // appToday is the app's date, YYYY-MM-DD in UTC (the server's timezone): the
 // reference date. Each test's app starts its clock at 18:05 that day, and no
@@ -44,12 +45,11 @@ type Fixtures = {
   // as opens a page in a new browser context, already signed in as email, for
   // scenarios with more than one person. Its contexts close after the test.
   as: (email: string) => Promise<Page>;
-  // seedLookup runs a read-only query on the test's database, to choose
-  // actors and Goals by criteria. Never to assert an outcome: those are
-  // asserted on the page. $now in the SQL is bound to app.now(), as an ISO
-  // 8601 string SQLite's date functions read: write date($now), never
-  // SQLite's own now, which reads the machine's clock.
-  seedLookup: <T = Record<string, unknown>>(sql: string, ...params: SQLInputValue[]) => T[];
+  // manifest is the seed's picks for the test's template (manifest.ts): the
+  // Goals and people the specs act on, by role, judged at startAt. Choose
+  // actors and Goals from it, never to assert an outcome: those are asserted
+  // on the page.
+  manifest: Manifest;
   // serverLog is what the server has logged so far, for what the app only
   // logs, such as email (email.LogSender).
   serverLog: () => string;
@@ -59,9 +59,7 @@ export const test = base.extend<Fixtures>({
   template: ["default", { option: true }],
 
   app: async ({ template }, use, testInfo) => {
-    const dir = process.env[e2eDirEnv];
-    if (!dir)
-      throw new Error(`${e2eDirEnv} is unset: run the suite with npx playwright test (global-setup.ts sets it)`);
+    const dir = e2eDir();
     const work = mkdtempSync(join(dir, "test-"));
     const db = join(work, "app.db");
     copyFileSync(templatePath(dir, template), db);
@@ -94,27 +92,21 @@ export const test = base.extend<Fixtures>({
     await Promise.all(pages.map((p) => p.context().close()));
   },
 
-  seedLookup: async ({ app }, use) => {
-    // The server may be writing; wait for it as the app's own connections do.
-    function lookup<T>(sql: string, ...params: SQLInputValue[]): T[] {
-      const conn = new DatabaseSync(app.db, { readOnly: true, timeout: 5000 });
-      try {
-        const stmt = conn.prepare(sql);
-        // Bind $now only where the SQL names it: an unknown named parameter
-        // is an error.
-        const rows = /\$now\b/.test(sql) ? stmt.all({ now: app.now().toISOString() }, ...params) : stmt.all(...params);
-        return rows as T[];
-      } finally {
-        conn.close();
-      }
-    }
-    await use(lookup);
+  manifest: async ({ template }, use) => {
+    await use(JSON.parse(readFileSync(manifestPath(e2eDir(), template), "utf8")) as Manifest);
   },
 
   serverLog: async ({ app }, use) => {
     await use(app.log);
   },
 });
+
+// e2eDir is the run's directory, which global-setup.ts makes.
+function e2eDir(): string {
+  const dir = process.env[e2eDirEnv];
+  if (!dir) throw new Error(`${e2eDirEnv} is unset: run the suite with npx playwright test (global-setup.ts sets it)`);
+  return dir;
+}
 
 // signIn signs page in as email through the development sign-in form, and
 // waits for Home.

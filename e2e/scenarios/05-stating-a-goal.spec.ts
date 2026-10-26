@@ -3,42 +3,21 @@
 // the parent Owner's consent.
 import type { Page } from "@playwright/test";
 
-import { admin, appToday, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, requirePick, signIn, test } from "../fixtures";
+import type { StatingAGoal } from "../manifest";
 
-// A team Goal to contribute to: Active, owned by a team lead, with its Team.
-// Which of them shows Rolled-up Health Green, or none, is read from the page.
-const teamGoals = `
-  select g.id, g.title, a.email, a.name, dv.value as team
-  from goals g
-  join accounts a on a.id = g.owner_id
-  join goal_dimension_values gdv on gdv.goal_id = g.id
-  join dimension_values dv on dv.id = gdv.dimension_value_id
-  join dimensions d on d.id = dv.dimension_id and d.name = 'Team'
-  where g.lifecycle = 'Active' and a.departed = 0 and a.email like '%-lead@example.com'
-  order by g.id`;
-
-// A seeded project Owner: someone who isn't a lead, the leadership or the
-// Admin, and owns an Active Goal contributing to one a lead owns. Those under
-// the chosen team Goal come first.
-const projectOwners = `
-  select distinct a.email, a.name
-  from accounts a
-  join goals g on g.owner_id = a.id
-  join links l on l.child_id = g.id and l.status = 'accepted'
-  join goals p on p.id = l.parent_id
-  join accounts pa on pa.id = p.owner_id
-  where a.departed = 0 and g.lifecycle = 'Active'
-    and pa.email like '%-lead@example.com'
-    and a.email not like '%-lead@example.com'
-    and a.email not in ('admin@example.com', 'ceo@example.com', 'cto@example.com', 'cpo@example.com')
-  order by (p.id = ?) desc, a.email`;
-
-type TeamGoal = { id: number; title: string; email: string; name: string; team: string };
+// The manifest's statingAGoal.teamGoals are the team Goals to contribute to:
+// Active, owned by a team lead, with their Team, by ID. Which of them shows
+// Rolled-up Health Green, or none, is read from the page. Each carries its
+// projectOwners, the seeded project Owners: those who aren't a lead, the
+// leadership or the Admin, and own an Active Goal contributing to one a lead
+// owns, those under that team Goal first, then by email.
+type TeamGoal = StatingAGoal["teamGoals"][number];
 
 // The Field the Admin makes required. The seed has none.
 const fieldName = "Budget code";
 
-test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
+test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
   test.setTimeout(120_000);
 
   // A, saved Proposed and finished later; B, active at once; C, contributing
@@ -86,7 +65,9 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   let found: TeamGoal | undefined;
   let rollupAtSetup = "";
   await test.step("Setup: a team Goal showing Rolled-up Health Green, or none", async () => {
-    for (const c of seedLookup<TeamGoal>(teamGoals)) {
+    const teamGoals = manifest.statingAGoal.teamGoals;
+    expect(teamGoals.length, "statingAGoal.teamGoals has a lead's team Goal").toBeGreaterThan(0);
+    for (const c of teamGoals) {
       await page.goto(`/goals/${c.id}`);
       const rollup = page.getByTestId("goal-rollup-health");
       const shown = (await rollup.count()) > 0 ? ((await rollup.textContent()) ?? "").trim() : "";
@@ -103,8 +84,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 
   // The project Owner ("Priya"): never the team Goal's Owner, so the hint
   // asks someone else.
-  const [owner] = seedLookup<{ email: string; name: string }>(projectOwners, team.id);
-  expect(owner, "the seed has a project Owner").toBeDefined();
+  const owner = requirePick(`statingAGoal.teamGoals[${team.id}].projectOwners[0]`, team.projectOwners[0]);
   expect(owner.email).not.toBe(team.email);
   const priya = await as(owner.email);
 
@@ -395,8 +375,8 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 // card", and each item "ticks as it's met". That first post goes on the empty
 // form too, and every change after it, with Title and Why it matters still empty:
 // the card is what says they're missing. A real submit still needs them.
-test("5.2 The live Ready to activate card answers the empty form", async ({ page, seedLookup }) => {
-  const [owner] = seedLookup<{ email: string }>(projectOwners, 0);
+test("5.2 The live Ready to activate card answers the empty form", async ({ page, manifest }) => {
+  const owner = requirePick("statingAGoal.projectOwner", manifest.statingAGoal.projectOwner);
   await signIn(page, owner.email);
   const live = page.waitForResponse((r) => new URL(r.url()).pathname === "/goals/new/checklist", { timeout: 5000 });
   await page.goto("/goals/new");

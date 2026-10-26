@@ -3,31 +3,15 @@
 // server (the app fixture), and fullyParallel runs these two side by side.
 import type { Page } from "@playwright/test";
 
-import { expect, signIn, test } from "./fixtures";
+import { expect, requirePick, signIn, test } from "./fixtures";
 
-// A Goal whose Owner can press No change: Active, checked in before, no
-// accepted child Goals (so no Rolled-up Health to refuse a repeat), no
-// overdue Planned Milestone, and no back-to-Green date passed on its latest
-// Check-in. The same query picks the same Goal in both tests.
-const noChangeGoal = `
-  select g.id, a.email
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0
-    and exists (select 1 from checkins c where c.goal_id = g.id)
-    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-    and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-    and not exists (select 1 from checkins c
-                    where c.id = (select c2.id from checkins c2 where c2.goal_id = g.id
-                                  order by c2.created_at desc, c2.id desc limit 1)
-                      and c.path_target_date <> '' and c.path_target_date < date($now))
-  order by g.id
-  limit 1`;
-
+// The manifest's noChangeGoal is a Goal whose Owner can press No change:
+// Active, checked in before, no accepted child Goals (so no Rolled-up Health
+// to refuse a repeat), no overdue Planned Milestone, and no back-to-Green date
+// passed on its latest Check-in. Both tests read the same pick.
 for (const name of ["first", "second"]) {
-  test(`No change adds exactly one History entry (${name} of two)`, async ({ page, app, seedLookup }) => {
-    const [goal] = seedLookup<{ id: number; email: string }>(noChangeGoal);
-    expect(goal, "the seed has a Goal its Owner can press No change on").toBeDefined();
+  test(`No change adds exactly one History entry (${name} of two)`, async ({ page, app, manifest }) => {
+    const goal = requirePick("noChangeGoal", manifest.noChangeGoal);
 
     await signIn(page, goal.email);
     await page.goto(`/goals/${goal.id}`);

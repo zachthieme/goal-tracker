@@ -4,35 +4,20 @@
 // saved. Nothing is recorded until the Check-in is submitted.
 import type { Locator, Page } from "@playwright/test";
 
-import { expect, signIn, test } from "./fixtures";
+import { expect, requirePick, signIn, test } from "./fixtures";
+import type { ManifestGoal } from "./manifest";
 
-// quietGoal is an Active Goal whose Owner can check in Green with only a
-// status: Green last time, no Metric to judge off target, nothing contributing
-// to it to roll up, no overdue Milestone, and no Highlight yet, so the Goal
-// page's Highlights are this test's alone.
-const quietGoal = `
-  select g.id, g.title, a.email, coalesce(a.name, '') as name
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0
-    and not exists (select 1 from metrics m where m.goal_id = g.id)
-    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-    and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-    and not exists (select 1 from highlights h join checkins c on c.id = h.checkin_id where c.goal_id = g.id)
-    and not exists (select 1 from draft_highlights d where d.goal_id = g.id)
-    and (select c.health from checkins c where c.goal_id = g.id
-         order by c.created_at desc, c.id desc limit 1) = 'Green'
-  order by g.id
-  limit 1`;
-
-type Goal = { id: number; title: string; email: string; name: string };
+// The manifest's quietGoal is an Active Goal whose Owner can check in Green
+// with only a status: Green last time, no Metric to judge off target, nothing
+// contributing to it to roll up, no overdue Milestone, and no Highlight yet,
+// so the Goal page's Highlights are this test's alone.
+type Goal = ManifestGoal;
 
 test.describe("the Check-in form's Highlight editor", () => {
   let goal: Goal;
 
-  test.beforeEach(async ({ page, seedLookup }) => {
-    [goal] = seedLookup<Goal>(quietGoal);
-    expect(goal, "the seed has a quiet Green Goal").toBeDefined();
+  test.beforeEach(async ({ page, manifest }) => {
+    goal = requirePick("quietGoal", manifest.quietGoal);
     await signIn(page, goal.email);
   });
 

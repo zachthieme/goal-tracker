@@ -9,109 +9,29 @@
 // Petrova (cpo@ is the seed's Marcus Bell).
 import type { Page } from "@playwright/test";
 
-import { admin, appToday, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, type Manifest, requirePick, signIn, test } from "../fixtures";
 
 const manager = "growth-lead@example.com";
 // otherLead is another lead, who neither built nor administers the Reports.
 const otherLead = "data-lead@example.com";
 
-type Lookup = <T = Record<string, unknown>>(sql: string, ...params: (string | number)[]) => T[];
-
 type SeedGoal = { id: number; title: string };
 
-// growthGoals are the Team = Growth Goals: inReport those a Report reading
-// against its default baseline, 30 days before now (the app's time), lists,
-// every one but those Done or Cancelled more than 30 days ago, and
-// finishedEarlier those that leave it.
-function growthGoals(seedLookup: Lookup, now: Date): { inReport: SeedGoal[]; finishedEarlier: SeedGoal[] } {
-  const rows = seedLookup<SeedGoal & { finished_at: string | null; lifecycle: string }>(`
-    select g.id, g.title, g.lifecycle,
-      (select max(c.created_at) from checkins c
-        where c.goal_id = g.id and c.lifecycle_to = g.lifecycle) as finished_at
-    from goals g
-    join goal_dimension_values gv on gv.goal_id = g.id
-    join dimension_values v on v.id = gv.dimension_value_id
-    join dimensions d on d.id = v.dimension_id
-    where d.name = 'Team' and v.value = 'Growth'
-    order by g.id`);
-  const baseline = now.getTime() - 30 * 24 * 60 * 60 * 1000;
-  const finished = (g: (typeof rows)[number]) =>
-    (g.lifecycle === "Done" || g.lifecycle === "Cancelled") && (!g.finished_at || Date.parse(g.finished_at) < baseline);
-  const strip = ({ id, title }: SeedGoal) => ({ id, title });
-  return { inReport: rows.filter((g) => !finished(g)).map(strip), finishedEarlier: rows.filter(finished).map(strip) };
-}
-
-type Candidate = SeedGoal & {
-  health: string;
-  path_to_green: string;
-  slipped_from: string | null;
-  children: number;
-  overdue: number;
-};
-
-type Picks = {
-  // troubled is Yellow or Red, with the Path to Green its Owner last
-  // submitted.
-  troubled: Candidate;
-  // slipped has slipped its delivery date, and is Yellow or Red, so it
-  // carries a full block in the Report.
-  slipped: Candidate;
-  // green has no children and no overdue Milestone.
-  green: Candidate;
-  // parent has Active child Goals contributing to it, none of them picked.
-  parent: Candidate;
-  children: SeedGoal[];
-};
-
-// pickedGoals chooses four Active Goals on teams other than Growth that the
-// manager neither owns nor is a Delegate on, one of each kind Picks names.
-function pickedGoals(seedLookup: Lookup): Picks {
-  const candidates = seedLookup<Candidate>(
-    `
-    with latest as (
-      select c.* from checkins c
-      where c.id = (select c2.id from checkins c2 where c2.goal_id = c.goal_id
-                    order by c2.created_at desc, c2.id desc limit 1))
-    select g.id, g.title, l.health, l.path_to_green,
-      (select s.old_date from date_slips s where s.goal_id = g.id and s.milestone_id is null and s.back_to_green = 0
-        order by s.created_at limit 1) as slipped_from,
-      (select count(*) from links k join goals child on child.id = k.child_id
-        where k.parent_id = g.id and k.status = 'accepted' and child.lifecycle = 'Active') as children,
-      (select count(*) from milestones m
-        where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now)) as overdue
-    from goals g
-    join latest l on l.goal_id = g.id
-    join accounts a on a.id = g.owner_id
-    join goal_dimension_values gv on gv.goal_id = g.id
-    join dimension_values v on v.id = gv.dimension_value_id
-    join dimensions d on d.id = v.dimension_id and d.name = 'Team'
-    where g.lifecycle = 'Active' and v.value <> 'Growth' and a.email <> ?
-      and not exists (select 1 from delegates dl join accounts da on da.id = dl.account_id
-                      where dl.goal_id = g.id and da.email = ?)
-    order by g.id`,
-    manager,
-    manager,
-  );
-  const childrenOf = (parent: Candidate) =>
-    seedLookup<SeedGoal>(
-      `select child.id, child.title from links k join goals child on child.id = k.child_id
-       where k.parent_id = ? and k.status = 'accepted' and child.lifecycle = 'Active' order by child.id`,
-      parent.id,
-    );
-  const troubledHealth = (c: Candidate) => c.health === "Yellow" || c.health === "Red";
-
-  const slipped = candidates.find((c) => c.slipped_from && troubledHealth(c));
-  const troubled = candidates.find((c) => c !== slipped && troubledHealth(c) && c.path_to_green !== "");
-  const green = candidates.find((c) => c.health === "Green" && c.children === 0 && c.overdue === 0);
-  const others = [slipped, troubled, green].map((c) => c?.id);
-  const parent = candidates.find(
-    (c) => c.children > 0 && !others.includes(c.id) && !childrenOf(c).some((k) => others.includes(k.id)),
-  );
-  expect(slipped, "the seed has a Yellow or Red Goal on another team that slipped its delivery date").toBeDefined();
-  expect(troubled, "the seed has another Yellow or Red Goal on another team with a Path to Green").toBeDefined();
-  expect(green, "the seed has a Green Goal on another team, with no children or overdue Milestone").toBeDefined();
-  expect(parent, "the seed has a Goal on another team with Active children").toBeDefined();
-  return { troubled: troubled!, slipped: slipped!, green: green!, parent: parent!, children: childrenOf(parent!) };
+// pickedGoals are the manifest's watchingGoals.picked: four Active Goals on
+// teams other than Growth that the manager neither owns nor is a Delegate on.
+// troubled is Yellow or Red, with the Path to Green its Owner last submitted;
+// slipped has slipped its delivery date, and is Yellow or Red, so it carries a
+// full block in the Report; green has no children and no overdue Milestone;
+// and parent has Active child Goals contributing to it, none of them picked.
+function pickedGoals(manifest: Manifest) {
+  const p = manifest.watchingGoals.picked;
+  return {
+    troubled: requirePick("watchingGoals.picked.troubled", p.troubled),
+    slipped: requirePick("watchingGoals.picked.slipped", p.slipped),
+    green: requirePick("watchingGoals.picked.green", p.green),
+    parent: requirePick("watchingGoals.picked.parent", p.parent),
+    children: p.children,
+  };
 }
 
 // buildPickedReport saves a Report Definition named name in "Goals I pick"
@@ -190,9 +110,8 @@ function goalCount(n: number): string {
 
 test("a manager builds Reports over Goals they don't own, and gets nothing over them", async ({
   page,
-  app,
   as,
-  seedLookup,
+  manifest,
 }) => {
   // Three people and two Reports, start to finish.
   test.slow();
@@ -203,7 +122,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
   let pickedReport = 0;
 
   await test.step("New starts with the manager's own org, in view in its value list", async () => {
-    const [me] = seedLookup<{ id: number }>("select id from accounts where email = ?", manager);
+    const me = { id: requirePick(`accountIDs[${manager}]`, manifest.accountIDs[manager]) };
     // The cut-off was seen at both widths (ticket #314).
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 720 });
@@ -237,8 +156,12 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
   });
 
   await test.step("1 A rule Report lists the team's Goals, less those finished before the baseline", async () => {
-    const { inReport, finishedEarlier } = growthGoals(seedLookup, app.now());
-    expect(finishedEarlier.length, "the seed has a Growth Goal finished more than 30 days ago").toBeGreaterThan(0);
+    // The Team = Growth Goals: inReport those a Report reading against its
+    // default baseline, 30 days before the app starts, lists, every one but
+    // those Done or Cancelled more than 30 days ago, and finishedEarlier
+    // those that leave it.
+    const { inReport, finishedEarlier } = manifest.watchingGoals.growthReport;
+    expect(finishedEarlier.length, "watchingGoals.growthReport.finishedEarlier has a Growth Goal").toBeGreaterThan(0);
 
     ruleReport = await buildRuleReport(page, ruleReportName);
 
@@ -250,7 +173,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     for (const g of finishedEarlier) expect(titles, `"${g.title}" finished before the baseline`).not.toContain(g.title);
   });
 
-  const picks = pickedGoals(seedLookup);
+  const picks = pickedGoals(manifest);
   const picked = [picks.troubled, picks.slipped, picks.green, picks.parent];
 
   await test.step("2 A hand-picked Report shows the Health, slips and Paths to Green of Goals from other teams", async () => {
@@ -270,7 +193,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     // ... and their slips: the earlier delivery date, struck through.
     const slipped = preview.getByTestId("report-exception").filter({ hasText: picks.slipped.title });
     await expect(slipped.getByTestId("report-due").getByRole("deletion").first()).toHaveText(
-      reportDate(picks.slipped.slipped_from!),
+      reportDate(picks.slipped.slipped_from),
     );
   });
 

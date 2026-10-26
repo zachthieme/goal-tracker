@@ -4,14 +4,20 @@
 // trouble reaches the parent's Owner as Rolled-up Health without turning
 // every ancestor Red.
 import type { Locator, Page } from "@playwright/test";
-import { appToday, expect, signIn, test } from "../fixtures";
+import { appToday, expect, requirePick, signIn, test } from "../fixtures";
 
 // The scenario's people are roles. "Priya" is the project's Owner and
-// "Marcus" the Owner of the team Goal it contributes to; both are chosen from
-// the seed by chooseBadNewsChain.
-test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", async ({ page, as, seedLookup }) => {
+// "Marcus" the Owner of the team Goal it contributes to; both are the seed's
+// manifest's badNewsChain: a project, Active, Dated and Green, with at least
+// two Planned Milestones ahead and none overdue, and a Team; the team Goal it
+// contributes to, Active and Green, another Owner's, whose other Active
+// children are all Green and with no overdue Planned Milestone; and an org
+// outcome the team Goal contributes to whose other Active children are all
+// Green, so it rolls up Green. Owners who have departed are never the project
+// or the team Goal.
+test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", async ({ page, as, manifest }) => {
   test.slow();
-  const chain = chooseBadNewsChain(seedLookup);
+  const chain = requirePick("badNewsChain", manifest.badNewsChain);
   const { project } = chain;
 
   await signIn(page, project.email);
@@ -258,126 +264,11 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     // Owner's Green, not Red. Rolled-up Health goes one level only
     // (RolledUpHealth, internal/domain/rollup.go): the org outcome reads the
     // team Goal Owner's Green, not the project's Red, and its other Active
-    // children are Green (chooseBadNewsChain).
+    // children are Green (the manifest's badNewsChain).
     await marcus.goto(`/goals/${org.id}`);
     await expect(marcus.getByTestId("goal-rollup-health"), `${org.title}'s Rolled-up Health`).toHaveText("Green");
   });
 });
-
-type Goal = {
-  id: number;
-  title: string;
-  email: string;
-  name: string;
-  departed: number;
-  lifecycle: string;
-  kind: string;
-  delivery_date: string;
-  health: string | null;
-};
-type Link = { child_id: number; parent_id: number };
-type Milestone = { id: number; goal_id: number; name: string; target_date: string; status: string };
-
-type Chain = {
-  // team is the project's Team, the Dimension value a Report rule matches.
-  project: Goal & { milestones: Milestone[]; team: string };
-  team: Goal;
-  // orgOutcome is an org outcome the team Goal contributes to whose other
-  // Active children are all Green, so it rolls up Green.
-  orgOutcome: Goal;
-};
-
-type Lookup = <T>(sql: string) => T[];
-
-// chooseBadNewsChain finds a project, the team Goal it contributes to and one
-// of that Goal's org outcomes, meeting every rule the scenario needs. Health
-// in the seed depends on its end date and time of day, so the chain is found
-// at test time; when no chain meets a rule, the test fails naming it rather
-// than using a weaker one. Goals whose Owner has departed still count as
-// children, since Rolled-up Health counts them, but are never the project or
-// the team Goal.
-function chooseBadNewsChain(lookup: Lookup): Chain {
-  const goals = lookup<Goal>(`
-    select g.id, g.title, a.email, coalesce(a.name, a.email) name, a.departed,
-           g.lifecycle, g.kind, g.delivery_date,
-           (select c.health from checkins c where c.goal_id = g.id
-            order by c.created_at desc, c.id desc limit 1) health
-    from goals g join accounts a on a.id = g.owner_id`);
-  // Ordered as e2eScenario4 in internal/seed/scenarios_test.go, so both choose the same chain and org outcome.
-  const links = lookup<Link>(
-    `select child_id, parent_id from links where status = 'accepted' order by parent_id, child_id`,
-  );
-  const milestones = lookup<Milestone>(
-    `select id, goal_id, name, target_date, status from milestones order by target_date, id`,
-  );
-  const teams = lookup<{ goal_id: number; value: string }>(`
-    select gdv.goal_id, dv.value
-    from goal_dimension_values gdv
-    join dimension_values dv on dv.id = gdv.dimension_value_id
-    join dimensions d on d.id = dv.dimension_id
-    where d.name = 'Team'`);
-  const teamOf = (g: Goal) => teams.find((t) => t.goal_id === g.id)?.value;
-  const byID = new Map(goals.map((g) => [g.id, g]));
-  const today = appToday();
-  const planned = (g: Goal) => milestones.filter((m) => m.goal_id === g.id && m.status === "Planned");
-  const overdue = (g: Goal) => planned(g).some((m) => m.target_date < today);
-  const children = (g: Goal) => links.filter((l) => l.parent_id === g.id).flatMap((l) => byID.get(l.child_id) ?? []);
-  const parents = (g: Goal) => links.filter((l) => l.child_id === g.id).flatMap((l) => byID.get(l.parent_id) ?? []);
-  const activeGreen = (g: Goal) => g.lifecycle === "Active" && g.health === "Green";
-  // An org outcome rolls up Green over a Green team Goal when every other
-  // Active child with a Health is Green too: Rolled-up Health is the lowest
-  // among them, so one Yellow sibling would keep it Yellow.
-  const greenOrgOutcomes = (team: Goal) =>
-    parents(team).filter((o) =>
-      children(o).every(
-        (c) => c.id === team.id || c.lifecycle !== "Active" || c.health === null || c.health === "Green",
-      ),
-    );
-
-  type Candidate = { project: Goal; team: Goal };
-  let candidates: Candidate[] = links.flatMap((l) => {
-    const project = byID.get(l.child_id);
-    const team = byID.get(l.parent_id);
-    return project && team && !project.departed && !team.departed ? [{ project, team }] : [];
-  });
-  const rules: [string, (c: Candidate) => boolean][] = [
-    ["the project is Active, Dated and Green", ({ project }) => activeGreen(project) && project.kind === "Dated"],
-    [
-      "the project has at least two Planned Milestones dated after today",
-      ({ project }) => planned(project).filter((m) => m.target_date > today).length >= 2,
-    ],
-    ["the project has no overdue Planned Milestone", ({ project }) => !overdue(project)],
-    ["the project has a Team", ({ project }) => teamOf(project) !== undefined],
-    ["the team Goal is Active and Green", ({ team }) => activeGreen(team)],
-    ["the team Goal has another Owner than the project", ({ project, team }) => project.email !== team.email],
-    [
-      "the team Goal's other Active children are all Green",
-      ({ project, team }) =>
-        children(team).every((c) => c.id === project.id || c.lifecycle !== "Active" || c.health === "Green"),
-    ],
-    // An overdue Milestone would refuse its Owner's Green on its own.
-    ["the team Goal has no overdue Planned Milestone", ({ team }) => !overdue(team)],
-    ["the team Goal contributes to an org outcome", ({ team }) => parents(team).length > 0],
-    [
-      "the team Goal contributes to an org outcome whose other Active children are all Green",
-      ({ team }) => greenOrgOutcomes(team).length > 0,
-    ],
-  ];
-  for (const [rule, meets] of rules) {
-    candidates = candidates.filter(meets);
-    if (candidates.length === 0) throw new Error(`no project and team Goal in the seed meet the rule: ${rule}`);
-  }
-  const { project, team } = candidates[0];
-  return {
-    project: {
-      ...project,
-      milestones: planned(project).filter((m) => m.target_date > today),
-      team: teamOf(project) ?? "",
-    },
-    team,
-    orgOutcome: greenOrgOutcomes(team)[0],
-  };
-}
 
 // pickHealth picks a Health in the Check-in form. Its radios are hidden
 // inside their labels, so the label is what a person clicks.

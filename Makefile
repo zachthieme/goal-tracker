@@ -83,20 +83,19 @@ test-scripts: ## Run the scripts/ tests: shots.mjs and contrast.py's doctest
 
 # The Playwright end-to-end suite in e2e/ (see e2e/README.md): it builds the
 # binaries, seeds template databases, and drives each test's own server in
-# headless Chromium. A vetinari gate for changes that reach the browser, and
-# for changes under internal/db/, since the specs read the schema directly
-# through seedLookup (e2e/fixtures.ts); the paths are the e2e gate's `when` in
-# vetinari/config.mts. `make check` doesn't run it.
+# headless Chromium. A vetinari gate for changes that reach the browser, the
+# seed, whose manifest picks the specs' Goals (e2e/manifest.ts), and the
+# database; the paths are the e2e gate's `when` in vetinari/config.mts.
+# `make check` doesn't run it.
 # Needs outbound network to install Playwright and its npm packages; the pages
 # themselves load nothing from other hosts.
 # Runs `npm ci` in e2e/ when its dependencies are missing or older than its
 # lockfile; with CHROME unset it also installs Playwright's Chromium. E2E_ARGS
-# goes to `playwright test`, e.g. E2E_ARGS=smoke for one spec. Node >= 22.13
-# (seedLookup uses node:sqlite, whose experimental warning is silenced).
+# goes to `playwright test`, e.g. E2E_ARGS=smoke for one spec.
 E2E_ARGS ?=
 e2e: e2e/node_modules/.package-lock.json ## Run the Playwright end-to-end suite in e2e/; a vetinari gate, not in check (CHROME, E2E_ARGS)
 	@if [ -z "$$CHROME" ]; then cd e2e && npx playwright install chromium; fi
-	cd e2e && NODE_OPTIONS=--disable-warning=ExperimentalWarning npx playwright test $(E2E_ARGS)
+	cd e2e && npx playwright test $(E2E_ARGS)
 
 # Type-checks e2e/: `tsc -p .` over every .ts file in it, with the strict
 # settings in e2e/tsconfig.json. Needs no Chromium and no Go. Not a gate:

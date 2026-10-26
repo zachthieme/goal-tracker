@@ -9,7 +9,8 @@
 // Path to Green, a second Dimension, and an overdue Action Item.
 import type { Locator, Page } from "@playwright/test";
 
-import { admin, appToday, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, requirePick, signIn, test } from "../fixtures";
+import type { ManifestGoal } from "../manifest";
 
 const leader = "cto@example.com";
 const leaderName = "Priya Raman";
@@ -17,146 +18,44 @@ const leaderName = "Priya Raman";
 // The second Dimension the Admin defines, and its values.
 const tier = { name: "Tier", values: ["Core", "Edge"] };
 
-// isCheckinOverdue is SQL true for a Goal g whose last Check-in, or activation
-// if it has none, is older than its cadence: the seed's Check-in overdue Goals
-// are weeks past it, so the day boundary doesn't matter.
-const isCheckinOverdue = `
-  julianday($now) - julianday(coalesce(
-    (select max(c.created_at) from checkins c where c.goal_id = g.id),
-    nullif(g.activated_at, ''), g.created_at)) > g.cadence_days`;
+type Goal = ManifestGoal;
 
-// latestHealth is SQL for Goal g's latest Check-in's Health.
-const latestHealth = `
-  (select c.health from checkins c where c.goal_id = g.id order by c.created_at desc, c.id desc limit 1)`;
-
-// onTeam is SQL true for a Goal g carrying the Team value ?.
-const onTeam = `
-  exists (select 1 from goal_dimension_values gdv
-          join dimension_values v on v.id = gdv.dimension_value_id
-          join dimensions d on d.id = v.dimension_id
-          where gdv.goal_id = g.id and d.name = 'Team' and v.value = ?)`;
-
-type Goal = { id: number; title: string; email: string };
-
-test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ page, as, seedLookup, serverLog }) => {
+test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ page, as, manifest, serverLog }) => {
   test.setTimeout(180_000);
 
-  // The actors and Goals, chosen by criteria. A Check-in overdue Platform Goal
-  // the leader doesn't own, to nudge in step 5.
-  const [checkinOverdue] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and a.email <> ? and a.departed = 0 and ${onTeam} and ${isCheckinOverdue}
-     order by g.id limit 1`,
-    leader,
-    "Platform",
-  );
-  expect(checkinOverdue, "the seed has a Check-in overdue Platform Goal the leader doesn't own").toBeDefined();
-
-  // An Owner to depart: owns an Active Platform Goal, owns no Check-in overdue
-  // Goal (so not the one nudged) and no Top-level Goal, and is neither the
-  // leader nor the Admin. The Check-in overdue subquery names its Goal g, as
-  // isCheckinOverdue reads it.
-  const [departing] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.is_admin = 0
-       and not exists (select 1 from goals g2 where g2.owner_id = a.id and g2.top_level = 1)
-       and not exists (select 1 from goals g where g.owner_id = a.id and g.lifecycle = 'Active' and ${isCheckinOverdue})
-     order by g.id limit 1`,
-    "Platform",
-    leader,
-    admin,
-  );
-  expect(departing, "the seed has a Platform Owner to depart").toBeDefined();
-
+  // The actors and Goals, picked by the seed's manifest (findingTrouble).
+  const roles = manifest.findingTrouble;
+  // A Check-in overdue Platform Goal the leader doesn't own, to nudge in
+  // step 5.
+  const checkinOverdue = requirePick("findingTrouble.checkinOverdue", roles.checkinOverdue);
+  // An Owner to depart: owns an Active Platform Goal, owns no Check-in
+  // overdue Goal (so not the one nudged) and no Top-level Goal, and is
+  // neither the leader nor the Admin.
+  const departing = requirePick("findingTrouble.departing", roles.departing);
   // A Goal to put past its Path to Green: an Active Platform Goal whose Owner
   // stays, with no Active child Goals (so no Rolled-up Health asking for an
-  // explanation), not Check-in overdue, and with no overdue Planned Milestone,
-  // so the Check-in is only Health, status and Path to Green.
-  const [overdue] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.departed = 0
-       and g.id <> ? and not (${isCheckinOverdue})
-       and not exists (select 1 from links l join goals c on c.id = l.child_id
-                       where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')
-       and not exists (select 1 from milestones m
-                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-     order by g.id limit 1`,
-    "Platform",
-    leader,
-    departing.email,
-    checkinOverdue.id,
-  );
-  expect(overdue, "the seed has a Platform Goal to put past its Path to Green").toBeDefined();
-
+  // explanation), not Check-in overdue, and with no overdue Planned
+  // Milestone, so the Check-in is only Health, status and Path to Green.
+  const overdue = requirePick("findingTrouble.overdue", roles.overdue);
   // Two Active Platform Goals to carry the second Dimension's values.
-  const tiered = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${onTeam} order by g.id limit 2`,
-    "Platform",
-  );
-  expect(tiered, "the seed has two Active Platform Goals").toHaveLength(2);
-
+  const tiered = roles.tiered;
+  expect(tiered, "findingTrouble.tiered has two Active Platform Goals").toHaveLength(2);
   // An Unlinked Goal: Active, not Top-level, contributing to no Goal.
-  const [unlinked] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and g.top_level = 0 and a.email <> ?
-       and not exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
-     order by g.id limit 1`,
-    departing.email,
-  );
-  expect(unlinked, "the seed has an Unlinked Goal").toBeDefined();
-
+  const unlinked = requirePick("findingTrouble.unlinked", roles.unlinked);
   // A Goal with two signals: Check-in overdue, and due later than a Goal it
   // contributes to (a Schedule conflict), with its Team.
-  const [twoReasons] = seedLookup<Goal & { team: string }>(
-    `select g.id, g.title, a.email, v.value as team from goals g
-     join accounts a on a.id = g.owner_id
-     join goal_dimension_values gdv on gdv.goal_id = g.id
-     join dimension_values v on v.id = gdv.dimension_value_id
-     join dimensions d on d.id = v.dimension_id and d.name = 'Team'
-     where g.lifecycle = 'Active' and a.email <> ? and ${isCheckinOverdue} and g.delivery_date <> ''
-       and exists (select 1 from links l join goals p on p.id = l.parent_id
-                   where l.child_id = g.id and l.status = 'accepted'
-                     and p.delivery_date <> '' and g.delivery_date > p.delivery_date)
-     order by g.id limit 1`,
-    departing.email,
-  );
-  expect(twoReasons, "the seed has a Check-in overdue Goal with a Schedule conflict").toBeDefined();
-
+  const twoReasons = requirePick("findingTrouble.twoReasons", roles.twoReasons);
   // The departed Owner's Active Goals, which become Ownerless on Follow-ups.
-  const ownerless = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where a.email = ? and g.lifecycle = 'Active' order by g.id`,
-    departing.email,
-  );
-
+  const ownerless = roles.ownerless;
   // Two Red Goals to open: one with Active child Goals contributing to it
-  // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no Red
-  // Goal with both. The first is otherwise fine: not Check-in overdue,
-  // contributing to a Goal, with an Owner who stays, so only its Health, under
-  // Not Green, puts it on Follow-ups.
-  const [redWithChildren] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isCheckinOverdue}) and a.email <> ?
-       and exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
-       and exists (select 1 from links l join goals c on c.id = l.child_id
-                   where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')
-     order by g.id limit 1`,
-    departing.email,
-  );
-  expect(redWithChildren, "the seed has a Red Goal with Active child Goals").toBeDefined();
-  const [redSlipped] = seedLookup<Goal>(
-    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and g.delivery_date <> ''
-       and exists (select 1 from date_slips s where s.goal_id = g.id and s.milestone_id is null and s.back_to_green = 0)
-     order by g.id limit 1`,
-  );
-  expect(redSlipped, "the seed has a Red Goal with a Date Slip").toBeDefined();
-
+  // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no
+  // Red Goal with both. The first is otherwise fine: not Check-in overdue,
+  // contributing to a Goal, with an Owner who stays, so only its Health,
+  // under Not Green, puts it on Follow-ups.
+  const redWithChildren = requirePick("findingTrouble.redWithChildren", roles.redWithChildren);
+  const redSlipped = requirePick("findingTrouble.redSlipped", roles.redSlipped);
   // Each Goal's Lifecycle, which Follow-ups' order reads: Active Goals first.
-  const lifecycles = new Map(
-    seedLookup<{ id: number; lifecycle: string }>("select id, lifecycle from goals").map((g) => [g.id, g.lifecycle]),
-  );
+  const lifecycles = roles.lifecycles;
 
   const adminPage = await as(admin);
 
@@ -409,7 +308,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     // then Path to Green overdue, then Milestone overdue, then an overdue
     // Action Item, then Check-in overdue.
     const keys = rows.map((r) => [
-      lifecycles.get(r.id) === "Active" ? 0 : 1,
+      lifecycles[r.id] === "Active" ? 0 : 1,
       r.kinds.includes("ownerless") ? 0 : 1,
       followUpHealthRank(r.health),
       r.kinds.includes("path-overdue") ? 0 : 1,

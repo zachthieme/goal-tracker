@@ -5,7 +5,7 @@
 // window (#343: #258, #268, #338, #229; #368; #369; #364; #387).
 import type { Page } from "@playwright/test";
 
-import { admin, expect, signIn, test } from "./fixtures";
+import { admin, expect, requirePick, signIn, test } from "./fixtures";
 
 const phone = { width: 390, height: 800 };
 
@@ -80,35 +80,19 @@ async function buildRuleReport(page: Page, name: string): Promise<void> {
   await page.waitForURL(/\/reports\/\d+$/);
 }
 
-// dueNoChangeGoal is a 7-day Goal, due on Home on the due template, whose
-// Owner's Needs you row offers No change beside Check in: Active, checked in
-// before, no accepted child Goals (so no Rolled-up Health to refuse a
-// repeat), no overdue Planned Milestone, and no back-to-Green date passed on
-// its latest Check-in, as in isolation.spec.ts.
-const dueNoChangeGoal = `
-  select g.id, g.title, a.email
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0 and g.cadence_days = 7
-    and exists (select 1 from checkins c where c.goal_id = g.id)
-    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-    and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
-    and not exists (select 1 from checkins c
-                    where c.id = (select c2.id from checkins c2 where c2.goal_id = g.id
-                                  order by c2.created_at desc, c2.id desc limit 1)
-                      and c.path_target_date <> '' and c.path_target_date < date($now))
-  order by g.id
-  limit 1`;
-
+// The due template's manifest names dueNoChangeGoal, a 7-day Goal, due on
+// Home, whose Owner's Needs you row offers No change beside Check in: Active,
+// checked in before, no accepted child Goals (so no Rolled-up Health to
+// refuse a repeat), no overdue Planned Milestone, and no back-to-Green date
+// passed on its latest Check-in, as isolation.spec.ts's noChangeGoal.
 test.describe("on the due template", () => {
   test.use({ template: "due" });
 
   test("at 390px Home fits, a Check-in due in Needs you with its No change and Check in", async ({
     page,
-    seedLookup,
+    manifest,
   }) => {
-    const [goal] = seedLookup<{ id: number; title: string; email: string }>(dueNoChangeGoal);
-    expect(goal, "the due template has a 7-day Goal its Owner can press No change on").toBeDefined();
+    const goal = requirePick("dueNoChangeGoal", manifest.dueNoChangeGoal);
     await signIn(page, goal.email);
     const row = page
       .getByTestId("home-needs-you")
@@ -203,22 +187,11 @@ test("at 390px the New goal page stacks its Kind tiles and fits its cadence and 
   await expectFitsAPhone(page);
 });
 
-// goalWithMetric is an Active Goal with a Metric, a Check-in and an accepted
-// child, so its Check-in page's context column has Last time, Contributed to
-// by and Dates, and its Owner, who can check in on it.
-const goalWithMetric = `
-  select g.id, a.email
-  from goals g join accounts a on a.id = g.owner_id
-  where g.lifecycle = 'Active' and a.departed = 0
-    and exists (select 1 from metrics m where m.goal_id = g.id)
-    and exists (select 1 from checkins c where c.goal_id = g.id)
-    and exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
-  order by g.id
-  limit 1`;
-
-test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
-  const [goal] = seedLookup<{ id: number; email: string }>(goalWithMetric);
-  expect(goal, "the seed has an Active Goal with a Metric").toBeDefined();
+// The manifest's metricParentGoal is an Active Goal with a Metric, a Check-in
+// and an accepted child, so its Check-in page's context column has Last time,
+// Contributed to by and Dates, and its Owner, who can check in on it.
+test("at 390px the Check-in page fits", async ({ page, manifest }) => {
+  const goal = requirePick("metricParentGoal", manifest.metricParentGoal);
   await signIn(page, goal.email);
   await page.goto(`/goals/${goal.id}/checkin`);
   const form = page.getByTestId("checkin-form");
