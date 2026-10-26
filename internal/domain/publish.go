@@ -54,12 +54,14 @@ type PreviousPublication struct {
 // empty. Only the Definition's creator, a Report Delegate or an Admin may
 // publish it (ErrNotAuthorized); actorID records who did, in the publication
 // and in the Report log.
+//
+// Drafting reads a lot, so it runs before the transaction that writes the
+// publication (ADR 0009: nothing slow inside a transaction); that transaction
+// reads the Definition again and checks again who may publish it, so a Report
+// Delegate removed while the Report was drafted is refused.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
-	def, err := s.GetReportDefinition(ctx, defID)
+	def, err := s.publishableDefinition(ctx, actorID, defID)
 	if err != nil {
-		return Publication{}, err
-	}
-	if err := s.requireReportManager(ctx, actorID, def, "publish"); err != nil {
 		return Publication{}, err
 	}
 	report, err := s.DraftReport(ctx, def, baseline)
@@ -80,6 +82,9 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 	}
 	var row db.ReportPublication
 	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.publishableDefinition(ctx, actorID, defID); err != nil {
+			return err
+		}
 		if row, err = tx.queries.CreateReportPublication(ctx, db.CreateReportPublicationParams{
 			ReportDefinitionID: def.ID,
 			PublishedBy:        actorID,
@@ -97,6 +102,19 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 		return Publication{}, err
 	}
 	return s.publicationFromRow(ctx, row)
+}
+
+// publishableDefinition returns the Report Definition defID if actorID may
+// publish it: its creator, a Report Delegate or an Admin.
+func (s *Service) publishableDefinition(ctx context.Context, actorID, defID int64) (ReportDefinition, error) {
+	def, err := s.GetReportDefinition(ctx, defID)
+	if err != nil {
+		return ReportDefinition{}, err
+	}
+	if err := s.requireReportManager(ctx, actorID, def, "publish"); err != nil {
+		return ReportDefinition{}, err
+	}
+	return def, nil
 }
 
 // GetPublication returns the published Report with the given id, or
