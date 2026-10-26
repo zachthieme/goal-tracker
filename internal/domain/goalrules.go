@@ -135,12 +135,56 @@ func milestoneEditRefusal(a goalActor, g Goal, status string) error {
 
 // goalOwnerRefusal is the one Owner-only rule: it refuses a anyone but g's
 // Owner, or the Admin whose import created it, saying only the Owner may act;
-// a Delegate and an Admin are refused too. It holds in any Lifecycle.
+// a Delegate and an Admin are refused too. It holds in any Lifecycle. An
+// Owner who has Departed can't act, and their Goal is Ownerless by definition
+// (CONTEXT.md: Departed, Ownerless), so g.Ownerless refuses them. The
+// importer acts for the Owner, so a Goal an import row gives a Departed Owner
+// still takes the import's writes.
 func goalOwnerRefusal(a goalActor, g Goal, act string) error {
-	if a.id == g.Owner.ID || a.importer {
+	if a.importer {
 		return nil
 	}
-	return Refuse(ErrNotAuthorized, "only the Goal's Owner may %s", act)
+	if a.id != g.Owner.ID {
+		return Refuse(ErrNotAuthorized, "only the Goal's Owner may %s", act)
+	}
+	if g.Ownerless {
+		return departedRefusal(act)
+	}
+	return nil
+}
+
+// departedRefusal refuses a Departed person act: they can't act at all
+// (CONTEXT.md: Departed).
+func departedRefusal(act string) error {
+	return Refuse(ErrNotAuthorized, "a Departed person can't %s", act)
+}
+
+// departedActorRefusal refuses a when their Account is Departed, saying they
+// can't act; one with no Account is left to the rule asking.
+func departedActorRefusal(a goalActor, act string) error {
+	acc, ok, err := a.account()
+	if err != nil {
+		return err
+	}
+	if ok && acc.Departed {
+		return departedRefusal(act)
+	}
+	return nil
+}
+
+// linkRemoveRefusal is RemoveLink's rule for the link from child to parent:
+// the Owner of either linked Goal, who hasn't Departed. A Departed Owner's
+// Goal is Ownerless, so its Ownerless refuses them, as goalOwnerRefusal does.
+func linkRemoveRefusal(a goalActor, parent, child Goal) error {
+	for _, g := range []Goal{child, parent} {
+		if a.id == g.Owner.ID {
+			if g.Ownerless {
+				return departedRefusal("remove the link")
+			}
+			return nil
+		}
+	}
+	return Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may remove the link")
 }
 
 // goalAdminRefusal refuses a unless they are an Admin, by adminRefusal; one
@@ -158,9 +202,15 @@ func goalAdminRefusal(a goalActor) error {
 
 // goalOwnerOrAdminRefusal refuses a anyone but g's Owner (as goalOwnerRefusal
 // allows them) or an Admin, saying only they may act; a Delegate is refused.
+// A Departed Owner is refused as goalOwnerRefusal refuses them, and a Departed
+// Admin as adminRefusal does.
 func goalOwnerOrAdminRefusal(a goalActor, g Goal, act string) error {
-	if goalOwnerRefusal(a, g, act) == nil {
-		return nil
+	err := goalOwnerRefusal(a, g, act)
+	if err == nil || a.id == g.Owner.ID {
+		return err
+	}
+	if err := departedActorRefusal(a, act); err != nil {
+		return err
 	}
 	if err := goalAdminRefusal(a); errors.Is(err, ErrNotAuthorized) {
 		return Refuse(ErrNotAuthorized, "only the Goal's Owner or an Admin may %s", act)
@@ -240,10 +290,18 @@ func logDraftHighlightRefusal(a goalActor, g Goal) error {
 // goalValueSetterRefusal is the rule for who sets g's Dimension values and
 // Fields: its Owner, one of its Delegates or an Admin, in any Lifecycle
 // (CONTEXT.md: Delegate). Whether they are a Delegate, then an Admin, is
-// asked only when it decides.
+// asked only when it decides. A Departed person, whichever they are, can't
+// act (CONTEXT.md: Departed).
 func goalValueSetterRefusal(a goalActor, g Goal) error {
+	const act = "set a Goal's Dimension values"
 	if a.id == g.Owner.ID {
+		if g.Ownerless {
+			return departedRefusal(act)
+		}
 		return nil
+	}
+	if err := departedActorRefusal(a, act); err != nil {
+		return err
 	}
 	if ok, err := a.delegate(); err != nil {
 		return err
@@ -289,15 +347,17 @@ func activateGoalRefusal(a goalActor, g Goal) error {
 
 // suggestParentRefusal is SuggestParent's rule: anyone with an Account but
 // g's Owner, who requests the link instead, while g is Active or Proposed
-// (suggestable).
+// (suggestable). A Departed person can't act (CONTEXT.md: Departed).
 func suggestParentRefusal(a goalActor, g Goal) error {
 	if a.id == g.Owner.ID {
 		return Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
 	}
-	if _, ok, err := a.account(); err != nil {
+	if acc, ok, err := a.account(); err != nil {
 		return err
 	} else if !ok {
 		return Refuse(ErrNotAuthorized, "the suggester does not exist")
+	} else if acc.Departed {
+		return departedRefusal("suggest a parent")
 	}
 	if !suggestable(g.Lifecycle) {
 		return Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")

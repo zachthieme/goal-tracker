@@ -476,8 +476,8 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		if parent, err = tx.queries.GetGoal(ctx, row.ParentID); err != nil {
 			return fmt.Errorf("look up parent goal: %w", err)
 		}
-		if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-			return Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may remove the link")
+		if err := linkRemoveRefusal(tx.accountActor(ctx, actorID), goalFromRow(parent.Goal, parent.Account), goalFromRow(child.Goal, child.Account)); err != nil {
+			return err
 		}
 		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
 			return fmt.Errorf("remove link: %w", err)

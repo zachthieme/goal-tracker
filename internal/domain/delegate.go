@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
@@ -23,17 +22,11 @@ import (
 // same Delegate twice is rejected.
 func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.queries.GetGoal(ctx, goalID)
+		goal, err := tx.delegatesGoal(ctx, actorID, goalID, actAddDelegate)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		if err := goalOwnerRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account), "authorize a Delegate"); err != nil {
 			return err
 		}
-		if accountID == goal.Goal.OwnerID {
+		if accountID == goal.Owner.ID {
 			return Refuse(ErrValidation, "the Owner already writes this Goal's Check-ins")
 		}
 		if _, err := tx.queries.GetAccount(ctx, accountID); err != nil {
@@ -65,16 +58,44 @@ func (s *Service) AddDelegate(ctx context.Context, actorID, goalID, accountID in
 // AddDelegateByEmail authorizes the Account with the given email as a Delegate on
 // the Goal. It is the web-facing convenience over AddDelegate, since the tool
 // identifies people by email (CONTEXT.md: development sign-in by email). An email
-// with no account is rejected.
+// with no account is rejected, but only once the actor may authorize a
+// Delegate, so someone who may not learns nothing of who has an Account.
 func (s *Service) AddDelegateByEmail(ctx context.Context, actorID, goalID int64, email string) error {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.delegatesGoal(ctx, actorID, goalID, actAddDelegate); err != nil {
+			return err
+		}
+		accountID, err := tx.accountIDWithEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		return tx.AddDelegate(ctx, actorID, goalID, accountID)
+	})
+}
+
+// The acts goalOwnerRefusal names when it refuses a change to a Goal's
+// Delegates.
+const (
+	actAddDelegate    = "authorize a Delegate"
+	actRemoveDelegate = "remove a Delegate"
+)
+
+// delegatesGoal loads goalID for a change to its Delegates by actorID, as
+// AddDelegate and RemoveDelegate do inside their transaction: a missing Goal
+// is ErrValidation, and anyone goalOwnerRefusal refuses act is refused.
+func (s *Service) delegatesGoal(ctx context.Context, actorID, goalID int64, act string) (Goal, error) {
+	row, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "no account with email %q", email)
+			return Goal{}, Refuse(ErrValidation, "goal does not exist")
 		}
-		return fmt.Errorf("look up account: %w", err)
+		return Goal{}, fmt.Errorf("look up goal: %w", err)
 	}
-	return s.AddDelegate(ctx, actorID, goalID, acc.ID)
+	goal := goalFromRow(row.Goal, row.Account)
+	if err := goalOwnerRefusal(s.goalActorFor(ctx, actorID, goalID), goal, act); err != nil {
+		return Goal{}, err
+	}
+	return goal, nil
 }
 
 // RemoveDelegate revokes accountID's authorization to write Check-ins on the
@@ -83,14 +104,7 @@ func (s *Service) AddDelegateByEmail(ctx context.Context, actorID, goalID int64,
 // Delegate is a no-op.
 func (s *Service) RemoveDelegate(ctx context.Context, actorID, goalID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		goal, err := tx.queries.GetGoal(ctx, goalID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "goal does not exist")
-			}
-			return fmt.Errorf("look up goal: %w", err)
-		}
-		if err := goalOwnerRefusal(tx.goalActorFor(ctx, actorID, goalID), goalFromRow(goal.Goal, goal.Account), "remove a Delegate"); err != nil {
+		if _, err := tx.delegatesGoal(ctx, actorID, goalID, actRemoveDelegate); err != nil {
 			return err
 		}
 		if err := tx.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
@@ -105,16 +119,18 @@ func (s *Service) RemoveDelegate(ctx context.Context, actorID, goalID, accountID
 
 // RemoveDelegateByEmail revokes the Delegate with the given email on the Goal. It
 // is the web-facing convenience over RemoveDelegate. An email with no account is
-// rejected.
+// rejected, but only once the actor may remove a Delegate.
 func (s *Service) RemoveDelegateByEmail(ctx context.Context, actorID, goalID int64, email string) error {
-	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Refuse(ErrValidation, "no account with email %q", email)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.delegatesGoal(ctx, actorID, goalID, actRemoveDelegate); err != nil {
+			return err
 		}
-		return fmt.Errorf("look up account: %w", err)
-	}
-	return s.RemoveDelegate(ctx, actorID, goalID, acc.ID)
+		accountID, err := tx.accountIDWithEmail(ctx, email)
+		if err != nil {
+			return err
+		}
+		return tx.RemoveDelegate(ctx, actorID, goalID, accountID)
+	})
 }
 
 // ListDelegates returns the Accounts an Owner has authorized to write Check-ins

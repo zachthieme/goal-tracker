@@ -178,6 +178,20 @@ func (s *Service) AccountByEmail(ctx context.Context, emailAddr string) (Account
 	return accountFromRow(a), nil
 }
 
+// accountIDWithEmail is the ID of the Account with emailAddr, as
+// AccountByEmail finds it, for a by-email command once it has authorized its
+// actor: an email with no Account is ErrValidation, naming it.
+func (s *Service) accountIDWithEmail(ctx context.Context, emailAddr string) (int64, error) {
+	a, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(emailAddr))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, Refuse(ErrValidation, "no account with email %q", emailAddr)
+		}
+		return 0, fmt.Errorf("look up account: %w", err)
+	}
+	return a.ID, nil
+}
+
 // SetName records the Name the company's sign-in supplies for the person behind
 // accountID (CONTEXT.md: Name); a blank name clears it. Nothing in the tool lets
 // anyone type a Name: this is the seam a sign-in integration, or the seed,
@@ -378,10 +392,15 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 	return adminRefusal(accountFromRow(actor))
 }
 
-// adminRefusal is requireAdmin's rule for actor, an Account that exists.
+// adminRefusal is requireAdmin's rule for actor, an Account that exists: an
+// Admin who hasn't Departed, since a Departed person can't act (CONTEXT.md:
+// Departed).
 func adminRefusal(actor Account) error {
 	if !actor.IsAdmin {
 		return Refuse(ErrNotAuthorized, "only an Admin may do this")
+	}
+	if actor.Departed {
+		return Refuse(ErrNotAuthorized, "a Departed Admin can't do this")
 	}
 	return nil
 }

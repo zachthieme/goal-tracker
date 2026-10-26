@@ -1211,3 +1211,60 @@ func TestRestoreHandoffRefusesWhenItNoLongerFits(t *testing.T) {
 		})
 	}
 }
+
+// Starting a Handoff or reassigning a Goal by email asks whether the actor
+// may before it looks the email up: someone not permitted who names an email
+// no one has is refused as not permitted, and only one permitted — the Owner
+// starting a Handoff, an Admin reassigning an Ownerless Goal — hears that no
+// Account has it.
+func TestHandoffByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	olive := h.SignIn("olive@example.com")
+	rita := h.SignIn("rita@example.com")
+	present := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	ownerless := h.ActiveGoal(olive, "Ship export", "People can't leave.")
+	h.MarkDeparted(admin, olive)
+
+	for _, c := range []struct {
+		name      string
+		permitted domain.Account
+		run       func(actorID int64) error
+	}{
+		{"StartHandoffByEmail", sam, func(actorID int64) error {
+			_, err := h.Service.StartHandoffByEmail(ctx, present.ID, "nobody@example.com", actorID)
+			return err
+		}},
+		{"ReassignGoalByEmail", admin, func(actorID int64) error {
+			_, err := h.Service.ReassignGoalByEmail(ctx, actorID, ownerless.ID, "nobody@example.com")
+			return err
+		}},
+	} {
+		if err := c.run(rita.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s of an unknown email by someone not permitted = %v, want ErrNotAuthorized", c.name, err)
+		}
+		if err := c.run(c.permitted.ID); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+			t.Errorf("%s of an unknown email by %s = %v, want ErrValidation that no account has it", c.name, c.permitted.Email, err)
+		}
+	}
+}
+
+// Starting a Handoff or reassigning a Goal by email on a Goal that doesn't
+// exist is refused as StartHandoff and ReassignGoal refuse it, whatever the
+// email.
+func TestHandoffByEmailRefusesAMissingGoal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	if _, err := h.Service.StartHandoffByEmail(ctx, 9999, "nobody@example.com", admin.ID); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
+		t.Errorf("StartHandoffByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	}
+	if _, err := h.Service.ReassignGoalByEmail(ctx, admin.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
+		t.Errorf("ReassignGoalByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	}
+}

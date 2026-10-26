@@ -248,3 +248,51 @@ func TestListDelegatesForGoalsReadsEachGoalsDelegates(t *testing.T) {
 		t.Errorf("Work alone's Delegates %+v, want no entry", d)
 	}
 }
+
+// Adding or removing a Delegate by email asks whether the actor may manage
+// the Goal's Delegates before it looks the email up: someone else naming an
+// email no one has is refused as not permitted, and only the Owner hears that
+// no Account has it.
+func TestDelegateByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	rita := h.SignIn("rita@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+
+	for _, c := range []struct {
+		name string
+		run  func(actorID int64) error
+	}{
+		{"AddDelegateByEmail", func(actorID int64) error {
+			return h.Service.AddDelegateByEmail(ctx, actorID, goal.ID, "nobody@example.com")
+		}},
+		{"RemoveDelegateByEmail", func(actorID int64) error {
+			return h.Service.RemoveDelegateByEmail(ctx, actorID, goal.ID, "nobody@example.com")
+		}},
+	} {
+		if err := c.run(rita.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s of an unknown email by someone else = %v, want ErrNotAuthorized", c.name, err)
+		}
+		if err := c.run(sam.ID); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+			t.Errorf("%s of an unknown email by the Owner = %v, want ErrValidation that no account has it", c.name, err)
+		}
+	}
+}
+
+// Adding or removing a Delegate by email on a Goal that doesn't exist is
+// refused as AddDelegate and RemoveDelegate refuse it, whatever the email.
+func TestDelegateByEmailRefusesAMissingGoal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+
+	if err := h.Service.AddDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
+		t.Errorf("AddDelegateByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	}
+	if err := h.Service.RemoveDelegateByEmail(ctx, sam.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "goal does not exist" {
+		t.Errorf("RemoveDelegateByEmail on a missing Goal = %v, want ErrValidation that the goal does not exist", err)
+	}
+}
