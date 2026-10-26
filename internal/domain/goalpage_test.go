@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,7 +220,7 @@ func TestGoalPagePermitsNothingToAViewerWithNoAccount(t *testing.T) {
 // What the Goal page's loader works out for a Goal with a parent and a child,
 // Check-ins, Milestones and a Metric — its Rolled-up Health, Run off Green,
 // freshness, Health strip and signals — is what the separate Service methods
-// give for the same Goal.
+// give for the same Goal, and it judges a No change on it.
 func TestGoalPageDerivesWhatTheServiceMethodsGive(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -307,9 +308,14 @@ func TestGoalPageDerivesWhatTheServiceMethodsGive(t *testing.T) {
 		t.Fatalf("MilestoneChangesOutsideCheckins: %v", err)
 	}
 	same(t, "Milestone additions", p.MilestoneAdditions, additions)
-	refusal := h.Service.NoChangeRefusal(ctx, g.ID)
-	if refusal == nil || p.NoChangeRefusal == nil || p.NoChangeRefusal.Error() != refusal.Error() {
-		t.Errorf("No change refusal = %v, want NoChangeRefusal's %v", p.NoChangeRefusal, refusal)
+	// Its No change is judged as NoChangeRefusal judges one: the Red repeats
+	// its explanation of the Yellow roll-up, but the Beta due in ten days has
+	// since gone overdue.
+	if want := `Milestone "Beta" is overdue`; p.NoChangeRefusal == nil || !strings.HasPrefix(domain.Reason(p.NoChangeRefusal), want) {
+		t.Errorf("No change refusal = %v, want %s", p.NoChangeRefusal, want)
+	}
+	if p.OverdueMilestone == nil || p.OverdueMilestone.Name != "Beta" {
+		t.Errorf("OverdueMilestone = %+v, want Beta", p.OverdueMilestone)
 	}
 }
 
