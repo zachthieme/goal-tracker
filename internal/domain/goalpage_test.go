@@ -321,3 +321,34 @@ func same[T any](t *testing.T, what string, got, want T) {
 		t.Errorf("GoalPage's %s = %+v, want the Service method's %+v", what, got, want)
 	}
 }
+
+// The Goal page carries the Goal's first overdue Planned Milestone, as of today
+// in its timezone, with or without a Check-in and whatever its Health, so the
+// Check-in form never starts from a Green the Milestone rules out (#566).
+func TestGoalPageCarriesTheOverdueMilestone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	overdue := func() *domain.Milestone {
+		t.Helper()
+		p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+		if err != nil {
+			t.Fatalf("GoalPage: %v", err)
+		}
+		return p.OverdueMilestone
+	}
+
+	if m := overdue(); m != nil {
+		t.Errorf("before Beta's date, OverdueMilestone = %+v, want none", *m)
+	}
+	h.Clock.Advance(100 * 24 * time.Hour) // past Beta's date
+	if m := overdue(); m == nil || m.Name != "Beta" {
+		t.Errorf("with no Check-in, OverdueMilestone = %+v, want Beta", m)
+	}
+	h.Checkin(sam, g.ID, domain.HealthYellow, "Slipping.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 7))
+	if m := overdue(); m == nil || m.Name != "Beta" {
+		t.Errorf("after a Yellow Check-in, OverdueMilestone = %+v, want Beta", m)
+	}
+}
