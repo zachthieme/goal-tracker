@@ -243,7 +243,7 @@ templ followUpRow(current *domain.Account, today time.Time, here string, r follo
 // followUpTip opening what its signal means; a chip holding a person or a link
 // keeps them after its followUpTip, since a button can't hold them. A chip
 // that shows its signal's plain name reads it with followUpName.
-templ followUpChip(today time.Time, g domain.Goal, sig followUpSignal) {
+templ followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) {
 	switch sig.Kind {
 		case "red", "yellow":
 		case "asks-for-help":

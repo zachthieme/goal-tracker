@@ -1128,7 +1128,7 @@ func followUpRow(current *domain.Account, today time.Time, here string, r follow
 // followUpTip opening what its signal means; a chip holding a person or a link
 // keeps them after its followUpTip, since a button can't hold them. A chip
 // that shows its signal's plain name reads it with followUpName.
-func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Component {
+func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
