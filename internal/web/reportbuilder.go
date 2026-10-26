@@ -571,7 +571,7 @@ func ruleAttributes(dims []domain.Dimension, owners, orgPeople []domain.Account,
 	attribute(domain.RuleOrg, "Owner's org", people(orgPeople))
 	out[len(out)-1].Retired = !anyManager
 	var lifecycles, healths [][2]string
-	for _, l := range []string{domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled} {
+	for _, l := range domain.Lifecycles() {
 		lifecycles = append(lifecycles, [2]string{l, l})
 	}
 	for _, h := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {

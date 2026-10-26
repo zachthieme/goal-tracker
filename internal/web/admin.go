@@ -280,7 +280,7 @@ func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, 
 func awaitingReassignment(goals []domain.Goal) []domain.Goal {
 	var out []domain.Goal
 	for _, g := range goals {
-		if g.Ownerless && g.Lifecycle != domain.LifecycleDone && g.Lifecycle != domain.LifecycleCancelled {
+		if g.Ownerless && !domain.LifecycleEnded(g.Lifecycle) {
 			out = append(out, g)
 		}
 	}

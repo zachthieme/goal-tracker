@@ -250,17 +250,6 @@ func (s *Service) AddMilestone(ctx context.Context, actorID int64, in AddMilesto
 // Owner or a Delegate who tries to change its Milestones.
 var errMilestonesOwnerOrDelegateOnly = Refuse(ErrNotAuthorized, "only the Owner or a Delegate may change this Goal's Milestones")
 
-// milestonesAddable reports whether a Goal in lifecycle takes a Milestone
-// added outside a Check-in: until it is Done or Cancelled (CONTEXT.md:
-// Milestone).
-func milestonesAddable(lifecycle string) bool {
-	switch lifecycle {
-	case LifecycleProposed, LifecycleActive, LifecycleOnHold:
-		return true
-	}
-	return false
-}
-
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
 // Goal page, as authorID: only its Owner or a Delegate may, and only while the
 // Goal is Proposed, Active or On Hold. Those are checked first, so no one else

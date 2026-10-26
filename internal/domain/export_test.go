@@ -55,3 +55,15 @@ func SetGoalLifecycleFrom(ctx context.Context, s *Service, goalID int64, change 
 		return tx.setGoalLifecycle(ctx, goalID, change)
 	})
 }
+
+// LifecycleTakesNoCheckinsRefusal is lifecycleTakesNoCheckinsRefusal, the
+// refusal of a Check-in on a Goal in lifecycle, one that takes none.
+func LifecycleTakesNoCheckinsRefusal(lifecycle string) error {
+	return lifecycleTakesNoCheckinsRefusal(lifecycle)
+}
+
+// SuggestParentLifecycleSentence is the sentence suggestParentRefusal refuses
+// a parent suggestion for a Goal in a Lifecycle that takes none with.
+func SuggestParentLifecycleSentence() string {
+	return suggestParentLifecycleSentence()
+}

@@ -75,7 +75,7 @@ func (s *Service) membershipChanges(ctx context.Context, r Report, since func(ti
 	}
 	var ended []int64
 	for _, g := range left {
-		if hasEnded(g) {
+		if LifecycleEnded(g.Lifecycle) {
 			ended = append(ended, g.ID)
 		}
 	}

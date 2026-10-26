@@ -95,7 +95,7 @@ func TestSuggestParentByADelegate(t *testing.T) {
 // A suggestion is refused, recording nothing, when the parent is already
 // linked or Pending for the Goal, already suggested and still open (naming who
 // suggested it), the Goal itself, or would make a cycle; and when the Goal or
-// the parent is anything but Active or Proposed.
+// the parent is anything but Proposed or Active.
 func TestSuggestParentRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -273,7 +273,7 @@ func TestDeclineParentSuggestionAndUndo(t *testing.T) {
 }
 
 // An Undo of a decline is refused, leaving it declined, once the link has
-// been requested since, or the Goal or parent is no longer Active or Proposed.
+// been requested since, or the Goal or parent is no longer Proposed or Active.
 func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
 	t.Parallel()
 

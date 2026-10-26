@@ -446,7 +446,7 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 		}
 	case RuleLifecycle:
 		kind = "a Lifecycle"
-		known = func(v string) (bool, error) { return slices.Contains(lifecycles, v), nil }
+		known = func(v string) (bool, error) { return slices.Contains(Lifecycles(), v), nil }
 	case RuleHealth:
 		kind = "a Health"
 		known = func(v string) (bool, error) { return validHealth(v), nil }
@@ -464,9 +464,6 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 	}
 	return "", nil
 }
-
-// lifecycles are every Lifecycle a Goal can be in.
-var lifecycles = []string{LifecycleProposed, LifecycleActive, LifecycleOnHold, LifecycleDone, LifecycleCancelled}
 
 // validateReportFields refuses a chosen Field that doesn't exist or is
 // Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired) —
@@ -583,7 +580,7 @@ func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since f
 	}
 	var ended []int64
 	for _, sg := range slices.Concat(candidates, excluded) {
-		if hasEnded(sg.Goal) {
+		if LifecycleEnded(sg.Goal.Lifecycle) {
 			ended = append(ended, sg.Goal.ID)
 		}
 	}
@@ -702,16 +699,11 @@ func meetsRulesGiven(rules []ReportRule, subject ruleSubject, h goalHistory, sin
 	return true
 }
 
-// hasEnded reports whether g is Done or Cancelled.
-func hasEnded(g Goal) bool {
-	return g.Lifecycle == LifecycleDone || g.Lifecycle == LifecycleCancelled
-}
-
 // finishedBeforeGiven reports whether g was Done or Cancelled before the
 // baseline: it is now, and the Check-in that moved it there, found among its
 // Check-ins, newest first, in checkins, isn't since.
 func finishedBeforeGiven(g Goal, checkins []Checkin, since func(time.Time) bool) bool {
-	if !hasEnded(g) {
+	if !LifecycleEnded(g.Lifecycle) {
 		return false
 	}
 	// Newest first, so the first that moved it to its Lifecycle moved it last.

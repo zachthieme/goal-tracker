@@ -49,7 +49,7 @@ const (
 // SuggestParent suggests, on behalf of actorID, that goalID contribute to
 // parentID, with an optional note. Anyone signed in may but the Goal's Owner,
 // who requests the link instead (RequestLink). The Goal and the parent must
-// each be Active or Proposed. It is refused when the parent is already linked
+// each be Proposed or Active. It is refused when the parent is already linked
 // or Pending for the Goal, or already suggested and still open, and with
 // ErrCycle when the link would make a cycle (ADR-0001).
 func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID int64, note string) (ParentSuggestion, error) {
@@ -68,8 +68,8 @@ func (s *Service) SuggestParent(ctx context.Context, actorID, goalID, parentID i
 			}
 			return fmt.Errorf("look up parent goal: %w", err)
 		}
-		if !suggestable(parent.Goal.Lifecycle) {
-			return Refuse(ErrValidation, "only an Active or Proposed Goal can be suggested as a parent")
+		if !LifecycleSuggestable(parent.Goal.Lifecycle) {
+			return Refuse(ErrValidation, "only %s Goal can be suggested as a parent", lifecycleNamesWhereWithArticle(LifecycleSuggestable))
 		}
 		if link, err := tx.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
 			ChildID:  goalID,
@@ -177,7 +177,7 @@ func (s *Service) DeclineParentSuggestion(ctx context.Context, actorID, suggesti
 // them, within UndoWindow, and only once. Presenting the token spends it, even
 // when the Undo is then refused. It is refused, changing nothing, when the
 // link it proposes has been requested or made since, when the Goal or the
-// parent is no longer Active or Proposed, or when the same parent has been
+// parent is no longer Proposed or Active, or when the same parent has been
 // suggested again since and is still open.
 func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, suggestionID int64, token string) error {
 	p, err := s.ParentSuggestion(ctx, suggestionID)
@@ -206,8 +206,8 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 		if err != nil {
 			return err
 		}
-		if !suggestable(goal.Lifecycle) || !suggestable(parent.Lifecycle) {
-			return Refuse(ErrValidation, "the Goal or its suggested parent is no longer Active or Proposed")
+		if !LifecycleSuggestable(goal.Lifecycle) || !LifecycleSuggestable(parent.Lifecycle) {
+			return Refuse(ErrValidation, "the Goal or its suggested parent is no longer %s", lifecycleNamesWhere(LifecycleSuggestable))
 		}
 		if open, err := tx.queries.GetOpenParentSuggestionFor(ctx, db.GetOpenParentSuggestionForParams{
 			GoalID:   p.Goal.ID,
@@ -314,7 +314,7 @@ func (s *Service) SuggestableParents(ctx context.Context, goalID int64) ([]Goal,
 	}
 	var out []Goal
 	for _, g := range all {
-		if !skip[g.ID] && suggestable(g.Lifecycle) {
+		if !skip[g.ID] && LifecycleSuggestable(g.Lifecycle) {
 			out = append(out, g)
 		}
 	}
@@ -392,12 +392,6 @@ func suggestionFromRow(p db.ParentSuggestion, goal db.Goal, goalOwner db.Account
 		CreatedAt:   createdAt,
 		ClosedAt:    closedAt,
 	}
-}
-
-// suggestable reports whether a Goal in lifecycle may have a parent suggested
-// for it, or be suggested as one: only while it is Active or Proposed.
-func suggestable(lifecycle string) bool {
-	return lifecycle == LifecycleActive || lifecycle == LifecycleProposed
 }
 
 // closeSuggestionsForLink closes the open suggestions of parentID for goalID

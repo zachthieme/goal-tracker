@@ -38,21 +38,6 @@ type Goal struct {
 	TopLevel bool
 }
 
-// Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle). A Goal starts
-// Proposed and is activated through the activation gate; after that its
-// Lifecycle changes only in a Check-in (see lifecycle.go).
-//
-// Each name starts Lifecycle: the CHECK test on goals.lifecycle and a
-// Check-in's lifecycle_from and lifecycle_to finds its values by that prefix
-// (enumchecks_test.go), so a value named otherwise goes unchecked.
-const (
-	LifecycleProposed  = "Proposed"
-	LifecycleActive    = "Active"
-	LifecycleOnHold    = "On Hold"
-	LifecycleDone      = "Done"
-	LifecycleCancelled = "Cancelled"
-)
-
 // Goal kinds. A Dated Goal has a delivery date; an Ongoing Goal has none and is
 // judged against its Metrics (CONTEXT.md: Dated Goal, Ongoing Goal). A fresh
 // Proposed Goal is neither yet, carrying the empty kind.

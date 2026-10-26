@@ -56,10 +56,12 @@ type checkinPlan struct {
 func judgeCheckin(in SubmitCheckinInput, facts checkinFacts) (checkinPlan, error) {
 	// The Owner writes a Goal's Check-ins, as may any Delegate the Owner has
 	// authorized; the Check-in records its author and still credits the Owner it
-	// speaks for (CONTEXT.md: Delegate). One that moves its Lifecycle moves it
-	// only as LifecycleChangesFrom allows.
+	// speaks for (CONTEXT.md: Delegate). One that leaves its Lifecycle as it
+	// is must be allowed to (lifecycleKeptRefusal), and one that moves it moves
+	// it only as LifecycleChangesFrom allows (lifecycleChangeRefusal); the plan
+	// then asks only for the move's reason or outcome.
 	g := facts.goal
-	refusal := checkInRefusal(facts.actor, g)
+	refusal := lifecycleKeptRefusal(facts.actor, g)
 	if in.Lifecycle != "" && in.Lifecycle != g.Lifecycle {
 		refusal = lifecycleChangeRefusal(facts.actor, g, in.Lifecycle)
 	}

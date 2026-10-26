@@ -246,12 +246,6 @@ func checkInRefusal(a goalActor, g Goal) error {
 	return nil
 }
 
-// lifecycleTakesNoCheckinsRefusal refuses a Check-in on a Goal in lifecycle,
-// one LifecycleTakesCheckins says takes none, naming the Lifecycles that do.
-func lifecycleTakesNoCheckinsRefusal(lifecycle string) error {
-	return Refuse(ErrValidation, "a %s Goal can't be checked in on: only an Active or On Hold Goal takes Check-ins", lifecycle)
-}
-
 // noChangeCheckinRefusal is SubmitNoChangeCheckin's rule: those
 // checkinAuthorRuleRefusal allows, while g is Active. Whether one would then
 // be recorded is the No change verdict's (judgeNoChange).
@@ -267,12 +261,12 @@ func noChangeCheckinRefusal(a goalActor, g Goal) error {
 
 // milestoneAdditionRefusal is AddMilestoneAsAuthor's rule: those
 // milestoneEditorRefusal allows, until g is Done or Cancelled
-// (milestonesAddable).
+// (LifecycleTakesMilestones).
 func milestoneAdditionRefusal(a goalActor, g Goal) error {
 	if err := milestoneEditorRefusal(a, g); err != nil {
 		return err
 	}
-	if !milestonesAddable(g.Lifecycle) {
+	if !LifecycleTakesMilestones(g.Lifecycle) {
 		return Refuse(ErrValidation, "a %s Goal's Milestones can't change", g.Lifecycle)
 	}
 	return nil
@@ -373,8 +367,8 @@ func activateGoalRefusal(a goalActor, g Goal) error {
 }
 
 // suggestParentRefusal is SuggestParent's rule: anyone with an Account but
-// g's Owner, who requests the link instead, while g is Active or Proposed
-// (suggestable). A Departed person can't act (CONTEXT.md: Departed).
+// g's Owner, who requests the link instead, while g is Proposed or Active
+// (LifecycleSuggestable). A Departed person can't act (CONTEXT.md: Departed).
 func suggestParentRefusal(a goalActor, g Goal) error {
 	if a.id == g.Owner.ID {
 		return Refuse(ErrNotAuthorized, "the Goal's Owner links it to a parent rather than suggesting one")
@@ -386,10 +380,17 @@ func suggestParentRefusal(a goalActor, g Goal) error {
 	} else if acc.Departed {
 		return departedRefusal("suggest a parent")
 	}
-	if !suggestable(g.Lifecycle) {
-		return Refuse(ErrValidation, "a parent can only be suggested for an Active or Proposed Goal")
+	if !LifecycleSuggestable(g.Lifecycle) {
+		return Refuse(ErrValidation, "%s", suggestParentLifecycleSentence())
 	}
 	return nil
+}
+
+// suggestParentLifecycleSentence is why suggestParentRefusal refuses a Goal
+// in a Lifecycle LifecycleSuggestable says takes no parent suggestion, naming
+// those that do.
+func suggestParentLifecycleSentence() string {
+	return "a parent can only be suggested for " + lifecycleNamesWhereWithArticle(LifecycleSuggestable) + " Goal"
 }
 
 // decideSuggestionRefusal is the rule for accepting or declining a Parent
@@ -456,22 +457,6 @@ func lifecycleKeptRefusal(a goalActor, g Goal) error {
 	return lifecycleKeepRefusal(g.Lifecycle)
 }
 
-// LifecycleChangesFrom are the Lifecycles a Check-in may move a Goal in
-// lifecycle to (CONTEXT.md: Lifecycle): an Active Goal may go On Hold, be
-// marked Done or be Cancelled, and an On Hold one resumed to Active or
-// Cancelled. Every other Lifecycle is closed to Check-ins, so has none: a
-// Proposed Goal becomes Active through the activation gate, and Done and
-// Cancelled are end states. planLifecycleChange allows just these.
-func LifecycleChangesFrom(lifecycle string) []string {
-	switch lifecycle {
-	case LifecycleActive:
-		return []string{LifecycleOnHold, LifecycleDone, LifecycleCancelled}
-	case LifecycleOnHold:
-		return []string{LifecycleActive, LifecycleCancelled}
-	}
-	return nil
-}
-
 // lifecycleChangeRefusal is SubmitCheckin's rule for a Check-in moving g to
 // lifecycle to: those checkInRefusal allows, when LifecycleChangesFrom
 // offers it.
@@ -480,7 +465,7 @@ func lifecycleChangeRefusal(a goalActor, g Goal, to string) error {
 		return err
 	}
 	if !slices.Contains(LifecycleChangesFrom(g.Lifecycle), to) {
-		return inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", g.Lifecycle, to)
+		return lifecycleMoveRefusal(g.Lifecycle, to)
 	}
 	return nil
 }

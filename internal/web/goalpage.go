@@ -167,7 +167,7 @@ type goalAction struct {
 
 // actions lists the action menu's items the viewer may use, in menu order:
 // each opens its form in place, but some lead to pages of their own. Suggest a
-// parent, for anyone but the Owner of an Active or Proposed Goal, leads to its
+// parent, for anyone but the Owner of an Proposed or Active Goal, leads to its
 // form (CONTEXT.md: Parent suggestion); Add a child Goal, which anyone may
 // use, to the New goal form with this Goal picked as the parent; and the
 // Lifecycle changes, last, to the Check-in page with that change picked.
