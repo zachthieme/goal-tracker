@@ -25,6 +25,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Testing:**
 - [internal] The Handoff tests run a Reassign and an Accept one after the other, in each order, so the error each loser gets is checked on every run, not only when the race lands that way (#547).
+- [internal] The test database template's cache name now also covers the Go code that builds it (`internal/db/migrate.go`, `open.go` and the harness's new `template.go`) and the `modernc.org/sqlite` version, so a change to any of them builds a new template without bumping a constant (`templateFormat` is gone). Building a template now deletes only other templates unused for a day, and each read marks its template used, so two checkouts testing at once keep sharing their own (#540).
 
 **Code quality:**
 - [internal] `.golangci.yml` notes that contextcheck doesn't check inside a templ component's body, so a helper called there that drops the context isn't reported (#547).
