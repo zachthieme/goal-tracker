@@ -805,11 +805,11 @@ func replanCheckin(t *testing.T, h *testsupport.Harness, sam domain.Account, tit
 	if err != nil || len(ms) != 1 {
 		t.Fatalf("ListMilestones: %v %v", ms, err)
 	}
-	rollout, err := h.Service.AddMilestone(ctx, goal.Owner.ID, domain.AddMilestoneInput{
+	rollout, err := h.Service.AddMilestoneAsAuthor(ctx, goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
 	})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	gaDate = goal.DeliveryDate.AddDate(0, 0, -7)
 	in := domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Re-planned."}
@@ -922,11 +922,11 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 		t.Fatalf("ListMilestones: %v %v", ms, err)
 	}
 	beta := ms[0]
-	rollout, err := h.Service.AddMilestone(ctx, goal.Owner.ID, domain.AddMilestoneInput{
+	rollout, err := h.Service.AddMilestoneAsAuthor(ctx, goal.Owner.ID, domain.AddMilestoneInput{
 		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
 	})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")

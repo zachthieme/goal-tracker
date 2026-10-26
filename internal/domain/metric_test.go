@@ -81,6 +81,19 @@ func TestAddMetricValidatesInput(t *testing.T) {
 			}
 		})
 	}
+
+	// Every problem comes back, each on its own line, not only the first.
+	t.Run("no name and no unit", func(t *testing.T) {
+		in := validMetric(g.ID)
+		in.Name, in.Unit = "", " "
+		_, err := h.Service.AddMetric(context.Background(), owner.ID, in)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("err = %v, want ErrValidation", err)
+		}
+		if got, want := domain.Reason(err), "a Metric needs a name\na Metric needs a unit"; got != want {
+			t.Errorf("Reason = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestEditMetricChangesFields(t *testing.T) {

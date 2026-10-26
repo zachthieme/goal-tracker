@@ -314,8 +314,8 @@ func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testin
 	changes("entered", 2)
 	h.ActiveGoal(boss, "New, and so entered", "why")
 	changes("created and entered", 3)
-	if _, err := h.Service.AddMilestone(ctx, gainedMilestone.Owner.ID, domain.AddMilestoneInput{GoalID: gainedMilestone.ID, Name: "GA", TargetDate: h.Clock.Now().AddDate(0, 2, 0)}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, gainedMilestone.Owner.ID, domain.AddMilestoneInput{GoalID: gainedMilestone.ID, Name: "GA", TargetDate: h.Clock.Now().AddDate(0, 2, 0)}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	changes("gained a Milestone", 4)
 	moveLifecycle(t, h, boss, paused, domain.LifecycleOnHold)

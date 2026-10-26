@@ -2372,10 +2372,10 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 	h.SignIn("ada@example.com")
 	h.SignIn("pat@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestone(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
 		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	ts := newServer(t, h)
@@ -2460,10 +2460,10 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	dana := h.SignIn("dana@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestone(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
 		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dana, active.ID)
@@ -2510,10 +2510,10 @@ func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
 	h.SignIn("ada@example.com")
 	h.SignIn("pat@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
 		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	h.AddDelegate(sam, dana, proposed.ID)
 	ts := newServer(t, h)
@@ -7803,11 +7803,11 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	h.SignIn("pat@example.com")
 	g, metricID := ownerOnlyGoal(t, h, sam)
-	milestone, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+	milestone, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
 		GoalID: g.ID, Name: "Beta cut", TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	bare := h.CreateGoal(sam, "Bare goal", "Some reason.")
 	ts := newServer(t, h)
@@ -7891,11 +7891,11 @@ func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 		h.CreateGoal(sam, title, "Some reason.")
 	}
 	g, metricID := ownerOnlyGoal(t, h, sam)
-	milestone, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+	milestone, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
 		GoalID: g.ID, Name: "Beta cut", TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	if milestone.ID == g.ID || metricID == g.ID {
 		t.Fatalf("Milestone %d and Metric %d must not share Goal %d's id", milestone.ID, metricID, g.ID)

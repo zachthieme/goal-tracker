@@ -238,10 +238,6 @@ func TestGoalCommandsAnswerAMissingGoalNotFound(t *testing.T) {
 			})
 			return err
 		}},
-		{"AddMilestone", func(id int64) error {
-			_, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: id, Name: "Beta", TargetDate: due})
-			return err
-		}},
 		{"AddMilestoneAsAuthor", func(id int64) error {
 			_, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{GoalID: id, Name: "Beta", TargetDate: due})
 			return err
@@ -343,9 +339,9 @@ func TestGoalCommandsRefuseUnparsedInputFromAnyoneWithNoRight(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	g := h.CreateGoal(sam, "Ship search", "People can't find things.")
 	due := h.Clock.Now().AddDate(0, 3, 0)
-	milestone, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: due})
+	milestone, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: due})
 	if err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	metric, err := h.Service.AddMetric(ctx, sam.ID, validMetric(g.ID))
 	if err != nil {

@@ -105,10 +105,10 @@ func TestCheckinPageAgreesWithTheGoalPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, sam.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{
 		GoalID: g.ID, Name: "Beta", TargetDate: h.Clock.Now().AddDate(0, 0, 10),
 	}); err != nil {
-		t.Fatalf("AddMilestone: %v", err)
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	h.Checkin(sam, child.ID, domain.HealthYellow, "Slow going.", "Add an indexer.", h.Clock.Now().AddDate(0, 0, 30))
 	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{

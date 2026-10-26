@@ -413,7 +413,7 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 // Goal, within the transaction the caller holds.
 func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in DefinedGoalInput) error {
 	for _, m := range in.Milestones {
-		if _, err := s.AddMilestone(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
+		if _, err := s.AddMilestoneAsAuthor(ctx, in.OwnerID, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
 			return err
 		}
 	}
@@ -476,26 +476,12 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 		refuse(InputCadence, "the Check-in cadence must be a positive number of days")
 	}
 	for i, m := range in.Milestones {
-		if strings.TrimSpace(m.Name) == "" {
-			refuse(MilestoneInput(i, "name"), "a Milestone needs a name")
-		}
-		if m.Date.IsZero() {
-			refuse(MilestoneInput(i, "date"), "a Milestone needs a date")
-		}
+		problems = appendInputErrors(problems, milestoneProblems(m.Name, m.Date, MilestoneInput(i, "name"), MilestoneInput(i, "date")))
 	}
 	for i, m := range in.Metrics {
-		if strings.TrimSpace(m.Name) == "" {
-			refuse(MetricInput(i, "name"), "a Metric needs a name")
-		}
-		if strings.TrimSpace(m.Unit) == "" {
-			refuse(MetricInput(i, "unit"), "a Metric needs a unit")
-		}
-		if !validDirection(m.Direction) {
-			refuse(MetricInput(i, "direction"), "a Metric needs a direction of %q or %q", MetricUp, MetricDown)
-		}
-		if m.TargetDate.IsZero() {
-			refuse(MetricInput(i, "target_date"), "a Metric needs a target date")
-		}
+		problems = appendInputErrors(problems, metricProblems(m.Name, m.Unit, m.Direction, m.TargetDate, func(part string) string {
+			return MetricInput(i, part)
+		}))
 	}
 	valueProblems, err := s.checkDefinedValues(ctx, in, carried)
 	if err != nil {
@@ -684,6 +670,25 @@ func (e *InputError) shownReason() string { return e.Message }
 
 func inputError(input, format string, args ...any) *InputError {
 	return &InputError{Input: input, Message: fmt.Sprintf(format, args...)}
+}
+
+// joinInputErrors is a command's refusal of problems, a Goal part's check
+// (milestoneProblems and the like), every one joined in order, or nil when
+// there are none.
+func joinInputErrors(problems []*InputError) error {
+	errs := make([]error, 0, len(problems))
+	for _, p := range problems {
+		errs = append(errs, p)
+	}
+	return errors.Join(errs...)
+}
+
+// appendInputErrors adds more, a Goal part's problems, to problems, in order.
+func appendInputErrors(problems []error, more []*InputError) []error {
+	for _, p := range more {
+		problems = append(problems, p)
+	}
+	return problems
 }
 
 // MilestoneInput names one part ("name", "date") of the i-th Milestone.

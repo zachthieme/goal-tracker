@@ -16,12 +16,12 @@ func (h *Harness) ActiveGoal(owner domain.Account, title, whyItMatters string) d
 	if _, err := h.Service.MarkGoalDated(ctx, owner.ID, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
-	if _, err := h.Service.AddMilestone(ctx, owner.ID, domain.AddMilestoneInput{
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, owner.ID, domain.AddMilestoneInput{
 		GoalID:     g.ID,
 		Name:       "Beta",
 		TargetDate: h.Clock.Now().AddDate(0, 3, 0),
 	}); err != nil {
-		h.T.Fatalf("AddMilestone: %v", err)
+		h.T.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
 	active, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID)
 	if err != nil {
