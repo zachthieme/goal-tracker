@@ -7706,3 +7706,78 @@ func TestGoalPageHasNoContributorsOverHTTP(t *testing.T) {
 		t.Errorf("POST /goals/%d/contributors answered %d, want it gone", goal.ID, resp.StatusCode)
 	}
 }
+
+// A refused Milestone or Metric edit links Back to the Goal it belongs to,
+// not to the Goal whose id is the Milestone's or Metric's (#581): Goals made
+// first take the low ids, so the edited records' ids name other Goals.
+func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	for _, title := range []string{"First goal", "Second goal", "Third goal"} {
+		h.CreateGoal(sam, title, "Some reason.")
+	}
+	g, metricID := ownerOnlyGoal(t, h, sam)
+	milestone, err := h.Service.AddMilestone(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: g.ID, Name: "Beta cut", TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	if milestone.ID == g.ID || metricID == g.ID {
+		t.Fatalf("Milestone %d and Metric %d must not share Goal %d's id", milestone.ID, metricID, g.ID)
+	}
+	ts := newServer(t, h)
+	owner := signInClient(t, ts.URL, "sam@example.com")
+	stranger := signInClient(t, ts.URL, "pat@example.com")
+
+	for _, c := range []struct {
+		name     string
+		recordID int64
+		// route is the edit's path, formatted with a record's id.
+		route string
+		form  url.Values
+		// strangerReason is why a stranger is refused, ownerReason why the
+		// Owner is refused what form sends.
+		strangerReason, ownerReason string
+	}{
+		{"edit milestone", milestone.ID, "/milestones/%d",
+			url.Values{"name": {"Beta"}, "target_date": {"soon"}},
+			"Only the Owner or a Delegate may change this Goal's Milestones.", `"soon" isn't a date.`},
+		{"edit metric", metricID, "/metrics/%d", url.Values{
+			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
+			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
+		}, "Only the Goal's Owner may change its Metrics.", `The baseline must be a number, not "lots".`},
+	} {
+		for _, by := range []struct {
+			who    string
+			client *http.Client
+			status int
+			reason string
+		}{
+			{"a stranger", stranger, http.StatusForbidden, c.strangerReason},
+			{"the Owner", owner, http.StatusUnprocessableEntity, c.ownerReason},
+		} {
+			resp := postForm(t, by.client, ts.URL+fmt.Sprintf(c.route, c.recordID), c.form)
+			defer func() { _ = resp.Body.Close() }()
+			page := parsePage(t, readBody(t, resp))
+			if resp.StatusCode != by.status {
+				t.Errorf("%s by %s: status %d, want %d", c.name, by.who, resp.StatusCode, by.status)
+			}
+			assertRefusalPage(t, page, "Can't change Goal", by.reason, fmt.Sprintf("/goals/%d", g.ID))
+			if link := linkTo(page, fmt.Sprintf("/goals/%d", c.recordID)); link != nil {
+				t.Errorf("%s by %s links to /goals/%d, the Goal sharing its id:\n%s", c.name, by.who, c.recordID, renderNode(page))
+			}
+		}
+
+		// One there isn't is still the Not found page, not a refusal.
+		resp := postForm(t, owner, ts.URL+fmt.Sprintf(c.route, 999), c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusNotFound || !hasTestID(page, "not-found") {
+			t.Errorf("%s on a missing id: status %d, want the Not found page:\n%s", c.name, resp.StatusCode, renderNode(page))
+		}
+	}
+}

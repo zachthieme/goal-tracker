@@ -111,6 +111,31 @@ func TestEditMetricChangesFields(t *testing.T) {
 	}
 }
 
+// Metric reads a Metric by id, or is ErrNotFound for one there isn't.
+func TestMetricReadsTheMetric(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	h.CreateGoal(owner, "Earlier goal", "why")
+	g := h.CreateGoal(owner, "Cut checkout latency", "why")
+	added, err := h.Service.AddMetric(context.Background(), owner.ID, validMetric(g.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	got, err := h.Service.Metric(context.Background(), added.ID)
+	if err != nil {
+		t.Fatalf("Metric: %v", err)
+	}
+	if got.ID != added.ID || got.GoalID != g.ID || got.Name != "p95 checkout latency" {
+		t.Errorf("Metric = %+v, want p95 checkout latency on Goal %d", got, g.ID)
+	}
+	if _, err := h.Service.Metric(context.Background(), added.ID+1); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Metric of an unknown id: err %v, want ErrNotFound", err)
+	}
+}
+
 // A Metric is off target once its target date has passed and its reading
 // hasn't reached the target in its direction; a reading equal to the target is
 // on target, and before or on the target date nothing is off target.

@@ -128,18 +128,29 @@ type EditMetricInput struct {
 	Unparsed []*InputError
 }
 
+// Metric returns the Metric id, or ErrNotFound when there is none. It is
+// read-only and checks no one: a Goal's Metrics show on its page, which
+// everyone signed in may see.
+func (s *Service) Metric(ctx context.Context, id int64) (Metric, error) {
+	row, err := s.queries.GetMetric(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Metric{}, fmt.Errorf("%w: metric %d", ErrNotFound, id)
+		}
+		return Metric{}, fmt.Errorf("look up metric: %w", err)
+	}
+	return metricFromRow(row), nil
+}
+
 // EditMetric changes a Metric's fields. The same rules as AddMetric apply,
 // its Goal's Owner alone, checked first, included. A value the caller couldn't
 // parse (see in.Unparsed) is refused before the rest is checked.
 func (s *Service) EditMetric(ctx context.Context, actorID int64, in EditMetricInput) (Metric, error) {
 	var row db.Metric
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		current, err := tx.queries.GetMetric(ctx, in.MetricID)
+		current, err := tx.Metric(ctx, in.MetricID)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: metric %d", ErrNotFound, in.MetricID)
-			}
-			return fmt.Errorf("look up metric: %w", err)
+			return err
 		}
 		if err := tx.goalRule(ctx, actorID, current.GoalID, metricEditRefusal); err != nil {
 			return err

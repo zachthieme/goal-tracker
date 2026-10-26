@@ -156,7 +156,9 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 
 // handleEditMilestone saves a Milestone's Edit form on the Goal page. A date
 // that doesn't parse is sent on unparsed, so EditMilestone refuses it only
-// once it has checked who sent it.
+// once it has checked who sent it. A refusal returns no Milestone, so it is
+// read again for the refusal page to link Back to its Goal, or Home when it
+// can't be read; the path's id is a Milestone's, not a Goal's.
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -170,7 +172,11 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 		Unparsed:    unparsed,
 	})
 	if err != nil {
-		s.writeCommandResult(w, r, id, err)
+		back := "/home"
+		if refused, lookErr := s.svc.Milestone(r.Context(), id); lookErr == nil {
+			back = goalPath(refused.GoalID)
+		}
+		s.refuse(w, r, "Can't change Goal", back, err)
 		return
 	}
 	s.writeCommandResult(w, r, m.GoalID, nil)
@@ -178,7 +184,8 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 
 // handleEditMetric saves a Metric's Edit form on the Goal page. A number or
 // date that doesn't parse is sent on unparsed, so EditMetric refuses it only
-// once it has checked who sent it.
+// once it has checked who sent it. A refusal links Back to the Metric's Goal,
+// read again as handleEditMilestone reads its Milestone.
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -196,7 +203,11 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 		Unparsed:   unparsed,
 	})
 	if err != nil {
-		s.writeCommandResult(w, r, id, err)
+		back := "/home"
+		if refused, lookErr := s.svc.Metric(r.Context(), id); lookErr == nil {
+			back = goalPath(refused.GoalID)
+		}
+		s.refuse(w, r, "Can't change Goal", back, err)
 		return
 	}
 	s.writeCommandResult(w, r, m.GoalID, nil)

@@ -343,6 +343,20 @@ type EditMilestoneInput struct {
 	Unparsed []*InputError
 }
 
+// Milestone returns the Milestone id, or ErrNotFound when there is none. It
+// is read-only and checks no one: a Goal's Milestones show on its page, which
+// everyone signed in may see.
+func (s *Service) Milestone(ctx context.Context, id int64) (Milestone, error) {
+	row, err := s.queries.GetMilestone(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Milestone{}, fmt.Errorf("%w: milestone %d", ErrNotFound, id)
+		}
+		return Milestone{}, fmt.Errorf("look up milestone: %w", err)
+	}
+	return milestoneFromRow(row), nil
+}
+
 // EditMilestone changes a Milestone's name and date. Only its Goal's Owner or
 // a Delegate may edit it (ErrNotAuthorized), and only while the Goal is
 // Proposed and the Milestone Planned (ErrValidation), by milestoneEditRefusal:
@@ -353,12 +367,9 @@ type EditMilestoneInput struct {
 func (s *Service) EditMilestone(ctx context.Context, actorID int64, in EditMilestoneInput) (Milestone, error) {
 	var row db.Milestone
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		current, err := tx.queries.GetMilestone(ctx, in.MilestoneID)
+		current, err := tx.Milestone(ctx, in.MilestoneID)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: milestone %d", ErrNotFound, in.MilestoneID)
-			}
-			return fmt.Errorf("look up milestone: %w", err)
+			return err
 		}
 		if err := tx.goalRule(ctx, actorID, current.GoalID, func(a goalActor, g Goal) error {
 			return milestoneEditRefusal(a, g, current.Status)
