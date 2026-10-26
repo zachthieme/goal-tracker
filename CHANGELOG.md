@@ -74,6 +74,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `.golangci.yml` notes that contextcheck doesn't check inside a templ component's body, so a helper called there that drops the context isn't reported (#547).
 - [internal] Links, Handoffs, Nudges and Undo answer a refused action with one shared refusal page and one mapping from refusal to status and sentence, with the reason under one test id, `refused-reason` (#572).
 - [internal] The Follow-ups page and a Report rank Health by one `HealthUrgencyRank`, and `sortReportExceptions` says how the Report's order differs from Follow-ups' instead of claiming to match it. The Report-order test now pins no Health and Check-in overdue too (#561).
+- [internal] Each date-bearing Check-in refusal sentence (an overdue Milestone, an off-target Metric, and the No change off-target ending) is written once, in web; the domain's `MilestoneOverdueError` and `GreenOffTargetError` carry only the structure and read as a terse log form with ISO dates (#579).
 
 **Documentation:**
 - [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
