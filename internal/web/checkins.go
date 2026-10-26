@@ -472,9 +472,9 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 // that means "write a full Check-in" (no previous Check-in, a Goal that isn't
 // Active, a Health the roll-up or an overdue Milestone now rules out) lands the
 // reader on the Goal's Check-in page with the reason as the form's error, a
-// sentence reading as the No change card gives it. For htmx it returns 200, so
-// the page is swapped in, and pushes the Check-in page's URL; a plain post gets
-// 422. Anything else is refused (refuse), with Back to the Goal: a Goal that
+// sentence reading as the No change card gives it: htmx gets the page with the
+// Check-in page's URL pushed (answerPushedPage), a plain post gets it at 422.
+// Anything else is refused (refuse), with Back to the Goal: a Goal that
 // doesn't exist gets the Not found page, one the reader may not check in on
 // 403, and a failure a logged 500.
 func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
@@ -487,12 +487,8 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 	case errors.Is(err, domain.ErrNotAuthorized), !view.CanCheckin:
 		s.refuse(w, r, "Can't check in", goalPath(goalID), checkinForbidden(view.Goal))
 	case errors.Is(err, domain.ErrValidation):
-		status := http.StatusUnprocessableEntity
-		if r.Header.Get("HX-Request") == "true" {
-			status = http.StatusOK
-			w.Header().Set("HX-Push-Url", "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
-		}
-		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err)))))
+		page := checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err))))
+		answerPushedPage(w, r, http.StatusUnprocessableEntity, page, "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
 	default:
 		s.refuse(w, r, "Can't check in", goalPath(goalID), err, refuseFailureSaying("The No change couldn't be recorded. Try again."))
 	}
@@ -535,16 +531,15 @@ func plainReasonShown(err error, shown displayDates) string {
 }
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.
-// For an htmx request it returns the form alone at 200 so htmx swaps it in
-// place (htmx does not swap error statuses by default); a plain post gets the
-// whole Check-in page, view, around it at 422 (#587). The form keeps the
+// For an htmx request it returns the form alone for htmx to swap in place
+// (answerSwap); a plain post gets the whole Check-in page, view, around it at 422 (#587). The form keeps the
 // context the Check-in page's loader read for it (checkinView.withContext):
 // the Goal's Rolled-up Health beside the Owner's Health (ADR-0003), its Run
 // off Green for the Path to Green's heading, the latest Check-in's answers as
 // ghost text, and whom an ask would go to.
 func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
-	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, http.StatusOK, checkinForm(data))
+	if isHTMX(r) {
+		answerSwap(w, r, checkinForm(data))
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, checkinPage(&current, view, data))
@@ -555,24 +550,18 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 // Check-in page, view, around it. The form keeps the context the page's loader
 // read for it, as renderCheckinFormError's does.
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
-	if r.Header.Get("HX-Request") == "true" {
-		render(w, r, http.StatusOK, checkinForm(data))
+	if isHTMX(r) {
+		answerSwap(w, r, checkinForm(data))
 		return
 	}
 	render(w, r, http.StatusOK, checkinPage(&current, view, data))
 }
 
 // checkinRedirect returns the reader to the Goal page after a successful
-// Check-in: htmx reloads via HX-Redirect (so history and current Health refresh),
-// a plain post follows a 303.
+// Check-in: htmx reloads the whole page (so history and current Health
+// refresh), a plain post follows a 303 (answerRedirect).
 func (s *Server) checkinRedirect(w http.ResponseWriter, r *http.Request, goalID int64) {
-	target := "/goals/" + strconv.FormatInt(goalID, 10)
-	if r.Header.Get("HX-Request") == "true" {
-		w.Header().Set("HX-Redirect", target)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	answerRedirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10))
 }
 
 // writeCheckinError answers a Check-in on goalID the domain refused with the

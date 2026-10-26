@@ -379,15 +379,14 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		s.renderNarrativeFormAgain(w, r, current, id, in, addNote)
 		return
 	}
-	hx := r.Header.Get("HX-Request") == "true"
+	hx := isHTMX(r)
 	target := narrativeDraftPath(r, id)
 	if err := s.svc.CurateNarrative(r.Context(), current.ID, id, in); err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		case hx && errors.Is(err, domain.ErrValidation):
-			w.Header().Set("HX-Reswap", "none")
-			render(w, r, http.StatusOK, saveStatus("Not saved: "+domain.Reason(err), true))
+			answerUnswapped(w, r, saveStatus("Not saved: "+domain.Reason(err), true))
 		default:
 			s.writeReportError(w, r, "Can't save narrative", target, err)
 		}
@@ -538,7 +537,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if r.Header.Get("HX-Request") == "true" {
+	if isHTMX(r) {
 		if refused {
 			if posted, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
 				s.serverError(w, r, "could not build the draft", err)
@@ -551,8 +550,7 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 			return
 		}
 		chip := newBaselineChip(posted, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-		// htmx swaps only a 2xx answer, so a refusal is 200 too.
-		render(w, r, http.StatusOK, narrativeFormAgain(postedNarrativeForm(posted, chip, r.Form, addNote), status))
+		answerSwap(w, r, narrativeFormAgain(postedNarrativeForm(posted, chip, r.Form, addNote), status))
 		return
 	}
 	// The page shows the narrative as saved, and the form as posted.

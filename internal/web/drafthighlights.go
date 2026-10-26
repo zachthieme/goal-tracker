@@ -26,7 +26,7 @@ func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request,
 		Kind:     r.FormValue("kind"),
 		Note:     r.FormValue("note"),
 	})
-	if r.Header.Get("HX-Request") == "true" && (err == nil || errors.Is(err, domain.ErrValidation)) {
+	if isHTMX(r) && (err == nil || errors.Is(err, domain.ErrValidation)) {
 		s.renderDraftHighlights(w, r, goalID, current, draftHighlightRefusalOf(r, 0, err))
 		return
 	}
@@ -48,7 +48,7 @@ func (s *Server) handleEditDraftHighlight(w http.ResponseWriter, r *http.Request
 		return
 	}
 	draft, err := s.svc.EditDraftHighlight(r.Context(), current.ID, id, r.FormValue("kind"), r.FormValue("note"))
-	if errors.Is(err, domain.ErrValidation) && r.Header.Get("HX-Request") == "true" {
+	if errors.Is(err, domain.ErrValidation) && isHTMX(r) {
 		// The edit was refused for what was typed, so the Draft Highlight
 		// exists and the viewer may see it.
 		if refused, lookErr := s.svc.DraftHighlight(r.Context(), current.ID, id); lookErr == nil {
@@ -81,7 +81,7 @@ func (s *Server) handleDeleteDraftHighlight(w http.ResponseWriter, r *http.Reque
 // for a viewer who may not see it.
 func (s *Server) writeDraftHighlightResult(w http.ResponseWriter, r *http.Request, id int64, draft domain.DraftHighlight, current domain.Account, failed string, err error) {
 	switch {
-	case err == nil && r.Header.Get("HX-Request") == "true":
+	case err == nil && isHTMX(r):
 		s.renderDraftHighlights(w, r, draft.GoalID, current, draftHighlightRefusal{})
 	case err == nil:
 		http.Redirect(w, r, goalPath(draft.GoalID), http.StatusSeeOther)
@@ -119,8 +119,8 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 }
 
 // renderDraftHighlights answers the Highlight editor's htmx post with the Goal
-// page's Draft Highlights block for htmx to swap in place, with 200 even for
-// a refusal, as htmx swaps no error status. A refused log comes back with the
+// page's Draft Highlights block for htmx to swap in place, a refusal included
+// (answerSwap). A refused log comes back with the
 // block's log form open, its reason and what was typed in it, for the editor
 // to open on; a refused edit marks its Draft Highlight the same way. When the
 // page no longer offers the log form, such as once the Goal is Done, a refused
@@ -143,5 +143,5 @@ func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, g
 	if refused.Reason != "" && refused.ID == 0 {
 		view.Open, view.FormError, view.FormInput = formDraftHighlight, refused.Reason, r.PostForm
 	}
-	render(w, r, http.StatusOK, draftHighlightBlock(view, refused))
+	answerSwap(w, r, draftHighlightBlock(view, refused))
 }
