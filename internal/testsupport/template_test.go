@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -22,10 +23,10 @@ func templateTestMigrations(body string) fstest.MapFS {
 }
 
 // templateTestBuilder is a stand-in for the Go source that builds the
-// template, so a test can change one file's contents.
-func templateTestBuilder(migrate string) map[string][]byte {
+// template, a fresh map each call so a test can change one file's contents.
+func templateTestBuilder() map[string][]byte {
 	return map[string][]byte{
-		"internal/db/migrate.go":           []byte(migrate),
+		"internal/db/migrate.go":           []byte("package db // migrates"),
 		"internal/db/open.go":              []byte("package db // opens it"),
 		"internal/testsupport/template.go": []byte("package testsupport // builds it"),
 	}
@@ -33,9 +34,9 @@ func templateTestBuilder(migrate string) map[string][]byte {
 
 // templateTestName is the cache name of the template built from fake inputs,
 // failing the test if it can't be worked out.
-func templateTestName(t *testing.T, migrations fs.FS, builder map[string][]byte, sqliteVersion string) string {
+func templateTestName(t *testing.T, migrations fs.FS, builder map[string][]byte, modules ...string) string {
 	t.Helper()
-	name, err := templateCacheName(migrations, builder, sqliteVersion)
+	name, err := templateCacheName(migrations, builder, modules)
 	if err != nil {
 		t.Fatalf("templateCacheName: %v", err)
 	}
@@ -47,10 +48,10 @@ func templateTestName(t *testing.T, migrations fs.FS, builder map[string][]byte,
 // the same name, so every binary finds the one already built.
 func TestTemplateCacheNameFollowsTheMigrationsContents(t *testing.T) {
 	t.Parallel()
-	builder := templateTestBuilder("package db // migrates")
-	before := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY);"), builder, "v1.61.0")
-	again := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY);"), builder, "v1.61.0")
-	changed := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY, title TEXT);"), builder, "v1.61.0")
+	builder := templateTestBuilder()
+	before := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY);"), builder, "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0")
+	again := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY);"), builder, "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0")
+	changed := templateTestName(t, templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY, title TEXT);"), builder, "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0")
 
 	if again != before {
 		t.Errorf("the same migrations are cached as %q and %q", before, again)
@@ -60,22 +61,29 @@ func TestTemplateCacheNameFollowsTheMigrationsContents(t *testing.T) {
 	}
 }
 
-// A change to the Go code that applies the migrations, or to the SQLite it
-// runs them on, gives the template another cache name, so no test binary
-// copies a template the old code built.
+// A change to any of the Go code that applies the migrations, or to the
+// SQLite it runs them on or the C library that SQLite is translated onto, gives the template another cache name, so no test
+// binary copies a template the old code built.
 func TestTemplateCacheNameFollowsTheCodeThatBuildsIt(t *testing.T) {
 	t.Parallel()
 	migrations := templateTestMigrations("CREATE TABLE goals (id INTEGER PRIMARY KEY);")
-	before := templateTestName(t, migrations, templateTestBuilder("package db // migrates"), "v1.61.0")
+	before := templateTestName(t, migrations, templateTestBuilder(), "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0")
 
-	if again := templateTestName(t, migrations, templateTestBuilder("package db // migrates"), "v1.61.0"); again != before {
+	if again := templateTestName(t, migrations, templateTestBuilder(), "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0"); again != before {
 		t.Errorf("the same inputs are cached as %q and %q", before, again)
 	}
-	if changed := templateTestName(t, migrations, templateTestBuilder("package db // migrates differently"), "v1.61.0"); changed == before {
-		t.Errorf("changed migration code is still cached as %q", before)
+	for path := range templateTestBuilder() {
+		builder := templateTestBuilder()
+		builder[path] = append(builder[path], []byte(" differently")...)
+		if changed := templateTestName(t, migrations, builder, "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.79.0"); changed == before {
+			t.Errorf("a changed %s is still cached as %q", path, before)
+		}
 	}
-	if upgraded := templateTestName(t, migrations, templateTestBuilder("package db // migrates"), "v1.62.0"); upgraded == before {
+	if upgraded := templateTestName(t, migrations, templateTestBuilder(), "modernc.org/sqlite@v1.62.0", "modernc.org/libc@v1.79.0"); upgraded == before {
 		t.Errorf("another modernc.org/sqlite version is still cached as %q", before)
+	}
+	if upgraded := templateTestName(t, migrations, templateTestBuilder(), "modernc.org/sqlite@v1.61.0", "modernc.org/libc@v1.80.0"); upgraded == before {
+		t.Errorf("another modernc.org/libc version is still cached as %q", before)
 	}
 }
 
@@ -189,13 +197,13 @@ func TestReadingACachedTemplateMarksItUsed(t *testing.T) {
 	}
 }
 
-// The SQLite in the template's cache name is the modernc.org/sqlite module
-// the test binary was built with, a replacement's if it is replaced, and
-// "unknown" without build info that records it.
-func TestSQLiteModuleVersionIsTheOneTheBinaryWasBuiltWith(t *testing.T) {
+// The SQLite and libc in the template's cache name are the modernc.org
+// modules the test binary was built with, a replacement's if one is replaced,
+// and "unknown" without build info that records them.
+func TestTemplateModuleVersionIsTheOneTheBinaryWasBuiltWith(t *testing.T) {
 	t.Parallel()
 	recorded := &debug.BuildInfo{Deps: []*debug.Module{
-		{Path: "modernc.org/libc", Version: "v1.79.0"},
+		{Path: "modernc.org/libc", Version: "v1.79.0", Sum: "h1:libc="},
 		{Path: "modernc.org/sqlite", Version: "v1.61.0", Sum: "h1:recorded="},
 	}}
 	replaced := &debug.BuildInfo{Deps: []*debug.Module{
@@ -204,18 +212,55 @@ func TestSQLiteModuleVersionIsTheOneTheBinaryWasBuiltWith(t *testing.T) {
 	without := &debug.BuildInfo{Deps: []*debug.Module{{Path: "modernc.org/libc", Version: "v1.79.0"}}}
 
 	for _, tc := range []struct {
-		name string
-		info *debug.BuildInfo
-		ok   bool
-		want string
+		name   string
+		info   *debug.BuildInfo
+		ok     bool
+		module string
+		want   string
 	}{
-		{"recorded", recorded, true, "modernc.org/sqlite@v1.61.0 h1:recorded="},
-		{"replaced", replaced, true, "../sqlite@ "},
-		{"not a dependency", without, true, "unknown"},
-		{"no build info", nil, false, "unknown"},
+		{"sqlite recorded", recorded, true, "modernc.org/sqlite", "modernc.org/sqlite@v1.61.0 h1:recorded="},
+		{"libc recorded", recorded, true, "modernc.org/libc", "modernc.org/libc@v1.79.0 h1:libc="},
+		{"replaced", replaced, true, "modernc.org/sqlite", "../sqlite@ "},
+		{"not a dependency", without, true, "modernc.org/sqlite", "unknown"},
+		{"no build info", nil, false, "modernc.org/libc", "unknown"},
 	} {
-		if got := sqliteModuleVersion(tc.info, tc.ok); got != tc.want {
-			t.Errorf("%s: sqliteModuleVersion = %q, want %q", tc.name, got, tc.want)
+		if got := templateModuleVersion(tc.info, tc.ok, tc.module); got != tc.want {
+			t.Errorf("%s: templateModuleVersion(%s) = %q, want %q", tc.name, tc.module, got, tc.want)
 		}
+	}
+}
+
+// A builder file the harness can't read fails the template with its name, so
+// a person sees which one is missing rather than a bare "no such file".
+func TestTemplateBuilderSourceNamesTheFileItCannotRead(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	migrate := filepath.Join(root, "internal", "db", "migrate.go")
+	if err := os.MkdirAll(filepath.Dir(migrate), 0o700); err != nil {
+		t.Fatalf("make %s: %v", filepath.Dir(migrate), err)
+	}
+	if err := os.WriteFile(migrate, []byte("package db // migrates"), 0o600); err != nil {
+		t.Fatalf("write %s: %v", migrate, err)
+	}
+
+	_, err := templateBuilderSourceFrom(filepath.Join(root, "internal", "testsupport", "harness.go"))
+
+	if err == nil || !strings.Contains(err.Error(), "internal/db/open.go") {
+		t.Errorf("templateBuilderSourceFrom with no open.go: err = %v, want one naming internal/db/open.go", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "internal/db/migrate.go") {
+		t.Errorf("templateBuilderSourceFrom with no open.go names migrate.go, which is there: %v", err)
+	}
+}
+
+// Built with -trimpath, the harness's own path is the module's import path,
+// not a file on disk, so it can't find the builder's source; it says that
+// rather than failing to open a file a person can't see the reason for.
+func TestTemplateBuilderSourceUnderTrimpathSaysSo(t *testing.T) {
+	t.Parallel()
+	_, err := templateBuilderSourceFrom("github.com/zachthieme/goal-tracker/internal/testsupport/harness.go")
+
+	if err == nil || !strings.Contains(err.Error(), "-trimpath") {
+		t.Errorf("templateBuilderSourceFrom with a module path: err = %v, want one naming -trimpath", err)
 	}
 }
