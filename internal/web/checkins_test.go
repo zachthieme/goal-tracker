@@ -4442,3 +4442,122 @@ func TestACheckinBySomeoneWhoMayNotCheckInAnswersWithTheRefusalPage(t *testing.T
 		t.Errorf("a refused Check-in recorded %d Check-ins, want none", len(history))
 	}
 }
+
+// A refused Check-in posted without htmx, as a browser without JS posts the
+// form, answers 422 with the whole Check-in page around the form: its heading
+// and meta line, the form's error and everything typed. Posted by htmx it
+// answers 200 with the form alone, for htmx to swap in place (#587).
+func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
+	t.Parallel()
+
+	for _, refusal := range []struct {
+		name string
+		// submit is the Goal Sam checks in on and what the form posts.
+		submit func(t *testing.T, h *testsupport.Harness, sam domain.Account) (domain.Goal, url.Values)
+		// shows checks the form says why it was refused.
+		shows func(t *testing.T, doc *html.Node)
+	}{
+		{
+			name: "invalid target date",
+			submit: func(t *testing.T, h *testsupport.Harness, sam domain.Account) (domain.Goal, url.Values) {
+				return h.ActiveGoal(sam, "Reduce outages", "Outages cost trust."), url.Values{
+					"health":           {domain.HealthYellow},
+					"status":           {"Waiting on the vendor."},
+					"path_to_green":    {"A second vendor."},
+					"path_target_date": {"not-a-date"},
+				}
+			},
+			shows: func(t *testing.T, doc *html.Node) {
+				if msg := textOf(findByTestID(t, doc, "checkin-error")); !strings.Contains(msg, "invalid target date") {
+					t.Errorf("the form's error = %q, want it to say the target date is invalid", msg)
+				}
+			},
+		},
+		{
+			name: "refused by the domain",
+			submit: func(t *testing.T, h *testsupport.Harness, sam domain.Account) (domain.Goal, url.Values) {
+				return h.ActiveGoal(sam, "Reduce outages", "Outages cost trust."), url.Values{
+					"health": {domain.HealthYellow},
+					"status": {"Slipping a little."},
+				}
+			},
+			shows: func(t *testing.T, doc *html.Node) {
+				const want = "A Yellow Goal needs a Path to Green"
+				if msg := fieldError(t, doc, "path_target_date"); !strings.HasPrefix(msg, want) {
+					t.Errorf("Path to Green field's error = %q, want it to start %q", msg, want)
+				}
+			},
+		},
+		{
+			name: "off-target warning",
+			submit: func(t *testing.T, h *testsupport.Harness, sam domain.Account) (domain.Goal, url.Values) {
+				goal, idle := offTargetIdleGoal(t, h, sam)
+				return goal, url.Values{
+					"health":                           {domain.HealthGreen},
+					"status":                           {"Old pool nearly drained."},
+					fmt.Sprintf("reading_%d", idle.ID): {"35.5"},
+				}
+			},
+			shows: func(t *testing.T, doc *html.Node) {
+				if warning := textOf(findByTestID(t, doc, "checkin-off-target")); !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
+					t.Errorf("the warning = %q, want it to name the Metric's miss", warning)
+				}
+			},
+		},
+	} {
+		for _, transport := range []struct {
+			name       string
+			post       func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
+			wantStatus int
+			wantPage   bool
+		}{
+			{"htmx", postFormHX, http.StatusOK, false},
+			{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
+				resp := postForm(t, client, rawURL, form)
+				defer func() { _ = resp.Body.Close() }()
+				return readBody(t, resp), resp.StatusCode
+			}, http.StatusUnprocessableEntity, true},
+		} {
+			t.Run(refusal.name+"/"+transport.name, func(t *testing.T) {
+				t.Parallel()
+
+				h := testsupport.New(t)
+				ts := newServer(t, h)
+				sam := h.SignIn("sam@example.com")
+				goal, form := refusal.submit(t, h, sam)
+				before, _ := h.Service.ListCheckins(context.Background(), goal.ID)
+				client := signInClient(t, ts.URL, "sam@example.com")
+
+				body, status := transport.post(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+				if status != transport.wantStatus {
+					t.Errorf("status = %d, want %d", status, transport.wantStatus)
+				}
+				doc := parsePage(t, body)
+				if transport.wantPage {
+					if headingNamed(doc, "Check in") == nil {
+						t.Errorf("the response has no Check in heading:\n%s", body)
+					}
+					findByTestID(t, doc, "checkin-page-meta")
+				} else if headingNamed(doc, "Check in") != nil || hasTestID(doc, "checkin-page-meta") {
+					t.Errorf("the htmx response is more than the form:\n%s", body)
+				}
+				findByTestID(t, doc, "checkin-form")
+				refusal.shows(t, doc)
+				for name, typed := range form {
+					if name == "health" {
+						continue
+					}
+					if got := formField(t, doc, name).Value; got != typed[0] {
+						t.Errorf("form's %s = %q, want %q as typed", name, got, typed[0])
+					}
+				}
+				if got := checkedRadio(doc, "health"); got != form.Get("health") {
+					t.Errorf("form's Health = %q, want %s as picked", got, form.Get("health"))
+				}
+				if after, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(after) != len(before) {
+					t.Errorf("a refused Check-in was recorded: %d Check-ins, want %d", len(after), len(before))
+				}
+			})
+		}
+	}
+}

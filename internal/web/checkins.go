@@ -112,9 +112,9 @@ func lifecycleFromQuery(r *http.Request, l lifecycleFormData) (string, bool) {
 
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the
 // current Account. The form is htmx-driven: on a validation error the form is
-// re-rendered in place with the message next to the field it is about; on
-// success htmx is told to reload the Goal page so the new history and current
-// Health show.
+// re-rendered in place with the message next to the field it is about (a plain
+// post gets the whole Check-in page around it); on success htmx is told to
+// reload the Goal page so the new history and current Health show.
 func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -189,12 +189,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 	date, err := parseDate(rawDate)
 	if err != nil {
-		s.renderCheckinFormError(w, r, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
+		s.renderCheckinFormError(w, r, current, view, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
 		return
 	}
 	readings, err := readingsFromForm(metrics, rawReadings)
 	if err != nil {
-		s.renderCheckinFormError(w, r, formData(err))
+		s.renderCheckinFormError(w, r, current, view, formData(err))
 		return
 	}
 
@@ -220,7 +220,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		ConfirmOffTarget: offTargetConfirmed,
 	}
 	if err := dates.applyTo(&in); err != nil {
-		s.renderCheckinFormError(w, r, formData(err))
+		s.renderCheckinFormError(w, r, current, view, formData(err))
 		return
 	}
 	// The offered rows come first, as on the form, so the domain numbers
@@ -240,11 +240,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		if errors.As(err, &offTarget) {
 			d := formData(nil)
 			d.OffTarget = offTarget.Metrics
-			s.renderCheckinFormError(w, r, d)
+			s.renderCheckinFormError(w, r, current, view, d)
 			return
 		}
 		if errors.Is(err, domain.ErrValidation) {
-			s.renderCheckinFormError(w, r, formData(err))
+			s.renderCheckinFormError(w, r, current, view, formData(err))
 			return
 		}
 		s.writeCheckinError(w, r, goalID, err)
@@ -531,18 +531,19 @@ func plainReasonShown(err error, shown displayDates) string {
 }
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.
-// For an htmx request it returns 200 so htmx swaps the form in place (htmx does
-// not swap error statuses by default); a plain post gets 422. The form keeps
-// the context the Check-in page's loader read for it (checkinView.withContext):
+// For an htmx request it returns the form alone at 200 so htmx swaps it in
+// place (htmx does not swap error statuses by default); a plain post gets the
+// whole Check-in page, view, around it at 422 (#587). The form keeps the
+// context the Check-in page's loader read for it (checkinView.withContext):
 // the Goal's Rolled-up Health beside the Owner's Health (ADR-0003), its Run
 // off Green for the Path to Green's heading, the latest Check-in's answers as
 // ghost text, and whom an ask would go to.
-func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, data checkinFormData) {
-	status := http.StatusUnprocessableEntity
+func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
 	if r.Header.Get("HX-Request") == "true" {
-		status = http.StatusOK
+		render(w, r, http.StatusOK, checkinForm(data))
+		return
 	}
-	render(w, r, status, checkinForm(data))
+	render(w, r, http.StatusUnprocessableEntity, checkinPage(&current, view, data))
 }
 
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
