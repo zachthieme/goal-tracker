@@ -206,9 +206,11 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 // submitReportBuilder answers the builder's form for the saved definition, or
 // a new one when its ID is 0: save stores it as typed, and a stored definition lands
 // on its draft. A refused save comes back as the builder, 422, as typed, with
-// each problem beside its input. Add rule, a rule row's × and Show matches
-// save nothing: the builder comes back as typed with a blank row added,
-// without that row, or as it is, its rail listing the Goals as typed.
+// each problem beside its input; one refused to its sender is the refusal
+// page, 403, linking Back to the definition's draft, or Reports for a new one.
+// Add rule, a rule row's × and Show matches save nothing: the builder comes
+// back as typed with a blank row added, without that row, or as it is, its
+// rail listing the Goals as typed.
 func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, saved domain.ReportDefinition,
 	save func(in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
 ) {
@@ -240,7 +242,13 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
-		http.Error(w, domain.Reason(err), http.StatusForbidden)
+		// Only an edit can be, and only when the editor lost the right to
+		// since editableReport checked.
+		if saved.ID == 0 {
+			s.refuse(w, r, "Can't save Report", "/reports", err)
+			return
+		}
+		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10), err)
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) {

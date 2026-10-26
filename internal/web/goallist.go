@@ -37,8 +37,9 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 // table's order, as CSV in the import format, so the file can be edited and
 // imported again to update their Dimension values and Fields (#81). Hidden
 // columns are a view setting, so the file has every column regardless. A
-// download that would write a value the import can't read back is refused,
-// naming it, and returns no file (#101).
+// download that would write a value the import can't read back is refused on
+// the refusal page, naming it, linking Back to the list as it was, and
+// returns no file (#101).
 func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	view, err := s.goalsListView(r, current)
 	if err != nil {
@@ -57,7 +58,7 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 	}
 	var buf bytes.Buffer
 	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); errors.Is(err, domain.ErrValidation) {
-		http.Error(w, domain.Reason(err), http.StatusUnprocessableEntity)
+		s.refuse(w, r, "Can't download Goals", string(view.queryURL(func(url.Values) {})), err)
 		return
 	} else if err != nil {
 		s.serverError(w, r, "could not download goals", err)

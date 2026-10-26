@@ -146,8 +146,9 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 // Account: an email no one has is refused, as is a Departed person. Only an
 // Admin may.
 func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	const notAdmin = "only an Admin may make someone an Admin"
 	if !current.IsAdmin {
-		s.refuseNonAdmin(w, r, "only an Admin may make someone an Admin")
+		s.refuseNonAdmin(w, r, notAdmin)
 		return
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
@@ -166,6 +167,10 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 	case errors.Is(err, domain.ErrDeparted):
 		refuse(emailAddr + " has left the company. Mark them returned first.")
 		return
+	case errors.Is(err, domain.ErrNotAuthorized):
+		// They stopped being an Admin since the check above.
+		s.refuseNonAdmin(w, r, notAdmin)
+		return
 	case err != nil:
 		s.serverError(w, r, "could not make the Admin", err)
 		return
@@ -178,8 +183,9 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 // themselves (CONTEXT.md: Admin); an Account that doesn't exist is not found.
 // Only an Admin may.
 func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	const notAdmin = "only an Admin may remove an Admin"
 	if !current.IsAdmin {
-		s.refuseNonAdmin(w, r, "only an Admin may remove an Admin")
+		s.refuseNonAdmin(w, r, notAdmin)
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -194,6 +200,11 @@ func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, curre
 	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
 	if errors.Is(err, domain.ErrValidation) {
 		s.notFound(w, r)
+		return
+	}
+	if errors.Is(err, domain.ErrNotAuthorized) {
+		// They stopped being an Admin since the check above.
+		s.refuseNonAdmin(w, r, notAdmin)
 		return
 	}
 	if err != nil {
