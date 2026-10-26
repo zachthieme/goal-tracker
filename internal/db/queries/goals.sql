@@ -86,22 +86,6 @@ SELECT * FROM metrics WHERE goal_id = ? ORDER BY target_date, id;
 -- The given Goals' Metrics, each Goal's as ListMetrics reads them.
 SELECT * FROM metrics WHERE goal_id IN (sqlc.slice(goal_ids)) ORDER BY goal_id, target_date, id;
 
--- name: AddContributor :one
-INSERT INTO contributors (goal_id, account_id, created_at)
-VALUES (?, ?, ?)
-RETURNING *;
-
--- name: ListContributors :many
-SELECT sqlc.embed(accounts)
-FROM contributors
-JOIN accounts ON accounts.id = contributors.account_id
-WHERE contributors.goal_id = ?
-ORDER BY accounts.email;
-
--- name: GetContributor :one
-SELECT * FROM contributors
-WHERE goal_id = ? AND account_id = ? LIMIT 1;
-
 -- name: CreateWhyItMattersRevision :one
 INSERT INTO why_it_matters_revisions (goal_id, why_it_matters, author_id, created_at)
 VALUES (?, ?, ?, ?)

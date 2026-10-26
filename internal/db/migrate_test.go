@@ -1082,10 +1082,10 @@ func openMigratedForFKCheck(t *testing.T) *sql.DB {
 	return sqlDB
 }
 
-// insertOrphanedContributors adds n Contributors to a Goal that doesn't exist,
+// insertOrphanedDelegates adds n Delegates to a Goal that doesn't exist,
 // on one connection with foreign keys off, as a database written before they
 // were enforced could hold.
-func insertOrphanedContributors(t *testing.T, sqlDB *sql.DB, n int) {
+func insertOrphanedDelegates(t *testing.T, sqlDB *sql.DB, n int) {
 	t.Helper()
 	ctx := context.Background()
 	conn, err := sqlDB.Conn(ctx)
@@ -1098,7 +1098,7 @@ func insertOrphanedContributors(t *testing.T, sqlDB *sql.DB, n int) {
 		`INSERT INTO accounts (id, email, created_at) VALUES (1, 'owner@example.com', '2026-01-02T15:04:05Z')`,
 	}
 	for i := range n {
-		stmts = append(stmts, fmt.Sprintf(`INSERT INTO contributors (goal_id, account_id, created_at) VALUES (%d, 1, '2026-01-02T15:04:05Z')`, 1000+i))
+		stmts = append(stmts, fmt.Sprintf(`INSERT INTO delegates (goal_id, account_id, created_at) VALUES (%d, 1, '2026-01-02T15:04:05Z')`, 1000+i))
 	}
 	stmts = append(stmts, `PRAGMA foreign_keys = ON`)
 	for _, stmt := range stmts {
@@ -1114,13 +1114,13 @@ func insertOrphanedContributors(t *testing.T, sqlDB *sql.DB, n int) {
 func TestMigrateRefusesADatabaseWithAnOrphanedRow(t *testing.T) {
 	t.Parallel()
 	sqlDB := openMigratedForFKCheck(t)
-	insertOrphanedContributors(t, sqlDB, 1)
+	insertOrphanedDelegates(t, sqlDB, 1)
 
 	err := db.Migrate(t.Context(), sqlDB)
 	if err == nil {
-		t.Fatal("Migrate succeeded on a database with an orphaned Contributor")
+		t.Fatal("Migrate succeeded on a database with an orphaned Delegate")
 	}
-	for _, want := range []string{"contributors", "rowid 1", "goals"} {
+	for _, want := range []string{"delegates", "rowid 1", "goals"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Migrate error %q doesn't name %q", err, want)
 		}
@@ -1132,13 +1132,13 @@ func TestMigrateRefusesADatabaseWithAnOrphanedRow(t *testing.T) {
 func TestMigrateNamesAtMostTwentyOrphanedRows(t *testing.T) {
 	t.Parallel()
 	sqlDB := openMigratedForFKCheck(t)
-	insertOrphanedContributors(t, sqlDB, 25)
+	insertOrphanedDelegates(t, sqlDB, 25)
 
 	err := db.Migrate(t.Context(), sqlDB)
 	if err == nil {
-		t.Fatal("Migrate succeeded on a database with orphaned Contributors")
+		t.Fatal("Migrate succeeded on a database with orphaned Delegates")
 	}
-	if got := strings.Count(err.Error(), "contributors rowid"); got != 20 {
+	if got := strings.Count(err.Error(), "delegates rowid"); got != 20 {
 		t.Errorf("Migrate error names %d rows, want 20: %v", got, err)
 	}
 	if !strings.Contains(err.Error(), "and 5 more") {
@@ -1431,6 +1431,19 @@ func TestMigrationGivingEnumChecksKeepsTheSchema(t *testing.T) {
 	for name := range after {
 		if _, ok := before[name]; !ok {
 			t.Errorf("the migration left %s behind", name)
+		}
+	}
+}
+
+// The Contributor concept is gone, so after migrating its table and the
+// indexes over it are too (ticket #593).
+func TestMigrationDropsTheContributorsTable(t *testing.T) {
+	t.Parallel()
+	sqlDB := openMigratedForFKCheck(t)
+	for _, gone := range []string{"contributors", "idx_contributors_goal", "idx_contributors_account"} {
+		var n int
+		if err := sqlDB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE name = ?`, gone).Scan(&n); err != nil || n != 0 {
+			t.Errorf("%s is still there (%v)", gone, err)
 		}
 	}
 }

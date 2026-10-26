@@ -137,18 +137,6 @@ func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, 
 	s.writeFormResult(w, r, id, current, formTitleWhyItMatters, err)
 }
 
-// handleAddContributor adds a Contributor by email from the Goal page's
-// Contributors form, as AddContributorByEmail does: only the Owner may, and
-// only they hear that no account has the email, beside the form.
-func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	err := s.svc.AddContributorByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	s.writeFormResult(w, r, id, current, formContributors, err)
-}
-
 // handleAddMilestone adds a Milestone from the Goal page's Add Milestone form,
 // as its Owner or a Delegate. A date that doesn't parse is sent on as no
 // date, so the domain refuses it beside the form like any other.

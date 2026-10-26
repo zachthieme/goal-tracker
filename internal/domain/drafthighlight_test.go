@@ -92,7 +92,7 @@ func TestLogDraftHighlightRefusesBlankNoteAndUnknownKind(t *testing.T) {
 }
 
 // Nobody but the Goal's Owner and Delegates may log, see or delete its Draft
-// Highlights: not a Contributor, not an Admin, not a Delegate who has left the
+// Highlights: not a stranger, not an Admin, not a Delegate who has left the
 // org.
 func TestDraftHighlightsRefuseAnyoneElse(t *testing.T) {
 	t.Parallel()

@@ -79,8 +79,8 @@ func TestFieldNameCannotRepeatADimensionOrField(t *testing.T) {
 	}
 }
 
-// The Owner and a Delegate set and clear a value of each type on a Goal; a
-// Contributor can't (CONTEXT.md: Delegate; Contributor).
+// The Owner and a Delegate set and clear a value of each type on a Goal; an
+// Account with no role on the Goal can't (CONTEXT.md: Delegate).
 func TestOwnerAndDelegateSetAndClearFields(t *testing.T) {
 	t.Parallel()
 
@@ -92,9 +92,6 @@ func TestOwnerAndDelegateSetAndClearFields(t *testing.T) {
 	ctx := context.Background()
 	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(pat, dee, goal.ID)
-	if err := h.Service.AddContributor(ctx, goal.Owner.ID, goal.ID, cal.ID); err != nil {
-		t.Fatalf("AddContributor: %v", err)
-	}
 	set := map[domain.Field]string{
 		h.CreateField(boss, "Budget", domain.FieldNumber, "$"): "1200.50",
 		h.CreateField(boss, "Doc", domain.FieldShortText, ""):  "https://example.com/doc",
@@ -126,7 +123,7 @@ func TestOwnerAndDelegateSetAndClearFields(t *testing.T) {
 
 	for f, value := range set {
 		if err := h.Service.SetGoalField(ctx, cal.ID, goal.ID, f.ID, value); !errors.Is(err, domain.ErrNotAuthorized) {
-			t.Errorf("Contributor sets %s: err = %v, want ErrNotAuthorized", f.Name, err)
+			t.Errorf("stranger sets %s: err = %v, want ErrNotAuthorized", f.Name, err)
 		}
 	}
 }

@@ -933,9 +933,9 @@ templ goalRail(current *domain.Account, v goalView) {
 
 // goalProperties are the rail's label and value rows, in the order DESIGN.md §
 // Properties rail gives them: Health as its pill, Lifecycle, Kind, then the
-// people — the Owner, with the forms about them opened in place under them, the
-// Delegates and the Contributors — then the cadence, the delivery date with its
-// slips struck, and Top-level for a Goal that is one.
+// people — the Owner, with the forms about them opened in place under them, and
+// the Delegates — then the cadence, the delivery date with its slips struck, and
+// Top-level for a Goal that is one.
 templ goalProperties(v goalView) {
 	{{ g := v.Goal }}
 	<div data-testid="goal-meta" class="gp-props">
@@ -983,29 +983,6 @@ templ goalProperties(v goalView) {
 			</dl>
 			@ownerForms(v)
 			@delegatesSection(v)
-			<section data-testid="goal-contributors" class="gp-prop">
-				@groupHead(v, formContributors, "Manage", "Manage Contributors") {
-					<h3 class="label">Contributors</h3>
-				}
-				<ul class="gp-list">
-					if len(v.Contributors) == 0 {
-						<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
-					}
-					for _, c := range v.Contributors {
-						<li>
-							@person(c)
-						</li>
-					}
-				</ul>
-				if v.opens(formContributors) {
-					@openGoalForm(v, formContributors, "Add a Contributor") {
-						<form data-testid="add-contributor" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
-							<input type="email" name="email" value={ v.FormInput.Get("email") } aria-label="Contributor email" placeholder="Contributor email" required autofocus/>
-							<button type="submit" class="btn sm">Add Contributor</button>
-						</form>
-					}
-				}
-			</section>
 		</div>
 		<dl class="gp-prop-list">
 			<div class="gp-prop">
@@ -1443,8 +1420,7 @@ templ requestParentLink(v goalView) {
 // defineGoal is the Owner's toolkit for a Proposed Goal: the activation
 // checklist, Activate Goal once it is done, and Finish defining, which opens
 // the define page to set the Kind, cadence, Why it matters, Milestones, Metrics and
-// the rest on one form. Contributors are added from the rail's Contributors
-// row.
+// the rest on one form.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="define-goal" class="gp-block gp-section gp-define">

@@ -89,14 +89,13 @@ type goalView struct {
 type goalForm string
 
 const (
-	formHandoff      goalForm = "handoff"
-	formReassign     goalForm = "reassign"
-	formDepart       goalForm = "depart"
-	formReturn       goalForm = "return"
-	formTopLevel     goalForm = "top-level"
-	formParentLink   goalForm = "parent-link"
-	formDelegates    goalForm = "delegates"
-	formContributors goalForm = "contributors"
+	formHandoff    goalForm = "handoff"
+	formReassign   goalForm = "reassign"
+	formDepart     goalForm = "depart"
+	formReturn     goalForm = "return"
+	formTopLevel   goalForm = "top-level"
+	formParentLink goalForm = "parent-link"
+	formDelegates  goalForm = "delegates"
 	// formMilestones is the Milestones card's Add Milestone form.
 	formMilestones goalForm = "milestones"
 	formDimensions goalForm = "dimensions"
@@ -131,8 +130,6 @@ func (v goalView) offers(form goalForm) bool {
 		return p.LinkParent
 	case formDelegates:
 		return p.ManageDelegates
-	case formContributors:
-		return p.AddContributor
 	case formMilestones:
 		return p.AddMilestone
 	case formDimensions:

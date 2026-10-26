@@ -82,7 +82,7 @@ async function buildRuleReport(page: Page, name: string): Promise<void> {
 
 // dueNoChangeGoal is a 7-day Goal, due on Home on the due template, whose
 // Owner's Needs you row offers No change beside Check in: Active, checked in
-// before, no accepted contributors (so no Rolled-up Health to refuse a
+// before, no accepted child Goals (so no Rolled-up Health to refuse a
 // repeat), no overdue Planned Milestone, and no back-to-Green date passed on
 // its latest Check-in, as in isolation.spec.ts.
 const dueNoChangeGoal = `

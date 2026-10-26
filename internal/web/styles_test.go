@@ -3622,9 +3622,9 @@ func TestGoalListApplyButtonOnlyWithoutJavaScriptStyles(t *testing.T) {
 	}
 }
 
-// The Delegates and Contributors groups, among the rail's properties, head
-// themselves with a small muted .label, the rest with a plain h3: the
-// .label rule sets their size and ink (TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP).
+// The Delegates group, among the rail's properties, heads itself with a small
+// muted .label, the rest with a plain h3: the .label rule sets its size and
+// ink (TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP).
 func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTPStyles(t *testing.T) {
 	t.Parallel()
 
@@ -3643,7 +3643,6 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTPStyles(t *testing.T) {
 	}{
 		{"goal-parents", "Contributes to", false},
 		{"goal-delegates", "Delegates", true},
-		{"goal-contributors", "Contributors", true},
 		{"goal-dimensions", "Dimensions", false},
 		{"goal-field-block", "Fields", false},
 	} {

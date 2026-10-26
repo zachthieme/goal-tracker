@@ -165,8 +165,8 @@ func TestAdminRetiresAndRestoresAFieldOverHTTP(t *testing.T) {
 }
 
 // The Goal page gives its Owner and a Delegate an input of each Field's type,
-// and through it they set and clear each value; a Contributor sees the values
-// read-only and is refused.
+// and through it they set and clear each value; an Account with no role on the
+// Goal sees the values read-only and is refused.
 func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 	t.Parallel()
 
@@ -174,12 +174,9 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
 	dee := h.SignIn("dee@example.com")
-	cal := h.SignIn("cal@example.com")
+	h.SignIn("cal@example.com")
 	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(pat, dee, goal.ID)
-	if err := h.Service.AddContributor(context.Background(), goal.Owner.ID, goal.ID, cal.ID); err != nil {
-		t.Fatalf("AddContributor: %v", err)
-	}
 	fields := []struct {
 		field domain.Field
 		input string
@@ -237,18 +234,18 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 	}
 
 	h.SetGoalField(pat, goal, fields[0].field, "1200")
-	cory := signInClient(t, ts.URL, "cal@example.com")
-	page := getBody(t, cory, goalPageURL(ts.URL, goal))
+	cal := signInClient(t, ts.URL, "cal@example.com")
+	page := getBody(t, cal, goalPageURL(ts.URL, goal))
 	if !strings.Contains(pageElement(t, page, "ul", "goal-fields"), "1200") {
-		t.Errorf("a Contributor doesn't see the Budget value:\n%s", page)
+		t.Errorf("a stranger doesn't see the Budget value:\n%s", page)
 	}
 	if strings.Contains(page, action) {
-		t.Errorf("a Contributor gets a Field input:\n%s", page)
+		t.Errorf("a stranger gets a Field input:\n%s", page)
 	}
-	resp := postForm(t, cory, post, url.Values{"field_id": {fmt.Sprint(fields[0].field.ID)}, "value": {"9"}})
+	resp := postForm(t, cal, post, url.Values{"field_id": {fmt.Sprint(fields[0].field.ID)}, "value": {"9"}})
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("a Contributor sets a Field: status %d, want 403", resp.StatusCode)
+		t.Errorf("a stranger sets a Field: status %d, want 403", resp.StatusCode)
 	}
 }
 

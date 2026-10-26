@@ -35,7 +35,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /goals/{id}/define/checklist", s.requireAuth(s.handleDefineGoalChecklist))
 	s.mux.HandleFunc("GET /goals/{id}", s.requireAuth(s.handleViewGoal))
 	s.mux.HandleFunc("POST /goals/{id}/why-it-matters", s.requireAuth(s.handleEditWhyItMatters))
-	s.mux.HandleFunc("POST /goals/{id}/contributors", s.requireAuth(s.handleAddContributor))
 	s.mux.HandleFunc("GET /delegates", s.requireAuth(s.handleDelegatePage))
 	s.mux.HandleFunc("POST /goals/{id}/delegates", s.requireAuth(s.handleAddDelegate))
 	s.mux.HandleFunc("POST /goals/{id}/delegates/remove", s.requireAuth(s.handleRemoveDelegate))

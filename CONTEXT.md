@@ -9,7 +9,7 @@ The whole organization using the tool: everyone who signs in, its directory of p
 _Avoid_: org, the org, organization (an **Org** is one person's part of it)
 
 **Account**:
-A person's identity in the tool, identified by their email address, matched whatever its letter case or surrounding spaces: `Sam@Example.com` and `sam@example.com` are the same Account. The first time a person signs in through the company's sign-in, their Account is linked to who that sign-in says they are; after that it finds them even if their email changes, and an email the company gives to someone new can't sign in as the Account it once named. Owners, Delegates, Contributors and Admins are all Accounts.
+A person's identity in the tool, identified by their email address, matched whatever its letter case or surrounding spaces: `Sam@Example.com` and `sam@example.com` are the same Account. The first time a person signs in through the company's sign-in, their Account is linked to who that sign-in says they are; after that it finds them even if their email changes, and an email the company gives to someone new can't sign in as the Account it once named. Owners, Delegates and Admins are all Accounts.
 _Avoid_: user, member
 
 **Name**:
@@ -61,10 +61,6 @@ _Avoid_: orphaned, unassigned
 **Admin**:
 One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and Why it matters, and can override links and Lifecycle changes. An Admin can make another person an Admin, or take the role from another Admin, but never from themselves, so there is always at least one.
 _Avoid_: moderator, superuser
-
-**Contributor**:
-A person listed on a Goal for information only; carries no update duty. Because the listing is for information only, the Owner can list a Contributor in any Lifecycle, not just while the Goal is Proposed.
-_Avoid_: member, assignee
 
 **Metric**:
 A measured quantity on a Goal with a unit, direction, baseline, target, and target date; its current value is recorded at each Check-in. Never aggregated across Goals.

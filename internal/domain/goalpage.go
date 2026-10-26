@@ -37,7 +37,6 @@ type GoalPage struct {
 	// (PendingDraftHighlights), read only when CanCheckin, for only its Owner
 	// and Delegates may see them.
 	DraftHighlights []DraftHighlight
-	Contributors    []Account
 	Delegates       []Account
 	// Viewer is the Account the page is read for. CanCheckin says whether they
 	// may write the Goal's Check-ins (RequireCheckinAuthor), whatever its
@@ -115,11 +114,9 @@ type GoalPermissions struct {
 	LogDraftHighlight bool
 	// SetValues: its Owner, a Delegate or an Admin (RequireGoalValueSetter).
 	SetValues bool
-	// AddContributor, ManageDelegates, LinkParent, EditMetrics and
-	// DecideSuggestions: its Owner, in any Lifecycle (AddContributor,
-	// AddDelegate, RequestLink, AddMetric and EditMetric, AcceptSuggestion
-	// and DeclineSuggestion).
-	AddContributor    bool
+	// ManageDelegates, LinkParent, EditMetrics and DecideSuggestions: its
+	// Owner, in any Lifecycle (AddDelegate, RequestLink, AddMetric and
+	// EditMetric, AcceptSuggestion and DeclineSuggestion).
 	ManageDelegates   bool
 	LinkParent        bool
 	EditMetrics       bool
@@ -392,7 +389,6 @@ func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) error {
 		read func() error
 	}{
 		{"highlights", func() error { p.Highlights, err = s.ListHighlightsByGoal(ctx, id); return err }},
-		{"contributors", func() error { p.Contributors, err = s.ListContributors(ctx, id); return err }},
 		{"delegates", func() error { p.Delegates, err = s.ListDelegates(ctx, id); return err }},
 		{"Why it matters history", func() error { p.Revisions, err = s.ListWhyItMattersRevisions(ctx, id); return err }},
 		{"title history", func() error { p.TitleRevisions, err = s.ListTitleRevisions(ctx, id); return err }},
@@ -556,7 +552,6 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
 		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
 		SetValues:                permits(goalValueSetterRefusal(actor, g)),
-		AddContributor:           permits(goalOwnerRefusal(actor, g, "change it")),
 		ManageDelegates:          permits(goalOwnerRefusal(actor, g, "authorize a Delegate")),
 		LinkParent:               permits(goalOwnerRefusal(actor, g, "link it to a parent")),
 		EditMetrics:              permits(metricEditRefusal(actor, g)),

@@ -26,30 +26,6 @@ func (q *Queries) ActivateGoal(ctx context.Context, arg ActivateGoalParams) erro
 	return err
 }
 
-const addContributor = `-- name: AddContributor :one
-INSERT INTO contributors (goal_id, account_id, created_at)
-VALUES (?, ?, ?)
-RETURNING id, goal_id, account_id, created_at
-`
-
-type AddContributorParams struct {
-	GoalID    int64
-	AccountID int64
-	CreatedAt string
-}
-
-func (q *Queries) AddContributor(ctx context.Context, arg AddContributorParams) (Contributor, error) {
-	row := q.db.QueryRowContext(ctx, addContributor, arg.GoalID, arg.AccountID, arg.CreatedAt)
-	var i Contributor
-	err := row.Scan(
-		&i.ID,
-		&i.GoalID,
-		&i.AccountID,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (title, why_it_matters, owner_id, lifecycle, created_at)
 VALUES (?, ?, ?, ?, ?)
@@ -233,28 +209,6 @@ func (q *Queries) CreateWhyItMattersRevision(ctx context.Context, arg CreateWhyI
 	return i, err
 }
 
-const getContributor = `-- name: GetContributor :one
-SELECT id, goal_id, account_id, created_at FROM contributors
-WHERE goal_id = ? AND account_id = ? LIMIT 1
-`
-
-type GetContributorParams struct {
-	GoalID    int64
-	AccountID int64
-}
-
-func (q *Queries) GetContributor(ctx context.Context, arg GetContributorParams) (Contributor, error) {
-	row := q.db.QueryRowContext(ctx, getContributor, arg.GoalID, arg.AccountID)
-	var i Contributor
-	err := row.Scan(
-		&i.ID,
-		&i.GoalID,
-		&i.AccountID,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getGoal = `-- name: GetGoal :one
 SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
 FROM goals
@@ -406,51 +360,6 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 			&i.Account_2.ManagerID,
 			&i.Account_2.Timezone,
 			&i.Account_2.OidcSubject,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listContributors = `-- name: ListContributors :many
-SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, accounts.oidc_subject
-FROM contributors
-JOIN accounts ON accounts.id = contributors.account_id
-WHERE contributors.goal_id = ?
-ORDER BY accounts.email
-`
-
-type ListContributorsRow struct {
-	Account Account
-}
-
-func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListContributorsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listContributors, goalID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListContributorsRow
-	for rows.Next() {
-		var i ListContributorsRow
-		if err := rows.Scan(
-			&i.Account.ID,
-			&i.Account.Email,
-			&i.Account.IsAdmin,
-			&i.Account.CreatedAt,
-			&i.Account.Departed,
-			&i.Account.Name,
-			&i.Account.ManagerID,
-			&i.Account.Timezone,
-			&i.Account.OidcSubject,
 		); err != nil {
 			return nil, err
 		}

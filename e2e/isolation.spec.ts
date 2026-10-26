@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 import { expect, signIn, test } from "./fixtures";
 
 // A Goal whose Owner can press No change: Active, checked in before, no
-// accepted contributors (so no Rolled-up Health to refuse a repeat), no
+// accepted child Goals (so no Rolled-up Health to refuse a repeat), no
 // overdue Planned Milestone, and no back-to-Green date passed on its latest
 // Check-in. The same query picks the same Goal in both tests.
 const noChangeGoal = `
