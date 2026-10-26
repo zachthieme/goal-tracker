@@ -1193,3 +1193,46 @@ func TestEachPartsCommandAndDefineGoalRefuseItsBadInputAlike(t *testing.T) {
 		})
 	}
 }
+
+// Who may add to a Fixed list is one rule, AssignGoalValueByName's: an Owner
+// who is an Admin adds a new value to one while defining the Goal, and the
+// Goal carries it; an Owner who isn't is refused under the new value's input
+// (CONTEXT.md: Fixed).
+func TestCreateDefinedGoalAddsToAFixedListOnlyForAnAdminOwner(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	define := func(owner domain.Account, value string) (domain.Goal, error) {
+		return s.h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
+			Title:        "Ship v2 for " + owner.Email,
+			WhyItMatters: "Customers wait too long for v2.",
+			OwnerID:      owner.ID,
+			NewValues:    map[int64]string{s.team.ID: value},
+		})
+	}
+
+	g, err := define(s.admin, "Ops")
+	if err != nil {
+		t.Fatalf("CreateDefinedGoal for an Admin Owner: %v", err)
+	}
+	values, err := s.h.Service.GoalValues(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if !slices.Equal(valueNames(values), []string{"Ops"}) {
+		t.Errorf("values = %v, want Ops", valueNames(values))
+	}
+
+	_, err = define(s.owner, "Security")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	var got []string
+	for _, p := range domain.InputErrors(err) {
+		got = append(got, p.Input+": "+p.Message)
+	}
+	if want := []string{id("new_value:", s.team.ID) + ": Team is a Fixed list, so only an Admin may add to it"}; !slices.Equal(got, want) {
+		t.Errorf("problems = %q, want %q", got, want)
+	}
+}
