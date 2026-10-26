@@ -175,12 +175,9 @@ func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64
 // transaction, so a Handoff rejected meanwhile isn't also accepted.
 func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, keep []int64) (Handoff, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		row, err := tx.getPendingHandoff(ctx, handoffID)
+		row, err := tx.handoffToDecide(ctx, handoffID, actorID, "accept")
 		if err != nil {
 			return err
-		}
-		if row.ToOwner != actorID {
-			return Refuse(ErrNotAuthorized, "only the new Owner may accept a Handoff")
 		}
 		goal, err := tx.queries.GetGoal(ctx, row.GoalID)
 		if err != nil {
@@ -227,16 +224,13 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) (string, error) {
 	var token string
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		row, err := tx.getPendingHandoff(ctx, handoffID)
-		if err != nil {
+		if _, err := tx.handoffToDecide(ctx, handoffID, actorID, "reject"); err != nil {
 			return err
-		}
-		if row.ToOwner != actorID {
-			return Refuse(ErrNotAuthorized, "only the new Owner may reject a Handoff")
 		}
 		if err := tx.decidePendingHandoff(ctx, handoffID, HandoffRejected); err != nil {
 			return err
 		}
+		var err error
 		token, err = tx.issueUndo(ctx, undoHandoffRejection, handoffID, actorID, "")
 		return err
 	})
@@ -458,8 +452,12 @@ func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 	return nil
 }
 
-// getPendingHandoff loads a Handoff that must exist and still be pending.
-func (s *Service) getPendingHandoff(ctx context.Context, handoffID int64) (db.Handoff, error) {
+// handoffToDecide loads a Handoff for its new Owner to accept or reject
+// (decision): it must exist (else Not found), the actor must be its new Owner
+// (else not authorized), and it must still be pending. One already decided is
+// refused saying how it was decided, so a second click or an old tab learns
+// why.
+func (s *Service) handoffToDecide(ctx context.Context, handoffID, actorID int64, decision string) (db.Handoff, error) {
 	row, err := s.queries.GetHandoff(ctx, handoffID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -467,15 +465,28 @@ func (s *Service) getPendingHandoff(ctx context.Context, handoffID int64) (db.Ha
 		}
 		return db.Handoff{}, fmt.Errorf("look up handoff: %w", err)
 	}
-	if row.Status != HandoffPending {
-		return db.Handoff{}, fmt.Errorf("%w: handoff %d is not pending", ErrNotFound, handoffID)
+	if row.ToOwner != actorID {
+		return db.Handoff{}, Refuse(ErrNotAuthorized, "only the new Owner may %s a Handoff", decision)
 	}
-	return row, nil
+	switch row.Status {
+	case HandoffPending:
+		return row, nil
+	case HandoffAccepted:
+		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was already accepted")
+	case HandoffRejected:
+		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was already rejected")
+	case HandoffCancelled:
+		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was cancelled")
+	case HandoffReassigned:
+		return db.Handoff{}, Refuse(ErrValidation, "this Goal was already reassigned by an Admin")
+	default:
+		return db.Handoff{}, fmt.Errorf("handoff %d has unknown status %q", handoffID, row.Status)
+	}
 }
 
 // decidePendingHandoff records a Handoff's outcome, only while it is still
-// pending. A Handoff decided meanwhile is refused as getPendingHandoff refuses
-// it, so the caller's transaction rolls back and keeps nothing else it wrote.
+// pending. A Handoff decided meanwhile is refused as Not found, so the
+// caller's transaction rolls back and keeps nothing else it wrote.
 func (s *Service) decidePendingHandoff(ctx context.Context, handoffID int64, status string) error {
 	n, err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
 		Status: status,
