@@ -371,6 +371,50 @@ func TestSubmitCheckinRefusesAMetricReadTwice(t *testing.T) {
 	}
 }
 
+// Each reading SubmitCheckin refuses says why in its own words: a Metric that
+// doesn't exist, one on another Goal, and one read twice (#591).
+func TestSubmitCheckinReadingRefusalsSayWhy(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+	other := h.ActiveGoal(sam, "Grow signups", "More signups, more revenue.")
+	latency, err := h.Service.AddMetric(ctx, sam.ID, validMetric(goal.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	foreign, err := h.Service.AddMetric(ctx, sam.ID, validMetric(other.ID))
+	if err != nil {
+		t.Fatalf("AddMetric on the other Goal: %v", err)
+	}
+	const missing = int64(9999)
+
+	for _, tc := range []struct {
+		name     string
+		readings []domain.MetricReadingInput
+		want     string
+	}{
+		{"no such Metric", []domain.MetricReadingInput{{MetricID: latency.ID, Value: 900}, {MetricID: missing, Value: 1}}, "metric 9999 does not exist"},
+		{"a Metric on another Goal", []domain.MetricReadingInput{{MetricID: latency.ID, Value: 900}, {MetricID: foreign.ID, Value: 1}}, fmt.Sprintf("metric %d is not on this Goal", foreign.ID)},
+		{"a Metric read twice", []domain.MetricReadingInput{{MetricID: latency.ID, Value: 900}, {MetricID: latency.ID, Value: 800}}, `a Check-in records one value per Metric; "p95 checkout latency" has more than one`},
+	} {
+		_, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Read.", Readings: tc.readings,
+		})
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("%s: err = %v, want ErrValidation", tc.name, err)
+		}
+		if got := domain.Reason(err); got != tc.want {
+			t.Errorf("%s: reason = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	if history, _ := h.Service.ListCheckins(ctx, goal.ID); len(history) != 0 {
+		t.Errorf("a Check-in was recorded despite a refused reading: %d", len(history))
+	}
+}
+
 // One-click "no change" records a Check-in that repeats the previous values,
 // author and Owner it is written for aside.
 func TestNoChangeCheckinRepeatsPreviousValues(t *testing.T) {

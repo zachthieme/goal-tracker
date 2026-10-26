@@ -508,18 +508,31 @@ func offTargetMetricsAmong(metrics []Metric, recorded map[int64][]MetricReading,
 
 // validateReadings checks that each reading names a Metric on goalID; a reading
 // for a Metric that does not exist or belongs to another Goal is rejected, and
-// so is a second reading for one Metric: a Check-in records one value each.
+// so is a second reading for one Metric: a Check-in records one value each. It
+// reads the Goal's Metrics once, however many readings there are; only a
+// reading naming none of them is looked up by itself, to say which it is.
 func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
+	if len(readings) == 0 {
+		return nil
+	}
+	metrics, err := s.queries.ListMetrics(ctx, goalID)
+	if err != nil {
+		return fmt.Errorf("list metrics: %w", err)
+	}
+	onGoal := make(map[int64]db.Metric, len(metrics))
+	for _, m := range metrics {
+		onGoal[m.ID] = m
+	}
 	read := make(map[int64]bool, len(readings))
 	for _, rd := range readings {
-		m, err := s.queries.GetMetric(ctx, rd.MetricID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "metric %d does not exist", rd.MetricID)
+		m, ok := onGoal[rd.MetricID]
+		if !ok {
+			if _, err := s.queries.GetMetric(ctx, rd.MetricID); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return Refuse(ErrValidation, "metric %d does not exist", rd.MetricID)
+				}
+				return fmt.Errorf("look up metric: %w", err)
 			}
-			return fmt.Errorf("look up metric: %w", err)
-		}
-		if m.GoalID != goalID {
 			return Refuse(ErrValidation, "metric %d is not on this Goal", rd.MetricID)
 		}
 		if read[rd.MetricID] {

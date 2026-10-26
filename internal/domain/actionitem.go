@@ -629,20 +629,6 @@ func (s *Service) AllOpenActionItems(ctx context.Context) ([]ActionItemListing, 
 	})
 }
 
-// OverdueActionItems returns the open Action Items about a Goal whose due
-// date is before today, in the org's timezone, soonest due first. One about a
-// whole Report is never listed: it has no Goal to put at risk.
-func (s *Service) OverdueActionItems(ctx context.Context) ([]ActionItemListing, error) {
-	today := orgDate(s.clock.Now(), s.loc).Format(dateFormat)
-	rows, err := s.queries.ListOverdueActionItems(ctx, today)
-	if err != nil {
-		return nil, fmt.Errorf("list overdue action items: %w", err)
-	}
-	return actionItemListings(ctx, s, rows, func(r db.ListOverdueActionItemsRow) (db.ActionItem, string) {
-		return r.ActionItem, r.ReportName
-	})
-}
-
 // actionItemListings lists rows in order, split by row into each one's Action
 // Item and its Report's name.
 func actionItemListings[R any](ctx context.Context, s *Service, rows []R, row func(R) (db.ActionItem, string)) ([]ActionItemListing, error) {
