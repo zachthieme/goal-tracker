@@ -153,11 +153,13 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 	if !ok {
 		return
 	}
+	// Parsed before the input is built, so Unparsed holds every append.
 	var unparsed unparsedGoalFields
+	targetDate := unparsed.date(r, "target_date")
 	_, err := s.svc.AddMilestoneAsAuthor(r.Context(), current.ID, domain.AddMilestoneInput{
 		GoalID:     id,
 		Name:       r.FormValue("name"),
-		TargetDate: unparsed.date(r, "target_date"),
+		TargetDate: targetDate,
 		Unparsed:   unparsed,
 	})
 	s.writeFormResult(w, r, id, current, formMilestones, err)
@@ -173,11 +175,13 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 	if !ok {
 		return
 	}
+	// Parsed before the input is built, so Unparsed holds every append.
 	var unparsed unparsedGoalFields
+	targetDate := unparsed.date(r, "target_date")
 	m, err := s.svc.EditMilestone(r.Context(), current.ID, domain.EditMilestoneInput{
 		MilestoneID: id,
 		Name:        r.FormValue("name"),
-		TargetDate:  unparsed.date(r, "target_date"),
+		TargetDate:  targetDate,
 		Unparsed:    unparsed,
 	})
 	if err != nil {
@@ -200,15 +204,19 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
+	// Parsed before the input is built, so Unparsed holds every append.
 	var unparsed unparsedGoalFields
+	baseline := unparsed.metricNumber(r, "baseline")
+	target := unparsed.metricNumber(r, "target")
+	targetDate := unparsed.date(r, "target_date")
 	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
 		Name:       r.FormValue("name"),
 		Unit:       r.FormValue("unit"),
 		Direction:  r.FormValue("direction"),
-		Baseline:   unparsed.metricNumber(r, "baseline"),
-		Target:     unparsed.metricNumber(r, "target"),
-		TargetDate: unparsed.date(r, "target_date"),
+		Baseline:   baseline,
+		Target:     target,
+		TargetDate: targetDate,
 		Unparsed:   unparsed,
 	})
 	if err != nil {
