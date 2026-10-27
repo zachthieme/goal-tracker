@@ -1,10 +1,8 @@
 package web
 
 import (
-	"cmp"
 	"fmt"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -59,83 +57,49 @@ const (
 	historyPageStep  = 20
 )
 
-// historyEntry is one event in a Goal's History: a Check-in with the Date
-// Slips and Metric readings recorded in it, a Why it matters revision, a change to
-// its title, an ownership change (a Handoff or an Admin Reassign), a change to
-// a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
-// a change to one of its links, a Milestone added outside a Check-in, an
-// Action Item about it raised, reassigned or closed, or a Comment or reply
-// about it, on the Goal itself or on a Report.
-// Exactly one of Checkin, Revision, Title, Handoff, Value, Suggestion, Nudge,
-// Link, Milestone, ActionItem, ActionReassign and Comment is set. A Check-in's
-// Highlights are the ones it carries.
+// historyEntry is one entry on a Goal's History timeline: one of the events
+// the Goal page's loader listed (domain.GoalEvent).
 //
 // Folded, when set, makes the entry stand for a run of Check-ins that repeat
 // the one before them, newest first; the entry is the newest of them.
 type historyEntry struct {
-	At         time.Time
-	Checkin    *domain.Checkin
-	Slips      []domain.DateSlip
-	Readings   []historyReading
-	Highlights []domain.Highlight
-	Folded     []historyEntry
-	Revision   *domain.WhyItMattersRevision
-	Title      *domain.TitleRevision
-	Handoff    *domain.Handoff
-	Value      *domain.ValueChange
-	Suggestion *domain.ParentSuggestion
-	Nudge      *domain.Nudge
-	Link       *domain.LinkEvent
-	Milestone  *domain.MilestoneChange
-	// ActionItem is an Action Item raised, or closed when ActionItemEvent
-	// says so; ActionRaisedFor is who it was raised for, its owner before any
-	// reassignment. ActionReassign is one handed to a new owner.
-	ActionItem      *domain.ActionItemListing
-	ActionItemEvent historyActionItemEvent
-	ActionRaisedFor domain.Account
-	ActionReassign  *domain.ActionItemReassignment
-	Comment         *domain.CommentListing
+	Event  domain.GoalEvent
+	Folded []domain.CheckinEvent
 }
 
-// historyActionItemEvent is what an ActionItem entry records of its Action
-// Item: that it was raised, or closed.
-type historyActionItemEvent int
+// At is when the entry's event happened.
+func (e historyEntry) At() time.Time {
+	return e.Event.At()
+}
 
-const (
-	historyActionItemRaised historyActionItemEvent = iota
-	historyActionItemClosed
-)
-
-// historyReading is a Metric's reading as a Check-in recorded it. Changed is
-// whether it differs from the Metric's reading before it, or is its first.
-type historyReading struct {
-	Metric  string
-	Value   string
-	Changed bool
+// historyEventIs reports whether e's event is a T.
+func historyEventIs[T domain.GoalEvent](e historyEntry) bool {
+	_, ok := e.Event.(T)
+	return ok
 }
 
 // kind names the entry's kind for its marker and the page's markup.
 func (e historyEntry) kind() string {
-	switch {
-	case e.Checkin != nil:
+	switch e.Event.(type) {
+	case domain.CheckinEvent:
 		return "checkin"
-	case e.Revision != nil:
+	case domain.WhyItMattersRevisedEvent:
 		return "why-it-matters"
-	case e.Title != nil:
+	case domain.TitleChangeEvent:
 		return "title"
-	case e.Handoff != nil:
+	case domain.OwnershipChangeEvent:
 		return "ownership"
-	case e.Suggestion != nil:
+	case domain.ParentSuggestionEvent:
 		return "parent-suggestion"
-	case e.Nudge != nil:
+	case domain.NudgeEvent:
 		return "nudge"
-	case e.Link != nil:
+	case domain.LinkChangeEvent:
 		return "link"
-	case e.Milestone != nil:
+	case domain.MilestoneAddedEvent:
 		return "milestone"
-	case e.ActionItem != nil, e.ActionReassign != nil:
+	case domain.ActionItemRaisedEvent, domain.ActionItemReassignedEvent, domain.ActionItemClosedEvent:
 		return "action-item"
-	case e.Comment != nil:
+	case domain.CommentEvent:
 		return "comment"
 	}
 	return "value"
@@ -143,34 +107,36 @@ func (e historyEntry) kind() string {
 
 // label is the entry's kind as its text label says it.
 func (e historyEntry) label() string {
-	switch {
-	case e.Checkin != nil:
+	switch ev := e.Event.(type) {
+	case domain.CheckinEvent:
 		return "Check-in"
-	case e.Revision != nil:
+	case domain.WhyItMattersRevisedEvent:
 		return "Why it matters"
-	case e.Title != nil:
+	case domain.TitleChangeEvent:
 		return "Title"
-	case e.Handoff != nil && e.Handoff.Status == domain.HandoffReassigned:
-		return "Reassign"
-	case e.Handoff != nil:
+	case domain.OwnershipChangeEvent:
+		if ev.Handoff.Status == domain.HandoffReassigned {
+			return "Reassign"
+		}
 		return "Handoff"
-	case e.Suggestion != nil:
+	case domain.ParentSuggestionEvent:
 		return "Parent suggestion"
-	case e.Nudge != nil:
+	case domain.NudgeEvent:
 		return "Nudge"
-	case e.Link != nil:
+	case domain.LinkChangeEvent:
 		return "Link"
-	case e.Milestone != nil:
+	case domain.MilestoneAddedEvent:
 		return "Milestone"
-	case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
+	case domain.ActionItemClosedEvent:
 		return "Action Item closed"
-	case e.ActionItem != nil:
+	case domain.ActionItemRaisedEvent:
 		return "Action Item raised"
-	case e.ActionReassign != nil:
+	case domain.ActionItemReassignedEvent:
 		return "Action Item reassigned"
-	case e.Comment != nil && e.Comment.Comment.ThreadID != 0:
-		return "Reply"
-	case e.Comment != nil:
+	case domain.CommentEvent:
+		if ev.Listing.Comment.ThreadID != 0 {
+			return "Reply"
+		}
 		return "Comment"
 	}
 	return "Value"
@@ -183,25 +149,43 @@ func (e historyEntry) label() string {
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
-		return e.Checkin != nil || e.Nudge != nil || e.Milestone != nil
+		return historyEventIs[domain.CheckinEvent](e) || historyEventIs[domain.NudgeEvent](e) ||
+			historyEventIs[domain.MilestoneAddedEvent](e)
 	case historySlips:
-		return len(e.Slips) > 0
+		c, ok := e.Event.(domain.CheckinEvent)
+		return ok && len(c.Slips) > 0
 	case historyWhyItMatters:
-		return e.Revision != nil
+		return historyEventIs[domain.WhyItMattersRevisedEvent](e)
 	case historyTitle:
-		return e.Title != nil
+		return historyEventIs[domain.TitleChangeEvent](e)
 	case historyOwnership:
-		return e.Handoff != nil
+		return historyEventIs[domain.OwnershipChangeEvent](e)
 	case historyLinks:
-		return e.Link != nil || e.Suggestion != nil
+		return historyEventIs[domain.LinkChangeEvent](e) || historyEventIs[domain.ParentSuggestionEvent](e)
 	case historyValues:
-		return e.Value != nil
+		return historyEventIs[domain.ValueChangeEvent](e)
 	case historyActionItems:
-		return e.ActionItem != nil || e.ActionReassign != nil
+		return historyEventIs[domain.ActionItemRaisedEvent](e) || historyEventIs[domain.ActionItemReassignedEvent](e) ||
+			historyEventIs[domain.ActionItemClosedEvent](e)
 	case historyComments:
-		return e.Comment != nil
+		return historyEventIs[domain.CommentEvent](e)
 	}
 	return true
+}
+
+// markerHealth is the Health the entry's marker shows: its Check-in's, or ""
+// for a Check-in with none and every other kind.
+func (e historyEntry) markerHealth() string {
+	if c, ok := e.Event.(domain.CheckinEvent); ok {
+		return c.Checkin.Health
+	}
+	return ""
+}
+
+// readingText is a Check-in's Metric reading as the History shows it: its
+// value with the Metric's unit.
+func readingText(r domain.CheckinReading) string {
+	return strings.TrimSpace(fmtNum(r.Value) + " " + r.Metric.Unit)
 }
 
 // history is a Goal's History as one timeline, newest first: every entry,
@@ -220,153 +204,14 @@ type history struct {
 	Strip domain.HealthStrip
 }
 
-// newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, Why it matters
-// revisions, title changes, ownership changes, value changes, Parent suggestions, Nudges,
-// link changes, the Milestones added outside a Check-in, its Action Items'
-// raising, reassignments and closing, and every Comment and reply about it into
-// one timeline, newest first, showing everything and the first page.
+// newHistory is a Goal's History as the Goal page's loader listed it, newest
+// first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
-	slipsBy := map[int64][]domain.DateSlip{}
-	for _, s := range v.DateSlips {
-		slipsBy[s.CheckinID] = append(slipsBy[s.CheckinID], s)
+	entries := make([]historyEntry, 0, len(v.GoalPage.History))
+	for _, ev := range v.GoalPage.History {
+		entries = append(entries, historyEntry{Event: ev})
 	}
-	readingsBy := map[int64][]historyReading{}
-	for _, t := range v.Trends {
-		for i, r := range t.Readings {
-			readingsBy[r.CheckinID] = append(readingsBy[r.CheckinID], historyReading{
-				Metric:  t.Metric.Name,
-				Value:   strings.TrimSpace(fmtNum(r.Value) + " " + t.Metric.Unit),
-				Changed: i == 0 || r.Value != t.Readings[i-1].Value,
-			})
-		}
-	}
-	highlightsBy := map[int64][]domain.Highlight{}
-	for _, hl := range v.Highlights {
-		highlightsBy[hl.CheckinID] = append(highlightsBy[hl.CheckinID], hl)
-	}
-
-	var entries []historyEntry
-	for _, c := range v.Checkins {
-		entries = append(entries, historyEntry{At: c.CreatedAt, Checkin: &c, Slips: slipsBy[c.ID], Readings: readingsBy[c.ID], Highlights: highlightsBy[c.ID]})
-	}
-	for _, r := range v.Revisions {
-		entries = append(entries, historyEntry{At: r.CreatedAt, Revision: &r})
-	}
-	for _, r := range v.TitleRevisions {
-		entries = append(entries, historyEntry{At: r.CreatedAt, Title: &r})
-	}
-	for _, o := range v.Ownership {
-		entries = append(entries, historyEntry{At: o.CreatedAt, Handoff: &o})
-	}
-	for _, c := range v.ValueHistory {
-		entries = append(entries, historyEntry{At: c.CreatedAt, Value: &c})
-	}
-	for _, p := range v.Suggestions {
-		entries = append(entries, historyEntry{At: p.CreatedAt, Suggestion: &p})
-	}
-	for _, n := range v.Nudges {
-		entries = append(entries, historyEntry{At: n.CreatedAt, Nudge: &n})
-	}
-	for _, l := range v.LinkEvents {
-		entries = append(entries, historyEntry{At: l.CreatedAt, Link: &l})
-	}
-	for _, m := range v.MilestoneAdditions {
-		entries = append(entries, historyEntry{At: m.CreatedAt, Milestone: &m})
-	}
-	// An Action Item was raised for the owner its first reassignment took it
-	// from, since a reassignment changes its owner in place.
-	raisedFor := map[int64]domain.Account{}
-	for _, r := range v.ActionReassigns {
-		if _, ok := raisedFor[r.ItemID]; !ok {
-			raisedFor[r.ItemID] = r.From
-		}
-		entries = append(entries, historyEntry{At: r.At, ActionReassign: &r})
-	}
-	for _, l := range v.ActionItems {
-		owner, ok := raisedFor[l.Item.ID]
-		if !ok {
-			owner = l.Item.Owner
-		}
-		entries = append(entries, historyEntry{At: l.Item.CreatedAt, ActionItem: &l, ActionRaisedFor: owner})
-		if l.Item.Closed {
-			entries = append(entries, historyEntry{At: l.Item.ClosedAt, ActionItem: &l, ActionItemEvent: historyActionItemClosed})
-		}
-	}
-	for _, c := range v.Comments {
-		entries = append(entries, historyEntry{At: c.Comment.CreatedAt, Comment: &c})
-	}
-	// Newest first. Entries made at the same moment keep the order they were
-	// recorded in, latest first, but an Action Item's events stay together:
-	// newest item first, each closed above its reassignments, latest first,
-	// above its raising.
-	slices.SortStableFunc(entries, func(a, b historyEntry) int {
-		if c := b.At.Compare(a.At); c != 0 {
-			return c
-		}
-		return b.tieKey().compare(a.tieKey())
-	})
 	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyFirstPage, Loc: loc, Now: now, Strip: v.HealthStrip}
-}
-
-// historyTieKey orders entries made at the same moment: by seq, then rank,
-// then sub, each ascending from oldest to newest.
-type historyTieKey struct {
-	seq  int64 // the entry's record ID, or for an Action Item's events its item's
-	rank int   // an Action Item's event: 0 raised (and every other kind), 1 reassigned, 2 closed
-	sub  int64 // a reassignment's record ID, ordering one item's reassignments; else 0
-}
-
-// compare is -1, 0 or +1 as k orders before, with or after o.
-func (k historyTieKey) compare(o historyTieKey) int {
-	if c := cmp.Compare(k.seq, o.seq); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(k.rank, o.rank); c != 0 {
-		return c
-	}
-	return cmp.Compare(k.sub, o.sub)
-}
-
-// tieKey is the key that orders the entry among those made at the same moment.
-func (e historyEntry) tieKey() historyTieKey {
-	k := historyTieKey{seq: e.seq()}
-	switch {
-	case e.ActionReassign != nil:
-		k.rank, k.sub = 1, e.ActionReassign.ID
-	case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
-		k.rank = 2
-	}
-	return k
-}
-
-// seq is the entry's record ID, which orders entries of one kind made at the
-// same moment; for an Action Item's events it is the item's ID.
-func (e historyEntry) seq() int64 {
-	switch {
-	case e.Checkin != nil:
-		return e.Checkin.ID
-	case e.Revision != nil:
-		return e.Revision.ID
-	case e.Title != nil:
-		return e.Title.ID
-	case e.Handoff != nil:
-		return e.Handoff.ID
-	case e.Suggestion != nil:
-		return e.Suggestion.ID
-	case e.Nudge != nil:
-		return e.Nudge.ID
-	case e.Link != nil:
-		return e.Link.ID
-	case e.Milestone != nil:
-		return e.Milestone.ID
-	case e.ActionItem != nil:
-		return e.ActionItem.Item.ID
-	case e.ActionReassign != nil:
-		return e.ActionReassign.ItemID
-	case e.Comment != nil:
-		return e.Comment.Comment.ID
-	}
-	return e.Value.ID
 }
 
 // narrowed is h with the filter and page count its address asks for: an
@@ -425,41 +270,26 @@ func (h history) slots() []historyEntry {
 	listed := h.listed()
 	var out []historyEntry
 	for i := 0; i < len(listed); i++ {
-		var run []historyEntry
-		for i+1 < len(listed) && listed[i].repeats(listed[i+1]) {
-			run = append(run, listed[i])
+		var run []domain.CheckinEvent
+		for i+1 < len(listed) && listed[i].foldsOnto(listed[i+1]) {
+			run = append(run, listed[i].Event.(domain.CheckinEvent))
 			i++
 		}
 		if len(run) > 0 {
-			folded := run[0]
-			folded.Folded = run
-			out = append(out, folded)
+			out = append(out, historyEntry{Event: run[0], Folded: run})
 		}
 		out = append(out, listed[i])
 	}
 	return out
 }
 
-// repeats reports whether the entry is a Check-in that repeats prev, the entry
-// just before it: prev is a Check-in with the same Health, status, Path to
-// Green, target date, Ask for help and explanation, so ticking or unticking
-// the ask never folds, and this one records nothing more — no
-// Date Slip, Milestone or Lifecycle change, Highlight, discarded Draft
-// Highlight or Metric reading that differs from the one before it.
-func (e historyEntry) repeats(prev historyEntry) bool {
-	c, p := e.Checkin, prev.Checkin
-	if c == nil || p == nil {
-		return false
-	}
-	if c.Health != p.Health || c.Status != p.Status || c.PathToGreen != p.PathToGreen ||
-		!c.PathTargetDate.Equal(p.PathTargetDate) || c.AsksForHelp != p.AsksForHelp || c.Explanation != p.Explanation {
-		return false
-	}
-	if len(e.Slips) > 0 || len(c.MilestoneChanges) > 0 || c.LifecycleChange.Changed() ||
-		len(e.Highlights) > 0 || len(c.DiscardedDraftHighlights) > 0 {
-		return false
-	}
-	return !slices.ContainsFunc(e.Readings, func(r historyReading) bool { return r.Changed })
+// foldsOnto reports whether the entry is a Check-in that repeats prev, the
+// entry listed just before it, by the domain's rule (domain.CheckinEvent's
+// Repeats).
+func (e historyEntry) foldsOnto(prev historyEntry) bool {
+	c, ok := e.Event.(domain.CheckinEvent)
+	p, prevOK := prev.Event.(domain.CheckinEvent)
+	return ok && prevOK && c.Repeats(p)
 }
 
 // foldedLabel is what a folded entry reads: "No change", or "No change ×3"
@@ -491,7 +321,7 @@ func (h history) weeks() []historyWeek {
 	}
 	var out []historyWeek
 	for _, e := range slots {
-		heading := h.weekHeading(e.At)
+		heading := h.weekHeading(e.At())
 		if len(out) == 0 || out[len(out)-1].Heading != heading {
 			out = append(out, historyWeek{Heading: heading})
 		}

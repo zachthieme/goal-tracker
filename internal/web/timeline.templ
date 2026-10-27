@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
 // goalHistory is a Goal's History as one timeline, open on load and newest
@@ -79,105 +81,105 @@ templ historyItem(h history, e historyEntry) {
 		@historyMarker(e)
 		<p class="tl-head">
 			<span class="tl-kind">{ e.label() }</span>
-			<time class="muted small" datetime={ e.At.In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At) }</time>
+			<time class="muted small" datetime={ e.At().In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At()) }</time>
 		</p>
-		switch  {
-			case e.Checkin != nil:
-				@historyCheckin(h, e)
-			case e.Revision != nil:
-				<p>{ e.Revision.WhyItMatters }</p>
+		switch ev := e.Event.(type) {
+			case domain.CheckinEvent:
+				@historyCheckin(h, ev)
+			case domain.WhyItMattersRevisedEvent:
+				<p>{ ev.Revision.WhyItMatters }</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.Revision.Author)
+					@person(ev.Revision.Author)
 				</p>
-			case e.Title != nil:
-				<p>{ e.Title.OldTitle + " → " + e.Title.NewTitle }</p>
+			case domain.TitleChangeEvent:
+				<p>{ ev.Revision.OldTitle + " → " + ev.Revision.NewTitle }</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.Title.Author)
+					@person(ev.Revision.Author)
 				</p>
-			case e.Handoff != nil:
+			case domain.OwnershipChangeEvent:
 				<p>
-					@person(e.Handoff.From)
+					@person(ev.Handoff.From)
 					{ "→ " }
-					@person(e.Handoff.To)
-					<span>{ " — " + ownershipOutcome(e.Handoff.Status) }</span>
+					@person(ev.Handoff.To)
+					<span>{ " — " + ownershipOutcome(ev.Handoff.Status) }</span>
 				</p>
 				<p class="muted small">
 					{ "started by " }
-					@person(e.Handoff.InitiatedBy)
+					@person(ev.Handoff.InitiatedBy)
 				</p>
-			case e.Suggestion != nil:
+			case domain.ParentSuggestionEvent:
 				<p>
-					@person(e.Suggestion.SuggestedBy)
+					@person(ev.Suggestion.SuggestedBy)
 					{ "suggested " }
-					<a href={ templ.SafeURL(goalPath(e.Suggestion.Parent.ID)) }>{ e.Suggestion.Parent.Title }</a>
+					<a href={ templ.SafeURL(goalPath(ev.Suggestion.Parent.ID)) }>{ ev.Suggestion.Parent.Title }</a>
 				</p>
-				<p class="muted small">{ h.suggestionOutcome(*e.Suggestion) }</p>
-			case e.Nudge != nil:
+				<p class="muted small">{ h.suggestionOutcome(ev.Suggestion) }</p>
+			case domain.NudgeEvent:
 				<p>
-					@person(e.Nudge.Sender)
+					@person(ev.Nudge.Sender)
 					{ "nudged for a Check-in" }
 				</p>
-			case e.Milestone != nil:
+			case domain.MilestoneAddedEvent:
 				<p>
-					@person(e.Milestone.Author)
-					{ fmt.Sprintf("added Milestone %s (%s)", e.Milestone.Name, h.dates().date(e.Milestone.AddedDate)) }
+					@person(ev.Change.Author)
+					{ fmt.Sprintf("added Milestone %s (%s)", ev.Change.Name, h.dates().date(ev.Change.AddedDate)) }
 				</p>
-			case e.Link != nil:
-				{{ before, after := linkChange(*e.Link) }}
-				<p>{ before }<a href={ templ.SafeURL(goalPath(e.Link.OtherID)) }>{ e.Link.OtherTitle }</a>{ after }</p>
+			case domain.LinkChangeEvent:
+				{{ before, after := linkChange(ev.Link) }}
+				<p>{ before }<a href={ templ.SafeURL(goalPath(ev.Link.OtherID)) }>{ ev.Link.OtherTitle }</a>{ after }</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.Link.Actor)
+					@person(ev.Link.Actor)
 				</p>
-			case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
-				<p>{ e.ActionItem.Item.Text }</p>
-				<p><span class="muted">Note: </span>{ e.ActionItem.Item.ClosingNote }</p>
+			case domain.ActionItemClosedEvent:
+				<p>{ ev.Listing.Item.Text }</p>
+				<p><span class="muted">Note: </span>{ ev.Listing.Item.ClosingNote }</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.ActionItem.Item.Owner)
+					@person(ev.Listing.Item.Owner)
 				</p>
-			case e.ActionItem != nil:
-				{{ item := e.ActionItem.Item }}
+			case domain.ActionItemRaisedEvent:
+				{{ item := ev.Listing.Item }}
 				<p>{ item.Text }</p>
 				<p>
 					{ "for " }
-					@person(e.ActionRaisedFor)
+					@person(ev.RaisedFor)
 					{ "· due " + h.dates().date(item.DueDate) + " · from " }
-					<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#action-items", item.DefinitionID, item.PublicationID)) }>{ e.ActionItem.ReportName }</a>
+					<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#action-items", item.DefinitionID, item.PublicationID)) }>{ ev.Listing.ReportName }</a>
 				</p>
 				<p class="muted small">
 					{ "by " }
 					@person(item.CreatedBy)
 				</p>
-			case e.ActionReassign != nil:
-				<p>{ e.ActionReassign.ItemText }</p>
+			case domain.ActionItemReassignedEvent:
+				<p>{ ev.Reassignment.ItemText }</p>
 				<p>
-					@person(e.ActionReassign.From)
+					@person(ev.Reassignment.From)
 					{ "→ " }
-					@person(e.ActionReassign.To)
+					@person(ev.Reassignment.To)
 				</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.ActionReassign.By)
+					@person(ev.Reassignment.By)
 				</p>
-			case e.Comment != nil:
-				{{ c := e.Comment.Comment }}
+			case domain.CommentEvent:
+				{{ c := ev.Listing.Comment }}
 				<p>{ c.Body }</p>
 				<p class="muted small">
 					{ "by " }
 					@person(c.Author)
 					if c.PublicationID != 0 {
 						{ " · in " }
-						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#goal-%d", e.Comment.DefinitionID, c.PublicationID, c.GoalID)) }>{ e.Comment.ReportName }</a>
+						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#goal-%d", ev.Listing.DefinitionID, c.PublicationID, c.GoalID)) }>{ ev.Listing.ReportName }</a>
 					}
 				</p>
-			default:
-				<p>{ valueChangeText(*e.Value) }</p>
+			case domain.ValueChangeEvent:
+				<p>{ valueChangeText(ev.Change) }</p>
 				<p class="muted small">
 					{ "by " }
-					@person(e.Value.Actor)
+					@person(ev.Change.Actor)
 				</p>
 		}
 	</li>
@@ -188,7 +190,7 @@ templ historyItem(h history, e historyEntry) {
 // one's time. A disclosure lists each folded Check-in's time and who wrote it
 // for whom, as plain text, so the entry keeps one time element.
 templ historyFolded(h history, e historyEntry) {
-	{{ c := e.Checkin }}
+	{{ c := e.Folded[0].Checkin }}
 	<li data-testid="history-entry" data-kind="checkin" data-folded={ strconv.Itoa(len(e.Folded)) } class="tl-entry">
 		@historyMarker(e)
 		<p class="tl-head">
@@ -196,7 +198,7 @@ templ historyFolded(h history, e historyEntry) {
 			if c.Health != "" {
 				@healthChip("history-health", c.Health)
 			}
-			<time class="muted small" datetime={ e.At.In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At) }</time>
+			<time class="muted small" datetime={ e.At().In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At()) }</time>
 		</p>
 		<details data-testid="folded-checkins" class="tl-detail">
 			<summary class="small">
@@ -209,7 +211,7 @@ templ historyFolded(h history, e historyEntry) {
 			<ul class="tl-readings">
 				for _, f := range e.Folded {
 					<li>
-						<span>{ h.dates().timestamp(f.At) }</span>
+						<span>{ h.dates().timestamp(f.At()) }</span>
 						<span class="muted small">
 							{ " by " }
 							@person(f.Checkin.Author)
@@ -230,8 +232,8 @@ templ historyFolded(h history, e historyEntry) {
 // colour; every other kind, and a Check-in with no Health, has its own neutral
 // shape. The entry's text label says the same to everyone.
 templ historyMarker(e historyEntry) {
-	if e.Checkin != nil && e.Checkin.Health != "" {
-		<span class={ "tl-mark", healthClass(e.Checkin.Health) } aria-hidden="true"><span class="dot"></span></span>
+	if health := e.markerHealth(); health != "" {
+		<span class={ "tl-mark", healthClass(health) } aria-hidden="true"><span class="dot"></span></span>
 	} else {
 		<span class={ "tl-mark", "tl-" + e.kind() } aria-hidden="true"></span>
 	}
@@ -246,7 +248,7 @@ templ historyMarker(e historyEntry) {
 // recorded shows only its Date Slips. Under them, the Draft Highlights it
 // offered and didn't keep, each with its kind and note (CONTEXT.md: Draft
 // Highlight).
-templ historyCheckin(h history, e historyEntry) {
+templ historyCheckin(h history, e domain.CheckinEvent) {
 	{{ c := e.Checkin }}
 	<p>
 		if c.Health != "" {
@@ -314,7 +316,7 @@ templ historyCheckin(h history, e historyEntry) {
 			if len(e.Readings) > 0 {
 				<ul class="tl-readings">
 					for _, r := range e.Readings {
-						<li><span class="muted">{ r.Metric + ": " }</span><span class="num">{ r.Value }</span></li>
+						<li><span class="muted">{ r.Metric.Name + ": " }</span><span class="num">{ readingText(r) }</span></li>
 					}
 				</ul>
 			}
