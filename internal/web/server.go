@@ -304,8 +304,9 @@ func (s *Server) currentAccount(r *http.Request) *domain.Account {
 }
 
 // requireAuth wraps a handler so it runs only for a signed-in Account, which it
-// passes along, with what the sidebar shows in the request context. It slides
-// the session's idle limit on (see slideSession).
+// passes along, with a reader for what the sidebar shows in the request
+// context (see sidebarOnDemand). It slides the session's idle limit on (see
+// slideSession).
 func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sess, acc, ok := s.openSession(r)
@@ -314,31 +315,24 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 			return
 		}
 		s.slideSession(w, sess)
-		h(w, s.withSidebar(r, acc), acc)
+		h(w, s.sidebarOnDemand(r, acc), acc)
 	}
 }
 
-// withSidebar returns r with what the sidebar shows read into its context,
-// once per request through its page loader (ADR 0010): what needs acc, the
-// Goals Follow-ups flags in acc's default scope, and the people directly
-// under acc for My org. A part that can't be read is left out rather than
-// failing the page, and the failure is logged at Warn.
-func (s *Server) withSidebar(r *http.Request, acc domain.Account) *http.Request {
-	sb, err := s.svc.Sidebar(r.Context(), acc.ID)
-	if err != nil {
-		s.requestLog(r).WarnContext(r.Context(), "sidebar read failed", "method", r.Method, "path", r.URL.Path, "err", err)
-	}
-	ctx := r.Context()
-	if sb.NeedsYouRead {
-		ctx = withNeedsYou(ctx, sb.NeedsYou)
-	}
-	if sb.FollowUpsRead {
-		ctx = withFollowUps(ctx, sb.FollowUps)
-	}
-	if sb.DirectlyUnderRead {
-		ctx = withOrgPeople(ctx, sb.DirectlyUnder)
-	}
-	return r.WithContext(ctx)
+// sidebarOnDemand returns r with a reader for what the sidebar shows in its
+// context, which the layout calls the first time it draws the frame (see
+// sidebarReader): what needs acc, the Goals Follow-ups flags in acc's default
+// scope, and the people directly under acc for My org. A part that can't be
+// read is left out rather than failing the page, and the failure is logged at
+// Warn.
+func (s *Server) sidebarOnDemand(r *http.Request, acc domain.Account) *http.Request {
+	return r.WithContext(withLazySidebar(r.Context(), func() domain.Sidebar {
+		sb, err := s.svc.Sidebar(r.Context(), acc.ID)
+		if err != nil {
+			s.requestLog(r).WarnContext(r.Context(), "sidebar read failed", "method", r.Method, "path", r.URL.Path, "err", err)
+		}
+		return sb
+	}))
 }
 
 // render writes a templ component with the given status. It puts the request
