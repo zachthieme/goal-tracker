@@ -715,11 +715,14 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
+			return err
+		}
 		val, err := tx.queries.GetDimensionValue(ctx, valueID)
 		if err != nil {
 			return Refuse(ErrValidation, "dimension value does not exist")
 		}
-		_, err = tx.SetGoalDimensionValues(ctx, actorID, DimensionValuesEdit{GoalID: goalID, DimensionID: val.DimensionID, ValueIDs: []int64{valueID}, Join: true})
+		_, err = tx.setJudgedGoalDimensionValues(ctx, actorID, DimensionValuesEdit{GoalID: goalID, DimensionID: val.DimensionID, ValueIDs: []int64{valueID}, Join: true})
 		return err
 	})
 }

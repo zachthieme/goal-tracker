@@ -193,6 +193,46 @@ func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
 	}
 }
 
+// Who may set the Goal's values is judged before the value is looked up, so
+// someone who may not set them hears that, not that the value doesn't exist.
+func TestAssignGoalValueJudgesSetterBeforeMissingValue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	other := h.SignIn("other@example.com")
+	ctx := context.Background()
+
+	quarter := h.CreateDimension(boss, "Quarter", "Q1", "Q2")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	missingValueID := quarter.Values[1].ID + 1
+
+	if err := h.Service.AssignGoalValue(ctx, other.ID, goal.ID, missingValueID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Owner AssignGoalValue of a missing value err = %v, want ErrNotAuthorized", err)
+	}
+}
+
+// The Goal is found before the value is looked up, so assigning a missing
+// value to a missing Goal hears that the Goal isn't there.
+func TestAssignGoalValueFindsGoalBeforeMissingValue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	quarter := h.CreateDimension(boss, "Quarter", "Q1", "Q2")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	missingGoalID := goal.ID + 1
+	missingValueID := quarter.Values[1].ID + 1
+
+	if err := h.Service.AssignGoalValue(ctx, boss.ID, missingGoalID, missingValueID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Admin AssignGoalValue of a missing value to a missing Goal err = %v, want ErrNotFound", err)
+	}
+}
+
 // A retired value stays readable on a Goal that already carries it, but is not
 // offered for a new assignment (CONTEXT.md: retired values stay readable).
 func TestRetiredValueStaysReadableButNotAssignable(t *testing.T) {
