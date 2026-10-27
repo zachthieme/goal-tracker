@@ -48,7 +48,7 @@ Read these first; some may decide whether the install goes ahead now.
   each password sign-in briefly uses 64 MiB, one at a time per CPU.
 - A DNS name for the app, and a TLS certificate for it (the reverse proxy
   handles TLS; the app speaks plain HTTP on localhost).
-- To build: Go 1.27.3 or newer, on any machine (or Docker; see below). The binary is static (pure-Go
+- To build: Go 1.27.3 or newer, on any machine (or take a release's binary or Docker image; see below). The binary is static (pure-Go
   SQLite, no cgo), so you can build elsewhere and copy it over.
 - Optional but recommended: the `sqlite3` command-line tool on the host, for
   backups.
@@ -71,20 +71,27 @@ Use `GOARCH=arm64` for an arm64 host. The generated code is committed, so the
 build needs nothing but Go. The pages, styles, migrations and timezone data are
 all embedded: the binary is the whole app (about 30 MB).
 
-### Or build the Docker image
+Or skip the build: each [release](https://github.com/zachthieme/goal-tracker/releases)
+attaches the binary for `linux_amd64` and `linux_arm64`, with a `SHA256SUMS`
+to check it against.
 
-The repo's `Dockerfile` builds the same binary into a Debian image with
-Chromium for PDF downloads. It runs as a non-root user, listens on 8080, and
-keeps the database in the `/data` volume (`GOAL_TRACKER_DB` is
-`/data/goal-tracker.db`):
+### Or run the Docker image
+
+Each release is also published as a Docker image for amd64 and arm64,
+`ghcr.io/zachthieme/goal-tracker:<version>` (and `:latest`), built from the
+repo's `Dockerfile`: the same binary in a Debian image with Chromium for PDF
+downloads. It runs as a non-root user, listens on 8080, and keeps the database
+in the `/data` volume (`GOAL_TRACKER_DB` is `/data/goal-tracker.db`):
 
 ```sh
-docker build -t goal-tracker .
 docker run -d --name goal-tracker --restart unless-stopped -p 127.0.0.1:8080:8080 \
   -v goal-tracker-data:/data \
   -v /etc/goal-tracker/people.csv:/etc/goal-tracker/people.csv:ro \
-  --env-file /etc/goal-tracker/env goal-tracker
+  --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.2.1
 ```
+
+To build the image yourself instead, run `docker build -t goal-tracker .` in
+the repo and use `goal-tracker` as the image name.
 
 The settings in step 4 go in the env file, without `GOAL_TRACKER_ADDR`,
 `GOAL_TRACKER_DB` or `GOAL_TRACKER_CHROME`, which the image sets. Two differ
