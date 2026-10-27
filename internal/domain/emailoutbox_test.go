@@ -447,7 +447,7 @@ func TestQueueEmailsSendsWithItsTransaction(t *testing.T) {
 
 	rollback := errors.New("roll back")
 	if err := svc.WithinTx(ctx, func(tx *domain.Service) error {
-		if err := tx.QueueEmails(ctx, msgs[:1]); err != nil {
+		if err := domain.QueueEmails(ctx, tx, msgs[:1]); err != nil {
 			return err
 		}
 		return rollback
@@ -458,7 +458,7 @@ func TestQueueEmailsSendsWithItsTransaction(t *testing.T) {
 		t.Fatalf("%d sends of email queued in a rolled-back transaction, want none", attempts)
 	}
 
-	if err := svc.QueueEmails(ctx, msgs); err != nil {
+	if err := domain.QueueEmails(ctx, svc, msgs); err != nil {
 		t.Fatalf("QueueEmails: %v", err)
 	}
 	h.Clock.Advance(time.Minute)

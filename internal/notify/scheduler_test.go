@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/notify"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -46,7 +47,18 @@ func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
 // the app does: a Scheduler built on the same database again is the app
 // restarted.
 func weeklyScheduler(h *testsupport.Harness, when notify.Weekly) *notify.Scheduler {
-	return notify.NewScheduler(h.Service, notify.WeeklyJob, when, newNotifier(h).SendWeekly)
+	return notify.NewScheduler(h.Service, domain.WeeklyEmailsJob, when, h.Service.QueueWeeklyEmails)
+}
+
+// sentTo returns the messages recorded for the address.
+func sentTo(rec *email.Recorder, addr string) []email.Message {
+	var out []email.Message
+	for _, m := range rec.Sent() {
+		if m.To == addr {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ticker returns a func that sets the harness clock to at and ticks sched,
@@ -170,9 +182,9 @@ func TestSchedulerRetriesAFailedRunAtTheNextTick(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	when := mondays9am(t)
-	send := newNotifier(h).SendWeekly
+	send := h.Service.QueueWeeklyEmails
 	failures := 1
-	sched := notify.NewScheduler(h.Service, notify.WeeklyJob, when, func(ctx context.Context, slot time.Time) error {
+	sched := notify.NewScheduler(h.Service, domain.WeeklyEmailsJob, when, func(ctx context.Context, slot time.Time) error {
 		if failures > 0 {
 			failures--
 			return errors.New("database is locked")
@@ -212,7 +224,7 @@ func TestSchedulerAFailedRunsErrorNamesItsSlot(t *testing.T) {
 
 	h := testsupport.New(t)
 	when := mondays9am(t)
-	sched := notify.NewScheduler(h.Service, notify.WeeklyJob, when, func(context.Context, time.Time) error {
+	sched := notify.NewScheduler(h.Service, domain.WeeklyEmailsJob, when, func(context.Context, time.Time) error {
 		return errors.New("database is locked")
 	})
 	ticker(t, h)(sched, mondayAt9(0).Add(-time.Minute))

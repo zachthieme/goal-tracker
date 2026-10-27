@@ -549,9 +549,9 @@ func (s *Service) ActionItemsAbout(ctx context.Context, goalID int64) ([]ActionI
 	})
 }
 
-// AllOpenActionItems returns every open Action Item, by owner and then
+// allOpenActionItems returns every open Action Item, by owner and then
 // soonest due.
-func (s *Service) AllOpenActionItems(ctx context.Context) ([]ActionItemListing, error) {
+func (s *Service) allOpenActionItems(ctx context.Context) ([]ActionItemListing, error) {
 	rows, err := s.queries.ListAllOpenActionItems(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list all open action items: %w", err)

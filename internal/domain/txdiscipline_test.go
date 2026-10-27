@@ -81,6 +81,7 @@ var txDisciplineExempt = map[string]string{
 	"DeliverEmail":                "it sends outside any transaction, so a slow mail server doesn't hold the write lock, and writes each email's outcome in a short one",
 	"PublishReport":               "it drafts the Report outside the transaction, so the draft's reads don't hold the write lock, then re-checks who may publish in it",
 	"SyncDirectoryAsAdmin":        "it refuses a non-Admin before reading the directory, which mustn't hold the write lock",
+	"QueueWeeklyEmails":           "it composes the week's emails outside the transaction, so their reads don't hold the write lock, then records the slot and queues them in one",
 }
 
 // Every command — an exported Service method that can reach a write — reads

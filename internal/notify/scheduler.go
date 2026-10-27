@@ -1,3 +1,10 @@
+// Package notify schedules the weekly emails: each Owner's and Delegate's
+// reminder of their Check-ins due and the open Action Items they own, and each
+// parent Owner's digest of problems among the Goals that contribute to theirs,
+// which Service.QueueWeeklyEmails composes and queues in the Service's email
+// outbox. Its Scheduler runs them once a week, reading the time from the
+// Service's clock, so tests drive it with the fake clock and assert on the
+// recording sender behind the outbox.
 package notify
 
 import (
