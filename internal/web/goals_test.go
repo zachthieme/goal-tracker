@@ -5636,10 +5636,7 @@ func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AssignGoalValue(goal, pillar.Values[0])
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "goal_value_changes")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)

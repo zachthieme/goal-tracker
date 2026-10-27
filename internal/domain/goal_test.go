@@ -279,10 +279,7 @@ func TestCreateGoalKeepsNothingWhenItsFirstRevisionFails(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	ctx := context.Background()
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_revision BEFORE INSERT ON why_it_matters_revisions
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "why_it_matters_revisions")
 
 	if _, err := h.Service.CreateGoal(ctx, domain.CreateGoalInput{
 		Title:        "Ship v2",
@@ -379,10 +376,7 @@ func TestEditWhyItMattersKeepsNothingWhenItsRevisionFails(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "First why.")
 	ctx := context.Background()
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_revision BEFORE INSERT ON why_it_matters_revisions
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "why_it_matters_revisions")
 
 	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Second why.", owner.ID); err == nil {
 		t.Fatal("EditWhyItMatters succeeded despite the injected failure")

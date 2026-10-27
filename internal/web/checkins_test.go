@@ -2410,10 +2410,7 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "checkins")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, hx := range []bool{false, true} {

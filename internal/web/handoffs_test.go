@@ -778,10 +778,7 @@ func TestFailedAcceptChangesNothing(t *testing.T) {
 		t.Fatalf("StartHandoff: %v", err)
 	}
 	// Fail the last step, after ownership has moved and Ann has been removed.
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
-		WHEN NEW.status = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Update, "handoffs")
 	patClient := signInClient(t, ts.URL, pat.Email)
 
 	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})

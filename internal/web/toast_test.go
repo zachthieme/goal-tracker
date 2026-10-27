@@ -67,7 +67,8 @@ func TestToastFitsAPhoneWidth(t *testing.T) {
 // restored says whether the Undo has put things back. back is the page a
 // refused Undo links back to, again what a second Undo is refused with, and
 // notYours what someone else posting the toast's fields is refused with.
-// writes is the change to a table the Undo makes, as a trigger's event.
+// writes is the kind of write the Undo makes to the table writesTo, for a test
+// to make fail.
 type undoCase struct {
 	name     string
 	admins   []string
@@ -76,7 +77,8 @@ type undoCase struct {
 	back     func(t *testing.T, h *testsupport.Harness) string
 	again    string
 	notYours string
-	writes   string
+	writes   testsupport.Write
+	writesTo string
 }
 
 var undoCases = []undoCase{
@@ -104,7 +106,8 @@ var undoCases = []undoCase{
 		},
 		again:    "This removal has already been undone.",
 		notYours: "Only the person who removed a link may undo it.",
-		writes:   "INSERT ON links",
+		writes:   testsupport.Insert,
+		writesTo: "links",
 	},
 	{
 		name: "link rejection",
@@ -122,7 +125,8 @@ var undoCases = []undoCase{
 		back:     func(*testing.T, *testsupport.Harness) string { return "/links" },
 		again:    "This rejection has already been undone.",
 		notYours: "Only the person who rejected a request may undo it.",
-		writes:   "INSERT ON links",
+		writes:   testsupport.Insert,
+		writesTo: "links",
 	},
 	{
 		name: "Handoff rejection",
@@ -140,7 +144,8 @@ var undoCases = []undoCase{
 		back:     func(*testing.T, *testsupport.Harness) string { return "/handoffs" },
 		again:    "This Handoff isn't rejected, so there is nothing to undo.",
 		notYours: "Only the person who rejected a Handoff may undo it.",
-		writes:   "UPDATE ON handoffs",
+		writes:   testsupport.Update,
+		writesTo: "handoffs",
 	},
 	{
 		name:   "value retirement",
@@ -164,7 +169,8 @@ var undoCases = []undoCase{
 		back:     func(*testing.T, *testsupport.Harness) string { return "/dimensions" },
 		again:    "This Undo is no longer available.",
 		notYours: "This Undo isn't yours to use.",
-		writes:   "UPDATE ON dimension_values",
+		writes:   testsupport.Update,
+		writesTo: "dimension_values",
 	},
 	{
 		name: "Parent suggestion decline",
@@ -187,7 +193,8 @@ var undoCases = []undoCase{
 		back:     func(*testing.T, *testsupport.Harness) string { return "/home" },
 		again:    "This suggestion is no longer declined.",
 		notYours: "This Undo isn't yours to use.",
-		writes:   "UPDATE ON parent_suggestions",
+		writes:   testsupport.Update,
+		writesTo: "parent_suggestions",
 	},
 }
 
@@ -479,10 +486,7 @@ func TestAnUndoThatFailsSaysNothingChanged(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
 			ts := newServer(t, h)
 			client, landed := tc.act(t, h, ts)
-			if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_undo BEFORE `+tc.writes+`
-				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-				t.Fatalf("install failing trigger: %v", err)
-			}
+			h.FailWrites(tc.writes, tc.writesTo)
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
 			defer func() { _ = resp.Body.Close() }()

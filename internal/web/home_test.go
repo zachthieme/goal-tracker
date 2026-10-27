@@ -1592,9 +1592,7 @@ func TestHomeFailsWhenNoChangeCantBeChecked(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(8 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
-		t.Fatalf("rename milestones: %v", err)
-	}
+	h.FailReads("milestones")
 
 	resp, err := ctxGet(t, client, ts.URL+"/home")
 	if err != nil {

@@ -584,10 +584,7 @@ func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
 	customer := h.CreateDimension(boss, "Customer", "Acme", "Globex")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AssignGoalValue(goal, customer.Values[1])
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Delete, "dimension_values")
 	ts := newServer(t, h)
 	bossClient := signInClient(t, ts.URL, "boss@example.com")
 

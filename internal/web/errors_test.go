@@ -249,10 +249,7 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
 	h.Clock.Advance(10 * day)
 	pat := signInClient(t, ts.URL, "pat@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_nudge BEFORE INSERT ON nudges
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "nudges")
 	before := len(logRecords(t, buf))
 
 	path := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"
@@ -276,9 +273,7 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
-		t.Fatalf("rename milestones: %v", err)
-	}
+	h.FailReads("milestones")
 	before := len(logRecords(t, buf))
 
 	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
@@ -321,10 +316,7 @@ func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "checkins")
 	before := len(logRecords(t, buf))
 
 	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
@@ -345,9 +337,7 @@ func TestAFailedImportIsLoggedWithItsCause(t *testing.T) {
 	h := testsupport.New(t, "admin@example.com")
 	ts, buf := loggedServer(t, h)
 	admin := signInClient(t, ts.URL, "admin@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `ALTER TABLE fields RENAME TO gone_fields`); err != nil {
-		t.Fatalf("rename fields: %v", err)
-	}
+	h.FailReads("fields")
 	before := len(logRecords(t, buf))
 
 	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", webImportCSV, "dry-run")
@@ -369,10 +359,7 @@ func TestAFailedUndoIsLoggedWithItsCause(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
 			ts, buf := loggedServer(t, h)
 			client, landed := tc.act(t, h, ts)
-			if _, err := h.DB.ExecContext(t.Context(), `CREATE TRIGGER fail_undo BEFORE `+tc.writes+`
-				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-				t.Fatalf("install failing trigger: %v", err)
-			}
+			h.FailWrites(tc.writes, tc.writesTo)
 			before := len(logRecords(t, buf))
 
 			path := undoAction(t, landed)
