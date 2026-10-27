@@ -53,8 +53,70 @@ build: ## Build bin/goal-tracker
 # one process-wide allocator lock, so past a few tests more of them only queue
 # on it. The whole suite with the flag above, on 48 cores (#525): -parallel 2
 # took 263s, 4 took 183s and 155s, 6 took 186s and 8 took 201s.
-test: ## Run the Go tests with the race detector
-	go test -race -count=1 -gcflags=modernc.org/...=-d=checkptr=0 -parallel 4 ./...
+GO_TEST_FLAGS := -race -gcflags=modernc.org/...=-d=checkptr=0
+GO_TEST_PARALLEL := 4
+
+# The lock is per process, though, so separate processes don't queue on each
+# other. internal/web has most of the tests, and as one process it took 200s
+# of a 3m22s suite, so `make test` builds its test binary once and runs it as
+# one process per range of test names, alongside a `go test` of every other
+# package. Each range is a -test.run pattern (RE2, unanchored), separated by
+# spaces; a range can't hold a space or a single quote. Before running any
+# test, make test fails naming each test that matches no range or more than
+# one, so every test runs exactly once. Each process runs with go test's
+# default -timeout of 10m, which the compiled binary otherwise lacks. Each
+# process's output prints whole once it ends, in the order they started; a
+# range's last line gives its time.
+#
+# On 48 cores (#632), three ranges (A-F, G-O, P-Z) took 59s, 57s and 41s and
+# the suite 1m22s; these five took 39-41s at most and the suite 47-49s, with
+# internal/domain's 38s the next slowest. Six, splitting G, took 34s at most
+# but slowed the rest: the suite took 50-51s. Rebalance with, e.g.,
+# make test WEB_TEST_RANGES='^Test[A-M] ^Test[N-Z]'.
+WEB_TEST_RANGES ?= ^Test[A-C] ^Test[D-F] ^TestG ^Test[H-R] ^Test[S-Z]
+WEB_TEST_PKG := github.com/zachthieme/goal-tracker/internal/web
+
+test: ## Run the Go tests with the race detector (WEB_TEST_RANGES)
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+	echo "go test -c $(GO_TEST_FLAGS) -o $$tmp/web.test ./internal/web" && \
+	go test -c $(GO_TEST_FLAGS) -o "$$tmp/web.test" ./internal/web && \
+	cd internal/web && \
+	"$$tmp/web.test" -test.list '.*' >"$$tmp/all" && \
+	: >"$$tmp/matched" && \
+	for r in $(foreach r,$(WEB_TEST_RANGES),'$(r)'); do \
+		"$$tmp/web.test" -test.list "$$r" >"$$tmp/list" || exit 1; \
+		r="$$r" awk '{ print $$0 "\t" ENVIRON["r"] }' "$$tmp/list" >>"$$tmp/matched"; \
+	done && \
+	awk -F '\t' ' \
+		FILENAME == ARGV[1] { hits[$$1]++; ranges[$$1] = ranges[$$1] "  " $$2; next } \
+		!hits[$$0] { none = none "\n  " $$0 } \
+		hits[$$0] > 1 { many = many "\n  " $$0 ":" ranges[$$0] } \
+		END { \
+			if (none != "") print "internal/web tests that match no range in WEB_TEST_RANGES:" none >"/dev/stderr"; \
+			if (many != "") print "internal/web tests that match more than one range in WEB_TEST_RANGES:" many >"/dev/stderr"; \
+			exit (none != "" || many != ""); \
+		}' "$$tmp/matched" "$$tmp/all" || exit 1; \
+	cd ../.. || exit 1; \
+	pids=; trap 'kill $$pids 2>/dev/null; exit 130' INT TERM; \
+	pkgs=$$(go list ./... | grep -vxF '$(WEB_TEST_PKG)') || exit 1; \
+	echo "go test $(GO_TEST_FLAGS) -count=1 -parallel $(GO_TEST_PARALLEL) <every package but internal/web>"; \
+	go test $(GO_TEST_FLAGS) -count=1 -parallel $(GO_TEST_PARALLEL) $$pkgs >"$$tmp/0.log" 2>&1 & pids=$$!; \
+	n=0; for r in $(foreach r,$(WEB_TEST_RANGES),'$(r)'); do \
+		n=$$((n + 1)); \
+		echo "(cd internal/web && web.test -test.run '$$r' -test.count=1 -test.parallel $(GO_TEST_PARALLEL) -test.timeout 10m)"; \
+		( \
+			cd internal/web || exit 1; start=$$(date +%s); \
+			"$$tmp/web.test" -test.run "$$r" -test.count=1 -test.parallel $(GO_TEST_PARALLEL) -test.timeout 10m >"$$tmp/$$n.log" 2>&1 & c=$$!; \
+			trap 'kill $$c; exit 143' TERM; wait $$c; status=$$?; \
+			if [ $$status = 0 ]; then result='ok  '; else result=FAIL; fi; \
+			printf '%s\t%s\t%ss\n' "$$result" "$(WEB_TEST_PKG) -test.run '$$r'" $$(($$(date +%s) - start)) >>"$$tmp/$$n.log"; \
+			exit $$status \
+		) & pids="$$pids $$!"; \
+	done; \
+	failed=0; n=0; for p in $$pids; do \
+		wait $$p || failed=1; cat "$$tmp/$$n.log"; n=$$((n + 1)); \
+	done; \
+	exit $$failed
 
 # The tests without the race detector, for a quick local loop. `make test`
 # stays the gate.

@@ -39,9 +39,11 @@ another area's file.
 
 Run the gates (`make generate-check`, `make lint`, `make test`; `make check`
 runs all three in that order and stops at the first failure) in the
-foreground and read each to the end; `make check` takes about 3 minutes,
-most of it `make test`, with `internal/web` under the race detector about 2½
-minutes, so give a foreground gate run a tool timeout of at least 5 minutes.
+foreground and read each to the end; `make check` takes about a minute, most
+of it `make test`, which runs `internal/web` under the race detector as five
+processes of about 40 seconds each alongside the other packages. Give a
+foreground gate run a tool timeout of at least 5 minutes, which also covers a
+cold build cache.
 Never
 background a gate and wait for it. **Commit before you end your turn.** A
 campaign run is a single turn, so a turn that ends waiting on a background job,

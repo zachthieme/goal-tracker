@@ -103,8 +103,9 @@ ENV PATH="/home/agent/.local/bin:$PATH"
 # Keep the gates in the agent's foreground. A run is one non-interactive turn, so
 # an agent that backgrounds `make test` and waits for the notification ends the
 # turn with nothing committed and parks "stalled, no-commit" (#25, #28, #37, #44).
-# The default 2-minute Bash timeout is shorter than the race suite (up to ~5m),
-# so raise it too, rather than let a foreground run time out.
+# The default 2-minute Bash timeout leaves little room over the race suite
+# (about 1m on 48 cores, #632; longer from a cold build cache or on fewer
+# cores), so raise it too, rather than let a foreground run time out.
 ENV CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 \
     BASH_DEFAULT_TIMEOUT_MS=600000 \
     BASH_MAX_TIMEOUT_MS=900000
