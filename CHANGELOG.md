@@ -161,6 +161,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The web refusal writers that only forwarded to `refuse` (`writeLinkError`, `writeHandoffError`, `writeHandoffDecisionError`, `writeReportError`, `writeCheckinError`, `writeFieldError`) are gone, their callers calling `refuse` directly; `refuseUndo` no longer takes an unused Account. `returnTo` and `localPath` move to `internal/web/returnto.go`, and the cross-area test helper `postNoChange` to `helpers_test.go`. The unused `GetLatestCheckin` query is deleted, and the hot-query index test checks `ListLatestCheckinsForGoals` in its place (#620).
 
 **Documentation:**
+- [internal] `CONTEXT.md` defines a Goal's **History**: everything that has happened to it, newest first, each with who and when, as the Goal page shows it (#619).
 - [ops] The install guide covers a proof-of-concept install with password sign-in and the directory CSV: the Docker command mounts the CSV and says uid 10001 must read it, `password-link` has a Docker form, and a new section says how to get a TLS certificate for an internal host. It also writes down the CSV's rules (UTF-8 from Excel, a Manager with no row, replacing the file by rename) and fixes smaller slips. README's settings table gains `GOAL_TRACKER_TRUSTED_PROXIES` (#548).
 - [internal] The `email` package doc describes the email outbox sending through `Sender`, with `LogSender` logging instead of delivering and `Recorder` for tests, and CLAUDE.md names `emailoutbox.go` as home of the email outbox's options (#620).
 
