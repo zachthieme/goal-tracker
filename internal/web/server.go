@@ -326,10 +326,10 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 // read is left out rather than failing the page, and the failure is logged at
 // Warn.
 func (s *Server) sidebarOnDemand(r *http.Request, acc domain.Account) *http.Request {
-	return r.WithContext(withLazySidebar(r.Context(), func() domain.Sidebar {
-		sb, err := s.svc.Sidebar(r.Context(), acc.ID)
+	return r.WithContext(withLazySidebar(r.Context(), func(ctx context.Context) domain.Sidebar {
+		sb, err := s.svc.Sidebar(ctx, acc.ID)
 		if err != nil {
-			s.requestLog(r).WarnContext(r.Context(), "sidebar read failed", "method", r.Method, "path", r.URL.Path, "err", err)
+			s.requestLog(r).WarnContext(ctx, "sidebar read failed", "method", r.Method, "path", r.URL.Path, "err", err)
 		}
 		return sb
 	}))
