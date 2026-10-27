@@ -16,7 +16,7 @@ import (
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		if acc := s.currentAccount(r); acc != nil {
-			r = s.withSidebar(r, *acc)
+			r = s.sidebarOnDemand(r, *acc)
 		}
 		s.notFound(w, r)
 		return

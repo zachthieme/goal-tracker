@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -23,32 +24,50 @@ func onSection(ctx context.Context, href string) bool {
 	return path == href || strings.HasPrefix(path, href+"/")
 }
 
-type needsYouKey struct{}
+type sidebarKey struct{}
 
-// withNeedsYou records how many things need the signed-in person, so the
-// sidebar's Home item can count them without every page passing it along.
-func withNeedsYou(ctx context.Context, n int) context.Context {
-	return context.WithValue(ctx, needsYouKey{}, n)
+// sidebarReader reads what the sidebar shows for the signed-in person the
+// first time the layout asks for any of it, and only then, so a response that
+// draws no frame — a redirect, an htmx fragment, a download — reads none of it
+// (#628). It reads once per request through its page loader (ADR 0010).
+type sidebarReader struct {
+	once sync.Once
+	read func(context.Context) domain.Sidebar
+	sb   domain.Sidebar
+}
+
+// withLazySidebar puts a sidebarReader in ctx that calls read, with the
+// asking context, on the first ask, so the sidebar can show what it read
+// without every page passing it along.
+func withLazySidebar(ctx context.Context, read func(context.Context) domain.Sidebar) context.Context {
+	return context.WithValue(ctx, sidebarKey{}, &sidebarReader{read: read})
+}
+
+// sidebarOf is what the sidebar shows, read on the first ask; zero, with
+// nothing read, when the context has no reader.
+func sidebarOf(ctx context.Context) domain.Sidebar {
+	r, _ := ctx.Value(sidebarKey{}).(*sidebarReader)
+	if r == nil {
+		return domain.Sidebar{}
+	}
+	r.once.Do(func() { r.sb = r.read(ctx) })
+	return r.sb
 }
 
 // needsYou is how many things need the signed-in person, 0 when uncounted.
 func needsYou(ctx context.Context) int {
-	n, _ := ctx.Value(needsYouKey{}).(int)
-	return n
-}
-
-type followUpsKey struct{}
-
-// withFollowUps records how many Goals the Follow-ups page flags, so the sidebar's Follow-ups
-// item can count them without every page passing it along.
-func withFollowUps(ctx context.Context, n int) context.Context {
-	return context.WithValue(ctx, followUpsKey{}, n)
+	if sb := sidebarOf(ctx); sb.NeedsYouRead {
+		return sb.NeedsYou
+	}
+	return 0
 }
 
 // followUps is how many Goals the Follow-ups page flags, 0 when uncounted.
 func followUps(ctx context.Context) int {
-	n, _ := ctx.Value(followUpsKey{}).(int)
-	return n
+	if sb := sidebarOf(ctx); sb.FollowUpsRead {
+		return sb.FollowUps
+	}
+	return 0
 }
 
 type mentionsKey struct{}
@@ -67,20 +86,13 @@ func mentions(ctx context.Context) *domain.Mentions {
 	return m
 }
 
-type orgPeopleKey struct{}
-
-// withOrgPeople records the people directly under the signed-in person by
-// Manager, so the sidebar's My org can list them without every page passing
-// them along.
-func withOrgPeople(ctx context.Context, people []domain.Account) context.Context {
-	return context.WithValue(ctx, orgPeopleKey{}, people)
-}
-
-// orgPeople is the people directly under the signed-in person, none when
-// unread.
+// orgPeople is the people directly under the signed-in person by Manager, for
+// the sidebar's My org, none when unread.
 func orgPeople(ctx context.Context) []domain.Account {
-	people, _ := ctx.Value(orgPeopleKey{}).([]domain.Account)
-	return people
+	if sb := sidebarOf(ctx); sb.DirectlyUnderRead {
+		return sb.DirectlyUnder
+	}
+	return nil
 }
 
 // initials is the one or two letters a person's avatar shows: the first

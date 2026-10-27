@@ -25,7 +25,7 @@ func (s *Server) handleUnknown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if acc := s.currentAccount(r); acc != nil {
-		r = s.withSidebar(r, *acc)
+		r = s.sidebarOnDemand(r, *acc)
 	}
 	s.notFound(w, r)
 }
