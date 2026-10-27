@@ -51,6 +51,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] Follow-up signal kinds are typed `domain.FollowUpKind` constants, and the domain states once which signals mean a Goal waits on a Check-in (`Freshness.WaitsOnCheckin`, `FollowUpRow.WaitsOnCheckin`, `WaitsOnCheckinKinds`), which the Nudge rule, Follow-ups, Home and the Goal list now read instead of matching kind strings or OR-ing the flags by hand (#635).
 - [internal] `domain.WaitsOnCheckinKinds` is a func answering a fresh slice each call, so no caller can change the domain's set (#640).
 
+**Documentation:**
+- [ops] README.md and docs/install.md, checked against the code, are corrected where they had drifted: a path no route serves is logged and counted as `route=unmatched`; a PDF download gets 30 seconds in all to wait and render, and Chromium loads the page from a loopback server; `goal-tracker healthcheck` also reads the log settings; the startup checks name the missing base URL, a half-set Authentik directory and failed OIDC discovery; a given-up email is kept 90 days from when it was queued; only the password throttle's per-address counts are in memory; Nudges are logged too; the parent digest names Health that got worse and each kind of Date Slip, and leaves out Done and Cancelled children; a comment on a Goal's own page alerts its Owner; `make e2e` is a gate for changes that reach the browser, the seed or `internal/db/`; the `SIGNIN`, `SERVE_DIRECTORY_FILE` and `password-link` make settings and the `healthcheck` command are listed; and the seed has two Done projects and a CEO with no Manager.
+- [internal] The README opens by saying what Goal Tracker is for, in place of "MBR-caliber".
+
 ### Collected changes — October 26, 2026
 
 **Breaking changes:**

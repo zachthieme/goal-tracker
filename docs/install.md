@@ -11,12 +11,12 @@ is the order to do things in.
 Read these first; some may decide whether the install goes ahead now.
 
 - **No email is sent.** The app has no mail transport yet. Check-in
-  reminders, the parent digest, comment alerts and Action Item emails are
+  reminders, the parent digest, Nudges, comment alerts and Action Item emails are
   written to the log (the recipient's Account ID and the subject) instead of
   sent. Everything else
   works; people just aren't notified.
-- **One instance only.** The database is a single SQLite file, sign-in lockout
-  counts are kept in memory, and the weekly email job runs in the process. Run
+- **One instance only.** The database is a single SQLite file, the password
+  sign-in throttle's per-address counts are kept in memory, and the weekly email job runs in the process. Run
   exactly one copy against one database file. There is no clustering or
   failover.
 - **The first Admins come from `GOAL_TRACKER_ADMINS`.** It gives the Admin flag
@@ -214,13 +214,16 @@ GOAL_TRACKER_TRUSTED_PROXIES=127.0.0.1
 ```
 
 Startup checks this and stops with a message naming the problem: an unset or
-unknown sign-in method, a missing or short session key, OIDC variables set
+unknown sign-in method, an unset `GOAL_TRACKER_BASE_URL`, a missing or short
+session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
 `GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
 session key that isn't base64, a `GOAL_TRACKER_REMINDER_DAY` that isn't a
 weekday name or a `GOAL_TRACKER_REMINDER_TIME` that isn't a 24-hour `HH:MM`,
 `GOAL_TRACKER_DIRECTORY_FILE` set together with the Authentik directory
-variables, a
+variables, only one of the two Authentik directory variables
+(`GOAL_TRACKER_DIRECTORY_URL` and `GOAL_TRACKER_DIRECTORY_TOKEN`) set, with
+`oidc` an issuer whose discovery fails, a
 `GOAL_TRACKER_CHROME` that isn't there or can't run, a
 `GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP (or is
 an IPv4-mapped CIDR, `::ffff:a.b.c.d/n`, wider than `/96`), a
@@ -233,10 +236,12 @@ a Chromium, a `TMPDIR` too long for it (see § PDF downloads). Never set
 
 A published Report downloads as Markdown or PDF. With a Chromium, named by
 `GOAL_TRACKER_CHROME` or found on `PATH`, the app renders the Report's print
-page to a PDF file itself: Chromium loads the page from the app's own listen
-address, so it must be able to reach `GOAL_TRACKER_ADDR` from the host. At most
-two render at once, each within 30 seconds; a download that can't start in
-time gets a "try again" page, and a render that fails logs an `ERROR`. Without
+page to a PDF file itself: Chromium loads the page from a loopback server the
+app starts for each render, which fetches the page's styles and fonts from the
+app's own listen address (not `GOAL_TRACKER_BASE_URL`). At most two render at
+once, and each download gets 30 seconds in all to wait for its turn and
+render; one that can't start in that time gets a 503 "try again" page and
+logs a `WARN`, and a render that fails logs an `ERROR`. Without
 a Chromium, the PDF choice opens the print page instead, for the reader to
 print to PDF from the browser, and startup logs that it falls back.
 
@@ -280,8 +285,8 @@ answers:
   they took, with buckets from 5 ms to 10 s.
 
 `route` is the route's pattern, such as `GET /goals/{id}`, never the path, so
-IDs don't add series; a path no route serves is counted under the catch-all
-that answers it 404 (`GET /`, or `/` for other methods). A method other than
+IDs don't add series; a path no route serves is counted under `route="unmatched"`,
+whatever its method, so scanned paths don't add series. A method other than
 the standard ones is counted as `OTHER`. The counts start at zero each time
 the app starts.
 
@@ -326,7 +331,8 @@ grace@example.com,Grace Hopper,ada@example.com,
   Admin marks them **Departed**, from the Owner section of any Goal they own;
   they then can't sign in, get no email, and their Goals show as Ownerless.
   Someone who owns no Goal can't be marked Departed yet, so with passwords
-  their password keeps working.
+  their password keeps working. An Admin marks someone returned from the Goal
+  page or the Admin page's **Departed people** list.
 
 Have HR's export land somewhere the service can read, replacing the file
 whole with a rename rather than writing it in place, so a sync never reads a
@@ -394,7 +400,7 @@ level=INFO msg=request request_id=3TQ5DBV7XLMAWLQQ4ZK5R2NB6E method=GET route="G
 `route` is the pattern the request matched, not its path, so IDs stay out of
 the log. A request refused before it reached its handler, a cross-site 403 or
 an oversize 413, logs the route it was aimed at, and a path no route serves
-logs the catch-all (`GET /` or `/`) with its 404. Every
+logs `route=unmatched` with its 404. Every
 record logged while handling a request, such as the `ERROR` for a 500, carries
 the same `request_id`, which the response also returns in `X-Request-ID`. A
 proxy that sends its own `X-Request-ID` of 1 to 64 letters, digits, `_` and
@@ -498,8 +504,9 @@ if the new file is a migrated database.
 `goal-tracker healthcheck` checks it from the app's own host, where there may
 be no curl: it GETs `/healthz` on the loopback at `GOAL_TRACKER_ADDR`'s port,
 waits up to 3 seconds, and exits `0` on a `200`; otherwise it exits non-zero
-with one line on stderr saying why. It reads no other setting and opens no
-database. It checks the loopback whatever host `GOAL_TRACKER_ADDR` names, so
+with one line on stderr saying why. Besides `GOAL_TRACKER_ADDR` it reads only
+the log settings (`GOAL_TRACKER_LOG_LEVEL`, `GOAL_TRACKER_LOG_FORMAT`), and
+opens no database. It checks the loopback whatever host `GOAL_TRACKER_ADDR` names, so
 an app listening only on another address fails it. The image's `HEALTHCHECK`
 runs it every 30 seconds, so `docker ps` shows the container as `healthy` or
 `unhealthy`.
@@ -589,15 +596,17 @@ least one. Either change takes effect on the person's next page load.
 ### How long a session lasts
 
 A session lasts 30 days from sign-in, however often it is used, and ends
-sooner after 7 days without a signed-in page. Only pages behind sign-in count:
+sooner after about a week without a signed-in page (6 to 7 days: its last use
+is recorded at most once a day). Only pages behind sign-in count:
 the sign-in page, `/` and a page that isn't there don't keep a session from
 idling.
 
 ### What is kept, and for how long
 
 Every email, the weekly emails and Nudges included, is queued in the database
-before it is sent, and tried again while sending fails, up to five times. An email that was sent, or that was
-given up on after its fifth failed try, is kept 90 days, then deleted. An
+before it is sent, and tried again while sending fails, up to five times. An email that was sent is kept 90
+days from sending, and one given up on after its fifth failed try 90 days
+from when it was queued; then it's deleted. An
 email still being tried is never deleted. The one-time token behind each Undo
 is deleted once its 15 minutes have passed. The app looks for what to delete
 when it starts and then hourly, and logs an `INFO` line, `msg="pruned stale
@@ -619,7 +628,7 @@ passwords, their passwords still work.
 | Symptom | Cause |
 | ------- | ----- |
 | `run migrations: … unable to open database file (14)` | The database's directory doesn't exist or isn't writable by `goal-tracker`. |
-| `run migrations: the database predates the baseline: …` | The database was created before the migrations were squashed into `0001_baseline.sql`. Recreate it (see [Upgrading](#upgrading)). |
+| `run migrations: the database predates the baseline: …` | The database was created before the migrations were squashed into `0001_baseline.sql`: recreate it. Or an older binary was started on a database a newer one migrated: restore the backup taken before the upgrade. See [Upgrading](#upgrading). |
 | `GOAL_TRACKER_SIGNIN must be one of oidc, password, dev` | The env file isn't being read, or the variable is misspelled. |
 | `GOAL_TRACKER_SIGNIN=password needs GOAL_TRACKER_SESSION_KEY: …` | The env file has no session key: generate one with `openssl rand -base64 32`. |
 | `GOAL_TRACKER_SESSION_KEY is N bytes, want at least 32` | Generate it with `openssl rand -base64 32`. |

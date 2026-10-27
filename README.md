@@ -1,20 +1,30 @@
 # Goal Tracker
 
-An MBR-caliber goal-tracking tool: a company states its Goals, updates them on a
-regular cadence with Check-ins, and produces Reports. The domain language is in
-[`CONTEXT.md`](CONTEXT.md) and the key decisions are in [`docs/adr/`](docs/adr/).
-To install it on a server, follow [`docs/install.md`](docs/install.md).
+> **Goal Tracker** — a company's goals, checked in on every week, ready for the business review.
+>
+> Goals get set in a planning deck and go quiet until review week, when someone rebuilds their status from memory and chat threads. Goal Tracker keeps it current as the work happens.
+
+---
+
+You don't want to chase every owner for a status the week before the review. You want each Goal to say how it's going, what slipped and why, and what will get it back on track, and you want the review already written when the meeting comes. Goal Tracker does that.
+
+Each Goal has an Owner, a reason it matters, and Milestones or Metrics that say how you'll know it's done. Owners check in on a cadence: a Health of Green, Yellow or Red, a short status, and, when it isn't Green, a Path to Green with a date. Goals link to the Goals they contribute to, so a company outcome shows the rolled-up Health of the work beneath it. A Report gathers a set of Goals into a review of what changed since the last one, and the people who read it comment and raise Action Items on it.
+
+The domain language is in [`CONTEXT.md`](CONTEXT.md) and the key decisions are
+in [`docs/adr/`](docs/adr/). To install it on a server, follow
+[`docs/install.md`](docs/install.md).
 
 ## Modes
 
 | Command | Make target | What it does |
 | ------- | ----------- | ------------ |
 | `GOAL_TRACKER_SIGNIN=dev go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app, with the development sign-in form (see [Sign-in](#sign-in)). |
-| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. People sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`); it needs `dev/authentik/.env`, and reads the app's `GOAL_TRACKER_SESSION_KEY` from there too, stopping if it's missing. `NO_SSO=1` uses the development sign-in form instead. |
-| | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
-| | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
+| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. People sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`); it needs `dev/authentik/.env`, and reads the app's `GOAL_TRACKER_SESSION_KEY` from there too, stopping if it's missing. `NO_SSO=1` uses the development sign-in form instead, and `SIGNIN=password` uses passwords set through one-time links (no Authentik). `SERVE_DIRECTORY_FILE=<csv>` syncs people and their Managers from that file instead of Authentik's directory. |
+| | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1`, `SIGNIN` and `SERVE_DIRECTORY_FILE` included, and records them for `make stop` and `make restart`. |
+| | `make stop` | Stops the server `make start` started, and its Authentik if it started with Authentik sign-in (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
-| `goal-tracker password-link <email>` | | With `GOAL_TRACKER_SIGNIN=password`, prints a one-time set-password link for the email and exits, refusing anything that isn't an email address: how the first Admin gets a password (see [Passwords](#passwords-password)). |
+| `goal-tracker password-link <email>` | `make password-link EMAIL=<email>` (for the app `make start SIGNIN=password` started) | With `GOAL_TRACKER_SIGNIN=password` and `GOAL_TRACKER_BASE_URL`, prints a one-time set-password link for the email, creating its account if there's none, and exits, refusing anything that isn't an email address: how the first Admin gets a password (see [Passwords](#passwords-password)). |
+| `goal-tracker healthcheck` | | Checks that the app serving at `GOAL_TRACKER_ADDR` is healthy, and exits non-zero if it isn't: the Docker image's `HEALTHCHECK` (see [docs/install.md](docs/install.md#7-put-a-reverse-proxy-in-front)). |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake company for demos (see [Seed a fake company](#seed-a-fake-company)). |
 
 The server is configured from the environment:
@@ -39,7 +49,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_SESSION_KEY` | _(required for `oidc` and `password`)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Required for `GOAL_TRACKER_SIGNIN=oidc` and `password`. With `dev` it may be unset: the app then makes a random one and logs a WARN, and everyone is signed out when it restarts. |
 | `GOAL_TRACKER_TRUSTED_PROXIES` | _(none: `X-Forwarded-For` is ignored)_ | Comma-separated CIDRs or IPs of the reverse proxies whose `X-Forwarded-For` names the client, so password sign-in's per-address throttle counts each person's address rather than the proxy's (see [docs/install.md](docs/install.md#7-put-a-reverse-proxy-in-front)). Startup stops on an entry that is neither. |
 | `GOAL_TRACKER_LOG_LEVEL` | `info` | The least severe log record written to stderr: `debug`, `info`, `warn` or `error`, in any case. Startup stops on anything else, naming the variable. |
-| `GOAL_TRACKER_LOG_FORMAT` | `text` | How log records are written to stderr: `text`, slog's `key=value` lines, or `json`, one JSON object a line for a log collector. Startup stops on anything else, naming the variable. |
+| `GOAL_TRACKER_LOG_FORMAT` | `text` | How log records are written to stderr: `text`, slog's `key=value` lines, or `json`, one JSON object a line for a log collector, in any case. Startup stops on anything else, naming the variable. |
 | `GOAL_TRACKER_METRICS_ADDR` | _(none: no metrics)_ | Address, such as `127.0.0.1:9090`, of a second listener serving `GET /metrics` in Prometheus's text format: `goal_tracker_http_requests_total` counts the requests answered by method, route pattern and status, and `goal_tracker_http_request_duration_seconds` is a histogram of how long they took, by route pattern. Unset, nothing is recorded or served; the app's own address never serves `/metrics`. It has no authentication, so listen on a private address. Startup stops when it can't listen there, and logs the address when it can. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
@@ -89,8 +99,9 @@ like.
   It runs the migrations, creates the account if there's none (so
   `GOAL_TRACKER_ADMINS` applies to it), prints
   `GOAL_TRACKER_BASE_URL/set-password?token=...` and exits. It refuses unless
-  `GOAL_TRACKER_SIGNIN=password` and `GOAL_TRACKER_BASE_URL` is set, and
-  refuses anything that isn't an email address, creating no account.
+  `GOAL_TRACKER_SIGNIN=password` with `GOAL_TRACKER_BASE_URL` and
+  `GOAL_TRACKER_SESSION_KEY` set (it checks the same settings the server
+  does), and refuses anything that isn't an email address, creating no account.
 - **Issuing links.** On the Admin page, the **Set-password links** card takes
   an email and shows the whole link once. Issuing one for an email with no
   account creates the account. A link is only issued for an email address, so
@@ -105,7 +116,9 @@ like.
   1024 bytes; nothing else is required. Setting it signs the person out of
   every other browser and signs them in. A forgotten password is reset the same
   way: an Admin issues a new link.
-- **Lockout.** Every failed sign-in says the same thing, whatever went wrong.
+- **Lockout.** Every failed sign-in says the same thing, whatever went wrong,
+  except that a Departed person who types the right password is told they've
+  departed.
   Five wrong passwords in a row lock the account for 15 minutes, even against
   the right one; using a new set-password link lifts the lock at once. Apart
   from that, 50 failed sign-ins from one IP address within 15 minutes hold
@@ -137,9 +150,10 @@ they're signed in on out, and their next sign-in works as usual. Signing out
 does that, as do a password reset and being marked Departed, so marking someone
 returned doesn't revive a session from before they left.
 
-A session ends 30 days after sign-in, or after 7 days without a request. A
-request more than a day after the cookie was last issued re-issues it, so the
-idle limit counts from then; the 30 days don't move.
+A session ends 30 days after sign-in, or after 7 days without a request to a
+page behind sign-in. Such a request more than a day after the cookie was last
+issued re-issues it, so the idle limit counts from then; the 30 days don't
+move. The sign-in page, `/` and a page that isn't there don't count.
 
 ## Managers
 
@@ -194,9 +208,13 @@ detector, for a quick local loop), `make lint`, `make generate` (templ and
 sqlc, and what a bare `make` runs), `make generate-check`, `make check` (every
 gate: `generate-check`, `lint`, then `test`), `make test-scripts` (the tests
 of the [verification scripts](scripts/README.md)), `make e2e` (the
-[Playwright end-to-end suite](e2e/README.md) over a freshly seeded app; not a
-gate, and `CHROME=/usr/bin/chromium make e2e` uses a local Chromium), `make clean` (removes
-`bin/` and `serve.log`), and `make help` (lists every target).
+[Playwright end-to-end suite](e2e/README.md) over a freshly seeded app: a gate
+alongside `make check` for a change that reaches the browser, the seed or
+`internal/db/`, though `make check` doesn't run it;
+`CHROME=/usr/bin/chromium make e2e` uses a local Chromium), `make
+e2e-typecheck` (type-checks `e2e/` with `tsc` in strict mode; not a gate),
+`make clean` (removes `bin/` and `serve.log`), and `make help` (lists the
+targets you run).
 
 ## Weekly emails
 
@@ -205,21 +223,23 @@ The server sends two emails once a week, at the configured day and time:
 - **Reminder**, to each Owner and Delegate with a Check-in due, and to each
   owner of an open Action Item. It lists their Active Goals that are Check-in
   overdue, or whose Check-in will be overdue before next week's reminder unless
-  someone checks in. Each Goal links to its Check-in form, which shows last
-  week's answers. It then lists every open Action Item the person owns, overdue
+  someone checks in. Each Goal links to its Check-in form, which shows the
+  last Check-in's answers. It then lists every open Action Item the person owns, overdue
   first, each with its Report, the Goal it is about, its due date, and a link to
   it.
 - **Parent digest**, to each parent Owner. It lists the link requests waiting
   on them. It also lists problems with the Goals that contribute to theirs: a
-  child whose Health went Yellow or Red, that recorded a Date Slip, or whose
-  Check-in went overdue in the past week. The past week is counted in the
-  parent Owner's Timezone, or the company's when they have none. A child that
+  child whose Health got worse, to Yellow or Red (one resumed from On Hold at
+  Yellow or Red counts), or that recorded a Date Slip (of its delivery date, a
+  Milestone, or its Path to Green's date), in the past week, counted in the
+  parent Owner's Timezone, or the company's when they have none; and a child
+  whose Check-in went overdue in that time, on its own schedule. A child that
   is Ownerless or has a parent On Hold or Cancelled is listed every week until
-  that's resolved.
+  that's resolved. Done and Cancelled children aren't listed.
 
 People with nothing to report get no email, and people marked departed get
-none. The prototype has no mail transport, so it logs each email's recipient
-and subject instead of sending it.
+none. The prototype has no mail transport, so it logs each email's recipient, by
+Account ID, and subject instead of sending it.
 
 The database keeps which week's slot the emails last went out for, so a
 restart neither skips a week nor sends one twice. A slot missed while the
@@ -231,9 +251,10 @@ sending fails.
 
 ## Comment alerts
 
-Readers comment on a Goal in a published Report from its publication page. The
-comment emails the Goal's current Owner. Replies in the thread email the Owner
-and everyone else who has written in it, except the reply's author.
+A comment on a Goal, from its own page or from a published Report's
+publication page, emails the Goal's current Owner unless they wrote it.
+Replies in the thread email the Owner and everyone else who has written in it,
+except the reply's author. No one Departed is emailed.
 
 Raising an Action Item emails its owner, unless they raised it themselves.
 Reassigning one emails its new owner, unless they reassigned it to themselves,
@@ -253,7 +274,8 @@ GOAL_TRACKER_SIGNIN=dev go run ./cmd/goal-tracker  # then sign in as admin@examp
 
 The seed builds about 50 Goals and 12 weeks of history. It uses the same paths a
 real company would: an Admin defines a **Team** Dimension and loads the Goals
-through the [spreadsheet import](docs/import-format.md). The Owners then
+through the [spreadsheet import](docs/import-format.md), and marks the three
+company outcomes Top-level. The Owners then
 activate their Goals and write weekly Check-ins through the domain commands.
 Nothing is written to the database directly.
 
@@ -274,9 +296,9 @@ Nothing is written to the database directly.
 - **Check-in overdue:** a few Owners stop checking in, so those Goals' last
   Check-in is older than their cadence when the seed finishes.
 - **Unlinked:** five side projects contribute to no other Goal.
-- **Lifecycle:** a few projects are Done with an outcome, one is On Hold, one
+- **Lifecycle:** two projects are Done with an outcome, one is On Hold, one
   is Cancelled, and two are still Proposed.
-- **Managers:** everyone has a Manager, recorded through the same directory
+- **Managers:** everyone but the CEO has a Manager, recorded through the same directory
   sync a real company uses (see [Managers](#managers)). The CEO is at the top,
   with the CTO, CPO and Admin under them. The Platform, Mobile and Data leads
   report to the CTO, and the Payments, Growth and Support leads to the CPO.
@@ -296,9 +318,9 @@ already has Goals, so to reseed, delete the database file and run it again.
 
 | Flag | Default | Meaning |
 | ---- | ------- | ------- |
-| `-db` | `$GOAL_TRACKER_DB`, else `goal-tracker.db` | Database to seed (`make seed SEED_DB=…`). |
+| `-db` | `$GOAL_TRACKER_DB`, else `goal-tracker.db` | Database to seed. `make seed` passes `SEED_DB` (default `goal-tracker.db`) instead, so it ignores `GOAL_TRACKER_DB`. |
 | `-seed` | `23` | Random seed. It decides dates, Owners, and how each project's weeks play out. |
-| `-end` | now | Last day of the history, `YYYY-MM-DD`. The history ends on the day you seed, so Check-in overdue is judged against that day. Reseed later on to keep the demo current. |
+| `-end` | now | Last day of the history, `YYYY-MM-DD`. The history ends on that day (the day you seed, by default), so Check-in overdue is judged against it. Reseed later on to keep the demo current. |
 | `-admin` | `admin@example.com` | The Admin who defines the Team Dimension and runs the import. |
 | `-manifest` | _(none)_ | Also write the e2e manifest to this file: the Goals and people each end-to-end spec acts on, picked by role, as JSON (`e2e/manifest.ts`). Unset, no manifest is written. |
 | `-manifest-at` | the `-end` instant | When the manifest's picks are judged, RFC 3339 (e.g. `2026-10-05T18:05:00Z`): what counts as today, Check-in overdue and an overdue Milestone. |
