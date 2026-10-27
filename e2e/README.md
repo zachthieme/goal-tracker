@@ -189,6 +189,8 @@ a saved item.
   Rolled-up Health Green, read it there over the role's ordered candidates. A
   new role is added in `internal/seed/manifest.go`, `manifest.ts` and
   `TestE2EScenarioSituations` (`internal/seed/scenarios_test.go`) together.
+  When the seed or a role changes, regenerate the golden manifests in
+  `internal/seed/testdata/` with `UPDATE_GOLDEN=1 go test ./internal/seed/`.
 - **Read "now" and "today" from the app, never the machine.** Use
   `app.now()` and `appToday()`, not `Date.now()` or `new Date()`. Timeouts and
   polling deadlines stay on the real clock.

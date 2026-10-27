@@ -26,7 +26,9 @@ var manifestLeadership = []string{manifestAdmin, "ceo@example.com", manifestLead
 // people each spec acts on, chosen by role, judged at one instant (the app's
 // start, for the suite). e2e/manifest.ts mirrors its JSON: a role with no
 // pick is null, and a list with none is empty. A new role is added here, in
-// e2e/manifest.ts and in TestE2EScenarioSituations together.
+// e2e/manifest.ts and in TestE2EScenarioSituations together. When the seed or
+// a role changes, regenerate the golden manifests in internal/seed/testdata
+// with UPDATE_GOLDEN=1.
 type Manifest struct {
 	// QuietGoal is an Active Goal whose Owner can check in Green with only a
 	// status: Green last time, no Metric, no accepted child Goals, no overdue
@@ -273,9 +275,11 @@ type TeamGoal struct {
 }
 
 // BuildManifest reads the seeded company through svc and picks each role as
-// of now: "today" is now's date in UTC, the e2e server's timezone, and
-// Check-in overdue, overdue Milestones and a Report's 30-day baseline are
-// judged at now.
+// of now: a Report's 30-day baseline is judged at now, and "today", for the
+// bad news chain's future Milestones, is now's date in UTC, the e2e server's
+// timezone. The domain's verdicts on each Goal — its Freshness, overdue
+// Milestone and whether its Owner can press No change, read through GoalPage
+// — are judged at svc's clock, which callers must set to now.
 func BuildManifest(ctx context.Context, svc *domain.Service, now time.Time) (Manifest, error) {
 	o, err := readManifestOrg(ctx, svc, now)
 	if err != nil {
@@ -310,7 +314,8 @@ type manifestOrg struct {
 	goals    []*manifestGoal  // by ID
 }
 
-// manifestGoal is one Goal with what the choosers read about it.
+// manifestGoal is one Goal with what the choosers read about it, from its
+// Goal page as its Owner sees it.
 type manifestGoal struct {
 	domain.Goal
 	checkins   []domain.Checkin // newest first
@@ -320,15 +325,20 @@ type manifestGoal struct {
 	delegates  []domain.Account
 	highlights int
 	// drafts is how many Draft Highlights wait on the Goal, as its Owner
-	// sees them; read only for an Active Goal whose Owner is still here.
+	// sees them.
 	drafts   int
 	children []*manifestGoal // accepted links, any Lifecycle, by ID
 	parents  []*manifestGoal // accepted links, any Lifecycle, by ID
 	team     string          // "" when it has no Team value
+	// The domain's verdicts on the Goal: its Freshness, whether it has an
+	// overdue Milestone, and whether its Owner can press No change on it.
+	freshness        domain.Freshness
+	overdueMilestone bool
+	noChange         bool
 }
 
-// readManifestOrg reads every Account and Goal, and what the choosers read
-// about each Goal, through svc.
+// readManifestOrg reads every Account and Goal, and each Goal's page as its
+// Owner sees it, through svc.
 func readManifestOrg(ctx context.Context, svc *domain.Service, now time.Time) (*manifestOrg, error) {
 	accounts, err := svc.Accounts(ctx)
 	if err != nil {
@@ -369,55 +379,29 @@ func readManifestOrg(ctx context.Context, svc *domain.Service, now time.Time) (*
 	return o, nil
 }
 
-// read fills in what the choosers read about g, linking it to its children
-// in byID.
+// read fills in what the choosers read about g from its Goal page, read as
+// its Owner, linking it to its children in byID.
 func (g *manifestGoal) read(ctx context.Context, svc *domain.Service, byID map[int64]*manifestGoal, teamDim int64) error {
-	var err error
-	if g.checkins, err = svc.ListCheckins(ctx, g.ID); err != nil {
-		return err
-	}
-	if g.milestones, err = svc.ListMilestones(ctx, g.ID); err != nil {
-		return err
-	}
-	if g.slips, err = svc.ListDateSlips(ctx, g.ID); err != nil {
-		return err
-	}
-	if g.metrics, err = svc.ListMetrics(ctx, g.ID); err != nil {
-		return err
-	}
-	if g.delegates, err = svc.ListDelegates(ctx, g.ID); err != nil {
-		return err
-	}
-	highlights, err := svc.ListHighlightsByGoal(ctx, g.ID)
+	page, err := svc.GoalPage(ctx, g.Owner.ID, g.ID)
 	if err != nil {
 		return err
 	}
-	g.highlights = len(highlights)
-	if g.active() && !g.Owner.Departed {
-		drafts, err := svc.PendingDraftHighlights(ctx, g.Owner.ID, g.ID)
-		if err != nil {
-			return err
-		}
-		g.drafts = len(drafts)
-	}
-	children, err := svc.ChildrenOf(ctx, g.ID)
-	if err != nil {
-		return err
-	}
-	for _, c := range children {
-		child := byID[c.ID]
+	g.checkins, g.milestones, g.slips = page.Checkins, page.Milestones, page.DateSlips
+	g.metrics, g.delegates = page.Metrics, page.Delegates
+	g.highlights, g.drafts = len(page.Highlights), len(page.DraftHighlights)
+	for _, c := range page.Children {
+		child := byID[c.Goal.ID]
 		g.children = append(g.children, child)
 		child.parents = append(child.parents, g)
 	}
-	values, err := svc.GoalValues(ctx, g.ID)
-	if err != nil {
-		return err
-	}
-	for _, v := range values {
+	for _, v := range page.Values {
 		if v.DimensionID == teamDim {
 			g.team = v.Value
 		}
 	}
+	g.freshness = page.Freshness
+	g.overdueMilestone = page.OverdueMilestone != nil
+	g.noChange = page.Permissions.NoChange
 	return nil
 }
 
@@ -518,47 +502,13 @@ func (g *manifestGoal) deliverySlips() []domain.DateSlip {
 	return out
 }
 
-// overdueMilestone is whether g has a Planned Milestone dated before today.
-func (o *manifestOrg) overdueMilestone(g *manifestGoal) bool {
-	return slices.ContainsFunc(g.plannedMilestones(), func(m domain.Milestone) bool { return m.TargetDate.Before(o.today()) })
-}
+// checkinOverdue is whether g is Check-in overdue.
+func (g *manifestGoal) checkinOverdue() bool { return g.freshness.CheckinOverdue }
 
-// pathOverdue is whether g's latest Check-in has a back-to-Green date, and it
-// is before today.
-func (o *manifestOrg) pathOverdue(g *manifestGoal) bool {
-	if len(g.checkins) == 0 {
-		return false
-	}
-	date := g.checkins[0].PathTargetDate
-	return !date.IsZero() && date.Before(o.today())
-}
-
-// lastUpdate is the Goal's last Check-in, or its activation, or its creation.
-func (g *manifestGoal) lastUpdate() time.Time {
-	switch {
-	case len(g.checkins) > 0:
-		return g.checkins[0].CreatedAt
-	case !g.ActivatedAt.IsZero():
-		return g.ActivatedAt
-	default:
-		return g.CreatedAt
-	}
-}
-
-// checkinOverdueBy is whether more than g's cadence and extraDays have passed
-// since its last update: whole days of time, not of the calendar.
-func (o *manifestOrg) checkinOverdueBy(g *manifestGoal, extraDays int) bool {
-	return o.now.Sub(g.lastUpdate()) > time.Duration(g.CadenceDays+extraDays)*24*time.Hour
-}
-
-// isCheckinOverdue is whether more than g's cadence has passed since its last
-// update.
-func (o *manifestOrg) isCheckinOverdue(g *manifestGoal) bool { return o.checkinOverdueBy(g, 0) }
-
-// checkedInWithinCadence is whether g's last Check-in is less than its cadence
-// ago. A Goal with no Check-in fails it.
-func (o *manifestOrg) checkedInWithinCadence(g *manifestGoal) bool {
-	return len(g.checkins) > 0 && g.checkins[0].CreatedAt.After(o.now.Add(-time.Duration(g.CadenceDays)*24*time.Hour))
+// overdueByMoreThanADay is whether g is Check-in overdue, and more than its
+// cadence and a day have passed since its last update.
+func (g *manifestGoal) overdueByMoreThanADay() bool {
+	return g.freshness.CheckinOverdue && g.freshness.DaysSince > g.freshness.CadenceDays+1
 }
 
 // ownedBy is every Goal the Account owns, by ID.
@@ -615,7 +565,7 @@ func activeHere(g *manifestGoal) bool { return g.active() && g.ownerHere() }
 
 func (o *manifestOrg) quietGoal() *manifestGoal {
 	return o.find(activeHere, (*manifestGoal).noMetric, func(g *manifestGoal) bool {
-		return !g.hasChildren() && !o.overdueMilestone(g) && g.highlights == 0 && g.noDraftHighlight() &&
+		return !g.hasChildren() && !g.overdueMilestone && g.highlights == 0 && g.noDraftHighlight() &&
 			g.health() == domain.HealthGreen
 	})
 }
@@ -626,7 +576,7 @@ func (o *manifestOrg) draftlessGoal() *manifestGoal {
 
 func (o *manifestOrg) metricGoal() *manifestGoal {
 	return o.find(activeHere, func(g *manifestGoal) bool {
-		return !g.noMetric() && g.checkedIn() && g.noDraftHighlight() && !o.overdueMilestone(g)
+		return !g.noMetric() && g.checkedIn() && g.noDraftHighlight() && !g.overdueMilestone
 	})
 }
 
@@ -634,25 +584,23 @@ func (o *manifestOrg) metricParentGoal() *manifestGoal {
 	return o.find(activeHere, func(g *manifestGoal) bool { return !g.noMetric() && g.checkedIn() && g.hasChildren() })
 }
 
-// canPressNoChange is whether g's Owner can press No change: checked in
-// before, no accepted child Goals, no overdue Planned Milestone, and no
-// back-to-Green date passed.
-func (o *manifestOrg) canPressNoChange(g *manifestGoal) bool {
-	return g.checkedIn() && !g.hasChildren() && !o.overdueMilestone(g) && !o.pathOverdue(g)
-}
+// noChangeChildless is whether g's Owner can press No change on it, as the
+// domain judges, and it has no accepted child Goals: the No change choosers
+// prefer a Goal with none.
+func noChangeChildless(g *manifestGoal) bool { return g.noChange && !g.hasChildren() }
 
 func (o *manifestOrg) noChangeGoal() *manifestGoal {
-	return o.find(activeHere, o.canPressNoChange)
+	return o.find(activeHere, noChangeChildless)
 }
 
 func (o *manifestOrg) dueNoChangeGoal() *manifestGoal {
-	return o.find(activeHere, o.canPressNoChange, func(g *manifestGoal) bool { return g.CadenceDays == 7 })
+	return o.find(activeHere, noChangeChildless, func(g *manifestGoal) bool { return g.CadenceDays == 7 })
 }
 
 func (o *manifestOrg) findingTrouble() FindingTroubleRoles {
 	platform := func(g *manifestGoal) bool { return g.team == "Platform" }
 	active := (*manifestGoal).active
-	checkinOverdue := o.find(active, platform, o.isCheckinOverdue, func(g *manifestGoal) bool {
+	checkinOverdue := o.find(active, platform, (*manifestGoal).checkinOverdue, func(g *manifestGoal) bool {
 		return g.Owner.Email != manifestLeader && g.ownerHere()
 	})
 	departing := o.find(active, platform, func(g *manifestGoal) bool {
@@ -661,7 +609,7 @@ func (o *manifestOrg) findingTrouble() FindingTroubleRoles {
 			return false
 		}
 		return !slices.ContainsFunc(o.ownedBy(a.ID), func(h *manifestGoal) bool {
-			return h.TopLevel || (h.active() && o.isCheckinOverdue(h))
+			return h.TopLevel || (h.active() && h.checkinOverdue())
 		})
 	})
 	var departingEmail string
@@ -672,20 +620,20 @@ func (o *manifestOrg) findingTrouble() FindingTroubleRoles {
 	}
 	notDeparting := func(g *manifestGoal) bool { return g.Owner.Email != departingEmail }
 	overdue := o.find(active, platform, notDeparting, func(g *manifestGoal) bool {
-		return g.Owner.Email != manifestLeader && g.ownerHere() && g != checkinOverdue && !o.isCheckinOverdue(g) &&
-			len(g.activeChildren()) == 0 && !o.overdueMilestone(g)
+		return g.Owner.Email != manifestLeader && g.ownerHere() && g != checkinOverdue && !g.checkinOverdue() &&
+			len(g.activeChildren()) == 0 && !g.overdueMilestone
 	})
 	tiered := o.findAll(active, platform)
 	tiered = tiered[:min(2, len(tiered))]
 	unlinked := o.find(active, notDeparting, func(g *manifestGoal) bool { return !g.TopLevel && len(g.parents) == 0 })
-	twoReasons := o.find(active, notDeparting, o.isCheckinOverdue, func(g *manifestGoal) bool {
+	twoReasons := o.find(active, notDeparting, (*manifestGoal).checkinOverdue, func(g *manifestGoal) bool {
 		return g.team != "" && !g.DeliveryDate.IsZero() &&
 			slices.ContainsFunc(g.parents, func(p *manifestGoal) bool {
 				return !p.DeliveryDate.IsZero() && g.DeliveryDate.After(p.DeliveryDate)
 			})
 	})
 	redWithChildren := o.find(active, notDeparting, func(g *manifestGoal) bool {
-		return g.health() == domain.HealthRed && !o.isCheckinOverdue(g) && len(g.parents) > 0 && len(g.activeChildren()) > 0
+		return g.health() == domain.HealthRed && !g.checkinOverdue() && len(g.parents) > 0 && len(g.activeChildren()) > 0
 	})
 	redSlipped := o.find(active, func(g *manifestGoal) bool {
 		return g.health() == domain.HealthRed && !g.DeliveryDate.IsZero() && len(g.deliverySlips()) > 0
@@ -781,7 +729,9 @@ func (o *manifestOrg) understandingTrouble() UnderstandingTroubleRoles {
 func (o *manifestOrg) pickCheckinGoal(candidates []*manifestGoal, health string, extra func(*manifestGoal) bool) *manifestGoal {
 	var first *manifestGoal
 	for _, g := range candidates {
-		if !activeHere(g) || !o.checkedInWithinCadence(g) || g.hasChildren() || o.overdueMilestone(g) || !extra(g) {
+		f := g.freshness
+		withinCadence := f.CheckedIn && f.DaysSince < f.CadenceDays
+		if !activeHere(g) || !withinCadence || g.hasChildren() || g.overdueMilestone || !extra(g) {
 			continue
 		}
 		if g.health() == health {
@@ -813,7 +763,7 @@ func (o *manifestOrg) watchingGoals() WatchingGoalsRoles {
 	slipped := first(func(g *manifestGoal) bool { return len(g.deliverySlips()) > 0 && g.troubled() })
 	troubled := first(func(g *manifestGoal) bool { return g != slipped && g.troubled() && g.pathToGreen() != "" })
 	green := first(func(g *manifestGoal) bool {
-		return g.health() == domain.HealthGreen && len(g.activeChildren()) == 0 && !o.overdueMilestone(g)
+		return g.health() == domain.HealthGreen && len(g.activeChildren()) == 0 && !g.overdueMilestone
 	})
 	others := []*manifestGoal{slipped, troubled, green}
 	parent := first(func(g *manifestGoal) bool {
@@ -869,7 +819,7 @@ func (o *manifestOrg) weeklyCheckin() WeeklyCheckinRoles {
 			if !g.noMetric() {
 				metrics++
 			}
-			if g.hasChildren() || o.overdueMilestone(g) || o.pathOverdue(g) {
+			if g.hasChildren() || g.overdueMilestone || g.freshness.PathToGreenOverdue {
 				return true
 			}
 		}
@@ -893,8 +843,8 @@ func (o *manifestOrg) weeklyCheckin() WeeklyCheckinRoles {
 	// The Goal whose Owner is away, the longest unchecked first.
 	var goal *manifestGoal
 	for _, g := range o.goals {
-		if !activeHere(g) || g.Owner.Name == "" || !g.checkedIn() || !o.checkinOverdueBy(g, 1) ||
-			g.hasChildren() || o.overdueMilestone(g) || len(g.delegates) > 0 {
+		if !activeHere(g) || g.Owner.Name == "" || !g.checkedIn() || !g.overdueByMoreThanADay() ||
+			g.hasChildren() || g.overdueMilestone || len(g.delegates) > 0 {
 			continue
 		}
 		if goal == nil || g.checkins[0].CreatedAt.Before(goal.checkins[0].CreatedAt) {
@@ -946,7 +896,7 @@ func (o *manifestOrg) badNewsChain() *BadNewsChain {
 	rules := []func(chain) bool{
 		func(c chain) bool { return activeGreen(c.project) && c.project.Kind == domain.GoalDated },
 		func(c chain) bool { return len(futurePlanned(c.project)) >= 2 },
-		func(c chain) bool { return !o.overdueMilestone(c.project) },
+		func(c chain) bool { return !c.project.overdueMilestone },
 		func(c chain) bool { return c.project.team != "" },
 		func(c chain) bool { return activeGreen(c.team) },
 		func(c chain) bool { return c.project.Owner.Email != c.team.Owner.Email },
@@ -957,7 +907,7 @@ func (o *manifestOrg) badNewsChain() *BadNewsChain {
 			})
 		},
 		// An overdue Milestone would refuse its Owner's Green on its own.
-		func(c chain) bool { return !o.overdueMilestone(c.team) },
+		func(c chain) bool { return !c.team.overdueMilestone },
 		func(c chain) bool { return len(greenOrgOutcomes(c.team)) > 0 },
 	}
 	for _, team := range o.goals {
