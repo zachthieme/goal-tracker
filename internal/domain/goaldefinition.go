@@ -149,9 +149,9 @@ func (s *Service) DefinableGoal(ctx context.Context, actorID, goalID int64) (Goa
 // revision (EditWhyItMatters), a Kind chosen, its delivery date and a cadence given
 // replace the Goal's, and Milestones and Metrics are added to those it has. In
 // each Dimension still offered the Goal carries just the values given, plus a
-// new one typed for it, so a value left out is removed (SetGoalValues); a
-// Retired value it already carries may be kept. Each Field still offered takes
-// the value given, a blank one clearing it. A link is requested to each parent
+// new one typed for it, so a value left out is removed (SetGoalDimensionValues);
+// a Retired value it already carries may be kept. Each Field still offered
+// takes the value given, a blank one clearing it. A link is requested to each parent
 // the Goal has no link to yet, Accepted or Pending; one that would close a
 // cycle is refused. The Title can't be changed here.
 func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in DefinedGoalInput) (Goal, error) {
@@ -343,29 +343,8 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 	if err := s.addDefinedMeasures(ctx, goalID, in); err != nil {
 		return Goal{}, err
 	}
-	dims, err := s.ListDimensions(ctx)
-	if err != nil {
+	if err := s.writeDefinedValues(ctx, goalID, in); err != nil {
 		return Goal{}, err
-	}
-	given := map[int64]bool{}
-	for _, id := range in.ValueIDs {
-		given[id] = true
-	}
-	for _, d := range OfferedDimensions(dims) {
-		var ids []int64
-		for _, val := range d.Values {
-			if given[val.ID] {
-				ids = append(ids, val.ID)
-			}
-		}
-		if err := s.SetGoalValues(ctx, in.OwnerID, goalID, d.ID, ids); err != nil {
-			return Goal{}, err
-		}
-		if name := strings.TrimSpace(in.NewValues[d.ID]); name != "" {
-			if _, err := s.assignGoalValueByName(ctx, in.OwnerID, goalID, d.ID, name); err != nil {
-				return Goal{}, err
-			}
-		}
 	}
 	fields, err := s.ListFields(ctx)
 	if err != nil {
@@ -407,21 +386,8 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 	if err := s.addDefinedMeasures(ctx, g.ID, in); err != nil {
 		return Goal{}, err
 	}
-	for _, id := range dedupeIDs(in.ValueIDs) {
-		if err := s.AssignGoalValue(ctx, in.OwnerID, g.ID, id); err != nil {
-			return Goal{}, err
-		}
-	}
-	// AddDimensionValue is Admin-only; any value setter may add to an
-	// Extendable list this way, and an Admin to a Fixed one (CONTEXT.md:
-	// Extendable, Fixed).
-	for _, dimID := range slices.Sorted(maps.Keys(in.NewValues)) {
-		if strings.TrimSpace(in.NewValues[dimID]) == "" {
-			continue
-		}
-		if _, err := s.assignGoalValueByName(ctx, in.OwnerID, g.ID, dimID, in.NewValues[dimID]); err != nil {
-			return Goal{}, err
-		}
+	if err := s.writeDefinedValues(ctx, g.ID, in); err != nil {
+		return Goal{}, err
 	}
 	for _, fieldID := range slices.Sorted(maps.Keys(in.FieldValues)) {
 		if strings.TrimSpace(in.FieldValues[fieldID]) == "" {
@@ -432,6 +398,38 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 		}
 	}
 	return s.linkAndActivate(ctx, g.ID, in)
+}
+
+// writeDefinedValues gives the Goal its definition's Dimension values, within
+// the transaction the caller holds, by SetGoalDimensionValues' rules: in each
+// Dimension still offered it carries just the values chosen, plus the one
+// typed for it.
+func (s *Service) writeDefinedValues(ctx context.Context, goalID int64, in DefinedGoalInput) error {
+	dims, err := s.ListDimensions(ctx)
+	if err != nil {
+		return err
+	}
+	given := map[int64]bool{}
+	for _, id := range in.ValueIDs {
+		given[id] = true
+	}
+	for _, d := range OfferedDimensions(dims) {
+		var ids []int64
+		for _, val := range d.Values {
+			if given[val.ID] {
+				ids = append(ids, val.ID)
+			}
+		}
+		if _, err := s.setJudgedGoalDimensionValues(ctx, in.OwnerID, DimensionValuesEdit{
+			GoalID:      goalID,
+			DimensionID: d.ID,
+			ValueIDs:    ids,
+			NewValue:    in.NewValues[d.ID],
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // addDefinedMeasures adds each Milestone and Metric of a definition to the
@@ -549,59 +547,40 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, goa
 }
 
 // checkDefinedValues checks the Dimension values a Goal is to be given, both
-// those chosen and those typed in as new, by the checks AssignGoalValue and
-// AssignGoalValueByName use (chosenValueProblems, typedValueProblems), and
-// refuses several in a Dimension that takes one, naming each of them. A value
-// in carried may be kept though it is Retired, or in a Retired Dimension, as
-// SetGoalValues keeps it. Only an Owner who is an Admin may add a new value
-// to a Fixed list (fixedListSentence), as AssignGoalValueByName allows.
+// those chosen and those typed in as new, by SetGoalDimensionValues' rules
+// (checkGoalDimensionValues) in each Dimension given values, under their
+// inputs, refusing a value or Dimension that doesn't exist. A value in carried
+// may be kept though it is Retired, or in a Retired Dimension. Whether the
+// Owner is an Admin, who alone may add to a Fixed list, is asked at most once.
+// The problems come in the form's order: the chosen values', in in.ValueIDs'
+// order, then the typed values', by Dimension ID, then the refusals of several
+// values in a Dimension that takes one.
 func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, carried map[int64]bool) (problems []error, err error) {
-	refuse := func(input, format string, args ...any) {
-		problems = append(problems, inputError(input, format, args...))
-	}
-	// inputsIn gathers the inputs that would give the Goal a value in each
-	// Dimension, so several in one that takes one are refused together.
-	inputsIn := map[int64][]string{}
-	var dims []Dimension
-	given := func(dim Dimension, input string) {
-		if _, seen := inputsIn[dim.ID]; !seen {
-			dims = append(dims, dim)
+	// order places each input in the form's order, and edits gathers what is
+	// given in each Dimension, in the order the Dimensions come.
+	order := map[string]int{}
+	edits := map[int64]*DimensionValuesEdit{}
+	var dimIDs []int64
+	editIn := func(dimID int64) *DimensionValuesEdit {
+		if edits[dimID] == nil {
+			edits[dimID] = &DimensionValuesEdit{DimensionID: dimID, ValueInput: ValueInput, NewValueInput: NewValueInput(dimID)}
+			dimIDs = append(dimIDs, dimID)
 		}
-		inputsIn[dim.ID] = append(inputsIn[dim.ID], input)
+		return edits[dimID]
 	}
+	var chosen, typed, oneValue []*InputError
 	for _, valueID := range dedupeIDs(in.ValueIDs) {
 		input := ValueInput(valueID)
+		order[input] = len(order)
 		val, err := s.queries.GetDimensionValue(ctx, valueID)
 		if errors.Is(err, sql.ErrNoRows) {
-			refuse(input, "that value does not exist")
+			chosen = append(chosen, inputError(input, "that value does not exist"))
 			continue
 		} else if err != nil {
 			return nil, fmt.Errorf("look up dimension value: %w", err)
 		}
-		dimRow, err := s.queries.GetDimension(ctx, val.DimensionID)
-		if err != nil {
-			return nil, fmt.Errorf("load dimension: %w", err)
-		}
-		dim := dimensionFromRow(dimRow)
-		if more := chosenValueProblems(dimensionValueFromRow(val), dim, carried[valueID], input); len(more) > 0 {
-			problems = appendInputErrors(problems, more)
-			continue
-		}
-		given(dim, input)
-	}
-	// mayAddToFixed reads whether the Owner is an Admin, who alone may add to
-	// a Fixed list, only once a new value would be added to one.
-	var ownerIsAdmin *bool
-	mayAddToFixed := func() (bool, error) {
-		if ownerIsAdmin == nil {
-			err := s.requireAdmin(ctx, in.OwnerID)
-			if err != nil && !errors.Is(err, ErrNotAuthorized) {
-				return false, err
-			}
-			admin := err == nil
-			ownerIsAdmin = &admin
-		}
-		return *ownerIsAdmin, nil
+		e := editIn(val.DimensionID)
+		e.ValueIDs = append(e.ValueIDs, valueID)
 	}
 	for _, dimID := range slices.Sorted(maps.Keys(in.NewValues)) {
 		name := strings.TrimSpace(in.NewValues[dimID])
@@ -609,40 +588,39 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 			continue
 		}
 		input := NewValueInput(dimID)
-		dimRow, err := s.queries.GetDimension(ctx, dimID)
-		if errors.Is(err, sql.ErrNoRows) {
-			refuse(input, "that Dimension does not exist")
+		order[input] = len(order)
+		if _, err := s.queries.GetDimension(ctx, dimID); errors.Is(err, sql.ErrNoRows) {
+			typed = append(typed, inputError(input, "that Dimension does not exist"))
 			continue
 		} else if err != nil {
 			return nil, fmt.Errorf("look up dimension: %w", err)
 		}
-		dim := dimensionFromRow(dimRow)
-		match, matched, err := s.valueNamed(ctx, dimID, name)
+		editIn(dimID).NewValue = name
+	}
+	isAdmin := s.adminJudge(ctx, in.OwnerID)
+	var oneValueByDimension [][]*InputError
+	for _, dimID := range dimIDs {
+		found, err := s.checkGoalDimensionValues(ctx, *edits[dimID], carried, isAdmin)
 		if err != nil {
 			return nil, err
 		}
-		if more := typedValueProblems(dim, name, match, matched, input); len(more) > 0 {
-			problems = appendInputErrors(problems, more)
-			continue
-		}
-		if !matched && !dim.Extendable() {
-			if ok, err := mayAddToFixed(); err != nil {
-				return nil, err
-			} else if !ok {
-				refuse(input, "%s", fixedListSentence(dim))
-				continue
-			}
-		}
-		given(dim, input)
-	}
-	for _, dim := range dims {
-		if inputs := inputsIn[dim.ID]; len(inputs) > 1 && !dim.TakesSeveral() {
-			for _, input := range inputs {
-				refuse(input, "%s takes one value per Goal", dim.Name)
-			}
+		chosen = append(chosen, found.chosen...)
+		typed = append(typed, found.typed...)
+		if len(found.oneValue) > 0 {
+			oneValueByDimension = append(oneValueByDimension, found.oneValue)
 		}
 	}
-	return problems, nil
+	byOrder := func(a, b *InputError) int { return order[a.Input] - order[b.Input] }
+	slices.SortStableFunc(chosen, byOrder)
+	slices.SortStableFunc(typed, byOrder)
+	// A Dimension's refusals come where the first value it was given does.
+	slices.SortStableFunc(oneValueByDimension, func(a, b []*InputError) int { return byOrder(a[0], b[0]) })
+	for _, refusals := range oneValueByDimension {
+		oneValue = append(oneValue, refusals...)
+	}
+	problems = appendInputErrors(problems, chosen)
+	problems = appendInputErrors(problems, typed)
+	return appendInputErrors(problems, oneValue), nil
 }
 
 // activateDefinedGoal runs the activation gate on the Goal just defined,
