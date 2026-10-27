@@ -17,11 +17,6 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Migrations returns the migrations Migrate applies, as migrations/*.sql, for
-// a caller that needs to know them without applying them, such as the test
-// harness, which caches its migrated template database under their hash.
-func Migrations() fs.FS { return migrationsFS }
-
 // Migrate applies every not-yet-applied migration in migrations/, in filename
 // order, each in its own transaction. Applied versions are tracked in
 // schema_migrations so it is safe to call on every startup. It is the single

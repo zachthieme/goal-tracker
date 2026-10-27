@@ -8,10 +8,8 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
-// This file holds the code that builds the template database, and only that:
-// its source is part of the template's cache name (templateBuilderFiles), so
-// an edit here builds a new template, and one elsewhere in the harness
-// doesn't.
+// This file holds the code that builds the template database each test's
+// database is copied from (see template).
 
 // dsn opens the SQLite file at path with the app's own connection string, so
 // a test's database sets the pragmas db.Open does (ADR 0009): a statement that
@@ -22,10 +20,10 @@ import (
 // bulk load and skips fsync: waiting on the disk made up most of each test's
 // time, and nearly ran a package's tests past go test's 10-minute timeout. The
 // pool is left uncapped; db.Open's cap is for the app.
-// Each test's database is copied from a template migrated once and cached
-// (see templateDir) rather than migrated itself: running every migration for each
-// of the hundreds of tests queued them all on modernc's process-wide allocator
-// lock.
+// Each test's database is copied from a template migrated once per test
+// binary (see template) rather than migrated itself: running every migration
+// for each of the hundreds of tests queued them all on modernc's process-wide
+// allocator lock.
 func dsn(path string) string {
 	return db.DSN(path, db.ForBulkLoad())
 }

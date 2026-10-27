@@ -374,10 +374,7 @@ func TestReportLogFailureRollsTheChangeBack(t *testing.T) {
 			t.Fatalf("DraftReport: %v", err)
 		}
 		w.highlight = highlightID(t, r, "Signed Acme.")
-		if _, err := h.DB.Exec(`CREATE TRIGGER fail_report_log BEFORE INSERT ON report_log
-			BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-			t.Fatalf("install failing trigger: %v", err)
-		}
+		h.FailWrites(testsupport.Insert, "report_log")
 		return w
 	}
 	ctx := context.Background()

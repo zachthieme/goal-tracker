@@ -234,10 +234,7 @@ func TestAChangeWhoseHistoryFailsLeavesTheValueUnchanged(t *testing.T) {
 	}
 	h.SetGoalField(pat, goal, budget, "200")
 	h.SetGoalField(pat, goal, notes, "Watch the pager.")
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Insert, "goal_value_changes")
 
 	for _, change := range []struct {
 		what string

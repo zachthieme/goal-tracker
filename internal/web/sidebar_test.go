@@ -125,9 +125,7 @@ func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
 	h.ActiveGoal(lead, "Cut churn", "Customers leave.")
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "lead@example.com")
-	if _, err := h.DB.ExecContext(t.Context(), `DROP TABLE handoffs`); err != nil {
-		t.Fatalf("drop handoffs: %v", err)
-	}
+	h.FailReads("handoffs")
 	buf.Reset()
 
 	resp, err := ctxGet(t, client, ts.URL+"/goals")

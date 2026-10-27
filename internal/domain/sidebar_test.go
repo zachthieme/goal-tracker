@@ -188,9 +188,7 @@ func TestSidebarLeavesOutOnlyWhatAFailedReadFeeds(t *testing.T) {
 		t.Run(c.table, func(t *testing.T) {
 			t.Parallel()
 			fx := seedSidebarFixture(t)
-			if _, err := fx.h.DB.Exec(`ALTER TABLE ` + c.table + ` RENAME TO gone`); err != nil {
-				t.Fatalf("rename %s away: %v", c.table, err)
-			}
+			fx.h.FailReads(c.table)
 
 			sb, err := fx.h.Service.Sidebar(context.Background(), fx.lead.ID)
 			if err == nil {

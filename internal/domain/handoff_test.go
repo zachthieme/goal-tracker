@@ -830,10 +830,7 @@ func TestAcceptHandoffChangesNothingWhenAStepFails(t *testing.T) {
 	h.AddDelegate(sam, ann, goal.ID)
 	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
 	// Fail the last step, after ownership has moved and Ann has been removed.
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
-		WHEN NEW.status = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Update, "handoffs")
 
 	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); err == nil {
 		t.Fatal("AcceptHandoff succeeded despite the failing step")

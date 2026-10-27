@@ -1042,10 +1042,7 @@ func TestFailedMergeChangesNothing(t *testing.T) {
 	rule := dimensionRule(customer, domain.RuleIsAnyOf, acmeCorp)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{rule}})
 	// Fail the last step, after the Goals and filters have moved.
-	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
-		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
-		t.Fatalf("install failing trigger: %v", err)
-	}
+	h.FailWrites(testsupport.Delete, "dimension_values")
 
 	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID); err == nil {
 		t.Fatal("MergeDimensionValue succeeded despite the injected failure")
