@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/a-h/templ"
 
@@ -199,7 +198,7 @@ func (f goalFilter) keeps(row goalRow) bool {
 		return false
 	}
 	for _, hf := range healthFilters {
-		if f.Health == hf.Value && row.health() != hf.Health {
+		if f.Health == hf.Value && row.Health != hf.Health {
 			return false
 		}
 	}
@@ -207,20 +206,12 @@ func (f goalFilter) keeps(row goalRow) bool {
 }
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
-// and its Dimension values: its latest Check-in, which carries its Health,
-// whether it is Check-in overdue or its Path to Green is overdue, and whether
-// it is Incomplete.
+// and its Dimension values (domain.GoalListing): its latest Check-in, its
+// current Health, whether it is Check-in overdue or its Path to Green is
+// overdue, whether it is Incomplete, and its prior delivery dates.
 type goalRow struct {
 	domain.GoalWithValues
-	// Latest is the Goal's most recent Check-in, nil when it has none.
-	Latest    *domain.Checkin
-	Freshness domain.Freshness
-	// Incomplete names the required Dimensions and Fields an Active Goal has
-	// no value in, empty when it isn't Incomplete (CONTEXT.md: Incomplete).
-	Incomplete []string
-	// PriorDates are the delivery dates the Goal's Date Slips moved it from,
-	// earliest first, shown struck through ahead of its current date.
-	PriorDates []time.Time
+	domain.GoalListing
 }
 
 // goalRowGroup is one bucket of the grouped Goal list: the rows sharing Value,
@@ -257,7 +248,7 @@ func groupGoalRowsByHealth(rows []goalRow) []goalHealthGroup {
 	for _, hf := range healthFilters {
 		grp := goalHealthGroup{Health: hf.Health}
 		for _, row := range rows {
-			if row.health() == hf.Health {
+			if row.Health == hf.Health {
 				grp.Rows = append(grp.Rows, row)
 			}
 		}
@@ -285,15 +276,6 @@ func healthMarkClass(health string) string {
 	return healthClass(health)
 }
 
-// health is the Goal's current Health — its latest Check-in's — or "" when it
-// has none, as a Proposed Goal or one a Check-in moved out of Active.
-func (r goalRow) health() string {
-	if r.Latest == nil {
-		return ""
-	}
-	return r.Latest.Health
-}
-
 // lastCheckin says how long ago the Goal's latest Check-in was, counted on the
 // calendar of its Owner's Timezone (GoalTimezone), or a dash when it has
 // none. With a Check-in, the Goal's last update is that Check-in, so its
@@ -310,15 +292,15 @@ func (r goalRow) lastCheckin() string {
 // or Milestone overdue, then Yellow, then Green, then no Health.
 func (r goalRow) problemRank() int {
 	switch {
-	case r.health() == domain.HealthRed:
+	case r.Health == domain.HealthRed:
 		return 0
 	case r.Goal.Ownerless:
 		return 1
 	case r.Freshness.WaitsOnCheckin():
 		return 2
-	case r.health() == domain.HealthYellow:
+	case r.Health == domain.HealthYellow:
 		return 3
-	case r.health() == domain.HealthGreen:
+	case r.Health == domain.HealthGreen:
 		return 4
 	}
 	return 5
@@ -484,42 +466,15 @@ func (c pageOrgScope) Name() string {
 }
 
 // loadGoalRows reads what each of goals' rows shows beyond the Goal itself,
-// in the same few queries however many Goals there are, keeping their order.
+// its listing (domain.GoalListings), keeping their order.
 func (s *Server) loadGoalRows(ctx context.Context, goals []domain.GoalWithValues) ([]goalRow, error) {
-	ids := make([]int64, 0, len(goals))
-	plain := make([]domain.Goal, 0, len(goals))
-	for _, gv := range goals {
-		ids = append(ids, gv.Goal.ID)
-		plain = append(plain, gv.Goal)
-	}
-	latest, err := s.svc.LatestCheckinsByGoal(ctx, ids)
+	listings, err := s.svc.GoalListings(ctx, goalsOfValues(goals))
 	if err != nil {
-		return nil, fmt.Errorf("load latest check-ins: %w", err)
-	}
-	freshness, err := s.svc.FreshnessByGoal(ctx, plain)
-	if err != nil {
-		return nil, fmt.Errorf("read freshness: %w", err)
-	}
-	incomplete, err := s.svc.IncompleteByGoal(ctx, plain)
-	if err != nil {
-		return nil, fmt.Errorf("read incomplete: %w", err)
-	}
-	slips, err := s.svc.DateSlipsByGoal(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("load date slips: %w", err)
+		return nil, fmt.Errorf("load goal listings: %w", err)
 	}
 	rows := make([]goalRow, 0, len(goals))
 	for _, gv := range goals {
-		row := goalRow{GoalWithValues: gv, Freshness: freshness[gv.Goal.ID], Incomplete: incomplete[gv.Goal.ID]}
-		if c, ok := latest[gv.Goal.ID]; ok {
-			row.Latest = &c
-		}
-		for _, slip := range slips[gv.Goal.ID] {
-			if slip.OnDeliveryDate() {
-				row.PriorDates = append(row.PriorDates, slip.OldDate)
-			}
-		}
-		rows = append(rows, row)
+		rows = append(rows, goalRow{GoalWithValues: gv, GoalListing: listings[gv.Goal.ID]})
 	}
 	return rows, nil
 }
