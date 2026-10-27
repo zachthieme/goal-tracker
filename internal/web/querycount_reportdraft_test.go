@@ -244,17 +244,17 @@ func reportDraftAssertRereads(t *testing.T, what string, ran map[string]int, all
 // and what the domain call it answers reads before it.
 func TestReportDraftNarrativeFragmentsReadEachThingOnce(t *testing.T) {
 	t.Parallel()
-	// An htmx Save narrative runs the session's and the sidebar's reads,
-	// CurateNarrative's, and the Report Definition, the draft, the
-	// publications and the Report log.
-	const narrativeSavedMax = 64
-	// An htmx Add another the domain accepts runs the session's and the
-	// sidebar's reads, the Report Definition, PreviewNarrative's and
-	// NarrativeUnsaved's, and the publications.
-	const narrativeAddAnotherMax = 57
+	// An htmx Save narrative runs the session's reads, CurateNarrative's,
+	// and the Report Definition, the draft, the publications and the Report
+	// log.
+	const narrativeSavedMax = 53
+	// An htmx Add another the domain accepts runs the session's reads, the
+	// Report Definition, PreviewNarrative's and NarrativeUnsaved's, and the
+	// publications.
+	const narrativeAddAnotherMax = 46
 	// One it refuses stops PreviewNarrative at the narrative's check, and
 	// reads the draft as saved in its stead.
-	const narrativeAddAnotherRefusedMax = 54
+	const narrativeAddAnotherRefusedMax = 43
 	const draftOwn = "DraftReport's own repeat, which stays: it drafts for publishing and the Report list too"
 	rereads := []reportDraftReread{
 		{"LatestReportPublication", 2, draftOwn},

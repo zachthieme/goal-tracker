@@ -580,7 +580,7 @@ var followUpGroupKinds = []struct {
 	Blank     string
 }{
 	{"health", "Not Green", []domain.FollowUpKind{domain.FollowUpRed, domain.FollowUpYellow, domain.FollowUpAsksForHelp}, "No Goal is Red or Yellow."},
-	{"owner", "Waiting on a Check-in", domain.WaitsOnCheckinKinds, "Nothing is waiting on a Check-in."},
+	{"owner", "Waiting on a Check-in", domain.WaitsOnCheckinKinds(), "Nothing is waiting on a Check-in."},
 	{"followup", "Action Items overdue", []domain.FollowUpKind{domain.FollowUpActionItemOverdue}, "No Action Item is overdue."},
 	{"plan", "Placement and dates", []domain.FollowUpKind{domain.FollowUpUnlinked, domain.FollowUpScheduleConflicts}, "Every Goal is placed and its dates fit."},
 	{followUpGroupAdmin, "Needs an Admin", []domain.FollowUpKind{domain.FollowUpOwnerless, domain.FollowUpHaltedParents}, "Nothing needs an Admin."},

@@ -429,8 +429,14 @@ func TestFollowUpsSayWhatWaitsOnACheckin(t *testing.T) {
 	t.Parallel()
 
 	wantKinds := []domain.FollowUpKind{domain.FollowUpCheckinOverdue, domain.FollowUpPathOverdue, domain.FollowUpMilestoneOverdue}
-	if !slices.Equal(domain.WaitsOnCheckinKinds, wantKinds) {
-		t.Errorf("WaitsOnCheckinKinds = %v, want %v", domain.WaitsOnCheckinKinds, wantKinds)
+	if got := domain.WaitsOnCheckinKinds(); !slices.Equal(got, wantKinds) {
+		t.Errorf("WaitsOnCheckinKinds() = %v, want %v", got, wantKinds)
+	}
+	// Each call answers its own copy: changing one leaves the next whole.
+	changed := domain.WaitsOnCheckinKinds()
+	changed[0] = domain.FollowUpRed
+	if got := domain.WaitsOnCheckinKinds(); !slices.Equal(got, wantKinds) {
+		t.Errorf("after changing one answer, WaitsOnCheckinKinds() = %v, want %v", got, wantKinds)
 	}
 
 	for _, tc := range []struct {
