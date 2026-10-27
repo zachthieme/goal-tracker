@@ -70,7 +70,8 @@ type goalView struct {
 	FormError string
 	FormInput url.Values
 	// History is the Goal's History as one timeline, newest first, showing the
-	// filter and page count the page's address asks for.
+	// filter and page count the page's address asks for. It hides the
+	// embedded GoalPage.History, the loader's list it is built from.
 	History history
 	// Toast is the one-time notice the page carries straight after the viewer
 	// removed one of its links or declined one of its Parent suggestions, with

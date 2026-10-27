@@ -499,8 +499,14 @@ func TestGoalPageListsTheOpenSuggestionsItsViewerSees(t *testing.T) {
 		if !slices.Equal(got, v.want) {
 			t.Errorf("OpenSuggestions for %s = %v, want %v", v.name, got, v.want)
 		}
-		if len(p.Suggestions) != 3 {
-			t.Errorf("Suggestions for %s list %d, want all 3 for the History", v.name, len(p.Suggestions))
+		suggestions := 0
+		for _, e := range p.History {
+			if _, ok := e.(domain.ParentSuggestionEvent); ok {
+				suggestions++
+			}
+		}
+		if suggestions != 3 {
+			t.Errorf("History for %s lists %d Parent suggestions, want all 3", v.name, suggestions)
 		}
 	}
 }

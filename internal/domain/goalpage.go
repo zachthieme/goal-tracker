@@ -52,10 +52,6 @@ type GoalPage struct {
 	// on the Active Goal and it has a Check-in to repeat; nil when one would
 	// be recorded or isn't on offer.
 	NoChangeRefusal error
-	Revisions       []WhyItMattersRevision
-	TitleRevisions  []TitleRevision
-	Ownership       []Handoff
-	ValueHistory    []ValueChange
 	Dimensions      []Dimension
 	Values          []DimensionValue
 	Fields          []Field
@@ -77,19 +73,20 @@ type GoalPage struct {
 	Required       []RequiredValue
 	Incomplete     []string
 	HealthStrip    HealthStrip
-	// Suggestions are every Parent suggestion made for the Goal, with its
-	// outcome, for its History (ParentSuggestions), and OpenSuggestions the
-	// open ones this viewer sees: all of them for one who may decide them,
-	// and their own, to withdraw, for anyone else.
-	Suggestions        []ParentSuggestion
+	// OpenSuggestions are the open Parent suggestions for the Goal this
+	// viewer sees (ParentSuggestions): all of them for one who may decide
+	// them, and their own, to withdraw, for anyone else.
 	OpenSuggestions    []ParentSuggestion
-	Nudges             []Nudge
-	LinkEvents         []LinkEvent
 	MilestoneAdditions []MilestoneChange
 	ActionItems        []ActionItemListing
-	ActionReassigns    []ActionItemReassignment
 	Threads            []Thread
-	Comments           []CommentListing
+	// History is the Goal's History, newest first (CONTEXT.md: History),
+	// built from what the page read: its Check-ins with the Date Slips,
+	// Metric readings and Highlights each recorded, its Why it matters,
+	// title, ownership and value changes, Parent suggestions, Nudges, link
+	// changes, MilestoneAdditions, its Action Items raised, reassigned and
+	// closed, and its Comments (GoalComments).
+	History []GoalEvent
 	// Now is when the page was read, and Timezone the Goal's
 	// (GoalTimezone), its Milestones are judged in.
 	Now      time.Time
@@ -250,7 +247,8 @@ func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage
 	if err := s.readGoalPageValues(ctx, &p); err != nil {
 		return GoalPage{}, err
 	}
-	if err := s.readGoalPageHistory(ctx, &p); err != nil {
+	history, err := s.readGoalPageHistory(ctx, &p)
+	if err != nil {
 		return GoalPage{}, err
 	}
 	items, err := s.queries.ListActionItemsForGoal(ctx, goalID)
@@ -274,9 +272,13 @@ func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage
 	if p.MilestoneAdditions, err = milestoneChangesOutsideCheckins(changes, account); err != nil {
 		return GoalPage{}, fmt.Errorf("load milestone additions: %w", err)
 	}
-	if err := s.listGoalPageActionItems(&p, items, reassigns, account); err != nil {
+	if history.ActionReassigns, err = s.listGoalPageActionItems(&p, items, reassigns, account); err != nil {
 		return GoalPage{}, err
 	}
+	history.Checkins, history.DateSlips, history.Highlights = p.Checkins, p.DateSlips, p.Highlights
+	history.Metrics, history.Readings = p.Metrics, p.Readings
+	history.MilestoneAdditions, history.ActionItems = p.MilestoneAdditions, p.ActionItems
+	p.History = goalEventsOf(history)
 	if p.AskAddressee, err = askAddressee(g.Owner, func(id int64) (Account, bool, error) {
 		a, err := account(id)
 		if errors.Is(err, ErrNotFound) {
@@ -291,7 +293,7 @@ func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage
 	}
 
 	noChange := s.deriveGoalPage(&p)
-	if err := s.permitGoalPage(ctx, &p, actorID, account, noChange); err != nil {
+	if err := s.permitGoalPage(ctx, &p, actorID, account, noChange, history.Suggestions); err != nil {
 		return GoalPage{}, err
 	}
 	return p, nil
@@ -416,9 +418,10 @@ func (s *Service) readGoalPageValues(ctx context.Context, p *GoalPage) error {
 }
 
 // readGoalPageHistory reads the rest of what p.Goal's History and discussion
-// list, each in its own query.
-func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) error {
+// list, each in its own query, returning what only its History lists.
+func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) (goalEventSources, error) {
 	id := p.Goal.ID
+	var src goalEventSources
 	var err error
 	for _, read := range []struct {
 		what string
@@ -426,23 +429,23 @@ func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) error {
 	}{
 		{"highlights", func() error { p.Highlights, err = s.ListHighlightsByGoal(ctx, id); return err }},
 		{"delegates", func() error { p.Delegates, err = s.ListDelegates(ctx, id); return err }},
-		{"Why it matters history", func() error { p.Revisions, err = s.ListWhyItMattersRevisions(ctx, id); return err }},
-		{"title history", func() error { p.TitleRevisions, err = s.ListTitleRevisions(ctx, id); return err }},
-		{"ownership history", func() error { p.Ownership, err = s.OwnershipHistory(ctx, id); return err }},
-		{"value history", func() error { p.ValueHistory, err = s.ValueHistory(ctx, id); return err }},
+		{"Why it matters history", func() error { src.Revisions, err = s.ListWhyItMattersRevisions(ctx, id); return err }},
+		{"title history", func() error { src.Titles, err = s.ListTitleRevisions(ctx, id); return err }},
+		{"ownership history", func() error { src.Ownership, err = s.OwnershipHistory(ctx, id); return err }},
+		{"value history", func() error { src.Values, err = s.ValueHistory(ctx, id); return err }},
 		{"date slips", func() error { p.DateSlips, err = s.ListDateSlips(ctx, id); return err }},
 		{"milestone churn", func() error { p.MilestoneChurn, err = s.MilestoneChurn(ctx, id); return err }},
-		{"parent suggestions", func() error { p.Suggestions, err = s.ParentSuggestions(ctx, id); return err }},
-		{"nudges", func() error { p.Nudges, err = s.Nudges(ctx, id); return err }},
-		{"link events", func() error { p.LinkEvents, err = s.LinkEvents(ctx, id); return err }},
+		{"parent suggestions", func() error { src.Suggestions, err = s.ParentSuggestions(ctx, id); return err }},
+		{"nudges", func() error { src.Nudges, err = s.Nudges(ctx, id); return err }},
+		{"link events", func() error { src.Links, err = s.LinkEvents(ctx, id); return err }},
 		{"comment threads", func() error { p.Threads, err = s.GoalThreads(ctx, id); return err }},
-		{"comments", func() error { p.Comments, err = s.GoalComments(ctx, id); return err }},
+		{"comments", func() error { src.Comments, err = s.GoalComments(ctx, id); return err }},
 	} {
 		if err := read.read(); err != nil {
-			return fmt.Errorf("load %s: %w", read.what, err)
+			return goalEventSources{}, fmt.Errorf("load %s: %w", read.what, err)
 		}
 	}
-	return nil
+	return src, nil
 }
 
 // goalPageAccounts reads at once the viewer and everyone else the page names
@@ -501,10 +504,10 @@ func (s *Service) goalPageAccounts(ctx context.Context, actorID int64, g Goal, c
 }
 
 // listGoalPageActionItems lists the Action Items about p.Goal, from items,
-// and their reassignments, from reassigns, as ActionItemsAbout and
+// and returns their reassignments, from reassigns, as ActionItemsAbout and
 // ActionItemReassignmentsAbout do, with the people they name looked up with
 // account.
-func (s *Service) listGoalPageActionItems(p *GoalPage, items []db.ListActionItemsForGoalRow, reassigns []db.ActionItemReassignment, account func(id int64) (Account, error)) error {
+func (s *Service) listGoalPageActionItems(p *GoalPage, items []db.ListActionItemsForGoalRow, reassigns []db.ActionItemReassignment, account func(id int64) (Account, error)) ([]ActionItemReassignment, error) {
 	// An item's latest reassignment is its last, for they are oldest first.
 	latest := map[int64]*db.ActionItemReassignment{}
 	for i := range reassigns {
@@ -516,19 +519,19 @@ func (s *Service) listGoalPageActionItems(p *GoalPage, items []db.ListActionItem
 		rows[r.ActionItem.ID] = r.ActionItem
 		item, err := actionItemOf(r.ActionItem, r.GoalTitle, latest[r.ActionItem.ID], account)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		p.ActionItems = append(p.ActionItems, s.actionItemListingOf(item, r.ActionItem, r.ReportName))
 	}
-	p.ActionReassigns = make([]ActionItemReassignment, 0, len(reassigns))
+	out := make([]ActionItemReassignment, 0, len(reassigns))
 	for _, r := range reassigns {
 		re, err := actionItemReassignmentOf(r, rows[r.ActionItemID], account)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		p.ActionReassigns = append(p.ActionReassigns, re)
+		out = append(out, re)
 	}
-	return nil
+	return out, nil
 }
 
 // deriveGoalPage works out what p shows that is computed when read, from what
@@ -551,10 +554,11 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 
 // permitGoalPage decides what p's viewer, actorID, may do on its Goal and
 // which of its links they may remove, by the rule each command evaluates
-// (goalrules.go), judged from what the page read; lists the open Parent suggestions they see; and, for one who may
-// check in, reads the pending Draft Highlights only they see and gives them
-// noChange's refusal of a No change on it.
-func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict) error {
+// (goalrules.go), judged from what the page read; lists which of the Parent
+// suggestions are open ones they see; and, for one who may check in, reads
+// the pending Draft Highlights only they see and gives them noChange's
+// refusal of a No change on it.
+func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict, suggestions []ParentSuggestion) error {
 	g := p.Goal
 	viewer, err := account(actorID)
 	found := err == nil
@@ -597,7 +601,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	p.RemovableLinks = removable
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
-	for _, sg := range p.Suggestions {
+	for _, sg := range suggestions {
 		if sg.Status == SuggestionOpen && (perms.DecideSuggestions || sg.SuggestedBy.ID == actorID) {
 			p.OpenSuggestions = append(p.OpenSuggestions, sg)
 		}
