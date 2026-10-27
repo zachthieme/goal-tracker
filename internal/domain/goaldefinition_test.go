@@ -918,6 +918,41 @@ func TestParentCandidatesLeaveOutCyclesAndExistingParents(t *testing.T) {
 	}
 }
 
+// A Goal three levels down contributes to the Goal as much as its child does,
+// so it is left out too; a Goal whose link to it is still Pending doesn't
+// contribute yet, so it is offered (#638).
+func TestParentCandidatesLeaveOutEveryDescendantButOfferAPendingChild(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	child := h.CreateGoal(sam, "Fix search", "Search is slow.")
+	grandchild := h.CreateGoal(sam, "Index faster", "Indexing lags.")
+	greatGrandchild := h.CreateGoal(sam, "Shard the index", "One shard is too big.")
+	pendingChild := h.CreateGoal(kim, "Tune queries", "Queries are slow.")
+	free := h.CreateGoal(kim, "Cut churn", "Customers leave.")
+	h.RequestLink(sam, child, g, "")
+	h.RequestLink(sam, grandchild, child, "")
+	h.RequestLink(sam, greatGrandchild, grandchild, "")
+	h.RequestLink(kim, pendingChild, g, "")
+
+	candidates, err := h.Service.ParentCandidates(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ParentCandidates: %v", err)
+	}
+
+	var titles []string
+	for _, c := range candidates {
+		titles = append(titles, c.Title)
+	}
+	if want := sorted([]string{pendingChild.Title, free.Title}); !slices.Equal(sorted(titles), want) {
+		t.Errorf("candidates = %v, want %v", titles, want)
+	}
+}
+
 // The New goal and define pages pass on the values they couldn't parse, each
 // refused under its input. The rest is still checked, so every problem comes
 // back together, and nothing is saved (#520).
