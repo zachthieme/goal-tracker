@@ -5445,6 +5445,7 @@ func TestARefusedReportActionAnswersWithTheRefusalPage(t *testing.T) {
 		{"add another", draft + "/narrative", "Can't save narrative", "Only its creator, a Report Delegate or an Admin may curate MBR.", url.Values{"text-" + domain.HighlightInsight: {"All good."}, "add_note": {domain.HighlightInsight}}},
 		{"publish", draft + "/publications", "Can't publish Report", "Only its creator, a Report Delegate or an Admin may publish MBR.", url.Values{}},
 		{"add a Report Delegate", draft + "/delegates", "Can't change Report Delegates", "Only its creator or an Admin may change who are Report Delegates on MBR.", url.Values{"email": {"eve@example.com"}}},
+		{"add an unknown email as a Report Delegate", draft + "/delegates", "Can't change Report Delegates", "Only its creator or an Admin may change who are Report Delegates on MBR.", url.Values{"email": {"nobody@example.com"}}},
 	} {
 		resp := postForm(t, eve, ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()
@@ -5453,6 +5454,9 @@ func TestARefusedReportActionAnswersWithTheRefusalPage(t *testing.T) {
 			t.Errorf("%s: status %d, want 403", c.name, resp.StatusCode)
 		}
 		assertRefusalPage(t, page, c.heading, c.reason, draft)
+	}
+	if delegates, err := h.Service.ListReportDelegates(context.Background(), def.ID); err != nil || len(delegates) != 0 {
+		t.Errorf("Report Delegates %+v (err %v), want none", delegates, err)
 	}
 }
 
