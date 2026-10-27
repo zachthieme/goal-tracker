@@ -387,7 +387,11 @@ func goalIDsOf(goals []Goal) []int64 {
 }
 
 // goalHistory is what a Report reads about one Goal to judge it against the
-// baseline: its Check-ins, newest first, and its Date Slips, earliest first.
+// baseline, and a Parent digest against the week's start: its Check-ins,
+// newest first, and its Date Slips, earliest first. It is the one reader of
+// a Goal's Check-ins against a moment: its Health then (healthBefore),
+// whether it changed since (changed), and how its Lifecycle moved
+// (lifecycleChanged).
 type goalHistory struct {
 	goal     Goal
 	checkins []Checkin
