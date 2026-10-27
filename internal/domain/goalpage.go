@@ -83,8 +83,12 @@ type GoalPage struct {
 	Signals        GoalSignals
 	Freshness      Freshness
 	Required       []RequiredValue
-	Incomplete     []string
-	HealthStrip    HealthStrip
+	// Activation is the Goal judged against the activation standard, from
+	// the Goal, its Milestones, Metrics and Required, as ActivateGoal judges
+	// it (CONTEXT.md: Lifecycle).
+	Activation  []ActivationRequirement
+	Incomplete  []string
+	HealthStrip HealthStrip
 	// OpenSuggestions are the open Parent suggestions for the Goal this
 	// viewer sees (ParentSuggestions): all of them for one who may decide
 	// them, and their own, to withdraw, for anyone else.
@@ -259,6 +263,7 @@ func (s *Service) GoalPage(ctx context.Context, actorID, goalID int64) (GoalPage
 	if err := s.readGoalPageValues(ctx, &p); err != nil {
 		return GoalPage{}, err
 	}
+	p.Activation = judgeActivation(savedGoalActivationState(g, len(p.Milestones), len(p.Metrics), p.Required))
 	history, err := s.readGoalPageHistory(ctx, &p)
 	if err != nil {
 		return GoalPage{}, err

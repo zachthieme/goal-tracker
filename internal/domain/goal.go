@@ -252,7 +252,11 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 		if err != nil {
 			return err
 		}
-		if err := tx.requireActivationStandard(ctx, g); err != nil {
+		reqs, err := tx.judgeGoalActivation(ctx, g)
+		if err != nil {
+			return err
+		}
+		if err := activationRefusal(reqs); err != nil {
 			return err
 		}
 		if err := tx.queries.ActivateGoal(ctx, db.ActivateGoalParams{
@@ -267,53 +271,6 @@ func (s *Service) ActivateGoal(ctx context.Context, actorID, goalID int64) (Goal
 		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
-}
-
-// requireActivationStandard checks g against the minimum standard
-// ActivateGoal enforces, joining every unmet requirement into one error.
-func (s *Service) requireActivationStandard(ctx context.Context, g Goal) error {
-	var reasons []error
-	// Why it matters and Owner are guaranteed by CreateGoal/EditWhyItMatters and the schema,
-	// but the gate states the full minimum standard so it still holds if those
-	// invariants ever change.
-	if strings.TrimSpace(g.WhyItMatters) == "" {
-		reasons = append(reasons, Refuse(ErrValidation, "a Goal must say why it matters to become Active"))
-	}
-	if g.Owner.ID == 0 {
-		reasons = append(reasons, Refuse(ErrValidation, "a Goal needs an Owner to become Active"))
-	}
-
-	switch g.Kind {
-	case GoalDated:
-		if g.DeliveryDate.IsZero() {
-			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs a delivery date"))
-		}
-		milestones, metrics, err := s.countMilestonesAndMetrics(ctx, g.ID)
-		if err != nil {
-			return err
-		}
-		if milestones == 0 && metrics == 0 {
-			reasons = append(reasons, Refuse(ErrValidation, "a Dated Goal needs at least one Milestone or Metric"))
-		}
-	case GoalOngoing:
-		_, metrics, err := s.countMilestonesAndMetrics(ctx, g.ID)
-		if err != nil {
-			return err
-		}
-		if metrics == 0 {
-			reasons = append(reasons, Refuse(ErrValidation, "an Ongoing Goal needs at least one Metric"))
-		}
-	default:
-		reasons = append(reasons, Refuse(ErrValidation, "a Goal must be marked Dated or Ongoing to become Active"))
-	}
-	missing, err := s.MissingRequired(ctx, g.ID)
-	if err != nil {
-		return err
-	}
-	for _, name := range missing {
-		reasons = append(reasons, Refuse(ErrValidation, "a Goal needs a value in %s to become Active", name))
-	}
-	return errors.Join(reasons...)
 }
 
 // countMilestonesAndMetrics returns how many Milestones and Metrics a Goal has.

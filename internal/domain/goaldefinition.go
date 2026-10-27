@@ -651,6 +651,9 @@ const (
 	InputDeliveryDate = "delivery_date"
 	InputCadence      = "cadence"
 	InputActivate     = "activate"
+	// InputHowYoullKnow is How you'll know, the section that takes a Goal's
+	// Milestones and Metrics.
+	InputHowYoullKnow = "know"
 )
 
 // InputError refuses one input of a Goal's definition, naming it as the New
@@ -717,6 +720,10 @@ func ValueInput(valueID int64) string { return fmt.Sprintf("value:%d", valueID) 
 
 // NewValueInput names the new value typed in for a Dimension.
 func NewValueInput(dimensionID int64) string { return fmt.Sprintf("new_value:%d", dimensionID) }
+
+// DimensionInput names the value chosen in a Dimension: its select, or its
+// group of choices when it takes several.
+func DimensionInput(dimensionID int64) string { return fmt.Sprintf("dimension:%d", dimensionID) }
 
 // FieldInput names the value given in a Field.
 func FieldInput(fieldID int64) string { return fmt.Sprintf("field:%d", fieldID) }

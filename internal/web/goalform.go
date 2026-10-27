@@ -70,42 +70,44 @@ type goalFormView struct {
 	Live bool
 }
 
-// activationFacts are the form's, as typed, for its Ready to activate
-// checklist. Its Owner is the person creating or finishing it. Only a Dated Goal's
-// delivery date counts, and only one that parses; a Milestone or Metric row
-// counts once anything is typed in it. A required Dimension is set by a value
-// chosen in it or, when it's Extendable, a value typed to add, and a required
-// Field by a value typed (domain.RequiredValues reads a saved Goal's).
-func (v goalFormView) activationFacts() activationFacts {
-	f := activationFacts{
+// activation is the form, as typed, judged against the activation standard
+// for its Ready to activate checklist. Its Owner is the person creating or
+// finishing it. Only a Dated Goal's delivery date counts, and only one that
+// parses; a Milestone or Metric row counts once anything is typed in it, as
+// the saved ones do (domain.JudgeDefinition).
+func (v goalFormView) activation() []domain.ActivationRequirement {
+	d := domain.DefinitionDraft{
 		WhyItMatters: v.WhyItMatters,
-		Owned:        true,
 		Kind:         v.Kind,
 		Milestones:   len(v.ExistingMilestones) + len(v.Milestones),
 		Metrics:      len(v.ExistingMetrics) + len(v.Metrics),
-		Unsaved:      v.Unsaved,
+		Chosen:       v.Chosen,
+		NewValues:    v.NewValues,
+		FieldValues:  v.FieldValues,
 	}
 	if v.Kind == domain.GoalDated {
-		if d, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
-			f.DeliveryDate = d
+		if date, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
+			d.DeliveryDate = date
 		}
 	}
-	for _, d := range v.Dimensions {
-		if !d.Required || d.Retired {
-			continue
+	return domain.JudgeDefinition(d, v.Dimensions, v.Fields)
+}
+
+// checklist is the form's Ready to activate checklist, as typed.
+func (v goalFormView) checklist() []activationItem {
+	return activationChecklist(v.activation(), v.Unsaved)
+}
+
+// requiredValues are the form's requirements of a value in a required
+// Dimension or Field, in checklist order.
+func (v goalFormView) requiredValues() []domain.ActivationRequirement {
+	var out []domain.ActivationRequirement
+	for _, r := range v.activation() {
+		if r.Rule == domain.ActivationValue {
+			out = append(out, r)
 		}
-		set := d.Extendable() && strings.TrimSpace(v.NewValues[d.ID]) != ""
-		for _, val := range d.Values {
-			set = set || v.Chosen[val.ID]
-		}
-		f.Required = append(f.Required, domain.RequiredValue{Name: d.Name, Set: set, DimensionID: d.ID})
 	}
-	for _, fl := range v.Fields {
-		if fl.Required && !fl.Retired {
-			f.Required = append(f.Required, domain.RequiredValue{Name: fl.Name, Set: strings.TrimSpace(v.FieldValues[fl.ID]) != "", FieldID: fl.ID})
-		}
-	}
-	return f
+	return out
 }
 
 // year is the company's current year, as text, for How you'll know's script
@@ -120,7 +122,7 @@ func (v goalFormView) year() string {
 // readyCount is how many of the Ready to activate checklist's items are done,
 // of how many.
 func (v goalFormView) readyCount() (done, of int) {
-	items := v.activationFacts().checklist()
+	items := v.checklist()
 	for _, item := range items {
 		if item.Done {
 			done++
@@ -132,7 +134,7 @@ func (v goalFormView) readyCount() (done, of int) {
 // activateDisabled says Create and activate is disabled: only on the live
 // card, while the checklist is incomplete.
 func (v goalFormView) activateDisabled() bool {
-	return v.Live && !v.activationFacts().ready()
+	return v.Live && !allDone(v.checklist())
 }
 
 // parentChoice is a Goal offered or picked to contribute to: its Health, ""
@@ -203,8 +205,8 @@ func (v goalFormView) fitsNames() []string {
 // or Field in it isn't set, as the checklist links to it, or it holds a
 // refused input.
 func (v goalFormView) fitsOpen() bool {
-	for _, r := range v.activationFacts().Required {
-		if !r.Set {
+	for _, r := range v.requiredValues() {
+		if !r.Met {
 			return true
 		}
 	}
@@ -964,7 +966,7 @@ func (v goalFormView) choices(d domain.Dimension) []domain.DimensionValue {
 // dimensionInput names the select of a Dimension that takes one value. A
 // problem with the value chosen there names the value (domain.ValueInput), so
 // the select stands for each of its values' inputs.
-func dimensionInput(d domain.Dimension) string { return fmt.Sprintf("dimension:%d", d.ID) }
+func dimensionInput(d domain.Dimension) string { return domain.DimensionInput(d.ID) }
 
 // selectInput is the input a refused value of a one-value Dimension is shown
 // at: its Dimension's select, or input itself when it is no such value.
