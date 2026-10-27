@@ -22,6 +22,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] A Goal's parent picker, on its define page and in `GET /goals/search?goal=<id>`, leaves out the Goals that contribute to it by reading its descendants once, one query a level, instead of walking up from every other Goal, so the search runs as many queries for 50 Goals as for 10: 19, down from 27 for 10 Goals and 75 for 50 (#638).
 
 **Bug fixes:**
+- [user] The sidebar fits the part of the window a person can see, so the signed-in person at its foot shows without scrolling in a browser whose toolbars take part of the window, such as Safari on an iPad; the narrow screen's Menu sheet fits it too.
 - [user] Adding a Report Delegate or raising an Action Item for an email with no Account, by someone who may not do either, is now refused with the refusal page (403) rather than told no Account has that email, so it no longer reveals who has an Account (#623).
 - [user] Two refusals now take the article that agrees with the Goal's Lifecycle: marking an Active or On Hold Goal Dated or Ongoing outside a Check-in is refused with "an Active Goal's delivery date changes only in a Check-in, with a reason" (not "a Active …"), and a Check-in that moves a Goal where it can't says `a Check-in can't move an Active Goal to "Proposed"` (#624).
 

@@ -3826,3 +3826,22 @@ func TestStyleHelpersDeclValueReadsTheLastValueForTheProperty(t *testing.T) {
 		t.Errorf("color in .a's rules %q is %q, want blue, the later rule's", decls, got)
 	}
 }
+
+// The sidebar is as tall as the part of the window a person can see, so the
+// signed-in person at its foot shows without scrolling, even in a browser
+// whose toolbars take part of the window, such as Safari on an iPad, where
+// 100vh is the height with the toolbars hidden. Each viewport height reads
+// dvh, after a vh fallback for a browser without dvh.
+func TestSidebarFitsTheVisibleWindow(t *testing.T) {
+	t.Parallel()
+
+	ts := newServer(t, testsupport.New(t))
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	for sel, want := range map[string]string{
+		".frame":                  "min-height:100vh;min-height:100dvh",
+		".sidebar":                "height:100vh;height:100dvh",
+		".sb-menu[open]~.sb-body": "max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)",
+	} {
+		assertHomeRuleDeclares(t, css, sel, want)
+	}
+}
