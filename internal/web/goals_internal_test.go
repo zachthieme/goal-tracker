@@ -13,6 +13,7 @@ func goalRowAt(title, lifecycle, health string) goalRow {
 	row := goalRow{GoalWithValues: domain.GoalWithValues{Goal: domain.Goal{Title: title, Lifecycle: lifecycle}}}
 	if health != "" {
 		row.Latest = &domain.Checkin{Health: health}
+		row.Health = health
 	}
 	return row
 }

@@ -291,7 +291,7 @@ templ seeEveryonesGoals(view goalsListData) {
 // initials, Due and Last check-in.
 templ goalListRow(row goalRow, dates displayDates) {
 	{{ g := row.Goal }}
-	{{ health := row.health() }}
+	{{ health := row.Health }}
 	<tr data-testid="goal-row">
 		<td class="gl-health">
 			@goalHealthMark(health)
@@ -331,7 +331,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
 			} else {
-				@struckDates(g.DeliveryDate, row.PriorDates, dates)
+				@struckDates(g.DeliveryDate, row.PriorDueDates, dates)
 				<span>{ dates.date(g.DeliveryDate) }</span>
 			}
 		</td>
@@ -594,7 +594,7 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayD
 			</td>
 		case "health":
 			<td>
-				if health := row.health(); health != "" {
+				if health := row.Health; health != "" {
 					@goalLinkIf(edit, g) {
 						@healthChip("", health)
 					}
@@ -610,7 +610,7 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayD
 			<td class="num">
 				if !g.DeliveryDate.IsZero() {
 					@goalLinkIf(edit, g) {
-						@struckDates(g.DeliveryDate, row.PriorDates, dates)
+						@struckDates(g.DeliveryDate, row.PriorDueDates, dates)
 						{ dates.date(g.DeliveryDate) }
 					}
 				}
@@ -943,7 +943,7 @@ templ goalProperties(v goalView) {
 			<div class="gp-prop">
 				<dt>Health</dt>
 				<dd>
-					if health := v.health(); health != "" {
+					if health := v.Health; health != "" {
 						@healthChip("", health)
 					} else {
 						<span class="muted">No Health</span>
@@ -994,7 +994,7 @@ templ goalProperties(v goalView) {
 					<dt>Delivers</dt>
 					<dd>
 						<span data-testid="goal-delivery-date" class="gp-dates">
-							@struckDates(g.DeliveryDate, v.priorDates(0), v.dates())
+							@struckDates(g.DeliveryDate, v.PriorDueDates, v.dates())
 							<strong>{ v.dates().date(g.DeliveryDate) }</strong>
 						</span>
 					</dd>
@@ -1486,13 +1486,13 @@ templ milestoneList(v goalView, editable bool) {
 				</tr>
 			</thead>
 			<tbody>
-				for _, m := range v.Milestones {
+				for _, m := range v.ListedMilestones {
 					<tr data-testid="goal-milestone">
 						<td>
-							@milestoneMarkBadge(v.milestoneMark(m))
+							@milestoneMarkBadge(m.Mark)
 						</td>
 						<td class="num gp-dates">
-							@milestoneDates(m.TargetDate, v.priorDates(m.ID), v.dates())
+							@milestoneDates(m.TargetDate, m.PriorDates, v.dates())
 						</td>
 						if m.Status == domain.MilestoneRemoved {
 							<td>

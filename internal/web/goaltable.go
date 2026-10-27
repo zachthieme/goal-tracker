@@ -273,7 +273,7 @@ func (c tableColumn) sortKey(row goalTableRow) (cellKey, bool) {
 	case c.Key == "owner":
 		return text(g.Owner.Label())
 	case c.Key == "health":
-		if i := slices.Index(healthOrder, row.health()); i >= 0 {
+		if i := slices.Index(healthOrder, row.Health); i >= 0 {
 			return num(float64(i))
 		}
 	case c.Key == "lifecycle":

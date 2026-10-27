@@ -989,7 +989,7 @@ func goalListRow(row goalRow, dates displayDates) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		g := row.Goal
-		health := row.health()
+		health := row.Health
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<tr data-testid=\"goal-row\"><td class=\"gl-health\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -1159,7 +1159,7 @@ func goalListRow(row goalRow, dates displayDates) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = struckDates(g.DeliveryDate, row.PriorDates, dates).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = struckDates(g.DeliveryDate, row.PriorDueDates, dates).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2537,7 +2537,7 @@ func goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayDa
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if health := row.health(); health != "" {
+			if health := row.Health; health != "" {
 				templ_7745c5c3_Var105 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
@@ -2619,7 +2619,7 @@ func goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayDa
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = struckDates(g.DeliveryDate, row.PriorDates, dates).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = struckDates(g.DeliveryDate, row.PriorDueDates, dates).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -3679,7 +3679,7 @@ func goalProperties(v goalView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if health := v.health(); health != "" {
+		if health := v.Health; health != "" {
 			templ_7745c5c3_Err = healthChip("", health).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -3809,7 +3809,7 @@ func goalProperties(v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = struckDates(g.DeliveryDate, v.priorDates(0), v.dates()).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = struckDates(g.DeliveryDate, v.PriorDueDates, v.dates()).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -5536,12 +5536,12 @@ func milestoneList(v goalView, editable bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			for _, m := range v.Milestones {
+			for _, m := range v.ListedMilestones {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 457, "<tr data-testid=\"goal-milestone\"><td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = milestoneMarkBadge(v.milestoneMark(m)).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = milestoneMarkBadge(m.Mark).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -5549,7 +5549,7 @@ func milestoneList(v goalView, editable bool) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = milestoneDates(m.TargetDate, v.priorDates(m.ID), v.dates()).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = milestoneDates(m.TargetDate, m.PriorDates, v.dates()).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

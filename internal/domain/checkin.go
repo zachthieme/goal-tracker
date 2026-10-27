@@ -108,6 +108,17 @@ func needsPathToGreen(health string) bool {
 	return health == HealthYellow || health == HealthRed
 }
 
+// currentHealth is g's current Health: its latest Check-in's, latest, while
+// it is Active, and "" otherwise — with no Check-in, or while it is Proposed,
+// On Hold, Done or Cancelled (CONTEXT.md: Health). Every page that shows a
+// Goal's Health reads it here.
+func currentHealth(g Goal, latest *Checkin) string {
+	if latest == nil || g.Lifecycle != LifecycleActive {
+		return ""
+	}
+	return latest.Health
+}
+
 // SubmitCheckinInput is the submit-a-Check-in command's input. PathToGreen and
 // PathTargetDate are required only when Health is Yellow or Red.
 type SubmitCheckinInput struct {

@@ -254,54 +254,11 @@ func (v goalView) dates() displayDates {
 	return displayDates{Now: v.Now, Loc: v.History.Loc}
 }
 
-// priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
-// its Milestones held before each of its Date Slips, earliest first, for
-// showing struck through ahead of the current date (CONTEXT.md: Date Slip). A
-// slip of the back-to-Green date is neither; see pathPriorDates.
-func (v goalView) priorDates(milestoneID int64) []time.Time {
-	var out []time.Time
-	for _, s := range v.DateSlips {
-		if s.MilestoneID == milestoneID && !s.BackToGreen {
-			out = append(out, s.OldDate)
-		}
-	}
-	return out
-}
-
 // pathPriorDates returns the dates the Path to Green's back-to-Green date
 // slipped from within the current Run off Green, earliest first (CONTEXT.md:
 // Date Slip, Run off Green).
 func (v goalView) pathPriorDates() []time.Time {
 	return domain.BackToGreenPriorDates(v.DateSlips, v.RunOffGreen)
-}
-
-// milestoneMark is the mark a Milestone shows on the Goal page as of today's
-// date in the Goal's timezone (CONTEXT.md: Milestone, Timezone). It is New when the Goal's latest Check-in added it,
-// or it was added outside a Check-in since then.
-func (v goalView) milestoneMark(m domain.Milestone) string {
-	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedSinceLatestCheckin(m.ID), v.Now.In(v.Timezone))
-}
-
-// addedSinceLatestCheckin reports whether the Goal's latest Check-in added
-// the Milestone, or its Owner or a Delegate added it from the Goal page after
-// that Check-in. A Goal with no Check-in has nothing New, and a Milestone
-// added while the Goal was Proposed never is.
-func (v goalView) addedSinceLatestCheckin(milestoneID int64) bool {
-	if len(v.Checkins) == 0 {
-		return false
-	}
-	latest := v.Checkins[0]
-	for _, ch := range latest.MilestoneChanges {
-		if ch.Kind == domain.MilestoneChangeAdded && ch.MilestoneID == milestoneID {
-			return true
-		}
-	}
-	for _, ch := range v.MilestoneAdditions {
-		if ch.Kind == domain.MilestoneChangeAdded && ch.MilestoneID == milestoneID && ch.CreatedAt.After(latest.CreatedAt) {
-			return true
-		}
-	}
-	return false
 }
 
 // lifecycleNote explains the Goal's current Lifecycle from the Check-in that
@@ -368,16 +325,6 @@ func (v goalView) carries(value domain.DimensionValue) bool {
 		}
 	}
 	return false
-}
-
-// health is the Goal's current Health — its latest Check-in's — while it is
-// Active, or "" when it has none: a Proposed Goal, one not yet checked in on,
-// or one On Hold, Done or Cancelled.
-func (v goalView) health() string {
-	if v.LatestCheckin == nil || v.Goal.Lifecycle != domain.LifecycleActive {
-		return ""
-	}
-	return v.LatestCheckin.Health
 }
 
 // Sparkline geometry, in SVG user units: a Metric card's trend is drawn in a

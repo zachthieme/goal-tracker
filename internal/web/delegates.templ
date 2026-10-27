@@ -39,8 +39,8 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 						{{ g := item.Goal }}
 						<li data-testid="delegated-goal" class="dg-row">
 							<div class="dg-health">
-								if item.Latest != nil && item.Latest.Health != "" && g.Lifecycle == domain.LifecycleActive {
-									@healthChip("delegated-goal-health", item.Latest.Health)
+								if item.Health != "" {
+									@healthChip("delegated-goal-health", item.Health)
 								} else {
 									<span class="badge lc">{ g.Lifecycle }</span>
 								}
@@ -53,7 +53,7 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 										@person(g.Owner)
 									</strong>
 									if item.Latest != nil {
-										{ " · Last check-in " + daysAgo(item.DaysSince) + " by " }
+										{ " · Last check-in " + daysAgo(item.Freshness.DaysSince) + " by " }
 										@person(item.Latest.Author)
 									} else {
 										{ " · " }<span data-testid="delegated-goal-no-health">No Check-ins yet.</span>

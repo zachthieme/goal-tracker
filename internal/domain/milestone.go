@@ -76,6 +76,53 @@ func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.
 	return MilestoneMarkNone
 }
 
+// ListedMilestone is a Milestone as the Goal page lists it: with the dates it
+// held before each of its Date Slips, earliest first, and the one mark it
+// shows (MilestoneMarkOf).
+type ListedMilestone struct {
+	Milestone
+	PriorDates []time.Time
+	Mark       string
+}
+
+// listedMilestonesOf lists a Goal's milestones as its page does, in order,
+// each with its prior dates from slips, the Goal's Date Slips earliest first,
+// and marked as of asOf, now in the Goal's timezone. Its New window is the
+// Goal's latest Check-in and since: see addedSinceLatestCheckin.
+func listedMilestonesOf(milestones []Milestone, slips []DateSlip, checkins []Checkin, additions []MilestoneChange, asOf time.Time) []ListedMilestone {
+	out := make([]ListedMilestone, 0, len(milestones))
+	for _, m := range milestones {
+		prior := priorDatesOf(slips, m.ID)
+		isNew := addedSinceLatestCheckin(m.ID, checkins, additions)
+		out = append(out, ListedMilestone{Milestone: m, PriorDates: prior, Mark: MilestoneMarkOf(m, prior, isNew, asOf)})
+	}
+	return out
+}
+
+// addedSinceLatestCheckin reports whether a Goal's latest Check-in, the first
+// of checkins (newest first), added the Milestone milestoneID, or its Owner or
+// a Delegate added it outside a Check-in, one of additions, after that
+// Check-in: the Goal page's New window (CONTEXT.md: Milestone). A Goal with no
+// Check-in has nothing New, and a Milestone added while the Goal was Proposed
+// never is.
+func addedSinceLatestCheckin(milestoneID int64, checkins []Checkin, additions []MilestoneChange) bool {
+	if len(checkins) == 0 {
+		return false
+	}
+	latest := checkins[0]
+	for _, ch := range latest.MilestoneChanges {
+		if ch.Kind == MilestoneChangeAdded && ch.MilestoneID == milestoneID {
+			return true
+		}
+	}
+	for _, ch := range additions {
+		if ch.Kind == MilestoneChangeAdded && ch.MilestoneID == milestoneID && ch.CreatedAt.After(latest.CreatedAt) {
+			return true
+		}
+	}
+	return false
+}
+
 // MilestoneChange is a Milestone a Check-in added, marked Done or marked
 // Removed, recorded with that Check-in, or one the Owner or a Delegate added
 // from the Goal page while the Goal was Active or On Hold, recorded with no

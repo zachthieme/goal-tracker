@@ -33,44 +33,32 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 }
 
 // handleDelegatePage lists every Goal the current Account is a Delegate for,
-// each with its latest Check-in and how long ago that was, and links each to
-// the Check-in page (CONTEXT.md: Delegate).
+// each with its current Health, its latest Check-in and how long ago that
+// was, and links each to the Check-in page (CONTEXT.md: Delegate).
 func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goals, err := s.svc.DelegatedGoals(r.Context(), current.ID)
 	if err != nil {
 		s.serverError(w, r, "could not load delegated goals", err)
 		return
 	}
+	listings, err := s.svc.GoalListings(r.Context(), goals)
+	if err != nil {
+		s.serverError(w, r, "could not load delegated goals' check-ins", err)
+		return
+	}
 	items := make([]delegatedGoal, 0, len(goals))
 	for _, g := range goals {
-		item := delegatedGoal{Goal: g}
-		latest, ok, err := s.svc.LatestCheckin(r.Context(), g.ID)
-		if err != nil {
-			s.serverError(w, r, "could not load latest check-in", err)
-			return
-		}
-		if ok {
-			item.Latest = &latest
-			// With a Check-in, the Goal's last update is that Check-in, so its
-			// freshness has already counted the days since.
-			freshness, err := s.svc.Freshness(r.Context(), g.ID)
-			if err != nil {
-				s.serverError(w, r, "could not read freshness", err)
-				return
-			}
-			item.DaysSince = freshness.DaysSince
-		}
-		items = append(items, item)
+		items = append(items, delegatedGoal{Goal: g, GoalListing: listings[g.ID]})
 	}
 	render(w, r, http.StatusOK, delegatePage(&current, items))
 }
 
 // delegatedGoal is one card on the Delegate's page: a Goal they may check in
-// on, its latest Check-in (nil when none yet), and how many days ago that was.
+// on and its listing — its current Health, its latest Check-in (nil when none
+// yet) and its freshness, which counts the days since that Check-in.
 type delegatedGoal struct {
-	Goal      domain.Goal
-	Latest    *domain.Checkin
-	DaysSince int
+	Goal domain.Goal
+	domain.GoalListing
 }
 
 // writeDelegateResult redirects back to the Goal on success and maps a domain

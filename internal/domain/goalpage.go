@@ -30,8 +30,14 @@ type GoalPage struct {
 	// the parents the Goal could be linked to. Linking refuses a duplicate or
 	// a cycle when it is asked for.
 	Candidates []Goal
-	Milestones []Milestone
-	Metrics    []Metric
+	// Milestones are its Milestones, earliest target date first
+	// (ListMilestones), and ListedMilestones the same Milestones as the page
+	// lists them: each with its prior dates and marked as of Now in Timezone,
+	// New when the latest Check-in added it or it was added outside a
+	// Check-in since (CONTEXT.md: Milestone).
+	Milestones       []Milestone
+	ListedMilestones []ListedMilestone
+	Metrics          []Metric
 	// Readings are each Metric's readings, earliest first, keyed by Metric ID
 	// (ListMetricReadings); a Metric never read has no entry.
 	Readings   map[int64][]MetricReading
@@ -60,13 +66,19 @@ type GoalPage struct {
 	// LatestCheckin its latest (LatestCheckin), nil when it has none.
 	Checkins      []Checkin
 	LatestCheckin *Checkin
-	RolledUp      RolledUpHealth
-	RunOffGreen   RunOffGreen
+	// Health is its current Health (currentHealth): its latest Check-in's
+	// while it is Active, and "" otherwise.
+	Health      string
+	RolledUp    RolledUpHealth
+	RunOffGreen RunOffGreen
 	// Ask is its open Ask for help (OpenAskForHelp), nil when it has none, and
 	// AskAddressee whom an ask from its Owner goes to (AskAddressee).
-	Ask            *AskForHelp
-	AskAddressee   *Account
-	DateSlips      []DateSlip
+	Ask          *AskForHelp
+	AskAddressee *Account
+	DateSlips    []DateSlip
+	// PriorDueDates are the delivery dates its Date Slips moved it from,
+	// earliest first.
+	PriorDueDates  []time.Time
 	MilestoneChurn int
 	Signals        GoalSignals
 	Freshness      Freshness
@@ -547,6 +559,9 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	p.RunOffGreen = s.runOffGreen(g, p.Checkins)
 	p.HealthStrip = s.healthStrip(g, p.Checkins)
 	p.Signals = goalSignalsOf(g, goalsOf(p.Parents), goalsOf(p.Children))
+	p.Health = currentHealth(g, p.LatestCheckin)
+	p.PriorDueDates = priorDatesOf(p.DateSlips, 0)
+	p.ListedMilestones = listedMilestonesOf(p.Milestones, p.DateSlips, p.Checkins, p.MilestoneAdditions, p.Now.In(p.Timezone))
 	noChange := judgeNoChange(s.noChangeFactsOf(g, p.LatestCheckin, p.RolledUp, p.Milestones, p.Metrics, p.Readings))
 	p.OverdueMilestone = noChange.overdueMilestone
 	return noChange

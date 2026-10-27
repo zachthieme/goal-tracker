@@ -75,8 +75,8 @@ func delegatePage(current *domain.Account, goals []delegatedGoal) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if item.Latest != nil && item.Latest.Health != "" && g.Lifecycle == domain.LifecycleActive {
-						templ_7745c5c3_Err = healthChip("delegated-goal-health", item.Latest.Health).Render(ctx, templ_7745c5c3_Buffer)
+					if item.Health != "" {
+						templ_7745c5c3_Err = healthChip("delegated-goal-health", item.Health).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -139,9 +139,9 @@ func delegatePage(current *domain.Account, goals []delegatedGoal) templ.Componen
 					}
 					if item.Latest != nil {
 						var templ_7745c5c3_Var6 string
-						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(" · Last check-in " + daysAgo(item.DaysSince) + " by ")
+						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(" · Last check-in " + daysAgo(item.Freshness.DaysSince) + " by ")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/delegates.templ`, Line: 56, Col: 67}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/delegates.templ`, Line: 56, Col: 77}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 						if templ_7745c5c3_Err != nil {

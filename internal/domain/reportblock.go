@@ -579,7 +579,7 @@ func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, fresh F
 		PriorHealth:      h.priorHealth(since),
 		RunOffGreenWeeks: s.runOffGreen(h.goal, h.checkins).Weeks,
 		Badges:           h.badges(since, fresh),
-		PriorDueDates:    h.priorDates(0),
+		PriorDueDates:    priorDatesOf(h.slips, 0),
 		Status:           latest.Status,
 		PathToGreen:      latest.PathToGreen,
 		PathTargetDate:   latest.PathTargetDate,
@@ -598,7 +598,7 @@ func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, fresh F
 		b.Milestones = append(b.Milestones, ReportMilestone{
 			Milestone:  m,
 			New:        since(m.CreatedAt),
-			PriorDates: h.priorDates(m.ID),
+			PriorDates: priorDatesOf(h.slips, m.ID),
 		})
 	}
 	for _, m := range reads.metrics[h.goal.ID] {
@@ -610,17 +610,4 @@ func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, fresh F
 	}
 	b.RolledUp = s.rollUp(reads.children[h.goal.ID], reads.childLatest)
 	return b, nil
-}
-
-// priorDates returns the dates the delivery date (milestoneID 0) or a
-// Milestone held before each of its Date Slips, earliest first. A slip of the
-// back-to-Green date is neither.
-func (h goalHistory) priorDates(milestoneID int64) []time.Time {
-	var out []time.Time
-	for _, d := range h.slips {
-		if d.MilestoneID == milestoneID && !d.BackToGreen {
-			out = append(out, d.OldDate)
-		}
-	}
-	return out
 }
