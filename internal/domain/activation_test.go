@@ -326,6 +326,15 @@ func TestJudgeDefinition(t *testing.T) {
 			},
 		},
 		{
+			name:  "no Kind with a Metric",
+			draft: domain.DefinitionDraft{WhyItMatters: why, Metrics: 1},
+			want: []domain.ActivationRequirement{
+				whyMet, owner,
+				{Rule: domain.ActivationKind, Input: domain.InputKind, Reason: kindReason},
+				measureMet,
+			},
+		},
+		{
 			name:  "Dated without a date or a Milestone or Metric",
 			draft: domain.DefinitionDraft{WhyItMatters: why, Kind: domain.GoalDated},
 			want: []domain.ActivationRequirement{

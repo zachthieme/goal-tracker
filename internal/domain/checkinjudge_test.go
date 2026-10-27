@@ -366,3 +366,34 @@ func inputOf(ie *InputError) string {
 	}
 	return ie.Input
 }
+
+// A Goal's current Health is its latest Check-in's only while it is Active:
+// a Red Check-in reads Red on an Active Goal and "" on a Proposed, On Hold,
+// Done or Cancelled one, and an Active Goal with no Check-in reads "" (#640).
+func TestCurrentHealthReadsTheLatestCheckinOnlyWhileActive(t *testing.T) {
+	t.Parallel()
+	red := &Checkin{GoalID: judgeGoal.ID, Health: HealthRed}
+	cases := []struct {
+		name      string
+		lifecycle string
+		latest    *Checkin
+		want      string
+	}{
+		{"Active", LifecycleActive, red, HealthRed},
+		{"Proposed", LifecycleProposed, red, ""},
+		{"On Hold", LifecycleOnHold, red, ""},
+		{"Done", LifecycleDone, red, ""},
+		{"Cancelled", LifecycleCancelled, red, ""},
+		{"Active with no Check-in", LifecycleActive, nil, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			g := judgeGoal
+			g.Lifecycle = c.lifecycle
+			if got := currentHealth(g, c.latest); got != c.want {
+				t.Errorf("currentHealth(%s Goal) = %q, want %q", c.lifecycle, got, c.want)
+			}
+		})
+	}
+}

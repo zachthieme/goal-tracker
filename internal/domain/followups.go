@@ -95,16 +95,17 @@ var followUpWaitsOnCheckin = []struct {
 	{FollowUpMilestoneOverdue, func(f Freshness) bool { return f.MilestoneOverdue }},
 }
 
-// WaitsOnCheckinKinds are the kinds of signal that leave a Goal waiting on a
-// Check-in (followUpWaitsOnCheckin), in page order: Check-in overdue, Path to
-// Green overdue, Milestone overdue.
-var WaitsOnCheckinKinds = func() []FollowUpKind {
+// WaitsOnCheckinKinds answers the kinds of signal that leave a Goal waiting
+// on a Check-in (followUpWaitsOnCheckin), in page order: Check-in overdue,
+// Path to Green overdue, Milestone overdue. Each call answers a fresh slice,
+// so a caller changing it leaves the domain's set alone.
+func WaitsOnCheckinKinds() []FollowUpKind {
 	kinds := make([]FollowUpKind, 0, len(followUpWaitsOnCheckin))
 	for _, w := range followUpWaitsOnCheckin {
 		kinds = append(kinds, w.kind)
 	}
 	return kinds
-}()
+}
 
 // FollowUpSignal is one reason a Goal is flagged. Kind names the signal, as
 // the chip's data-kind on the Follow-ups page. Days is how long the signal has
@@ -138,7 +139,7 @@ func (r FollowUpRow) Signal(kind FollowUpKind) (FollowUpSignal, bool) {
 }
 
 // WaitsOnCheckin reports whether the row's Goal waits on a Check-in: one of
-// its signals is of a kind in WaitsOnCheckinKinds.
+// its signals is of a kind in WaitsOnCheckinKinds().
 func (r FollowUpRow) WaitsOnCheckin() bool {
 	for _, w := range followUpWaitsOnCheckin {
 		if _, ok := r.Signal(w.kind); ok {
