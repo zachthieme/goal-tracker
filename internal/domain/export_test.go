@@ -3,6 +3,8 @@ package domain
 import (
 	"context"
 	"time"
+
+	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
 // HoldHashSlots fills every slot of s's hash limiter with a hash that blocks
@@ -66,4 +68,35 @@ func LifecycleTakesNoCheckinsRefusal(lifecycle string) error {
 // a parent suggestion for a Goal in a Lifecycle that takes none with.
 func SuggestParentLifecycleSentence() string {
 	return suggestParentLifecycleSentence()
+}
+
+// AllOpenActionItems is allOpenActionItems: every open Action Item, by owner
+// and then soonest due.
+func AllOpenActionItems(ctx context.Context, s *Service) ([]ActionItemListing, error) {
+	return s.allOpenActionItems(ctx)
+}
+
+// QueueEmails is queueEmails, queueing msgs in s's email outbox together.
+func QueueEmails(ctx context.Context, s *Service, msgs []email.Message) error {
+	return s.queueEmails(ctx, msgs)
+}
+
+// QueueWeeklyReminders queues the weekly Check-in reminders QueueWeeklyEmails
+// sends now, outside the schedule, recording no slot.
+func QueueWeeklyReminders(ctx context.Context, s *Service) error {
+	msgs, err := s.weeklyReminders(ctx)
+	if err != nil {
+		return err
+	}
+	return s.queueEmails(ctx, msgs)
+}
+
+// QueueWeeklyDigests queues the weekly parent digests QueueWeeklyEmails sends
+// now, outside the schedule, recording no slot.
+func QueueWeeklyDigests(ctx context.Context, s *Service) error {
+	msgs, err := s.weeklyDigestEmails(ctx)
+	if err != nil {
+		return err
+	}
+	return s.queueEmails(ctx, msgs)
 }

@@ -1,4 +1,4 @@
-package notify_test
+package domain_test
 
 import (
 	"context"
@@ -9,22 +9,19 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
-	"github.com/zachthieme/goal-tracker/internal/notify"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-const (
-	day     = 24 * time.Hour
-	baseURL = "http://goals.test"
-)
+// weeklyEmailsBaseURL is where the weekly emails' links point.
+const weeklyEmailsBaseURL = "http://goals.test"
 
-// newNotifier wires a Notifier over a Service on the harness's database and
-// recording email sender, whose emails link to the web app at baseURL (the
+// weeklyEmailsService is a Service on the harness's database and recording
+// email sender, whose emails link to the web app at weeklyEmailsBaseURL (the
 // harness's own Service has no base URL) and are sent, as the harness's are,
 // once queued.
-func newNotifier(h *testsupport.Harness) *notify.Notifier {
-	return notify.New(domain.NewService(h.DB, h.Clock, h.Email, nil,
-		domain.WithBaseURL(baseURL), domain.WithEmailDeliveredOnCommit()))
+func weeklyEmailsService(h *testsupport.Harness) *domain.Service {
+	return domain.NewService(h.DB, h.Clock, h.Email, nil,
+		domain.WithBaseURL(weeklyEmailsBaseURL), domain.WithEmailDeliveredOnCommit())
 }
 
 // sentTo returns the messages recorded for the address.
@@ -48,8 +45,8 @@ func TestReminderListsCheckinOverdueGoalWithLinkToItsCheckin(t *testing.T) {
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.Clock.Advance(10 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "sam@example.com")
@@ -92,8 +89,8 @@ func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 	h.Checkin(kim, fortnightly.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(2 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "sam@example.com")
@@ -120,8 +117,8 @@ func TestReminderGoesToDelegatesToo(t *testing.T) {
 	h.AddDelegate(sam, dee, g.ID)
 	h.Clock.Advance(10 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	if got := sentTo(h.Email, "sam@example.com"); len(got) != 1 || got[0].AccountID != sam.ID {
@@ -163,8 +160,8 @@ func TestReminderSkipsADepartedOwner(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	if got := sentTo(h.Email, "sam@example.com"); len(got) != 0 {
@@ -198,8 +195,8 @@ func TestDigestListsPendingLinkRequests(t *testing.T) {
 	child := h.ActiveGoal(kim, "Launch pricing page", "Buyers can't see prices.")
 	h.RequestLink(kim, child, parent, "")
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -232,9 +229,9 @@ func childOf(h *testsupport.Harness, owner domain.Account, parent domain.Goal, t
 // Slip of it, which the digest would report.
 var backToGreenBy = testsupport.Epoch.AddDate(0, 3, 0)
 
-// checkinHealth submits a Check-in setting health, with a Path to Green when
-// it isn't Green.
-func checkinHealth(h *testsupport.Harness, author domain.Account, goalID int64, health string) {
+// digestCheckinHealth submits a Check-in setting health, with a Path to Green
+// when it isn't Green.
+func digestCheckinHealth(h *testsupport.Harness, author domain.Account, goalID int64, health string) {
 	h.T.Helper()
 	if health == domain.HealthGreen {
 		h.Checkin(author, goalID, health, "On track.", "", time.Time{})
@@ -256,19 +253,19 @@ func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
 	stillYellow := childOf(h, kim, parent, "Cut churn")
 	green := childOf(h, kim, parent, "Upsell annual plans")
 	wentYellow := childOf(h, kim, parent, "Partner referrals")
-	checkinHealth(h, kim, wentRed.ID, domain.HealthGreen)
-	checkinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
-	checkinHealth(h, kim, green.ID, domain.HealthGreen)
-	checkinHealth(h, kim, wentYellow.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, wentRed.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
+	digestCheckinHealth(h, kim, green.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, wentYellow.ID, domain.HealthGreen)
 	h.Clock.Advance(8 * day)
-	checkinHealth(h, kim, wentRed.ID, domain.HealthRed)
-	checkinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
-	checkinHealth(h, kim, green.ID, domain.HealthGreen)
-	checkinHealth(h, kim, wentYellow.ID, domain.HealthYellow)
+	digestCheckinHealth(h, kim, wentRed.ID, domain.HealthRed)
+	digestCheckinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
+	digestCheckinHealth(h, kim, green.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, wentYellow.ID, domain.HealthYellow)
 	h.Clock.Advance(2 * day)
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -315,12 +312,12 @@ func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
 	slippedThisWeek := childOf(h, kim, parent, "Launch pricing page")
 	slip(h, kim, slippedLastWeek)
 	h.Clock.Advance(8 * day)
-	checkinHealth(h, kim, slippedLastWeek.ID, domain.HealthYellow)
+	digestCheckinHealth(h, kim, slippedLastWeek.ID, domain.HealthYellow)
 	slip(h, kim, slippedThisWeek)
 	h.Clock.Advance(1 * day)
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -345,14 +342,14 @@ func TestDigestListsChildrenThatWentCheckinOverdueThisWeek(t *testing.T) {
 	childOf(h, kim, parent, "Cut churn")
 	fresh := childOf(h, kim, parent, "Upsell annual plans")
 	h.Clock.Advance(11 * day)
-	checkinHealth(h, kim, wentOverdue.ID, domain.HealthGreen) // 9 days before the digest
+	digestCheckinHealth(h, kim, wentOverdue.ID, domain.HealthGreen) // 9 days before the digest
 	h.Clock.Advance(8 * day)
-	checkinHealth(h, kim, fresh.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, fresh.ID, domain.HealthGreen)
 	h.Clock.Advance(1 * day)
 	// Cut churn has had no Check-in for 20 days: Check-in overdue since day 8.
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -377,13 +374,13 @@ func TestDigestListsOwnerlessChildren(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
 	childOf(h, kim, parent, "Launch pricing page")
-	checkinHealth(h, pat, parent.ID, domain.HealthGreen)
+	digestCheckinHealth(h, pat, parent.ID, domain.HealthGreen)
 	if err := h.Service.MarkDeparted(context.Background(), admin.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -411,7 +408,7 @@ func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
 	if _, err := h.Service.AcceptLink(context.Background(), link.ID, lee.ID); err != nil {
 		t.Fatalf("AcceptLink: %v", err)
 	}
-	checkinHealth(h, kim, child.ID, domain.HealthGreen)
+	digestCheckinHealth(h, kim, child.ID, domain.HealthGreen)
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 		GoalID:          halted.ID,
 		AuthorID:        lee.ID,
@@ -422,8 +419,8 @@ func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
 		t.Fatalf("SubmitCheckin On Hold: %v", err)
 	}
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -445,8 +442,8 @@ func TestReminderSkipsGoalsThatArentActive(t *testing.T) {
 	h.OnHoldGoal(sam, "Enter Japan", "Japan is our next market.", "Budget freeze.")
 	h.Clock.Advance(30 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	if got := sentTo(h.Email, "sam@example.com"); len(got) != 0 {
@@ -468,8 +465,8 @@ func TestReminderIntroducesTheOwnerOnce(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "dee@example.com")
@@ -501,8 +498,8 @@ func TestDigestIntroducesEachOwnerOnce(t *testing.T) {
 	}
 	h.RequestLink(lou, h.ActiveGoal(lou, "Win back churned", "They left."), parent, "")
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
@@ -564,8 +561,8 @@ func TestReminderListsOpenActionItemsAfterCheckins(t *testing.T) {
 	raiseReminderItem(h, pub, sam, 0, "Move the MBR to Tuesdays", time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC))
 	raiseReminderItem(h, pub, sam, g.ID, "Book the legal review", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "sam@example.com")
@@ -598,8 +595,8 @@ func TestReminderReachesAnActionItemOwnerWithNoCheckinDue(t *testing.T) {
 	pub := reminderReport(h, "MBR", g)
 	raiseReminderItem(h, pub, kim, g.ID, "Book the legal review", time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC))
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "kim@example.com")
@@ -632,8 +629,8 @@ func TestReminderWithNoOpenActionItemsListsOnlyCheckins(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	msgs := sentTo(h.Email, "sam@example.com")
@@ -663,8 +660,8 @@ func TestReminderSkipsADepartedActionItemOwner(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
-		t.Fatalf("SendReminders: %v", err)
+	if err := domain.QueueWeeklyReminders(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyReminders: %v", err)
 	}
 
 	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
@@ -687,12 +684,67 @@ func TestDigestListsChildrenWhoseBackToGreenDateSlippedThisWeek(t *testing.T) {
 	h.CheckinMovingPath(kim, child.ID, domain.HealthYellow, "Still behind.", "Add a second engineer.", time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC), "The engineer starts in February.")
 	h.Clock.Advance(1 * day)
 
-	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
-		t.Fatalf("SendDigests: %v", err)
+	if err := domain.QueueWeeklyDigests(context.Background(), weeklyEmailsService(h)); err != nil {
+		t.Fatalf("QueueWeeklyDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
 	if want := "slipped its back-to-Green date from 2026-01-20 to 2026-02-03 (The engineer starts in February.)"; !strings.Contains(body, want) {
 		t.Errorf("digest does not say %q:\n%s", want, body)
+	}
+}
+
+// fortnightlyCheckedIn sets goal to a 14-day cadence and checks it in now, so
+// it has no Check-in due before next week's reminder.
+func fortnightlyCheckedIn(h *testsupport.Harness, goal domain.Goal) {
+	h.T.Helper()
+	if _, err := h.Service.SetCadence(context.Background(), goal.Owner.ID, goal.ID, 14); err != nil {
+		h.T.Fatalf("SetCadence: %v", err)
+	}
+	digestCheckinHealth(h, goal.Owner, goal.ID, domain.HealthGreen)
+}
+
+// A week's slot queues its reminders, then its digests, and records the slot
+// as run: the same slot run again, by a late tick or another copy of the app,
+// sends nothing more.
+func TestQueueWeeklyEmailsSendsRemindersThenDigestsOncePerSlot(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Launch pricing page", "Buyers can't see prices.")
+	fortnightlyCheckedIn(h, parent)
+	fortnightlyCheckedIn(h, child)
+	h.RequestLink(kim, child, parent, "")
+	svc := weeklyEmailsService(h)
+	// Monday's slot, 3 days after sam's Goal was activated: its Check-in is
+	// due before next week's.
+	slot := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	h.Clock.Set(slot)
+
+	if err := svc.QueueWeeklyEmails(context.Background(), slot); err != nil {
+		t.Fatalf("QueueWeeklyEmails: %v", err)
+	}
+
+	sent := h.Email.Sent()
+	if len(sent) != 2 {
+		t.Fatalf("sent %d emails, want sam's reminder and pat's digest: %+v", len(sent), sent)
+	}
+	if sent[0].To != "sam@example.com" || sent[0].Subject != "Your Check-ins this week" {
+		t.Errorf("first email went to %s about %q, want sam's reminder", sent[0].To, sent[0].Subject)
+	}
+	if sent[1].To != "pat@example.com" || !strings.Contains(sent[1].Body, "Launch pricing page") {
+		t.Errorf("second email went to %s:\n%s\nwant pat's digest of the link request", sent[1].To, sent[1].Body)
+	}
+
+	if err := svc.QueueWeeklyEmails(context.Background(), slot); err != nil {
+		t.Fatalf("QueueWeeklyEmails for the same slot again: %v", err)
+	}
+	if got := len(h.Email.Sent()); got != 2 {
+		t.Errorf("sent %d emails after the slot ran twice, want no more than 2", got)
 	}
 }

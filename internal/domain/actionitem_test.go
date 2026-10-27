@@ -409,7 +409,7 @@ func TestAllOpenActionItemsListsEveryOpenItem(t *testing.T) {
 
 	w := newActionItemsWorld(t)
 
-	got, err := w.h.Service.AllOpenActionItems(context.Background())
+	got, err := domain.AllOpenActionItems(context.Background(), w.h.Service)
 	if err != nil {
 		t.Fatalf("AllOpenActionItems: %v", err)
 	}

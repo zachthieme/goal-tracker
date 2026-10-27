@@ -73,18 +73,12 @@ func (l AppLinks) publication(defID, pubID int64) string {
 
 // EmailComposer builds every email the app sends — who it goes to, its subject
 // and its body — with its links from AppLinks. The Service's commands and the
-// weekly emails both compose through it (Service.EmailComposer).
+// weekly emails (Service.QueueWeeklyEmails) both compose through it.
 type EmailComposer struct {
 	links AppLinks
 	// loc is the company's timezone, the calendar a publication's date is
 	// read in.
 	loc *time.Location
-}
-
-// EmailComposer returns the composer of the Service's emails, for the weekly
-// emails to compose theirs.
-func (s *Service) EmailComposer() EmailComposer {
-	return s.composer
 }
 
 // ActionItem is the email of item to its Owner: intro, saying who gave it to
