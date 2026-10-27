@@ -91,7 +91,7 @@ func (s *Service) SetGoalDimensionValues(ctx context.Context, actorID int64, e D
 func (s *Service) setJudgedGoalDimensionValues(ctx context.Context, actorID int64, e DimensionValuesEdit) (DimensionValue, error) {
 	name := strings.TrimSpace(e.NewValue)
 	if name == "" && e.NameRequired {
-		return DimensionValue{}, Refuse(ErrValidation, "a value cannot be blank")
+		return DimensionValue{}, Refuse(ErrValidation, "%s", blankNameSentence)
 	}
 	dimRow, err := s.queries.GetDimension(ctx, e.DimensionID)
 	if err != nil {
@@ -146,6 +146,8 @@ func (s *Service) setJudgedGoalDimensionValues(ctx context.Context, actorID int6
 		}
 	}
 
+	// The values chosen are saved first, then the one typed is given as joining
+	// them, so each step is kept in the Value history as it always was.
 	if len(valueIDs) > 0 || !e.Join {
 		if err := s.writeGoalDimensionValues(ctx, e.GoalID, dim, carried, valueIDs, e.Join); err != nil {
 			return DimensionValue{}, err
@@ -236,7 +238,7 @@ func (s *Service) checkGoalDimensionValues(ctx context.Context, e DimensionValue
 			given = append(given, input)
 		}
 	} else if e.NameRequired {
-		problems.typed = append(problems.typed, inputError(e.newValueInput(), "a value cannot be blank"))
+		problems.typed = append(problems.typed, inputError(e.newValueInput(), "%s", blankNameSentence))
 	}
 	if sentence := oneValueSentence(dim); sentence != "" && len(given) > 1 {
 		for _, input := range given {
@@ -290,6 +292,9 @@ func (s *Service) writeGoalDimensionValues(ctx context.Context, goalID int64, di
 func (e DimensionValuesEdit) chosenProblems(val DimensionValue, dim Dimension, carries map[int64]bool) []*InputError {
 	return chosenValueProblems(val, dim, carries[val.ID] && !e.Join, e.valueInput(val.ID))
 }
+
+// blankNameSentence is why a blank name is refused where one is required.
+const blankNameSentence = "a value cannot be blank"
 
 // oneValueSentence is why more than one value given a Goal in dim is refused,
 // when dim takes one value per Goal, and "" when it takes several.
