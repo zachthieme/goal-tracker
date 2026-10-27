@@ -260,24 +260,24 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 			http.Error(w, "invalid dimension", http.StatusUnprocessableEntity)
 			return
 		}
+		edit := domain.DimensionValuesEdit{GoalID: id, DimensionID: dimensionID}
 		if newValue, ok := r.Form["new_value"]; ok {
-			_, err := s.svc.AssignGoalValueByName(r.Context(), current.ID, id, dimensionID, newValue[0])
-			s.writeFormResult(w, r, id, current, formDimensions, err)
-			return
-		}
-		var valueIDs []int64
-		for _, raw := range r.Form["value_id"] {
-			if raw == "" {
-				continue
+			edit.NewValue, edit.NameRequired, edit.Join = newValue[0], true, true
+		} else {
+			for _, raw := range r.Form["value_id"] {
+				if raw == "" {
+					continue
+				}
+				valueID, err := strconv.ParseInt(raw, 10, 64)
+				if err != nil {
+					http.Error(w, "invalid value", http.StatusUnprocessableEntity)
+					return
+				}
+				edit.ValueIDs = append(edit.ValueIDs, valueID)
 			}
-			valueID, err := strconv.ParseInt(raw, 10, 64)
-			if err != nil {
-				http.Error(w, "invalid value", http.StatusUnprocessableEntity)
-				return
-			}
-			valueIDs = append(valueIDs, valueID)
 		}
-		s.writeFormResult(w, r, id, current, formDimensions, s.svc.SetGoalValues(r.Context(), current.ID, id, dimensionID, valueIDs))
+		_, err = s.svc.SetGoalDimensionValues(r.Context(), current.ID, edit)
+		s.writeFormResult(w, r, id, current, formDimensions, err)
 		return
 	}
 	raw := r.FormValue("value_id")

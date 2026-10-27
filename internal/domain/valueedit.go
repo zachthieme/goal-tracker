@@ -13,10 +13,11 @@ import (
 type ValueEdit struct {
 	GoalID int64
 	// DimensionID names a Dimension cell, and ValueIDs are exactly the values
-	// the Goal is to carry in it, as SetGoalValues takes them. NewValue is a
-	// value typed in, set as AssignGoalValueByName sets it (CONTEXT.md:
-	// Extendable): in a Dimension that takes one value it replaces ValueIDs,
-	// and in one that takes several it joins them.
+	// the Goal is to carry in it, as SetGoalDimensionValues sets them. NewValue
+	// is a value typed in, set as SetGoalDimensionValues sets it (CONTEXT.md:
+	// Extendable), by the Goal table's own rule: in a Dimension that takes one
+	// value it replaces ValueIDs, and in one that takes several it joins them.
+	// A blank NewValue is ignored.
 	DimensionID int64
 	ValueIDs    []int64
 	NewValue    string
@@ -101,23 +102,23 @@ func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []Val
 	return err
 }
 
-// applyValueEdit sets one cell's value on its Goal.
+// applyValueEdit sets one cell's value on its Goal, whose setter the caller
+// has judged. A Dimension cell's values are set as SetGoalDimensionValues sets
+// them, by the Goal table's own rule (ValueEdit).
 func (s *Service) applyValueEdit(ctx context.Context, actorID int64, e ValueEdit) error {
 	if e.FieldID != 0 {
 		return s.SetGoalField(ctx, actorID, e.GoalID, e.FieldID, e.Value)
 	}
-	if strings.TrimSpace(e.NewValue) == "" {
-		return s.SetGoalValues(ctx, actorID, e.GoalID, e.DimensionID, e.ValueIDs)
-	}
-	dim, err := s.queries.GetDimension(ctx, e.DimensionID)
-	if err != nil {
-		return Refuse(ErrValidation, "dimension does not exist")
-	}
-	if dimensionFromRow(dim).TakesSeveral() {
-		if err := s.SetGoalValues(ctx, actorID, e.GoalID, e.DimensionID, e.ValueIDs); err != nil {
-			return err
+	edit := DimensionValuesEdit{GoalID: e.GoalID, DimensionID: e.DimensionID, ValueIDs: e.ValueIDs, NewValue: e.NewValue}
+	if strings.TrimSpace(e.NewValue) != "" {
+		dim, err := s.queries.GetDimension(ctx, e.DimensionID)
+		if err != nil {
+			return Refuse(ErrValidation, "dimension does not exist")
+		}
+		if !dimensionFromRow(dim).TakesSeveral() {
+			edit.ValueIDs, edit.Join = nil, true
 		}
 	}
-	_, err = s.assignGoalValueByName(ctx, actorID, e.GoalID, e.DimensionID, e.NewValue)
+	_, err := s.setJudgedGoalDimensionValues(ctx, actorID, edit)
 	return err
 }

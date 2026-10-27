@@ -715,41 +715,12 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
-			return err
-		}
 		val, err := tx.queries.GetDimensionValue(ctx, valueID)
 		if err != nil {
 			return Refuse(ErrValidation, "dimension value does not exist")
 		}
-		dimRow, err := tx.queries.GetDimension(ctx, val.DimensionID)
-		if err != nil {
-			return fmt.Errorf("load dimension: %w", err)
-		}
-		dim := dimensionFromRow(dimRow)
-		if err := joinInputErrors(chosenValueProblems(dimensionValueFromRow(val), dim, false, "value_id")); err != nil {
-			return err
-		}
-		before, err := tx.GoalValues(ctx, goalID)
-		if err != nil {
-			return err
-		}
-		if !dim.TakesSeveral() {
-			if err := tx.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
-				GoalID:      goalID,
-				DimensionID: val.DimensionID,
-			}); err != nil {
-				return fmt.Errorf("clear existing value: %w", err)
-			}
-		}
-		if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-			GoalID:           goalID,
-			DimensionValueID: valueID,
-			CreatedAt:        tx.clock.Now().Format(timeFormat),
-		}); err != nil {
-			return fmt.Errorf("assign dimension value: %w", err)
-		}
-		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, before)
+		_, err = tx.SetGoalDimensionValues(ctx, actorID, DimensionValuesEdit{GoalID: goalID, DimensionID: val.DimensionID, ValueIDs: []int64{valueID}, Join: true})
+		return err
 	})
 }
 
@@ -762,56 +733,7 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 // the value the Goal now carries is returned. Only the Goal's Owner, a Delegate or
 // an Admin may, and only an Admin may add to a Fixed list (CONTEXT.md: Fixed).
 func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
-	var val DimensionValue
-	err := s.WithinTx(ctx, func(tx *Service) error {
-		var err error
-		val, err = tx.assignGoalValueByName(ctx, actorID, goalID, dimensionID, name)
-		return err
-	})
-	if err != nil {
-		return DimensionValue{}, err
-	}
-	return val, nil
-}
-
-// assignGoalValueByName is AssignGoalValueByName within a transaction the
-// caller holds, so a value added to the list and its assignment stand or fall
-// together.
-func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
-	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
-		return DimensionValue{}, err
-	}
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return DimensionValue{}, Refuse(ErrValidation, "a value cannot be blank")
-	}
-	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
-	if err != nil {
-		return DimensionValue{}, Refuse(ErrValidation, "dimension does not exist")
-	}
-	dim := dimensionFromRow(dimRow)
-	match, ok, err := s.valueNamed(ctx, dimensionID, name)
-	if err != nil {
-		return DimensionValue{}, err
-	}
-	if err := joinInputErrors(typedValueProblems(dim, name, match, ok, "new_value")); err != nil {
-		return DimensionValue{}, err
-	}
-	if ok {
-		return match, s.AssignGoalValue(ctx, actorID, goalID, match.ID)
-	}
-	if !dim.Extendable() {
-		if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
-			return DimensionValue{}, Refuse(ErrNotAuthorized, "%s", fixedListSentence(dim))
-		} else if err != nil {
-			return DimensionValue{}, err
-		}
-	}
-	val, err := s.addDimensionValue(ctx, actorID, dimRow, name)
-	if err != nil {
-		return DimensionValue{}, err
-	}
-	return val, s.AssignGoalValue(ctx, actorID, goalID, val.ID)
+	return s.SetGoalDimensionValues(ctx, actorID, DimensionValuesEdit{GoalID: goalID, DimensionID: dimensionID, NewValue: name, NameRequired: true, Join: true})
 }
 
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
@@ -822,113 +744,8 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
 // Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
-	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
-			return err
-		}
-		dimRow, err := tx.queries.GetDimension(ctx, dimensionID)
-		if err != nil {
-			return Refuse(ErrValidation, "dimension does not exist")
-		}
-		dim := dimensionFromRow(dimRow)
-		valueIDs = dedupeIDs(valueIDs)
-		if len(valueIDs) > 1 && !dim.TakesSeveral() {
-			return Refuse(ErrValidation, "%s takes one value per Goal", dim.Name)
-		}
-		carried, err := tx.GoalValues(ctx, goalID)
-		if err != nil {
-			return err
-		}
-		carries := make(map[int64]bool, len(carried))
-		for _, v := range carried {
-			carries[v.ID] = true
-		}
-		keep := make(map[int64]bool, len(valueIDs))
-		for _, id := range valueIDs {
-			val, err := tx.queries.GetDimensionValue(ctx, id)
-			if err != nil || val.DimensionID != dimensionID {
-				return Refuse(ErrValidation, "that value is not in %s", dim.Name)
-			}
-			if err := joinInputErrors(chosenValueProblems(dimensionValueFromRow(val), dim, carries[id], "value_id")); err != nil {
-				return err
-			}
-			keep[id] = true
-		}
-
-		for _, v := range carried {
-			if v.DimensionID != dimensionID || keep[v.ID] {
-				continue
-			}
-			if err := tx.queries.RemoveGoalValue(ctx, db.RemoveGoalValueParams{
-				GoalID:           goalID,
-				DimensionValueID: v.ID,
-			}); err != nil {
-				return fmt.Errorf("remove dimension value: %w", err)
-			}
-		}
-		now := tx.clock.Now().Format(timeFormat)
-		for _, id := range valueIDs {
-			if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-				GoalID:           goalID,
-				DimensionValueID: id,
-				CreatedAt:        now,
-			}); err != nil {
-				return fmt.Errorf("assign dimension value: %w", err)
-			}
-		}
-		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
-	})
-}
-
-// chosenValueProblems is the one check of a Dimension value chosen for a
-// Goal, val in dim, shared by AssignGoalValue, SetGoalValues and Goal
-// definition, refused under input: a Retired value, or one in a Retired
-// Dimension, can't be newly given (CONTEXT.md: Retired). One the Goal already
-// carries (carried) may be kept.
-func chosenValueProblems(val DimensionValue, dim Dimension, carried bool, input string) []*InputError {
-	switch {
-	case carried:
-		return nil
-	case val.Retired:
-		return []*InputError{inputError(input, "%s is retired and cannot be newly assigned", val.Value)}
-	case dim.Retired:
-		return []*InputError{retiredDimensionProblem(dim, input)}
-	}
-	return nil
-}
-
-// typedValueProblems is the one check of a value typed in for a Goal in dim,
-// shared by AssignGoalValueByName and Goal definition, refused under input.
-// match is the value on dim's list that name matches (valueNamed), when
-// matched. A Retired Dimension's values can't be newly given, nor can a
-// Retired value it matches (CONTEXT.md: Retired), and a new value can't
-// contain a semicolon (checkValueName). Who may add to a Fixed list is
-// fixedListSentence's rule, asked by the caller.
-func typedValueProblems(dim Dimension, name string, match DimensionValue, matched bool, input string) []*InputError {
-	switch {
-	case dim.Retired:
-		return []*InputError{retiredDimensionProblem(dim, input)}
-	case matched && match.Retired:
-		return []*InputError{inputError(input, "%s", retiredValueMatchSentence(match))}
-	case matched:
-		return nil
-	}
-	if err := checkValueName(strings.TrimSpace(name)); err != nil {
-		return []*InputError{inputError(input, "%s", Reason(err))}
-	}
-	return nil
-}
-
-// retiredDimensionProblem refuses newly giving a Goal a value in a Retired
-// Dimension, under input (CONTEXT.md: Retired).
-func retiredDimensionProblem(dim Dimension, input string) *InputError {
-	return inputError(input, "%s is retired, so its values can't be newly assigned", dim.Name)
-}
-
-// fixedListSentence is why someone who isn't an Admin is refused adding a
-// value to dim, a Fixed list (CONTEXT.md: Fixed): the one rule for who may.
-func fixedListSentence(dim Dimension) string {
-	return fmt.Sprintf("%s is a Fixed list, so only an Admin may add to it", dim.Name)
+	_, err := s.SetGoalDimensionValues(ctx, actorID, DimensionValuesEdit{GoalID: goalID, DimensionID: dimensionID, ValueIDs: valueIDs})
+	return err
 }
 
 // retiredValueMatchSentence is why a name matching v, a Retired value, is
