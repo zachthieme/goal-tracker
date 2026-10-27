@@ -761,3 +761,250 @@ func TestGoalPageCarriesTheOverdueMilestone(t *testing.T) {
 		t.Errorf("after a Yellow Check-in, OverdueMilestone = %+v, want Beta", m)
 	}
 }
+
+// listedMarks is each of p's ListedMilestones' name and mark, in order, and
+// its PriorDates by name.
+func listedMarks(p domain.GoalPage) (marks map[string]string, order []string, prior map[string][]time.Time) {
+	marks, prior = map[string]string{}, map[string][]time.Time{}
+	for _, m := range p.ListedMilestones {
+		marks[m.Name] = m.Mark
+		order = append(order, m.Name)
+		prior[m.Name] = m.PriorDates
+	}
+	return marks, order, prior
+}
+
+// The Goal page lists every Milestone, in Milestones order, already marked as
+// of today: Done and Removed by their status, Overdue past its date, Slipped
+// with the dates it held before each slip, earliest first, and New when the
+// latest Check-in added it (CONTEXT.md: Milestone).
+func TestGoalPageListsEachMilestoneMarked(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.MilestoneMarksGoal(sam)
+
+	p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+	if err != nil {
+		t.Fatalf("GoalPage: %v", err)
+	}
+	marks, order, prior := listedMarks(p)
+	var want []string
+	for _, m := range p.Milestones {
+		want = append(want, m.Name)
+	}
+	if !slices.Equal(order, want) {
+		t.Errorf("ListedMilestones = %q, want Milestones' order %q", order, want)
+	}
+	for name, mark := range map[string]string{
+		"Security review": domain.MilestoneMarkOverdue,
+		"Pilot":           domain.MilestoneMarkDone,
+		"Vendor sign-off": domain.MilestoneMarkSlipped,
+		"Beta":            domain.MilestoneMarkSlipped,
+		"Docs":            domain.MilestoneMarkNew,
+		"Runbook":         domain.MilestoneMarkNone,
+		"GA launch":       domain.MilestoneMarkNone,
+		"Launch party":    domain.MilestoneMarkRemoved,
+	} {
+		if marks[name] != mark {
+			t.Errorf("%s's mark = %q, want %q", name, marks[name], mark)
+		}
+	}
+	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
+	if want := []time.Time{day(3, 1), day(3, 10), day(3, 20)}; !slices.Equal(prior["Vendor sign-off"], want) {
+		t.Errorf("Vendor sign-off's PriorDates = %v, want %v", prior["Vendor sign-off"], want)
+	}
+	if want := []time.Time{day(4, 2)}; !slices.Equal(prior["Beta"], want) {
+		t.Errorf("Beta's PriorDates = %v, want %v", prior["Beta"], want)
+	}
+	if len(prior["GA launch"]) != 0 {
+		t.Errorf("GA launch's PriorDates = %v, want none", prior["GA launch"])
+	}
+}
+
+// A Milestone is New on the Goal page when its Owner or a Delegate added it
+// outside a Check-in after the latest Check-in, but not when they added it
+// before that Check-in, and nothing is New on a Goal with no Check-in, however
+// recently its Milestones were added (CONTEXT.md: Milestone).
+func TestGoalPageMarksNewOnlySinceTheLatestCheckin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	morgan := h.SignIn("morgan@example.com")
+	add := func(author domain.Account, g domain.Goal, name string) {
+		t.Helper()
+		if _, err := h.Service.AddMilestoneAsAuthor(ctx, author.ID, domain.AddMilestoneInput{
+			GoalID: g.ID, Name: name, TargetDate: h.Clock.Now().AddDate(0, 2, 0),
+		}); err != nil {
+			t.Fatalf("AddMilestoneAsAuthor %q: %v", name, err)
+		}
+	}
+	marks := func(g domain.Goal) map[string]string {
+		t.Helper()
+		p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+		if err != nil {
+			t.Fatalf("GoalPage: %v", err)
+		}
+		m, _, _ := listedMarks(p)
+		return m
+	}
+
+	unchecked := h.ActiveGoal(sam, "Ship billing", "People can't pay.")
+	add(sam, unchecked, "Invoices")
+
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, morgan, g.ID)
+	add(sam, g, "Before")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	add(sam, g, "After, by the Owner")
+	add(morgan, g, "After, by a Delegate")
+
+	for name, mark := range map[string]string{
+		"Beta":                 domain.MilestoneMarkNone,
+		"Before":               domain.MilestoneMarkNone,
+		"After, by the Owner":  domain.MilestoneMarkNew,
+		"After, by a Delegate": domain.MilestoneMarkNew,
+	} {
+		if got := marks(g)[name]; got != mark {
+			t.Errorf("%s's mark = %q, want %q", name, got, mark)
+		}
+	}
+	for name, mark := range marks(unchecked) {
+		if mark != domain.MilestoneMarkNone {
+			t.Errorf("with no Check-in, %s's mark = %q, want none", name, mark)
+		}
+	}
+}
+
+// The Goal page judges a Milestone Overdue on the calendar of its Goal's
+// Owner's Timezone, not UTC's: past its date where the Owner already is, and
+// not yet where the Owner still is on its date (CONTEXT.md: Timezone).
+func TestGoalPageMarksOverdueOnTheOwnersCalendar(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, c := range []struct {
+		name, tz string
+		now      time.Time
+		mark     string
+	}{
+		// Beta is due 2026-04-02, three months after Epoch.
+		{"a day ahead of UTC", "Pacific/Kiritimati", time.Date(2026, 4, 2, 12, 0, 0, 0, time.UTC), domain.MilestoneMarkOverdue},
+		{"a day behind UTC", "America/Los_Angeles", time.Date(2026, 4, 3, 3, 0, 0, 0, time.UTC), domain.MilestoneMarkNone},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			h.SetTimezone(sam, c.tz)
+			g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+			h.Clock.Set(c.now)
+
+			p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+			if err != nil {
+				t.Fatalf("GoalPage: %v", err)
+			}
+			if marks, _, _ := listedMarks(p); marks["Beta"] != c.mark {
+				t.Errorf("at %s in %s, Beta's mark = %q, want %q", c.now, c.tz, marks["Beta"], c.mark)
+			}
+		})
+	}
+}
+
+// slippedDueDateGoal arranges an Active Goal owned by sam whose delivery date
+// slipped twice, from 2026-07-02 to 2026-08-02 to 2026-09-02, alongside a slip
+// of its Beta Milestone's date and of its back-to-Green date, and returns it.
+func slippedDueDateGoal(t *testing.T, h *testsupport.Harness, sam domain.Account) domain.Goal {
+	t.Helper()
+	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	beta, err := h.Service.ListMilestones(t.Context(), g.ID)
+	if err != nil || len(beta) != 1 {
+		t.Fatalf("ListMilestones = %v, %v; want Beta", beta, err)
+	}
+	for i, c := range []domain.SubmitCheckinInput{
+		{
+			DeliveryDate: day(8, 2), PathTargetDate: day(2, 1),
+			Milestones: []domain.MilestoneChangeInput{{MilestoneID: beta[0].ID, TargetDate: day(5, 2), DateReason: "Vendor slipped."}},
+		},
+		{DeliveryDate: day(9, 2), PathTargetDate: day(3, 1), PathTargetDateReason: "Still waiting."},
+	} {
+		c.GoalID, c.AuthorID = g.ID, sam.ID
+		c.Health, c.Status, c.PathToGreen = domain.HealthYellow, "Slipping.", "Lock the vendor."
+		c.DeliveryDateReason = "Vendor slipped."
+		if _, err := h.Service.SubmitCheckin(t.Context(), c); err != nil {
+			t.Fatalf("SubmitCheckin %d: %v", i+1, err)
+		}
+		h.Clock.Advance(24 * time.Hour)
+	}
+	return g
+}
+
+// The Goal page carries the delivery dates the Goal's Date Slips moved it
+// from, earliest first, leaving out its Milestones' slips and its
+// back-to-Green date's (CONTEXT.md: Date Slip).
+func TestGoalPageCarriesThePriorDueDates(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := slippedDueDateGoal(t, h, sam)
+
+	p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+	if err != nil {
+		t.Fatalf("GoalPage: %v", err)
+	}
+	if len(p.DateSlips) != 4 {
+		t.Fatalf("DateSlips = %+v, want the four the scenario made", p.DateSlips)
+	}
+	want := []time.Time{time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC), time.Date(2026, 8, 2, 0, 0, 0, 0, time.UTC)}
+	if !slices.Equal(p.PriorDueDates, want) {
+		t.Errorf("PriorDueDates = %v, want %v", p.PriorDueDates, want)
+	}
+}
+
+// healthCases arranges a Goal owned by sam for each case of its current
+// Health: none while Proposed, while Active with no Check-in and while On
+// Hold, and the latest Check-in's while Active.
+func healthCases(h *testsupport.Harness, sam domain.Account) []struct {
+	name   string
+	goal   domain.Goal
+	health string
+} {
+	h.T.Helper()
+	checkedIn := h.ActiveGoal(sam, "Checked in", "It matters.")
+	h.Checkin(sam, checkedIn.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, checkedIn.ID, domain.HealthYellow, "Slipping.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 7))
+	return []struct {
+		name   string
+		goal   domain.Goal
+		health string
+	}{
+		{"a Proposed Goal", h.CreateGoal(sam, "Proposed", "It matters."), ""},
+		{"an Active Goal with no Check-in", h.ActiveGoal(sam, "Unchecked", "It matters."), ""},
+		{"an On Hold Goal", h.OnHoldGoal(sam, "On Hold", "It matters.", "Waiting on legal."), ""},
+		{"an Active Goal", checkedIn, domain.HealthYellow},
+	}
+}
+
+// The Goal page carries the Goal's current Health: its latest Check-in's
+// while it is Active, and none while it is Proposed, Active with no Check-in
+// or On Hold (CONTEXT.md: Health).
+func TestGoalPageCarriesTheCurrentHealth(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	for _, c := range healthCases(h, sam) {
+		p, err := h.Service.GoalPage(ctx, sam.ID, c.goal.ID)
+		if err != nil {
+			t.Fatalf("GoalPage of %s: %v", c.name, err)
+		}
+		if p.Health != c.health {
+			t.Errorf("Health of %s = %q, want %q", c.name, p.Health, c.health)
+		}
+	}
+}

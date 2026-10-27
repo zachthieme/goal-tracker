@@ -34,6 +34,20 @@ type DateSlip struct {
 // rather than a Milestone's date or the back-to-Green date.
 func (d DateSlip) OnDeliveryDate() bool { return d.MilestoneID == 0 && !d.BackToGreen }
 
+// priorDatesOf returns the dates the delivery date (milestoneID 0) or a
+// Milestone held before each of slips, a Goal's Date Slips earliest first, in
+// that order: what its date shows struck through (CONTEXT.md: Date Slip). A
+// slip of the back-to-Green date is neither; see BackToGreenPriorDates.
+func priorDatesOf(slips []DateSlip, milestoneID int64) []time.Time {
+	var out []time.Time
+	for _, d := range slips {
+		if d.MilestoneID == milestoneID && !d.BackToGreen {
+			out = append(out, d.OldDate)
+		}
+	}
+	return out
+}
+
 // BackToGreenPriorDates returns the dates the back-to-Green date slipped from
 // within run, earliest first: the OldDate of each back-to-Green slip recorded
 // since the run began. A new Run off Green starts the count afresh, and there
