@@ -2,6 +2,9 @@ package seed_test
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -35,6 +38,7 @@ func TestE2EScenarioSituations(t *testing.T) {
 	t.Run("default template", func(t *testing.T) {
 		t.Parallel()
 		e := seededE2EManifest(t, e2eDefaultEnd)
+		t.Run("manifest picks", func(t *testing.T) { e2eManifestGolden(t, e, "e2e-default.manifest.golden.json") })
 		t.Run("Check-in page specs", func(t *testing.T) { e2eCheckinPages(t, e) })
 		t.Run("scenario 1 finding trouble", func(t *testing.T) { e2eScenario1(t, e) })
 		t.Run("scenario 2 understanding trouble", func(t *testing.T) { e2eScenario2Understanding(t, e) })
@@ -47,6 +51,7 @@ func TestE2EScenarioSituations(t *testing.T) {
 	t.Run("due template", func(t *testing.T) {
 		t.Parallel()
 		e := seededE2EManifest(t, e2eDueEnd)
+		t.Run("manifest picks", func(t *testing.T) { e2eManifestGolden(t, e, "e2e-due.manifest.golden.json") })
 		t.Run("scenario 3 the week", func(t *testing.T) { e2eScenario3Week(t, e) })
 		t.Run("phone width", func(t *testing.T) { e2ePhoneWidthDue(t, e) })
 	})
@@ -75,6 +80,36 @@ func seededE2EManifest(t *testing.T, end time.Time) *e2eManifest {
 		t.Fatalf("BuildManifest: %v", err)
 	}
 	return &e2eManifest{h: h, m: m}
+}
+
+// e2eManifestGolden compares the manifest, as cmd/seed writes it, with the
+// golden file testdata/name, byte for byte, rewriting it instead when
+// UPDATE_GOLDEN is set. So the picks stay the same Goals and people unless the
+// seed or a role changes on purpose.
+func e2eManifestGolden(t *testing.T, e *e2eManifest, name string) {
+	t.Helper()
+	data, err := json.MarshalIndent(e.m, "", "  ")
+	if err != nil {
+		t.Fatalf("encode manifest: %v", err)
+	}
+	got := string(data) + "\n"
+	path := filepath.Join("testdata", name)
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatalf("mkdir testdata: %v", err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o600); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s (UPDATE_GOLDEN=1 writes it): %v", path, err)
+	}
+	if got != string(want) {
+		t.Errorf("%s differs from the manifest built over the seed; a pick changed", path)
+	}
 }
 
 // e2eRole is a manifest role a spec reads, and whether it has a pick.

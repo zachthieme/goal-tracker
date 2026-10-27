@@ -1,0 +1,1263 @@
+{
+  "quietGoal": {
+    "id": 20,
+    "title": "Consolidate the logging pipeline",
+    "email": "tomas.berg@example.com",
+    "name": "Tomas Berg"
+  },
+  "draftlessGoal": {
+    "id": 1,
+    "title": "Grow net revenue retention",
+    "email": "ceo@example.com",
+    "name": "Dana Whitfield"
+  },
+  "metricGoal": {
+    "id": 1,
+    "title": "Grow net revenue retention",
+    "email": "ceo@example.com",
+    "name": "Dana Whitfield"
+  },
+  "metricParentGoal": {
+    "id": 1,
+    "title": "Grow net revenue retention",
+    "email": "ceo@example.com",
+    "name": "Dana Whitfield"
+  },
+  "noChangeGoal": {
+    "id": 16,
+    "title": "Migrate queues to managed Kafka",
+    "email": "mei.lin@example.com",
+    "name": "Mei Lin"
+  },
+  "dueNoChangeGoal": {
+    "id": 16,
+    "title": "Migrate queues to managed Kafka",
+    "email": "mei.lin@example.com",
+    "name": "Mei Lin"
+  },
+  "accountIDs": {
+    "ada.okafor@example.com": 12,
+    "admin@example.com": 1,
+    "anika.rao@example.com": 23,
+    "ben.fischer@example.com": 22,
+    "ceo@example.com": 2,
+    "cpo@example.com": 4,
+    "cto@example.com": 3,
+    "data-lead@example.com": 9,
+    "diego.alvarez@example.com": 21,
+    "freya.nilsen@example.com": 20,
+    "grace.oduya@example.com": 25,
+    "growth-lead@example.com": 7,
+    "hana.sato@example.com": 17,
+    "ines.duarte@example.com": 18,
+    "kwame.mensah@example.com": 19,
+    "leah.cohen@example.com": 28,
+    "luca.romano@example.com": 14,
+    "matteo.ricci@example.com": 26,
+    "mei.lin@example.com": 11,
+    "mobile-lead@example.com": 8,
+    "noor.haddad@example.com": 15,
+    "olu.adeyemi@example.com": 27,
+    "payments-lead@example.com": 6,
+    "platform-lead@example.com": 5,
+    "sam.kowalski@example.com": 16,
+    "support-lead@example.com": 10,
+    "tomas.berg@example.com": 13,
+    "yara.nasser@example.com": 24
+  },
+  "findingTrouble": {
+    "checkinOverdue": {
+      "id": 19,
+      "title": "Blue-green deploys for the monolith",
+      "email": "ada.okafor@example.com",
+      "name": "Ada Okafor"
+    },
+    "departing": {
+      "id": 4,
+      "title": "Cut infrastructure cost per request",
+      "email": "platform-lead@example.com",
+      "name": "Jonas Lindqvist"
+    },
+    "overdue": {
+      "id": 16,
+      "title": "Migrate queues to managed Kafka",
+      "email": "mei.lin@example.com",
+      "name": "Mei Lin"
+    },
+    "tiered": [
+      {
+        "id": 4,
+        "title": "Cut infrastructure cost per request",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist"
+      },
+      {
+        "id": 5,
+        "title": "Zero-downtime deploys for every service",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist"
+      }
+    ],
+    "unlinked": {
+      "id": 21,
+      "title": "Evaluate ARM build agents",
+      "email": "tomas.berg@example.com",
+      "name": "Tomas Berg"
+    },
+    "twoReasons": {
+      "id": 44,
+      "title": "PII tagging in the warehouse",
+      "email": "yara.nasser@example.com",
+      "name": "Yara Nasser",
+      "team": "Data"
+    },
+    "ownerless": [
+      {
+        "id": 4,
+        "title": "Cut infrastructure cost per request",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist"
+      },
+      {
+        "id": 5,
+        "title": "Zero-downtime deploys for every service",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist"
+      }
+    ],
+    "redWithChildren": {
+      "id": 11,
+      "title": "Raise the app store rating",
+      "email": "mobile-lead@example.com",
+      "name": "Kenji Watanabe"
+    },
+    "redSlipped": {
+      "id": 30,
+      "title": "Referral rewards ledger",
+      "email": "ines.duarte@example.com",
+      "name": "Ines Duarte"
+    },
+    "lifecycles": {
+      "1": "Active",
+      "10": "Active",
+      "11": "Active",
+      "12": "Active",
+      "13": "Active",
+      "14": "Active",
+      "15": "Active",
+      "16": "Active",
+      "17": "Active",
+      "18": "On Hold",
+      "19": "Active",
+      "2": "Active",
+      "20": "Active",
+      "21": "Active",
+      "22": "Done",
+      "23": "Cancelled",
+      "24": "Active",
+      "25": "Active",
+      "26": "Active",
+      "27": "Active",
+      "28": "Active",
+      "29": "Active",
+      "3": "Active",
+      "30": "Active",
+      "31": "Active",
+      "32": "Done",
+      "33": "Active",
+      "34": "Active",
+      "35": "Active",
+      "36": "Proposed",
+      "37": "Active",
+      "38": "Active",
+      "39": "Active",
+      "4": "Active",
+      "40": "Active",
+      "41": "Active",
+      "42": "Active",
+      "43": "Active",
+      "44": "Active",
+      "45": "Active",
+      "46": "Active",
+      "47": "Active",
+      "48": "Active",
+      "49": "Active",
+      "5": "Active",
+      "50": "Proposed",
+      "6": "Active",
+      "7": "Active",
+      "8": "Active",
+      "9": "Active"
+    }
+  },
+  "understandingTrouble": {
+    "platformReport": [
+      {
+        "id": 4,
+        "title": "Cut infrastructure cost per request",
+        "owner": "Jonas Lindqvist",
+        "email": "platform-lead@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "Our cloud bill grows faster than traffic; every saved cent funds product work.",
+        "delivery_date": "",
+        "status": "On plan. Next Milestone is staffed and moving.",
+        "path_to_green": "",
+        "milestones": 0,
+        "metrics": 1,
+        "health": "Green"
+      },
+      {
+        "id": 5,
+        "title": "Zero-downtime deploys for every service",
+        "owner": "Jonas Lindqvist",
+        "email": "platform-lead@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "Deploy windows cause customer-visible blips and slow every team's release cadence.",
+        "delivery_date": "2026-12-14",
+        "status": "Steady progress, no surprises.",
+        "path_to_green": "",
+        "milestones": 3,
+        "metrics": 0,
+        "health": "Green"
+      },
+      {
+        "id": 16,
+        "title": "Migrate queues to managed Kafka",
+        "owner": "Mei Lin",
+        "email": "mei.lin@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "Self-run brokers page us weekly; a managed service removes the toil.",
+        "delivery_date": "2026-11-16",
+        "status": "At risk: a dependency is late and we're absorbing it for now.",
+        "path_to_green": "Cut the stretch scope and ship the core flow first.",
+        "milestones": 2,
+        "metrics": 0,
+        "health": "Yellow"
+      },
+      {
+        "id": 17,
+        "title": "Autoscale the API tier",
+        "owner": "Ada Okafor",
+        "email": "ada.okafor@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "We pay for peak capacity all day while traffic is idle most nights.",
+        "delivery_date": "2026-12-14",
+        "status": "Vendor sign-off is slower than expected.",
+        "path_to_green": "Run the migration in two phases so the first half can ship on its own.",
+        "milestones": 2,
+        "metrics": 1,
+        "health": "Yellow"
+      },
+      {
+        "id": 18,
+        "title": "Retire the legacy job runner",
+        "owner": "Mei Lin",
+        "email": "mei.lin@example.com",
+        "lifecycle": "On Hold",
+        "why_it_matters": "Batch jobs on the old runner fail silently and block schema changes.",
+        "delivery_date": "2026-11-16",
+        "status": "Pausing this Goal; the team is needed elsewhere.",
+        "path_to_green": "",
+        "milestones": 3,
+        "metrics": 0,
+        "health": ""
+      },
+      {
+        "id": 19,
+        "title": "Blue-green deploys for the monolith",
+        "owner": "Ada Okafor",
+        "email": "ada.okafor@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "The monolith still needs a maintenance window, which customers notice.",
+        "delivery_date": "2026-11-16",
+        "status": "On plan. Next Milestone is staffed and moving.",
+        "path_to_green": "",
+        "milestones": 3,
+        "metrics": 0,
+        "health": "Green"
+      },
+      {
+        "id": 20,
+        "title": "Consolidate the logging pipeline",
+        "owner": "Tomas Berg",
+        "email": "tomas.berg@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "Three log stacks triple the cost and nobody knows which one to search.",
+        "delivery_date": "2026-11-16",
+        "status": "On track; this week's work landed as planned.",
+        "path_to_green": "",
+        "milestones": 3,
+        "metrics": 0,
+        "health": "Green"
+      },
+      {
+        "id": 21,
+        "title": "Evaluate ARM build agents",
+        "owner": "Tomas Berg",
+        "email": "tomas.berg@example.com",
+        "lifecycle": "Active",
+        "why_it_matters": "Builds are slow and ARM agents may be cheaper; worth a spike.",
+        "delivery_date": "2026-11-16",
+        "status": "Good week: shipped what we committed to and nothing new is blocking us.",
+        "path_to_green": "",
+        "milestones": 4,
+        "metrics": 0,
+        "health": "Green"
+      }
+    ],
+    "slipped": {
+      "id": 20,
+      "title": "Consolidate the logging pipeline",
+      "owner": "Tomas Berg",
+      "email": "tomas.berg@example.com",
+      "lifecycle": "Active",
+      "why_it_matters": "Three log stacks triple the cost and nobody knows which one to search.",
+      "delivery_date": "2026-11-16",
+      "status": "On track; this week's work landed as planned.",
+      "path_to_green": "",
+      "milestones": 3,
+      "metrics": 0,
+      "health": "Green"
+    },
+    "turning": {
+      "id": 16,
+      "title": "Migrate queues to managed Kafka",
+      "owner": "Mei Lin",
+      "email": "mei.lin@example.com",
+      "lifecycle": "Active",
+      "why_it_matters": "Self-run brokers page us weekly; a managed service removes the toil.",
+      "delivery_date": "2026-11-16",
+      "status": "At risk: a dependency is late and we're absorbing it for now.",
+      "path_to_green": "Cut the stretch scope and ship the core flow first.",
+      "milestones": 2,
+      "metrics": 0,
+      "health": "Yellow"
+    },
+    "moved": {
+      "id": 4,
+      "title": "Cut infrastructure cost per request",
+      "owner": "Jonas Lindqvist",
+      "email": "platform-lead@example.com",
+      "lifecycle": "Active",
+      "why_it_matters": "Our cloud bill grows faster than traffic; every saved cent funds product work.",
+      "delivery_date": "",
+      "status": "On plan. Next Milestone is staffed and moving.",
+      "path_to_green": "",
+      "milestones": 0,
+      "metrics": 1,
+      "health": "Green"
+    }
+  },
+  "watchingGoals": {
+    "growthReport": {
+      "inReport": [
+        {
+          "id": 8,
+          "title": "Lift trial-to-paid conversion",
+          "email": "growth-lead@example.com",
+          "name": "Elena Petrova"
+        },
+        {
+          "id": 9,
+          "title": "Launch a referral program",
+          "email": "growth-lead@example.com",
+          "name": "Elena Petrova"
+        },
+        {
+          "id": 28,
+          "title": "Redesign the pricing page",
+          "email": "hana.sato@example.com",
+          "name": "Hana Sato"
+        },
+        {
+          "id": 29,
+          "title": "In-app upgrade prompts",
+          "email": "ines.duarte@example.com",
+          "name": "Ines Duarte"
+        },
+        {
+          "id": 30,
+          "title": "Referral rewards ledger",
+          "email": "ines.duarte@example.com",
+          "name": "Ines Duarte"
+        },
+        {
+          "id": 31,
+          "title": "Lifecycle email journeys",
+          "email": "kwame.mensah@example.com",
+          "name": "Kwame Mensah"
+        },
+        {
+          "id": 33,
+          "title": "Refresh brand illustrations",
+          "email": "ines.duarte@example.com",
+          "name": "Ines Duarte"
+        }
+      ],
+      "finishedEarlier": [
+        {
+          "id": 32,
+          "title": "Experiment platform v2",
+          "email": "ines.duarte@example.com",
+          "name": "Ines Duarte"
+        }
+      ]
+    },
+    "picked": {
+      "troubled": {
+        "id": 11,
+        "title": "Raise the app store rating",
+        "health": "Red",
+        "path_to_green": "Cut the stretch scope and ship the core flow first.",
+        "slipped_from": ""
+      },
+      "slipped": {
+        "id": 16,
+        "title": "Migrate queues to managed Kafka",
+        "health": "Yellow",
+        "path_to_green": "Cut the stretch scope and ship the core flow first.",
+        "slipped_from": "2026-10-26"
+      },
+      "green": {
+        "id": 20,
+        "title": "Consolidate the logging pipeline",
+        "health": "Green",
+        "path_to_green": "",
+        "slipped_from": ""
+      },
+      "parent": {
+        "id": 5,
+        "title": "Zero-downtime deploys for every service",
+        "health": "Green",
+        "path_to_green": "",
+        "slipped_from": ""
+      },
+      "children": [
+        {
+          "id": 19,
+          "title": "Blue-green deploys for the monolith",
+          "email": "ada.okafor@example.com",
+          "name": "Ada Okafor"
+        }
+      ]
+    }
+  },
+  "weeklyCheckin": {
+    "weekOwners": [
+      {
+        "email": "ines.duarte@example.com",
+        "name": "Ines Duarte",
+        "goals": [
+          {
+            "id": 29,
+            "title": "In-app upgrade prompts",
+            "metric": true
+          },
+          {
+            "id": 30,
+            "title": "Referral rewards ledger",
+            "metric": false
+          },
+          {
+            "id": 33,
+            "title": "Refresh brand illustrations",
+            "metric": false
+          }
+        ]
+      }
+    ],
+    "delegateCover": {
+      "goal": null,
+      "delegate": null
+    }
+  },
+  "badNewsChain": null,
+  "statingAGoal": {
+    "teamGoals": [
+      {
+        "id": 4,
+        "title": "Cut infrastructure cost per request",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist",
+        "team": "Platform",
+        "projectOwners": [
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Zero-downtime deploys for every service",
+        "email": "platform-lead@example.com",
+        "name": "Jonas Lindqvist",
+        "team": "Platform",
+        "projectOwners": [
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Reduce failed payments",
+        "email": "payments-lead@example.com",
+        "name": "Amara Nwosu",
+        "team": "Payments",
+        "projectOwners": [
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Launch invoicing for enterprise",
+        "email": "payments-lead@example.com",
+        "name": "Amara Nwosu",
+        "team": "Payments",
+        "projectOwners": [
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Lift trial-to-paid conversion",
+        "email": "growth-lead@example.com",
+        "name": "Elena Petrova",
+        "team": "Growth",
+        "projectOwners": [
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Launch a referral program",
+        "email": "growth-lead@example.com",
+        "name": "Elena Petrova",
+        "team": "Growth",
+        "projectOwners": [
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Ship offline mode",
+        "email": "mobile-lead@example.com",
+        "name": "Kenji Watanabe",
+        "team": "Mobile",
+        "projectOwners": [
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Raise the app store rating",
+        "email": "mobile-lead@example.com",
+        "name": "Kenji Watanabe",
+        "team": "Mobile",
+        "projectOwners": [
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Trustworthy revenue metrics",
+        "email": "data-lead@example.com",
+        "name": "Sofia Marquez",
+        "team": "Data",
+        "projectOwners": [
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Self-serve analytics for every team",
+        "email": "data-lead@example.com",
+        "name": "Sofia Marquez",
+        "team": "Data",
+        "projectOwners": [
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "title": "Resolve tickets faster",
+        "email": "support-lead@example.com",
+        "name": "Rahul Iyer",
+        "team": "Support",
+        "projectOwners": [
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      },
+      {
+        "id": 15,
+        "title": "Launch a self-serve help center",
+        "email": "support-lead@example.com",
+        "name": "Rahul Iyer",
+        "team": "Support",
+        "projectOwners": [
+          {
+            "email": "matteo.ricci@example.com",
+            "name": "Matteo Ricci"
+          },
+          {
+            "email": "ada.okafor@example.com",
+            "name": "Ada Okafor"
+          },
+          {
+            "email": "anika.rao@example.com",
+            "name": "Anika Rao"
+          },
+          {
+            "email": "ben.fischer@example.com",
+            "name": "Ben Fischer"
+          },
+          {
+            "email": "freya.nilsen@example.com",
+            "name": "Freya Nilsen"
+          },
+          {
+            "email": "grace.oduya@example.com",
+            "name": "Grace Oduya"
+          },
+          {
+            "email": "hana.sato@example.com",
+            "name": "Hana Sato"
+          },
+          {
+            "email": "ines.duarte@example.com",
+            "name": "Ines Duarte"
+          },
+          {
+            "email": "kwame.mensah@example.com",
+            "name": "Kwame Mensah"
+          },
+          {
+            "email": "mei.lin@example.com",
+            "name": "Mei Lin"
+          },
+          {
+            "email": "noor.haddad@example.com",
+            "name": "Noor Haddad"
+          },
+          {
+            "email": "sam.kowalski@example.com",
+            "name": "Sam Kowalski"
+          },
+          {
+            "email": "tomas.berg@example.com",
+            "name": "Tomas Berg"
+          },
+          {
+            "email": "yara.nasser@example.com",
+            "name": "Yara Nasser"
+          }
+        ]
+      }
+    ],
+    "projectOwner": {
+      "email": "ada.okafor@example.com",
+      "name": "Ada Okafor"
+    }
+  }
+}
