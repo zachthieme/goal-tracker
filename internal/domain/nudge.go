@@ -62,7 +62,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		}
 		to := nudgeRecipients(goal.Owner, delegates)
 		if err := nudgeRuleRefusal(actor, goal, nudgeFacts{
-			overdue:          fresh.CheckinOverdue || fresh.PathToGreenOverdue || fresh.MilestoneOverdue,
+			overdue:          fresh.WaitsOnCheckin(),
 			scheduleConflict: len(signals.ScheduleConflicts) > 0,
 			anyoneLeft:       len(to) > 0,
 		}); err != nil {

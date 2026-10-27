@@ -157,7 +157,7 @@ templ followUpCardLink(c followUpCard) {
 		<span data-testid="follow-up-group-count" class="num">{ strconv.Itoa(c.Count) }</span>
 		<span class="rk-chips">
 			for _, sig := range c.Signals {
-				<span data-testid="follow-up-signal" data-kind={ sig.Anchor } class={ followUpChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
+				<span data-testid="follow-up-signal" data-kind={ string(sig.Anchor) } class={ followUpChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
 			}
 		</span>
 	</a>
@@ -245,9 +245,9 @@ templ followUpRow(today time.Time, here string, r followUpGoalRow) {
 // that shows its signal's plain name reads it with followUpName.
 templ followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) {
 	switch sig.Kind {
-		case "red", "yellow":
-		case "asks-for-help":
-			<span data-testid="follow-up-signal" data-kind="asks-for-help" class="rk-tag">
+		case domain.FollowUpRed, domain.FollowUpYellow:
+		case domain.FollowUpAsksForHelp:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">
 				if sig.Person != nil {
 					@followUpTip(sig.Kind, followUpName(sig.Kind))
 					{ "of " }@person(*sig.Person)
@@ -255,37 +255,37 @@ templ followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) {
 					@followUpTip(sig.Kind, followUpName(sig.Kind)+" · no one above the Owner")
 				}
 			</span>
-		case "checkin-overdue":
-			<span data-testid="follow-up-signal" data-kind="checkin-overdue" class="badge st">
+		case domain.FollowUpCheckinOverdue:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="badge st">
 				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
 			</span>
-		case "path-overdue":
-			<span data-testid="follow-up-signal" data-kind="path-overdue" class="badge st">
+		case domain.FollowUpPathOverdue:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="badge st">
 				@followUpTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue")
 			</span>
-		case "milestone-overdue":
-			<span data-testid="follow-up-signal" data-kind="milestone-overdue" class="badge st">
+		case domain.FollowUpMilestoneOverdue:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="badge st">
 				@followUpTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue")
 			</span>
-		case "action-item-overdue":
-			<span data-testid="follow-up-signal" data-kind="action-item-overdue" class="badge st">
+		case domain.FollowUpActionItemOverdue:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="badge st">
 				@followUpTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue")
 			</span>
-		case "ownerless":
-			<span data-testid="follow-up-signal" data-kind="ownerless" class="badge ol">
+		case domain.FollowUpOwnerless:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="badge ol">
 				@followUpTip(sig.Kind, followUpName(sig.Kind))
 			</span>
-		case "unlinked":
-			<span data-testid="follow-up-signal" data-kind="unlinked" class="rk-tag">
+		case domain.FollowUpUnlinked:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">
 				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · no parent Goal, not Top-level")
 			</span>
-		case "schedule-conflicts":
-			<span data-testid="follow-up-signal" data-kind="schedule-conflicts" class="rk-tag">
+		case domain.FollowUpScheduleConflicts:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">
 				@followUpTip(sig.Kind, "Schedule conflict")
 				{ fmt.Sprintf("· due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)) }@goalRef(*sig.Related)
 			</span>
-		case "halted-parents":
-			<span data-testid="follow-up-signal" data-kind="halted-parents" class="rk-tag">
+		case domain.FollowUpHaltedParents:
+			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">
 				@followUpTip(sig.Kind, "Parent "+sig.Related.Lifecycle)
 				{ "· " }@goalRef(*sig.Related)
 			</span>
@@ -295,7 +295,7 @@ templ followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) {
 // followUpTip is a toggletip: a button reading label that opens, with no script,
 // the popover followUpsTable holds saying what the signal of kind means, and that
 // takes the meaning as its description.
-templ followUpTip(kind, label string) {
+templ followUpTip(kind domain.FollowUpKind, label string) {
 	<button type="button" class="rk-tip" popovertarget={ followUpMeansID(kind) } aria-describedby={ followUpMeansID(kind) }>{ label }</button>
 }
 

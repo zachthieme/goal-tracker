@@ -221,7 +221,8 @@ func (s *Server) refusedNoChanges(ctx context.Context, due []domain.PersonalGoal
 // homeOrgBadge is one count on the My org section: what it counts, for its
 // data-kind, how it reads, and its badge's class.
 type homeOrgBadge struct {
-	Kind, Label, Class string
+	Kind         domain.FollowUpKind
+	Label, Class string
 }
 
 // homeOrgBadges are c's non-zero counts, Red, then Path to Green overdue,
@@ -230,13 +231,14 @@ type homeOrgBadge struct {
 func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	var out []homeOrgBadge
 	for _, b := range []struct {
-		n                  int
-		kind, label, class string
+		n            int
+		kind         domain.FollowUpKind
+		label, class string
 	}{
-		{c.Red, "red", domain.HealthRed, healthClass(domain.HealthRed)},
-		{c.PathOverdue, "path-overdue", "Path to Green overdue", "st"},
-		{c.CheckinOverdue, "checkin-overdue", "Check-in overdue", "st"},
-		{c.Yellow, "yellow", domain.HealthYellow, healthClass(domain.HealthYellow)},
+		{c.Red, domain.FollowUpRed, domain.HealthRed, healthClass(domain.HealthRed)},
+		{c.PathOverdue, domain.FollowUpPathOverdue, "Path to Green overdue", "st"},
+		{c.CheckinOverdue, domain.FollowUpCheckinOverdue, "Check-in overdue", "st"},
+		{c.Yellow, domain.FollowUpYellow, domain.HealthYellow, healthClass(domain.HealthYellow)},
 	} {
 		if b.n > 0 {
 			out = append(out, homeOrgBadge{Kind: b.kind, Label: fmt.Sprintf("%d %s", b.n, b.label), Class: b.class})

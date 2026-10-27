@@ -47,6 +47,18 @@ type Freshness struct {
 	OverdueMilestoneDate time.Time
 }
 
+// WaitsOnCheckin reports whether the Goal waits on a Check-in: it is Check-in
+// overdue, past its Path to Green or has a Milestone overdue, the Nudge
+// rule's overdue reasons (see followUpWaitsOnCheckin).
+func (f Freshness) WaitsOnCheckin() bool {
+	for _, w := range followUpWaitsOnCheckin {
+		if w.raised(f) {
+			return true
+		}
+	}
+	return false
+}
+
 // reminderIntervalDays is how far apart the weekly Check-in reminders go out,
 // in days. It is added to Freshness.DaysSince, so it counts days of the Goal's
 // Owner's Timezone (see Service.GoalTimezone) as that does.

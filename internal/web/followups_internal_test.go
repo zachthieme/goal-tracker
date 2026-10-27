@@ -15,7 +15,7 @@ func TestFollowUpChipsTakeTheirSignalsNameFromTheDefinitions(t *testing.T) {
 	t.Parallel()
 	today := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	g := domain.Goal{CadenceDays: 7}
-	for _, kind := range []string{"asks-for-help", "checkin-overdue", "ownerless", "unlinked"} {
+	for _, kind := range []domain.FollowUpKind{"asks-for-help", "checkin-overdue", "ownerless", "unlinked"} {
 		name := followUpName(kind)
 		if name == "" {
 			t.Fatalf("followUpDefinitions has no %q", kind)
@@ -58,7 +58,7 @@ func TestFollowUpFixPicksAmongWhatTheRowOffers(t *testing.T) {
 	// its Check-ins: write one, but only to move it on.
 	onHold := domain.GoalPermissions{CheckinPermissions: domain.CheckinPermissions{CheckIn: true}, WritesCheckins: true}
 	morgan := &domain.Nudge{Sender: domain.Account{Name: "Morgan Lee"}}
-	sig := func(kind string) domain.FollowUpSignal { return domain.FollowUpSignal{Kind: kind} }
+	sig := func(kind domain.FollowUpKind) domain.FollowUpSignal { return domain.FollowUpSignal{Kind: kind} }
 	conflict := func(parent domain.Goal, perms domain.GoalPermissions) domain.FollowUpSignal {
 		return domain.FollowUpSignal{Kind: "schedule-conflicts", Days: 30, Related: &parent, RelatedPermissions: perms}
 	}

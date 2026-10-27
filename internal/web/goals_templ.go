@@ -1028,7 +1028,7 @@ func goalListRow(row goalRow, dates displayDates) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if health == "" || g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
+		if health == "" || g.Ownerless || row.Freshness.WaitsOnCheckin() || len(row.Incomplete) > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span class=\"gl-marks\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
