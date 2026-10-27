@@ -750,6 +750,8 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 			http.StatusUnprocessableEntity, "A comment cannot be blank.", pubPath},
 		{"an Action Item raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"owner@example.com"}, "due": {"2026-02-01"}},
 			http.StatusForbidden, "Only the Report's author raises Action Items.", pubPath},
+		{"an Action Item for an unknown email raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"}},
+			http.StatusForbidden, "Only the Report's author raises Action Items.", pubPath},
 		{"a blank comment on the Goal", "owner@example.com", goalPath + "/comments", url.Values{"body": {" "}},
 			http.StatusUnprocessableEntity, "A comment cannot be blank.", goalPath},
 		{"a blank reply on the Goal", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onGoal.ID), url.Values{"body": {" "}},
@@ -772,6 +774,9 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
 		}
 		assertRefusalPage(t, page, "Can't comment", c.reason, c.back)
+	}
+	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 1 {
+		t.Errorf("publication's Action Items %+v (err %v), want only the one raised before", items, err)
 	}
 }
 

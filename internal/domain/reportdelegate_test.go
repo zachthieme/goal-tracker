@@ -115,11 +115,44 @@ func TestAddReportDelegateRefusals(t *testing.T) {
 			t.Errorf("adding %s: err = %v, want ErrValidation", c.name, err)
 		}
 	}
-	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
-		t.Errorf("adding an unknown email: err = %v, want ErrValidation", err)
+	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+		t.Errorf("adding an unknown email: err = %v, want ErrValidation that no account has it", err)
 	}
 	if err := h.Service.AddReportDelegate(ctx, w.alice.ID, w.def.ID+100, w.sam.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("adding to no such Definition: err = %v, want ErrNotFound", err)
+	}
+	if got := reportDelegateEmails(t, h, w.def); len(got) != 1 || got[0] != "dana@example.com" {
+		t.Errorf("Report Delegates = %v, want only Dana", got)
+	}
+}
+
+// Adding a Report Delegate by email asks whether the actor may change the
+// Report Delegates before it looks the email up: a missing Report Definition
+// is not found, and anyone but its creator or an Admin, or a Departed creator,
+// naming an email no one has is refused as not permitted.
+func TestAddReportDelegateByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
+	t.Parallel()
+
+	w := newReportDelegateWorld(t)
+	ctx := context.Background()
+	h := w.h
+
+	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID+100, "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("adding an unknown email to no such Definition: err = %v, want ErrNotFound", err)
+	}
+	for _, who := range []struct {
+		name string
+		as   domain.Account
+	}{{"a Report Delegate", w.dana}, {"anyone else", w.sam}} {
+		if err := h.Service.AddReportDelegateByEmail(ctx, who.as.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s adding an unknown email: err = %v, want ErrNotAuthorized", who.name, err)
+		}
+	}
+	if err := h.Service.MarkDeparted(ctx, w.boss.ID, w.alice.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a Departed creator adding an unknown email: err = %v, want ErrNotAuthorized", err)
 	}
 	if got := reportDelegateEmails(t, h, w.def); len(got) != 1 || got[0] != "dana@example.com" {
 		t.Errorf("Report Delegates = %v, want only Dana", got)

@@ -81,15 +81,21 @@ func (s *Service) AddReportDelegate(ctx context.Context, actorID, defID, account
 
 // AddReportDelegateByEmail authorizes the Account with the given email as a
 // Report Delegate on the Report Definition defID. It is the web-facing
-// convenience over AddReportDelegate; an email with no account is rejected.
+// convenience over AddReportDelegate. An email with no account is rejected,
+// but only once the actor may change the Report Delegates, so someone who may
+// not learns nothing of who has an Account.
 func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID int64, email string) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
 		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "no account with email %q", email)
+			if !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("look up account: %w", err)
 			}
-			return fmt.Errorf("look up account: %w", err)
+			// Report a missing Report Definition or a refusal before the email.
+			if _, err := tx.reportDelegatesDefinition(ctx, actorID, defID); err != nil {
+				return err
+			}
+			return Refuse(ErrValidation, "no account with email %q", email)
 		}
 		return tx.AddReportDelegate(ctx, actorID, defID, acc.ID)
 	})

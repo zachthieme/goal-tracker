@@ -127,8 +127,39 @@ func TestAuthorCreatesActionItemDirectly(t *testing.T) {
 			t.Errorf("%s: err %v, want ErrValidation", name, err)
 		}
 	}
-	if _, err := h.Service.RaiseActionItemByEmail(ctx, author.ID, direct, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
-		t.Errorf("owner with no account: err %v, want ErrValidation", err)
+	if _, err := h.Service.RaiseActionItemByEmail(ctx, author.ID, direct, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+		t.Errorf("owner with no account: err %v, want ErrValidation that no account has it", err)
+	}
+}
+
+// Raising an Action Item by email asks whether the actor may raise one on the
+// publication before it looks the owner's email up: a missing publication is
+// not found, and someone who isn't the Report's author, or a Departed author,
+// naming an email no one has is refused as not permitted.
+func TestRaiseActionItemByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t, "admin@example.com")
+	ctx := context.Background()
+	admin := w.h.SignIn("admin@example.com")
+	in := func(pubID int64) domain.RaiseActionItemInput {
+		return domain.RaiseActionItemInput{PublicationID: pubID, Text: "Chase the vendor.", DueDate: w.h.Clock.Now().AddDate(0, 0, 7)}
+	}
+
+	if _, err := w.h.Service.RaiseActionItemByEmail(ctx, w.creator.ID, in(w.pub.ID+100), "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("raised on no such publication: err %v, want ErrNotFound", err)
+	}
+	if _, err := w.h.Service.RaiseActionItemByEmail(ctx, w.other.ID, in(w.pub.ID), "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("raised by someone who is not the author: err %v, want ErrNotAuthorized", err)
+	}
+	if err := w.h.Service.MarkDeparted(ctx, admin.ID, w.creator.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if _, err := w.h.Service.RaiseActionItemByEmail(ctx, w.creator.ID, in(w.pub.ID), "nobody@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("raised by a Departed author: err %v, want ErrNotAuthorized", err)
+	}
+	if items, err := w.h.Service.PublicationActionItems(ctx, w.pub.ID); err != nil || len(items) != 1 {
+		t.Errorf("publication's Action Items %+v (err %v), want only the world's item", items, err)
 	}
 }
 

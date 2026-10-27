@@ -162,16 +162,26 @@ func (s *Service) IsReportAuthor(ctx context.Context, actorID, pubID int64) (boo
 
 // RaiseActionItemByEmail raises an Action Item owned by the Account with the
 // given email. It is the web-facing convenience over RaiseActionItem, since
-// the tool identifies people by email. An email with no account is rejected.
+// the tool identifies people by email. An email with no account is rejected,
+// but only once the actor may raise one on the publication, so someone who
+// may not learns nothing of who has an Account.
 func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in RaiseActionItemInput, ownerEmail string) (ActionItem, error) {
 	var item ActionItem
 	err := s.WithinTx(ctx, func(tx *Service) error {
 		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(ownerEmail))
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "no account with email %q", ownerEmail)
+			if !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("look up owner: %w", err)
 			}
-			return fmt.Errorf("look up owner: %w", err)
+			// Report a missing publication or a refusal before the email.
+			pub, err := tx.GetPublication(ctx, in.PublicationID)
+			if err != nil {
+				return err
+			}
+			if err := tx.raiseActionItemRule(ctx, actorID, pub); err != nil {
+				return err
+			}
+			return Refuse(ErrValidation, "no account with email %q", ownerEmail)
 		}
 		in.OwnerID = acc.ID
 		item, err = tx.RaiseActionItem(ctx, actorID, in)
