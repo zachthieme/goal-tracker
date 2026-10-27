@@ -123,20 +123,24 @@ func TestDefinePageReadsEachThingOnce(t *testing.T) {
 }
 
 // A refused define, read through the same loader, shows the form as typed,
-// not as saved, with the parent it posted picked (#629).
+// not as saved, with the parent it posted picked and the Team and Budget it
+// posted in place of Goal 00's saved Platform and 1000 (#629).
 func TestRefusedDefineKeepsWhatWasTyped(t *testing.T) {
 	t.Parallel()
 	h := testsupport.New(t, queryCountAdmin)
 	seedQueryCountFixture(t, h, 10)
 	proposed := goalFormFixtureGoal(t, h, "Goal 00")
 	parent := goalFormFixtureGoal(t, h, "Goal 03")
+	growth, budget := refusedDefineGrowthAndBudget(t, h)
 	ts, _, _ := newQueryCountingServer(t, h)
 	client := signInClient(t, ts.URL, proposed.Owner.Email)
 
 	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, proposed.ID), url.Values{
-		"title":          {proposed.Title},
-		"why_it_matters": {""},
-		"parent_id":      {fmt.Sprint(parent.ID)},
+		"title":                      {proposed.Title},
+		"why_it_matters":             {""},
+		"parent_id":                  {fmt.Sprint(parent.ID)},
+		"value_id":                   {fmt.Sprint(growth.ID)},
+		domain.FieldInput(budget.ID): {"4321"},
 	})
 	defer func() { _ = resp.Body.Close() }()
 	page := readBody(t, resp)
@@ -151,4 +155,51 @@ func TestRefusedDefineKeepsWhatWasTyped(t *testing.T) {
 	if chip := textOf(findByTestID(t, doc, "parent-chip")); !strings.Contains(chip, parent.Title) || !strings.Contains(chip, "Yellow") {
 		t.Errorf("the picked parent reads %q, want %s with its Health, Yellow", chip, parent.Title)
 	}
+	var teams []pageField
+	for _, f := range formFields(doc, "value_id") {
+		if f.Label == "Team" {
+			teams = append(teams, f)
+		}
+	}
+	if len(teams) != 1 {
+		t.Fatalf("the form has %d selects labelled Team, want 1", len(teams))
+	}
+	if _, _, chosen := selectChoices(teams[0].Node); chosen != "Growth" {
+		t.Errorf("Team shows %q chosen, want Growth as posted, not the saved Platform", chosen)
+	}
+	if got := formField(t, doc, domain.FieldInput(budget.ID)).Value; got != "4321" {
+		t.Errorf("Budget reads %q, want 4321 as typed, not the saved 1000", got)
+	}
+}
+
+// refusedDefineGrowthAndBudget are the query-count fixture's Team value
+// Growth and its Budget Field.
+func refusedDefineGrowthAndBudget(t *testing.T, h *testsupport.Harness) (domain.DimensionValue, domain.Field) {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(t.Context())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	var growth domain.DimensionValue
+	for _, d := range dims {
+		for _, v := range d.Values {
+			if d.Name == "Team" && v.Value == "Growth" {
+				growth = v
+			}
+		}
+	}
+	fields, err := h.Service.ListFields(t.Context())
+	if err != nil {
+		t.Fatalf("ListFields: %v", err)
+	}
+	var budget domain.Field
+	for _, f := range fields {
+		if f.Name == "Budget" {
+			budget = f
+		}
+	}
+	if growth.ID == 0 || budget.ID == 0 {
+		t.Fatalf("the fixture has no Team value Growth (%d) or Budget Field (%d)", growth.ID, budget.ID)
+	}
+	return growth, budget
 }

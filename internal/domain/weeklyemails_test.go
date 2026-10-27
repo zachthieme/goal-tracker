@@ -748,3 +748,40 @@ func TestQueueWeeklyEmailsSendsRemindersThenDigestsOncePerSlot(t *testing.T) {
 		t.Errorf("sent %d emails after the slot ran twice, want no more than 2", got)
 	}
 }
+
+// A week's slot that fails part way, recording the slot as run and then
+// failing to queue its emails, queues nothing and leaves the slot unrecorded,
+// so a later run of it isn't skipped (#630).
+func TestQueueWeeklyEmailsFailingPartWayQueuesNothing(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Launch pricing page", "Buyers can't see prices.")
+	fortnightlyCheckedIn(h, parent)
+	fortnightlyCheckedIn(h, child)
+	h.RequestLink(kim, child, parent, "")
+	svc := weeklyEmailsService(h)
+	slot := time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
+	h.Clock.Set(slot)
+	h.FailWrites(testsupport.Insert, "email_outbox")
+
+	err := svc.QueueWeeklyEmails(context.Background(), slot)
+	if err == nil || !strings.Contains(err.Error(), "injected failure") {
+		t.Fatalf("QueueWeeklyEmails: err = %v, want the injected failure", err)
+	}
+	if sent := h.Email.Sent(); len(sent) != 0 {
+		t.Errorf("sent %d emails from a failed run, want none: %+v", len(sent), sent)
+	}
+	var runs int
+	if err := h.DB.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM scheduled_runs`).Scan(&runs); err != nil {
+		t.Fatalf("count scheduled_runs: %v", err)
+	}
+	if runs != 0 {
+		t.Errorf("scheduled_runs holds %d rows after a failed run, want none so the slot runs again", runs)
+	}
+}
