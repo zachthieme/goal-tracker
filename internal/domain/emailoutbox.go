@@ -83,7 +83,7 @@ func (s *Service) queueEmail(ctx context.Context, msg email.Message) error {
 func (s *Service) emailQueued(ctx context.Context) {
 	if s.outbox.onCommit {
 		if err := s.DeliverEmail(ctx); err != nil {
-			s.outbox.log().Error("email outbox: deliver", "err", err)
+			s.outbox.log().Error("deliver email on commit", "err", err)
 		}
 		return
 	}
