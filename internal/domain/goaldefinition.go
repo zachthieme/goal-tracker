@@ -215,23 +215,47 @@ func (s *Service) ParentCandidates(ctx context.Context, goalID int64) ([]Goal, e
 	if err != nil {
 		return nil, err
 	}
-	linked := map[int64]bool{goalID: true}
+	left, err := s.parentCandidateContributors(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	left[goalID] = true
 	for _, l := range append(accepted, pending...) {
-		linked[l.Goal.ID] = true
+		left[l.Goal.ID] = true
 	}
 	var out []Goal
 	for _, g := range all {
-		if linked[g.ID] {
-			continue
+		if !left[g.ID] {
+			out = append(out, g)
 		}
-		if err := s.ensureNoCycle(ctx, goalID, g.ID); errors.Is(err, ErrCycle) {
-			continue
-		} else if err != nil {
-			return nil, err
-		}
-		out = append(out, g)
 	}
 	return out, nil
+}
+
+// parentCandidateContributors are the IDs of the Goals that contribute to
+// goalID through accepted links, however indirectly: its descendants, read
+// one level at a time, one query a level. Accepted links never form a cycle
+// (ADR-0001), so the walk ends.
+func (s *Service) parentCandidateContributors(ctx context.Context, goalID int64) (map[int64]bool, error) {
+	seen := map[int64]bool{}
+	frontier := []int64{goalID}
+	for len(frontier) > 0 {
+		children, err := s.childrenByGoal(ctx, frontier)
+		if err != nil {
+			return nil, err
+		}
+		var next []int64
+		for _, id := range frontier {
+			for _, c := range children[id] {
+				if !seen[c.ID] {
+					seen[c.ID] = true
+					next = append(next, c.ID)
+				}
+			}
+		}
+		frontier = next
+	}
+	return seen, nil
 }
 
 // unlinkedParents are the parents of ids the Goal has no link to yet, in
