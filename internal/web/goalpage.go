@@ -429,77 +429,54 @@ func (t metricTrend) trendLabel() string {
 }
 
 // activationItem is one line of a Proposed Goal's activation checklist: a rule
-// activation enforces, whether the Goal meets it yet, and Input, the id of the
-// New goal form's field or section that would meet it, "" when none does.
+// activation enforces, worded, whether the Goal meets it yet, and Input, the
+// id of the New goal form's field or section that would meet it, "" when none
+// does.
 type activationItem struct {
 	Label string
 	Done  bool
 	Input string
 }
 
-// activationFacts are what the activation checklist reads, whether from a
-// saved Goal or from the New goal form as typed: its Why it matters, whether it has
-// an Owner, its Kind and delivery date, how many Milestones and Metrics it
-// has, and every required Dimension and Field, set or not.
-type activationFacts struct {
-	WhyItMatters string
-	Owned        bool
-	Kind         string
-	DeliveryDate time.Time
-	Milestones   int
-	Metrics      int
-	Required     []domain.RequiredValue
-	// Unsaved is the measure, Milestone or Metric, whose editor the New goal
-	// form has open and unsaved, "" when none is; the Goal page never sets it.
-	Unsaved string
-}
-
-// checklist restates the minimum standard domain.ActivateGoal enforces, so the
-// Owner sees what's missing before they try: a Why it matters, an Owner, Dated with a
-// delivery date or Ongoing, a Milestone or Metric for a Dated Goal or a Metric
-// for an Ongoing one, and a value in each required Dimension and Field
-// (CONTEXT.md: Incomplete). The server still enforces the rules on activation.
-// Each item names the form's input that meets it: the delivery date once Dated
-// is chosen, the Kind group until then, and How you'll know for a Milestone or
-// Metric; nothing on the form makes its creator the Owner. While the form has
-// a Milestone or Metric editor open, How you'll know's item asks for it to be
-// saved, linked to the editor.
-func (f activationFacts) checklist() []activationItem {
-	kindInput := domain.InputKind
-	if f.Kind == domain.GoalDated {
-		kindInput = domain.InputDeliveryDate
-	}
-	items := []activationItem{
-		{"Why it matters", strings.TrimSpace(f.WhyItMatters) != "", domain.InputWhyItMatters},
-		{"Owner", f.Owned, ""},
-		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero()), kindInput},
-	}
-	switch {
-	case f.Unsaved != "":
-		items = append(items, activationItem{"Save the " + f.Unsaved + " you started", false, goalFormEditorID})
-	case f.Kind == domain.GoalOngoing:
-		items = append(items, activationItem{"A Metric", f.Metrics > 0, goalFormKnowID})
-	default:
-		items = append(items, activationItem{"A Milestone or Metric", f.Milestones+f.Metrics > 0, goalFormKnowID})
-	}
-	for _, r := range f.Required {
-		items = append(items, activationItem{"A value in " + r.Name, r.Set, requiredInput(r)})
+// activationChecklist words reqs, a Goal judged against the activation
+// standard (domain.ActivationRequirement), as its checklist, so the Owner sees
+// what's missing before they try; the server still enforces it on
+// activation. While the New goal form has a Milestone or Metric editor open,
+// unsaved being which, the measure's item asks for it to be saved, linked to
+// the editor; the Goal page never has one open.
+func activationChecklist(reqs []domain.ActivationRequirement, unsaved string) []activationItem {
+	items := make([]activationItem, 0, len(reqs))
+	for _, r := range reqs {
+		item := activationItem{Label: activationLabel(r), Done: r.Met, Input: r.Input}
+		if unsaved != "" && (r.Rule == domain.ActivationMilestoneOrMetric || r.Rule == domain.ActivationMetric) {
+			item = activationItem{Label: "Save the " + unsaved + " you started", Input: goalFormEditorID}
+		}
+		items = append(items, item)
 	}
 	return items
 }
 
-// requiredInput is the New goal form's input for a required Dimension or
-// Field: the Dimension's select or group, or the Field's input.
-func requiredInput(r domain.RequiredValue) string {
-	if r.FieldID != 0 {
-		return domain.FieldInput(r.FieldID)
+// activationLabel is how the checklist words r.
+func activationLabel(r domain.ActivationRequirement) string {
+	switch r.Rule {
+	case domain.ActivationWhyItMatters:
+		return "Why it matters"
+	case domain.ActivationOwner:
+		return "Owner"
+	case domain.ActivationKind:
+		return "Dated with a delivery date, or Ongoing"
+	case domain.ActivationMilestoneOrMetric:
+		return "A Milestone or Metric"
+	case domain.ActivationMetric:
+		return "A Metric"
+	default:
+		return "A value in " + r.Name
 	}
-	return dimensionInput(domain.Dimension{ID: r.DimensionID})
 }
 
-// ready reports whether every activation checklist item is done.
-func (f activationFacts) ready() bool {
-	for _, item := range f.checklist() {
+// allDone reports whether every activation checklist item is done.
+func allDone(items []activationItem) bool {
+	for _, item := range items {
 		if !item.Done {
 			return false
 		}
@@ -507,28 +484,14 @@ func (f activationFacts) ready() bool {
 	return true
 }
 
-// activationFacts are the saved Goal's, for its activation checklist.
-func (v goalView) activationFacts() activationFacts {
-	g := v.Goal
-	return activationFacts{
-		WhyItMatters: g.WhyItMatters,
-		Owned:        g.Owner.ID != 0,
-		Kind:         g.Kind,
-		DeliveryDate: g.DeliveryDate,
-		Milestones:   len(v.Milestones),
-		Metrics:      len(v.Metrics),
-		Required:     v.Required,
-	}
-}
-
 // activationChecklist is the Proposed Goal's activation checklist.
 func (v goalView) activationChecklist() []activationItem {
-	return v.activationFacts().checklist()
+	return activationChecklist(v.Activation, "")
 }
 
 // readyToActivate reports whether every activation checklist item is done.
 func (v goalView) readyToActivate() bool {
-	return v.activationFacts().ready()
+	return allDone(v.activationChecklist())
 }
 
 // ownershipOutcome names an ownership change's outcome for the Goal page's

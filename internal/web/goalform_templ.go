@@ -240,7 +240,7 @@ func goalFormLiveChecklist(v goalFormView) templ.Component {
 
 // goalFormKnowID is the How you'll know section's id, which the checklist's
 // Milestone or Metric item links to.
-const goalFormKnowID = "know"
+const goalFormKnowID = domain.InputHowYoullKnow
 
 // goalFormReadyID is the Ready to activate section's id, which the form's live
 // checklist swaps.
@@ -334,7 +334,7 @@ func goalFormReady(v goalFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for _, item := range v.activationFacts().checklist() {
+		for _, item := range v.checklist() {
 			if item.Done {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<li data-done=\"true\" class=\"gf-check done\"><span aria-hidden=\"true\" class=\"gf-mark\">✓</span>")
 				if templ_7745c5c3_Err != nil {
@@ -2853,10 +2853,10 @@ func goalFormFits(v goalFormView) templ.Component {
 
 // fitsRequiredNote opens Where it fits' note: optional, when no Dimension or
 // Field is required, or else the required ones, named as the checklist names
-// them (activationFacts skips a Retired one), and the rest optional when any
-// are left.
+// them (domain.JudgeDefinition skips a Retired one), and the rest optional
+// when any are left.
 func (v goalFormView) fitsRequiredNote() string {
-	required := v.activationFacts().Required
+	required := v.requiredValues()
 	if len(required) == 0 {
 		return "Optional: the Goal's Dimension values and Fields."
 	}
