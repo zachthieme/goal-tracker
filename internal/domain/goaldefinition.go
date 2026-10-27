@@ -203,15 +203,21 @@ func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in Defi
 // Accepted or Pending, and those that contribute to it however indirectly,
 // which would close a cycle (ADR-0001).
 func (s *Service) ParentCandidates(ctx context.Context, goalID int64) ([]Goal, error) {
-	all, err := s.ListGoals(ctx)
-	if err != nil {
-		return nil, err
-	}
 	accepted, err := s.ParentLinks(ctx, goalID)
 	if err != nil {
 		return nil, err
 	}
 	pending, err := s.PendingParentLinks(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	return s.parentCandidatesOf(ctx, goalID, accepted, pending)
+}
+
+// parentCandidatesOf are ParentCandidates for goalID, its parent links,
+// Accepted and Pending, already read.
+func (s *Service) parentCandidatesOf(ctx context.Context, goalID int64, accepted, pending []GoalLink) ([]Goal, error) {
+	all, err := s.ListGoals(ctx)
 	if err != nil {
 		return nil, err
 	}

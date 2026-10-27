@@ -839,6 +839,44 @@ func (s *Service) GoalValues(ctx context.Context, goalID int64) ([]DimensionValu
 	return out, nil
 }
 
+// SuggestedValues are the value IDs a Goal contributing to the parents
+// parentIDs is offered ticked, out of the Dimensions dims (CONTEXT.md:
+// Dimension, a parent's values are offered as defaults, not inherited):
+// every value the parents carry that can still be newly assigned, so neither
+// a Retired value nor one in a Retired Dimension. In a Dimension that takes
+// one value, parents carrying different ones suggest none there. The
+// parents' values are read in one query, and none with no parents.
+func (s *Service) SuggestedValues(ctx context.Context, parentIDs []int64, dims []Dimension) (map[int64]bool, error) {
+	suggested := map[int64]bool{}
+	if len(parentIDs) == 0 {
+		return suggested, nil
+	}
+	rows, err := s.queries.ListGoalValuesForGoals(ctx, parentIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list parent goals' values: %w", err)
+	}
+	inDimension := map[int64]map[int64]bool{}
+	for _, r := range rows {
+		val := goalValueFromRow(r.DimensionValue, r.Dimension)
+		if val.Retired || val.DimensionRetired {
+			continue
+		}
+		suggested[val.ID] = true
+		if inDimension[val.DimensionID] == nil {
+			inDimension[val.DimensionID] = map[int64]bool{}
+		}
+		inDimension[val.DimensionID][val.ID] = true
+	}
+	for _, d := range dims {
+		if ids := inDimension[d.ID]; !d.TakesSeveral() && len(ids) > 1 {
+			for id := range ids {
+				delete(suggested, id)
+			}
+		}
+	}
+	return suggested, nil
+}
+
 // GoalWithValues is a Goal paired with the Dimension values assigned to it, the
 // unit the Goal list filters and groups over.
 type GoalWithValues struct {

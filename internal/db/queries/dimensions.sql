@@ -101,6 +101,16 @@ JOIN dimensions ON dimensions.id = dimension_values.dimension_id
 WHERE goal_dimension_values.goal_id = ?
 ORDER BY dimensions.name, dimension_values.position, dimension_values.id;
 
+-- name: ListGoalValuesForGoals :many
+-- The values assigned to each of several Goals, each with its Dimension,
+-- retired ones included, for reading many Goals' values in one query.
+SELECT goal_dimension_values.goal_id, sqlc.embed(dimension_values), sqlc.embed(dimensions)
+FROM goal_dimension_values
+JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+JOIN dimensions ON dimensions.id = dimension_values.dimension_id
+WHERE goal_dimension_values.goal_id IN (sqlc.slice(goal_ids))
+ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.position, dimension_values.id;
+
 -- name: ListAllGoalValues :many
 -- Every Goal's assigned values with their Dimension, for building the Goal list's
 -- filter and grouping in one query.
