@@ -24,7 +24,7 @@ type TitleRevision struct {
 // the old and new titles. The title is checked as at creation: trimmed, and
 // required. A title the same as the current one changes nothing and records
 // nothing. authorID records who made the change, and must be the Goal's Owner
-// or an Admin (ErrNotAuthorized; see RequireGoalOwnerOrAdmin).
+// or an Admin (ErrNotAuthorized, by goalOwnerOrAdminRefusal).
 func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, authorID int64) (Goal, error) {
 	var current Goal
 	unchanged := false
@@ -33,11 +33,10 @@ func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, aut
 		if title == "" {
 			return Refuse(ErrValidation, "a Goal needs a title")
 		}
-		if err := tx.RequireGoalOwnerOrAdmin(ctx, authorID, goalID); err != nil {
-			return err
-		}
 		var err error
-		current, err = tx.loadGoal(ctx, goalID)
+		current, err = tx.openGoalCommand(ctx, authorID, goalID, func(a goalActor, g Goal) error {
+			return goalOwnerOrAdminRefusal(a, g, "change it")
+		}, nil)
 		if err != nil {
 			return err
 		}
@@ -77,11 +76,11 @@ func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, aut
 func (s *Service) EditTitleAndWhyItMatters(ctx context.Context, actorID, goalID int64, title *string, whyItMatters string) (Goal, error) {
 	var g Goal
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.RequireGoalOwnerOrAdmin(ctx, actorID, goalID); err != nil {
-			return err
-		}
 		var err error
-		if g, err = tx.loadGoal(ctx, goalID); err != nil {
+		g, err = tx.openGoalCommand(ctx, actorID, goalID, func(a goalActor, goal Goal) error {
+			return goalOwnerOrAdminRefusal(a, goal, "change it")
+		}, nil)
+		if err != nil {
 			return err
 		}
 		if title != nil {
@@ -126,8 +125,9 @@ func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]Title
 
 // RequireGoalOwnerOrAdmin returns ErrNotAuthorized unless actorID is the Goal's
 // Owner or an Admin (a Delegate is refused), by goalOwnerOrAdminRefusal, or
-// ErrNotFound if no such Goal exists. EditTitle and EditWhyItMatters check it
-// for themselves.
+// ErrNotFound if no such Goal exists. EditTitle, EditTitleAndWhyItMatters and
+// EditWhyItMatters apply the same rule for themselves, so their callers needn't
+// check it first.
 func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
 	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
 		return goalOwnerOrAdminRefusal(a, g, "change it")

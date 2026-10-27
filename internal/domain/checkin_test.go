@@ -1568,7 +1568,7 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
 				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Back to the drawing board.", Lifecycle: domain.LifecycleProposed}, domain.CheckinInputLifecycle
 			},
-			message: `a Check-in can't move a Active Goal to "Proposed"`,
+			message: `a Check-in can't move an Active Goal to "Proposed"`,
 		},
 		{
 			name: "an On Hold Goal left On Hold",

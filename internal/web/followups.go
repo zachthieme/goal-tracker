@@ -443,8 +443,8 @@ type followUpFix struct {
 // with the row's Goal's Nudge today, if any. It is the first that applies of:
 //  1. Reassign, for an Ownerless Goal the viewer may reassign (an Admin);
 //  2. Check in, for a Check-in overdue, Path to Green overdue or Milestone
-//     overdue Goal the viewer may check in on (an Admin has no Check-in
-//     right);
+//     overdue Goal the viewer may write a Check-in for (an Admin has no
+//     Check-in right);
 //  3. Nudge, for such a Goal the viewer may nudge, someone else's that
 //     someone can check in on (CONTEXT.md: Nudge); once it has been nudged
 //     today, a disabled "Nudged today by" whoever did.

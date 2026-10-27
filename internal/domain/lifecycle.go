@@ -153,6 +153,12 @@ func lifecycleNamesWhereWithArticle(selects func(string) bool) string {
 	return "a " + names
 }
 
+// lifecycleNameWithArticle is lifecycle with "a" or "an" before it, as
+// lifecycleNamesWhereWithArticle picks it: an Active, a Done.
+func lifecycleNameWithArticle(lifecycle string) string {
+	return lifecycleNamesWhereWithArticle(func(l string) bool { return l == lifecycle })
+}
+
 // lifecycleTakesNoCheckinsRefusal refuses a Check-in on a Goal in lifecycle,
 // one LifecycleTakesCheckins says takes none, naming the Lifecycles that do.
 func lifecycleTakesNoCheckinsRefusal(lifecycle string) error {
@@ -162,7 +168,7 @@ func lifecycleTakesNoCheckinsRefusal(lifecycle string) error {
 // lifecycleMoveRefusal refuses a Check-in moving a Goal in from to to, a
 // Lifecycle LifecycleChangesFrom doesn't offer.
 func lifecycleMoveRefusal(from, to string) error {
-	return inputError(CheckinInputLifecycle, "a Check-in can't move a %s Goal to %q", from, to)
+	return inputError(CheckinInputLifecycle, "a Check-in can't move %s Goal to %q", lifecycleNameWithArticle(from), to)
 }
 
 // lifecycleKeepRefusal refuses a Check-in leaving a Goal in lifecycle as it

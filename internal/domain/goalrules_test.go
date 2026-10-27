@@ -381,3 +381,30 @@ func TestGoalCommandsRefuseUnparsedInputFromAnyoneWithNoRight(t *testing.T) {
 		}
 	}
 }
+
+// Once a Goal leaves Proposed its Owner can't mark it Dated outside a
+// Check-in, and the refusal's article agrees with its Lifecycle.
+func TestMarkGoalDatedRefusesAnOwnerOnceTheGoalIsActiveOrDone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	done := h.ActiveGoal(sam, "Ship export", "People can't leave.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	due := h.Clock.Now().AddDate(0, 6, 0)
+
+	for _, c := range []struct {
+		name   string
+		goalID int64
+		want   string
+	}{
+		{"Active", active.ID, "an Active Goal's delivery date changes only in a Check-in, with a reason"},
+		{"Done", done.ID, "a Done Goal's delivery date changes only in a Check-in, with a reason"},
+	} {
+		_, err := h.Service.MarkGoalDated(ctx, sam.ID, c.goalID, due)
+		if !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != c.want {
+			t.Errorf("MarkGoalDated on a %s Goal = %v, want ErrValidation %q", c.name, err, c.want)
+		}
+	}
+}

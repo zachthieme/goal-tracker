@@ -349,7 +349,7 @@ func setDeliveryRefusal(a goalActor, g Goal) error {
 		return err
 	}
 	if g.Lifecycle != LifecycleProposed {
-		return Refuse(ErrValidation, "a %s Goal's delivery date changes only in a Check-in, with a reason", g.Lifecycle)
+		return Refuse(ErrValidation, "%s Goal's delivery date changes only in a Check-in, with a reason", lifecycleNameWithArticle(g.Lifecycle))
 	}
 	return nil
 }
