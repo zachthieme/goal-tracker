@@ -13,6 +13,15 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 27, 2026
+
+**Bug fixes:**
+- [user] Adding a Report Delegate or raising an Action Item for an email with no Account, by someone who may not do either, is now refused with the refusal page (403) rather than told no Account has that email, so it no longer reveals who has an Account (#623).
+- [user] Two refusals now take the article that agrees with the Goal's Lifecycle: marking an Active or On Hold Goal Dated or Ongoing outside a Check-in is refused with "an Active Goal's delivery date changes only in a Check-in, with a reason" (not "a Active …"), and a Check-in that moves a Goal where it can't says `a Check-in can't move an Active Goal to "Proposed"` (#624).
+
+**Code quality:**
+- [internal] `EditTitle` and `EditTitleAndWhyItMatters` read the Goal once, through `openGoalCommand` with the Owner-or-Admin rule, instead of checking `RequireGoalOwnerOrAdmin` and then reading it again. Delivering email on commit (`WithEmailDeliveredOnCommit`, test harness only) logs a failure as "deliver email on commit" rather than "email outbox: deliver", and the Follow-ups Fix comment no longer repeats the "may check in on" refusal sentence (#624).
+
 ### Collected changes — October 26, 2026
 
 **Breaking changes:**
