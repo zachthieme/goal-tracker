@@ -19,6 +19,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Adding a Report Delegate or raising an Action Item for an email with no Account, by someone who may not do either, is now refused with the refusal page (403) rather than told no Account has that email, so it no longer reveals who has an Account (#623).
 - [user] Two refusals now take the article that agrees with the Goal's Lifecycle: marking an Active or On Hold Goal Dated or Ongoing outside a Check-in is refused with "an Active Goal's delivery date changes only in a Check-in, with a reason" (not "a Active …"), and a Check-in that moves a Goal where it can't says `a Check-in can't move an Active Goal to "Proposed"` (#624).
 
+**Architecture:**
+- [internal] The Goal page loader returns the Goal's History as one list of typed domain events (`GoalPage.History`, `domain.GoalEvent`), already merged and ordered newest first, with the rule for when a Check-in repeats the one before it on the Check-in event. Web only renders, filters and folds it, and the order is unit-tested once in the domain. What the History shows is unchanged (#619).
+
 **Code quality:**
 - [internal] `EditTitle` and `EditTitleAndWhyItMatters` read the Goal once, through `openGoalCommand` with the Owner-or-Admin rule, instead of checking `RequireGoalOwnerOrAdmin` and then reading it again. Delivering email on commit (`WithEmailDeliveredOnCommit`, test harness only) logs a failure as "deliver email on commit" rather than "email outbox: deliver", and the Follow-ups Fix comment no longer repeats the "may check in on" refusal sentence (#624).
 
