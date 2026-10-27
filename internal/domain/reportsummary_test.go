@@ -262,10 +262,11 @@ func TestReportSummaryOfAPublishedDefinitionHasItsLastPublication(t *testing.T) 
 }
 
 // Since its last publication, a definition's summary counts each Goal that
-// changed — was created, slipped a date, gained a Milestone, changed Lifecycle
-// or changed Health — or entered or left the Report, once however many of
-// those it did. A standing condition is no change: a Goal that stays Red adds
-// nothing until it recovers.
+// changed — was created, slipped a date, changed Lifecycle or changed Health —
+// or entered or left the Report, once however many of those it did. A
+// standing condition is no change: a Goal that stays Red adds nothing until it
+// recovers, and neither does gaining a Milestone, which doesn't make a Goal an
+// exception either.
 func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testing.T) {
 	t.Parallel()
 
@@ -317,15 +318,55 @@ func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testin
 	if _, err := h.Service.AddMilestoneAsAuthor(ctx, gainedMilestone.Owner.ID, domain.AddMilestoneInput{GoalID: gainedMilestone.ID, Name: "GA", TargetDate: h.Clock.Now().AddDate(0, 2, 0)}); err != nil {
 		t.Fatalf("AddMilestoneAsAuthor: %v", err)
 	}
-	changes("gained a Milestone", 4)
+	changes("gained a Milestone", 3)
 	moveLifecycle(t, h, boss, paused, domain.LifecycleOnHold)
-	changes("changed Lifecycle", 5)
+	changes("changed Lifecycle", 4)
 	listGoal(t, h, def, "exclude", leftOut)
-	changes("left", 6)
+	changes("left", 5)
 	h.Checkin(boss, turnsYellow.ID, domain.HealthYellow, "Slipping.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
-	changes("changed Health", 7)
+	changes("changed Health", 6)
 	h.Checkin(boss, staysRed.ID, domain.HealthGreen, "Unblocked.", "", time.Time{})
-	changes("recovered", 8)
+	changes("recovered", 7)
+}
+
+// A Green Goal that only gained a Milestone since the last publication is no
+// change on the Reports list, as it is no exception in the draft: it takes one
+// line there, so the list's count of changes agrees with the draft.
+func TestReportSummaryDoesNotCountAGoalThatOnlyGainedAMilestone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Gained a Milestone", "why")
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(day)
+	if _, err := h.Service.AddMilestoneAsAuthor(ctx, g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "GA", TargetDate: h.Clock.Now().AddDate(0, 2, 0)}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+
+	switch got := reportSummary(t, h, def).Changes; {
+	case got == nil:
+		t.Error("changes none, want 0")
+	case *got != 0:
+		t.Errorf("changes %d, want 0", *got)
+	}
+	def, err := h.Service.GetReportDefinition(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("GetReportDefinition: %v", err)
+	}
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(r.Exceptions) != 0 {
+		t.Errorf("exceptions %d, want none", len(r.Exceptions))
+	}
+	if len(r.Lines) != 1 || r.Lines[0].Goal.ID != g.ID {
+		t.Errorf("lines %+v, want the Goal alone", r.Lines)
+	}
 }
 
 // ReportSummaries summarises every saved definition, as ListReportDefinitions

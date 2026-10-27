@@ -507,6 +507,43 @@ func TestReportMarksAGoalWhoseHealthChangedSinceTheBaseline(t *testing.T) {
 	}
 }
 
+// A Goal On Hold at the baseline had no Health then: the Check-in that put it
+// On Hold recorded none, and its Health at the baseline is that Check-in's,
+// not the Health it had before it. So a Goal Yellow, put On Hold before the
+// baseline and resumed Red since, shows no earlier Health and didn't turn Red
+// (CONTEXT.md: Report).
+func TestReportReadsNoPriorHealthForAGoalOnHoldAtTheBaseline(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthYellow, "Wobbly.", "Steady it.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Clock.Advance(day)
+	moveLifecycle(t, h, boss, g, domain.LifecycleOnHold)
+	settle(h)
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: g.ID, AuthorID: boss.ID, Health: domain.HealthRed, Status: "Back, blocked.",
+		PathToGreen: "Unblock it.", PathTargetDate: h.Clock.Now().AddDate(0, 1, 0), Lifecycle: domain.LifecycleActive,
+	}); err != nil {
+		t.Fatalf("SubmitCheckin resume: %v", err)
+	}
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+
+	if len(r.Exceptions) != 1 {
+		t.Fatalf("exception blocks %v, want the Goal (one-line Goals %v)", blockIDs(r), lineIDs(r))
+	}
+	b := r.Exceptions[0]
+	if b.PriorHealth != "" {
+		t.Errorf("prior Health %q, want none", b.PriorHealth)
+	}
+	if slices.Contains(b.Changes, "Turned Red") {
+		t.Errorf("changes %q, want no Turned Red", b.Changes)
+	}
+}
+
 // An exception block marks a Goal's open Ask for help with whom it asks then:
 // the Owner's Manager, or past a Departed one the Manager above. A Yellow Goal
 // that doesn't ask has neither.

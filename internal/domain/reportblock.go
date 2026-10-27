@@ -46,6 +46,11 @@ type Report struct {
 	// opens with. It is frozen with the snapshot; one frozen before Reports
 	// counted it has none.
 	Movement *ReportMovement `json:",omitempty"`
+	// changedGoalIDs are the selected Goals the draft judged changed since
+	// its baseline (goalHistory.changed), in selection order, kept so the
+	// Reports list counts its changes without reading them again. They are
+	// not frozen with the snapshot.
+	changedGoalIDs []int64
 }
 
 // covers reports whether the Report includes the Goal, as an exception block
@@ -253,7 +258,11 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 		h := histories[sg.Goal.ID]
 		r.Highlights = append(r.Highlights, scopedHighlights(sg.Goal, highlights[sg.Goal.ID], since)...)
 		fresh := freshness[sg.Goal.ID]
-		if !h.exception(since, fresh) {
+		changed := h.changed(since)
+		if changed {
+			r.changedGoalIDs = append(r.changedGoalIDs, sg.Goal.ID)
+		}
+		if !h.exception(changed, fresh) {
 			r.Lines = append(r.Lines, sg)
 			continue
 		}
@@ -419,13 +428,13 @@ func (h goalHistory) last() lastCheckin {
 }
 
 // exception reports whether the Goal earns the full block: it is Red or Yellow,
-// Check-in overdue, or Ownerless, or since the baseline it was created, slipped
-// a date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
-func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool {
+// Check-in overdue, or Ownerless, or changed, as changed judged it since the
+// baseline (CONTEXT.md: Report).
+func (h goalHistory) exception(changed bool, fresh Freshness) bool {
 	return needsPathToGreen(h.latest().Health) ||
 		fresh.CheckinOverdue ||
 		h.goal.Ownerless ||
-		h.changed(since)
+		changed
 }
 
 // changed reports whether, since the baseline, the Goal was created, slipped
@@ -439,19 +448,28 @@ func (h goalHistory) changed(since func(time.Time) bool) bool {
 
 // priorHealth is the Goal's Health at the baseline when its latest Check-in's
 // Health differs from it, and empty otherwise. Its Health at the baseline is
-// that of its latest Check-in that since does not count; a Goal with no
-// Check-in by then had none, and neither Health may be empty. Only the end
-// state counts: Green to Yellow and back since the baseline is no change.
+// healthBefore's; a Goal with no Check-in by then had none, and neither Health
+// may be empty. Only the end state counts: Green to Yellow and back since the
+// baseline is no change.
 func (h goalHistory) priorHealth(since func(time.Time) bool) string {
-	now := h.latest().Health
-	i := slices.IndexFunc(h.checkins, func(c Checkin) bool { return !since(c.CreatedAt) })
-	if i < 0 || now == "" {
+	now, then := h.latest().Health, h.healthBefore(since)
+	if now == "" || then == "" || then == now {
 		return ""
 	}
-	if then := h.checkins[i].Health; then != "" && then != now {
-		return then
+	return then
+}
+
+// healthBefore is the Goal's Health at the moment since starts counting from:
+// that of its latest Check-in since does not count, or "" when it had none by
+// then. A Check-in with no Health is not looked past: one that took the Goal
+// out of Active recorded none, and a Goal On Hold, Done or Cancelled then had
+// no Health then.
+func (h goalHistory) healthBefore(since func(time.Time) bool) string {
+	i := slices.IndexFunc(h.checkins, func(c Checkin) bool { return !since(c.CreatedAt) })
+	if i < 0 {
+		return ""
 	}
-	return ""
+	return h.checkins[i].Health
 }
 
 // lifecycleChanged reports whether the Goal changed Lifecycle since the
