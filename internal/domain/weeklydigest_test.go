@@ -121,6 +121,39 @@ func TestWeeklyDigestsNameChildrenThatGotWorseThisWeek(t *testing.T) {
 	}
 }
 
+// A child On Hold when the recipient's week began had no Health then — the
+// Check-in that put it On Hold recorded none — as a Report reads a Goal On
+// Hold at its baseline. So one Yellow before it was put On Hold, and resumed
+// Yellow this week, got worse to Yellow this week.
+func TestWeeklyDigestsNameAChildResumedYellowFromOnHoldThisWeek(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	child := digestChildOf(h, kim, parent, "Partner referrals")
+	digestCheckin(h, kim, child.ID, domain.HealthYellow)
+	h.Clock.Advance(digestDay)
+	putOnHold(h, child)
+	h.Clock.Advance(8 * digestDay)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: child.ID, AuthorID: kim.ID, Health: domain.HealthYellow, Status: "Back, behind.",
+		PathToGreen: "Add a second engineer.", PathTargetDate: digestBackToGreenBy, Lifecycle: domain.LifecycleActive,
+	}); err != nil {
+		t.Fatalf("SubmitCheckin resume: %v", err)
+	}
+	h.Clock.Advance(2 * digestDay)
+
+	d := digestFor(t, weeklyDigests(h), pat)
+
+	if len(d.Problems) != 1 || d.Problems[0].Child.ID != child.ID {
+		t.Fatalf("problems = %v, want %s", problemTitles(d), child.Title)
+	}
+	if got := d.Problems[0].WorsenedTo; got != domain.HealthYellow {
+		t.Errorf("WorsenedTo = %q, want Yellow", got)
+	}
+}
+
 // digestSlip moves goal's delivery date a month later in a Yellow Check-in,
 // recording a Date Slip of it alone.
 func digestSlip(h *testsupport.Harness, goal domain.Goal) {

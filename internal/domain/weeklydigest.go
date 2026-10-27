@@ -123,9 +123,10 @@ func (s *Service) pendingLinksByParentOwner(ctx context.Context) (map[int64][]Li
 // of it under any parent: the facts read and judged once, however many
 // parents it has.
 type weeklyDigestChild struct {
-	goal      Goal
-	checkins  []Checkin
-	slips     []DateSlip
+	goal Goal
+	// history is the child's Check-ins and Date Slips, read as a Report reads
+	// a Goal's against its baseline, the week's start standing in for it.
+	history   goalHistory
 	freshness Freshness
 	// wentCheckinOverdue is judged on the child's own Freshness, so no
 	// recipient's week changes it.
@@ -135,7 +136,7 @@ type weeklyDigestChild struct {
 
 // weeklyDigestChildren reads the children of edges, every accepted link: each
 // parent's child IDs, newest child first as ChildrenOf orders them, and each
-// child that isn't Done or Cancelled by ID, its Check-ins, Date Slips and
+// child that isn't Done or Cancelled by ID, its history (goalHistories) and
 // Freshness read in one batch. A Done or Cancelled child has nothing left at
 // risk, so it is left out.
 func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[int64][]int64, map[int64]*weeklyDigestChild, error) {
@@ -152,15 +153,7 @@ func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[i
 		}
 		up[e.child.ID] = append(up[e.child.ID], e)
 	}
-	ids := make([]int64, 0, len(live))
-	for _, c := range live {
-		ids = append(ids, c.ID)
-	}
-	checkins, err := s.checkinsByGoal(ctx, ids)
-	if err != nil {
-		return nil, nil, err
-	}
-	slips, err := s.DateSlipsByGoal(ctx, ids)
+	histories, err := s.goalHistories(ctx, live)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -177,8 +170,7 @@ func (s *Service) weeklyDigestChildren(ctx context.Context, edges []edge) (map[i
 		f := freshness[c.ID]
 		children[c.ID] = &weeklyDigestChild{
 			goal:               c,
-			checkins:           checkins[c.ID],
-			slips:              slips[c.ID],
+			history:            histories[c.ID],
 			freshness:          f,
 			wentCheckinOverdue: wentCheckinOverdueThisWeek(f),
 			halted:             haltedParents(parents),
@@ -209,13 +201,14 @@ func (c *weeklyDigestChild) problemUnder(parent Goal, weekStart time.Time) Weekl
 		Ownerless:          c.goal.Ownerless,
 		HaltedParents:      c.halted,
 	}
+	thisWeek := func(t time.Time) bool { return t.After(weekStart) }
 	if c.goal.Lifecycle == LifecycleActive {
-		if now, before := healthAt(c.checkins, time.Time{}), healthAt(c.checkins, weekStart); worsened(before, now) {
+		if now, before := c.history.latest().Health, c.history.healthBefore(thisWeek); worsened(before, now) {
 			p.WorsenedTo = now
 		}
 	}
-	for _, sl := range c.slips {
-		if sl.CreatedAt.After(weekStart) {
+	for _, sl := range c.history.slips {
+		if thisWeek(sl.CreatedAt) {
 			p.DateSlips = append(p.DateSlips, sl)
 		}
 	}
@@ -250,18 +243,6 @@ func weeklyDigestNewestFirst(a, b Goal) int {
 // (CONTEXT.md: Check-in overdue).
 func wentCheckinOverdueThisWeek(f Freshness) bool {
 	return f.CheckinOverdue && f.DaysSince-weeklyDigestDays <= f.CadenceDays
-}
-
-// healthAt is the Health a Goal's Check-ins (newest first) had set as of t, or
-// its current Health when t is the zero time. It is "" when none had set one.
-func healthAt(checkins []Checkin, t time.Time) string {
-	for _, c := range checkins {
-		if c.Health == "" || (!t.IsZero() && c.CreatedAt.After(t)) {
-			continue
-		}
-		return c.Health
-	}
-	return ""
 }
 
 // worsened reports whether Health went from before to a worse now that is

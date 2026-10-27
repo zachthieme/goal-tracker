@@ -107,10 +107,7 @@ func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary,
 			return ReportSummary{}, err
 		}
 		sum.LastPublication = &pub
-		changes, err := s.changedGoals(ctx, r)
-		if err != nil {
-			return ReportSummary{}, err
-		}
+		changes := changedGoals(r)
 		sum.Changes = &changes
 	}
 	scope, err := s.reportScope(ctx, r)
@@ -132,34 +129,19 @@ func (r Report) selected() []SelectedGoal {
 }
 
 // changedGoals counts the Goals r reads as changed since its baseline — those
-// it selects that were created, slipped a date, gained a Milestone, changed
-// Lifecycle or changed Health since, and those that entered or left it — each
-// once. A standing condition, such as staying Red, is no change.
-func (s *Service) changedGoals(ctx context.Context, r Report) (int, error) {
-	since := s.since(r)
-	selected := r.selected()
-	goals := make([]Goal, 0, len(selected))
-	for _, sg := range selected {
-		goals = append(goals, sg.Goal)
-	}
-	histories, err := s.goalHistories(ctx, goals)
-	if err != nil {
-		return 0, err
-	}
-	milestones, err := s.milestonesByGoal(ctx, goalIDsOf(goals))
-	if err != nil {
-		return 0, err
-	}
+// it selects that its draft judged changed (created, slipped a date, changed
+// Lifecycle or changed Health since), and those that entered or left it —
+// each once. A standing condition, such as staying Red, is no change, and
+// neither is gaining a Milestone. It reads nothing beyond r.
+func changedGoals(r Report) int {
 	changed := map[int64]bool{}
-	for _, g := range goals {
-		if histories[g.ID].changed(since) || slices.ContainsFunc(milestones[g.ID], func(m Milestone) bool { return since(m.CreatedAt) }) {
-			changed[g.ID] = true
-		}
+	for _, id := range r.changedGoalIDs {
+		changed[id] = true
 	}
 	for _, c := range r.MembershipChanges {
 		changed[c.Goal.ID] = true
 	}
-	return len(changed), nil
+	return len(changed)
 }
 
 // reportScope says what the drafted Report r's Definition selects in plain
