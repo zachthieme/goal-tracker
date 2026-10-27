@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"strings"
 )
 
 const assignGoalValueIfAbsent = `-- name: AssignGoalValueIfAbsent :exec
@@ -335,6 +336,71 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 	for rows.Next() {
 		var i ListGoalValuesRow
 		if err := rows.Scan(
+			&i.DimensionValue.ID,
+			&i.DimensionValue.DimensionID,
+			&i.DimensionValue.Value,
+			&i.DimensionValue.Retired,
+			&i.DimensionValue.CreatedAt,
+			&i.DimensionValue.Position,
+			&i.Dimension.ID,
+			&i.Dimension.Name,
+			&i.Dimension.CreatedAt,
+			&i.Dimension.Selection,
+			&i.Dimension.List,
+			&i.Dimension.Retired,
+			&i.Dimension.Required,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGoalValuesForGoals = `-- name: ListGoalValuesForGoals :many
+SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list, dimensions.retired, dimensions.required
+FROM goal_dimension_values
+JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+JOIN dimensions ON dimensions.id = dimension_values.dimension_id
+WHERE goal_dimension_values.goal_id IN (/*SLICE:goal_ids*/?)
+ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.position, dimension_values.id
+`
+
+type ListGoalValuesForGoalsRow struct {
+	GoalID         int64
+	DimensionValue DimensionValue
+	Dimension      Dimension
+}
+
+// The values assigned to each of several Goals, each with its Dimension,
+// retired ones included, for reading many Goals' values in one query.
+func (q *Queries) ListGoalValuesForGoals(ctx context.Context, goalIds []int64) ([]ListGoalValuesForGoalsRow, error) {
+	query := listGoalValuesForGoals
+	var queryParams []interface{}
+	if len(goalIds) > 0 {
+		for _, v := range goalIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", strings.Repeat(",?", len(goalIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:goal_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalValuesForGoalsRow
+	for rows.Next() {
+		var i ListGoalValuesForGoalsRow
+		if err := rows.Scan(
+			&i.GoalID,
 			&i.DimensionValue.ID,
 			&i.DimensionValue.DimensionID,
 			&i.DimensionValue.Value,

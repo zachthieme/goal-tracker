@@ -1425,3 +1425,66 @@ func TestValueSettableGoalsAreThoseSettingValuesAllows(t *testing.T) {
 		}
 	}
 }
+
+// A Goal created to contribute to parents is offered its parents' values as
+// defaults (CONTEXT.md: Dimension): the values both parents carry, united,
+// but no Retired value nor one in a Retired Dimension, and in a Dimension
+// that takes one value, none where the parents disagree, while a Dimension
+// that takes several keeps both. No parents offers nothing.
+func TestSuggestedValuesUniteParentsValuesThatCanStillBeAssigned(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	region := h.CreateDimension(boss, "Region", "EMEA", "APAC")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	stage := h.CreateDimension(boss, "Stage", "Pilot", "Rollout")
+	legacy := h.CreateDimension(boss, "Legacy", "Old")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	emea := region.Values[0]
+	core, infra := teams.Values[0], teams.Values[1]
+	pilot := stage.Values[0]
+	old := legacy.Values[0]
+
+	revenue := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	uptime := h.CreateGoal(sam, "Keep the site up", "Outages cost trust.")
+	h.AssignGoalValue(revenue, growth)
+	h.AssignGoalValue(uptime, trust)
+	h.AssignGoalValue(revenue, emea)
+	h.AssignGoalValue(revenue, core)
+	h.AssignGoalValue(uptime, infra)
+	h.AssignGoalValue(uptime, pilot)
+	h.AssignGoalValue(revenue, old)
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, pilot.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	if err := h.Service.RetireDimension(ctx, boss.ID, legacy.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	offered := domain.OfferedDimensions(dims)
+
+	got, err := h.Service.SuggestedValues(ctx, []int64{revenue.ID, uptime.ID}, offered)
+	if err != nil {
+		t.Fatalf("SuggestedValues: %v", err)
+	}
+	want := map[int64]bool{emea.ID: true, core.ID: true, infra.ID: true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SuggestedValues for two parents = %v, want EMEA, Core and Infra %v", got, want)
+	}
+
+	got, err = h.Service.SuggestedValues(ctx, nil, offered)
+	if err != nil {
+		t.Fatalf("SuggestedValues with no parents: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("SuggestedValues with no parents = %v, want none", got)
+	}
+}

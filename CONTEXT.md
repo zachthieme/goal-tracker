@@ -97,7 +97,7 @@ A Goal an Admin has marked as one of the company's root outcomes. It isn't expec
 _Avoid_: root, north star, company goal
 
 **Dimension**:
-An admin-defined attribute whose values come from a list (e.g. pillar, quarter, goal kind), used to filter and group Goals. The Admin decides whether a Goal takes one value or several, and whether the list is Fixed or Extendable. A Goal with several values appears under each of them when grouped.
+An admin-defined attribute whose values come from a list (e.g. pillar, quarter, goal kind), used to filter and group Goals. The Admin decides whether a Goal takes one value or several, and whether the list is Fixed or Extendable. A Goal with several values appears under each of them when grouped. A Goal created to contribute to parents is offered its parents' values as defaults, not inherited: Retired values and values in a Retired Dimension are left out, and where parents carry different values in a Dimension that takes one value, none is offered there.
 _Avoid_: tag, label, category
 
 **Fixed**:

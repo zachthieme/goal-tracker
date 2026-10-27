@@ -316,7 +316,11 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
 	}
-	if v.Chosen, err = s.suggestedValues(r.Context(), v.Parents, v.Dimensions); err != nil {
+	parentIDs := make([]int64, 0, len(v.Parents))
+	for _, p := range v.Parents {
+		parentIDs = append(parentIDs, p.Goal.ID)
+	}
+	if v.Chosen, err = s.svc.SuggestedValues(r.Context(), parentIDs, v.Dimensions); err != nil {
 		s.serverError(w, r, "could not load parent goals' values", err)
 		return
 	}
@@ -337,40 +341,6 @@ func (s *Server) loadWhereItFits(ctx context.Context, v *goalFormView) error {
 	}
 	v.Dimensions, v.Fields = domain.OfferedDimensions(dims), domain.OfferedFields(fields)
 	return nil
-}
-
-// suggestedValues are the values a Goal contributing to parents is offered
-// ticked: every value the parents carry that can still be newly assigned, so
-// neither a Retired value nor one in a Retired Dimension (CONTEXT.md: the
-// parent's values are offered as defaults, not inherited). In a Dimension that takes one
-// value, parents carrying different ones suggest none there.
-func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, dims []domain.Dimension) (map[int64]bool, error) {
-	suggested := map[int64]bool{}
-	inDimension := map[int64]map[int64]bool{}
-	for _, p := range parents {
-		values, err := s.svc.GoalValues(ctx, p.Goal.ID)
-		if err != nil {
-			return nil, fmt.Errorf("load parent goal's values: %w", err)
-		}
-		for _, val := range values {
-			if val.Retired || val.DimensionRetired {
-				continue
-			}
-			suggested[val.ID] = true
-			if inDimension[val.DimensionID] == nil {
-				inDimension[val.DimensionID] = map[int64]bool{}
-			}
-			inDimension[val.DimensionID][val.ID] = true
-		}
-	}
-	for _, d := range dims {
-		if ids := inDimension[d.ID]; !d.TakesSeveral() && len(ids) > 1 {
-			for id := range ids {
-				delete(suggested, id)
-			}
-		}
-	}
-	return suggested, nil
 }
 
 // pickParents splits the Goals the Goal goalID could contribute to into the
@@ -779,15 +749,26 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleDefineGoalChecklist is handleGoalFormChecklist for the define page,
-// whose checklist counts the Goal's Milestones and Metrics with the rows.
+// whose checklist counts the Goal's Milestones and Metrics with the rows. It
+// reads only what the card judges, not the parents the page shows.
 func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	g, ok := s.definableGoal(w, r, current)
 	if !ok {
 		return
 	}
 	v, _ := readGoalForm(r, current)
-	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
-		s.serverError(w, r, "could not load goal", err)
+	v.Goal = &g
+	var err error
+	if v.ExistingMilestones, err = s.svc.ListMilestones(r.Context(), g.ID); err != nil {
+		s.serverError(w, r, "could not load milestones", err)
+		return
+	}
+	if v.ExistingMetrics, err = s.svc.ListMetrics(r.Context(), g.ID); err != nil {
+		s.serverError(w, r, "could not load metrics", err)
+		return
+	}
+	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
+		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
 	}
 	v.Live = true
