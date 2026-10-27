@@ -63,20 +63,64 @@ type FollowUpRow struct {
 	OwnedByViewer bool
 }
 
+// FollowUpKind names a kind of signal that flags a Goal on the Follow-ups
+// page, as its chip's data-kind there.
+type FollowUpKind string
+
+// The kinds of Follow-up signal.
+const (
+	FollowUpRed               FollowUpKind = "red"
+	FollowUpYellow            FollowUpKind = "yellow"
+	FollowUpAsksForHelp       FollowUpKind = "asks-for-help"
+	FollowUpCheckinOverdue    FollowUpKind = "checkin-overdue"
+	FollowUpPathOverdue       FollowUpKind = "path-overdue"
+	FollowUpMilestoneOverdue  FollowUpKind = "milestone-overdue"
+	FollowUpActionItemOverdue FollowUpKind = "action-item-overdue"
+	FollowUpOwnerless         FollowUpKind = "ownerless"
+	FollowUpUnlinked          FollowUpKind = "unlinked"
+	FollowUpScheduleConflicts FollowUpKind = "schedule-conflicts"
+	FollowUpHaltedParents     FollowUpKind = "halted-parents"
+)
+
+// followUpWaitsOnCheckin pairs each kind of signal that leaves a Goal waiting
+// on a Check-in, the Nudge rule's overdue reasons (CONTEXT.md: Nudge), with
+// the Freshness flag that raises it, in the order the Follow-ups page lists
+// them. A Schedule conflict, which the Nudge rule allows apart, isn't one.
+var followUpWaitsOnCheckin = []struct {
+	kind   FollowUpKind
+	raised func(Freshness) bool
+}{
+	{FollowUpCheckinOverdue, func(f Freshness) bool { return f.CheckinOverdue }},
+	{FollowUpPathOverdue, func(f Freshness) bool { return f.PathToGreenOverdue }},
+	{FollowUpMilestoneOverdue, func(f Freshness) bool { return f.MilestoneOverdue }},
+}
+
+// WaitsOnCheckinKinds are the kinds of signal that leave a Goal waiting on a
+// Check-in (followUpWaitsOnCheckin), in page order: Check-in overdue, Path to
+// Green overdue, Milestone overdue.
+var WaitsOnCheckinKinds = func() []FollowUpKind {
+	kinds := make([]FollowUpKind, 0, len(followUpWaitsOnCheckin))
+	for _, w := range followUpWaitsOnCheckin {
+		kinds = append(kinds, w.kind)
+	}
+	return kinds
+}()
+
 // FollowUpSignal is one reason a Goal is flagged. Kind names the signal, as
 // the chip's data-kind on the Follow-ups page. Days is how long the signal has
-// held: for "checkin-overdue" the days since the last update, for
-// "path-overdue" the days past the Path to Green's target date, for
-// "milestone-overdue" the days past the earliest overdue Milestone's date, for
-// "action-item-overdue" the days the most overdue Action Item about the Goal
-// is past its due date, for "schedule-conflicts" the days the child's delivery
-// date falls after the parent's, and 0 otherwise. Related is the parent for
-// "schedule-conflicts" and "halted-parents". Person is whom an
-// "asks-for-help" asks, nil when no one is above the Owner.
-// RelatedPermissions are, for "schedule-conflicts", what the viewer may do
-// with the parent, as FollowUpRow.Permissions are for the row's Goal.
+// held: for FollowUpCheckinOverdue the days since the last update, for
+// FollowUpPathOverdue the days past the Path to Green's target date, for
+// FollowUpMilestoneOverdue the days past the earliest overdue Milestone's
+// date, for FollowUpActionItemOverdue the days the most overdue Action Item
+// about the Goal is past its due date, for FollowUpScheduleConflicts the days
+// the child's delivery date falls after the parent's, and 0 otherwise.
+// Related is the parent for FollowUpScheduleConflicts and
+// FollowUpHaltedParents. Person is whom a FollowUpAsksForHelp asks, nil when
+// no one is above the Owner. RelatedPermissions are, for
+// FollowUpScheduleConflicts, what the viewer may do with the parent, as
+// FollowUpRow.Permissions are for the row's Goal.
 type FollowUpSignal struct {
-	Kind               string
+	Kind               FollowUpKind
 	Days               int
 	Related            *Goal
 	Person             *Account
@@ -84,13 +128,24 @@ type FollowUpSignal struct {
 }
 
 // Signal is the row's first signal of kind, and whether it has one.
-func (r FollowUpRow) Signal(kind string) (FollowUpSignal, bool) {
+func (r FollowUpRow) Signal(kind FollowUpKind) (FollowUpSignal, bool) {
 	for _, sig := range r.Signals {
 		if sig.Kind == kind {
 			return sig, true
 		}
 	}
 	return FollowUpSignal{}, false
+}
+
+// WaitsOnCheckin reports whether the row's Goal waits on a Check-in: one of
+// its signals is of a kind in WaitsOnCheckinKinds.
+func (r FollowUpRow) WaitsOnCheckin() bool {
+	for _, w := range followUpWaitsOnCheckin {
+		if _, ok := r.Signal(w.kind); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // FollowUps reads the Follow-ups page for viewerID, reading each thing once
@@ -175,17 +230,14 @@ func permitFollowUpRows(rows []FollowUpRow, viewer goalActor, delegated map[int6
 		actor := on(r.Goal)
 		r.Permissions = goalPermissionsFor(actor, r.Goal, nil, permits)
 		r.OwnedByViewer = r.Goal.Owner.ID == viewer.id
-		_, checkinOverdue := r.Signal("checkin-overdue")
-		_, pathOverdue := r.Signal("path-overdue")
-		_, milestoneOverdue := r.Signal("milestone-overdue")
-		_, conflicted := r.Signal("schedule-conflicts")
+		_, conflicted := r.Signal(FollowUpScheduleConflicts)
 		r.Nudge = permits(nudgeRuleRefusal(actor, r.Goal, nudgeFacts{
-			overdue:          checkinOverdue || pathOverdue || milestoneOverdue,
+			overdue:          r.WaitsOnCheckin(),
 			scheduleConflict: conflicted,
 			anyoneLeft:       !r.Unreachable,
 		}))
 		for j := range r.Signals {
-			if sig := &r.Signals[j]; sig.Kind == "schedule-conflicts" {
+			if sig := &r.Signals[j]; sig.Kind == FollowUpScheduleConflicts {
 				sig.RelatedPermissions = goalPermissionsFor(on(*sig.Related), *sig.Related, nil, permits)
 			}
 		}
@@ -207,8 +259,8 @@ func (s *Service) readFollowUpRows(ctx context.Context, rows []FollowUpRow) erro
 		if r.Goal.Lifecycle != LifecycleActive {
 			inactiveIDs = append(inactiveIDs, r.Goal.ID)
 		}
-		_, red := r.Signal("red")
-		_, yellow := r.Signal("yellow")
+		_, red := r.Signal(FollowUpRed)
+		_, yellow := r.Signal(FollowUpYellow)
 		if red || yellow {
 			notGreen = append(notGreen, r.Goal)
 			notGreenIDs = append(notGreenIDs, r.Goal.ID)
@@ -320,19 +372,19 @@ func (s *Service) followUpRowsAmong(reads followUpReads) []FollowUpRow {
 		add(gf.Goal, FollowUpSignal{Kind: followUpHealthKind(gf.Health)})
 	}
 	for _, ask := range reads.asks {
-		add(ask.Goal, FollowUpSignal{Kind: "asks-for-help", Person: ask.Addressee})
+		add(ask.Goal, FollowUpSignal{Kind: FollowUpAsksForHelp, Person: ask.Addressee})
 	}
 	for _, gf := range fresh.CheckinOverdue {
-		add(gf.Goal, FollowUpSignal{Kind: "checkin-overdue", Days: gf.Freshness.DaysSince})
+		add(gf.Goal, FollowUpSignal{Kind: FollowUpCheckinOverdue, Days: gf.Freshness.DaysSince})
 	}
 	// A Path to Green's overdue days are counted in the Goal's timezone, the
 	// one its flag was judged in.
 	for _, gf := range fresh.OverduePaths {
-		add(gf.Goal, FollowUpSignal{Kind: "path-overdue", Days: followUpCalendarDays(gf.Freshness.PathTargetDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
+		add(gf.Goal, FollowUpSignal{Kind: FollowUpPathOverdue, Days: followUpCalendarDays(gf.Freshness.PathTargetDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
 	}
 	// So are a Milestone's.
 	for _, gf := range fresh.OverdueMilestones {
-		add(gf.Goal, FollowUpSignal{Kind: "milestone-overdue", Days: followUpCalendarDays(gf.Freshness.OverdueMilestoneDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
+		add(gf.Goal, FollowUpSignal{Kind: FollowUpMilestoneOverdue, Days: followUpCalendarDays(gf.Freshness.OverdueMilestoneDate, s.clock.Now().In(s.GoalTimezone(gf.Goal)))})
 	}
 	// An Action Item's are counted in the org's timezone, the one it is
 	// judged overdue in.
@@ -346,23 +398,23 @@ func (s *Service) followUpRowsAmong(reads followUpReads) []FollowUpRow {
 	}
 	for _, g := range goals {
 		if d, ok := itemDays[g.ID]; ok {
-			add(g, FollowUpSignal{Kind: "action-item-overdue", Days: d})
+			add(g, FollowUpSignal{Kind: FollowUpActionItemOverdue, Days: d})
 		}
 	}
 	for _, g := range goals {
 		if g.Ownerless {
-			add(g, FollowUpSignal{Kind: "ownerless"})
+			add(g, FollowUpSignal{Kind: FollowUpOwnerless})
 		}
 	}
 	graph := graphSignalsOf(unlinkedAmong(goals, reads.edges), reads.edges)
 	for _, g := range graph.Unlinked {
-		add(g, FollowUpSignal{Kind: "unlinked"})
+		add(g, FollowUpSignal{Kind: FollowUpUnlinked})
 	}
 	for _, c := range graph.ScheduleConflicts {
-		add(c.Child, FollowUpSignal{Kind: "schedule-conflicts", Days: followUpCalendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
+		add(c.Child, FollowUpSignal{Kind: FollowUpScheduleConflicts, Days: followUpCalendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
 	}
 	for _, hp := range graph.HaltedParents {
-		add(hp.Child, FollowUpSignal{Kind: "halted-parents", Related: &hp.Parent})
+		add(hp.Child, FollowUpSignal{Kind: FollowUpHaltedParents, Related: &hp.Parent})
 	}
 	for i := range rows {
 		if last, ok := latest[rows[i].Goal.ID]; ok {
@@ -389,18 +441,18 @@ func followUpCalendarDays(from, to time.Time) int {
 }
 
 // followUpHealthKind is the signal kind a Not Green Goal's Health flags it
-// with: "red" for Red, "yellow" for Yellow.
-func followUpHealthKind(health string) string {
+// with: FollowUpRed for Red, FollowUpYellow for Yellow.
+func followUpHealthKind(health string) FollowUpKind {
 	if health == HealthRed {
-		return "red"
+		return FollowUpRed
 	}
-	return "yellow"
+	return FollowUpYellow
 }
 
 // followUpSignalKinds counts the distinct kinds of signal that flag r, so a
 // Goal under two halted parents counts its halted parents once.
 func followUpSignalKinds(r FollowUpRow) int {
-	seen := map[string]bool{}
+	seen := map[FollowUpKind]bool{}
 	for _, sig := range r.Signals {
 		seen[sig.Kind] = true
 	}
@@ -429,40 +481,40 @@ func sortFollowUpRows(rows []FollowUpRow) {
 		if c := cmp.Compare(followUpRank(aActive), followUpRank(bActive)); c != 0 {
 			return c
 		}
-		_, aOwnerless := a.Signal("ownerless")
-		_, bOwnerless := b.Signal("ownerless")
+		_, aOwnerless := a.Signal(FollowUpOwnerless)
+		_, bOwnerless := b.Signal(FollowUpOwnerless)
 		if c := cmp.Compare(followUpRank(aOwnerless), followUpRank(bOwnerless)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(HealthUrgencyRank(a.Health), HealthUrgencyRank(b.Health)); c != 0 {
 			return c
 		}
-		aPath, aOverdue := a.Signal("path-overdue")
-		bPath, bOverdue := b.Signal("path-overdue")
+		aPath, aOverdue := a.Signal(FollowUpPathOverdue)
+		bPath, bOverdue := b.Signal(FollowUpPathOverdue)
 		if c := cmp.Compare(followUpRank(aOverdue), followUpRank(bOverdue)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(bPath.Days, aPath.Days); c != 0 {
 			return c
 		}
-		aMilestone, aMilestoneOverdue := a.Signal("milestone-overdue")
-		bMilestone, bMilestoneOverdue := b.Signal("milestone-overdue")
+		aMilestone, aMilestoneOverdue := a.Signal(FollowUpMilestoneOverdue)
+		bMilestone, bMilestoneOverdue := b.Signal(FollowUpMilestoneOverdue)
 		if c := cmp.Compare(followUpRank(aMilestoneOverdue), followUpRank(bMilestoneOverdue)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(bMilestone.Days, aMilestone.Days); c != 0 {
 			return c
 		}
-		aItem, aItemOverdue := a.Signal("action-item-overdue")
-		bItem, bItemOverdue := b.Signal("action-item-overdue")
+		aItem, aItemOverdue := a.Signal(FollowUpActionItemOverdue)
+		bItem, bItemOverdue := b.Signal(FollowUpActionItemOverdue)
 		if c := cmp.Compare(followUpRank(aItemOverdue), followUpRank(bItemOverdue)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
 			return c
 		}
-		aCheckinOverdue, aIsCheckinOverdue := a.Signal("checkin-overdue")
-		bCheckinOverdue, bIsCheckinOverdue := b.Signal("checkin-overdue")
+		aCheckinOverdue, aIsCheckinOverdue := a.Signal(FollowUpCheckinOverdue)
+		bCheckinOverdue, bIsCheckinOverdue := b.Signal(FollowUpCheckinOverdue)
 		if c := cmp.Compare(followUpRank(aIsCheckinOverdue), followUpRank(bIsCheckinOverdue)); c != 0 {
 			return c
 		}

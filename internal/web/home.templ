@@ -160,7 +160,7 @@ templ homeOrgSection(org homeOrg) {
 					if i > 0 {
 						{ " · " }
 					}
-					<span data-testid="home-org-count" data-kind={ b.Kind }>{ b.Label }</span>
+					<span data-testid="home-org-count" data-kind={ string(b.Kind) }>{ b.Label }</span>
 				}
 			</p>
 			<ul class="hm-list">
@@ -209,8 +209,8 @@ templ homeHeading(name string, n int) {
 // overdue and Yellow, the Red and Yellow counts with their Health's shape.
 templ homeOrgCounts(c domain.SignalCounts) {
 	for _, b := range homeOrgBadges(c) {
-		<span data-testid="home-org-count" data-kind={ b.Kind } class={ "badge", b.Class }>
-			if b.Kind == "red" || b.Kind == "yellow" {
+		<span data-testid="home-org-count" data-kind={ string(b.Kind) } class={ "badge", b.Class }>
+			if b.Kind == domain.FollowUpRed || b.Kind == domain.FollowUpYellow {
 				<span class="dot"></span>
 			}
 			{ b.Label }

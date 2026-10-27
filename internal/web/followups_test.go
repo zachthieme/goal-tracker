@@ -3140,7 +3140,7 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 	})
 
 	for _, d := range web.FollowUpSignalDefinitions {
-		if d.Kind != "red" && d.Kind != "yellow" && !checked[d.Kind] {
+		if d.Kind != "red" && d.Kind != "yellow" && !checked[string(d.Kind)] {
 			t.Errorf("no %s chip is checked for what it means", d.Kind)
 		}
 	}
@@ -3151,7 +3151,7 @@ func TestFollowUpsSignalChipsOpenWhatTheyMean(t *testing.T) {
 func followUpSignalDefinition(t *testing.T, kind string) web.FollowUpSignalDefinition {
 	t.Helper()
 	for _, d := range web.FollowUpSignalDefinitions {
-		if d.Kind == kind {
+		if string(d.Kind) == kind {
 			return d
 		}
 	}

@@ -156,7 +156,7 @@ func (p followUpsPageView) ShowEverythingURL() templ.SafeURL {
 // only. Needs an Admin's are the company's, whatever the page's scope: an
 // Admin's job there is company-wide.
 func (p followUpsPageView) Shown() []followUpGoalRow {
-	var kinds []string
+	var kinds []domain.FollowUpKind
 	for _, gk := range followUpGroupKinds {
 		if gk.Key == p.Group {
 			kinds = gk.Kinds
@@ -279,15 +279,15 @@ func (p followUpsPageView) attention() string {
 // table's: the Red and Yellow Health badges for Not Green's, the Check-in
 // overdue badge for the freshness signals (Milestone overdue among them), the
 // Ownerless badge for Ownerless, and the outlined tag for the structural ones.
-func followUpChipClass(kind string) string {
+func followUpChipClass(kind domain.FollowUpKind) string {
 	switch kind {
-	case "red":
+	case domain.FollowUpRed:
 		return "badge r"
-	case "yellow":
+	case domain.FollowUpYellow:
 		return "badge y"
-	case "checkin-overdue", "path-overdue", "milestone-overdue", "action-item-overdue":
+	case domain.FollowUpCheckinOverdue, domain.FollowUpPathOverdue, domain.FollowUpMilestoneOverdue, domain.FollowUpActionItemOverdue:
 		return "badge st"
-	case "ownerless":
+	case domain.FollowUpOwnerless:
 		return "badge ol"
 	}
 	return "rk-tag"
@@ -328,7 +328,7 @@ func (c followUpCard) Attrs() templ.Attributes {
 // page's rows but Needs an Admin, which counts the company's: an Admin's job
 // there is company-wide.
 func (p followUpsPageView) Cards() []followUpCard {
-	names := map[string]string{}
+	names := map[domain.FollowUpKind]string{}
 	for _, d := range followUpDefinitions {
 		names[d.Kind] = d.Name
 	}
@@ -359,35 +359,39 @@ func (p followUpsPageView) Cards() []followUpCard {
 // followUpType is a signal's chip on a group card: its kind, its name, and how
 // many Goals it flags.
 type followUpType struct {
-	Anchor, Name string
-	Count        int
+	Anchor domain.FollowUpKind
+	Name   string
+	Count  int
 }
 
 // followUpDefinition is one of the Follow-ups page's signals: the kind its chips
 // carry, its name, and what it means.
-type followUpDefinition struct{ Kind, Name, Means string }
+type followUpDefinition struct {
+	Kind        domain.FollowUpKind
+	Name, Means string
+}
 
 // followUpDefinitions are the Follow-ups page's signals in the page's order, each with
 // what it means: what a chip's button opens, and what "What each signal
 // means" lists. They are the one place a signal is named: the group cards'
 // chips take their names from here too.
 var followUpDefinitions = []followUpDefinition{
-	{"red", "Red", "Active Goals whose latest Check-in is Red."},
-	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
-	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
-	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
-	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date and not yet Green."},
-	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in."},
-	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
-	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
-	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
-	{"schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to."},
-	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
+	{domain.FollowUpRed, "Red", "Active Goals whose latest Check-in is Red."},
+	{domain.FollowUpYellow, "Yellow", "Active Goals whose latest Check-in is Yellow."},
+	{domain.FollowUpAsksForHelp, "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
+	{domain.FollowUpCheckinOverdue, "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{domain.FollowUpPathOverdue, "Path to Green overdue", "Active Goals past their Path to Green's target date and not yet Green."},
+	{domain.FollowUpMilestoneOverdue, "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in."},
+	{domain.FollowUpActionItemOverdue, "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
+	{domain.FollowUpOwnerless, "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
+	{domain.FollowUpUnlinked, "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{domain.FollowUpScheduleConflicts, "Schedule conflicts", "Goals due later than a Goal they contribute to."},
+	{domain.FollowUpHaltedParents, "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
 
 // followUpName is the name followUpDefinitions gives the signal kind, so a
 // chip that shows the signal's plain name reads it from the one list.
-func followUpName(kind string) string {
+func followUpName(kind domain.FollowUpKind) string {
 	for _, d := range followUpDefinitions {
 		if d.Kind == kind {
 			return d.Name
@@ -399,7 +403,7 @@ func followUpName(kind string) string {
 // followUpDefinitionsIn are the definitions of the signals flagging rows, in the
 // page's order, each once: the popovers the chips' buttons open.
 func followUpDefinitionsIn(rows []followUpGoalRow) []followUpDefinition {
-	chipped := map[string]bool{}
+	chipped := map[domain.FollowUpKind]bool{}
 	for _, r := range rows {
 		for _, sig := range r.Signals {
 			chipped[sig.Kind] = true
@@ -415,8 +419,8 @@ func followUpDefinitionsIn(rows []followUpGoalRow) []followUpDefinition {
 }
 
 // followUpMeansID is the id of the popover saying what the signal of kind means.
-func followUpMeansID(kind string) string {
-	return "follow-up-means-" + kind
+func followUpMeansID(kind domain.FollowUpKind) string {
+	return "follow-up-means-" + string(kind)
 }
 
 // followUpGoalRow is one flagged Goal on the Follow-ups page, as
@@ -463,13 +467,10 @@ type followUpFix struct {
 //     on and a Goal flagged only for its Health, Red or Yellow, among them.
 func (r followUpGoalRow) fix() followUpFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
-	if _, ownerless := r.Signal("ownerless"); ownerless && r.Permissions.Reassign {
+	if _, ownerless := r.Signal(domain.FollowUpOwnerless); ownerless && r.Permissions.Reassign {
 		return followUpFix{Label: "Reassign", Href: goal + "?open=reassign"}
 	}
-	_, checkinOverdue := r.Signal("checkin-overdue")
-	_, pathOverdue := r.Signal("path-overdue")
-	_, milestoneOverdue := r.Signal("milestone-overdue")
-	if checkinOverdue || pathOverdue || milestoneOverdue {
+	if r.WaitsOnCheckin() {
 		switch {
 		case r.Permissions.CheckIn:
 			return followUpFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
@@ -479,7 +480,7 @@ func (r followUpGoalRow) fix() followUpFix {
 			return followUpFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 		}
 	}
-	if _, unlinked := r.Signal("unlinked"); unlinked && r.Permissions.LinkParent {
+	if _, unlinked := r.Signal(domain.FollowUpUnlinked); unlinked && r.Permissions.LinkParent {
 		return followUpFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
 	if f, ok := r.scheduleConflictFix(); ok {
@@ -487,17 +488,17 @@ func (r followUpGoalRow) fix() followUpFix {
 	}
 	var parent *domain.Goal
 	for _, sig := range r.Signals {
-		if sig.Kind == "halted-parents" && (parent == nil || strings.ToLower(sig.Related.Title) < strings.ToLower(parent.Title)) {
+		if sig.Kind == domain.FollowUpHaltedParents && (parent == nil || strings.ToLower(sig.Related.Title) < strings.ToLower(parent.Title)) {
 			parent = sig.Related
 		}
 	}
 	if parent != nil {
 		return followUpFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
-	if _, unlinked := r.Signal("unlinked"); unlinked && r.Permissions.SuggestParent {
+	if _, unlinked := r.Signal(domain.FollowUpUnlinked); unlinked && r.Permissions.SuggestParent {
 		return followUpFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
-	if _, overdue := r.Signal("action-item-overdue"); overdue {
+	if _, overdue := r.Signal(domain.FollowUpActionItemOverdue); overdue {
 		return followUpFix{Label: "See Action Items", Href: goal + "#action-items"}
 	}
 	return followUpFix{Label: "Open Goal", Href: goal}
@@ -523,7 +524,7 @@ func (r followUpGoalRow) scheduleConflictFix() (followUpFix, bool) {
 	}
 	var parents []candidate
 	for _, sig := range r.Signals {
-		if sig.Kind == "schedule-conflicts" {
+		if sig.Kind == domain.FollowUpScheduleConflicts {
 			parents = append(parents, candidate{*sig.Related, sig.RelatedPermissions})
 		}
 	}
@@ -575,14 +576,14 @@ type followUpGroup struct {
 // Blank is what a group's card says when it holds no Goals.
 var followUpGroupKinds = []struct {
 	Key, Name string
-	Kinds     []string
+	Kinds     []domain.FollowUpKind
 	Blank     string
 }{
-	{"health", "Not Green", []string{"red", "yellow", "asks-for-help"}, "No Goal is Red or Yellow."},
-	{"owner", "Waiting on a Check-in", []string{"checkin-overdue", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
-	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
-	{"plan", "Placement and dates", []string{"unlinked", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
-	{followUpGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
+	{"health", "Not Green", []domain.FollowUpKind{domain.FollowUpRed, domain.FollowUpYellow, domain.FollowUpAsksForHelp}, "No Goal is Red or Yellow."},
+	{"owner", "Waiting on a Check-in", domain.WaitsOnCheckinKinds, "Nothing is waiting on a Check-in."},
+	{"followup", "Action Items overdue", []domain.FollowUpKind{domain.FollowUpActionItemOverdue}, "No Action Item is overdue."},
+	{"plan", "Placement and dates", []domain.FollowUpKind{domain.FollowUpUnlinked, domain.FollowUpScheduleConflicts}, "Every Goal is placed and its dates fit."},
+	{followUpGroupAdmin, "Needs an Admin", []domain.FollowUpKind{domain.FollowUpOwnerless, domain.FollowUpHaltedParents}, "Nothing needs an Admin."},
 }
 
 // followUpGroupAdmin is the key of the Needs an Admin group, whose card and table

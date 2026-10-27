@@ -718,9 +718,9 @@ func followUpCardLink(c followUpCard) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(sig.Anchor)
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Anchor))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 160, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 160, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 			if templ_7745c5c3_Err != nil {
@@ -746,7 +746,7 @@ func followUpCardLink(c followUpCard) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(sig.Name + " · " + strconv.Itoa(sig.Count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 160, Col: 151}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 160, Col: 159}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -1150,9 +1150,22 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 		}
 		ctx = templ.ClearChildren(ctx)
 		switch sig.Kind {
-		case "red", "yellow":
-		case "asks-for-help":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span data-testid=\"follow-up-signal\" data-kind=\"asks-for-help\" class=\"rk-tag\">")
+		case domain.FollowUpRed, domain.FollowUpYellow:
+		case domain.FollowUpAsksForHelp:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var52 string
+			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 250, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1161,16 +1174,16 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, " ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, " ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var52 string
-				templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs("of ")
+				var templ_7745c5c3_Var53 string
+				templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs("of ")
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 253, Col: 12}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1184,12 +1197,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "checkin-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<span data-testid=\"follow-up-signal\" data-kind=\"checkin-overdue\" class=\"badge st\">")
+		case domain.FollowUpCheckinOverdue:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var54 string
+			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 259, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1197,12 +1223,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "path-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<span data-testid=\"follow-up-signal\" data-kind=\"path-overdue\" class=\"badge st\">")
+		case domain.FollowUpPathOverdue:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var55 string
+			templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 263, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1210,12 +1249,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "milestone-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<span data-testid=\"follow-up-signal\" data-kind=\"milestone-overdue\" class=\"badge st\">")
+		case domain.FollowUpMilestoneOverdue:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var56 string
+			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 267, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1223,12 +1275,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "action-item-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<span data-testid=\"follow-up-signal\" data-kind=\"action-item-overdue\" class=\"badge st\">")
+		case domain.FollowUpActionItemOverdue:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var57 string
+			templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 271, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var57)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1236,12 +1301,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "ownerless":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "<span data-testid=\"follow-up-signal\" data-kind=\"ownerless\" class=\"badge ol\">")
+		case domain.FollowUpOwnerless:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var58 string
+			templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var58)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "\" class=\"badge ol\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1249,12 +1327,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "unlinked":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "<span data-testid=\"follow-up-signal\" data-kind=\"unlinked\" class=\"rk-tag\">")
+		case domain.FollowUpUnlinked:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var59 string
+			templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 279, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1262,12 +1353,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "schedule-conflicts":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<span data-testid=\"follow-up-signal\" data-kind=\"schedule-conflicts\" class=\"rk-tag\">")
+		case domain.FollowUpScheduleConflicts:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var60 string
+			templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 283, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1275,16 +1379,16 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var53 string
-			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("· due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
+			var templ_7745c5c3_Var61 string
+			templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("· due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 285, Col: 127}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1292,12 +1396,25 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "halted-parents":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<span data-testid=\"follow-up-signal\" data-kind=\"halted-parents\" class=\"rk-tag\">")
+		case domain.FollowUpHaltedParents:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "<span data-testid=\"follow-up-signal\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var62 string
+			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(sig.Kind))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 288, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1305,16 +1422,16 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var54 string
-			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs("· ")
+			var templ_7745c5c3_Var63 string
+			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs("· ")
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 290, Col: 11}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1322,7 +1439,7 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1334,7 +1451,7 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 // followUpTip is a toggletip: a button reading label that opens, with no script,
 // the popover followUpsTable holds saying what the signal of kind means, and that
 // takes the meaning as its description.
-func followUpTip(kind, label string) templ.Component {
+func followUpTip(kind domain.FollowUpKind, label string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1350,51 +1467,51 @@ func followUpTip(kind, label string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var55 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var55 == nil {
-			templ_7745c5c3_Var55 = templ.NopComponent
+		templ_7745c5c3_Var64 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var64 == nil {
+			templ_7745c5c3_Var64 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "<button type=\"button\" class=\"rk-tip\" popovertarget=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "<button type=\"button\" class=\"rk-tip\" popovertarget=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var56 string
-		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
+		var templ_7745c5c3_Var65 string
+		templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 299, Col: 75}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var65)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "\" aria-describedby=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "\" aria-describedby=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var57 string
-		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
+		var templ_7745c5c3_Var66 string
+		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 299, Col: 118}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var57)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var58 string
-		templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(label)
+		var templ_7745c5c3_Var67 string
+		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 299, Col: 128}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1436,12 +1553,12 @@ func followUpsStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var59 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var59 == nil {
-			templ_7745c5c3_Var59 = templ.NopComponent
+		templ_7745c5c3_Var68 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var68 == nil {
+			templ_7745c5c3_Var68 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<style>\n\t\t.page{--rk-pad:28px;max-width:none;padding:0 0 64px;gap:0}\n\t\t.rk-head{flex-wrap:wrap;column-gap:16px;padding-block:8px}\n\t\t.rk-head .ph-title{flex-wrap:wrap;column-gap:12px}\n\t\t.rk-head .ph-count{margin:0;white-space:normal}\n\t\t.rk-body{display:flex;flex-direction:column}\n\t\t.rk-empty{padding:24px var(--rk-pad)}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;padding:12px var(--rk-pad);border-bottom:1px solid var(--color-border);box-sizing:border-box}\n\t\t.rk-groups{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-bottom:1px solid var(--color-border)}\n\t\t.rk-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:16px 20px;color:var(--color-ink-2);font-size:var(--text-secondary)}\n\t\t.rk-group:first-child{padding-left:var(--rk-pad)}\n\t\t.rk-group:last-child{padding-right:var(--rk-pad)}\n\t\t.rk-group+.rk-group{border-left:1px solid var(--color-border)}\n\t\t.rk-group-name{font-weight:500;color:var(--color-ink)}\n\t\t.rk-group .num{font-size:24px;font-weight:600;line-height:1.2;color:var(--color-ink)}\n\t\t.rk-group .rk-chips{margin-top:4px;gap:4px}\n\t\t.rk-group .rk-tag,.rk-group .badge{white-space:normal}\n\t\ta.rk-group{transition:background var(--dur-fast) var(--ease-out)}\n\t\ta.rk-group:hover{color:var(--color-ink-2);background:var(--color-row-hover);text-decoration:none}\n\t\ta.rk-group:focus-visible{outline-offset:-2px}\n\t\t.rk-group[aria-current]{background:var(--color-row-hover);box-shadow:inset 0 -2px 0 var(--color-primary-strong)}\n\t\t.rk-zero{color:var(--color-ink-muted)}\n\t\t.rk-zero .rk-group-name{color:inherit}\n\t\t.rk-show-all{padding:12px var(--rk-pad)}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-list{overflow-x:auto}\n\t\t.rk-table th{height:32px;padding:4px 12px;background:none;box-sizing:border-box}\n\t\t.rk-table td{height:44px;padding:8px 12px;box-sizing:border-box}\n\t\t.rk-table th:first-child,.rk-table td:first-child{padding-left:var(--rk-pad)}\n\t\t.rk-table th:last-child,.rk-table td:last-child{padding-right:var(--rk-pad)}\n\t\t.rk-table tbody tr:hover{background:var(--color-row-hover)}\n\t\t.rk-table tbody tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.rk-table .rk-goal{width:100%}\n\t\t.rk-goal>a{color:var(--color-ink);font-weight:500}\n\t\t.rk-goal .badge{white-space:normal}\n\t\ttd .rk-chips{margin-top:4px;gap:4px 8px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-table .rk-health{white-space:nowrap}\n\t\t.rk-table .rk-fix{text-align:right}\n\t\t.rk-tip{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit;text-decoration:underline dotted;text-underline-offset:3px}\n\t\t.rk-pop{box-sizing:border-box;max-width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:12px 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-ink);font-size:var(--text-body);line-height:20px;box-shadow:var(--shadow-pop)}\n\t\t.rk-defs{max-width:min(560px,calc(100vw - 32px))}\n\t\t@supports (position-area:block-end){@media (min-width:601px){.rk-means{margin:4px 0;position-area:block-end span-inline-end;position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline}}}\n\t\t.rk-defs dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:var(--text-secondary);line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.rk-group+.rk-group{border-left:0}.rk-group:nth-child(odd){padding-left:var(--rk-pad)}.rk-group:nth-child(even){padding-right:var(--rk-pad);border-left:1px solid var(--color-border)}.rk-group:nth-child(n+3){border-top:1px solid var(--color-border)}.rk-group:last-child:nth-child(odd){grid-column:1/-1}}\n\t\t@media (max-width:900px){.page{--rk-pad:16px}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px var(--rk-pad);border-bottom:1px solid var(--color-border)}.rk-table td{display:block;height:auto;padding:0;border-bottom:none}.rk-table td:first-child,.rk-table td:last-child,.rk-table tbody tr:last-child td{padding:0;border-bottom:none}.rk-table .rk-goal{grid-column:2;width:auto}.rk-table .rk-owner{grid-column:2;white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px;text-align:left}.rk-defs dl{grid-template-columns:minmax(0,1fr);gap:0}.rk-defs dd{margin-bottom:8px}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "<style>\n\t\t.page{--rk-pad:28px;max-width:none;padding:0 0 64px;gap:0}\n\t\t.rk-head{flex-wrap:wrap;column-gap:16px;padding-block:8px}\n\t\t.rk-head .ph-title{flex-wrap:wrap;column-gap:12px}\n\t\t.rk-head .ph-count{margin:0;white-space:normal}\n\t\t.rk-body{display:flex;flex-direction:column}\n\t\t.rk-empty{padding:24px var(--rk-pad)}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;padding:12px var(--rk-pad);border-bottom:1px solid var(--color-border);box-sizing:border-box}\n\t\t.rk-groups{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-bottom:1px solid var(--color-border)}\n\t\t.rk-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:16px 20px;color:var(--color-ink-2);font-size:var(--text-secondary)}\n\t\t.rk-group:first-child{padding-left:var(--rk-pad)}\n\t\t.rk-group:last-child{padding-right:var(--rk-pad)}\n\t\t.rk-group+.rk-group{border-left:1px solid var(--color-border)}\n\t\t.rk-group-name{font-weight:500;color:var(--color-ink)}\n\t\t.rk-group .num{font-size:24px;font-weight:600;line-height:1.2;color:var(--color-ink)}\n\t\t.rk-group .rk-chips{margin-top:4px;gap:4px}\n\t\t.rk-group .rk-tag,.rk-group .badge{white-space:normal}\n\t\ta.rk-group{transition:background var(--dur-fast) var(--ease-out)}\n\t\ta.rk-group:hover{color:var(--color-ink-2);background:var(--color-row-hover);text-decoration:none}\n\t\ta.rk-group:focus-visible{outline-offset:-2px}\n\t\t.rk-group[aria-current]{background:var(--color-row-hover);box-shadow:inset 0 -2px 0 var(--color-primary-strong)}\n\t\t.rk-zero{color:var(--color-ink-muted)}\n\t\t.rk-zero .rk-group-name{color:inherit}\n\t\t.rk-show-all{padding:12px var(--rk-pad)}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-list{overflow-x:auto}\n\t\t.rk-table th{height:32px;padding:4px 12px;background:none;box-sizing:border-box}\n\t\t.rk-table td{height:44px;padding:8px 12px;box-sizing:border-box}\n\t\t.rk-table th:first-child,.rk-table td:first-child{padding-left:var(--rk-pad)}\n\t\t.rk-table th:last-child,.rk-table td:last-child{padding-right:var(--rk-pad)}\n\t\t.rk-table tbody tr:hover{background:var(--color-row-hover)}\n\t\t.rk-table tbody tr:last-child td{border-bottom:1px solid var(--color-border)}\n\t\t.rk-table .rk-goal{width:100%}\n\t\t.rk-goal>a{color:var(--color-ink);font-weight:500}\n\t\t.rk-goal .badge{white-space:normal}\n\t\ttd .rk-chips{margin-top:4px;gap:4px 8px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-table .rk-health{white-space:nowrap}\n\t\t.rk-table .rk-fix{text-align:right}\n\t\t.rk-tip{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit;text-decoration:underline dotted;text-underline-offset:3px}\n\t\t.rk-pop{box-sizing:border-box;max-width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:12px 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-ink);font-size:var(--text-body);line-height:20px;box-shadow:var(--shadow-pop)}\n\t\t.rk-defs{max-width:min(560px,calc(100vw - 32px))}\n\t\t@supports (position-area:block-end){@media (min-width:601px){.rk-means{margin:4px 0;position-area:block-end span-inline-end;position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline}}}\n\t\t.rk-defs dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:var(--text-secondary);line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.rk-group+.rk-group{border-left:0}.rk-group:nth-child(odd){padding-left:var(--rk-pad)}.rk-group:nth-child(even){padding-right:var(--rk-pad);border-left:1px solid var(--color-border)}.rk-group:nth-child(n+3){border-top:1px solid var(--color-border)}.rk-group:last-child:nth-child(odd){grid-column:1/-1}}\n\t\t@media (max-width:900px){.page{--rk-pad:16px}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px var(--rk-pad);border-bottom:1px solid var(--color-border)}.rk-table td{display:block;height:auto;padding:0;border-bottom:none}.rk-table td:first-child,.rk-table td:last-child,.rk-table tbody tr:last-child td{padding:0;border-bottom:none}.rk-table .rk-goal{grid-column:2;width:auto}.rk-table .rk-owner{grid-column:2;white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px;text-align:left}.rk-defs dl{grid-template-columns:minmax(0,1fr);gap:0}.rk-defs dd{margin-bottom:8px}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

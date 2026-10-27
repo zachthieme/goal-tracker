@@ -24,8 +24,8 @@ func followUpsFor(t *testing.T, h *testsupport.Harness, viewer domain.Account) d
 }
 
 // followUpKinds lists a row's signal kinds in order.
-func followUpKinds(r domain.FollowUpRow) []string {
-	var out []string
+func followUpKinds(r domain.FollowUpRow) []domain.FollowUpKind {
+	var out []domain.FollowUpKind
 	for _, sig := range r.Signals {
 		out = append(out, sig.Kind)
 	}
@@ -76,7 +76,7 @@ func followUpRowOf(t *testing.T, rows []domain.FollowUpRow, goal domain.Goal) do
 
 // followUpSignalOf finds the row's signal of kind, failing the test when it
 // has none.
-func followUpSignalOf(t *testing.T, r domain.FollowUpRow, kind string) domain.FollowUpSignal {
+func followUpSignalOf(t *testing.T, r domain.FollowUpRow, kind domain.FollowUpKind) domain.FollowUpSignal {
 	t.Helper()
 	sig, ok := r.Signal(kind)
 	if !ok {
@@ -128,7 +128,7 @@ func TestFollowUpsCountDaysAndNameParents(t *testing.T) {
 	}
 	// launch is a parent with nothing wrong in its schedule, but its Yellow
 	// Check-in puts it under Not Green, and its Path to Green isn't due yet.
-	if got := followUpKinds(followUpRowOf(t, rows, launch)); !slices.Equal(got, []string{"yellow"}) {
+	if got := followUpKinds(followUpRowOf(t, rows, launch)); !slices.Equal(got, []domain.FollowUpKind{"yellow"}) {
 		t.Errorf("%q flagged for %v, want only yellow", launch.Title, got)
 	}
 	for _, r := range rows {
@@ -268,7 +268,7 @@ func TestFollowUpsPutTheMostUrgentGoalFirst(t *testing.T) {
 	if long, short := followUpSignalOf(t, rows[1], "path-overdue").Days, followUpSignalOf(t, rows[2], "path-overdue").Days; long != 7 || short != 5 {
 		t.Errorf("Paths to Green overdue %d and %d days; want 7 and 5", long, short)
 	}
-	if r := rows[len(rows)-1]; r.Health != "" || !slices.Equal(followUpKinds(r), []string{"halted-parents"}) {
+	if r := rows[len(rows)-1]; r.Health != "" || !slices.Equal(followUpKinds(r), []domain.FollowUpKind{"halted-parents"}) {
 		t.Errorf("On Hold row = Health %q, signals %v; want none, halted-parents", r.Health, followUpKinds(r))
 	}
 }
@@ -418,5 +418,46 @@ func TestFollowUpsRowsCarryTheirViewersPermissions(t *testing.T) {
 	}
 	if nudges[true] == 0 || nudges[false] == 0 {
 		t.Errorf("rows offering a Nudge: %d, not offering one: %d; want some of each", nudges[true], nudges[false])
+	}
+}
+
+// A Goal waits on a Check-in when it is Check-in overdue, past its Path to
+// Green or has a Milestone overdue, its Freshness and its Follow-ups row
+// agreeing, and only then: being Red, an overdue Action Item or a Schedule
+// conflict isn't waiting on one (CONTEXT.md: Nudge).
+func TestFollowUpsSayWhatWaitsOnACheckin(t *testing.T) {
+	t.Parallel()
+
+	wantKinds := []domain.FollowUpKind{domain.FollowUpCheckinOverdue, domain.FollowUpPathOverdue, domain.FollowUpMilestoneOverdue}
+	if !slices.Equal(domain.WaitsOnCheckinKinds, wantKinds) {
+		t.Errorf("WaitsOnCheckinKinds = %v, want %v", domain.WaitsOnCheckinKinds, wantKinds)
+	}
+
+	for _, tc := range []struct {
+		name      string
+		freshness domain.Freshness
+		want      bool
+	}{
+		{"Check-in overdue", domain.Freshness{CheckinOverdue: true}, true},
+		{"Path to Green overdue", domain.Freshness{PathToGreenOverdue: true}, true},
+		{"Milestone overdue", domain.Freshness{MilestoneOverdue: true}, true},
+		{"none", domain.Freshness{DaysSince: 3, CadenceDays: 7}, false},
+	} {
+		if got := tc.freshness.WaitsOnCheckin(); got != tc.want {
+			t.Errorf("Freshness %s: WaitsOnCheckin() = %t, want %t", tc.name, got, tc.want)
+		}
+	}
+
+	for _, kind := range wantKinds {
+		r := domain.FollowUpRow{Signals: []domain.FollowUpSignal{{Kind: domain.FollowUpUnlinked}, {Kind: kind, Days: 2}}}
+		if !r.WaitsOnCheckin() {
+			t.Errorf("row with %s: WaitsOnCheckin() = false, want true", kind)
+		}
+	}
+	for _, kind := range []domain.FollowUpKind{domain.FollowUpRed, domain.FollowUpActionItemOverdue, domain.FollowUpScheduleConflicts} {
+		r := domain.FollowUpRow{Signals: []domain.FollowUpSignal{{Kind: kind, Days: 2}}}
+		if r.WaitsOnCheckin() {
+			t.Errorf("row with only %s: WaitsOnCheckin() = true, want false", kind)
+		}
 	}
 }
