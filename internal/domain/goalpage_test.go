@@ -885,7 +885,6 @@ func TestGoalPageMarksNewOnlySinceTheLatestCheckin(t *testing.T) {
 // not yet where the Owner still is on its date (CONTEXT.md: Timezone).
 func TestGoalPageMarksOverdueOnTheOwnersCalendar(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	for _, c := range []struct {
 		name, tz string
 		now      time.Time
@@ -903,7 +902,7 @@ func TestGoalPageMarksOverdueOnTheOwnersCalendar(t *testing.T) {
 			g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 			h.Clock.Set(c.now)
 
-			p, err := h.Service.GoalPage(ctx, sam.ID, g.ID)
+			p, err := h.Service.GoalPage(t.Context(), sam.ID, g.ID)
 			if err != nil {
 				t.Fatalf("GoalPage: %v", err)
 			}
