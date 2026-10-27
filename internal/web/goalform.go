@@ -375,25 +375,7 @@ func (s *Server) splitParents(ctx context.Context, ids []int64, goalID int64) ([
 	if err != nil {
 		return nil, nil, fmt.Errorf("load goals: %w", err)
 	}
-	byID := map[int64]domain.Goal{}
-	for _, g := range all {
-		byID[g.ID] = g
-	}
-	var picked []domain.Goal
-	for _, id := range ids {
-		g, ok := byID[id]
-		if !ok {
-			continue
-		}
-		delete(byID, id)
-		picked = append(picked, g)
-	}
-	var candidates []domain.Goal
-	for _, g := range all {
-		if _, left := byID[g.ID]; left {
-			candidates = append(candidates, g)
-		}
-	}
+	picked, candidates := domain.PickParents(all, ids)
 	return picked, candidates, nil
 }
 
@@ -412,18 +394,26 @@ func (s *Server) parentChoices(ctx context.Context, current domain.Account, goal
 	if err != nil {
 		return nil, fmt.Errorf("load parent goals' check-ins: %w", err)
 	}
+	health := make(map[int64]string, len(latest))
+	for id, c := range latest {
+		health[id] = c.Health
+	}
+	return parentChoicesOf(current, goals, health), nil
+}
+
+// parentChoicesOf are goals offered to current to contribute to, in order,
+// each with its Health out of health, keyed by Goal ID, and whom picking it
+// asks.
+func parentChoicesOf(current domain.Account, goals []domain.Goal, health map[int64]string) []parentChoice {
 	var out []parentChoice
 	for _, g := range goals {
-		p := parentChoice{Goal: g}
+		p := parentChoice{Goal: g, Health: health[g.ID]}
 		if g.Owner.ID != current.ID {
 			p.Asks = g.Owner.Label()
 		}
-		if c, ok := latest[g.ID]; ok {
-			p.Health = c.Health
-		}
 		out = append(out, p)
 	}
-	return out, nil
+	return out
 }
 
 // inputParentID is the Contributes to field's name, posted once per parent
@@ -642,21 +632,21 @@ func (s *Server) handleDefineGoalForm(w http.ResponseWriter, r *http.Request, cu
 	if !ok {
 		return
 	}
-	v, err := s.definitionForm(r.Context(), g)
+	page, err := s.svc.GoalDefinitionPage(r.Context(), g, nil)
 	if err != nil {
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
-	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
-		s.serverError(w, r, "could not load goal", err)
-		return
-	}
+	v := definitionForm(page)
+	s.fillDefinition(current, page, &v)
 	render(w, r, http.StatusOK, goalFormPage(&current, v))
 }
 
-// definitionForm is the form as the saved Goal g fills it: its Title, Why it
-// matters, Kind and delivery date, cadence, Dimension values and Fields.
-func (s *Server) definitionForm(ctx context.Context, g domain.Goal) (goalFormView, error) {
+// definitionForm is the form as the saved Goal on page fills it: its Title,
+// Why it matters, Kind and delivery date, cadence, Dimension values and
+// Fields.
+func definitionForm(page domain.GoalDefinitionPage) goalFormView {
+	g := page.Goal
 	v := goalFormView{
 		Title:        g.Title,
 		WhyItMatters: g.WhyItMatters,
@@ -667,56 +657,35 @@ func (s *Server) definitionForm(ctx context.Context, g domain.Goal) (goalFormVie
 		NewValues:    map[int64]string{},
 		FieldValues:  map[int64]string{},
 	}
-	values, err := s.svc.GoalValues(ctx, g.ID)
-	if err != nil {
-		return goalFormView{}, fmt.Errorf("load goal values: %w", err)
-	}
-	for _, val := range values {
+	for _, val := range page.Values {
 		v.Chosen[val.ID] = true
 	}
-	fields, err := s.svc.GoalFields(ctx, g.ID)
-	if err != nil {
-		return goalFormView{}, fmt.Errorf("load goal fields: %w", err)
-	}
-	for _, f := range fields {
+	for _, f := range page.FieldValues {
 		v.FieldValues[f.Field.ID] = f.Value
 	}
-	return v, nil
+	return v
 }
 
-// loadDefinition gives the define page's v the Goal g it finishes, what it
-// shows of g read-only — its Milestones, Metrics and parents, Accepted and
-// Pending — the parents picked by ids and the candidates left over, and Where
-// it fits. The Title is always g's, which can't change here.
-func (s *Server) loadDefinition(ctx context.Context, current domain.Account, g domain.Goal, v *goalFormView, ids []int64) error {
+// fillDefinition gives the define page's v, for current, the Goal it
+// finishes, what it shows of it read-only — its Milestones, Metrics and
+// parents, Accepted and Pending — the parents picked and the candidates left
+// over, and Where it fits, all out of page. The Title is always the Goal's,
+// which can't change here.
+func (s *Server) fillDefinition(current domain.Account, page domain.GoalDefinitionPage, v *goalFormView) {
+	g := page.Goal
 	v.Goal, v.Title = &g, g.Title
-	var err error
 	v.Dates = s.displayDates()
-	if v.ExistingMilestones, err = s.svc.ListMilestones(ctx, g.ID); err != nil {
-		return fmt.Errorf("load milestones: %w", err)
-	}
-	if v.ExistingMetrics, err = s.svc.ListMetrics(ctx, g.ID); err != nil {
-		return fmt.Errorf("load metrics: %w", err)
-	}
-	accepted, err := s.svc.ParentLinks(ctx, g.ID)
-	if err != nil {
-		return fmt.Errorf("load parents: %w", err)
-	}
-	pending, err := s.svc.PendingParentLinks(ctx, g.ID)
-	if err != nil {
-		return fmt.Errorf("load pending parents: %w", err)
-	}
+	v.ExistingMilestones, v.ExistingMetrics = page.Milestones, page.Metrics
 	v.Linked = nil
-	for _, l := range accepted {
+	for _, l := range page.Accepted {
 		v.Linked = append(v.Linked, linkedParent{Goal: l.Goal})
 	}
-	for _, l := range pending {
+	for _, l := range page.Pending {
 		v.Linked = append(v.Linked, linkedParent{Goal: l.Goal, Pending: true})
 	}
-	if v.Parents, v.Candidates, err = s.pickParents(ctx, current, ids, g.ID); err != nil {
-		return err
-	}
-	return s.loadWhereItFits(ctx, v)
+	v.Parents = parentChoicesOf(current, page.Parents, page.ParentHealth)
+	v.Candidates = page.Candidates
+	v.Dimensions, v.Fields = page.Dimensions, page.Fields
 }
 
 // handleDefineGoal submits the define page: the Proposed Goal is changed as
@@ -741,10 +710,12 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	v.Problems = goalFormProblems(err)
-	if err := s.loadDefinition(r.Context(), current, g, &v, in.ParentIDs); err != nil {
+	page, err := s.svc.GoalDefinitionPage(r.Context(), g, in.ParentIDs)
+	if err != nil {
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
+	s.fillDefinition(current, page, &v)
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
 }
 

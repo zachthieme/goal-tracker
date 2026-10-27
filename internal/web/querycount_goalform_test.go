@@ -86,3 +86,69 @@ func TestDefineChecklistReadsNoParents(t *testing.T) {
 		}
 	}
 }
+
+// The define page reads through one page loader, once (ADR 0010, #629):
+// Service.GoalDefinitionPage reads the Goal's values, Fields, Milestones,
+// Metrics and parents, Accepted and Pending, once each, and the candidates
+// and offered Dimensions and Fields from them, so the parent links aren't
+// read again for the candidates. No query runs twice but, at most,
+// ListParentGoals, which ParentCandidates' cycle check once ran for every
+// candidate (#638).
+func TestDefinePageReadsEachThingOnce(t *testing.T) {
+	t.Parallel()
+	// defineMax is the define page's queries: the session's 2 and the
+	// sidebar's 11, DefinableGoal's Goal, and the loader's 11: the Goal's
+	// values, Fields, Milestones, Metrics, accepted and Pending parents,
+	// every Goal and its contributors for the candidates, and the Dimensions,
+	// their values and the Fields.
+	const defineMax = 25
+	h := testsupport.New(t, queryCountAdmin)
+	seedQueryCountFixture(t, h, 10)
+	// Goal 00 is the fixture's Proposed Goal, Priya's.
+	proposed := goalFormFixtureGoal(t, h, "Goal 00")
+	ts, _, queries := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, proposed.Owner.Email)
+
+	queries.take()
+	getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, proposed.ID))
+	ran := queries.take()
+	if len(ran) > defineMax {
+		t.Errorf("the define page ran %d queries; want at most %d", len(ran), defineMax)
+	}
+	for name, times := range countQueryNames(ran) {
+		if times > 1 && name != "ListParentGoals" {
+			t.Errorf("the define page ran %s %d times; want it once", name, times)
+		}
+	}
+}
+
+// A refused define, read through the same loader, shows the form as typed,
+// not as saved, with the parent it posted picked (#629).
+func TestRefusedDefineKeepsWhatWasTyped(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, queryCountAdmin)
+	seedQueryCountFixture(t, h, 10)
+	proposed := goalFormFixtureGoal(t, h, "Goal 00")
+	parent := goalFormFixtureGoal(t, h, "Goal 03")
+	ts, _, _ := newQueryCountingServer(t, h)
+	client := signInClient(t, ts.URL, proposed.Owner.Email)
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, proposed.ID), url.Values{
+		"title":          {proposed.Title},
+		"why_it_matters": {""},
+		"parent_id":      {fmt.Sprint(parent.ID)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("the refused define answered %d, want 422:\n%s", resp.StatusCode, page)
+	}
+	doc := parsePage(t, page)
+	if why := formField(t, doc, "why_it_matters"); why.Value != "" {
+		t.Errorf("Why it matters reads %q, want it as typed, blank", why.Value)
+	}
+	// Goal 03 checked in Yellow.
+	if chip := textOf(findByTestID(t, doc, "parent-chip")); !strings.Contains(chip, parent.Title) || !strings.Contains(chip, "Yellow") {
+		t.Errorf("the picked parent reads %q, want %s with its Health, Yellow", chip, parent.Title)
+	}
+}
