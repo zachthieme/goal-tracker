@@ -716,9 +716,9 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 }
 
 // An exception block names each Schedule conflict its Goal is in after what
-// changed, as the child and as the parent, with the other Goal by name, its
-// Owner introduced at their first mention, and both dates as Markdown writes
-// dates.
+// changed, grouped by side under each side's words, the child side first, with
+// the other Goal by name, its Owner introduced at their first mention, and its
+// delivery date as Markdown writes dates, never the block's own.
 func TestMarkdownNamesEachScheduleConflictOfABlock(t *testing.T) {
 	t.Parallel()
 
@@ -737,8 +737,8 @@ func TestMarkdownNamesEachScheduleConflictOfABlock(t *testing.T) {
 
 	got := export.Markdown(pub)
 	want := "\n\n**Changed:** Back to Green\n\n**Schedule conflict:** " +
-		"Due 2026-11-03, after Open in Iberia (Pat Parker (pat@example.com)), due 2026-10-15 · " +
-		"Fit\\_out the floor (Sam Lee (sam@example.com)) is due 2026-12-01, after this Goal's 2026-11-03\n"
+		"Parent Goal due earlier · Open in Iberia (Pat Parker (pat@example.com)), due 2026-10-15; " +
+		"Contributing Goal due later · Fit\\_out the floor (Sam Lee (sam@example.com)), due 2026-12-01\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("Markdown:\n%s\nwant it to contain %q", got, want)
 	}

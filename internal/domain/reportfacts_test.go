@@ -235,6 +235,44 @@ func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
 	}
 }
 
+// A Schedule conflict fact's conflicts form at most two groups, the child side
+// first, each with its words, each keeping the order the block gave it.
+func TestReportScheduleConflictGroupsSplitTheConflictsBySide(t *testing.T) {
+	t.Parallel()
+
+	iberia := domain.ReportScheduleConflict{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), OwnDue: factsLater}
+	lisbon := domain.ReportScheduleConflict{GoalID: 9, Title: "Lisbon office", Owner: factsAda, Due: time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC), OwnDue: factsLater}
+	network := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Wire the network", Owner: factsAda, Due: factsLater.AddDate(0, 1, 0), OwnDue: factsLater}
+	outline := func(groups []domain.ReportScheduleConflictGroup) []string {
+		var out []string
+		for _, g := range groups {
+			line := g.Words + ":"
+			for _, c := range g.Conflicts {
+				line += " " + c.Title
+			}
+			out = append(out, line)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name      string
+		conflicts []domain.ReportScheduleConflict
+		want      []string
+	}{
+		{"child side only", []domain.ReportScheduleConflict{iberia}, []string{"Parent Goal due earlier: Open in Iberia"}},
+		{"parent side only", []domain.ReportScheduleConflict{network}, []string{"Contributing Goal due later: Wire the network"}},
+		{"both sides", []domain.ReportScheduleConflict{iberia, lisbon, network}, []string{
+			"Parent Goal due earlier: Open in Iberia Lisbon office",
+			"Contributing Goal due later: Wire the network",
+		}},
+		{"none", nil, nil},
+	} {
+		if got := outline(domain.ReportScheduleConflictGroups(tc.conflicts)); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: ReportScheduleConflictGroups() = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 // A block's head reads its Health with its Run off Green and what it was,
 // "was Green", then its title, Owner, Lifecycle, due date with its earlier
 // dates, and badges.

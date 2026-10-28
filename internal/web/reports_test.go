@@ -4510,11 +4510,13 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 }
 
 // An exception block names each Schedule conflict its Goal is in, after what
-// changed: as the child, its date after the parent's; as the parent, a child's
-// date after its own. Each links the Goal at the other end, outside the Report
-// though it is, and shows its Owner as every person on that page is: a Name
-// that discloses their email on the draft and the publication, and Name (email)
-// at their first mention in Print. Dates read as the page writes them.
+// changed, grouped by side: as the child, under "Parent Goal due earlier", then
+// as the parent, under "Contributing Goal due later", the groups joined by
+// "; ". Each Goal at the other end links to its Goal page, outside the Report
+// though it is, with its Owner shown as every person on that page is (a Name
+// that discloses their email on the draft and the publication, Name (email) at
+// their first mention in Print) and its delivery date as the page writes dates;
+// the block's own delivery date, which its head shows, is not repeated.
 func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4537,24 +4539,23 @@ func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
-	// textOf reads words apart, so a Name between brackets reads "( Pat
-	// Parker )"; reads closes them up.
-	reads := strings.NewReplacer("( ", "(", " )", ")").Replace
+	type conflictGroup struct {
+		words   string
+		entries []string
+	}
+	onPage := []conflictGroup{
+		{"Parent Goal due earlier", []string{"Open in Iberia (Pat Parker), due Oct 15, 2026"}},
+		{"Contributing Goal due later", []string{"Wire the network (Sam Lee), due Dec 1, 2026"}},
+	}
 	for _, page := range []struct {
 		name, url string
-		want      []string
+		want      []conflictGroup
 	}{
-		{"draft", reportURL, []string{
-			"Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026",
-			"Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
-		}},
-		{"publication", pubURL, []string{
-			"Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026",
-			"Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
-		}},
-		{"print", pubURL + "/print", []string{
-			"Due Nov 3, 2026, after Open in Iberia (Pat Parker (pat@example.com)), due Oct 15, 2026",
-			"Wire the network (Sam Lee (sam@example.com)) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
+		{"draft", reportURL, onPage},
+		{"publication", pubURL, onPage},
+		{"print", pubURL + "/print", []conflictGroup{
+			{"Parent Goal due earlier", []string{"Open in Iberia (Pat Parker (pat@example.com)), due Oct 15, 2026"}},
+			{"Contributing Goal due later", []string{"Wire the network (Sam Lee (sam@example.com)), due Dec 1, 2026"}},
 		}},
 	} {
 		block := reportBlockOf(t, getPage(t, client, page.url), middle)
@@ -4562,26 +4563,47 @@ func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
 		if !strings.HasPrefix(textOf(fact), "Schedule conflict: ") {
 			t.Errorf("%s: the fact reads %q, want it labelled Schedule conflict:", page.name, textOf(fact))
 		}
-		entries := findAllByTestID(fact, "report-schedule-conflict")
-		var got []string
-		for _, e := range entries {
-			got = append(got, reads(textOf(e)))
+		var wantGroups, gotGroups []string
+		for _, g := range page.want {
+			wantGroups = append(wantGroups, strings.Join(append([]string{g.words}, g.entries...), " · "))
 		}
-		if !slices.Equal(got, page.want) {
-			t.Errorf("%s: Schedule conflicts read\n%q\nwant\n%q", page.name, got, page.want)
+		groups := findAllByTestID(fact, "report-schedule-conflict-group")
+		for _, g := range groups {
+			gotGroups = append(gotGroups, runningText(g))
+		}
+		if !slices.Equal(gotGroups, wantGroups) {
+			t.Errorf("%s: Schedule conflict groups read\n%q\nwant\n%q", page.name, gotGroups, wantGroups)
 			continue
+		}
+		if got, want := runningText(fact), "Schedule conflict: "+strings.Join(wantGroups, "; "); got != want {
+			t.Errorf("%s: the fact reads %q, want %q", page.name, got, want)
 		}
 		for i, other := range []struct {
 			goal  domain.Goal
 			email string
 			name  string
 		}{{parent, "pat@example.com", "Pat Parker"}, {child, "sam@example.com", "Sam Lee"}} {
-			if link := linkTo(entries[i], fmt.Sprintf("/goals/%d", other.goal.ID)); link == nil || textOf(link) != other.goal.Title {
-				t.Errorf("%s: %q does not link %s to its Goal page", page.name, got[i], other.goal.Title)
+			entries := findAllByTestID(groups[i], "report-schedule-conflict")
+			var got []string
+			for _, e := range entries {
+				got = append(got, runningText(e))
 			}
-			if page.name != "print" && !reportShowsPerson(entries[i], other.email, other.name) {
-				t.Errorf("%s: %q does not show %s as a Name that discloses their email", page.name, got[i], other.name)
+			if !slices.Equal(got, page.want[i].entries) {
+				t.Errorf("%s: %s group's Schedule conflicts read %q, want %q", page.name, page.want[i].words, got, page.want[i].entries)
+				continue
 			}
+			if strings.Contains(got[0], "Nov 3, 2026") {
+				t.Errorf("%s: %q repeats the block's own delivery date", page.name, got[0])
+			}
+			if link := linkTo(entries[0], fmt.Sprintf("/goals/%d", other.goal.ID)); link == nil || textOf(link) != other.goal.Title {
+				t.Errorf("%s: %q does not link %s to its Goal page", page.name, got[0], other.goal.Title)
+			}
+			if page.name != "print" && !reportShowsPerson(entries[0], other.email, other.name) {
+				t.Errorf("%s: %q does not show %s as a Name that discloses their email", page.name, got[0], other.name)
+			}
+		}
+		if !precedes(groups[0], groups[1]) {
+			t.Errorf("%s: the contributing-Goal group comes before the parent-Goal group", page.name)
 		}
 		if changed := findAllByTestID(block, "report-changes"); len(changed) > 0 && !precedes(changed[0], fact) {
 			t.Errorf("%s: Schedule conflict comes before Changed", page.name)
@@ -5681,11 +5703,10 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 	case domain.ReportFactChanged:
 		out = append(out, f.Changes...)
 	case domain.ReportFactScheduleConflict:
-		for _, c := range f.ScheduleConflicts {
-			if c.AsParent {
-				out = append(out, c.Title, c.Owner.Label(), domain.ReportConflictIsDue, domain.ReportConflictAfterThisGoals)
-			} else {
-				out = append(out, domain.ReportConflictDue, domain.ReportConflictAfter, c.Title, c.Owner.Label(), domain.ReportConflictOtherDue)
+		for _, g := range domain.ReportScheduleConflictGroups(f.ScheduleConflicts) {
+			out = append(out, g.Words)
+			for _, c := range g.Conflicts {
+				out = append(out, c.Title, c.Owner.Label(), domain.ReportConflictOtherDue)
 			}
 		}
 	case domain.ReportFactContributesTo, domain.ReportFactSupportedBy:
