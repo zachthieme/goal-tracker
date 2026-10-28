@@ -642,8 +642,8 @@ func reportMatchesRail(m reportMatches) templ.Component {
 }
 
 // reportRuleRowInputs is the i-th rule row: what it tests, its operator, and
-// the values it tests for, one group per attribute, which script narrows to the
-// chosen attribute's. A Top-level row tests no values, so it offers only "is
+// the values it tests for, one group per attribute, which script swaps for
+// the chosen attribute's values alone. A Top-level row tests no values, so it offers only "is
 // Top-level" and "is not Top-level", but still carries every attribute's
 // values, hidden by script, so switching it to another attribute offers that
 // attribute's. Before script runs, a style hides a Top-level row's values, so
@@ -1452,7 +1452,7 @@ func reportBuilderScript() templ.Component {
 			templ_7745c5c3_Var67 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"report-builder\"]');\n\t\t\tif (!form) return;\n\t\t\tvar inputs = form.querySelector('[data-testid=\"report-builder-inputs\"]');\n\t\t\tform.classList.add(\"rb-js\");\n\t\t\tvar ops = {\n\t\t\t\tvalues: [[\"is\", \"is\"], [\"is any of\", \"is any of\"], [\"is not\", \"is not\"]],\n\t\t\t\t\"top-level\": [[\"is\", \"is Top-level\"], [\"is not\", \"is not Top-level\"]],\n\t\t\t\torg: [[\"is\", \"is in the org of\"], [\"is any of\", \"is in the org of any of\"], [\"is not\", \"is not in the org of\"]]\n\t\t\t};\n\t\t\tfunction narrow(row) {\n\t\t\t\tvar attribute = row.querySelector('[data-testid=\"rule-attribute\"]').value;\n\t\t\t\tvar op = row.querySelector('[data-testid=\"rule-op\"]');\n\t\t\t\tvar values = row.querySelector('[data-testid=\"rule-values\"]');\n\t\t\t\tvar wanted = ops[attribute] || ops.values;\n\t\t\t\tvar chosen = op.value;\n\t\t\t\top.textContent = \"\";\n\t\t\t\twanted.forEach(function (o) {\n\t\t\t\t\top.add(new Option(o[1], o[0], false, o[0] === chosen));\n\t\t\t\t});\n\t\t\t\tif (!values) return;\n\t\t\t\tvalues.hidden = attribute === \"top-level\" || attribute === \"\";\n\t\t\t\tvalues.querySelectorAll(\"optgroup\").forEach(function (group) {\n\t\t\t\t\tvar mine = group.getAttribute(\"data-attribute\") === attribute;\n\t\t\t\t\tgroup.hidden = !mine;\n\t\t\t\t\tgroup.disabled = !mine;\n\t\t\t\t\tif (!mine) group.querySelectorAll(\"option\").forEach(function (o) { o.selected = false; });\n\t\t\t\t});\n\t\t\t}\n\t\t\t// reveal scrolls a row's values to its first selected one, top of\n\t\t\t// the list, moving only the list: left to itself, the browser sets\n\t\t\t// it on the list's bottom edge, where it can sit half out of view.\n\t\t\tfunction reveal(row) {\n\t\t\t\tvar values = row.querySelector('[data-testid=\"rule-values\"]');\n\t\t\t\tvar first = values && values.selectedOptions[0];\n\t\t\t\tif (!first || values.hidden) return;\n\t\t\t\tvalues.scrollTop += first.getBoundingClientRect().top - values.getBoundingClientRect().top - values.clientTop;\n\t\t\t}\n\t\t\tform.querySelectorAll(\"[data-rule]\").forEach(narrow);\n\t\t\tform.querySelectorAll(\"[data-rule]\").forEach(reveal);\n\t\t\t// A web font that loads late changes each option's height.\n\t\t\tif (document.fonts) document.fonts.ready.then(function () { form.querySelectorAll(\"[data-rule]\").forEach(reveal); });\n\t\t\tform.addEventListener(\"change\", function (e) {\n\t\t\t\tif (e.target.matches('[data-testid=\"rule-attribute\"]')) narrow(e.target.closest(\"[data-rule]\"));\n\t\t\t});\n\t\t\tform.querySelectorAll(\"[data-goal-picker] .rb-no-js select\").forEach(function (select) {\n\t\t\t\tselect.disabled = true;\n\t\t\t});\n\t\t\tform.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\" && e.target.matches(\"[data-goal-search]\")) e.preventDefault();\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar picker = e.target.closest(\"[data-goal-picker]\");\n\t\t\t\tif (!picker) return;\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tpicker.querySelector(\".rb-chips\").appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\tvar search = picker.querySelector(\"[data-goal-search]\");\n\t\t\t\t\tsearch.value = \"\";\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"li\").remove();\n\t\t\t\t\tpicker.querySelector(\"[data-goal-search]\").focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"report-builder\"]');\n\t\t\tif (!form) return;\n\t\t\tvar inputs = form.querySelector('[data-testid=\"report-builder-inputs\"]');\n\t\t\tform.classList.add(\"rb-js\");\n\t\t\tvar ops = {\n\t\t\t\tvalues: [[\"is\", \"is\"], [\"is any of\", \"is any of\"], [\"is not\", \"is not\"]],\n\t\t\t\t\"top-level\": [[\"is\", \"is Top-level\"], [\"is not\", \"is not Top-level\"]],\n\t\t\t\torg: [[\"is\", \"is in the org of\"], [\"is any of\", \"is in the org of any of\"], [\"is not\", \"is not in the org of\"]]\n\t\t\t};\n\t\t\tfunction narrow(row) {\n\t\t\t\tvar attribute = row.querySelector('[data-testid=\"rule-attribute\"]').value;\n\t\t\t\tvar op = row.querySelector('[data-testid=\"rule-op\"]');\n\t\t\t\tvar values = row.querySelector('[data-testid=\"rule-values\"]');\n\t\t\t\tvar wanted = ops[attribute] || ops.values;\n\t\t\t\tvar chosen = op.value;\n\t\t\t\top.textContent = \"\";\n\t\t\t\twanted.forEach(function (o) {\n\t\t\t\t\top.add(new Option(o[1], o[0], false, o[0] === chosen));\n\t\t\t\t});\n\t\t\t\tif (!values) return;\n\t\t\t\tvalues.hidden = attribute === \"top-level\" || attribute === \"\";\n\t\t\t\t// The list holds only the attribute's own values, as plain\n\t\t\t\t// options: hiding the others isn't enough, since a phone's\n\t\t\t\t// picker shows a hidden option.\n\t\t\t\tif (!values.groups) values.groups = Array.from(values.querySelectorAll(\"optgroup\"));\n\t\t\t\tvar picked = Array.from(values.selectedOptions, function (o) { return o.value; });\n\t\t\t\tvalues.textContent = \"\";\n\t\t\t\tvalues.groups.forEach(function (group) {\n\t\t\t\t\tif (group.getAttribute(\"data-attribute\") !== attribute) return;\n\t\t\t\t\tgroup.querySelectorAll(\"option\").forEach(function (o) {\n\t\t\t\t\t\tvalues.add(new Option(o.text, o.value, false, picked.indexOf(o.value) >= 0));\n\t\t\t\t\t});\n\t\t\t\t});\n\t\t\t}\n\t\t\t// reveal scrolls a row's values to its first selected one, top of\n\t\t\t// the list, moving only the list: left to itself, the browser sets\n\t\t\t// it on the list's bottom edge, where it can sit half out of view.\n\t\t\tfunction reveal(row) {\n\t\t\t\tvar values = row.querySelector('[data-testid=\"rule-values\"]');\n\t\t\t\tvar first = values && values.selectedOptions[0];\n\t\t\t\tif (!first || values.hidden) return;\n\t\t\t\tvalues.scrollTop += first.getBoundingClientRect().top - values.getBoundingClientRect().top - values.clientTop;\n\t\t\t}\n\t\t\tform.querySelectorAll(\"[data-rule]\").forEach(narrow);\n\t\t\tform.querySelectorAll(\"[data-rule]\").forEach(reveal);\n\t\t\t// A web font that loads late changes each option's height.\n\t\t\tif (document.fonts) document.fonts.ready.then(function () { form.querySelectorAll(\"[data-rule]\").forEach(reveal); });\n\t\t\tform.addEventListener(\"change\", function (e) {\n\t\t\t\tif (e.target.matches('[data-testid=\"rule-attribute\"]')) narrow(e.target.closest(\"[data-rule]\"));\n\t\t\t});\n\t\t\tform.querySelectorAll(\"[data-goal-picker] .rb-no-js select\").forEach(function (select) {\n\t\t\t\tselect.disabled = true;\n\t\t\t});\n\t\t\tform.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\" && e.target.matches(\"[data-goal-search]\")) e.preventDefault();\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar picker = e.target.closest(\"[data-goal-picker]\");\n\t\t\t\tif (!picker) return;\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tpicker.querySelector(\".rb-chips\").appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\tvar search = picker.querySelector(\"[data-goal-search]\");\n\t\t\t\t\tsearch.value = \"\";\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"li\").remove();\n\t\t\t\t\tpicker.querySelector(\"[data-goal-search]\").focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1491,7 +1491,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chip")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 389, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 395, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 		if templ_7745c5c3_Err != nil {
@@ -1504,7 +1504,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var70 string
 		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 390, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 396, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 		if templ_7745c5c3_Err != nil {
@@ -1517,7 +1517,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var71 string
 		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 390, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 396, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
 		if templ_7745c5c3_Err != nil {
@@ -1530,7 +1530,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var72 string
 		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 391, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 397, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 		if templ_7745c5c3_Err != nil {
@@ -1543,7 +1543,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var73 string
 		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.ResolveAttributeValue(removeChip(list))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 392, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 398, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var73)
 		if templ_7745c5c3_Err != nil {
@@ -1556,7 +1556,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var74 string
 		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 392, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 398, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 		if templ_7745c5c3_Err != nil {
@@ -1569,7 +1569,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 393, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 399, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 		if templ_7745c5c3_Err != nil {
@@ -1582,7 +1582,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 393, Col: 136}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 399, Col: 136}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
 		if templ_7745c5c3_Err != nil {

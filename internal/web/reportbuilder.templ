@@ -177,8 +177,8 @@ templ reportMatchesRail(m reportMatches) {
 }
 
 // reportRuleRowInputs is the i-th rule row: what it tests, its operator, and
-// the values it tests for, one group per attribute, which script narrows to the
-// chosen attribute's. A Top-level row tests no values, so it offers only "is
+// the values it tests for, one group per attribute, which script swaps for
+// the chosen attribute's values alone. A Top-level row tests no values, so it offers only "is
 // Top-level" and "is not Top-level", but still carries every attribute's
 // values, hidden by script, so switching it to another attribute offers that
 // attribute's. Before script runs, a style hides a Top-level row's values, so
@@ -328,11 +328,17 @@ templ reportBuilderScript() {
 				});
 				if (!values) return;
 				values.hidden = attribute === "top-level" || attribute === "";
-				values.querySelectorAll("optgroup").forEach(function (group) {
-					var mine = group.getAttribute("data-attribute") === attribute;
-					group.hidden = !mine;
-					group.disabled = !mine;
-					if (!mine) group.querySelectorAll("option").forEach(function (o) { o.selected = false; });
+				// The list holds only the attribute's own values, as plain
+				// options: hiding the others isn't enough, since a phone's
+				// picker shows a hidden option.
+				if (!values.groups) values.groups = Array.from(values.querySelectorAll("optgroup"));
+				var picked = Array.from(values.selectedOptions, function (o) { return o.value; });
+				values.textContent = "";
+				values.groups.forEach(function (group) {
+					if (group.getAttribute("data-attribute") !== attribute) return;
+					group.querySelectorAll("option").forEach(function (o) {
+						values.add(new Option(o.text, o.value, false, picked.indexOf(o.value) >= 0));
+					});
 				});
 			}
 			// reveal scrolls a row's values to its first selected one, top of
