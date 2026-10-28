@@ -549,6 +549,50 @@ func TestHomeCheckInOpensCheckinForm(t *testing.T) {
 	}
 }
 
+// A link request names the contributing Goal's Owner in brackets, and keeps
+// the "(" with their Name, so a narrow window can't leave it ending a line;
+// their email still discloses beside the Name (#642). A Handoff waiting
+// alongside shares the row's test id, so the row is the one badged Link
+// request.
+func TestHomeLinkRequestOwnerKeepsTheirOpenBracketOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignInNamed("kim@example.com", "Kim Park")
+	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
+	if _, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID); err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	h.RequestLink(kim, child, parent, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	var row *html.Node
+	for _, r := range findAllByTestID(getPage(t, client, ts.URL+"/home"), "home-request") {
+		badges := findAll(r, func(n *html.Node) bool { return flatFrameHasClass(n, "badge") })
+		if len(badges) > 0 && textOf(badges[0]) == "Link request" {
+			row = r
+		}
+	}
+	if row == nil {
+		t.Fatal("Home lists no row badged Link request")
+	}
+	what := findAll(row, func(n *html.Node) bool { return flatFrameHasClass(n, "muted") })
+	if len(what) != 1 {
+		t.Fatalf("the link request has no muted line naming the Owner:\n%s", renderNode(row))
+	}
+	if got, want := strings.Join(strings.Fields(runningText(what[0])), " "), "(Kim Park) wants to contribute to"; got != want {
+		t.Errorf("the link request reads %q, want %q", got, want)
+	}
+	assertNameKeepsItsOpenBracket(t, row, "Kim Park")
+	if !homeShowsPerson(row, "kim@example.com", "Kim Park") {
+		t.Errorf("the link request doesn't show Kim Park as a Name that discloses their email:\n%s", renderNode(row))
+	}
+}
+
 // A Handoff waiting on the viewer as the proposed new Owner and a link request
 // waiting on them as the parent's Owner are listed under "Requests", oldest
 // first whatever their kind. Each offers Accept as an outlined button and

@@ -1719,3 +1719,31 @@ func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*h
 	}
 	return resp, readBody(t, resp)
 }
+
+// assertNameKeepsItsOpenBracket checks that the person shown in brackets under
+// root keeps the "(" with their Name: a no-break element inside .person holds
+// the "(" and the Name's button, with no space between, and the email the
+// button discloses sits outside it, so it can still wrap (#642).
+func assertNameKeepsItsOpenBracket(t *testing.T, root *html.Node, label string) {
+	t.Helper()
+	people := findAll(root, func(n *html.Node) bool { return flatFrameHasClass(n, "person") })
+	if len(people) != 1 {
+		t.Fatalf("want one person, found %d:\n%s", len(people), renderNode(root))
+	}
+	nobreaks := findAll(people[0], func(n *html.Node) bool { return flatFrameHasClass(n, "person-nobreak") })
+	if len(nobreaks) != 1 {
+		t.Fatalf("%s's Name has no no-break element holding its \"(\":\n%s", label, renderNode(people[0]))
+	}
+	nb := nobreaks[0]
+	if got, want := runningText(nb), "("+label; got != want {
+		t.Errorf("the no-break element reads %q, want %q", got, want)
+	}
+	if buttons := findAll(nb, func(n *html.Node) bool { return n.Data == "button" && flatFrameHasClass(n, "disclose") }); len(buttons) != 1 {
+		t.Errorf("the no-break element doesn't hold %s's Name button:\n%s", label, renderNode(nb))
+	}
+	for _, e := range findAll(people[0], func(n *html.Node) bool { return flatFrameHasClass(n, "person-email") }) {
+		if within(e, nb) {
+			t.Errorf("%s's email is inside the no-break element, so it can't wrap:\n%s", label, renderNode(people[0]))
+		}
+	}
+}

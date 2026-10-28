@@ -390,6 +390,19 @@ templ person(a domain.Account) {
 	}
 }
 
+// personInBrackets shows someone as person does, inside "(" and ")", with the
+// "(" kept with their Name: a no-break element holds the "(" and the Name, so a
+// narrow window can't leave the "(" ending a line, while the email the Name
+// discloses stays outside it and can still wrap (#642). Print shows people as
+// plain text, where the "(" can't break from the letter after it.
+templ personInBrackets(a domain.Account) {
+	if m := mentions(ctx); m != nil {
+		{ "(" }<span class="person" title={ a.Email }>{ m.Of(a) }</span>{ ")" }
+	} else {
+		<span class="person"><span class="person-nobreak">{ "(" }<button type="button" class="disclose" aria-expanded="false" title={ a.Email }>{ a.Label() }</button></span><span class="person-email" hidden>{ a.Email }</span></span>{ ")" }
+	}
+}
+
 // personPlain shows someone by Name with their email on hover only. It is for
 // the few places a person sits inside another control (a button, a label),
 // where person's own button can't nest; each such place shows the same person
@@ -399,7 +412,9 @@ templ personPlain(a domain.Account) {
 }
 
 // disclosure opens and closes every .disclose button's expansion: the element
-// its aria-controls names, or else the element right after it. A button
+// its aria-controls names, or else the element right after it, or else, for a
+// Name in brackets (personInBrackets), whose button is last in the element
+// keeping the "(" with it, its person's email. A button
 // already answers Enter, Space, a click and a tap, so one click handler covers
 // them all, and listening on the document reaches content htmx swaps in.
 templ disclosure() {
@@ -409,6 +424,10 @@ templ disclosure() {
 			if (!b) return;
 			var id = b.getAttribute("aria-controls");
 			var target = id ? document.getElementById(id) : b.nextElementSibling;
+			if (!id && !target) {
+				var p = b.closest(".person");
+				target = p && p.querySelector(".person-email");
+			}
 			if (!target) return;
 			var open = b.getAttribute("aria-expanded") !== "true";
 			b.setAttribute("aria-expanded", open ? "true" : "false");

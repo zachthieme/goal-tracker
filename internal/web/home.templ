@@ -302,8 +302,7 @@ templ linkRequestRow(l domain.Link) {
 			<span class="badge lc">Link request</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
 			<span class="muted">
-				{ "(" }
-				@person(l.Child.Owner)) wants to contribute to
+				@personInBrackets(l.Child.Owner) wants to contribute to
 			</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 		</div>
