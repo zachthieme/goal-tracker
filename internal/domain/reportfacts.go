@@ -69,17 +69,47 @@ const (
 	ReportBackToGreenBy = "back to Green by"
 	// ReportPathOverdue marks a Path to Green whose back-to-Green date passed.
 	ReportPathOverdue = "Overdue"
-	// A Schedule conflict reads in these words around its dates and the Goal
-	// at the other end, which each output writes its own way: as the child,
-	// "Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026";
-	// as the parent, "Lisbon office (Sam Lee) is due Nov 3, 2026, after this
-	// Goal's Oct 15, 2026".
-	ReportConflictDue            = "Due"
-	ReportConflictAfter          = "after"
-	ReportConflictOtherDue       = "due"
-	ReportConflictIsDue          = "is due"
-	ReportConflictAfterThisGoals = "after this Goal's"
+	// A Schedule conflict's group opens with its side's words
+	// (ReportScheduleConflictGroups), and each Goal in it reads with its
+	// Owner, then "due" before its delivery date.
+	ReportConflictParentEarlier     = "Parent Goal due earlier"
+	ReportConflictContributingLater = "Contributing Goal due later"
+	ReportConflictOtherDue          = "due"
 )
+
+// ReportScheduleConflictGroup is one side of a block's Schedule conflicts: the
+// words it opens with and the Goals at the other end, in the block's order.
+type ReportScheduleConflictGroup struct {
+	Words     string
+	Conflicts []ReportScheduleConflict
+}
+
+// ReportScheduleConflictGroups splits a block's Schedule conflicts into at
+// most two groups, each only when it has a conflict: the block's Goal as the
+// child first, "Parent Goal due earlier · Launch invoicing for enterprise
+// (Amara Nwosu), due Nov 30, 2026", then as the parent, "Contributing Goal
+// due later · Branded PDF invoices (Noor Haddad), due Dec 14, 2026", each
+// keeping the order the block gave it. Each output only formats the groups:
+// Goals within one joined by " · ", the two joined by "; ", and never the
+// block's own delivery date, which its head shows.
+func ReportScheduleConflictGroups(conflicts []ReportScheduleConflict) []ReportScheduleConflictGroup {
+	var groups []ReportScheduleConflictGroup
+	for _, side := range []struct {
+		asParent bool
+		words    string
+	}{{false, ReportConflictParentEarlier}, {true, ReportConflictContributingLater}} {
+		var cs []ReportScheduleConflict
+		for _, c := range conflicts {
+			if c.AsParent == side.asParent {
+				cs = append(cs, c)
+			}
+		}
+		if len(cs) > 0 {
+			groups = append(groups, ReportScheduleConflictGroup{Words: side.words, Conflicts: cs})
+		}
+	}
+	return groups
+}
 
 // ReportFact is one fact a Report shows, in the order it shows them: its kind,
 // the label every output shows it under ("" for one shown without, as the

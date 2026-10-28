@@ -235,24 +235,24 @@ func linkedGoals(goals []domain.LinkedGoal) string {
 }
 
 // scheduleConflicts names the Schedule conflicts an exception block's Goal is
-// in, joined by " · ", each with the Goal at the other end, its Owner and both
-// dates: "Due 2026-11-03, after Open in Iberia (Pat Parker), due 2026-10-15"
-// as the child, "Lisbon office (Sam Lee) is due 2026-11-03, after this Goal's
-// 2026-10-15" as the parent. With no base URL to link from, the other Goal is
-// a name, not a link.
+// in by side (domain.ReportScheduleConflictGroups), the sides joined by "; ",
+// each its words, then each Goal at the other end with its Owner and delivery
+// date, joined by " · ": "Parent Goal due earlier · Open in Iberia (Pat
+// Parker), due 2026-10-15; Contributing Goal due later · Lisbon office (Sam
+// Lee), due 2026-12-01". With no base URL to link from, the other Goal is a
+// name, not a link.
 func scheduleConflicts(people *domain.Mentions, conflicts []domain.ReportScheduleConflict) string {
-	entries := make([]string, 0, len(conflicts))
-	for _, c := range conflicts {
-		other := fmt.Sprintf("%s (%s)", text(c.Title), text(people.Of(c.Owner)))
-		if c.AsParent {
-			entries = append(entries, fmt.Sprintf("%s %s %s, %s %s",
-				other, domain.ReportConflictIsDue, fmtDate(c.Due), domain.ReportConflictAfterThisGoals, fmtDate(c.OwnDue)))
-			continue
+	groups := domain.ReportScheduleConflictGroups(conflicts)
+	sides := make([]string, 0, len(groups))
+	for _, g := range groups {
+		entries := []string{g.Words}
+		for _, c := range g.Conflicts {
+			entries = append(entries, fmt.Sprintf("%s (%s), %s %s",
+				text(c.Title), text(people.Of(c.Owner)), domain.ReportConflictOtherDue, fmtDate(c.Due)))
 		}
-		entries = append(entries, fmt.Sprintf("%s %s, %s %s, %s %s",
-			domain.ReportConflictDue, fmtDate(c.OwnDue), domain.ReportConflictAfter, other, domain.ReportConflictOtherDue, fmtDate(c.Due)))
+		sides = append(sides, strings.Join(entries, " · "))
 	}
-	return strings.Join(entries, " · ")
+	return strings.Join(sides, "; ")
 }
 
 // fields renders a Goal's values in the Fields its Report chose on one line,

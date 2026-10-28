@@ -1333,11 +1333,11 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 		case domain.ReportFactScheduleConflict:
 			<p data-testid="report-schedule-conflicts" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
-				for i, c := range f.ScheduleConflicts {
+				for i, g := range domain.ReportScheduleConflictGroups(f.ScheduleConflicts) {
 					if i > 0 {
-						{ " · " }
+						{ "; " }
 					}
-					@reportScheduleConflict(c)
+					@reportScheduleConflictGroup(g)
 				}
 			</p>
 		case domain.ReportFactContributesTo:
@@ -1545,18 +1545,25 @@ templ linkedGoals(goals []domain.LinkedGoal, d discussion) {
 	}
 }
 
-// reportScheduleConflict is one Schedule conflict an exception block's Goal is
-// in, linking the Goal at the other end, wherever it is, with its Owner: "Due
-// Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026" as the
-// child, "Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov
-// 3, 2026" as the parent.
+// reportScheduleConflictGroup is one side of an exception block's Schedule
+// conflicts: its words, then each Goal at the other end, joined by " · ":
+// "Parent Goal due earlier · Open in Iberia (Pat Parker), due Oct 15, 2026".
+templ reportScheduleConflictGroup(g domain.ReportScheduleConflictGroup) {
+	<span data-testid="report-schedule-conflict-group">
+		{ g.Words }
+		for _, c := range g.Conflicts {
+			{ " · " }
+			@reportScheduleConflict(c)
+		}
+	</span>
+}
+
+// reportScheduleConflict is one Goal at the other end of a Schedule conflict
+// an exception block's Goal is in, wherever it is, linked, with its Owner and
+// delivery date: "Wire the network (Sam Lee), due Dec 1, 2026".
 templ reportScheduleConflict(c domain.ReportScheduleConflict) {
 	<span data-testid="report-schedule-conflict">
-		if c.AsParent {
-			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)) { domain.ReportConflictIsDue + " " + showDateYear(c.Due) + ", " + domain.ReportConflictAfterThisGoals + " " + showDateYear(c.OwnDue) }
-		} else {
-			{ domain.ReportConflictDue + " " + showDateYear(c.OwnDue) + ", " + domain.ReportConflictAfter + " " }<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
-		}
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
 	</span>
 }
 
