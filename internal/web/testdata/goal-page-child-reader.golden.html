@@ -4,6 +4,10 @@
 			if (!b) return;
 			var id = b.getAttribute("aria-controls");
 			var target = id ? document.getElementById(id) : b.nextElementSibling;
+			if (!id && !target) {
+				var p = b.closest(".person");
+				target = p && p.querySelector(".person-email");
+			}
 			if (!target) return;
 			var open = b.getAttribute("aria-expanded") !== "true";
 			b.setAttribute("aria-expanded", open ? "true" : "false");
