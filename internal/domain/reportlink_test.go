@@ -223,6 +223,59 @@ func TestReportShowsTheParentsScheduleConflictWithALateChildOutsideIt(t *testing
 	}
 }
 
+// A block lists its Schedule conflicts as the child first, then as the parent,
+// each by the other Goal's delivery date, then title (#641). The block reads
+// parents and children newest first, so each side's Goals are created in the
+// order the block should list them: they arrive reversed, and only the sort
+// puts them right (#643).
+func TestReportBlockOrdersScheduleConflictsAsChildFirstThenByDateThenTitle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
+	hub := h.ActiveGoalDueLater(sam, "Lisbon office", day(time.November, 3))
+	iberia := h.ActiveGoalDueLater(pat, "Open in Iberia", day(time.October, 10))
+	europe := h.ActiveGoalDueLater(pat, "Europe expansion", day(time.October, 20))
+	portugal := h.ActiveGoalDueLater(pat, "Portugal launch", day(time.October, 20))
+	fitOut := h.ActiveGoalDueLater(kim, "Office fit-out", day(time.November, 10))
+	hiring := h.ActiveGoalDueLater(kim, "Hire the team", day(time.December, 1))
+	payroll := h.ActiveGoalDueLater(kim, "Local payroll", day(time.December, 1))
+	for _, parent := range []domain.Goal{iberia, europe, portugal} {
+		h.AcceptedLink(hub, parent)
+	}
+	for _, child := range []domain.Goal{fitOut, hiring, payroll} {
+		h.AcceptedLink(child, hub)
+	}
+	settle(h)
+	h.Checkin(sam, hub.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	r := draftReport(t, h, sam, time.Time{}, hub)
+
+	type entry struct {
+		asParent bool
+		goalID   int64
+		due      string
+	}
+	var got []entry
+	for _, c := range linkedBlock(t, r, hub).ScheduleConflicts {
+		got = append(got, entry{c.AsParent, c.GoalID, c.Due.Format(time.DateOnly)})
+	}
+	want := []entry{
+		{false, iberia.ID, "2026-10-10"},
+		{false, europe.ID, "2026-10-20"},
+		{false, portugal.ID, "2026-10-20"},
+		{true, fitOut.ID, "2026-11-10"},
+		{true, hiring.ID, "2026-12-01"},
+		{true, payroll.ID, "2026-12-01"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ScheduleConflicts %+v, want %+v", got, want)
+	}
+}
+
 // A link raises no Schedule conflict, and so no exception, when the child is
 // Done or Cancelled, either Goal has no delivery date, or the child is due on
 // or before its parent: each Goal with no other reason stays one line.
