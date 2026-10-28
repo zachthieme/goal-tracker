@@ -1,8 +1,9 @@
 // Phone width: at 390px Home, with a Check-in due in Needs you, the Goals
-// list, Follow-ups, the Admin page, a Report draft, the New goal page, with
-// its Metric editor open, and the Check-in page fit the screen. Nothing inside
-// main is clipped or scrolls sideways, and every control lies within the
-// window (#343: #258, #268, #338, #229; #368; #369; #364; #387).
+// list, Follow-ups, the Admin page, a Report draft, with a Schedule
+// conflict's Owner's email disclosed, the New goal page, with its Metric
+// editor open, and the Check-in page fit the screen. Nothing inside main is
+// clipped or scrolls sideways, and every control lies within the window
+// (#343: #258, #268, #338, #229; #368; #369; #364; #387; #642).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, requirePick, signIn, test } from "./fixtures";
@@ -65,9 +66,9 @@ async function expectFitsAPhone(page: Page, scrollers: string[] = []): Promise<v
 }
 
 // buildRuleReport saves a Report Definition named name with the rule Team is
-// any of Platform, and lands on its draft. A local copy of the one in
+// any of team, and lands on its draft. A local copy of the one in
 // scenarios/02-watching-goals.spec.ts, which picks Growth.
-async function buildRuleReport(page: Page, name: string): Promise<void> {
+async function buildRuleReport(page: Page, name: string, team = "Platform"): Promise<void> {
   await page.goto("/reports/new");
   const builder = page.getByTestId("report-builder");
   await builder.getByLabel("Name").fill(name);
@@ -75,7 +76,7 @@ async function buildRuleReport(page: Page, name: string): Promise<void> {
   const rule = builder.getByTestId("report-rule").first();
   await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
   await rule.getByLabel("Operator").selectOption({ label: "is any of" });
-  await rule.getByLabel("Values").selectOption({ label: "Platform" });
+  await rule.getByLabel("Values").selectOption({ label: team });
   await builder.getByRole("button", { name: "Save report" }).click();
   await page.waitForURL(/\/reports\/\d+$/);
 }
@@ -161,6 +162,31 @@ test("at 390px a Report card's Health leads its title, and its badges drop under
     }
   }
   await expectFitsAPhone(page);
+});
+
+// The manifest's findingTrouble.twoReasons is a Goal due later than a Goal it
+// contributes to, so its block on a Report draft names that Goal and its Owner
+// in a Schedule conflict, the Owner's Name in brackets (#642).
+test("at 390px a Schedule conflict's Owner discloses their email, and the draft still fits", async ({
+  page,
+  manifest,
+}) => {
+  const goal = requirePick("findingTrouble.twoReasons", manifest.findingTrouble.twoReasons);
+  await signIn(page, admin);
+  await buildRuleReport(page, `${goal.team} schedule conflicts`, goal.team);
+  const block = page.getByTestId("report-exception").filter({ has: page.locator("h3", { hasText: goal.title }) });
+  const owner = block.getByTestId("report-schedule-conflict").first().locator(".person");
+  const name = owner.getByRole("button");
+  const email = owner.locator(".person-email");
+  await expect(email).toBeHidden();
+  await name.click();
+  await expect(name).toHaveAttribute("aria-expanded", "true");
+  await expect(email).toBeVisible();
+  await expect(email).toHaveText((await name.getAttribute("title"))!);
+  await expectFitsAPhone(page);
+  await name.click();
+  await expect(name).toHaveAttribute("aria-expanded", "false");
+  await expect(email).toBeHidden();
 });
 
 test("at 390px the New goal page stacks its Kind tiles and fits its cadence and Metric editor", async ({ page }) => {

@@ -652,7 +652,11 @@ and so on).
   Clicking, tapping or activating it from the keyboard shows the person's
   email beside it, muted at 13px, and doing it again hides it (CONTEXT.md:
   Name). `personPlain`, inside another control, shows the email on hover only,
-  and the Print view's "Name (email)" has no control.
+  and the Print view's "Name (email)" has no control. A Name in brackets, as
+  a Schedule conflict's or a link request's Owner, goes through
+  `personInBrackets`, which keeps the "(" with the Name (`.person-nobreak`,
+  `white-space:nowrap`), so a narrow window never leaves "(" ending a line;
+  the Name itself and the email it shows can still wrap.
 - **Avatars (`.avatar`):** a circle with a person's initials (`initials` in
   `layout.templ`), hidden from assistive technology, beside their Name, which
   stays the control that shows their email. It is 24px on the sidebar's

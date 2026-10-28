@@ -196,8 +196,10 @@ p{margin:0}
 strong{color:var(--color-ink)}
 :focus-visible{outline:2px solid var(--color-focus);outline-offset:2px}
 .disclose{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;text-align:inherit;cursor:pointer}
-.person>.disclose{padding:0 4px;margin:0 -4px;border-radius:var(--radius-sm)}
-.person>.disclose:hover,.person>.disclose:focus-visible{background:var(--color-primary-subtle)}
+.person>.disclose,.person>.person-nobreak>.disclose{padding:0 4px;margin:0 -4px;border-radius:var(--radius-sm)}
+.person>.disclose:hover,.person>.disclose:focus-visible,.person>.person-nobreak>.disclose:hover,.person>.person-nobreak>.disclose:focus-visible{background:var(--color-primary-subtle)}
+.person-nobreak{white-space:nowrap}
+.person-nobreak>.disclose{white-space:normal;overflow-wrap:anywhere}
 .person-email{margin-left:4px;color:var(--color-ink-muted);font-size:var(--text-secondary);font-weight:400;overflow-wrap:anywhere}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
 .explain{color:var(--color-ink-muted);font-size:var(--text-secondary);font-weight:400;line-height:1.5}

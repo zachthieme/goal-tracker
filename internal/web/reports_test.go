@@ -4614,6 +4614,44 @@ func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
 	}
 }
 
+// A Schedule conflict's Owner, in brackets after the other Goal's title, keeps
+// the "(" with their Name, so a narrow window can't leave it ending a line;
+// their email still discloses beside the Name, outside the part that can't
+// break (#642).
+func TestReportScheduleConflictOwnerKeepsTheirOpenBracketOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", date(10, 15))
+	child := h.ActiveGoalDueLater(boss, "Lisbon office", date(11, 3))
+	h.AcceptedLink(child, parent)
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{child.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	for _, page := range []struct{ name, url string }{
+		{"draft", reportURL},
+		{"publication", reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)},
+	} {
+		block := reportBlockOf(t, getPage(t, client, page.url), child)
+		entry := findByTestID(t, block, "report-schedule-conflict")
+		if got, want := runningText(entry), "Open in Iberia (Pat Parker), due Oct 15, 2026"; got != want {
+			t.Errorf("%s: the Schedule conflict reads %q, want %q", page.name, got, want)
+		}
+		assertNameKeepsItsOpenBracket(t, entry, "Pat Parker")
+		if !reportShowsPerson(entry, "pat@example.com", "Pat Parker") {
+			t.Errorf("%s: the Schedule conflict doesn't show Pat Parker as a Name that discloses their email:\n%s", page.name, renderNode(entry))
+		}
+	}
+}
+
 // A publication frozen before Reports counted Red and Yellow children or
 // named linked Goals reads as it did: its Rolled-up Health counts only the
 // Check-in overdue children, and it names no other Goal (#246).

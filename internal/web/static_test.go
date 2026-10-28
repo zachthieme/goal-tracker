@@ -539,6 +539,32 @@ func TestNamesDoNotLookLikeLinks(t *testing.T) {
 	}
 }
 
+// A Name in brackets, whose button sits in the element keeping the "(" with it
+// (#642), looks as every other Name does: the same padding, and the same tint
+// on hover and keyboard focus.
+func TestNamesInBracketsLookLikeOtherNames(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for plain, bracketed := range map[string]string{
+		".person>.disclose":               ".person>.person-nobreak>.disclose",
+		".person>.disclose:hover":         ".person>.person-nobreak>.disclose:hover",
+		".person>.disclose:focus-visible": ".person>.person-nobreak>.disclose:focus-visible",
+	} {
+		want, ok := ruleFor(css, plain)
+		if !ok {
+			t.Errorf("app.css has no %s rule", plain)
+			continue
+		}
+		if got, ok := ruleFor(css, bracketed); !ok || got != want {
+			t.Errorf("app.css styles %s as {%s}, want it styled as %s {%s}", bracketed, got, plain, want)
+		}
+	}
+}
+
 // The filter chip is shared, so its rules live in the shared stylesheet that
 // every page loads, coarse-pointer floor included, and no longer in the Goal
 // list's own styles: Follow-ups draws the same chips (#406).

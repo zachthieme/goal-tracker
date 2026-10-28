@@ -3845,3 +3845,30 @@ func TestSidebarFitsTheVisibleWindow(t *testing.T) {
 		assertHomeRuleDeclares(t, css, sel, want)
 	}
 }
+
+// A Name in brackets keeps its "(" with it: the element holding the "(" and
+// the Name doesn't break, but the Name inside it still wraps, since a person
+// with no Name is shown by their email, which must fit a phone (#642).
+func TestNameInBracketsKeepsItsOpenBracketStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for sel, wants := range map[string][]string{
+		".person-nobreak":           {"white-space:nowrap"},
+		".person-nobreak>.disclose": {"white-space:normal", "overflow-wrap:anywhere"},
+	} {
+		decls, ok := ruleFor(css, sel)
+		if !ok {
+			t.Errorf("app.css has no %s rule", sel)
+			continue
+		}
+		for _, want := range wants {
+			if !strings.Contains(decls, want) {
+				t.Errorf("app.css %s{%s} lacks %s", sel, decls, want)
+			}
+		}
+	}
+}

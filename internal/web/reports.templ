@@ -1563,7 +1563,7 @@ templ reportScheduleConflictGroup(g domain.ReportScheduleConflictGroup) {
 // delivery date: "Wire the network (Sam Lee), due Dec 1, 2026".
 templ reportScheduleConflict(c domain.ReportScheduleConflict) {
 	<span data-testid="report-schedule-conflict">
-		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " " }@personInBrackets(c.Owner), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
 	</span>
 }
 

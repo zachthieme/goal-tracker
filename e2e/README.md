@@ -132,9 +132,10 @@ sign in, one at a time and two at once, and that the `due` template is due. [`is
 writing to the same Goal at once each see only their own write.
 [`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px Home, with
 a Check-in due in Needs you, the Goals list, Follow-ups, the Admin page, a
-Report draft, the New goal page, with its Metric editor open, and the
-Check-in page, with Yellow picked, don't clip or scroll sideways, and keep
-every control on screen.
+Report draft, with a Schedule conflict's Owner's email shown by clicking their
+Name (and hidden by clicking again), the New goal page, with its Metric editor
+open, and the Check-in page, with Yellow picked, don't clip or scroll
+sideways, and keep every control on screen.
 [`download-menu.spec.ts`](download-menu.spec.ts) checks the Download menu on
 a Report's row on the Reports list and in a publication's header: at 390px
 the open popover lies inside the window and nothing passes the window's edge,
