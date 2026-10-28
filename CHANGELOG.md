@@ -18,6 +18,15 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [user] A Report shows a Schedule conflict as an exception, from both ends: a Goal due after a Goal it contributes to, or one with a child due after it, gets the full block even when Green and unchanged, ranked after Check-in overdue and before changes since the baseline. The block's new "Schedule conflict" line names the Goal at the other end, its Owner and both dates, whether or not the Report holds it, on the page, in Print and the PDF, and in the Markdown export. A publication keeps the conflicts it was published with (#641).
 
+**Improvements:**
+- [user] A Report block's Schedule conflict line now says what's wrong first, then names the Goal at the other end with its Owner and delivery date, grouped by side: "Parent Goal due earlier · Open in Iberia (Pat Parker), due Oct 15, 2026; Contributing Goal due later · Wire the network (Sam Lee), due Dec 1, 2026". It no longer repeats the block's own delivery date, which the block head shows. On the page, in Print and the PDF, and in the Markdown export (#644).
+
+**Bug fixes:**
+- [user] A Report rule's values list holds only the values of what the rule tests, as a plain list: choosing Team offers only the Teams. Before, it held every attribute's values and only hid the others, which some browsers, a phone's picker especially, showed anyway, mixed together under group headings.
+
+**Testing:**
+- [internal] A test pins the order of a Report block's Schedule conflicts: as the child first, then as the parent, each by the other Goal's delivery date, then title (#643).
+
 ### Collected changes — October 27, 2026
 
 **Improvements:**
