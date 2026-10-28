@@ -144,3 +144,45 @@ func TestReportBlockNamesNoPendingLink(t *testing.T) {
 		}
 	}
 }
+
+// A Goal due after a Goal it contributes to is in a Schedule conflict, and
+// that makes it an exception even Green and unchanged since the baseline. Its
+// block names the parent, its Owner and its delivery date, though the Report
+// doesn't hold the parent, and naming it never brings it in (CONTEXT.md:
+// Report; ADR 0007).
+func TestReportShowsTheChildsScheduleConflictWithAParentOutsideIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	parentDue := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	childDue := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", parentDue)
+	child := h.ActiveGoalDueLater(sam, "Lisbon office", childDue)
+	h.AcceptedLink(child, parent)
+	settle(h)
+	h.Checkin(sam, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	r := draftReport(t, h, sam, time.Time{}, child)
+
+	if got, want := blockIDs(r), []int64{child.ID}; !slices.Equal(got, want) {
+		t.Fatalf("exception blocks %v, want only the late child %v", got, want)
+	}
+	if got := lineIDs(r); len(got) != 0 {
+		t.Errorf("one-line Goals %v, want none: naming the parent never brings it in", got)
+	}
+	b := r.Exceptions[0]
+	if b.Health != domain.HealthGreen {
+		t.Errorf("Health %q, want its latest Check-in's, Green", b.Health)
+	}
+	if len(b.ScheduleConflicts) != 1 {
+		t.Fatalf("ScheduleConflicts %+v, want one", b.ScheduleConflicts)
+	}
+	c := b.ScheduleConflicts[0]
+	if c.AsParent || c.GoalID != parent.ID || c.Title != "Open in Iberia" ||
+		c.Owner.ID != pat.ID || c.Owner.Label() != "Pat Parker" || c.Owner.Email != "pat@example.com" ||
+		!c.Due.Equal(parentDue) || !c.OwnDue.Equal(childDue) {
+		t.Errorf("conflict %+v, want as the child, after Open in Iberia (Pat Parker), due %s, its own date %s", c, parentDue, childDue)
+	}
+}
