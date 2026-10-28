@@ -13,6 +13,11 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 28, 2026
+
+**New features:**
+- [user] A Report shows a Schedule conflict as an exception, from both ends: a Goal due after a Goal it contributes to, or one with a child due after it, gets the full block even when Green and unchanged, ranked after Check-in overdue and before changes since the baseline. The block's new "Schedule conflict" line names the Goal at the other end, its Owner and both dates, whether or not the Report holds it, on the page, in Print and the PDF, and in the Markdown export. A publication keeps the conflicts it was published with (#641).
+
 ### Collected changes — October 27, 2026
 
 **Improvements:**
