@@ -82,8 +82,10 @@ levels up can follow it without knowing her org.
    select as she types.
 2. Each month she opens the draft. The preview is exactly what readers will
    see: a Health summary, then the exceptions in full (Red, Yellow, Check-in
-   overdue, slipped, newly Proposed, Lifecycle changes), then every unchanged
-   Green Goal on one line.
+   overdue, slipped, newly Proposed, in a Schedule conflict, Lifecycle
+   changes), then every unchanged Green Goal on one line. A Goal in a Schedule
+   conflict names the Goal at the other end, its Owner and its date, whether
+   or not the Report holds it.
 3. "Changes since" reads against her previous publication, so the marks show
    what moved since the last review, including Goals that entered or left.
 4. She composes the narrative: ticks the Highlights worth pulling into
