@@ -23,6 +23,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] A Report rule's values list holds only the values of what the rule tests, as a plain list: choosing Team offers only the Teams. Before, it held every attribute's values and only hid the others, which some browsers, a phone's picker especially, showed anyway, mixed together under group headings.
+- [user] A person's Name in brackets — a Report's Schedule conflict Owner, a link request's Owner on Home — keeps its "(" with it, so a narrow window no longer leaves "(" alone at the end of a line. Clicking the Name still shows their email (#642).
 
 **Testing:**
 - [internal] A test pins the order of a Report block's Schedule conflicts: as the child first, then as the parent, each by the other Goal's delivery date, then title (#643).
