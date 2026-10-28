@@ -639,6 +639,81 @@ func TestSnapshotFromBeforeChangesHasNone(t *testing.T) {
 	}
 }
 
+// A snapshot frozen before Reports named Schedule conflicts reads with none,
+// and its blocks list no Schedule conflict fact.
+func TestSnapshotFromBeforeScheduleConflictsHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
+		`{"Goal":{"ID":1,"Title":"Launch in EU","DeliveryDate":"2026-11-03T00:00:00Z"},"Health":"Green","Changes":["Back to Green"],"Badges":null}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-conflicts snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if len(got.Report.Exceptions) != 1 {
+		t.Fatalf("pre-conflicts snapshot exceptions %+v, want its one block", got.Report.Exceptions)
+	}
+	b := got.Report.Exceptions[0]
+	if len(b.ScheduleConflicts) != 0 {
+		t.Errorf("pre-conflicts block's Schedule conflicts %+v, want none", b.ScheduleConflicts)
+	}
+	for _, f := range b.Facts(got.PublishedAt) {
+		if f.Kind == domain.ReportFactScheduleConflict {
+			t.Errorf("pre-conflicts block lists a Schedule conflict fact %+v", f)
+		}
+	}
+}
+
+// A publication keeps the Schedule conflicts its blocks named, with the dates
+// they had when it was published: moving the child's date back before its
+// parent's ends the conflict on the next draft, not on the publication.
+func TestPublicationFreezesItsScheduleConflicts(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	parentDue := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	childDue := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", parentDue)
+	child := h.ActiveGoalDueLater(sam, "Lisbon office", childDue)
+	h.AcceptedLink(child, parent)
+	settle(h)
+	h.Checkin(sam, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(sam, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{child.ID}})
+	pub := h.PublishReport(sam, def)
+
+	h.Clock.Advance(day)
+	slipDelivery(h, sam, child, parentDue.AddDate(0, 0, -7))
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if b := linkedBlock(t, draft, child); len(b.ScheduleConflicts) != 0 {
+		t.Errorf("next draft's Schedule conflicts %+v, want none once the child is due first", b.ScheduleConflicts)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	cs := linkedBlock(t, got.Report, child).ScheduleConflicts
+	if len(cs) != 1 || cs[0].GoalID != parent.ID || !cs[0].Due.Equal(parentDue) || !cs[0].OwnDue.Equal(childDue) {
+		t.Errorf("publication's Schedule conflicts %+v, want the one with Open in Iberia, due %s after it, as published", cs, childDue)
+	}
+}
+
 // A publication freezes how its Report selected, in the same plain words as
 // the "how this Report selects" summary, as it read when published: editing
 // the definition's rules changes the next publication's selection, not this
