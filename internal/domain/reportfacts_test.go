@@ -172,7 +172,7 @@ func factsBlock() domain.ReportBlock {
 			{Metric: domain.Metric{Name: "NPS", Target: 50}},
 			{Metric: domain.Metric{Name: "Countries live", Target: 5}, Current: 2, Read: true},
 		},
-		RolledUp:      domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 3, YellowChildren: 1},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 3, YellowChildren: 1},
 		ScheduleConflicts: []domain.ReportScheduleConflict{
 			{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), OwnDue: factsLater},
 		},

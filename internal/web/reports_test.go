@@ -5580,7 +5580,7 @@ func reportFactParityPublication() domain.Publication {
 			{Metric: domain.Metric{Name: "Desks booked", Unit: "desks", Direction: domain.MetricUp, Baseline: 4, Target: 37, TargetDate: day(6, 30)}, Current: 19, Read: true},
 			{Metric: domain.Metric{Name: "Local hires", Unit: "people", Direction: domain.MetricUp, Target: 12, TargetDate: day(6, 30)}},
 		},
-		RolledUp:      domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 7, YellowChildren: 2},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 7, YellowChildren: 2},
 		ScheduleConflicts: []domain.ReportScheduleConflict{
 			{GoalID: 19, Title: "Staff the Lisbon desk", Owner: planner, Due: day(6, 1), OwnDue: day(6, 30)},
 			{AsParent: true, GoalID: 20, Title: "Wire the Lisbon network", Owner: wirer, Due: day(7, 15), OwnDue: day(6, 30)},
