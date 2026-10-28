@@ -24,19 +24,20 @@ const (
 // The kinds of an exception block's facts, in the order ReportBlock.Facts
 // lists them.
 const (
-	ReportFactBlockHead     ReportFactKind = "block head"
-	ReportFactChanged       ReportFactKind = "changed"
-	ReportFactContributesTo ReportFactKind = "contributes to"
-	ReportFactFields        ReportFactKind = "fields"
-	ReportFactWhyItMatters  ReportFactKind = "why it matters"
-	ReportFactStatus        ReportFactKind = "status"
-	ReportFactPathToGreen   ReportFactKind = "path to green"
-	ReportFactAskForHelp    ReportFactKind = "asks for help"
-	ReportFactMilestones    ReportFactKind = "milestones"
-	ReportFactMetrics       ReportFactKind = "metrics"
-	ReportFactRolledUp      ReportFactKind = "rolled-up health"
-	ReportFactSupportedBy   ReportFactKind = "supported by"
-	ReportFactExplanation   ReportFactKind = "why the health differs"
+	ReportFactBlockHead        ReportFactKind = "block head"
+	ReportFactChanged          ReportFactKind = "changed"
+	ReportFactScheduleConflict ReportFactKind = "schedule conflict"
+	ReportFactContributesTo    ReportFactKind = "contributes to"
+	ReportFactFields           ReportFactKind = "fields"
+	ReportFactWhyItMatters     ReportFactKind = "why it matters"
+	ReportFactStatus           ReportFactKind = "status"
+	ReportFactPathToGreen      ReportFactKind = "path to green"
+	ReportFactAskForHelp       ReportFactKind = "asks for help"
+	ReportFactMilestones       ReportFactKind = "milestones"
+	ReportFactMetrics          ReportFactKind = "metrics"
+	ReportFactRolledUp         ReportFactKind = "rolled-up health"
+	ReportFactSupportedBy      ReportFactKind = "supported by"
+	ReportFactExplanation      ReportFactKind = "why the health differs"
 )
 
 // AllFactKinds is every kind of fact a Report or an exception block lists, so
@@ -45,7 +46,7 @@ var AllFactKinds = []ReportFactKind{
 	ReportFactByline, ReportFactSelection, ReportFactHealthCounts, ReportFactMovement,
 	ReportFactActionItems, ReportFactIntroduction, ReportFactNarrative,
 	ReportFactExceptions, ReportFactOnTrack, ReportFactMembershipChanges,
-	ReportFactBlockHead, ReportFactChanged, ReportFactContributesTo, ReportFactFields,
+	ReportFactBlockHead, ReportFactChanged, ReportFactScheduleConflict, ReportFactContributesTo, ReportFactFields,
 	ReportFactWhyItMatters, ReportFactStatus, ReportFactPathToGreen, ReportFactAskForHelp,
 	ReportFactMilestones, ReportFactMetrics, ReportFactRolledUp, ReportFactSupportedBy,
 	ReportFactExplanation,
@@ -68,6 +69,16 @@ const (
 	ReportBackToGreenBy = "back to Green by"
 	// ReportPathOverdue marks a Path to Green whose back-to-Green date passed.
 	ReportPathOverdue = "Overdue"
+	// A Schedule conflict reads in these words around its dates and the Goal
+	// at the other end, which each output writes its own way: as the child,
+	// "Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026";
+	// as the parent, "Lisbon office (Sam Lee) is due Nov 3, 2026, after this
+	// Goal's Oct 15, 2026".
+	ReportConflictDue            = "Due"
+	ReportConflictAfter          = "after"
+	ReportConflictOtherDue       = "due"
+	ReportConflictIsDue          = "is due"
+	ReportConflictAfterThisGoals = "after this Goal's"
 )
 
 // ReportFact is one fact a Report shows, in the order it shows them: its kind,
@@ -106,6 +117,8 @@ type ReportFact struct {
 	Head ReportBlockHead
 	// Changes say what changed on the block's Goal since the baseline.
 	Changes []string
+	// ScheduleConflicts are the Schedule conflicts the block's Goal is in.
+	ScheduleConflicts []ReportScheduleConflict
 	// Goals are the Goals a block links to: those it contributes to, or
 	// those behind it, Supported by.
 	Goals []LinkedGoal
@@ -289,13 +302,13 @@ type ReportRolledUp struct {
 }
 
 // Facts lists an exception block's facts in order, each only when the block
-// has it: the head, what changed, the Goals it contributes to, the chosen
-// Fields, Why it matters (even when empty), the status, the Path to Green on
-// a Red or Yellow block, the Ask for help, the Milestones each marked as of
-// asOf in the block's zone, the Metrics, the Rolled-up Health with its count
-// line, the Goals Supported by, and the Owner's explanation when the block
-// shows it (ShowsExplanation). asOf is the instant its Report was published,
-// or now on a draft.
+// has it: the head, what changed, the Schedule conflicts it is in, the Goals it
+// contributes to, the chosen Fields, Why it matters (even when empty), the
+// status, the Path to Green on a Red or Yellow block, the Ask for help, the
+// Milestones each marked as of asOf in the block's zone, the Metrics, the
+// Rolled-up Health with its count line, the Goals Supported by, and the
+// Owner's explanation when the block shows it (ShowsExplanation). asOf is the
+// instant its Report was published, or now on a draft.
 func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 	g := b.Goal
 	head := ReportBlockHead{
@@ -309,6 +322,9 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 	facts := []ReportFact{{Kind: ReportFactBlockHead, Head: head}}
 	if len(b.Changes) > 0 {
 		facts = append(facts, ReportFact{Kind: ReportFactChanged, Label: "Changed", Changes: b.Changes})
+	}
+	if len(b.ScheduleConflicts) > 0 {
+		facts = append(facts, ReportFact{Kind: ReportFactScheduleConflict, Label: "Schedule conflict", ScheduleConflicts: b.ScheduleConflicts})
 	}
 	if len(b.ContributesTo) > 0 {
 		facts = append(facts, ReportFact{Kind: ReportFactContributesTo, Label: "Contributes to", Goals: b.ContributesTo})
