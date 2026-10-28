@@ -177,14 +177,7 @@ func (s *Service) GoalSignals(ctx context.Context, goalID int64) (GoalSignals, e
 // goalSignalsOf is GoalSignals for g, which contributes to parents and which
 // children contribute to.
 func goalSignalsOf(g Goal, parents, children []Goal) GoalSignals {
-	up := make([]edge, 0, len(parents))
-	for _, p := range parents {
-		up = append(up, edge{child: g, parent: p})
-	}
-	down := make([]edge, 0, len(children))
-	for _, c := range children {
-		down = append(down, edge{child: c, parent: g})
-	}
+	up, down := goalEdges(g, parents, children)
 	return GoalSignals{
 		Unlinked:          isUnlinked(g, len(parents)),
 		ScheduleConflicts: scheduleConflicts(append(up, down...)),
@@ -192,6 +185,28 @@ func goalSignalsOf(g Goal, parents, children []Goal) GoalSignals {
 		// halted-parent signals come from its links upward.
 		HaltedParents: haltedParents(up),
 	}
+}
+
+// goalScheduleConflicts are the schedule conflicts g is in, which contributes
+// to parents and which children contribute to: as the child first, then as the
+// parent.
+func goalScheduleConflicts(g Goal, parents, children []Goal) []ScheduleConflict {
+	up, down := goalEdges(g, parents, children)
+	return scheduleConflicts(append(up, down...))
+}
+
+// goalEdges are g's links as edges: up to each of parents, and down from each
+// of children.
+func goalEdges(g Goal, parents, children []Goal) (up, down []edge) {
+	up = make([]edge, 0, len(parents))
+	for _, p := range parents {
+		up = append(up, edge{child: g, parent: p})
+	}
+	down = make([]edge, 0, len(children))
+	for _, c := range children {
+		down = append(down, edge{child: c, parent: g})
+	}
+	return up, down
 }
 
 // isUnlinked applies the Unlinked rule to a Goal with the given number of

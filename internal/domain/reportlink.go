@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 	"strings"
+	"time"
 )
 
 // LinkedGoal is another Goal as an exception block names it: one it
@@ -75,4 +76,50 @@ func linkedHealthRank(health string) int {
 	default:
 		return 2
 	}
+}
+
+// ReportScheduleConflict is one Schedule conflict an exception block's Goal is
+// in, as the block names it, whether or not the Report holds the Goal at the
+// other end (CONTEXT.md: Report): that Goal, its Owner and its delivery date,
+// Due, and the block's Goal's own, OwnDue. AsParent marks the block's Goal as
+// the parent, the other Goal a child due after it; otherwise the block's Goal
+// is the child, due after the other Goal it contributes to. It is frozen with
+// the snapshot, so a publication keeps the dates it had when published.
+type ReportScheduleConflict struct {
+	AsParent bool `json:",omitempty"`
+	GoalID   int64
+	Title    string
+	Owner    Account
+	Due      time.Time
+	OwnDue   time.Time
+}
+
+// reportScheduleConflicts are the Schedule conflicts g is in through its
+// accepted links up to parents and down from children, as goalScheduleConflicts
+// judges them: as the child first, then as the parent, each by the other
+// Goal's delivery date, then title ignoring case, then id.
+func reportScheduleConflicts(g Goal, parents, children []Goal) []ReportScheduleConflict {
+	var asChild, asParent []ReportScheduleConflict
+	for _, c := range goalScheduleConflicts(g, parents, children) {
+		if c.Child.ID == g.ID {
+			asChild = append(asChild, ReportScheduleConflict{
+				GoalID: c.Parent.ID, Title: c.Parent.Title, Owner: c.Parent.Owner, Due: c.Parent.DeliveryDate, OwnDue: g.DeliveryDate,
+			})
+			continue
+		}
+		asParent = append(asParent, ReportScheduleConflict{
+			AsParent: true,
+			GoalID:   c.Child.ID, Title: c.Child.Title, Owner: c.Child.Owner, Due: c.Child.DeliveryDate, OwnDue: g.DeliveryDate,
+		})
+	}
+	for _, cs := range [][]ReportScheduleConflict{asChild, asParent} {
+		slices.SortStableFunc(cs, func(a, b ReportScheduleConflict) int {
+			return cmp.Or(
+				a.Due.Compare(b.Due),
+				cmp.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title)),
+				cmp.Compare(a.GoalID, b.GoalID),
+			)
+		})
+	}
+	return append(asChild, asParent...)
 }

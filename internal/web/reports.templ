@@ -1330,6 +1330,16 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 					<span data-testid="report-change">{ c }</span>
 				}
 			</p>
+		case domain.ReportFactScheduleConflict:
+			<p data-testid="report-schedule-conflicts" class="small">
+				<strong>{ f.Label + ":" }</strong>{ " " }
+				for i, c := range f.ScheduleConflicts {
+					if i > 0 {
+						{ " · " }
+					}
+					@reportScheduleConflict(c)
+				}
+			</p>
 		case domain.ReportFactContributesTo:
 			<p data-testid="report-contributes-to" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
@@ -1533,6 +1543,21 @@ templ linkedGoals(goals []domain.LinkedGoal, d discussion) {
 			}
 		</span>
 	}
+}
+
+// reportScheduleConflict is one Schedule conflict an exception block's Goal is
+// in, linking the Goal at the other end, wherever it is, with its Owner: "Due
+// Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026" as the
+// child, "Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov
+// 3, 2026" as the parent.
+templ reportScheduleConflict(c domain.ReportScheduleConflict) {
+	<span data-testid="report-schedule-conflict">
+		if c.AsParent {
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)) { domain.ReportConflictIsDue + " " + showDateYear(c.Due) + ", " + domain.ReportConflictAfterThisGoals + " " + showDateYear(c.OwnDue) }
+		} else {
+			{ domain.ReportConflictDue + " " + showDateYear(c.OwnDue) + ", " + domain.ReportConflictAfter + " " }<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " (" }@person(c.Owner)), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
+		}
+	</span>
 }
 
 // reportFields is a Goal's values in the Fields its Report chose, each a

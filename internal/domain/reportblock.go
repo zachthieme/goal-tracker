@@ -117,6 +117,11 @@ type ReportBlock struct {
 	// snapshot frozen before Reports named them has neither.
 	ContributesTo []LinkedGoal `json:",omitempty"`
 	Behind        []LinkedGoal `json:",omitempty"`
+	// ScheduleConflicts are the Schedule conflicts the Goal is in, as the
+	// child first, then as the parent (reportScheduleConflicts), with the Goal
+	// at the other end wherever it is. A snapshot frozen before Reports named
+	// them has none.
+	ScheduleConflicts []ReportScheduleConflict `json:",omitempty"`
 	// Fields are the Goal's values in the Fields the definition chose, shown
 	// as labelled values beside the Goal, never in the narrative (ADR 0005).
 	Fields []FieldValue `json:",omitempty"`
@@ -239,6 +244,16 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	if err != nil {
 		return Report{}, err
 	}
+	// Every selected Goal's links are read, not only the exceptions', as a
+	// Schedule conflict makes an exception of its own.
+	parents, err := s.parentsByGoal(ctx, goalIDsOf(goals))
+	if err != nil {
+		return Report{}, err
+	}
+	children, err := s.childrenByGoal(ctx, goalIDsOf(goals))
+	if err != nil {
+		return Report{}, err
+	}
 	last := make(map[int64]lastCheckin, len(goals))
 	for _, g := range goals {
 		last[g.ID] = histories[g.ID].last()
@@ -248,9 +263,10 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 		return Report{}, err
 	}
 	type exceptionGoal struct {
-		h      goalHistory
-		fresh  Freshness
-		fields []FieldValue
+		h         goalHistory
+		fresh     Freshness
+		fields    []FieldValue
+		conflicts []ReportScheduleConflict
 	}
 	var pending []exceptionGoal
 	for _, sg := range selected {
@@ -262,17 +278,18 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 		if changed {
 			r.changedGoalIDs = append(r.changedGoalIDs, sg.Goal.ID)
 		}
-		if !h.exception(changed, fresh) {
+		conflicts := reportScheduleConflicts(sg.Goal, parents[sg.Goal.ID], children[sg.Goal.ID])
+		if !h.exception(changed, fresh, len(conflicts) > 0) {
 			r.Lines = append(r.Lines, sg)
 			continue
 		}
-		pending = append(pending, exceptionGoal{h: h, fresh: fresh, fields: sg.Fields})
+		pending = append(pending, exceptionGoal{h: h, fresh: fresh, fields: sg.Fields, conflicts: conflicts})
 	}
 	exceptionIDs := make([]int64, 0, len(pending))
 	for _, p := range pending {
 		exceptionIDs = append(exceptionIDs, p.h.goal.ID)
 	}
-	reads, err := s.readBlocks(ctx, exceptionIDs)
+	reads, err := s.readBlocks(ctx, exceptionIDs, parents, children)
 	if err != nil {
 		return Report{}, err
 	}
@@ -283,6 +300,7 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 			return Report{}, err
 		}
 		b.Fields = p.fields
+		b.ScheduleConflicts = p.conflicts
 		b.Changes = p.h.reportChanges(b, since, r.Baseline, p.fresh)
 		exceptions = append(exceptions, reportException{
 			block:          b,
@@ -432,12 +450,13 @@ func (h goalHistory) last() lastCheckin {
 }
 
 // exception reports whether the Goal earns the full block: it is Red or Yellow,
-// Check-in overdue, or Ownerless, or changed, as changed judged it since the
-// baseline (CONTEXT.md: Report).
-func (h goalHistory) exception(changed bool, fresh Freshness) bool {
+// Check-in overdue, Ownerless, or in a Schedule conflict, or changed, as
+// changed judged it since the baseline (CONTEXT.md: Report).
+func (h goalHistory) exception(changed bool, fresh Freshness, conflicted bool) bool {
 	return needsPathToGreen(h.latest().Health) ||
 		fresh.CheckinOverdue ||
 		h.goal.Ownerless ||
+		conflicted ||
 		changed
 }
 
@@ -516,6 +535,8 @@ type blockReads struct {
 	metrics    map[int64][]Metric
 	// readings are the Metrics' readings, earliest first, by Metric ID.
 	readings map[int64][]MetricReading
+	// parents and children are every selected Goal's accepted links, read
+	// before the exceptions are known.
 	parents  map[int64][]Goal
 	children map[int64][]Goal
 	// childLatest are the latest Check-ins of the blocks' Active children.
@@ -525,10 +546,11 @@ type blockReads struct {
 }
 
 // readBlocks reads what the exception blocks of goalIDs show beyond their
-// histories, in the same few queries however many there are, but for an Ask's
-// addressee, read one Manager at a time and each once.
-func (s *Service) readBlocks(ctx context.Context, goalIDs []int64) (blockReads, error) {
-	var reads blockReads
+// histories and their links, parents and children, already read for every
+// selected Goal, in the same few queries however many there are, but for an
+// Ask's addressee, read one Manager at a time and each once.
+func (s *Service) readBlocks(ctx context.Context, goalIDs []int64, parents, children map[int64][]Goal) (blockReads, error) {
+	reads := blockReads{parents: parents, children: children}
 	var err error
 	if reads.milestones, err = s.milestonesByGoal(ctx, goalIDs); err != nil {
 		return blockReads{}, err
@@ -539,17 +561,11 @@ func (s *Service) readBlocks(ctx context.Context, goalIDs []int64) (blockReads, 
 	if reads.readings, err = s.metricReadingsByMetric(ctx, goalIDs); err != nil {
 		return blockReads{}, err
 	}
-	if reads.parents, err = s.parentsByGoal(ctx, goalIDs); err != nil {
-		return blockReads{}, err
+	var blockChildren []Goal
+	for _, id := range goalIDs {
+		blockChildren = append(blockChildren, children[id]...)
 	}
-	if reads.children, err = s.childrenByGoal(ctx, goalIDs); err != nil {
-		return blockReads{}, err
-	}
-	var children []Goal
-	for _, cs := range reads.children {
-		children = append(children, cs...)
-	}
-	if reads.childLatest, err = s.LatestCheckinsByGoal(ctx, dedupeIDs(activeGoalIDs(children))); err != nil {
+	if reads.childLatest, err = s.LatestCheckinsByGoal(ctx, dedupeIDs(activeGoalIDs(blockChildren))); err != nil {
 		return blockReads{}, err
 	}
 	accounts := map[int64]Account{}

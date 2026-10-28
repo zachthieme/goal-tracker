@@ -104,14 +104,15 @@ type reportException struct {
 // sortReportExceptions puts the most urgent exceptions first, key by key, in
 // the Report's order (CONTEXT.md: Report): Ownerless first; then by Health
 // (HealthUrgencyRank); then a Path to Green overdue first; then Check-in
-// overdue first. Then those that changed since the baseline come first, new
-// trouble ahead of standing trouble; then the soonest delivery date, with none
+// overdue first; then in a Schedule conflict first. Then those that changed
+// since the baseline come first, new trouble ahead of standing trouble; then
+// the soonest delivery date, with none
 // last; then by title, ignoring case, then by Goal id. The Follow-ups page
 // ranks otherwise (sortFollowUpRows): it puts Active Goals ahead of the rest
 // before any of these keys, and a Milestone overdue and then an overdue Action
 // Item between a Path to Green overdue and Check-in overdue, none of which a
-// Report ranks by; and a Report's ranking by change and delivery date is its
-// own.
+// Report ranks by; and a Report's ranking by Schedule conflict, change and
+// delivery date is its own.
 func sortReportExceptions(xs []reportException) {
 	slices.SortStableFunc(xs, func(a, b reportException) int {
 		ga, gb := a.block.Goal, b.block.Goal
@@ -125,6 +126,9 @@ func sortReportExceptions(xs []reportException) {
 			return c
 		}
 		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeCheckinOverdue)), reportFlagRank(b.block.hasBadge(BadgeCheckinOverdue))); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(reportFlagRank(len(a.block.ScheduleConflicts) > 0), reportFlagRank(len(b.block.ScheduleConflicts) > 0)); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(reportFlagRank(a.block.changedSinceBaseline()), reportFlagRank(b.block.changedSinceBaseline())); c != 0 {

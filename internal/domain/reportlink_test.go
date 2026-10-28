@@ -144,3 +144,179 @@ func TestReportBlockNamesNoPendingLink(t *testing.T) {
 		}
 	}
 }
+
+// A Goal due after a Goal it contributes to is in a Schedule conflict, and
+// that makes it an exception even Green and unchanged since the baseline. Its
+// block names the parent, its Owner and its delivery date, though the Report
+// doesn't hold the parent, and naming it never brings it in (CONTEXT.md:
+// Report; ADR 0007).
+func TestReportShowsTheChildsScheduleConflictWithAParentOutsideIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	parentDue := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	childDue := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", parentDue)
+	child := h.ActiveGoalDueLater(sam, "Lisbon office", childDue)
+	h.AcceptedLink(child, parent)
+	settle(h)
+	h.Checkin(sam, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	r := draftReport(t, h, sam, time.Time{}, child)
+
+	if got, want := blockIDs(r), []int64{child.ID}; !slices.Equal(got, want) {
+		t.Fatalf("exception blocks %v, want only the late child %v", got, want)
+	}
+	if got := lineIDs(r); len(got) != 0 {
+		t.Errorf("one-line Goals %v, want none: naming the parent never brings it in", got)
+	}
+	b := r.Exceptions[0]
+	if b.Health != domain.HealthGreen {
+		t.Errorf("Health %q, want its latest Check-in's, Green", b.Health)
+	}
+	if len(b.ScheduleConflicts) != 1 {
+		t.Fatalf("ScheduleConflicts %+v, want one", b.ScheduleConflicts)
+	}
+	c := b.ScheduleConflicts[0]
+	if c.AsParent || c.GoalID != parent.ID || c.Title != "Open in Iberia" ||
+		c.Owner.ID != pat.ID || c.Owner.Label() != "Pat Parker" || c.Owner.Email != "pat@example.com" ||
+		!c.Due.Equal(parentDue) || !c.OwnDue.Equal(childDue) {
+		t.Errorf("conflict %+v, want as the child, after Open in Iberia (Pat Parker), due %s, its own date %s", c, parentDue, childDue)
+	}
+}
+
+// A Goal whose child is due after it is in a Schedule conflict as the parent:
+// in a Report holding only the parent, it is an exception whose block names
+// the late child, its Owner and its delivery date, while a child due on time
+// is not named.
+func TestReportShowsTheParentsScheduleConflictWithALateChildOutsideIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	parentDue := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	childDue := time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", parentDue)
+	late := h.ActiveGoalDueLater(sam, "Lisbon office", childDue)
+	h.AcceptedLink(late, parent)
+	onTime := h.ActiveGoalDueLater(sam, "Madrid office", parentDue)
+	h.AcceptedLink(onTime, parent)
+	settle(h)
+	h.Checkin(pat, parent.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	r := draftReport(t, h, pat, time.Time{}, parent)
+
+	if got, want := blockIDs(r), []int64{parent.ID}; !slices.Equal(got, want) {
+		t.Fatalf("exception blocks %v, want only the parent %v", got, want)
+	}
+	cs := r.Exceptions[0].ScheduleConflicts
+	if len(cs) != 1 {
+		t.Fatalf("ScheduleConflicts %+v, want only the late child's", cs)
+	}
+	if c := cs[0]; !c.AsParent || c.GoalID != late.ID || c.Title != "Lisbon office" ||
+		c.Owner.ID != sam.ID || c.Owner.Label() != "Sam Lee" ||
+		!c.Due.Equal(childDue) || !c.OwnDue.Equal(parentDue) {
+		t.Errorf("conflict %+v, want as the parent of Lisbon office (Sam Lee), due %s, after its own %s", c, childDue, parentDue)
+	}
+}
+
+// A link raises no Schedule conflict, and so no exception, when the child is
+// Done or Cancelled, either Goal has no delivery date, or the child is due on
+// or before its parent: each Goal with no other reason stays one line.
+func TestReportRaisesNoScheduleConflictWhereTheGraphFlagsNone(t *testing.T) {
+	t.Parallel()
+
+	parentDue := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name string
+		// arrange links a child to a parent and returns the Goals the Report
+		// holds, every one Active.
+		arrange func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal
+	}{
+		{"child Done", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := h.ActiveGoalDueLater(pat, "Parent", parentDue)
+			child := h.ActiveGoalDueLater(sam, "Child", parentDue.AddDate(0, 1, 0))
+			h.AcceptedLink(child, parent)
+			h.EndGoalInCheckin(sam, child.ID, domain.LifecycleDone)
+			return []domain.Goal{parent}
+		}},
+		{"child Cancelled", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := h.ActiveGoalDueLater(pat, "Parent", parentDue)
+			child := h.ActiveGoalDueLater(sam, "Child", parentDue.AddDate(0, 1, 0))
+			h.AcceptedLink(child, parent)
+			h.EndGoalInCheckin(sam, child.ID, domain.LifecycleCancelled)
+			return []domain.Goal{parent}
+		}},
+		{"parent with no delivery date", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := activeOngoingGoal(h, pat, "Parent")
+			child := h.ActiveGoalDueLater(sam, "Child", parentDue)
+			h.AcceptedLink(child, parent)
+			return []domain.Goal{parent, child}
+		}},
+		{"child with no delivery date", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := h.ActiveGoalDueLater(pat, "Parent", parentDue)
+			child := activeOngoingGoal(h, sam, "Child")
+			h.AcceptedLink(child, parent)
+			return []domain.Goal{parent, child}
+		}},
+		{"child due on its parent's date", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := h.ActiveGoalDueLater(pat, "Parent", parentDue)
+			child := h.ActiveGoalDueLater(sam, "Child", parentDue)
+			h.AcceptedLink(child, parent)
+			return []domain.Goal{parent, child}
+		}},
+		{"child due before its parent", func(h *testsupport.Harness, sam, pat domain.Account) []domain.Goal {
+			parent := h.ActiveGoalDueLater(pat, "Parent", parentDue)
+			child := h.ActiveGoalDueLater(sam, "Child", parentDue.AddDate(0, 0, -14))
+			h.AcceptedLink(child, parent)
+			return []domain.Goal{parent, child}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t, "boss@example.com")
+			sam := h.SignIn("sam@example.com")
+			pat := h.SignIn("pat@example.com")
+			held := tc.arrange(h, sam, pat)
+			settle(h)
+			for _, g := range held {
+				h.Checkin(g.Owner, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+			}
+
+			r := draftReport(t, h, pat, time.Time{}, held...)
+
+			if got := blockIDs(r); len(got) != 0 {
+				t.Errorf("exception blocks %v, want none", got)
+			}
+			if got, want := lineIDs(r), idsOf(held); !sameSet(got, want) {
+				t.Errorf("one-line Goals %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// activeOngoingGoal creates an Active Ongoing Goal owned by owner, one with no
+// delivery date, failing the test on error.
+func activeOngoingGoal(h *testsupport.Harness, owner domain.Account, title string) domain.Goal {
+	h.T.Helper()
+	ctx := context.Background()
+	g := h.CreateGoal(owner, title, title+" matters.")
+	if _, err := h.Service.MarkGoalOngoing(ctx, owner.ID, g.ID); err != nil {
+		h.T.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, owner.ID, domain.AddMetricInput{
+		GoalID: g.ID, Name: "NPS", Unit: "points", Direction: domain.MetricUp,
+		Baseline: 10, Target: 40, TargetDate: h.Clock.Now().AddDate(1, 0, 0),
+	}); err != nil {
+		h.T.Fatalf("AddMetric: %v", err)
+	}
+	active, err := h.Service.ActivateGoal(ctx, owner.ID, g.ID)
+	if err != nil {
+		h.T.Fatalf("ActivateGoal: %v", err)
+	}
+	return active
+}

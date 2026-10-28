@@ -154,6 +154,8 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 		}
 	case domain.ReportFactChanged:
 		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, strings.Join(f.Changes, " · "))
+	case domain.ReportFactScheduleConflict:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, scheduleConflicts(people, f.ScheduleConflicts))
 	case domain.ReportFactContributesTo:
 		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, linkedGoals(f.Goals))
 	case domain.ReportFactFields:
@@ -230,6 +232,27 @@ func linkedGoals(goals []domain.LinkedGoal) string {
 		names = append(names, name)
 	}
 	return strings.Join(names, " · ")
+}
+
+// scheduleConflicts names the Schedule conflicts an exception block's Goal is
+// in, joined by " · ", each with the Goal at the other end, its Owner and both
+// dates: "Due 2026-11-03, after Open in Iberia (Pat Parker), due 2026-10-15"
+// as the child, "Lisbon office (Sam Lee) is due 2026-11-03, after this Goal's
+// 2026-10-15" as the parent. With no base URL to link from, the other Goal is
+// a name, not a link.
+func scheduleConflicts(people *domain.Mentions, conflicts []domain.ReportScheduleConflict) string {
+	entries := make([]string, 0, len(conflicts))
+	for _, c := range conflicts {
+		other := fmt.Sprintf("%s (%s)", text(c.Title), text(people.Of(c.Owner)))
+		if c.AsParent {
+			entries = append(entries, fmt.Sprintf("%s %s %s, %s %s",
+				other, domain.ReportConflictIsDue, fmtDate(c.Due), domain.ReportConflictAfterThisGoals, fmtDate(c.OwnDue)))
+			continue
+		}
+		entries = append(entries, fmt.Sprintf("%s %s, %s %s, %s %s",
+			domain.ReportConflictDue, fmtDate(c.OwnDue), domain.ReportConflictAfter, other, domain.ReportConflictOtherDue, fmtDate(c.Due)))
+	}
+	return strings.Join(entries, " · ")
 }
 
 // fields renders a Goal's values in the Fields its Report chose on one line,

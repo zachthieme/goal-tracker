@@ -4509,6 +4509,89 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 	}
 }
 
+// An exception block names each Schedule conflict its Goal is in, after what
+// changed: as the child, its date after the parent's; as the parent, a child's
+// date after its own. Each links the Goal at the other end, outside the Report
+// though it is, and shows its Owner as every person on that page is: a Name
+// that discloses their email on the draft and the publication, and Name (email)
+// at their first mention in Print. Dates read as the page writes them.
+func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", date(10, 15))
+	middle := h.ActiveGoalDueLater(boss, "Lisbon office", date(11, 3))
+	child := h.ActiveGoalDueLater(sam, "Wire the network", date(12, 1))
+	h.AcceptedLink(middle, parent)
+	h.AcceptedLink(child, middle)
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, middle.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{middle.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
+	// textOf reads words apart, so a Name between brackets reads "( Pat
+	// Parker )"; reads closes them up.
+	reads := strings.NewReplacer("( ", "(", " )", ")").Replace
+	for _, page := range []struct {
+		name, url string
+		want      []string
+	}{
+		{"draft", reportURL, []string{
+			"Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026",
+			"Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
+		}},
+		{"publication", pubURL, []string{
+			"Due Nov 3, 2026, after Open in Iberia (Pat Parker), due Oct 15, 2026",
+			"Wire the network (Sam Lee) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
+		}},
+		{"print", pubURL + "/print", []string{
+			"Due Nov 3, 2026, after Open in Iberia (Pat Parker (pat@example.com)), due Oct 15, 2026",
+			"Wire the network (Sam Lee (sam@example.com)) is due Dec 1, 2026, after this Goal's Nov 3, 2026",
+		}},
+	} {
+		block := reportBlockOf(t, getPage(t, client, page.url), middle)
+		fact := findByTestID(t, block, "report-schedule-conflicts")
+		if !strings.HasPrefix(textOf(fact), "Schedule conflict: ") {
+			t.Errorf("%s: the fact reads %q, want it labelled Schedule conflict:", page.name, textOf(fact))
+		}
+		entries := findAllByTestID(fact, "report-schedule-conflict")
+		var got []string
+		for _, e := range entries {
+			got = append(got, reads(textOf(e)))
+		}
+		if !slices.Equal(got, page.want) {
+			t.Errorf("%s: Schedule conflicts read\n%q\nwant\n%q", page.name, got, page.want)
+			continue
+		}
+		for i, other := range []struct {
+			goal  domain.Goal
+			email string
+			name  string
+		}{{parent, "pat@example.com", "Pat Parker"}, {child, "sam@example.com", "Sam Lee"}} {
+			if link := linkTo(entries[i], fmt.Sprintf("/goals/%d", other.goal.ID)); link == nil || textOf(link) != other.goal.Title {
+				t.Errorf("%s: %q does not link %s to its Goal page", page.name, got[i], other.goal.Title)
+			}
+			if page.name != "print" && !reportShowsPerson(entries[i], other.email, other.name) {
+				t.Errorf("%s: %q does not show %s as a Name that discloses their email", page.name, got[i], other.name)
+			}
+		}
+		if changed := findAllByTestID(block, "report-changes"); len(changed) > 0 && !precedes(changed[0], fact) {
+			t.Errorf("%s: Schedule conflict comes before Changed", page.name)
+		}
+		if contributes := findAllByTestID(block, "report-contributes-to"); len(contributes) > 0 && !precedes(fact, contributes[0]) {
+			t.Errorf("%s: Schedule conflict comes after Contributes to", page.name)
+		}
+	}
+}
+
 // A publication frozen before Reports counted Red and Yellow children or
 // named linked Goals reads as it did: its Rolled-up Health counts only the
 // Check-in overdue children, and it names no other Goal (#246).
@@ -5471,6 +5554,8 @@ func reportFactParityPublication() domain.Publication {
 	chaser := domain.Account{ID: 4, Email: "cy.chaser@example.com", Name: "Cy Chaser"}
 	writer := domain.Account{ID: 5, Email: "wren.writer@example.com", Name: "Wren Writer"}
 	liner := domain.Account{ID: 6, Email: "lin.liner@example.com", Name: "Lin Liner"}
+	planner := domain.Account{ID: 8, Email: "pia.planner@example.com", Name: "Pia Planner"}
+	wirer := domain.Account{ID: 9, Email: "will.wirer@example.com", Name: "Will Wirer"}
 	launch := domain.ReportBlock{
 		Goal: domain.Goal{
 			ID: 11, Title: "Launch the Lisbon office", WhyItMatters: "Southern Europe needs a base.",
@@ -5495,7 +5580,11 @@ func reportFactParityPublication() domain.Publication {
 			{Metric: domain.Metric{Name: "Desks booked", Unit: "desks", Direction: domain.MetricUp, Baseline: 4, Target: 37, TargetDate: day(6, 30)}, Current: 19, Read: true},
 			{Metric: domain.Metric{Name: "Local hires", Unit: "people", Direction: domain.MetricUp, Target: 12, TargetDate: day(6, 30)}},
 		},
-		RolledUp:      domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 7, YellowChildren: 2},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 7, YellowChildren: 2},
+		ScheduleConflicts: []domain.ReportScheduleConflict{
+			{GoalID: 19, Title: "Staff the Lisbon desk", Owner: planner, Due: day(6, 1), OwnDue: day(6, 30)},
+			{AsParent: true, GoalID: 20, Title: "Wire the Lisbon network", Owner: wirer, Due: day(7, 15), OwnDue: day(6, 30)},
+		},
 		ContributesTo: []domain.LinkedGoal{{GoalID: 12, Title: "Open in Iberia", Health: domain.HealthRed, InReport: true}},
 		Behind:        []domain.LinkedGoal{{GoalID: 13, Title: "Fit out the Lisbon floor", Health: domain.HealthYellow}},
 		Fields:        []domain.FieldValue{{Field: domain.Field{Name: "Cost centre", Type: domain.FieldShortText}, Value: "CC-4471"}},
@@ -5591,6 +5680,14 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 		out = append(out, h.Badges...)
 	case domain.ReportFactChanged:
 		out = append(out, f.Changes...)
+	case domain.ReportFactScheduleConflict:
+		for _, c := range f.ScheduleConflicts {
+			if c.AsParent {
+				out = append(out, c.Title, c.Owner.Label(), domain.ReportConflictIsDue, domain.ReportConflictAfterThisGoals)
+			} else {
+				out = append(out, domain.ReportConflictDue, domain.ReportConflictAfter, c.Title, c.Owner.Label(), domain.ReportConflictOtherDue)
+			}
+		}
 	case domain.ReportFactContributesTo, domain.ReportFactSupportedBy:
 		goals(f.Goals)
 	case domain.ReportFactFields:

@@ -172,7 +172,10 @@ func factsBlock() domain.ReportBlock {
 			{Metric: domain.Metric{Name: "NPS", Target: 50}},
 			{Metric: domain.Metric{Name: "Countries live", Target: 5}, Current: 2, Read: true},
 		},
-		RolledUp:      domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 3, YellowChildren: 1},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 3, YellowChildren: 1},
+		ScheduleConflicts: []domain.ReportScheduleConflict{
+			{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), OwnDue: factsLater},
+		},
 		ContributesTo: []domain.LinkedGoal{{GoalID: 5, Title: "Grow revenue", Health: domain.HealthYellow, InReport: true}},
 		Behind:        []domain.LinkedGoal{{GoalID: 6, Title: "Alpha ledger", Health: domain.HealthYellow}},
 		Fields:        []domain.FieldValue{{Field: domain.Field{Name: "Budget"}, Value: "120"}},
@@ -189,6 +192,7 @@ func TestReportBlockFactsListTheBlockInOrder(t *testing.T) {
 	want := []string{
 		"block head: ",
 		"changed: Changed",
+		"schedule conflict: Schedule conflict",
 		"contributes to: Contributes to",
 		"fields: ",
 		"why it matters: Why it matters",
@@ -203,6 +207,31 @@ func TestReportBlockFactsListTheBlockInOrder(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("ReportBlock.Facts() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// A block's Schedule conflict fact carries each conflict as the block holds
+// it, as the child first, then as the parent; a block in none has no such
+// fact.
+func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
+	t.Parallel()
+
+	b := factsBlock()
+	asParent := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Lisbon office", Owner: factsBoss, Due: factsLater.AddDate(0, 1, 0), OwnDue: factsLater}
+	b.ScheduleConflicts = append(b.ScheduleConflicts, asParent)
+	got := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactScheduleConflict).ScheduleConflicts
+	if !slices.EqualFunc(got, b.ScheduleConflicts, func(x, y domain.ReportScheduleConflict) bool {
+		return x.AsParent == y.AsParent && x.GoalID == y.GoalID && x.Title == y.Title && x.Owner == y.Owner &&
+			x.Due.Equal(y.Due) && x.OwnDue.Equal(y.OwnDue)
+	}) {
+		t.Errorf("Schedule conflict fact = %+v, want %+v", got, b.ScheduleConflicts)
+	}
+
+	b.ScheduleConflicts = nil
+	for _, f := range b.Facts(factsAsOf) {
+		if f.Kind == domain.ReportFactScheduleConflict {
+			t.Errorf("a block in no Schedule conflict lists %+v", f)
+		}
 	}
 }
 

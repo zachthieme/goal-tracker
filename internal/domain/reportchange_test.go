@@ -353,6 +353,63 @@ func TestReportPutsACheckinOverdueExceptionBeforeAFreshOne(t *testing.T) {
 	}
 }
 
+// Among exceptions alike in being Ownerless, their Health, a Path to Green
+// overdue and Check-in overdue, one in a Schedule conflict comes before one
+// that only changed since the baseline, though that one is due sooner and its
+// title sorts first; a Check-in overdue one comes before both (CONTEXT.md:
+// Report).
+func TestReportPutsAScheduleConflictAfterCheckinOverdueAndBeforeAChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	parent := activeGoalDue(h, boss, "Parent outside", date(9, 1))
+	conflict := activeGoalDue(h, boss, "Z conflict", date(10, 1))
+	h.RequestLink(boss, conflict, parent, "")
+	changed := activeGoalDue(h, boss, "A changed", date(8, 1))
+	checkinOverdue := activeGoalDue(h, boss, "M Check-in overdue", date(12, 1))
+	checkinHealth(h, boss, changed, domain.HealthYellow)
+	checkinHealth(h, boss, checkinOverdue, domain.HealthGreen)
+	settle(h)
+	checkinHealth(h, boss, conflict, domain.HealthGreen)
+	checkinHealth(h, boss, changed, domain.HealthGreen)
+
+	r := draftReport(t, h, boss, time.Time{}, changed, conflict, checkinOverdue)
+
+	if got, want := reportExceptionTitles(r), []string{"M Check-in overdue", "Z conflict", "A changed"}; !slices.Equal(got, want) {
+		t.Errorf("exceptions in order\n got %q\nwant %q", got, want)
+	}
+}
+
+// A Schedule conflict is no movement: a Report whose one exception is a Goal
+// in a Schedule conflict, with nothing else moved, counts nothing in the line
+// it opens with.
+func TestReportCountsNoMovementForAScheduleConflict(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	parent := activeGoalDue(h, boss, "Parent outside", date(9, 1))
+	conflict := activeGoalDue(h, boss, "Late child", date(10, 1))
+	h.RequestLink(boss, conflict, parent, "")
+	settle(h)
+	checkinHealth(h, boss, conflict, domain.HealthGreen)
+
+	r := draftReport(t, h, boss, time.Time{}, conflict)
+
+	if got, want := blockIDs(r), []int64{conflict.ID}; !slices.Equal(got, want) {
+		t.Fatalf("exception blocks %v, want the Goal in the Schedule conflict %v", got, want)
+	}
+	if r.Movement == nil {
+		t.Fatal("no movement, want the draft's")
+	}
+	if got := *r.Movement; got != (domain.ReportMovement{}) {
+		t.Errorf("movement %+v, want nothing counted", got)
+	}
+}
+
 // activeGoalDue creates an Active Goal owned by owner, due on due, with a
 // Milestone a month before it, so neither is overdue once the clock settles.
 func activeGoalDue(h *testsupport.Harness, owner domain.Account, title string, due time.Time) domain.Goal {
