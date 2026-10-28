@@ -715,6 +715,35 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	}
 }
 
+// An exception block names each Schedule conflict its Goal is in after what
+// changed, as the child and as the parent, with the other Goal by name, its
+// Owner introduced at their first mention, and both dates as Markdown writes
+// dates.
+func TestMarkdownNamesEachScheduleConflictOfABlock(t *testing.T) {
+	t.Parallel()
+
+	pat := domain.Account{ID: 2, Email: "pat@example.com", Name: "Pat Parker"}
+	sam := domain.Account{ID: 3, Email: "sam@example.com", Name: "Sam Lee"}
+	own := date(2026, 11, 3)
+	pub := publication([]domain.ReportBlock{{
+		Goal:    domain.Goal{Title: "Lisbon office", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: own},
+		Health:  domain.HealthGreen,
+		Changes: []string{"Back to Green"},
+		ScheduleConflicts: []domain.ReportScheduleConflict{
+			{GoalID: 7, Title: "Open in Iberia", Owner: pat, Due: date(2026, 10, 15), OwnDue: own},
+			{AsParent: true, GoalID: 8, Title: "Fit_out the floor", Owner: sam, Due: date(2026, 12, 1), OwnDue: own},
+		},
+	}}, nil)
+
+	got := export.Markdown(pub)
+	want := "\n\n**Changed:** Back to Green\n\n**Schedule conflict:** " +
+		"Due 2026-11-03, after Open in Iberia (Pat Parker (pat@example.com)), due 2026-10-15 · " +
+		"Fit\\_out the floor (Sam Lee (sam@example.com)) is due 2026-12-01, after this Goal's 2026-11-03\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to contain %q", got, want)
+	}
+}
+
 // An exception block that asks for help says so after its Path to Green,
 // introducing whom it asks at their first mention, or saying no one is above
 // the Owner.
