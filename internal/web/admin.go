@@ -220,7 +220,11 @@ func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
-	if errors.Is(err, domain.ErrValidation) { // #701
+	if errors.Is(err, domain.ErrValidation) {
+		// Deliberately not answerRefused's 422: removing yourself is
+		// refused above, so the one refusal left is an id that is no
+		// one's Account, and the Account in the path is not found, as an
+		// id that isn't one is (TestAdminCantRemoveTheirOwnAdminRole).
 		s.notFound(w, r)
 		return
 	}

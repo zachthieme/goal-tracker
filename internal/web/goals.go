@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,12 +20,14 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 		WhyItMatters: r.FormValue("why_it_matters"),
 		OwnerID:      current.ID,
 	})
-	if errors.Is(err, domain.ErrNotAuthorized) { // #701
-		s.serverError(w, r, "could not create goal", err)
-		return
-	}
+	s.answerCreateGoal(w, r, err)
+}
+
+// answerCreateGoal answers a create of a Goal: done, it returns to the Goal
+// list; refused with err, it is answerRefused's, headed "Can't create Goal"
+// and linking Back to the New goal form, since no Goal exists yet.
+func (s *Server) answerCreateGoal(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
-		// No Goal exists yet, so the way back is the new Goal form.
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't create Goal", Back: "/goals/new"})
 		return
 	}

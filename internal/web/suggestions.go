@@ -65,15 +65,6 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	_, err = s.svc.SuggestParent(r.Context(), current.ID, goalID, parentID, r.FormValue("note"))
-	if errors.Is(err, domain.ErrNotAuthorized) { // #701
-		page, pageErr := s.suggestParentForm(r, current, goalID, err)
-		if pageErr != nil {
-			s.answerRefused(w, r, refused{Err: pageErr, Heading: "Can't suggest a parent", Back: goalPath(goalID)})
-			return
-		}
-		render(w, r, http.StatusForbidden, page)
-		return
-	}
 	if err != nil {
 		refuse(err)
 		return

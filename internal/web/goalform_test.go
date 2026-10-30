@@ -6,6 +6,7 @@ import (
 	"html"
 	"maps"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"slices"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // The New goal page is a plain form posting to itself: Title, focused, and Why it
@@ -3237,5 +3239,38 @@ func TestNewGoalFormJudgesTodayInTheOwnersTimezone(t *testing.T) {
 		if got := attrOf(goalForm, name); got != want {
 			t.Errorf("the form carries %s=%q, want %q", name, got, want)
 		}
+	}
+}
+
+// A New goal or define submit refused for who is asking, such as someone who
+// has Departed, or handed the Goal off, since the page was drawn, is the
+// refusal page, 403, saying why and linking Back to the New goal form or the
+// Goal, not a 500 and not the form again (#701).
+func TestAGoalFormRefusedForWhoIsAskingIsTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	srv.HandleRefusedGoalFormForTest("POST /goal-form-refused-test", domain.Refuse(domain.ErrNotAuthorized, "a Departed person can't create a Goal"))
+	srv.HandleRefusedGoalFormForTest("POST /goal-form-refused-test/{id}", domain.Refuse(domain.ErrNotAuthorized, "only the Goal's Owner may define it"))
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, c := range []struct {
+		name, path, heading, reason, back string
+	}{
+		{"New goal", "/goal-form-refused-test", "Can't create Goal", "A Departed person can't create a Goal.", "/goals/new"},
+		{"define", fmt.Sprintf("/goal-form-refused-test/%d", proposed.ID), "Can't define Goal", "Only the Goal's Owner may define it.", fmt.Sprintf("/goals/%d", proposed.ID)},
+	} {
+		resp := postForm(t, client, ts.URL+c.path, url.Values{domain.InputTitle: {"Grow revenue"}, domain.InputWhyItMatters: {"The business needs it."}})
+		page := parsePage(t, readBody(t, resp))
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, c.heading, c.reason, c.back)
 	}
 }
