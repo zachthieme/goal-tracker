@@ -391,12 +391,11 @@ templ reportBuilderScript() {
 				var radio = row.querySelector('[data-testid="rule-op"]').value === "is";
 				var values = Array.from(listOf(row).querySelectorAll("input"));
 				var chosen = values.map(function (input) { return input.checked; });
-				var kept = false;
-				values.forEach(function (input, i) {
-					input.type = radio ? "radio" : "checkbox";
-					input.checked = chosen[i] && !(radio && kept);
-					if (input.checked) kept = true;
-				});
+				// Every type first: a ticked box turned radio unticks the
+				// group's radio before it.
+				values.forEach(function (input) { input.type = radio ? "radio" : "checkbox"; });
+				var first = chosen.indexOf(true);
+				values.forEach(function (input, i) { input.checked = radio ? i === first : chosen[i]; });
 			}
 			// fill gives the row its attribute's values alone: those it was
 			// rendered with when it tests that attribute again, so a Retired
@@ -418,6 +417,15 @@ templ reportBuilderScript() {
 				list.closest('[data-testid="rule-values"]').hidden = !list.querySelector("input");
 			}
 			function rowsOf() { return Array.from(form.querySelectorAll("[data-rule]")); }
+			// reveal scrolls a row's values to its first chosen one, top of
+			// the list, moving only the list, so a long list such as the
+			// Owners opens on what the row tests.
+			function reveal(row) {
+				var list = listOf(row);
+				var first = list.querySelector("input:checked");
+				if (!first) return;
+				list.scrollTop += first.closest("label").getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop;
+			}
 			rowsOf().forEach(function (row) {
 				narrowOps(row);
 				var attribute = attributeOf(row).value;
@@ -427,7 +435,10 @@ templ reportBuilderScript() {
 					Array.from(listOf(row).children).forEach(function (n) { row.renderedValues.appendChild(n.cloneNode(true)); });
 				}
 				fill(row);
+				reveal(row);
 			});
+			// A web font that loads late changes each value's height.
+			if (document.fonts) document.fonts.ready.then(function () { rowsOf().forEach(reveal); });
 			// A blank row to add, from the first: what it tests and its
 			// values cleared, and no Retired attribute offered.
 			var blank = rowsOf()[0].cloneNode(true);
@@ -559,10 +570,10 @@ templ reportBuilderStyles() {
 		.rb-form select[multiple]{width:100%;min-height:8em}
 		.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}
 		.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
-		.rb-values{flex:1 1 240px;min-width:0;max-height:14em;overflow:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:4px 8px;box-sizing:border-box}
+		.rb-values{flex:1 1 240px}
 		.rb-form .rb-values{display:block}
 		.rb-form .rb-values[hidden]{display:none}
-		.rb-value-list{display:flex;flex-direction:column}
+		.rb-value-list{display:flex;flex-direction:column;max-height:14em;overflow:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:4px 8px;box-sizing:border-box}
 		.rb-form .rb-value-group{gap:0;padding:4px 0}
 		.rb-form .rb-value-group>legend{font-size:var(--text-secondary);color:var(--color-ink-2);padding:0 0 4px}
 		.rb-value{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}

@@ -82,7 +82,7 @@ async function buildRuleReport(page: Page, name: string): Promise<number> {
   const rule = builder.getByTestId("report-rule").first();
   await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
   await rule.getByLabel("Operator").selectOption({ label: "is any of" });
-  await rule.getByLabel("Values").selectOption({ label: "Growth" });
+  await rule.getByTestId("rule-values").getByRole("checkbox", { name: "Growth", exact: true }).check();
   return saveReport(page);
 }
 
@@ -128,18 +128,19 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       await page.setViewportSize({ width, height: 720 });
       await page.goto("/reports/new");
       const values = page.getByTestId("report-rule").first().getByTestId("rule-values");
-      const checked = values.locator("option:checked");
+      const checked = values.locator("input:checked");
       await expect(checked).toHaveAttribute("value", `org=${me.id}`);
-      // It worked if: the selected author is scrolled to the list's top row,
+      await expect(checked).toHaveAttribute("type", "radio");
+      // It worked if: the chosen author is scrolled to the list's top row,
       // or, near the list's end, the list is scrolled as far as it goes with
-      // the author wholly in view. Left unscrolled, it can sit wholly inside
-      // the list on its bottom edge. The script scrolls again once web fonts
-      // load, so poll.
+      // the author wholly in view. Left unscrolled, it can sit out of view
+      // below the list's bottom edge. The script scrolls again once web
+      // fonts load, so poll.
       await expect
         .poll(
           async () =>
-            await values.evaluate((list: HTMLSelectElement) => {
-              const option = list.selectedOptions[0].getBoundingClientRect();
+            await values.locator("[data-rule-values]").evaluate((list: HTMLElement) => {
+              const option = list.querySelector("input:checked")!.closest("label")!.getBoundingClientRect();
               const box = list.getBoundingClientRect();
               const atTop = Math.abs(option.top - box.top - list.clientTop) <= 1;
               const atEnd = list.scrollTop >= list.scrollHeight - list.clientHeight - 1;

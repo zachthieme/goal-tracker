@@ -128,7 +128,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await builder.getByLabel("Name").fill("Bad news this week");
     const rule = builder.getByTestId("report-rule").first();
     await rule.getByTestId("rule-attribute").selectOption({ label: "Team" });
-    await rule.getByTestId("rule-values").selectOption({ label: project.team });
+    await rule.getByTestId("rule-values").getByRole("radio", { name: project.team, exact: true }).check();
     await builder.getByRole("button", { name: "Save report" }).last().click();
     await marcus.waitForURL(/\/reports\/\d+$/);
     const block = marcus
