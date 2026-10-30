@@ -3,6 +3,7 @@ package web_test
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // An Admin marks a Goal Top-level from its page and unmarks it again; the Goal
@@ -60,6 +62,30 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	if strings.Contains(page, `data-testid="goal-top-level"`) {
 		t.Errorf("Goal page still shows the Top-level mark after unmarking; body:\n%s", page)
 	}
+}
+
+// A Top-level change refused for what was asked answers as any refusal of
+// what was typed does: the refusal page, 422, saying why and linking Back to
+// the Goal, not a 500 (#701).
+func TestARefusedTopLevelChangeIsTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	srv := web.NewServer(h.Service)
+	srv.HandleRefusedTopLevelForTest("POST /top-level-refused-test/{id}",
+		domain.Refuse(domain.ErrValidation, "a Done Goal can't be marked Top-level"))
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	ada := h.SignIn("ada@example.com")
+	goal := h.ActiveGoal(ada, "Reduce outages", "Outages cost trust.")
+
+	resp := postForm(t, signInClient(t, ts.URL, "ada@example.com"), fmt.Sprintf("%s/top-level-refused-test/%d", ts.URL, goal.ID), url.Values{"top_level": {"true"}})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, page, "Can't change Top-level", "A Done Goal can't be marked Top-level.", fmt.Sprintf("/goals/%d", goal.ID))
 }
 
 // Each Goal's page flags the graph signals that touch it: a schedule conflict

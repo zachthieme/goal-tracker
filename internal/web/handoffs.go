@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -17,7 +16,8 @@ func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.StartHandoffByEmail(r.Context(), goalID, r.FormValue("to_email"), current.ID); err != nil {
-		s.writeRefusedHandoff(w, r, goalID, current, formHandoff, "Can't hand off Goal", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't hand off Goal", Back: goalPath(goalID),
+			Form: s.goalPageForm(goalID, current, formHandoff)})
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -62,7 +62,7 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 		keep = append(keep, delegateID)
 	}
 	if _, err := s.svc.AcceptHandoff(r.Context(), id, current.ID, keep); err != nil {
-		s.refuse(w, r, "Can't accept Handoff", returnTo(r, "/handoffs"), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't accept Handoff", Back: returnTo(r, "/handoffs")})
 		return
 	}
 	http.Redirect(w, r, "/handoffs", http.StatusSeeOther)
@@ -78,7 +78,7 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 	}
 	token, err := s.svc.RejectHandoff(r.Context(), id, current.ID)
 	if err != nil {
-		s.refuse(w, r, "Can't reject Handoff", returnTo(r, "/handoffs"), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't reject Handoff", Back: returnTo(r, "/handoffs")})
 		return
 	}
 	s.offerUndo(w, r, undoHandoffRejection, id, token, returnTo(r, "/handoffs"))
@@ -93,7 +93,7 @@ func (s *Server) handleCancelHandoff(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if _, err := s.svc.CancelHandoff(r.Context(), id, current.ID); err != nil {
-		s.refuse(w, r, "Can't cancel Handoff", returnTo(r, "/handoffs"), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't cancel Handoff", Back: returnTo(r, "/handoffs")})
 		return
 	}
 	http.Redirect(w, r, returnTo(r, "/handoffs"), http.StatusSeeOther)
@@ -109,7 +109,7 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkDeparted(r.Context(), current.ID, id); err != nil {
-		s.refuse(w, r, "Can't mark departed", "/home", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't mark departed", Back: "/home"})
 		return
 	}
 	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
@@ -125,7 +125,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkReturned(r.Context(), current.ID, id); err != nil {
-		s.refuse(w, r, "Can't mark returned", "/home", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't mark returned", Back: "/home"})
 		return
 	}
 	http.Redirect(w, r, returnTo(r, "/goals"), http.StatusSeeOther)
@@ -139,24 +139,11 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.ReassignGoalByEmail(r.Context(), current.ID, goalID, r.FormValue("email")); err != nil {
-		s.writeRefusedHandoff(w, r, goalID, current, formReassign, "Can't reassign Goal", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't reassign Goal", Back: goalPath(goalID),
+			Form: s.goalPageForm(goalID, current, formReassign)})
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
-}
-
-// writeRefusedHandoff answers a refused Hand off or Reassign from the Goal
-// page: a refused new Owner redirects to the Goal page, where that form is
-// open with the reason beside it and what was sent in it, or, where the page
-// doesn't offer the form, is the refusal page headed refused
-// (refuseGoalForm); anything else is refuse's page, headed refused and
-// linking Back to the Goal.
-func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, refused string, err error) {
-	if errors.Is(err, domain.ErrValidation) {
-		s.refuseGoalForm(w, r, goalID, current, form, refused, err)
-		return
-	}
-	s.refuse(w, r, refused, goalPath(goalID), err)
 }
 
 func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {

@@ -164,7 +164,8 @@ type checkinPreviousAnswers struct {
 }
 
 // checkinPreviousFrom gathers what the form refers to from the Goal's latest
-// Check-in, nil when there is none, and its Metrics' readings over time.
+// Check-in, when there is one, and its Metrics' readings over time. With no
+// latest Check-in its PathTargetDate is empty.
 func checkinPreviousFrom(latest *domain.Checkin, trends []metricTrend) checkinPreviousAnswers {
 	var p checkinPreviousAnswers
 	if latest != nil {
@@ -1257,13 +1258,13 @@ templ checkinHighlightRow(n int, row highlightFormData, errs checkinFormErrors) 
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d", n) }</legend>
 		<label>
 			Kind
-			<select name="highlight_kind">
+			<select name="highlight_kind" { errs.attrs(domain.CheckinHighlightInput(n))... }>
 				@highlightKindOptions(row.Kind)
 			</select>
 		</label>
 		<label>
 			Note
-			<textarea name="highlight_note">{ row.Note }</textarea>
+			<textarea name="highlight_note" { errs.attrs(domain.CheckinHighlightInput(n))... }>{ row.Note }</textarea>
 		</label>
 		@checkinFieldError(errs, domain.CheckinHighlightInput(n))
 	</fieldset>
@@ -1287,13 +1288,13 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErr
 		</label>
 		<label>
 			Kind
-			<select name={ "draft_highlight_kind_" + id }>
+			<select name={ "draft_highlight_kind_" + id } { errs.attrs(domain.CheckinHighlightInput(n))... }>
 				@highlightKindOptions(row.Kind)
 			</select>
 		</label>
 		<label>
 			Note
-			<textarea name={ "draft_highlight_note_" + id }>{ row.Note }</textarea>
+			<textarea name={ "draft_highlight_note_" + id } { errs.attrs(domain.CheckinHighlightInput(n))... }>{ row.Note }</textarea>
 		</label>
 		@checkinFieldError(errs, domain.CheckinHighlightInput(n))
 	</fieldset>
@@ -1320,14 +1321,16 @@ var swapErrorPageScript = templ.ComponentScript{Call: "htmx.swap('body', event.d
 // checkinStylesOnce renders the Check-in form's styles once per page, as the
 // Check-in page asks for them twice: checkinPage calls checkinStyles, and so
 // does the checkinForm inside it, which needs its own call because
-// renderCheckinFormError and renderCheckinFormAgain render it alone for htmx
+// a refused form and renderCheckinFormAgain render it alone for htmx
 // swaps.
 var checkinStylesOnce = templ.NewOnceHandle()
 
 // checkinStyles lays out the Check-in form. The Path to Green hides while Green
 // is picked, by CSS alone, unless it holds a validation error, and the
 // off-target warning and its notice hide while Green isn't; their fields stay
-// in the form either way, so the server's validation is what decides.
+// in the form either way, so the server's validation is what decides. A
+// refused missing Health edges each Health choice in the danger ink, as its
+// radio is hidden, until one is picked.
 templ checkinStyles() {
 	@checkinStylesOnce.Once() {
 		<style>
@@ -1389,6 +1392,7 @@ templ checkinStyles() {
 			.health-toggle label.y{color:var(--health-y-ink)}
 			.health-toggle label.g{color:var(--health-g-ink)}
 			.health-toggle label.badge:has(input:checked){border-color:currentColor}
+			.health-toggle:not(:has(input:checked)) label.badge:has(input[aria-invalid=true]){box-shadow:0 0 0 1px var(--color-danger-ink)}
 			.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}
 			.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}
 			.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}
@@ -1515,11 +1519,11 @@ templ checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) {
 			for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
 				<div data-testid="checkin-new-milestone" class="ms-row">
 					<label>
-						<input type="text" name="new_milestone_name" value={ row.Name } placeholder="Add a Milestone" aria-label="New Milestone name"/>
+						<input type="text" name="new_milestone_name" value={ row.Name } placeholder="Add a Milestone" aria-label="New Milestone name" { errs.attrs(domain.CheckinNewMilestoneInput(i))... }/>
 					</label>
 					<div>
 						<label>
-							<input type="date" name="new_milestone_date" value={ row.Date } aria-label="New Milestone date"/>
+							<input type="date" name="new_milestone_date" value={ row.Date } aria-label="New Milestone date" { errs.attrs(domain.CheckinNewMilestoneInput(i))... }/>
 						</label>
 						@checkinFieldError(errs, domain.CheckinNewMilestoneInput(i))
 					</div>

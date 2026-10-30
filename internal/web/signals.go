@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -26,15 +25,16 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 	} else {
 		_, err = s.svc.UnmarkTopLevel(r.Context(), current.ID, goalID)
 	}
+	s.answerTopLevelCommand(w, r, goalID, err)
+}
+
+// answerTopLevelCommand answers a mark or unmark of the Goal goalID as
+// Top-level: done, it returns to the Goal page; refused with err, it is
+// answerRefused's, headed "Can't change Top-level" and linking Back to the
+// Goal.
+func (s *Server) answerTopLevelCommand(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrNotAuthorized):
-			s.refuse(w, r, "Can't change Top-level", goalPath(goalID), err)
-		case errors.Is(err, domain.ErrNotFound):
-			s.notFound(w, r)
-		default:
-			s.serverError(w, r, "could not set Top-level", err)
-		}
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Top-level", Back: goalPath(goalID)})
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)

@@ -942,7 +942,7 @@ func TestCheckinRefusalShowsEveryProblemBesideItsField(t *testing.T) {
 			name: "no Health and no status",
 			form: url.Values{},
 			want: map[string]string{
-				"health": `Health must be "Green", "Yellow", or "Red".`,
+				"health": "Pick how it's going: Green, Yellow or Red.",
 				"status": "A Check-in needs a status.",
 			},
 		},
@@ -1252,6 +1252,40 @@ func TestCheckinNewMilestoneErrorShownNextToItsRowAmongNamesakes(t *testing.T) {
 	}
 }
 
+// A refused new Milestone's name and date are marked invalid and described by
+// the row's error; the empty row after it is not (#690).
+func TestCheckinRefusedNewMilestoneMarksItsNameAndDateInvalid(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+	body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Adding docs."},
+		"new_milestone_name": {"Docs"},
+	})
+	rows := findAllByTestID(parsePage(t, body), "checkin-new-milestone")
+	if len(rows) != 2 {
+		t.Fatalf("form shows %d new Milestone rows, want the one typed and an empty one", len(rows))
+	}
+	refused := findByTestID(t, rows[0], "checkin-error")
+	if got := attrOf(refused, "id"); got != "checkin-error-new_milestone_0" {
+		t.Errorf("the new Milestone's error id = %q, want checkin-error-new_milestone_0", got)
+	}
+	want := textOf(refused)
+	for _, name := range []string{"new_milestone_name", "new_milestone_date"} {
+		if f := formField(t, rows[0], name); attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
+			t.Errorf("the new Milestone's %s is aria-invalid %q, described %q; want it invalid, described %q", name, attrOf(f.Node, "aria-invalid"), f.Description, want)
+		}
+		if f := formField(t, rows[1], name); hasAttr(f.Node, "aria-invalid") || hasAttr(f.Node, "aria-describedby") {
+			t.Errorf("the empty row's %s is marked invalid or described: %q", name, f.Description)
+		}
+	}
+}
+
 // A Green Check-in adding a Milestone that is already overdue gets its error
 // next to that new Milestone.
 func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
@@ -1470,6 +1504,37 @@ func TestCheckinHighlightWithNoKindRefusedInItsRow(t *testing.T) {
 	}
 }
 
+// A refused Highlight row's kind and note are marked invalid and described by
+// the row's error; a valid row's are not (#690).
+func TestCheckinRefusedHighlightRowMarksItsKindAndNoteInvalid(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":         {domain.HealthGreen},
+		"status":         {"On track."},
+		"highlight_kind": {domain.HighlightInsight, "bogus"},
+		"highlight_note": {"Retries masked the root cause.", "Found a cheaper vendor."},
+	})
+	rows := highlightRows(t, parsePage(t, body))
+	if len(rows) != 2 {
+		t.Fatalf("form shows %d Highlight rows, want the 2 typed", len(rows))
+	}
+	want := textOf(findByTestID(t, rows[1], "checkin-error"))
+	for _, name := range []string{"highlight_kind", "highlight_note"} {
+		if f := formField(t, rows[1], name); attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
+			t.Errorf("Highlight 2's %s is aria-invalid %q, described %q; want it invalid, described %q", name, attrOf(f.Node, "aria-invalid"), f.Description, want)
+		}
+		if f := formField(t, rows[0], name); hasAttr(f.Node, "aria-invalid") || hasAttr(f.Node, "aria-describedby") {
+			t.Errorf("Highlight 1's %s is marked invalid or described: %q", name, f.Description)
+		}
+	}
+}
+
 // A fresh Check-in form shows one empty Highlight row and an Add another
 // button.
 func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
@@ -1626,7 +1691,7 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 		"status": {"On track."},
 	})
 	// Health is a radio group; its error follows the last radio.
-	if msg := fieldError(t, parsePage(t, body), "health"); !strings.Contains(msg, "Health must be") {
+	if msg := fieldError(t, parsePage(t, body), "health"); msg != "Pick how it's going: Green, Yellow or Red." {
 		t.Errorf("Health field's error = %q, want the Health one", msg)
 	}
 }
@@ -2864,6 +2929,46 @@ func TestCheckinFormRefusesAKeptDraftHighlightWithNoKindInItsRow(t *testing.T) {
 	}
 }
 
+// A refused offered row's kind and note are marked invalid and described by
+// the row's error; a valid offered row's are not (#690).
+func TestCheckinRefusedDraftHighlightRowMarksItsKindAndNoteInvalid(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "First.")
+	b := h.LogDraftHighlight(sam, goal.ID, "", "No kind yet.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b)},
+		"draft_highlight_keep":          {id(a), id(b)},
+		"draft_highlight_kind_" + id(a): {domain.HighlightInsight},
+		"draft_highlight_note_" + id(a): {"First."},
+		"draft_highlight_kind_" + id(b): {""},
+		"draft_highlight_note_" + id(b): {"No kind yet."},
+		"highlight_kind":                {""},
+		"highlight_note":                {""},
+	})
+	rows := highlightRows(t, parsePage(t, body))
+	if len(rows) != 3 {
+		t.Fatalf("form shows %d Highlight rows, want the 3 posted", len(rows))
+	}
+	want := textOf(findByTestID(t, rows[1], "checkin-error"))
+	for _, field := range []string{"kind", "note"} {
+		if f := formField(t, rows[1], "draft_highlight_"+field+"_"+id(b)); attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
+			t.Errorf("Highlight 2's %s is aria-invalid %q, described %q; want it invalid, described %q", field, attrOf(f.Node, "aria-invalid"), f.Description, want)
+		}
+		if f := formField(t, rows[0], "draft_highlight_"+field+"_"+id(a)); hasAttr(f.Node, "aria-invalid") || hasAttr(f.Node, "aria-describedby") {
+			t.Errorf("Highlight 1's %s is marked invalid or described: %q", field, f.Description)
+		}
+	}
+}
+
 // A Draft Highlight posted by its draft_highlight_id alone, with no Keep, kind
 // or note, is discarded with the Check-in, as an unticked Keep box discards
 // it: that is all the Highlight editor's Remove leaves of a Draft item.
@@ -3975,8 +4080,9 @@ func TestLatestStatusShowsASlippedBackToGreenDate(t *testing.T) {
 }
 
 // A No change is refused once the back-to-Green date has passed: the Check-in
-// page says why in place of the button, and a No change posted anyway lands on
-// the form with the reason (CONTEXT.md: Check-in).
+// page says why in place of the button, naming the date as the form labels it,
+// and a No change posted anyway lands on the form with the reason (CONTEXT.md:
+// Check-in; #695).
 func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T) {
 	t.Parallel()
 
@@ -3992,7 +4098,7 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 	if hasTestID(c, "no-change-checkin") {
 		t.Errorf("the card offers a No change that would be refused: %q", textOf(c))
 	}
-	const want = "The back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health."
+	const want = "The Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health."
 	if got := textsOf(findAllByTestID(c, "no-change-unavailable")); !slices.Equal(got, []string{want}) {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}

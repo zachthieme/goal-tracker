@@ -20,7 +20,8 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 	}
 	back := followUpsReturn(returnTo(r, "/follow-ups"))
 	if _, err := s.svc.Nudge(r.Context(), current.ID, goalID); err != nil {
-		s.refuse(w, r, "Can't nudge", back, err, refuseFailureSaying("The Nudge couldn't be sent, so nothing changed. Try again."))
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't nudge", Back: back,
+			Options: []refusalOption{refuseFailureSaying("The Nudge couldn't be sent, so nothing changed. Try again.")}})
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)

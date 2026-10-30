@@ -2,10 +2,13 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/a-h/templ"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/importer"
@@ -39,6 +42,10 @@ func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request, _ 
 	_, _ = w.Write(buf.Bytes())
 }
 
+// errNoImportFile refuses an import posting no file, which the page says
+// beside the file input.
+var errNoImportFile = domain.Refuse(domain.ErrValidation, "Choose a file to import.")
+
 // handleRunImport reads an uploaded CSV or XLSX and runs a dry run or a commit,
 // then re-renders the page with the row-by-row report. Only an Admin may.
 func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -50,9 +57,20 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		render(w, r, http.StatusBadRequest, importsPage(&current, nil, "Could not read the upload.", ""))
 		return
 	}
+	// A refused import comes back as the page, saying why: beside the file
+	// input when there's no file, and above the form otherwise.
+	refuse := func(err error) {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Admins only", Back: "/home",
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
+				if errors.Is(err, errNoImportFile) {
+					return importsPage(&current, nil, "", refusalSentence(err)), nil
+				}
+				return importsPage(&current, nil, refusalSentence(err), ""), nil
+			})})
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		render(w, r, http.StatusUnprocessableEntity, importsPage(&current, nil, "", "Choose a file to import."))
+		refuse(errNoImportFile)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -77,18 +95,10 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		report, err = imp.DryRun(r.Context(), current.ID, header.Filename, data)
 	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
-		s.refuseNonAdmin(w, r, "only an Admin may import Goals")
-		return
+		err = domain.Refuse(domain.ErrNotAuthorized, "only an Admin may import Goals")
 	}
 	if err != nil {
-		status, flash := http.StatusInternalServerError, "The import failed."
-		switch {
-		case errors.Is(err, domain.ErrValidation):
-			status, flash = http.StatusUnprocessableEntity, refusalSentence(err)
-		default:
-			s.logServerError(r, err)
-		}
-		render(w, r, status, importsPage(&current, nil, flash, ""))
+		refuse(err)
 		return
 	}
 	render(w, r, http.StatusOK, importsPage(&current, &report, "", ""))

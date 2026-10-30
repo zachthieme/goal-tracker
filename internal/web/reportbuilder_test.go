@@ -300,6 +300,90 @@ func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 	}
 }
 
+// Without script a row switched from "is any of" to "is" still posts every
+// value it had checked. Show matches brings it back testing only the first,
+// as the scripted switch keeps it: one radio checked, and the rail listing
+// only that value's Goals (ticket #691).
+func TestBuilderIsRowPostedWithTwoValuesShowsOnlyTheFirstOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	platform, growth := team.Values[0], team.Values[1]
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	h.AssignGoalValue(reliability, platform)
+	churn := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	h.AssignGoalValue(churn, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	page := parsePage(t, postFormBody(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10), dim + "=" + strconv.FormatInt(growth.ID, 10)},
+		"do":                 {"show-matches"},
+	}))
+	row := findByTestID(t, page, "report-rule")
+	if _, kind, chosen := ruleRowValues(row, 0); kind != "radio" || !slices.Equal(chosen, []string{"Platform"}) {
+		t.Errorf("the \"is\" row posted with Platform and Growth comes back as %s values with %q chosen, want one radio, Platform:\n%s",
+			kind, chosen, renderNode(row))
+	}
+	rail := findByTestID(t, page, "report-matches")
+	if got, want := textOf(findByTestID(t, rail, "matches-count")), "Matches 1 Goal"; got != want {
+		t.Errorf("the rail says %q, want %q", got, want)
+	}
+	if got, want := reportRailTitles(rail), []string{reliability.Title}; !slices.Equal(got, want) {
+		t.Errorf("the rail lists %q, want only Platform's %q", got, want)
+	}
+}
+
+// Saving an "is" row posted with two values is refused, 422, beside the row,
+// which comes back with only the first value checked, and nothing is saved
+// (ticket #691).
+func TestBuilderRefusesAnIsRowPostedWithTwoValuesBesideItOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	platform, growth := team.Values[0], team.Values[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10), dim + "=" + strconv.FormatInt(growth.ID, 10)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("saving \"is\" with two values: status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	row := findByTestID(t, parsePage(t, body), "report-rule")
+	if got, want := textOf(findByTestID(t, row, "input-error")), `"is" takes exactly one value.`; !strings.Contains(got, want) {
+		t.Errorf("the row's refusal says %q, want %q beside it", got, want)
+	}
+	if _, kind, chosen := ruleRowValues(row, 0); kind != "radio" || !slices.Equal(chosen, []string{"Platform"}) {
+		t.Errorf("the refused row comes back as %s values with %q chosen, want one radio, Platform:\n%s", kind, chosen, renderNode(row))
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("a refused save saved %d definitions", len(defs))
+	}
+}
+
+// reportRailTitles are the titles of the Goals the rail lists, in its order.
+func reportRailTitles(rail *nethtml.Node) []string {
+	return textsOf(findAll(rail, func(n *nethtml.Node) bool { return attrOf(n, "class") == "rb-match-title" }))
+}
+
 // A row testing an attribute shows only that attribute's values, as
 // checkboxes under "is any of", and a row testing nothing yet shows every
 // attribute's, as checkboxes under each attribute's label, as Add rule
@@ -916,6 +1000,44 @@ func TestBuilderRefusesAGoalInBothListsBesideLeaveOutOverHTTP(t *testing.T) {
 	}
 	if defs, err := h.Service.ListReportDefinitions(context.Background()); err != nil || len(defs) != 0 {
 		t.Errorf("the refused definition was saved: %v (%v)", defs, err)
+	}
+}
+
+// A definition whose Also include holds a Goal that its rules, changed since,
+// now select too still saves: the edit lands on the draft, which holds the
+// Goal once (#658).
+func TestBuilderSavesAnAlsoIncludeGoalTheRulesNowSelectOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	parent := h.ActiveGoal(boss, "Grow revenue", "The company needs to grow.")
+	child := h.ActiveChildOf(boss, parent, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "Revenue MBR", Mode: domain.ReportModeRules,
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
+		Include: []int64{child.ID},
+	})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	editURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+
+	builder := findByTestID(t, getPage(t, client, editURL), "report-builder")
+	if got := ruleRowAttributes(t, builder); !slices.Equal(got, []string{"Top-level"}) {
+		t.Fatalf("the edit page's rules test %q, want Top-level alone", got)
+	}
+	form := formSubmission(builder)
+	if got := form["include"]; !slices.Equal(got, []string{strconv.FormatInt(child.ID, 10)}) {
+		t.Fatalf("the edit page's Also include posts %q, want Launch in EU's id", got)
+	}
+	form.Set("rules[0].attribute", domain.RuleOwner)
+	form.Set("rules[0].op", domain.RuleIs)
+	form.Set("rules[0].value", domain.RuleOwner+"="+strconv.FormatInt(boss.ID, 10))
+	resp := postForm(t, noRedirects(client), editURL, form)
+	defer func() { _ = resp.Body.Close() }()
+	draft := assertSavedReport(t, client, ts.URL, resp)
+	if got, want := draftGoalTitles(t, draft), []string{parent.Title, child.Title}; !slices.Equal(got, want) {
+		t.Errorf("the draft selects %q, want %q", got, want)
 	}
 }
 
@@ -2284,8 +2406,9 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 
 // The builder explains Also include and Leave out with a help button after
 // each legend, leaving the legends, and so the pickers' names, as they were;
-// Goals I pick needs no help. Its rules hint says in plain words what a rule
-// can check.
+// Goals I pick needs no help. Each picker's search box says which Goals it
+// searches, its label naming the picker as ever. Its rules hint says in
+// plain words what a rule can check.
 func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2296,7 +2419,7 @@ func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 
 	for _, tc := range []struct{ picker, legend, label, id, text string }{
 		{"include-picker", "Also include", "What does Also include do?", "include-help", "Goals to add by hand, even if they don't meet the rules."},
-		{"exclude-picker", "Leave out", "What does Leave out do?", "exclude-help", "Goals to drop, even if they meet the rules."},
+		{"exclude-picker", "Leave out", "What does Leave out do?", "exclude-help", "Goals the rules select that this Report drops."},
 	} {
 		picker := pageElement(t, page, "fieldset", tc.picker)
 		if button := assertTermHelp(t, page, picker, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
@@ -2311,6 +2434,20 @@ func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 	}
 	if picked := pageElement(t, page, "fieldset", "picked-picker"); strings.Contains(picked, "disclose help") {
 		t.Errorf("Goals I pick has a help button:\n%s", picked)
+	}
+	parsed := parsePage(t, page)
+	for _, tc := range []struct{ picker, search, placeholder, label string }{
+		{"picked-picker", "picked-q", "Search any Goal by title", "Search Goals: Goals I pick"},
+		{"include-picker", "include-q", "Search Goals the rules leave out", "Search Goals: Also include"},
+		{"exclude-picker", "exclude-q", "Search Goals the rules select", "Search Goals: Leave out"},
+	} {
+		search := formField(t, findByTestID(t, parsed, tc.picker), tc.search)
+		if search.Placeholder != tc.placeholder {
+			t.Errorf("%s's search box reads %q, want %q", tc.picker, search.Placeholder, tc.placeholder)
+		}
+		if search.Label != tc.label {
+			t.Errorf("%s's search box is labelled %q, want %q", tc.picker, search.Label, tc.label)
+		}
 	}
 
 	hint := pageElement(t, page, "p", "rules-hint")
@@ -2451,4 +2588,125 @@ func TestReportBuilderRendersAsGolden(t *testing.T) {
 
 	assertGolden(t, "report-builder-new.golden.html", getBody(t, client, ts.URL+"/reports/new"))
 	assertGolden(t, "report-builder-edit.golden.html", getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(fx.def.ID, 10)+"/edit"))
+}
+
+// Without script, a middle rule row's × and then + Add rule give the new row
+// an index no other row uses, so it posts as its own rule: the definition
+// saved holds every rule left, the one added among them (#661).
+func TestBuilderAddRuleAfterRemovingAMiddleRowKeepsEveryRuleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	g := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Outages.", "Add capacity.", time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC))
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	builderAfter := func(form url.Values) *nethtml.Node {
+		t.Helper()
+		resp := postForm(t, client, ts.URL+"/reports/new", form)
+		defer func() { _ = resp.Body.Close() }()
+		page := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d, want 200; body:\n%s", resp.StatusCode, page)
+		}
+		return findByTestID(t, parsePage(t, page), "report-builder")
+	}
+
+	builder := builderAfter(url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleLifecycle + "=" + domain.LifecycleActive},
+		"rules[1].attribute": {domain.RuleTopLevel},
+		"rules[1].op":        {domain.RuleIsNot},
+		"rules[2].attribute": {domain.RuleHealth},
+		"rules[2].op":        {domain.RuleIsAnyOf},
+		"rules[2].value":     {domain.RuleHealth + "=" + domain.HealthRed},
+		"do":                 {"show-matches"},
+	})
+	if got := ruleRowAttributes(t, builder); !slices.Equal(got, []string{"Lifecycle", "Top-level", "Health"}) {
+		t.Fatalf("the builder's rows test %q, want Lifecycle, Top-level and Health", got)
+	}
+
+	// × on the Top-level row, as a browser without script submits it.
+	middle := findAllByTestID(builder, "report-rule")[1]
+	remove := findAll(middle, func(n *nethtml.Node) bool { return n.Data == "button" && attrOf(n, "name") == "remove-rule" })
+	if len(remove) != 1 {
+		t.Fatalf("the Top-level row has %d × buttons, want 1:\n%s", len(remove), renderNode(middle))
+	}
+	form := formSubmission(builder)
+	form.Set("remove-rule", attrOf(remove[0], "value"))
+	builder = builderAfter(form)
+	if got := ruleRowAttributes(t, builder); !slices.Equal(got, []string{"Lifecycle", "Health"}) {
+		t.Fatalf("after × the rows test %q, want Lifecycle and Health", got)
+	}
+
+	form = formSubmission(builder)
+	form.Set("do", "add-rule")
+	builder = builderAfter(form)
+	if got := ruleRowAttributes(t, builder); !slices.Equal(got, []string{"Lifecycle", "Health", ""}) {
+		t.Fatalf("after + Add rule the rows test %q, want Lifecycle, Health and a blank row", got)
+	}
+	indexes := ruleRowIndexes(t, builder)
+	if len(slices.Compact(slices.Sorted(slices.Values(indexes)))) != len(indexes) {
+		t.Fatalf("the rule rows post under indexes %q, want each its own", indexes)
+	}
+	added := indexes[len(indexes)-1]
+
+	form = formSubmission(builder)
+	form.Set("rules["+added+"].attribute", domain.RuleOwner)
+	form.Set("rules["+added+"].op", domain.RuleIs)
+	form.Set("rules["+added+"].value", domain.RuleOwner+"="+strconv.FormatInt(boss.ID, 10))
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", form)
+	defer func() { _ = resp.Body.Close() }()
+	assertSavedReport(t, client, ts.URL, resp)
+
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %d, %v; want the one saved", len(defs), err)
+	}
+	edit := findByTestID(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(defs[0].ID, 10)+"/edit"), "report-builder")
+	if got, want := ruleRowAttributes(t, edit), []string{"Lifecycle", "Health", "Owner"}; !slices.Equal(got, want) {
+		t.Fatalf("the saved definition's rules test %q, want %q", got, want)
+	}
+	for i, want := range []string{domain.LifecycleActive, domain.HealthRed, "Bo Boss"} {
+		if _, _, chosen := ruleRowValues(findAllByTestID(edit, "report-rule")[i], i); !slices.Equal(chosen, []string{want}) {
+			t.Errorf("the saved rule %d has %q chosen, want %q", i, chosen, want)
+		}
+	}
+}
+
+// ruleRowAttributes are what each of the builder's rule rows tests, in order:
+// its chosen attribute's label, "" for a row testing nothing yet.
+func ruleRowAttributes(t *testing.T, builder *nethtml.Node) []string {
+	t.Helper()
+	var out []string
+	for _, row := range findAllByTestID(builder, "report-rule") {
+		attribute := findByTestID(t, row, "rule-attribute")
+		if chosen := chosenOption(attribute); chosen != nil && attrOf(chosen, "value") != "" {
+			out = append(out, textOf(chosen))
+		} else {
+			out = append(out, "")
+		}
+	}
+	return out
+}
+
+// ruleRowIndexes are the indexes the builder's rule rows post under, in
+// order: the i of each row's rules[i].attribute.
+func ruleRowIndexes(t *testing.T, builder *nethtml.Node) []string {
+	t.Helper()
+	var out []string
+	for _, row := range findAllByTestID(builder, "report-rule") {
+		name := attrOf(findByTestID(t, row, "rule-attribute"), "name")
+		index, ok := strings.CutPrefix(name, "rules[")
+		index, _, found := strings.Cut(index, "].attribute")
+		if !ok || !found {
+			t.Fatalf("a rule row's attribute posts as %q, not rules[i].attribute", name)
+		}
+		out = append(out, index)
+	}
+	return out
 }

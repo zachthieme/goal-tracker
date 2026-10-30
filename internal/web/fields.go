@@ -11,8 +11,10 @@ import (
 )
 
 // handleFields shows every Field and, for an Admin, the form to define one
-// (CONTEXT.md: Admin defines Fields).
+// (CONTEXT.md: Admin defines Fields). Define a Field just refused for what
+// was typed comes back open, as it was left, this once (onPage).
 func (s *Server) handleFields(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	r = takeFormRefusal(w, r)
 	fields, err := s.svc.ListFields(r.Context())
 	if err != nil {
 		s.serverError(w, r, "could not list fields", err)
@@ -22,10 +24,15 @@ func (s *Server) handleFields(w http.ResponseWriter, r *http.Request, current do
 }
 
 // handleCreateField defines a Field from a name, a type and, for a number, an
-// optional unit. Only an Admin may.
+// optional unit. Only an Admin may. Refused for what was typed, it comes back
+// to the Fields page, one form of several there, with Define a Field open,
+// saying why above it (onPage).
 func (s *Server) handleCreateField(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if _, err := s.svc.CreateField(r.Context(), current.ID, r.FormValue("name"), r.FormValue("type"), r.FormValue("unit")); err != nil {
-		s.refuse(w, r, "Can't change Field", "/fields", err)
+		s.answerRefused(w, r, refused{
+			Err: err, Heading: "Can't change Field", Back: "/fields",
+			Form: onPage("/fields", "create-field", 0, []string{"name", "type", "unit"}).inOneSentence(),
+		})
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
@@ -53,7 +60,8 @@ func (s *Server) handleSetFieldRequired(w http.ResponseWriter, r *http.Request, 
 }
 
 // fieldAction runs set on the Field in the path for the signed-in Admin, then
-// goes back to the Fields page.
+// goes back to the Fields page. Its buttons have nothing typed, so a refusal
+// is the refusal page.
 func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current domain.Account, set func(ctx context.Context, actorID, fieldID int64) error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -61,7 +69,7 @@ func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current dom
 		return
 	}
 	if err := set(r.Context(), current.ID, id); err != nil {
-		s.refuse(w, r, "Can't change Field", "/fields", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Field", Back: "/fields"})
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
@@ -85,7 +93,7 @@ func (s *Server) handleSetGoalField(w http.ResponseWriter, r *http.Request, curr
 	if r.FormValue("clear") != "" {
 		value = ""
 	}
-	s.writeFormResult(w, r, id, current, formFields, s.svc.SetGoalField(r.Context(), current.ID, id, fieldID, value))
+	s.answerGoalCommand(w, r, id, s.goalPageForm(id, current, formFields), s.svc.SetGoalField(r.Context(), current.ID, id, fieldID, value))
 }
 
 // fieldValue returns the Goal's value in the given Field, and whether it has

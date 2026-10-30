@@ -705,7 +705,8 @@ func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
 }
 
 // On the Dimensions page, defining a Dimension, adding a value or renaming one
-// to a name containing a semicolon is refused, saying why. A value named with
+// to a name containing a semicolon is refused, coming back to its form there
+// saying why (#702). A value named with
 // one before that was refused still shows, and an Admin renames it to a name
 // without (#101).
 func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
@@ -724,18 +725,19 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 	}
 
 	for what, post := range map[string]struct {
-		path string
-		form url.Values
+		path, form, back string
+		posted           url.Values
 	}{
-		"define": {"/dimensions", url.Values{"name": {"Quarter"}, "values": {"Q1; Q2"}}},
-		"add":    {fmt.Sprintf("/dimensions/%d/values", pillar.ID), url.Values{"value": {"Ops; Infra"}}},
-		"rename": {fmt.Sprintf("/dimension-values/%d/rename", pillar.Values[0].ID), url.Values{"value": {"Growth; Expansion"}}},
+		"define": {"/dimensions", "create-dimension", "/dimensions", url.Values{"name": {"Quarter"}, "values": {"Q1; Q2"}}},
+		"add": {fmt.Sprintf("/dimensions/%d/values", pillar.ID), "add-dimension-value",
+			fmt.Sprintf("/dimensions#dimension-%d", pillar.ID), url.Values{"value": {"Ops; Infra"}}},
+		"rename": {fmt.Sprintf("/dimension-values/%d/rename", pillar.Values[0].ID), "rename-dimension-value",
+			fmt.Sprintf("/dimensions#dimension-value-%d", pillar.Values[0].ID), url.Values{"value": {"Growth; Expansion"}}},
 	} {
-		resp := postForm(t, client, ts.URL+post.path, post.form)
-		defer func() { _ = resp.Body.Close() }()
-		page := parsePage(t, readBody(t, resp))
-		if got := textOf(findByTestID(t, page, "refused-reason")); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(got, reason) {
-			t.Errorf("%s: status %d, refused-reason %q; want 422 saying why", what, resp.StatusCode, got)
+		postRefusedBack(t, client, ts.URL+post.path, post.posted, post.back)
+		page := getPage(t, client, ts.URL+"/dimensions")
+		if got := textOf(findByTestID(t, page, "form-error")); !strings.Contains(got, reason) || !within(findByTestID(t, page, "form-error"), findAllByTestID(page, post.form)[0]) {
+			t.Errorf("%s: says %q in its form; want it saying why", what, got)
 		}
 	}
 
@@ -753,52 +755,51 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 	}
 }
 
-// Defining a Dimension named like a Field, in another case, is refused saying
-// the Field has the name, and defines nothing: Dimensions and Fields share one
-// namespace.
-func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-
-	resp := postForm(t, client, ts.URL+"/dimensions", url.Values{"name": {"budget"}, "values": {"Low, High"}})
-	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Budget is already a Field's name") {
-		t.Errorf("define budget: status %d, body %q; want 422 naming the Field", resp.StatusCode, body)
-	}
-	if dims, err := h.Service.ListDimensions(context.Background()); err != nil || len(dims) != 0 {
-		t.Errorf("Dimensions = %+v (%v), want none", dims, err)
-	}
-}
-
 // Renaming a value to another value's name in its list, in another case, is
-// refused saying to merge them, while changing a value's own capitalisation is
-// a rename.
+// refused saying to merge them: it comes back to that value's row on the
+// Dimensions page, its Dimension's Edit open and its rename holding what was
+// typed, the reason beside it; a reload shows Edit closed (#702). Changing a
+// value's own capitalisation is a rename.
 func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
+	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
 	payments := pillar.Values[1]
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	rename := fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, payments.ID)
 
-	resp := postForm(t, client, rename, url.Values{"value": {"growth"}})
-	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "merge Payments into Growth instead") {
-		t.Errorf("rename to growth: status %d, body %q; want 422 saying to merge", resp.StatusCode, body)
+	postRefusedBack(t, client, rename, url.Values{"value": {"growth"}}, fmt.Sprintf("/dimensions#dimension-value-%d", payments.ID))
+	page := getPage(t, client, ts.URL+"/dimensions")
+	open := openDetails(page, "dimension-edit")
+	if cards := findAllByTestID(page, "dimension"); len(open) != 1 || len(cards) != 2 || !within(open[0], cards[0]) || !strings.HasPrefix(textOf(cards[0]), "Pillar") {
+		t.Fatalf("%d Edit toggles open, want Pillar's alone:\n%s", len(open), renderNode(page))
+	}
+	refused := findAllByTestID(open[0], "rename-dimension-value")
+	if len(refused) != 2 {
+		t.Fatalf("Pillar's Edit has %d rename forms, want 2", len(refused))
+	}
+	field := formField(t, refused[1], "value")
+	if field.Value != "growth" || attrOf(field.Node, "aria-invalid") != "true" ||
+		field.Description != "Pillar already has Growth, so Payments can't be renamed to it; merge Payments into Growth instead." {
+		t.Errorf("Payments' rename holds %q, aria-invalid %q, described %q; want growth as typed, invalid, saying to merge",
+			field.Value, attrOf(field.Node, "aria-invalid"), field.Description)
+	}
+	if other := formField(t, refused[0], "value"); other.Value != "Growth" || attrOf(other.Node, "aria-invalid") != "" {
+		t.Errorf("Growth's rename holds %q, aria-invalid %q; want it as it is", other.Value, attrOf(other.Node, "aria-invalid"))
+	}
+	if page := getPage(t, client, ts.URL+"/dimensions"); len(openDetails(page, "dimension-edit")) != 0 || hasTestID(page, "form-error") {
+		t.Errorf("a reload still shows Edit open, or the reason:\n%s", renderNode(page))
 	}
 	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "Payments"}) {
 		t.Errorf("Pillar after a refused rename = %v, want [Growth Payments]", got)
 	}
 
-	resp = postForm(t, client, rename, url.Values{"value": {"payments"}})
+	resp := postForm(t, client, rename, url.Values{"value": {"payments"}})
+	defer func() { _ = resp.Body.Close() }()
 	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
 		t.Fatalf("rename to payments: status %d: %s", resp.StatusCode, body)
 	}
@@ -1028,7 +1029,9 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 // A refused Dimension change answers with the refusal page, headed Can't
 // change Dimension and linking Back to the Dimensions page, at its refusal's
 // status: one that isn't there is 422, as the domain refuses it for its
-// input, and someone not an Admin is 403 (#573).
+// input, and someone not an Admin is 403 (#573). A button with nothing typed,
+// such as Retire, answers so, and so does a form with typed input the page no
+// longer offers, or whose refusal is too long to carry back to it (#702).
 func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -1037,21 +1040,114 @@ func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
 	h.SignIn("sam@example.com")
 	quarter := h.CreateDimension(boss, "Quarter", "Q3", "Q4")
 	ts := newServer(t, h)
+	long := strings.Repeat("Q", 1600) + "; Q5"
 
 	for _, c := range []struct {
 		name, who, path string
+		posted          url.Values
 		status          int
 		reason          string
 	}{
-		{"a Dimension that isn't there", "boss@example.com", "/dimensions/99999/retire", http.StatusUnprocessableEntity, "Dimension does not exist."},
-		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/dimensions/%d/retire", quarter.ID), http.StatusForbidden, "Only an Admin may do this."},
+		{"a Dimension that isn't there", "boss@example.com", "/dimensions/99999/retire", url.Values{}, http.StatusUnprocessableEntity, "Dimension does not exist."},
+		{"a value that isn't there", "boss@example.com", "/dimension-values/99999/retire", url.Values{}, http.StatusUnprocessableEntity, "Dimension value does not exist."},
+		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/dimensions/%d/retire", quarter.ID), url.Values{}, http.StatusForbidden, "Only an Admin may do this."},
+		{"a value added to a Dimension that isn't there", "boss@example.com", "/dimensions/99999/values", url.Values{"value": {"Q1"}}, http.StatusUnprocessableEntity, "Dimension does not exist."},
+		{"a rename of a value that isn't there", "boss@example.com", "/dimension-values/99999/rename", url.Values{"value": {" "}}, http.StatusUnprocessableEntity, "A value cannot be blank."},
+		{"a rename too long to carry", "boss@example.com", fmt.Sprintf("/dimension-values/%d/rename", quarter.Values[0].ID), url.Values{"value": {long}},
+			http.StatusUnprocessableEntity, long + ": a value can't contain a semicolon, because the import format uses it to separate values."},
 	} {
-		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, url.Values{})
+		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, c.posted)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
 		}
 		assertRefusalPage(t, page, "Can't change Dimension", c.reason, "/dimensions")
+	}
+}
+
+// Defining a Dimension named like a Field, in another case, comes back to
+// the Dimensions page with Define a Dimension open, saying the Field has the
+// name above it and holding what was typed and chosen; a reload shows it
+// closed, and nothing is defined: Dimensions and Fields share one namespace
+// (#702).
+func TestARefusedDefineDimensionComesBackToItsFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	posted := url.Values{"name": {"budget"}, "values": {"Low, High"}, "selection": {domain.SelectionSeveral}, "list": {domain.ListExtendable}}
+	postRefusedBack(t, client, ts.URL+"/dimensions", posted, "/dimensions")
+
+	page := getPage(t, client, ts.URL+"/dimensions")
+	open := openDetails(page, "create-dimension")
+	if len(open) != 1 {
+		t.Fatalf("Define a Dimension isn't open:\n%s", renderNode(page))
+	}
+	if got := textOf(findByTestID(t, open[0], "form-error")); got != "Budget is already a Field's name." {
+		t.Errorf("Define a Dimension says %q, want Budget is already a Field's name.", got)
+	}
+	for _, name := range []string{"name", "values"} {
+		if got := formField(t, open[0], name).Value; got != posted.Get(name) {
+			t.Errorf("%s holds %q, want %q as typed", name, got, posted.Get(name))
+		}
+	}
+	if got := checkedRadio(open[0], "selection"); got != "several values" {
+		t.Errorf("Each Goal takes %q, want several values as chosen", got)
+	}
+	if got := checkedRadio(open[0], "list"); !strings.HasPrefix(got, "Extendable") {
+		t.Errorf("Its list is %q, want Extendable as chosen", got)
+	}
+
+	page = getPage(t, client, ts.URL+"/dimensions")
+	if len(openDetails(page, "create-dimension")) != 0 || hasTestID(page, "form-error") {
+		t.Errorf("a reload still shows Define a Dimension open, or its reason:\n%s", renderNode(page))
+	}
+	if dims, err := h.Service.ListDimensions(context.Background()); err != nil || len(dims) != 0 {
+		t.Errorf("Dimensions = %+v (%v), want none", dims, err)
+	}
+}
+
+// Adding a value matching a Retired one comes back to its Dimension's card on
+// the Dimensions page, with that Edit open and Add a value holding what was
+// typed, the reason beside it; a reload shows Edit closed, and nothing is
+// added (#702).
+func TestARefusedAddValueComesBackToItsDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateDimension(boss, "Customer", "Acme")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Legacy")
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, pillar.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	postRefusedBack(t, client, fmt.Sprintf("%s/dimensions/%d/values", ts.URL, pillar.ID), url.Values{"value": {"LEGACY"}}, fmt.Sprintf("/dimensions#dimension-%d", pillar.ID))
+	page := getPage(t, client, ts.URL+"/dimensions")
+	open := openDetails(page, "dimension-edit")
+	cards := findAllByTestID(page, "dimension")
+	if len(open) != 1 || len(cards) != 2 || !within(open[0], cards[1]) || !strings.HasPrefix(textOf(cards[1]), "Pillar") {
+		t.Fatalf("%d Edit toggles open, want Pillar's alone:\n%s", len(open), renderNode(page))
+	}
+	if got, want := attrOf(cards[1], "id"), fmt.Sprintf("dimension-%d", pillar.ID); got != want {
+		t.Errorf("Pillar's card has id %q, want %q for the answer's fragment", got, want)
+	}
+	add := formField(t, findByTestID(t, open[0], "add-dimension-value"), "value")
+	if add.Value != "LEGACY" || attrOf(add.Node, "aria-invalid") != "true" || !strings.Contains(add.Description, "Legacy is retired") {
+		t.Errorf("Add a value holds %q, aria-invalid %q, described %q; want LEGACY as typed, invalid, saying Legacy is retired",
+			add.Value, attrOf(add.Node, "aria-invalid"), add.Description)
+	}
+	if page := getPage(t, client, ts.URL+"/dimensions"); len(openDetails(page, "dimension-edit")) != 0 || hasTestID(page, "form-error") {
+		t.Errorf("a reload still shows Edit open, or the reason:\n%s", renderNode(page))
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "Legacy"}) {
+		t.Errorf("Pillar after a refused add = %v, want [Growth Legacy]", got)
 	}
 }

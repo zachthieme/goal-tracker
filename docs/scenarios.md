@@ -125,8 +125,9 @@ the price of scenarios 1 and 2, so it has to stay low.
 1. She opens the tool. It lands on **Home**, "Your week", where **Needs you**
    lists her Check-ins due, each with its Health and why it's listed. The Home
    item in the top bar carries the count.
-2. Three Goals haven't changed. She presses **No change** on each. One click
-   records a Check-in repeating last week's values, and the row leaves the list.
+2. Three Goals haven't changed. She presses **Check in: no change** on
+   each. One click records a Check-in repeating last week's values, and the
+   row leaves the list.
 3. The fourth moved. She presses **Check in**. Her Health is already picked
    from her latest Check-in, and the Status, Path to Green and reading fields
    start empty, with last week's Check-in beside the form. She types this

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,7 +39,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current dom
 // with the refusal page at 403: headed "Admins only", saying reason, and
 // linking Back to Home.
 func (s *Server) refuseNonAdmin(w http.ResponseWriter, r *http.Request, reason string) {
-	s.refuse(w, r, "Admins only", "/home", domain.Refuse(domain.ErrNotAuthorized, "%s", reason))
+	s.answerRefused(w, r, refused{Err: domain.Refuse(domain.ErrNotAuthorized, "%s", reason), Heading: "Admins only", Back: "/home"})
 }
 
 // passwordLinksCard is the set-password links card as the Admin page first
@@ -55,22 +56,41 @@ func (s *Server) passwordLinksCard() *passwordLinksView {
 // section's form showing admins' Email and Refusal; renderAdmin lists the
 // Admins themselves.
 func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, status int, current domain.Account, links *passwordLinksView, admins adminsSectionView) {
+	page, err := s.adminPageFor(r, current, links, admins)
+	if err != nil {
+		s.serverError(w, r, "could not load the Admin page", err)
+		return
+	}
+	render(w, r, status, page)
+}
+
+// adminPageFor is the Admin page renderAdmin draws.
+func (s *Server) adminPageFor(r *http.Request, current domain.Account, links *passwordLinksView, admins adminsSectionView) (templ.Component, error) {
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
-		s.serverError(w, r, "could not read goals", err)
-		return
+		return nil, fmt.Errorf("read goals: %w", err)
 	}
 	departed, err := s.svc.DepartedAccounts(r.Context())
 	if err != nil {
-		s.serverError(w, r, "could not read departed people", err)
-		return
+		return nil, fmt.Errorf("read departed people: %w", err)
 	}
 	admins.Admins, err = s.svc.Admins(r.Context())
 	if err != nil {
-		s.serverError(w, r, "could not read the Admins", err)
-		return
+		return nil, fmt.Errorf("read the Admins: %w", err)
 	}
-	render(w, r, status, adminPage(&current, s.directorySyncStatus(), links, admins, awaitingReassignment(goals), departed))
+	return adminPage(&current, s.directorySyncStatus(), links, admins, awaitingReassignment(goals), departed), nil
+}
+
+// refusedAdminForm is a refused form on the Admin page, err, as
+// answerRefused answers it: one refused for what was typed comes back on the
+// Admin page, at 422, as form draws it saying why (domain.Reason), and
+// someone who isn't an Admin is refused as refuseNonAdmin refuses them.
+func (s *Server) refusedAdminForm(r *http.Request, current domain.Account, err error, form func(reason string) (*passwordLinksView, adminsSectionView)) refused {
+	return refused{Err: err, Heading: "Admins only", Back: "/home",
+		Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
+			links, admins := form(domain.Reason(err))
+			return s.adminPageFor(r, current, links, admins)
+		})}
 }
 
 // adminsSectionView is the Admin page's Admins section: every Admin, and the
@@ -101,31 +121,27 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
+	refuse := func(err error) {
+		s.answerRefused(w, r, s.refusedAdminForm(r, current, err, func(reason string) (*passwordLinksView, adminsSectionView) {
+			return &passwordLinksView{Email: emailAddr, Refusal: reason}, adminsSectionView{}
+		}))
+	}
 	if emailAddr == "" {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{Refusal: "Enter the person's email."}, adminsSectionView{})
+		refuse(domain.Refuse(domain.ErrValidation, "Enter the person's email."))
 		return
 	}
 	link, err := s.svc.IssuePasswordLink(r.Context(), current.ID, emailAddr)
-	if errors.Is(err, domain.ErrNotAuthorized) {
-		s.refuseNonAdmin(w, r, "only an Admin may issue set-password links")
-		return
-	}
-	if errors.Is(err, domain.ErrNotAnEmail) {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
-			Email:   emailAddr,
-			Refusal: "That isn't an email address.",
-		}, adminsSectionView{})
-		return
-	}
-	if errors.Is(err, domain.ErrDeparted) {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
-			Email:   emailAddr,
-			Refusal: emailAddr + " has left the company, so can't be given a set-password link. Mark them returned first.",
-		}, adminsSectionView{})
-		return
+	// The domain's refusals, said as the card says them.
+	switch {
+	case errors.Is(err, domain.ErrNotAuthorized):
+		err = domain.Refuse(domain.ErrNotAuthorized, "only an Admin may issue set-password links")
+	case errors.Is(err, domain.ErrNotAnEmail):
+		err = domain.Refuse(domain.ErrValidation, "That isn't an email address.")
+	case errors.Is(err, domain.ErrDeparted):
+		err = domain.Refuse(domain.ErrValidation, "%s has left the company, so can't be given a set-password link. Mark them returned first.", emailAddr)
 	}
 	if err != nil {
-		s.serverError(w, r, "could not issue the set-password link", err)
+		refuse(err)
 		return
 	}
 	// The link signs in as its person, so who issued one is recorded; the
@@ -152,27 +168,28 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
-	refuse := func(refusal string) {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Email: emailAddr, Refusal: refusal})
+	refuse := func(err error) {
+		s.answerRefused(w, r, s.refusedAdminForm(r, current, err, func(reason string) (*passwordLinksView, adminsSectionView) {
+			return s.passwordLinksCard(), adminsSectionView{Email: emailAddr, Refusal: reason}
+		}))
 	}
 	if emailAddr == "" {
-		refuse("Enter the person's email.")
+		refuse(domain.Refuse(domain.ErrValidation, "Enter the person's email."))
 		return
 	}
 	_, err := s.svc.MakeAdmin(r.Context(), current.ID, emailAddr)
+	// The domain's refusals, said as the Admins form says them.
 	switch {
 	case errors.Is(err, domain.ErrValidation):
-		refuse("No one with that email has an account yet.")
-		return
+		err = domain.Refuse(domain.ErrValidation, "No one with that email has an account yet.")
 	case errors.Is(err, domain.ErrDeparted):
-		refuse(emailAddr + " has left the company. Mark them returned first.")
-		return
+		err = domain.Refuse(domain.ErrValidation, "%s has left the company. Mark them returned first.", emailAddr)
 	case errors.Is(err, domain.ErrNotAuthorized):
 		// They stopped being an Admin since the check above.
-		s.refuseNonAdmin(w, r, notAdmin)
-		return
-	case err != nil:
-		s.serverError(w, r, "could not make the Admin", err)
+		err = domain.Refuse(domain.ErrNotAuthorized, notAdmin)
+	}
+	if err != nil {
+		refuse(err)
 		return
 	}
 	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)
@@ -193,22 +210,30 @@ func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, curre
 		s.notFound(w, r)
 		return
 	}
+	refuse := func(err error) {
+		s.answerRefused(w, r, s.refusedAdminForm(r, current, err, func(reason string) (*passwordLinksView, adminsSectionView) {
+			return s.passwordLinksCard(), adminsSectionView{Refusal: reason}
+		}))
+	}
 	if id == current.ID {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Refusal: "You can't remove your own Admin role."})
+		refuse(domain.Refuse(domain.ErrValidation, "You can't remove your own Admin role."))
 		return
 	}
 	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
 	if errors.Is(err, domain.ErrValidation) {
+		// Deliberately not answerRefused's 422: removing yourself is
+		// refused above, so the one refusal left is an id that is no
+		// one's Account, and the Account in the path is not found, as an
+		// id that isn't one is (TestAdminCantRemoveTheirOwnAdminRole).
 		s.notFound(w, r)
 		return
 	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
 		// They stopped being an Admin since the check above.
-		s.refuseNonAdmin(w, r, notAdmin)
-		return
+		err = domain.Refuse(domain.ErrNotAuthorized, notAdmin)
 	}
 	if err != nil {
-		s.serverError(w, r, "could not remove the Admin", err)
+		refuse(err)
 		return
 	}
 	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)

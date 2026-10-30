@@ -718,16 +718,34 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if !errors.Is(err, domain.ErrValidation) {
-		s.serverError(w, r, "could not create goal", err)
-		return
+	s.answerGoalFormRefused(w, r, current, goalFormFrom{Posted: &v, In: in, ParentIDs: in.ParentIDs}, err)
+}
+
+// answerGoalFormRefused answers a submit of the New goal page, or of the
+// define page of from.Goal, refused with err: answerRefused's, the form
+// coming back as from says (goalFormAgain), headed "Can't create Goal" and
+// linking Back to the New goal form, or "Can't define Goal" and Back to the
+// Goal.
+func (s *Server) answerGoalFormRefused(w http.ResponseWriter, r *http.Request, current domain.Account, from goalFormFrom, err error) {
+	heading, back := "Can't create Goal", "/goals/new"
+	if from.Goal != nil {
+		heading, back = "Can't define Goal", goalPath(from.Goal.ID)
 	}
-	v, err = s.buildGoalForm(r.Context(), current, goalFormFrom{Posted: &v, In: in, ParentIDs: in.ParentIDs, Problems: goalFormProblems(err)})
-	if err != nil {
-		s.serverError(w, r, "could not load the goal form", err)
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+	s.answerRefused(w, r, refused{Err: err, Heading: heading, Back: back, Form: s.goalFormAgain(r, current, from)})
+}
+
+// goalFormAgain is the New goal form, or the define page, as from says, for
+// a refused submit: as typed, with every problem the refusal names
+// (goalFormProblems).
+func (s *Server) goalFormAgain(r *http.Request, current domain.Account, from goalFormFrom) refusedForm {
+	return asPage(func(ctx context.Context, err error) (templ.Component, error) {
+		from.Problems = goalFormProblems(err)
+		v, err := s.buildGoalForm(ctx, current, from)
+		if err != nil {
+			return nil, fmt.Errorf("load the goal form: %w", err)
+		}
+		return goalFormPage(&current, v), nil
+	})
 }
 
 // searchGoal is the Goal picker's search parameter naming the Goal being
@@ -812,7 +830,7 @@ func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current d
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	case errors.Is(err, domain.ErrNotAuthorized):
-		s.refuse(w, r, "Can't define Goal", goalPath(id), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't define Goal", Back: goalPath(id)})
 	case errors.Is(err, domain.ErrValidation):
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", id), http.StatusSeeOther)
 	default:
@@ -907,16 +925,7 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if !errors.Is(err, domain.ErrValidation) {
-		s.serverError(w, r, "could not save goal", err)
-		return
-	}
-	v, err = s.buildGoalForm(r.Context(), current, goalFormFrom{Goal: &g, Posted: &v, In: in, ParentIDs: in.ParentIDs, Problems: goalFormProblems(err)})
-	if err != nil {
-		s.serverError(w, r, "could not load the goal form", err)
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+	s.answerGoalFormRefused(w, r, current, goalFormFrom{Goal: &g, Posted: &v, In: in, ParentIDs: in.ParentIDs}, err)
 }
 
 // handleDefineGoalChecklist is handleGoalFormChecklist for the define page,

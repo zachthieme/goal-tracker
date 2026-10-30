@@ -503,40 +503,75 @@ func postImportWithoutFile(t *testing.T, client *http.Client, rawURL, action str
 
 // A Dry run or Commit with no file chosen is refused, 422, with "Choose a file
 // to import." beside the file input rather than a flash at the top, and
-// nothing is imported (#676).
+// nothing is imported (#676) — whether the body has no file part or, as some
+// browsers send, a file part with filename="" and no content.
 func TestImportWithNoFileSaysSoBesideTheInputOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	for _, action := range []string{"commit", "dry-run"} {
-		t.Run(action, func(t *testing.T) {
-			t.Parallel()
-
-			h := testsupport.New(t, "admin@example.com")
-			ts := newServer(t, h)
-			admin := signInClient(t, ts.URL, "admin@example.com")
-
-			resp := postImportWithoutFile(t, admin, ts.URL+"/imports", action)
-			defer func() { _ = resp.Body.Close() }()
-			page := parsePage(t, readBody(t, resp))
-			if resp.StatusCode != http.StatusUnprocessableEntity {
-				t.Errorf("status %d, want 422", resp.StatusCode)
-			}
-			if got := textOf(findByTestID(t, page, "import-file-error")); got != "Choose a file to import." {
-				t.Errorf("file error = %q, want %q", got, "Choose a file to import.")
-			}
-			file := formField(t, page, "file")
-			if got := attrOf(file.Node, "aria-invalid"); got != "true" {
-				t.Errorf("file input aria-invalid = %q, want true", got)
-			}
-			if got := attrOf(file.Node, "aria-describedby"); got != "file-error" {
-				t.Errorf("file input aria-describedby = %q, want file-error", got)
-			}
-			if hasTestID(page, "import-flash") {
-				t.Errorf("a missing file flashed at the top as well:\n%s", textOf(findByTestID(t, page, "import-flash")))
-			}
-			if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
-				t.Errorf("ListGoals = %d Goals, %v after an import with no file, want none", len(goals), err)
-			}
-		})
+	bodies := map[string]func(t *testing.T, client *http.Client, rawURL, action string) *http.Response{
+		"no file part": postImportWithoutFile,
+		"empty file part": func(t *testing.T, client *http.Client, rawURL, action string) *http.Response {
+			t.Helper()
+			return postImportRaw(t, client, rawURL, "", "", action)
+		},
 	}
+	for body, post := range bodies {
+		for _, action := range []string{"commit", "dry-run"} {
+			t.Run(body+"/"+action, func(t *testing.T) {
+				t.Parallel()
+
+				h := testsupport.New(t, "admin@example.com")
+				ts := newServer(t, h)
+				admin := signInClient(t, ts.URL, "admin@example.com")
+
+				resp := post(t, admin, ts.URL+"/imports", action)
+				defer func() { _ = resp.Body.Close() }()
+				page := parsePage(t, readBody(t, resp))
+				if resp.StatusCode != http.StatusUnprocessableEntity {
+					t.Errorf("status %d, want 422", resp.StatusCode)
+				}
+				if got := textOf(findByTestID(t, page, "import-file-error")); got != "Choose a file to import." {
+					t.Errorf("file error = %q, want %q", got, "Choose a file to import.")
+				}
+				file := formField(t, page, "file")
+				if got := attrOf(file.Node, "aria-invalid"); got != "true" {
+					t.Errorf("file input aria-invalid = %q, want true", got)
+				}
+				if got := attrOf(file.Node, "aria-describedby"); got != "file-error" {
+					t.Errorf("file input aria-describedby = %q, want file-error", got)
+				}
+				if hasTestID(page, "import-flash") {
+					t.Errorf("a missing file flashed at the top as well:\n%s", textOf(findByTestID(t, page, "import-flash")))
+				}
+				if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
+					t.Errorf("ListGoals = %d Goals, %v after an import with no file, want none", len(goals), err)
+				}
+			})
+		}
+	}
+}
+
+// An import that fails for no reason the app gives, such as the Dimensions it
+// reads the columns by failing to load, answers as any other failed command
+// does: the logged 500 error page, not the Import page saying it failed, and
+// its cause reaches the server log (#701).
+func TestAFailedImportIsTheLoggedErrorPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts, buf := loggedServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	h.FailReads("dimensions")
+	before := len(logRecords(t, buf))
+
+	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", webImportCSV, "commit")
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	if body != "action failed\n" {
+		t.Errorf("body %q, want the error page's %q", body, "action failed\n")
+	}
+	assertLoggedOnce(t, buf, before, http.MethodPost, "/imports", "no such table: dimensions")
 }

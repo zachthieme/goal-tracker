@@ -1552,11 +1552,13 @@ templ milestoneList(v goalView, editable bool) {
 						}
 						if editable {
 							<td>
-								<details class="gp-edit">
+								{{ refused, open := formRefusalFor(ctx, "edit-milestone", m.ID) }}
+								<details data-testid="milestone-edit" class="gp-edit" open?={ open }>
 									<summary class="btn quiet sm">Edit</summary>
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) }>
-										<input type="text" name="name" value={ m.Name } aria-label="Name" required/>
-										<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } aria-label="Date" required/>
+									@rowFormError(refused)
+									<form data-testid="edit-milestone" method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) }>
+										<input type="text" name="name" value={ refused.shownOr("name", m.Name) } aria-label="Name" required autofocus?={ open }/>
+										<input type="date" name="target_date" value={ refused.shownOr("target_date", fmtDate(m.TargetDate)) } aria-label="Date" required/>
 										<button type="submit" class="btn sm">Save</button>
 									</form>
 								</details>
@@ -1673,10 +1675,12 @@ templ metricList(trends []metricTrend, editable bool, dates displayDates) {
 			</p>
 			@metricTrendReadings(t, dates)
 			if editable {
-				<details data-testid="metric-edit" class="gp-edit">
+				{{ refused, open := formRefusalFor(ctx, "edit-metric", m.ID) }}
+				<details data-testid="metric-edit" class="gp-edit" open?={ open }>
 					<summary class="small">Edit Metric</summary>
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) }>
-						@metricFields(m)
+					@rowFormError(refused)
+					<form data-testid="edit-metric" method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) }>
+						@metricFields(m, refused)
 						<button type="submit" class="btn sm">Save</button>
 					</form>
 				</details>
@@ -1765,37 +1769,47 @@ templ highlightList(highlights []domain.Highlight, dates displayDates) {
 	</ul>
 }
 
-// metricFields is the shared set of Metric inputs, prefilled from m for editing.
-// The Direction counts only when the target equals the baseline; otherwise the
+// metricFields is the shared set of Metric inputs, prefilled from m for
+// editing, or with what was typed when its Edit was just refused. The
+// Direction counts only when the target equals the baseline; otherwise the
 // server takes it from them (metricDirection), as the goal form does.
-templ metricFields(m domain.Metric) {
+templ metricFields(m domain.Metric, refused formRefusal) {
+	{{ direction := refused.shownOr("direction", m.Direction) }}
 	<label>
 		Name
-		<input type="text" name="name" value={ m.Name } required/>
+		<input type="text" name="name" value={ refused.shownOr("name", m.Name) } required autofocus?={ refused.Form != "" }/>
 	</label>
 	<label>
 		Unit
-		<input type="text" name="unit" value={ m.Unit } required/>
+		<input type="text" name="unit" value={ refused.shownOr("unit", m.Unit) } required/>
 	</label>
 	<label>
 		Baseline
-		<input type="number" step="any" name="baseline" value={ fmtNum(m.Baseline) } required/>
+		<input type="number" step="any" name="baseline" value={ refused.shownOr("baseline", fmtNum(m.Baseline)) } required/>
 	</label>
 	<label>
 		Target
-		<input type="number" step="any" name="target" value={ fmtNum(m.Target) } required/>
+		<input type="number" step="any" name="target" value={ refused.shownOr("target", fmtNum(m.Target)) } required/>
 	</label>
 	<label data-metric-direction>
 		Direction <span class="hint">— when target equals baseline</span>
 		<select name="direction">
-			<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
-			<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
+			<option value={ domain.MetricUp } selected?={ direction == domain.MetricUp }>up</option>
+			<option value={ domain.MetricDown } selected?={ direction == domain.MetricDown }>down</option>
 		</select>
 	</label>
 	<label>
 		Target date
-		<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } required/>
+		<input type="date" name="target_date" value={ refused.shownOr("target_date", fmtDate(m.TargetDate)) } required/>
 	</label>
+}
+
+// rowFormError is why a Goal page row's Edit was just refused, in one
+// sentence above its form, as openGoalForm says it; nothing when it wasn't.
+templ rowFormError(refused formRefusal) {
+	if refused.Reason != "" {
+		<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
+	}
 }
 
 // linkList renders Goal g's parents or children as navigable links, each led

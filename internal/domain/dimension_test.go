@@ -1458,9 +1458,12 @@ func TestValueSettableGoalsAreThoseSettingValuesAllows(t *testing.T) {
 			t.Errorf("ValueSettableGoals for %s = %v, want %v", v.name, got, v.want)
 		}
 		for _, g := range goals {
-			err := h.Service.RequireGoalValueSetter(ctx, v.viewer.ID, g.ID)
-			if allowed := err == nil; allowed != got[g.ID] {
-				t.Errorf("%s on %q: ValueSettableGoals says %t, RequireGoalValueSetter says %t", v.name, g.Title, got[g.ID], allowed)
+			p, err := h.Service.GoalPage(ctx, v.viewer.ID, g.ID)
+			if err != nil {
+				t.Fatalf("GoalPage of %q for %s: %v", g.Title, v.name, err)
+			}
+			if allowed := p.Permissions.SetValues; allowed != got[g.ID] {
+				t.Errorf("%s on %q: ValueSettableGoals says %t, GoalPermissions.SetValues says %t", v.name, g.Title, got[g.ID], allowed)
 			}
 		}
 	}

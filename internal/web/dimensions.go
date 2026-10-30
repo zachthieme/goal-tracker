@@ -1,8 +1,11 @@
 package web
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -11,8 +14,10 @@ import (
 
 // handleDimensions shows every Dimension and, for an Admin, the controls to
 // define one and to add, rename, and retire its values (CONTEXT.md: Admin
-// defines Dimensions).
+// defines Dimensions). A form just refused for what was typed comes back
+// open, as it was left, this once (onPage).
 func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	r = takeFormRefusal(w, r)
 	dims, err := s.svc.ListDimensions(r.Context())
 	if err != nil {
 		s.serverError(w, r, "could not list dimensions", err)
@@ -24,7 +29,9 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 // handleCreateDimension defines a Dimension from a name, a comma-separated
 // value list, whether a Goal takes one of its values or several (one when the
 // form doesn't say), and whether its list is Fixed or Extendable (Fixed when
-// the form doesn't say). Only an Admin may.
+// the form doesn't say). Only an Admin may. Refused for what was typed, it
+// comes back to the Dimensions page, one form of several there, with Define
+// a Dimension open, saying why above it (onPage).
 func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	_, err := s.svc.DefineDimension(r.Context(), current.ID, domain.DimensionDefinition{
 		Name:      r.FormValue("name"),
@@ -33,7 +40,7 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, c
 		List:      r.FormValue("list"),
 	})
 	if err != nil {
-		s.writeDimensionError(w, r, err)
+		s.writeDimensionFormError(w, r, err, onPage("/dimensions", "create-dimension", 0, []string{"name", "values", "selection", "list"}).inOneSentence())
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -95,27 +102,32 @@ func (s *Server) handleSetDimensionRequired(w http.ResponseWriter, r *http.Reque
 }
 
 // handleAddDimensionValue adds a value to the Dimension in the path. Only an
-// Admin may.
+// Admin may. Refused for what was typed, it comes back to the Dimension's card
+// on the Dimensions page, one form of several there, its Edit open and the
+// reason beside Add a value (onPage).
 func (s *Server) handleAddDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.AddDimensionValue(r.Context(), current.ID, id, r.FormValue("value")); err != nil {
-		s.writeDimensionError(w, r, err)
+		s.writeDimensionFormError(w, r, err, s.addDimensionValueForm(id))
 		return
 	}
 	s.redirectToDimensions(w, r)
 }
 
 // handleRenameDimensionValue renames the value in the path. Only an Admin may.
+// Refused for what was typed, it comes back to the value's row on the
+// Dimensions page, one form of several there, its Dimension's Edit open and
+// the reason beside the rename (onPage).
 func (s *Server) handleRenameDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.RenameDimensionValue(r.Context(), current.ID, id, r.FormValue("value")); err != nil {
-		s.writeDimensionError(w, r, err)
+		s.writeDimensionFormError(w, r, err, s.renameDimensionValueForm(id))
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -209,7 +221,9 @@ func (s *Server) handleSortDimensionValues(w http.ResponseWriter, r *http.Reques
 }
 
 // handleMergeDimensionValue merges the value in the path into the value named
-// by the form's into, in the same Dimension. Only an Admin may.
+// by the form's into, in the same Dimension. Only an Admin may. Nothing is
+// typed: into is chosen from the page's own list, so a refusal means the page
+// is out of date, and it is the refusal page.
 func (s *Server) handleMergeDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
@@ -253,12 +267,80 @@ func (s *Server) dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (in
 	return id, true
 }
 
-// writeDimensionError answers a refused Dimension change with the refusal
-// page, linking Back to the Dimensions page. The domain refuses a Dimension
-// or value that isn't there for its input, but a missing record would be the
-// Not found page.
+// writeDimensionError answers a refused Dimension change from a button with
+// nothing typed, such as Retire, with the refusal page, linking Back to the
+// Dimensions page. The domain refuses a Dimension or value that isn't there
+// for its input, but a missing record would be the Not found page.
 func (s *Server) writeDimensionError(w http.ResponseWriter, r *http.Request, err error) {
-	s.refuse(w, r, "Can't change Dimension", "/dimensions", err)
+	s.writeDimensionFormError(w, r, err, nil)
+}
+
+// writeDimensionFormError answers a refused Dimension change posted from
+// form, a form with typed input on the Dimensions page: a refusal of what was
+// typed comes back there, in form, and anything else, or a form the page no
+// longer offers, is writeDimensionError's refusal page.
+func (s *Server) writeDimensionFormError(w http.ResponseWriter, r *http.Request, err error, form refusedForm) {
+	s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Dimension", Back: "/dimensions", Form: form})
+}
+
+// addDimensionValueForm is Add a value to the Dimension id, on its card on
+// the Dimensions page, saying why beside its input; the page offers it while
+// the Dimension is listed.
+func (s *Server) addDimensionValueForm(id int64) refusedForm {
+	return onPage(fmt.Sprintf("/dimensions#dimension-%d", id), "add-dimension-value", id, []string{"value"}).
+		besideInput("value").
+		offeredWhen(func(ctx context.Context) (bool, error) {
+			dims, err := s.svc.ListDimensions(ctx)
+			return slices.ContainsFunc(dims, func(d domain.Dimension) bool { return d.ID == id }), err
+		})
+}
+
+// renameDimensionValueForm is the rename of the value id, at its row on the
+// Dimensions page, saying why beside its input; the page offers it while the
+// value is listed and not Retired.
+func (s *Server) renameDimensionValueForm(id int64) refusedForm {
+	return onPage(fmt.Sprintf("/dimensions#dimension-value-%d", id), "rename-dimension-value", id, []string{"value"}).
+		besideInput("value").
+		offeredWhen(func(ctx context.Context) (bool, error) {
+			dims, err := s.svc.ListDimensions(ctx)
+			if err != nil {
+				return false, err
+			}
+			for _, d := range dims {
+				for _, v := range d.Values {
+					if v.ID == id {
+						return !v.Retired, nil
+					}
+				}
+			}
+			return false, nil
+		})
+}
+
+// refusalOpensDimensionEdit reports whether the page carries a refusal, not
+// yet taken, of a form behind d's Edit toggle, without taking it: its Add
+// value, or the rename of one of its values. That Edit comes back open.
+func refusalOpensDimensionEdit(ctx context.Context, d domain.Dimension) bool {
+	refusal, ok := formRefusalUntaken(ctx)
+	if !ok {
+		return false
+	}
+	switch refusal.Form {
+	case "add-dimension-value":
+		return refusal.ID == d.ID
+	case "rename-dimension-value":
+		return slices.ContainsFunc(d.Values, func(v domain.DimensionValue) bool { return v.ID == refusal.ID })
+	}
+	return false
+}
+
+// refusedChoice is the radio choice the refused form posted as input, or
+// fallback, the form's own default, when it wasn't refused or chose none.
+func refusedChoice(refused formRefusal, input, fallback string) string {
+	if typed := refused.typed(input); typed != "" {
+		return typed
+	}
+	return fallback
 }
 
 // selectionLabel says whether a Goal takes one of d's values or several.

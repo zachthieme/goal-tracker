@@ -2176,7 +2176,9 @@ func goalFormRowsScript() templ.Component {
 // delivery date, beside each open Milestone or Metric editor's date, and on
 // each saved item, after its detail. Changing the Kind or delivery date
 // re-judges every Milestone. An input refused keeps its error and gets no
-// warning; a warning never blocks anything.
+// warning until it is edited; then it is judged like any other, its error
+// kept until the next submit and described alongside the warning (#696). A
+// warning never blocks anything.
 func goalFormWarningsScript() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -2198,7 +2200,7 @@ func goalFormWarningsScript() templ.Component {
 			templ_7745c5c3_Var92 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"goal-form\"]');\n\t\t\tif (!form) return;\n\t\t\tvar today = form.getAttribute(\"data-today\");\n\t\t\tvar iso = /^\\d{4}-\\d{2}-\\d{2}$/;\n\n\t\t\t// warn sets the warning beside input, after the element at, or\n\t\t\t// clears it when there is no message or the input is refused. An\n\t\t\t// item's hidden input isn't described by its warning.\n\t\t\tfunction warn(input, at, message) {\n\t\t\t\tvar id = input.name + \"-warning\";\n\t\t\t\tvar shown = document.getElementById(id);\n\t\t\t\tif (!message || input.getAttribute(\"aria-invalid\") === \"true\") {\n\t\t\t\t\tif (shown) shown.remove();\n\t\t\t\t\tif (input.getAttribute(\"aria-describedby\") === id) input.removeAttribute(\"aria-describedby\");\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tif (!shown) {\n\t\t\t\t\tshown = document.createElement(\"span\");\n\t\t\t\t\tshown.setAttribute(\"data-testid\", \"input-warning\");\n\t\t\t\t\tshown.id = id;\n\t\t\t\t\tshown.className = \"gf-input-warning\";\n\t\t\t\t\tat.after(shown);\n\t\t\t\t}\n\t\t\t\tshown.textContent = message;\n\t\t\t\tif (input.type !== \"hidden\") input.setAttribute(\"aria-describedby\", id);\n\t\t\t}\n\n\t\t\t// place is where input's warning goes: after a saved item's\n\t\t\t// detail, or after the input itself.\n\t\t\tfunction place(input) {\n\t\t\t\tvar item = input.type === \"hidden\" && input.closest(\".ie-item\");\n\t\t\t\treturn item ? item.querySelector('[data-testid=\"measure-item-detail\"]') : input;\n\t\t\t}\n\n\t\t\tfunction judge() {\n\t\t\t\tvar dated = form.querySelector(\"#kind-dated\");\n\t\t\t\tvar input = form.querySelector(\"#delivery_date\");\n\t\t\t\tif (!today || !input) return;\n\t\t\t\tvar delivery = dated && dated.checked && iso.test(input.value) ? input.value : \"\";\n\t\t\t\twarn(input, input, delivery && delivery < today ? form.getAttribute(\"data-warn-delivery\") : \"\");\n\t\t\t\tform.querySelectorAll('[name^=\"milestones[\"][name$=\"].date\"]').forEach(function (date) {\n\t\t\t\t\tvar late = delivery && iso.test(date.value) && date.value > delivery;\n\t\t\t\t\twarn(date, place(date), late ? form.getAttribute(\"data-warn-milestone\") : \"\");\n\t\t\t\t});\n\t\t\t\tform.querySelectorAll('[name^=\"metrics[\"][name$=\"].target_date\"]').forEach(function (date) {\n\t\t\t\t\tvar past = iso.test(date.value) && date.value < today;\n\t\t\t\t\twarn(date, place(date), past ? form.getAttribute(\"data-warn-target\") : \"\");\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tform.addEventListener(\"input\", judge);\n\t\t\tform.addEventListener(\"change\", judge);\n\t\t\tjudge();\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"goal-form\"]');\n\t\t\tif (!form) return;\n\t\t\tvar today = form.getAttribute(\"data-today\");\n\t\t\tvar iso = /^\\d{4}-\\d{2}-\\d{2}$/;\n\t\t\t// edited holds the inputs typed in since the page came: a refused\n\t\t\t// one among them is judged again.\n\t\t\tvar edited = new WeakSet();\n\n\t\t\t// describe adds id to, or drops it from, what describes input,\n\t\t\t// keeping the rest, such as why it was refused.\n\t\t\tfunction describe(input, id, on) {\n\t\t\t\tvar ids = (input.getAttribute(\"aria-describedby\") || \"\").split(/\\s+/).filter(function (d) {\n\t\t\t\t\treturn d && d !== id;\n\t\t\t\t});\n\t\t\t\tif (on) ids.push(id);\n\t\t\t\tif (ids.length) input.setAttribute(\"aria-describedby\", ids.join(\" \"));\n\t\t\t\telse input.removeAttribute(\"aria-describedby\");\n\t\t\t}\n\n\t\t\t// warn sets the warning beside input, after the element at, or\n\t\t\t// clears it when there is no message or the input is refused and\n\t\t\t// not since edited. An item's hidden input isn't described by its\n\t\t\t// warning.\n\t\t\tfunction warn(input, at, message) {\n\t\t\t\tvar id = input.name + \"-warning\";\n\t\t\t\tvar shown = document.getElementById(id);\n\t\t\t\tif (!message || (input.getAttribute(\"aria-invalid\") === \"true\" && !edited.has(input))) {\n\t\t\t\t\tif (shown) shown.remove();\n\t\t\t\t\tdescribe(input, id, false);\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tif (!shown) {\n\t\t\t\t\tshown = document.createElement(\"span\");\n\t\t\t\t\tshown.setAttribute(\"data-testid\", \"input-warning\");\n\t\t\t\t\tshown.id = id;\n\t\t\t\t\tshown.className = \"gf-input-warning\";\n\t\t\t\t\tat.after(shown);\n\t\t\t\t}\n\t\t\t\tshown.textContent = message;\n\t\t\t\tif (input.type !== \"hidden\") describe(input, id, true);\n\t\t\t}\n\n\t\t\t// place is where input's warning goes: after a saved item's\n\t\t\t// detail, or after the input itself.\n\t\t\tfunction place(input) {\n\t\t\t\tvar item = input.type === \"hidden\" && input.closest(\".ie-item\");\n\t\t\t\treturn item ? item.querySelector('[data-testid=\"measure-item-detail\"]') : input;\n\t\t\t}\n\n\t\t\tfunction judge() {\n\t\t\t\tvar dated = form.querySelector(\"#kind-dated\");\n\t\t\t\tvar input = form.querySelector(\"#delivery_date\");\n\t\t\t\tif (!today || !input) return;\n\t\t\t\tvar delivery = dated && dated.checked && iso.test(input.value) ? input.value : \"\";\n\t\t\t\twarn(input, input, delivery && delivery < today ? form.getAttribute(\"data-warn-delivery\") : \"\");\n\t\t\t\tform.querySelectorAll('[name^=\"milestones[\"][name$=\"].date\"]').forEach(function (date) {\n\t\t\t\t\tvar late = delivery && iso.test(date.value) && date.value > delivery;\n\t\t\t\t\twarn(date, place(date), late ? form.getAttribute(\"data-warn-milestone\") : \"\");\n\t\t\t\t});\n\t\t\t\tform.querySelectorAll('[name^=\"metrics[\"][name$=\"].target_date\"]').forEach(function (date) {\n\t\t\t\t\tvar past = iso.test(date.value) && date.value < today;\n\t\t\t\t\twarn(date, place(date), past ? form.getAttribute(\"data-warn-target\") : \"\");\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tfunction judgeEdited(e) {\n\t\t\t\tedited.add(e.target);\n\t\t\t\tjudge();\n\t\t\t}\n\n\t\t\tform.addEventListener(\"input\", judgeEdited);\n\t\t\tform.addEventListener(\"change\", judgeEdited);\n\t\t\tjudge();\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2323,7 +2325,7 @@ func goalFormMoreSummary(name string, names []string, empty string) templ.Compon
 		var templ_7745c5c3_Var95 string
 		templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 869, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 891, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
 		if templ_7745c5c3_Err != nil {
@@ -2341,7 +2343,7 @@ func goalFormMoreSummary(name string, names []string, empty string) templ.Compon
 			var templ_7745c5c3_Var96 string
 			templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs("· " + empty)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 871, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 893, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 			if templ_7745c5c3_Err != nil {
@@ -2359,7 +2361,7 @@ func goalFormMoreSummary(name string, names []string, empty string) templ.Compon
 			var templ_7745c5c3_Var97 string
 			templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs("· " + strings.Join(names, ", "))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 874, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 896, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 			if templ_7745c5c3_Err != nil {
@@ -2422,7 +2424,7 @@ func goalFormParents(v goalFormView) templ.Component {
 				var templ_7745c5c3_Var99 templ.SafeURL
 				templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", p.Goal.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 894, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 916, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 				if templ_7745c5c3_Err != nil {
@@ -2435,7 +2437,7 @@ func goalFormParents(v goalFormView) templ.Component {
 				var templ_7745c5c3_Var100 string
 				templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 894, Col: 83}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 916, Col: 83}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
 				if templ_7745c5c3_Err != nil {
@@ -2453,7 +2455,7 @@ func goalFormParents(v goalFormView) templ.Component {
 					var templ_7745c5c3_Var101 string
 					templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.JoinStringErrs("waiting on " + p.Goal.Owner.Label())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 897, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 919, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var101))
 					if templ_7745c5c3_Err != nil {
@@ -2502,7 +2504,7 @@ func goalFormParents(v goalFormView) templ.Component {
 			var templ_7745c5c3_Var102 string
 			templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs("Each Owner is asked to accept: " + strings.Join(v.asked(), ", ") + ".")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 912, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 934, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 			if templ_7745c5c3_Err != nil {
@@ -2587,7 +2589,7 @@ func goalFormFits(v goalFormView) templ.Component {
 		var templ_7745c5c3_Var105 string
 		templ_7745c5c3_Var105, templ_7745c5c3_Err = templ.JoinStringErrs(v.fitsRequiredNote())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 951, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 973, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var105))
 		if templ_7745c5c3_Err != nil {
@@ -2687,7 +2689,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var107 string
 			templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 998, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1020, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var107)
 			if templ_7745c5c3_Err != nil {
@@ -2700,7 +2702,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var108 string
 			templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 999, Col: 19}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1021, Col: 19}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 			if templ_7745c5c3_Err != nil {
@@ -2718,7 +2720,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var109 string
 				templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ValueInput(val.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1005, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1027, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var109)
 				if templ_7745c5c3_Err != nil {
@@ -2731,7 +2733,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var110 string
 				templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1006, Col: 26}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1028, Col: 26}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var110)
 				if templ_7745c5c3_Err != nil {
@@ -2744,7 +2746,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var111 string
 				templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1007, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1029, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var111)
 				if templ_7745c5c3_Err != nil {
@@ -2771,7 +2773,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var112 string
 				templ_7745c5c3_Var112, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1011, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1033, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var112))
 				if templ_7745c5c3_Err != nil {
@@ -2808,7 +2810,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var113 string
 			templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1023, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1045, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var113))
 			if templ_7745c5c3_Err != nil {
@@ -2821,7 +2823,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var114 string
 			templ_7745c5c3_Var114, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1024, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1046, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var114)
 			if templ_7745c5c3_Err != nil {
@@ -2834,7 +2836,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var115 string
 			templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputValueID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1024, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1046, Col: 56}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var115)
 			if templ_7745c5c3_Err != nil {
@@ -2860,7 +2862,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var116 string
 				templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(val.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1027, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1049, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var116)
 				if templ_7745c5c3_Err != nil {
@@ -2883,7 +2885,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var117 string
 				templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.JoinStringErrs(valueOptionLabel(val))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1027, Col: 97}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1049, Col: 97}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var117))
 				if templ_7745c5c3_Err != nil {
@@ -2906,7 +2908,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var118 string
 				templ_7745c5c3_Var118, templ_7745c5c3_Err = templ.ResolveAttributeValue(dimensionInput(d) + "-error")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1031, Col: 70}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1053, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var118)
 				if templ_7745c5c3_Err != nil {
@@ -2919,7 +2921,7 @@ func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 				var templ_7745c5c3_Var119 string
 				templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1031, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1053, Col: 101}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 				if templ_7745c5c3_Err != nil {
@@ -2980,7 +2982,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var121 string
 			templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1046, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1068, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var121))
 			if templ_7745c5c3_Err != nil {
@@ -2993,7 +2995,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var122 string
 			templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1047, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1069, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var122)
 			if templ_7745c5c3_Err != nil {
@@ -3006,7 +3008,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var123 string
 			templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1047, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1069, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
 			if templ_7745c5c3_Err != nil {
@@ -3019,7 +3021,7 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 			var templ_7745c5c3_Var124 string
 			templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.NewValues[d.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1047, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1069, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var124)
 			if templ_7745c5c3_Err != nil {
@@ -3081,7 +3083,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 		var templ_7745c5c3_Var126 string
 		templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.JoinStringErrs(f.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1059, Col: 11}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1081, Col: 11}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var126))
 		if templ_7745c5c3_Err != nil {
@@ -3099,7 +3101,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var127 string
 			templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.JoinStringErrs(f.Unit)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1061, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1083, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var127))
 			if templ_7745c5c3_Err != nil {
@@ -3123,7 +3125,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var128 string
 			templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1066, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1088, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var128)
 			if templ_7745c5c3_Err != nil {
@@ -3136,7 +3138,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var129 string
 			templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1066, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1088, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var129)
 			if templ_7745c5c3_Err != nil {
@@ -3149,7 +3151,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var130 string
 			templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1066, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1088, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var130)
 			if templ_7745c5c3_Err != nil {
@@ -3175,7 +3177,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var131 string
 			templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1068, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1090, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var131)
 			if templ_7745c5c3_Err != nil {
@@ -3188,7 +3190,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var132 string
 			templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1068, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1090, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var132)
 			if templ_7745c5c3_Err != nil {
@@ -3209,7 +3211,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var133 string
 			templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.JoinStringErrs(v.FieldValues[f.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1068, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1090, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var133))
 			if templ_7745c5c3_Err != nil {
@@ -3227,7 +3229,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var134 string
 			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1070, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1092, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var134)
 			if templ_7745c5c3_Err != nil {
@@ -3240,7 +3242,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var135 string
 			templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1070, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1092, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var135)
 			if templ_7745c5c3_Err != nil {
@@ -3253,7 +3255,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var136 string
 			templ_7745c5c3_Var136, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1070, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1092, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var136)
 			if templ_7745c5c3_Err != nil {
@@ -3279,7 +3281,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var137 string
 			templ_7745c5c3_Var137, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1072, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1094, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var137)
 			if templ_7745c5c3_Err != nil {
@@ -3292,7 +3294,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var138 string
 			templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.ResolveAttributeValue(input)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1072, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1094, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var138)
 			if templ_7745c5c3_Err != nil {
@@ -3305,7 +3307,7 @@ func goalFormField(v goalFormView, f domain.Field) templ.Component {
 			var templ_7745c5c3_Var139 string
 			templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.FieldValues[f.ID])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1072, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1094, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var139)
 			if templ_7745c5c3_Err != nil {
@@ -3392,7 +3394,7 @@ func goalFormErrors(v goalFormView) templ.Component {
 					var templ_7745c5c3_Var141 templ.SafeURL
 					templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("#" + p.Input))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1092, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1114, Col: 45}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
 					if templ_7745c5c3_Err != nil {
@@ -3405,7 +3407,7 @@ func goalFormErrors(v goalFormView) templ.Component {
 					var templ_7745c5c3_Var142 string
 					templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1092, Col: 59}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1114, Col: 59}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var142))
 					if templ_7745c5c3_Err != nil {
@@ -3419,7 +3421,7 @@ func goalFormErrors(v goalFormView) templ.Component {
 					var templ_7745c5c3_Var143 string
 					templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(p.Message)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1094, Col: 18}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1116, Col: 18}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 					if templ_7745c5c3_Err != nil {
@@ -3470,7 +3472,7 @@ func goalFormInputError(v goalFormView, input string) templ.Component {
 			var templ_7745c5c3_Var145 string
 			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.ResolveAttributeValue(input + "-error")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1106, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1128, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var145)
 			if templ_7745c5c3_Err != nil {
@@ -3483,7 +3485,7 @@ func goalFormInputError(v goalFormView, input string) templ.Component {
 			var templ_7745c5c3_Var146 string
 			templ_7745c5c3_Var146, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1106, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1128, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var146))
 			if templ_7745c5c3_Err != nil {
@@ -3529,7 +3531,7 @@ func goalFormInputWarning(v goalFormView, input string) templ.Component {
 			var templ_7745c5c3_Var148 string
 			templ_7745c5c3_Var148, templ_7745c5c3_Err = templ.ResolveAttributeValue(input + "-warning")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1114, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1136, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var148)
 			if templ_7745c5c3_Err != nil {
@@ -3542,7 +3544,7 @@ func goalFormInputWarning(v goalFormView, input string) templ.Component {
 			var templ_7745c5c3_Var149 string
 			templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.JoinStringErrs(warning)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1114, Col: 96}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 1136, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var149))
 			if templ_7745c5c3_Err != nil {

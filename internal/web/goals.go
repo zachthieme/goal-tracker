@@ -1,8 +1,9 @@
 package web
 
 import (
-	"errors"
+	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -20,13 +21,15 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 		WhyItMatters: r.FormValue("why_it_matters"),
 		OwnerID:      current.ID,
 	})
+	s.answerCreateGoal(w, r, err)
+}
+
+// answerCreateGoal answers a create of a Goal: done, it returns to the Goal
+// list; refused with err, it is answerRefused's, headed "Can't create Goal"
+// and linking Back to the New goal form, since no Goal exists yet.
+func (s *Server) answerCreateGoal(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			// No Goal exists yet, so the way back is the new Goal form.
-			s.refuse(w, r, "Can't create Goal", "/goals/new", err)
-			return
-		}
-		s.serverError(w, r, "could not create goal", err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't create Goal", Back: "/goals/new"})
 		return
 	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
@@ -58,58 +61,41 @@ func fmtNum(f float64) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
-// writeCommandResult redirects back to the Goal on success and answers a
-// refusal with the refusal page, linking Back to the Goal: a validation error
-// (e.g. an activation gate failure) as 422, a refusal to act on someone else's
-// Goal as 403, and a missing record as the Not found page.
-func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
-	if err != nil {
-		s.refuse(w, r, "Can't change Goal", goalPath(goalID), err)
-		return
-	}
-	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
+// goalPageForm is form on the Goal page of goalID, as current sees it:
+// refused for what it sent, it redirects to the Goal page's own address, where
+// that form is open, as it was left, saying why above it in one sentence
+// (#687). When the page no longer offers the viewer that form, such as Add
+// Milestone once the Goal is Done, there is nowhere beside it to say why, so
+// the refusal page says it (onPage).
+func (s *Server) goalPageForm(goalID int64, current domain.Account, form goalForm) *formOnPage {
+	return onPage(goalPath(goalID), string(form), 0, form.fields()).inOneSentence().
+		offeredWhen(func(ctx context.Context) (bool, error) {
+			view, err := s.goalPageView(ctx, goalID, current)
+			return err == nil && view.offers(form), err
+		})
 }
 
-// writeFormResult is writeCommandResult for a form the Goal page opens in
-// place: a refused value redirects to the Goal page, where that form is open
-// with the reason beside it and what was sent in it (refuseGoalForm).
-func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, err error) {
-	if errors.Is(err, domain.ErrValidation) {
-		s.refuseGoalForm(w, r, goalID, current, form, "Can't change Goal", err)
-		return
-	}
-	s.writeCommandResult(w, r, goalID, err)
+// goalRowForm is form, the Edit form of the Goal page's row for the record
+// id, posting fields, on the Goal goalID's page as current sees it: refused
+// for what it sent, it redirects to the Goal page, where that row's Edit is
+// open, as it was left, saying why above it in one sentence (#700). When
+// offered says the page no longer offers the row's Edit, such as a
+// Milestone's once the Goal is Active, the refusal page says why (onPage).
+func (s *Server) goalRowForm(goalID int64, current domain.Account, form string, id int64, fields []string, offered func(goalView) bool) *formOnPage {
+	return onPage(goalPath(goalID), form, id, fields).inOneSentence().
+		offeredWhen(func(ctx context.Context) (bool, error) {
+			view, err := s.goalPageView(ctx, goalID, current)
+			return err == nil && offered(view), err
+		})
 }
 
-// refuseGoalForm answers a submit of form, from the Goal page, refused for
-// what it sent. It redirects to the Goal page's own address, carrying why and
-// what was sent once in the refusal cookie (setActionItemRefusal), so the
-// page shows that form open, as it was left, and a reload shows the plain
-// page (#687). The reason is a sentence without its internal prefix: above
-// the form, or for a link request picking no parent (errNoParentLinked)
-// beside the form's picker. When the page no longer offers the viewer that
-// form, such as Add Milestone once the Goal is Done, there is nowhere beside
-// it to say why, and when what was sent is too long to carry back there is
-// no carrying it, so the refusal page says it, headed heading, at the status
-// refused's kind has, linking Back to the Goal.
-func (s *Server) refuseGoalForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, heading string, refused error) {
-	view, err := s.goalPageView(r.Context(), goalID, current)
+// answerGoalCommand answers a command on the Goal goalID from its page:
+// done, it returns to the Goal page; refused with err, it is answerRefused's,
+// headed Can't change Goal and linking Back to the Goal, form coming back in
+// place when it is set.
+func (s *Server) answerGoalCommand(w http.ResponseWriter, r *http.Request, goalID int64, form refusedForm, err error) {
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			s.notFound(w, r)
-			return
-		}
-		s.serverError(w, r, "could not load goal", err)
-		return
-	}
-	refusal := actionItemRefusal{Form: string(form), Input: r.PostForm}
-	if reason := sentence(domain.Reason(refused)); errors.Is(refused, errNoParentLinked) {
-		refusal.Problems = map[string]string{"parent_id": reason}
-	} else {
-		refusal.Reason = reason
-	}
-	if !view.offers(form) || !setActionItemRefusal(w, goalPath(goalID), refusal) {
-		s.refuse(w, r, heading, goalPath(goalID), refused)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: goalPath(goalID), Form: form})
 		return
 	}
 	http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
@@ -133,7 +119,7 @@ func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, 
 		title = &t
 	}
 	_, err := s.svc.EditTitleAndWhyItMatters(r.Context(), current.ID, id, title, r.PostFormValue("why_it_matters"))
-	s.writeFormResult(w, r, id, current, formTitleWhyItMatters, err)
+	s.answerGoalCommand(w, r, id, s.goalPageForm(id, current, formTitleWhyItMatters), err)
 }
 
 // handleAddMilestone adds a Milestone from the Goal page's Add Milestone form,
@@ -154,14 +140,16 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 		TargetDate: targetDate,
 		Unparsed:   unparsed,
 	})
-	s.writeFormResult(w, r, id, current, formMilestones, err)
+	s.answerGoalCommand(w, r, id, s.goalPageForm(id, current, formMilestones), err)
 }
 
 // handleEditMilestone saves a Milestone's Edit form on the Goal page. A date
 // that doesn't parse is sent on unparsed, so EditMilestone refuses it only
 // once it has checked who sent it. A refusal returns no Milestone, so it is
-// read again for the refusal page to link Back to its Goal, or Home when it
-// can't be read; the path's id is a Milestone's, not a Goal's.
+// read again to find its Goal: refused for what was typed, the form comes back
+// open on its row there (goalRowForm), and the refusal page links Back to
+// it, or Home when it can't be read; the path's id is a Milestone's, not a
+// Goal's.
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -177,20 +165,25 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 		Unparsed:    unparsed,
 	})
 	if err != nil {
-		back := "/home"
-		if refused, lookErr := s.svc.Milestone(r.Context(), id); lookErr == nil {
-			back = goalPath(refused.GoalID)
+		back, form := "/home", refusedForm(nil)
+		if milestone, lookErr := s.svc.Milestone(r.Context(), id); lookErr == nil {
+			back = goalPath(milestone.GoalID)
+			form = s.goalRowForm(milestone.GoalID, current, "edit-milestone", id, []string{"name", "target_date"},
+				func(v goalView) bool {
+					return v.Permissions.EditMilestones &&
+						slices.ContainsFunc(v.ListedMilestones, func(m domain.ListedMilestone) bool { return m.ID == id })
+				})
 		}
-		s.refuse(w, r, "Can't change Goal", back, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back, Form: form})
 		return
 	}
-	s.writeCommandResult(w, r, m.GoalID, nil)
+	http.Redirect(w, r, goalPath(m.GoalID), http.StatusSeeOther)
 }
 
 // handleEditMetric saves a Metric's Edit form on the Goal page. A number or
 // date that doesn't parse is sent on unparsed, so EditMetric refuses it only
-// once it has checked who sent it. A refusal links Back to the Metric's Goal,
-// read again as handleEditMilestone reads its Milestone. The Direction is set
+// once it has checked who sent it. A refusal comes back to the Metric's
+// Goal, read again as handleEditMilestone reads its Milestone. The Direction is set
 // as the goal form sets a Metric row's (metricDirection): from the baseline
 // and target, the posted one counting only when they're equal.
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -214,14 +207,18 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 		Unparsed:   unparsed,
 	})
 	if err != nil {
-		back := "/home"
-		if refused, lookErr := s.svc.Metric(r.Context(), id); lookErr == nil {
-			back = goalPath(refused.GoalID)
+		back, form := "/home", refusedForm(nil)
+		if metric, lookErr := s.svc.Metric(r.Context(), id); lookErr == nil {
+			back = goalPath(metric.GoalID)
+			form = s.goalRowForm(metric.GoalID, current, "edit-metric", id, []string{"name", "unit", "baseline", "target", "direction", "target_date"},
+				func(v goalView) bool {
+					return v.Permissions.EditMetrics && slices.ContainsFunc(v.Metrics, func(m domain.Metric) bool { return m.ID == id })
+				})
 		}
-		s.refuse(w, r, "Can't change Goal", back, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back, Form: form})
 		return
 	}
-	s.writeCommandResult(w, r, m.GoalID, nil)
+	http.Redirect(w, r, goalPath(m.GoalID), http.StatusSeeOther)
 }
 
 // readMetricNumber reads input, a Metric's baseline or target (what) on the
@@ -241,7 +238,7 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	_, err := s.svc.ActivateGoal(r.Context(), current.ID, id)
-	s.writeCommandResult(w, r, id, err)
+	s.answerGoalCommand(w, r, id, nil, err)
 }
 
 // handleAssignGoalValue sets the Goal's Dimension values (CONTEXT.md: Owners
@@ -282,12 +279,12 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 			}
 		}
 		_, err = s.svc.SetGoalDimensionValues(r.Context(), current.ID, edit)
-		s.writeFormResult(w, r, id, current, formDimensions, err)
+		s.answerGoalCommand(w, r, id, s.goalPageForm(id, current, formDimensions), err)
 		return
 	}
 	raw := r.FormValue("value_id")
 	if raw == "" {
-		s.writeCommandResult(w, r, id, nil)
+		http.Redirect(w, r, goalPath(id), http.StatusSeeOther)
 		return
 	}
 	valueID, err := strconv.ParseInt(raw, 10, 64)
@@ -295,5 +292,5 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "invalid value", http.StatusUnprocessableEntity)
 		return
 	}
-	s.writeFormResult(w, r, id, current, formDimensions, s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
+	s.answerGoalCommand(w, r, id, s.goalPageForm(id, current, formDimensions), s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
 }

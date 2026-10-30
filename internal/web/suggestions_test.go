@@ -166,7 +166,8 @@ func TestSuggestAParentSearchFindsOnlySuggestableParents(t *testing.T) {
 // opening with nothing picked: its search, which takes the page's focus, and
 // without script a select starting on "Choose a Goal…", so pressing Suggest
 // untouched suggests no Goal that happened to sort first (#656). The page
-// names it Contributes to, never Parent Goal (#681).
+// names it Contributes to, never Parent Goal (#681), and its search in the
+// same words as its refusal, never "suggest as its parent" (#696).
 func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +184,13 @@ func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 	if strings.Contains(renderNode(page), "Parent Goal") {
 		t.Errorf("the Suggest a parent page says Parent Goal")
 	}
+	if strings.Contains(renderNode(page), "suggest as its parent") {
+		t.Errorf("the Suggest a parent page says suggest as its parent")
+	}
 	search := findAll(picker, func(n *nethtml.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
+	if want := "Search Goals for it to contribute to"; fieldLabel(search) != want {
+		t.Errorf("the picker's search is named %q, want %q", fieldLabel(search), want)
+	}
 	if want := fmt.Sprintf("/goals/search?goal=%d&for=suggestion", goal.ID); attrOf(search, "hx-get") != want {
 		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
 	}
@@ -326,6 +333,37 @@ func TestSuggestingWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
 		if note := formField(t, form, "note").Value; note != "outages start here" {
 			t.Errorf("%s: the note comes back %q, want it as typed", name, note)
 		}
+	}
+	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 0 {
+		t.Errorf("the Goal has %d suggestions, want none", len(all))
+	}
+}
+
+// The Goal's Owner, who links it to a parent rather than suggesting one, is
+// refused Suggest a parent as anyone refused for who they are is: the refusal
+// page, 403, linking back to the Goal, not the form again, and nothing is
+// recorded (#701).
+func TestTheOwnerSuggestingAParentGetsTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+	assertRefusalPage(t, page, "Can't suggest a parent",
+		"The Goal's Owner links it to a parent rather than suggesting one.", fmt.Sprintf("/goals/%d", goal.ID))
+	if hasTestID(page, "suggest-parent") {
+		t.Error("the refusal shows the Suggest a parent form again")
 	}
 	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 0 {
 		t.Errorf("the Goal has %d suggestions, want none", len(all))

@@ -781,7 +781,9 @@ templ goalFormRowsScript() {
 // delivery date, beside each open Milestone or Metric editor's date, and on
 // each saved item, after its detail. Changing the Kind or delivery date
 // re-judges every Milestone. An input refused keeps its error and gets no
-// warning; a warning never blocks anything.
+// warning until it is edited; then it is judged like any other, its error
+// kept until the next submit and described alongside the warning (#696). A
+// warning never blocks anything.
 templ goalFormWarningsScript() {
 	<script>
 		(function () {
@@ -789,16 +791,31 @@ templ goalFormWarningsScript() {
 			if (!form) return;
 			var today = form.getAttribute("data-today");
 			var iso = /^\d{4}-\d{2}-\d{2}$/;
+			// edited holds the inputs typed in since the page came: a refused
+			// one among them is judged again.
+			var edited = new WeakSet();
+
+			// describe adds id to, or drops it from, what describes input,
+			// keeping the rest, such as why it was refused.
+			function describe(input, id, on) {
+				var ids = (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(function (d) {
+					return d && d !== id;
+				});
+				if (on) ids.push(id);
+				if (ids.length) input.setAttribute("aria-describedby", ids.join(" "));
+				else input.removeAttribute("aria-describedby");
+			}
 
 			// warn sets the warning beside input, after the element at, or
-			// clears it when there is no message or the input is refused. An
-			// item's hidden input isn't described by its warning.
+			// clears it when there is no message or the input is refused and
+			// not since edited. An item's hidden input isn't described by its
+			// warning.
 			function warn(input, at, message) {
 				var id = input.name + "-warning";
 				var shown = document.getElementById(id);
-				if (!message || input.getAttribute("aria-invalid") === "true") {
+				if (!message || (input.getAttribute("aria-invalid") === "true" && !edited.has(input))) {
 					if (shown) shown.remove();
-					if (input.getAttribute("aria-describedby") === id) input.removeAttribute("aria-describedby");
+					describe(input, id, false);
 					return;
 				}
 				if (!shown) {
@@ -809,7 +826,7 @@ templ goalFormWarningsScript() {
 					at.after(shown);
 				}
 				shown.textContent = message;
-				if (input.type !== "hidden") input.setAttribute("aria-describedby", id);
+				if (input.type !== "hidden") describe(input, id, true);
 			}
 
 			// place is where input's warning goes: after a saved item's
@@ -835,8 +852,13 @@ templ goalFormWarningsScript() {
 				});
 			}
 
-			form.addEventListener("input", judge);
-			form.addEventListener("change", judge);
+			function judgeEdited(e) {
+				edited.add(e.target);
+				judge();
+			}
+
+			form.addEventListener("input", judgeEdited);
+			form.addEventListener("change", judgeEdited);
 			judge();
 		})();
 	</script>

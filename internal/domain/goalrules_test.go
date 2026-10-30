@@ -298,8 +298,6 @@ func TestGoalCommandsAnswerAMissingGoalNotFound(t *testing.T) {
 			return err
 		}},
 		{"RequireGoalOwner", func(id int64) error { return h.Service.RequireGoalOwner(ctx, sam.ID, id) }},
-		{"RequireCheckinAuthor", func(id int64) error { return h.Service.RequireCheckinAuthor(ctx, sam.ID, id) }},
-		{"RequireGoalValueSetter", func(id int64) error { return h.Service.RequireGoalValueSetter(ctx, sam.ID, id) }},
 	}
 
 	for _, c := range calls {
@@ -314,15 +312,16 @@ func TestGoalCommandsAnswerAMissingGoalNotFound(t *testing.T) {
 func TestGoalProbesAnswerADatabaseFailureAsItIs(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	h := testsupport.New(t)
+	h := testsupport.New(t, "admin@example.com")
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	headcount := h.CreateField(h.SignIn("admin@example.com"), "Headcount", domain.FieldNumber, "people")
 	if err := h.DB.Close(); err != nil {
 		t.Fatalf("close the database: %v", err)
 	}
 
 	for _, c := range []goalCommandCall{
-		{"RequireGoalValueSetter", func(id int64) error { return h.Service.RequireGoalValueSetter(ctx, sam.ID, id) }},
+		{"SetGoalField", func(id int64) error { return h.Service.SetGoalField(ctx, sam.ID, id, headcount.ID, "12") }},
 		{"RequireGoalOwner", func(id int64) error { return h.Service.RequireGoalOwner(ctx, sam.ID, id) }},
 	} {
 		err := c.run(g.ID)

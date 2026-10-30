@@ -2,6 +2,7 @@ package web
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/a-h/templ"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -179,6 +182,20 @@ func goalSearchInput(list string) string {
 	return list + "-q"
 }
 
+// goalSearchPlaceholder is what the search box of the picker for list says
+// it searches: Also include only Goals the rules leave out, Leave out only
+// Goals they select, and Goals I pick any Goal (reportRuleSelection.offers).
+func goalSearchPlaceholder(list string) string {
+	switch list {
+	case inputInclude:
+		return "Search Goals the rules leave out"
+	case inputExclude:
+		return "Search Goals the rules select"
+	default:
+		return "Search any Goal by title"
+	}
+}
+
 // inputShowField is a Field to show beside each Goal, posted once per Field.
 const inputShowField = "field"
 
@@ -278,26 +295,20 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
 		return
 	}
-	if errors.Is(err, domain.ErrNotAuthorized) {
-		// Only an edit can be, and only when the editor lost the right to
-		// since editableReport checked.
-		if saved.ID == 0 {
-			s.refuse(w, r, "Can't save Report", "/reports", err)
-			return
-		}
-		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10), err)
-		return
+	// Only an edit can be refused for who is asking, and only when the
+	// editor lost the right to since editableReport checked.
+	rf := refused{Err: err, Heading: "Can't save Report", Back: "/reports",
+		Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
+			v.Problems = problemsOf(err)
+			if err := s.loadReportBuilder(r, &v); err != nil {
+				return nil, fmt.Errorf("load the builder: %w", err)
+			}
+			return reportBuilderPage(&current, v), nil //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
+		})}
+	if saved.ID != 0 {
+		rf.Heading, rf.Back = "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10)
 	}
-	if !errors.Is(err, domain.ErrValidation) {
-		s.serverError(w, r, "could not save the report", err)
-		return
-	}
-	v.Problems = problemsOf(err)
-	if err := s.loadReportBuilder(r, &v); err != nil {
-		s.serverError(w, r, "could not load the builder", err)
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, reportBuilderPage(&current, v))
+	s.answerRefused(w, r, rf)
 }
 
 // handleReportMatches answers the builder's form, as it is typed, with only its
@@ -451,13 +462,15 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 }
 
 // readReportBuilderForm reads the builder's form as typed, both modes' inputs
-// kept, and the definition it saves: only what the chosen mode selects by.
+// kept, each rule row as its inputs can hold it (asChosen), and the
+// definition it saves: only what the chosen mode selects by, its rules as
+// posted.
 func readReportBuilderForm(form url.Values) (v reportBuilderView, in domain.SaveReportDefinitionInput) {
+	rows := reportRuleRows(form)
 	v = reportBuilderView{
 		Name:         form.Get("name"),
 		Introduction: form.Get("introduction"),
 		Mode:         form.Get("mode"),
-		Rules:        reportRuleRows(form),
 		PickedIDs:    listedGoals(form, inputPicked),
 		IncludeIDs:   listedGoals(form, inputInclude),
 		ExcludeIDs:   listedGoals(form, inputExclude),
@@ -469,9 +482,12 @@ func readReportBuilderForm(form url.Values) (v reportBuilderView, in domain.Save
 		in.Picked = v.PickedIDs
 	case domain.ReportModeRules:
 		in.Include, in.Exclude = v.IncludeIDs, v.ExcludeIDs
-		for _, row := range v.Rules {
+		for _, row := range rows {
 			in.Rules = append(in.Rules, row.rule())
 		}
+	}
+	for _, row := range rows {
+		v.Rules = append(v.Rules, row.asChosen())
 	}
 	return v, in
 }
@@ -529,6 +545,18 @@ func reportRuleRows(form url.Values) []reportRuleRow {
 		}
 	}
 	return rows
+}
+
+// asChosen is the row as its inputs can hold it: under "is", whose radios
+// hold one value, only its first posted value. Without script a row switched
+// from "is any of" to "is" still posts every value it had checked; it shows,
+// and the rail reads it, as the scripted switch keeps it, while saving it as
+// posted is refused.
+func (row reportRuleRow) asChosen() reportRuleRow {
+	if row.valueInputType() == "radio" && len(row.Values) > 1 {
+		row.Values = row.Values[:1]
+	}
+	return row
 }
 
 // rule is the Report rule the row posts. Its values are the domain's, without

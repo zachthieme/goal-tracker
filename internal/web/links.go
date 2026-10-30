@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -15,8 +14,8 @@ var errNoParentLinked = domain.Refuse(domain.ErrValidation, "pick a Goal to cont
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.
 // A refused request, a cycle included, redirects to the Goal page, where that
-// form is open with the reason beside it and what was sent in it, one picking
-// no parent, or none that parses, beside its picker (refuseGoalForm).
+// form is open with the reason above it and what was sent in it, one picking
+// no parent, or none that parses, beside its picker (goalPageForm).
 func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	childID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -25,7 +24,8 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
 	if err != nil {
-		s.refuseGoalForm(w, r, childID, current, formParentLink, "Can't change Goal", errNoParentLinked)
+		s.answerRefused(w, r, refused{Err: errNoParentLinked, Heading: "Can't change Goal", Back: goalPath(childID),
+			Form: s.goalPageForm(childID, current, formParentLink).besideInput("parent_id")})
 		return
 	}
 	_, err = s.svc.RequestLink(r.Context(), domain.RequestLinkInput{
@@ -34,14 +34,12 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 		Note:        r.FormValue("note"),
 		RequesterID: current.ID,
 	})
-	switch {
-	case errors.Is(err, domain.ErrCycle), errors.Is(err, domain.ErrValidation):
-		s.refuseGoalForm(w, r, childID, current, formParentLink, "Can't change Goal", err)
-	case err != nil:
-		s.refuse(w, r, "Can't request link", goalPath(childID), err)
-	default:
-		http.Redirect(w, r, goalPath(childID), http.StatusSeeOther)
+	if err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: goalPath(childID),
+			Form: s.goalPageForm(childID, current, formParentLink)})
+		return
 	}
+	http.Redirect(w, r, goalPath(childID), http.StatusSeeOther)
 }
 
 // handleAcceptLink accepts a pending request; only the parent's Owner may. It
@@ -54,7 +52,7 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 	}
 	back := returnTo(r, "/home")
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
-		s.refuse(w, r, "Can't accept link", back, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't accept link", Back: back})
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -71,7 +69,7 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 	back := returnTo(r, "/home")
 	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
 	if err != nil {
-		s.refuse(w, r, "Can't reject link", back, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't reject link", Back: back})
 		return
 	}
 	s.offerUndo(w, r, undoLinkRejection, rejection.ID, rejection.UndoToken, back)
@@ -92,7 +90,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 		if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
 			back = goalPath(goalID)
 		}
-		s.refuse(w, r, "Can't remove link", back, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't remove link", Back: back})
 		return
 	}
 	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))

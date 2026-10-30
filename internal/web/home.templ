@@ -354,17 +354,6 @@ templ handoffRequestRow(ho domain.Handoff) {
 	</li>
 }
 
-// acceptReject is the pair of buttons deciding a pending request at base. Reject
-// sends at once; the page then offers Undo in a toast.
-templ acceptReject(base string) {
-	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
-		<button type="submit" class="btn primary sm">Accept</button>
-	</form>
-	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form">
-		<button type="submit" class="btn danger sm">Reject</button>
-	</form>
-}
-
 // homeAcceptReject is Home's pair of buttons deciding a pending request at
 // base: Accept outlined, then Reject as a text button. Reject sends at once;
 // Home then offers Undo in a toast. Both return to Home.

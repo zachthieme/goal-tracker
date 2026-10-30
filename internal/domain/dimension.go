@@ -795,7 +795,7 @@ func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID in
 }
 
 // ValueSettableGoals names those of goals whose Dimension values and Fields
-// actor may set, by the rule setting them applies (RequireGoalValueSetter):
+// actor may set, by the rule setting them applies (goalValueSetterRefusal):
 // those they own or are a Delegate on, or every one for an Admin. It reads
 // which Goals they are a Delegate on once, however many goals there are.
 func (s *Service) ValueSettableGoals(ctx context.Context, actor Account, goals []Goal) (map[int64]bool, error) {

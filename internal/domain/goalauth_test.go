@@ -139,10 +139,10 @@ func importLinkAsAdmin(t *testing.T, h *testsupport.Harness, childID, parentID i
 	return imp.ImportLink(context.Background(), admin.ID, childID, parentID)
 }
 
-// RequireCheckinAuthor admits a Goal's Owner and its Delegates, as
-// SubmitCheckin does, and refuses anyone else, an Admin and a Departed
-// Delegate included; a missing Goal is not found.
-func TestRequireCheckinAuthor(t *testing.T) {
+// A Goal's Check-ins are written by its Owner and its Delegates, and
+// SubmitCheckin refuses anyone else, an Admin and a Departed Delegate
+// included; a missing Goal is not found.
+func TestCheckinsAreWrittenByTheOwnerAndPresentDelegatesOnly(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "admin@example.com")
@@ -150,16 +150,18 @@ func TestRequireCheckinAuthor(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	dana := h.SignIn("dana@example.com")
 	lee := h.SignIn("lee@example.com")
-	g := h.CreateGoal(sam, "Ship v2", "why")
+	g := h.ActiveGoal(sam, "Ship v2", "why")
 	h.AddDelegate(sam, dana, g.ID)
 	h.AddDelegate(sam, lee, g.ID)
+	h.MarkDeparted(admin, lee)
 	ctx := context.Background()
-	if err := h.Service.MarkDeparted(ctx, admin.ID, lee.ID); err != nil {
-		t.Fatalf("MarkDeparted: %v", err)
+	submit := func(authorID, goalID int64) error {
+		_, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{GoalID: goalID, AuthorID: authorID, Health: domain.HealthGreen, Status: "On track."})
+		return err
 	}
 
 	for name, actor := range map[string]domain.Account{"the Owner": sam, "a Delegate": dana} {
-		if err := h.Service.RequireCheckinAuthor(ctx, actor.ID, g.ID); err != nil {
+		if err := submit(actor.ID, g.ID); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -168,37 +170,46 @@ func TestRequireCheckinAuthor(t *testing.T) {
 		"an Admin":            admin,
 		"a Departed Delegate": lee,
 	} {
-		if err := h.Service.RequireCheckinAuthor(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		if err := submit(actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
 		}
 	}
-	if err := h.Service.RequireCheckinAuthor(ctx, sam.ID, g.ID+100); !errors.Is(err, domain.ErrNotFound) {
+	if err := submit(sam.ID, g.ID+100); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a missing Goal: err = %v, want ErrNotFound", err)
 	}
 }
 
-// RequireGoalValueSetter admits a Goal's Owner, its Delegates and an Admin, as
-// setting its Dimension values does, and refuses anyone else.
-func TestRequireGoalValueSetter(t *testing.T) {
+// A Goal's Dimension values are set by its Owner, its Delegates and an Admin,
+// and SetGoalDimensionValues refuses anyone else; a missing Goal is not found.
+func TestGoalValuesAreSetByTheOwnerDelegatesAndAnAdminOnly(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
 	sam := h.SignIn("sam@example.com")
 	dana := h.SignIn("dana@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
 	g := h.CreateGoal(sam, "Ship v2", "why")
 	h.AddDelegate(sam, dana, g.ID)
 	ctx := context.Background()
+	set := func(actorID, goalID int64) error {
+		_, err := h.Service.SetGoalDimensionValues(ctx, actorID, domain.DimensionValuesEdit{GoalID: goalID, DimensionID: pillar.ID, ValueIDs: []int64{pillar.Values[0].ID}})
+		return err
+	}
 
 	for name, actor := range map[string]domain.Account{
 		"the Owner":  sam,
 		"a Delegate": dana,
-		"an Admin":   h.SignIn("admin@example.com"),
+		"an Admin":   admin,
 	} {
-		if err := h.Service.RequireGoalValueSetter(ctx, actor.ID, g.ID); err != nil {
+		if err := set(actor.ID, g.ID); err != nil {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if err := h.Service.RequireGoalValueSetter(ctx, h.SignIn("pat@example.com").ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if err := set(h.SignIn("pat@example.com").ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("a stranger: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := set(sam.ID, g.ID+100); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a missing Goal: err = %v, want ErrNotFound", err)
 	}
 }

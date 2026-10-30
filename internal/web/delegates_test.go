@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 	"golang.org/x/net/html"
 )
 
@@ -245,6 +247,43 @@ func TestDelegateChangeBySomeoneNotTheOwnerAnswersTheRefusalPage(t *testing.T) {
 		}
 		assertRefusalPage(t, parsePage(t, body), c.heading, c.reason, back)
 	}
+}
+
+// A Delegate change refused for making a cycle answers as any other cycle
+// does, not with a 500: to the Owner, offered the Delegates form, a redirect
+// to the Goal page with that form open and the reason above it; to anyone
+// else, the refusal page, 409, linking Back to the Goal (#701).
+func TestADelegateChangeMakingACycleAnswersInPlaceOrWith409(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	const reason = "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”."
+	srv.HandleRefusedDelegateAddForTest("POST /delegate-cycle-test/{id}",
+		domain.Refuse(domain.ErrCycle, "linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”"))
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	path := fmt.Sprintf("%s/delegate-cycle-test/%d", ts.URL, goal.ID)
+	form := url.Values{"email": {"tpm@example.com"}}
+
+	owner := signInClient(t, ts.URL, "sam@example.com")
+	postRefusedBack(t, owner, path, form, back)
+	page := getPage(t, owner, ts.URL+back)
+	if got := textOf(findByTestID(t, goalOpenFormIn(t, page, "delegates"), "form-error")); got != reason {
+		t.Errorf("the Delegates form says %q, want %q", got, reason)
+	}
+
+	resp := postForm(t, signInClient(t, ts.URL, "mel@example.com"), path, form)
+	defer func() { _ = resp.Body.Close() }()
+	refusal := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("not offered the form: status %d, want 409", resp.StatusCode)
+	}
+	assertRefusalPage(t, refusal, "Can't add Delegate", reason, back)
 }
 
 // The Delegate's page shows each delegated Goal as a row with its Health, its
