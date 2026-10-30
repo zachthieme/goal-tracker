@@ -120,29 +120,19 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 	// outlives WithinTx holding the write lock: on a background context nothing
 	// else would end it. After a commit it is a no-op (sql.ErrTxDone).
 	defer func() { _ = sqlTx.Rollback() }()
-	txSvc := &Service{
-		db:          s.db,
-		queries:     s.queries.WithTx(sqlTx),
-		clock:       s.clock,
-		email:       s.email,
-		admins:      s.admins,
-		loc:         s.loc,
-		links:       s.links,
-		composer:    s.composer,
-		hashes:      s.hashes,
-		inTx:        true,
-		goalImport:  s.goalImport,
-		outbox:      s.outbox,
-		queuedEmail: new(bool),
-		dbFile:      s.dbFile,
-	}
-	if err := fn(txSvc); err != nil {
+	// queries, inTx and queuedEmail are the transaction's own; every other
+	// field is shared with s, so a field added to Service is too.
+	tx := *s
+	tx.queries = s.queries.WithTx(sqlTx)
+	tx.inTx = true
+	tx.queuedEmail = new(bool)
+	if err := fn(&tx); err != nil {
 		return err
 	}
 	if err := sqlTx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
-	if *txSvc.queuedEmail {
+	if *tx.queuedEmail {
 		s.emailQueued(ctx)
 	}
 	return nil
