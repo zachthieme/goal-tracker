@@ -174,7 +174,9 @@ func judgeCheckin(in SubmitCheckinInput, facts checkinFacts) (checkinPlan, error
 	}
 
 	// Moving the back-to-Green date later than the latest Check-in had it is a
-	// Date Slip of that date (CONTEXT.md: Date Slip).
+	// Date Slip of that date (CONTEXT.md: Date Slip). Its reason is asked for
+	// only once the inputs refused together above are clear, as it reads the
+	// latest Check-in.
 	var pathSlip *slipPlan
 	pathTargetDate := ""
 	asksForHelp := int64(0)

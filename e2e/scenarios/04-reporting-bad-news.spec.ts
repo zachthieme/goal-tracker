@@ -35,16 +35,18 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
 
     await statusBox(form).fill("A vendor delay puts us behind.");
     await submit(form);
-    await expect(path.getByTestId("checkin-error")).toContainText("needs a Path to Green");
+    // Both problems come back at once, each beside its field, which is
+    // marked invalid.
+    await expect(path.getByTestId("checkin-error")).toHaveText([
+      "A Yellow Goal needs a Plan.",
+      "A Path to Green needs a Back to Green by date.",
+    ]);
+    await expect(path.getByLabel("Plan")).toHaveAttribute("aria-invalid", "true");
+    await expect(path.getByLabel("Back to Green by")).toHaveAttribute("aria-invalid", "true");
     await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
     await expect(statusBox(form)).toHaveValue("A vendor delay puts us behind.");
 
     await path.getByLabel("Plan").fill("Escalate with the vendor and ship behind a flag.");
-    await submit(form);
-    await expect(path.getByTestId("checkin-error")).toContainText("needs a target date");
-    await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
-    await expect(statusBox(form)).toHaveValue("A vendor delay puts us behind.");
-    await expect(path.getByLabel("Plan")).toHaveValue("Escalate with the vendor and ship behind a flag.");
   });
 
   const today = appToday();

@@ -157,8 +157,12 @@ test("a refused submit swaps the form back with its summary filled again", async
   await form.getByLabel("Plan").fill("");
   await form.getByTestId("checkin-readings").getByRole("spinbutton").first().fill("42");
   await form.getByRole("button", { name: "Submit check-in" }).click();
-  // The Path to Green is required while Yellow, so the form comes back
-  // with the error, its summary empty from the server until script fills it.
-  await expect(form.getByTestId("checkin-error")).toBeVisible();
+  // The Path to Green is required while Yellow, so the form comes back with
+  // its errors, the Plan's and the date's at once (with any others the Check-in
+  // has), its summary empty from the server until script fills it.
+  await expect(form.getByTestId("path-to-green-field").getByTestId("checkin-error")).toHaveText([
+    "A Yellow Goal needs a Plan.",
+    "A Path to Green needs a Back to Green by date.",
+  ]);
   await expect(summaryOf(form)).toHaveText("Yellow · 1 Metric");
 });
