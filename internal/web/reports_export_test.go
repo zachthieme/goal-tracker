@@ -16,7 +16,7 @@ import (
 func RenderPublicationContent(p domain.Publication, loc *time.Location) string {
 	var b strings.Builder
 	d := discussion{Loc: loc}
-	for _, c := range []templ.Component{publishedLine(p.Facts(), loc), publicationSelection(p.Facts()), reportContent(p.Report, p.PublishedAt, d)} {
+	for _, c := range []templ.Component{publishedLine(p.Facts, loc), publicationSelection(p.Facts), reportContent(p.Facts, d)} {
 		if err := c.Render(context.Background(), &b); err != nil {
 			panic(err)
 		}

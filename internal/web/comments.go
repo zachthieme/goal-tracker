@@ -75,13 +75,7 @@ func (d discussion) actionItemGoalChoices() []domain.Goal {
 	if d.Pub == nil {
 		return nil
 	}
-	var goals []domain.Goal
-	for _, b := range d.Pub.Report.Exceptions {
-		goals = append(goals, b.Goal)
-	}
-	for _, sg := range d.Pub.Report.Lines {
-		goals = append(goals, sg.Goal)
-	}
+	goals := d.Pub.Goals()
 	slices.SortStableFunc(goals, func(a, b domain.Goal) int { return strings.Compare(a.Title, b.Title) })
 	return goals
 }

@@ -247,7 +247,8 @@ func thawFacts(recs []recordFact) []ReportFact {
 	return mapRecord(recs, thawFact)
 }
 
-// recordFactOf is f as stored: one line per payload.
+// recordFactOf is f as stored: one line per payload, each left out when f
+// doesn't carry it.
 func recordFactOf(f ReportFact) recordFact {
 	return recordFact{
 		Kind:                   string(f.Kind),
@@ -255,18 +256,18 @@ func recordFactOf(f ReportFact) recordFact {
 		Text:                   f.Text,
 		Byline:                 recordIf(f.Byline != ReportByline{}, func() recordByline { return recordBylineOf(f.Byline) }),
 		HealthCounts:           recordIf(f.HealthCounts != HealthCounts{}, func() recordHealthCounts { return recordHealthCountsOf(f.HealthCounts) }),
-		Movement:               recordIf(f.Movement.Since != ReportSince{} || len(f.Movement.Parts) > 0, func() recordMovement { return recordMovementOf(f.Movement) }),
+		Movement:               recordIf(f.Kind == ReportFactMovement, func() recordMovement { return recordMovementOf(f.Movement) }),
 		ActionItems:            mapRecord(f.ActionItems, recordActionItemOf),
 		Narrative:              mapRecord(f.Narrative, recordNarrativeSectionOf),
 		Blocks:                 mapRecord(f.Blocks, recordBlockOf),
 		Lines:                  mapRecord(f.Lines, recordLineOf),
 		MembershipChanges:      mapRecord(f.MembershipChanges, recordMembershipChangeOf),
-		Head:                   recordIf(f.Head.GoalID != 0 || f.Head.Title != "", func() recordBlockHead { return recordBlockHeadOf(f.Head) }),
+		Head:                   recordIf(f.Kind == ReportFactBlockHead, func() recordBlockHead { return recordBlockHeadOf(f.Head) }),
 		Changes:                f.Changes,
 		ScheduleConflictGroups: mapRecord(f.ScheduleConflictGroups, recordScheduleConflictGroupOf),
 		Goals:                  mapRecord(f.Goals, recordLinkedGoalOf),
 		Fields:                 mapRecord(f.Fields, recordFieldValueOf),
-		PathToGreen:            recordIf(f.PathToGreen.Plan != "" || !f.PathToGreen.By.IsZero(), func() recordPathToGreen { return recordPathToGreenOf(f.PathToGreen) }),
+		PathToGreen:            recordIf(f.Kind == ReportFactPathToGreen, func() recordPathToGreen { return recordPathToGreenOf(f.PathToGreen) }),
 		Ask:                    recordIf(f.Ask != ReportAsk{}, func() recordAsk { return recordAskOf(f.Ask) }),
 		Milestones:             mapRecord(f.Milestones, recordMilestoneOf),
 		Metrics:                mapRecord(f.Metrics, recordMetricOf),
@@ -482,11 +483,11 @@ func thawScheduleConflictGroup(g recordScheduleConflictGroup) ReportScheduleConf
 }
 
 func recordLinkedGoalOf(g LinkedGoal) recordLinkedGoal {
-	return recordLinkedGoal{GoalID: g.GoalID, Title: g.Title, Health: g.Health, InReport: g.InReport}
+	return recordLinkedGoal(g)
 }
 
 func thawLinkedGoal(g recordLinkedGoal) LinkedGoal {
-	return LinkedGoal{GoalID: g.GoalID, Title: g.Title, Health: g.Health, InReport: g.InReport}
+	return LinkedGoal(g)
 }
 
 func recordFieldValueOf(v FieldValue) recordFieldValue {
