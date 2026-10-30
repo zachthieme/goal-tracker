@@ -138,8 +138,8 @@ func TestLogADraftHighlightLinkOpensTheFormInPlace(t *testing.T) {
 
 // The Owner logs a Draft Highlight with a kind and a Delegate one without,
 // each landing back on the Goal page with the form closed and it listed; a
-// blank note is refused there, the form open again saying why once and
-// keeping the Kind picked, and logs nothing.
+// blank note is refused back to the Goal page, the form open again saying why
+// once and keeping the Kind picked, and logs nothing (#687).
 func TestLogDraftHighlightFromTheGoalPage(t *testing.T) {
 	t.Parallel()
 
@@ -174,12 +174,10 @@ func TestLogDraftHighlightFromTheGoalPage(t *testing.T) {
 		t.Errorf("pending = %q, want both logged", got)
 	}
 
-	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), logURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"  "}})
-	defer func() { _ = resp.Body.Close() }()
-	page := readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("blank note: status %d, want 422", resp.StatusCode)
-	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	postRefusedBack(t, client, logURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"  "}}, back)
+	page := getBody(t, client, ts.URL+back)
 	open := openForm(t, page, "draft-highlight")
 	assertOpenIn(t, page, "draft-highlight", `data-testid="goal-draft-highlights"`, `data-testid="goal-history"`)
 	if got := strings.Count(page, "A Draft Highlight needs a note."); got != 1 {

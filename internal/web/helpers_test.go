@@ -1349,6 +1349,25 @@ func assertRefusalPage(t *testing.T, page *html.Node, heading, reason, back stri
 	}
 }
 
+// postRefusedBack posts form to rawURL as client, without following the
+// answer, and fails the test unless it is a 303 to back.
+func postRefusedBack(t *testing.T, client *http.Client, rawURL string, form url.Values, back string) {
+	t.Helper()
+	resp := postForm(t, noRedirects(client), rawURL, form)
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
+		t.Fatalf("POST %s: status %d to %q, want 303 to %q", rawURL, resp.StatusCode, resp.Header.Get("Location"), back)
+	}
+}
+
+// openDetails are the <details> under root, by test ID or none, shown open.
+func openDetails(root *html.Node, testID string) []*html.Node {
+	return findAll(root, func(n *html.Node) bool {
+		return n.Data == "details" && attrOf(n, "data-testid") == testID && hasAttr(n, "open")
+	})
+}
+
 // undoForm is the Undo form in a page's toast, failing the test when the page
 // carries no toast or its toast has no Undo.
 func undoForm(t *testing.T, page string) *html.Node {

@@ -1321,7 +1321,7 @@ func TestCancellingAHandoffByOneWhoMayNotAnswersTheRefusalPage(t *testing.T) {
 	}
 }
 
-// A second Hand off while one is pending comes back to the Goal page with the
+// A second Hand off while one is pending goes back to the Goal page with the
 // form open, saying whom the pending one is to and how to clear it.
 func TestASecondHandOffSaysWhichHandoffIsPending(t *testing.T) {
 	t.Parallel()
@@ -1334,12 +1334,10 @@ func TestASecondHandOffSaysWhichHandoffIsPending(t *testing.T) {
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.StartHandoff(sam, goal.ID, pat)
 
-	resp := postForm(t, signInClient(t, ts.URL, sam.Email), fmt.Sprintf("%s/goals/%d/handoff", ts.URL, goal.ID), url.Values{"to_email": {"mel@example.com"}})
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("second Hand off: status %d, want 422", resp.StatusCode)
-	}
-	page := parsePage(t, readBody(t, resp))
+	client := signInClient(t, ts.URL, sam.Email)
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	postRefusedBack(t, client, ts.URL+back+"/handoff", url.Values{"to_email": {"mel@example.com"}}, back)
+	page := getPage(t, client, ts.URL+back)
 	form := findByTestID(t, page, "handoff-goal")
 	if form == nil {
 		t.Fatal("the Hand off form isn't open")

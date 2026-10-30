@@ -4012,8 +4012,8 @@ func dimensionValueNames(d domain.Dimension) []string {
 
 // Adding from the Goal page: on a Fixed Dimension an Owner's new value is
 // refused with 403 and nothing is added; "ACME " when Acme exists sets Acme and
-// adds nothing; a match on a Retired value is refused with a message saying so
-// (CONTEXT.md: Fixed, Extendable, Retired).
+// adds nothing; a match on a Retired value is refused, back on the Goal page,
+// with a message saying so (CONTEXT.md: Fixed, Extendable, Retired).
 func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4060,9 +4060,14 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 		t.Errorf("values = %+v, want the existing Acme", values)
 	}
 
-	status, body := add(customer, "hooli")
-	if status != http.StatusUnprocessableEntity || !strings.Contains(textOf(parsePage(t, body)), "Hooli is retired") {
-		t.Errorf("adding hooli: status %d body %q, want 422 saying Hooli is retired", status, body)
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	postRefusedBack(t, samClient, goalURL+"/dimensions", url.Values{
+		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
+		"new_value":    {"hooli"},
+	}, back)
+	open := goalOpenFormIn(t, getPage(t, samClient, ts.URL+back), "dimensions")
+	if reason := textOf(findByTestID(t, open, "form-error")); !strings.Contains(reason, "Hooli is retired") {
+		t.Errorf("adding hooli: the open form's error %q doesn't say Hooli is retired", reason)
 	}
 }
 
@@ -5892,19 +5897,20 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 	client := signInClient(t, ts.URL, "sam@example.com")
 	const reason = "can't contain a semicolon, because the import format uses it to separate values"
 
-	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/dimensions", ts.URL, goal.ID), url.Values{
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	postRefusedBack(t, client, ts.URL+back+"/dimensions", url.Values{
 		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
 		"new_value":    {"Globex; Initech"},
-	})
-	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(textOf(goalOpenFormIn(t, parsePage(t, body), "dimensions")), reason) {
-		t.Errorf("Goal page: status %d, body %q; want 422 saying why beside the open form", resp.StatusCode, body)
+	}, back)
+	if open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), "dimensions"); !strings.Contains(textOf(open), reason) {
+		t.Errorf("Goal page: the open form doesn't say why: %s", renderNode(open))
 	}
 
 	page := goalTableEditMode(t, client, ts.URL, "/goals?layout=table")
 	action, form := goalTableFormIn(t, page)
 	form.Set(goalTableControlName(t, page, "Add a Customer value to Alpha"), "Hooli;")
-	resp = postForm(t, client, ts.URL+action, form)
+	resp := postForm(t, client, ts.URL+action, form)
+	defer func() { _ = resp.Body.Close() }()
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("table edit: status = %d, want 422:\n%s", resp.StatusCode, body)
@@ -6981,10 +6987,11 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	}
 }
 
-// A refused submit from a form opened in place comes back as the Goal page
-// with that same form open, the reason beside it as a sentence without the
-// internal "validation failed:" prefix (#192), and what was typed still in it,
-// rather than a bare error page.
+// A refused submit from a form opened in place goes back to the Goal page's
+// own address, where that same form is open, the reason beside it as a
+// sentence without the internal "validation failed:" prefix (#192), and what
+// was typed still in it, rather than a bare error page. A reload shows the
+// plain Goal page (#687).
 func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -7027,14 +7034,9 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  ", ""},
 		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots", ""},
 	} {
-		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
-		defer func() { _ = resp.Body.Close() }()
-		page := readBody(t, resp)
-		if resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("%s: refused submit is %d, want %d", tc.form, resp.StatusCode, http.StatusUnprocessableEntity)
-			continue
-		}
-		open := goalOpenFormIn(t, parsePage(t, page), tc.form)
+		goalPath := tc.action[:strings.LastIndex(tc.action, "/")]
+		postRefusedBack(t, clients[tc.who], ts.URL+tc.action, tc.sent, goalPath)
+		open := goalOpenFormIn(t, getPage(t, clients[tc.who], ts.URL+goalPath), tc.form)
 		reason := textOf(findByTestID(t, open, cmp.Or(tc.shownIn, "form-error")))
 		if !strings.Contains(reason, tc.reason) {
 			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
@@ -7047,13 +7049,76 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		if typed := formFields(open, tc.field); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == tc.typed }) {
 			t.Errorf("%s: open form lost what was typed (%s %q): %s", tc.form, tc.field, tc.typed, renderNode(open))
 		}
+		if reload := getPage(t, clients[tc.who], ts.URL+goalPath); len(goalOpenFormsIn(reload)) != 0 || hasTestID(reload, "form-error") {
+			t.Errorf("%s: a reload still shows a form open %v, or its error", tc.form, goalOpenFormsIn(reload))
+		}
+	}
+}
+
+// A refused Goal page form and a refused Action Item Close share the one
+// refusal cookie, scoped to the Goal page, and each comes back to its own
+// form: a refused Add Delegate opens Delegates and no Action Item's Close,
+// and a Close with a blank note opens that Close and no Goal page form
+// (#660, #687).
+func TestARefusedGoalFormAndActionItemShareTheOneRefusalCookieOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	author := h.SignIn("author@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(t.Context(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: goal.ID, Text: "Get a second quote.", OwnerID: sam.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	if page := getPage(t, client, ts.URL+back); !hasTestID(page, "close-action-item") {
+		t.Fatalf("the Goal page offers no Action Item's Close:\n%s", renderNode(page))
+	}
+
+	resp := postForm(t, noRedirects(client), ts.URL+back+"/delegates", url.Values{"email": {"nobody@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
+		t.Fatalf("refused Add Delegate: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), back)
+	}
+	cookies := resp.Cookies()
+	if len(cookies) != 1 || cookies[0].Name != "gt_refused" || cookies[0].Path != back {
+		t.Errorf("refused Add Delegate set cookies %v, want only gt_refused for %s", cookies, back)
+	}
+	page := getPage(t, client, ts.URL+back)
+	if open := goalOpenFormsIn(page); !slices.Equal(open, []string{"delegates"}) {
+		t.Errorf("forms open %v, want only delegates", open)
+	}
+	if reason := textOf(findByTestID(t, goalOpenFormIn(t, page, "delegates"), "form-error")); !strings.Contains(reason, "nobody@example.com") {
+		t.Errorf("Delegates' error %q doesn't name the email", reason)
+	}
+	if open := openDetails(page, "close-toggle"); len(open) != 0 {
+		t.Errorf("an Action Item's Close took the Goal form's refusal:\n%s", renderNode(open[0]))
+	}
+
+	closeBack := back + "#action-items"
+	postRefusedBack(t, client, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{"note": {" "}, "return": {closeBack}}, closeBack)
+	page = getPage(t, client, ts.URL+back)
+	if open := openDetails(page, "close-toggle"); len(open) != 1 {
+		t.Errorf("%d Close toggles open, want the refused one", len(open))
+	}
+	if open := goalOpenFormsIn(page); len(open) != 0 {
+		t.Errorf("a Goal page form took the Close's refusal: %v open", open)
 	}
 }
 
 // Add Milestone answers a date that doesn't parse by naming it, as Edit
 // Milestone does, and only once it has checked who sent it: the Owner or a
-// Delegate gets the form back with the reason beside it, a stranger only the
-// refusal, and an empty date is still no date (#595).
+// Delegate goes back to the Goal page with the form open and the reason
+// beside it (#687), a stranger only the refusal, and an empty date is still
+// no date (#595).
 func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -7064,7 +7129,8 @@ func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, dana, goal.ID)
 	ts := newServer(t, h)
-	action := fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID)
+	back := fmt.Sprintf("/goals/%d", goal.ID)
+	action := ts.URL + back + "/milestones"
 
 	for _, tc := range []struct {
 		who, email, date string
@@ -7072,23 +7138,26 @@ func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
 		// reason is the open form's error, or the refusal page's for a 403.
 		reason string
 	}{
-		{"the Owner", "sam@example.com", "soon", http.StatusUnprocessableEntity, `"soon" isn't a date.`},
-		{"a Delegate", "dana@example.com", "soon", http.StatusUnprocessableEntity, `"soon" isn't a date.`},
-		{"the Owner", "sam@example.com", "", http.StatusUnprocessableEntity, "A Milestone needs a date."},
+		{"the Owner", "sam@example.com", "soon", http.StatusSeeOther, `"soon" isn't a date.`},
+		{"a Delegate", "dana@example.com", "soon", http.StatusSeeOther, `"soon" isn't a date.`},
+		{"the Owner", "sam@example.com", "", http.StatusSeeOther, "A Milestone needs a date."},
 		{"a stranger", "pat@example.com", "soon", http.StatusForbidden, "Only the Owner or a Delegate may change this Goal's Milestones."},
 	} {
-		resp := postForm(t, signInClient(t, ts.URL, tc.email), action, url.Values{"name": {"GA"}, "target_date": {tc.date}})
-		defer func() { _ = resp.Body.Close() }()
-		page := parsePage(t, readBody(t, resp))
-		if resp.StatusCode != tc.status {
-			t.Errorf("%s adding with date %q: status %d, want %d", tc.who, tc.date, resp.StatusCode, tc.status)
-			continue
-		}
+		client := signInClient(t, ts.URL, tc.email)
+		sent := url.Values{"name": {"GA"}, "target_date": {tc.date}}
 		var reason string
 		if tc.status == http.StatusForbidden {
+			resp := postForm(t, noRedirects(client), action, sent)
+			defer func() { _ = resp.Body.Close() }()
+			page := parsePage(t, readBody(t, resp))
+			if resp.StatusCode != tc.status {
+				t.Errorf("%s adding with date %q: status %d, want %d", tc.who, tc.date, resp.StatusCode, tc.status)
+				continue
+			}
 			reason = textOf(findByTestID(t, page, "refused-reason"))
 		} else {
-			open := goalOpenFormIn(t, page, "milestones")
+			postRefusedBack(t, client, action, sent, back)
+			open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), "milestones")
 			reason = textOf(findByTestID(t, open, "form-error"))
 			if typed := formFields(open, "name"); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == "GA" }) {
 				t.Errorf("%s adding with date %q: open form lost the typed name: %s", tc.who, tc.date, renderNode(open))
@@ -7503,9 +7572,9 @@ func TestEditWhyItMattersHasOnlyItsNewRouteOverHTTP(t *testing.T) {
 	}
 }
 
-// A blank title is refused as at creation, and a blank Why it matters as ever: the
-// page comes back with the form open, the reason beside it and what was typed,
-// and neither field is saved (#281).
+// A blank title is refused as at creation, and a blank Why it matters as ever:
+// it goes back to the Goal page with the form open, the reason beside it and
+// what was typed, and neither field is saved (#281, #687).
 func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -7515,15 +7584,12 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	whyItMattersRevisions, titles := titleWhyItMattersHistory(t, h, g.ID)
 
-	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+	client := signInClient(t, ts.URL, "sam@example.com")
+	back := fmt.Sprintf("/goals/%d", g.ID)
+	postRefusedBack(t, client, ts.URL+back+"/why-it-matters", url.Values{
 		"title": {"   "}, "why_it_matters": {"Outages cost us customers."},
-	})
-	defer func() { _ = resp.Body.Close() }()
-	page := readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("a blank title is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
-	}
-	open := goalOpenFormIn(t, parsePage(t, page), "title-why-it-matters")
+	}, back)
+	open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), "title-why-it-matters")
 	if reason := textOf(findByTestID(t, open, "form-error")); !strings.Contains(reason, "A Goal needs a title.") {
 		t.Errorf("the open form's error %q doesn't say A Goal needs a title.", reason)
 	}
@@ -7541,14 +7607,10 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 		t.Errorf("a refused save recorded %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles)
 	}
 
-	resp = postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+	postRefusedBack(t, client, ts.URL+back+"/why-it-matters", url.Values{
 		"title": {"Halve outages"}, "why_it_matters": {"  "},
-	})
-	page = readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("a blank Why it matters is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
-	}
-	if open := goalOpenFormIn(t, parsePage(t, page), "title-why-it-matters"); formField(t, open, "title").Value != "Halve outages" {
+	}, back)
+	if open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), "title-why-it-matters"); formField(t, open, "title").Value != "Halve outages" {
 		t.Errorf("the open form lost the title as typed: %s", renderNode(open))
 	}
 	if got, _ := h.Service.ViewGoal(t.Context(), g.ID); got.Title != "Reduce outages" {
@@ -7556,6 +7618,38 @@ func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	}
 	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions || ti != titles {
 		t.Errorf("a save refused for its Why it matters recorded %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles)
+	}
+}
+
+// A refused Edit title and Why it matters too long to carry back to the Goal
+// page's form answers with the refusal page instead, headed Can't change
+// Goal and linking Back to the Goal, setting no refusal cookie, and the Goal
+// is left as it was (#687).
+func TestARefusedGoalFormTooLongToCarryBackAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	back := fmt.Sprintf("/goals/%d", g.ID)
+
+	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "sam@example.com")), ts.URL+back+"/why-it-matters", url.Values{
+		"title": {" "}, "why_it_matters": {strings.Repeat("x", 4000)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity || resp.Header.Get("Location") != "" {
+		t.Errorf("status %d to %q, want 422 and no redirect", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_refused" {
+			t.Errorf("the refusal set the gt_refused cookie %q", c.Value)
+		}
+	}
+	assertRefusalPage(t, page, "Can't change Goal", "A Goal needs a title.", back)
+	if got, err := h.Service.ViewGoal(t.Context(), g.ID); err != nil || got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost trust." {
+		t.Errorf("the Goal is %q / %q (%v), want it unchanged", got.Title, got.WhyItMatters, err)
 	}
 }
 

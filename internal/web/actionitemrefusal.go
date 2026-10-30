@@ -46,13 +46,16 @@ var actionItemRefusalForms = map[string][]string{
 var actionItemRefusalPages = regexp.MustCompile(`^/(home|goals/\d+|reports/\d+(/publications/\d+)?)$`)
 
 // actionItemRefusal is a refused form as the page it came back to shows it:
-// the form, by test ID, and the record it is about (ID, 0 for none); what it
-// posted, Input; and each problem's sentence, by the input it is about.
+// the form, by test ID or, on the Goal page, its goalForm name, and the
+// record it is about (ID, 0 for none); what it posted, Input; each problem's
+// sentence, by the input it is about; and Reason, the sentence refusing the
+// form as a whole, which only a Goal page form carries (#687).
 type actionItemRefusal struct {
 	Form     string
 	ID       int64
 	Input    url.Values
 	Problems map[string]string
+	Reason   string
 }
 
 // refuseActionItem answers an Action Item's raise, close or reassign refused
@@ -63,50 +66,67 @@ type actionItemRefusal struct {
 // record that isn't there; a back that isn't one of the forms' pages; or a
 // refusal too long to carry — is s.refuse's page, headed heading.
 func (s *Server) refuseActionItem(w http.ResponseWriter, r *http.Request, form string, id int64, heading, back string, err error) {
-	if c, ok := actionItemRefusalCookieFor(r, form, id, back, err); ok {
-		http.SetCookie(w, c)
+	if page, refusal, ok := actionItemRefusalOf(r, form, id, back, err); ok && setActionItemRefusal(w, page, refusal) {
 		http.Redirect(w, r, back, http.StatusSeeOther)
 		return
 	}
 	s.refuse(w, r, heading, back, err)
 }
 
-// actionItemRefusalCookieFor is the cookie taking form's refusal, err, back
-// to back, and whether it can: every problem err names is one of form's
-// fields, back is one of the forms' pages, and the cookie isn't too long.
-func actionItemRefusalCookieFor(r *http.Request, form string, id int64, back string, err error) (*http.Cookie, bool) {
+// actionItemRefusalOf is form's refusal, err, as the page back shows it, that
+// page's path, and whether back can show it: every problem err names is one
+// of form's fields, and back is one of the forms' pages.
+func actionItemRefusalOf(r *http.Request, form string, id int64, back string, err error) (string, actionItemRefusal, bool) {
 	fields, ok := actionItemRefusalForms[form]
 	if !ok || !localPath(back) {
-		return nil, false
+		return "", actionItemRefusal{}, false
 	}
 	path, _, _ := strings.Cut(back, "#")
 	path, _, _ = strings.Cut(path, "?")
 	if !actionItemRefusalPages.MatchString(path) {
-		return nil, false
+		return "", actionItemRefusal{}, false
 	}
-	v := url.Values{"page": {path}, "form": {form}, "id": {strconv.FormatInt(id, 10)}}
+	refusal := actionItemRefusal{Form: form, ID: id, Input: url.Values{}, Problems: map[string]string{}}
 	for _, p := range problemsOf(err) {
 		if !slices.Contains(fields, p.Input) {
-			return nil, false
+			return "", actionItemRefusal{}, false
 		}
-		v.Set(actionItemRefusalProblem+p.Input, p.Message)
+		refusal.Problems[p.Input] = p.Message
 	}
 	for _, f := range fields {
 		if typed, ok := r.PostForm[f]; ok {
-			v[f] = typed
+			refusal.Input[f] = typed
 		}
+	}
+	return path, refusal, true
+}
+
+// setActionItemRefusal sets the cookie carrying refusal to the page at path,
+// reporting whether it fit: a refusal whose cookie would be too long is not
+// set.
+func setActionItemRefusal(w http.ResponseWriter, path string, refusal actionItemRefusal) bool {
+	v := url.Values{"page": {path}, "form": {refusal.Form}, "id": {strconv.FormatInt(refusal.ID, 10)}}
+	if refusal.Reason != "" {
+		v.Set("reason", refusal.Reason)
+	}
+	for input, problem := range refusal.Problems {
+		v.Set(actionItemRefusalProblem+input, problem)
+	}
+	for input, typed := range refusal.Input {
+		v[input] = typed
 	}
 	value := v.Encode()
 	if len(value) > actionItemRefusalMaxBytes {
-		return nil, false
+		return false
 	}
-	return &http.Cookie{
+	http.SetCookie(w, &http.Cookie{
 		Name:     actionItemRefusalCookie,
 		Value:    value,
 		Path:     path,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-	}, true
+	})
+	return true
 }
 
 // takeActionItemRefusal returns r carrying the refused form sent back to the
@@ -129,10 +149,10 @@ func takeActionItemRefusal(w http.ResponseWriter, r *http.Request) *http.Request
 			SameSite: http.SameSiteLaxMode,
 		})
 		id, _ := strconv.ParseInt(v.Get("id"), 10, 64)
-		refusal := actionItemRefusal{Form: v.Get("form"), ID: id, Input: url.Values{}, Problems: map[string]string{}}
+		refusal := actionItemRefusal{Form: v.Get("form"), ID: id, Input: url.Values{}, Problems: map[string]string{}, Reason: v.Get("reason")}
 		for key, values := range v {
 			switch {
-			case key == "page" || key == "form" || key == "id":
+			case key == "page" || key == "form" || key == "id" || key == "reason":
 			case strings.HasPrefix(key, actionItemRefusalProblem):
 				refusal.Problems[strings.TrimPrefix(key, actionItemRefusalProblem)] = values[0]
 			default:
@@ -168,6 +188,16 @@ func actionItemRefusalFor(ctx context.Context, form string, id int64) (actionIte
 		return actionItemRefusal{}, false
 	}
 	slot.taken = true
+	return slot.refusal, true
+}
+
+// refusalIn is the refusal the page carries, and whether it carries one,
+// without taking it: the Goal page reads its own forms' refusal this way.
+func refusalIn(ctx context.Context) (actionItemRefusal, bool) {
+	slot, _ := ctx.Value(actionItemRefusalKey{}).(*actionItemRefusalSlot)
+	if slot == nil {
+		return actionItemRefusal{}, false
+	}
 	return slot.refusal, true
 }
 

@@ -10,9 +10,10 @@ import (
 
 // handleLogDraftHighlight logs a Draft Highlight on the path's Goal, written by
 // the current Account (CONTEXT.md: Draft Highlight). A plain post returns to
-// the Goal page, and a refused note comes back on it, the reason in the Draft
-// Highlights block and what was typed still in its form. The Highlight
-// editor's htmx post gets the block back either way (renderDraftHighlights).
+// the Goal page, and a refused note redirects to the Goal page, where the log
+// form is open with the reason beside it and what was sent in it
+// (refuseGoalForm). The Highlight editor's htmx post gets the block back
+// either way (renderDraftHighlights).
 // A log refused for anything but what was typed, plain or htmx, is the
 // refusal page, headed Can't change highlight and linking Back to the Goal.
 func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request, current domain.Account) {

@@ -1269,9 +1269,13 @@ and so on).
   menu. A menu item or a heading's link leads to `/goals/{id}?open=<form>`,
   which is the Goal page with that one form open and its first control
   focused. The form sits under a `.label` heading naming it, with a quiet
-  small **Cancel** link back to the plain page. A refused submit comes back as
-  the same page with the same form open, the reason in an alert at its top
-  and what was typed still in it. It is all links and plain form posts, so it
+  small **Cancel** link back to the plain page. A refused submit goes back to
+  the Goal page's own address, `/goals/{id}`. That form is open there, with
+  the reason in an alert at its top and what was typed still in it. A
+  reload, or the link shared, shows the plain Goal page. Where the page no
+  longer offers that form, or what was typed is too long to carry back, the
+  refusal page says why instead, linking **Back** to the Goal. It is all
+  links and plain form posts, so it
   works without script; Link to a parent Goal's picker searches only with
   script, and falls back to a select.
   - **Where each opens:** Edit title and Why it matters (the Owner or an

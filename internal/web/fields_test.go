@@ -249,8 +249,9 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 	}
 }
 
-// "abc" in a number Field and "tomorrow" in a date Field are refused, the
-// refusal naming the Field.
+// "abc" in a number Field and "tomorrow" in a date Field are refused, back on
+// the Goal page with the Fields form open, the refusal naming the Field
+// (#687).
 func TestGoalPageRefusesAFieldValueOfTheWrongType(t *testing.T) {
 	t.Parallel()
 
@@ -267,12 +268,12 @@ func TestGoalPageRefusesAFieldValueOfTheWrongType(t *testing.T) {
 		field domain.Field
 		value string
 	}{{budget, "abc"}, {kickoff, "tomorrow"}} {
-		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID),
-			url.Values{"field_id": {fmt.Sprint(tc.field.ID)}, "value": {tc.value}})
-		defer func() { _ = resp.Body.Close() }()
-		body := readBody(t, resp)
-		if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, tc.field.Name) {
-			t.Errorf("%s = %q: status %d, body %q; want 422 naming %s", tc.field.Name, tc.value, resp.StatusCode, body, tc.field.Name)
+		back := fmt.Sprintf("/goals/%d", goal.ID)
+		postRefusedBack(t, client, ts.URL+back+"/fields",
+			url.Values{"field_id": {fmt.Sprint(tc.field.ID)}, "value": {tc.value}}, back)
+		open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), "fields")
+		if reason := textOf(findByTestID(t, open, "form-error")); !strings.Contains(reason, tc.field.Name) {
+			t.Errorf("%s = %q: the open form's error %q doesn't name %s", tc.field.Name, tc.value, reason, tc.field.Name)
 		}
 	}
 }

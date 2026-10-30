@@ -71,31 +71,28 @@ func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goal
 }
 
 // writeFormResult is writeCommandResult for a form the Goal page opens in
-// place: a refused value re-renders the page with that form open, the reason
-// beside it and what was sent still in it.
+// place: a refused value redirects to the Goal page, where that form is open
+// with the reason beside it and what was sent in it (refuseGoalForm).
 func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, err error) {
 	if errors.Is(err, domain.ErrValidation) {
-		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
+		s.refuseGoalForm(w, r, goalID, current, form, "Can't change Goal", err)
 		return
 	}
 	s.writeCommandResult(w, r, goalID, err)
 }
 
-// renderRefusedForm re-renders the Goal page with status and form open,
-// carrying why its submit was refused and what it sent. When the page no
-// longer offers the viewer that form, such as Add Milestone once the Goal is
-// Done, there is nowhere beside it to say why, so the refusal page says it,
-// headed "Can't change Goal", at the status refused's kind has, linking Back
-// to the Goal. Either way the reason is a sentence without its internal
-// prefix. Offered, it is above the form, or for a link request picking no
-// parent (errNoParentLinked) beside the form's picker.
-func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
-	s.renderRefusedFormHeaded(w, r, goalID, current, form, "Can't change Goal", status, refused)
-}
-
-// renderRefusedFormHeaded is renderRefusedForm with the refusal page, when the
-// Goal page doesn't offer form, headed heading.
-func (s *Server) renderRefusedFormHeaded(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, heading string, status int, refused error) {
+// refuseGoalForm answers a submit of form, from the Goal page, refused for
+// what it sent. It redirects to the Goal page's own address, carrying why and
+// what was sent once in the refusal cookie (setActionItemRefusal), so the
+// page shows that form open, as it was left, and a reload shows the plain
+// page (#687). The reason is a sentence without its internal prefix: above
+// the form, or for a link request picking no parent (errNoParentLinked)
+// beside the form's picker. When the page no longer offers the viewer that
+// form, such as Add Milestone once the Goal is Done, there is nowhere beside
+// it to say why, and when what was sent is too long to carry back there is
+// no carrying it, so the refusal page says it, headed heading, at the status
+// refused's kind has, linking Back to the Goal.
+func (s *Server) refuseGoalForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, heading string, refused error) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -105,17 +102,17 @@ func (s *Server) renderRefusedFormHeaded(w http.ResponseWriter, r *http.Request,
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
-	if !view.offers(form) {
+	refusal := actionItemRefusal{Form: string(form), Input: r.PostForm}
+	if reason := sentence(domain.Reason(refused)); errors.Is(refused, errNoParentLinked) {
+		refusal.Problems = map[string]string{"parent_id": reason}
+	} else {
+		refusal.Reason = reason
+	}
+	if !view.offers(form) || !setActionItemRefusal(w, goalPath(goalID), refusal) {
 		s.refuse(w, r, heading, goalPath(goalID), refused)
 		return
 	}
-	view.Open, view.FormInput = form, r.PostForm
-	if reason := sentence(domain.Reason(refused)); errors.Is(refused, errNoParentLinked) {
-		view.PickerError = reason
-	} else {
-		view.FormError = reason
-	}
-	render(w, r, status, goalPage(&current, view))
+	http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
 }
 
 // handleEditWhyItMatters saves the Edit title and Why it matters form, for the Goal's Owner
