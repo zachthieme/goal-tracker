@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -90,10 +91,15 @@ func TestOrgWalkEndsAtACycle(t *testing.T) {
 	b := h.SignIn("b@example.com")
 	c := h.SignIn("c@example.com")
 	self := h.SignIn("self@example.com")
-	h.SetManager(a, b)
-	h.SetManager(b, a)
-	h.SetManager(c, b)
-	h.SetManager(self, self)
+	res := h.SyncDirectory(
+		domain.DirectoryPerson{Email: a.Email, ManagerEmail: b.Email},
+		domain.DirectoryPerson{Email: b.Email, ManagerEmail: a.Email},
+		domain.DirectoryPerson{Email: c.Email, ManagerEmail: b.Email},
+		domain.DirectoryPerson{Email: self.Email, ManagerEmail: self.Email},
+	)
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"a@example.com", "b@example.com"}, {"self@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 
 	if got, want := orgEmails(t, h, a.ID), []string{"a@example.com", "b@example.com", "c@example.com"}; !slices.Equal(got, want) {
 		t.Errorf("A's Org = %v, want %v", got, want)
@@ -150,11 +156,14 @@ func TestAnyoneHasManagerIgnoresSelfReferences(t *testing.T) {
 	if anyoneHasManager(t, h) {
 		t.Error("AnyoneHasManager is true with no Managers")
 	}
-	h.SetManager(vp, vp)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: vp.Email, ManagerEmail: vp.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"vp@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	if anyoneHasManager(t, h) {
 		t.Error("AnyoneHasManager is true when the only Manager is a self-reference")
 	}
-	h.SetManager(mia, vera)
+	h.SyncDirectory(domain.DirectoryPerson{Email: mia.Email, ManagerEmail: vera.Email})
 	if !anyoneHasManager(t, h) {
 		t.Error("AnyoneHasManager is false with Vera managing Mia")
 	}

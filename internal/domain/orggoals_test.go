@@ -179,7 +179,10 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 	b := h.SignIn("b@example.com")
 	h.SetManager(a, viewer)
 	h.SetManager(b, viewer)
-	h.SetManager(viewer, a)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: viewer.Email, ManagerEmail: a.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"a@example.com", "viewer@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	far := h.Clock.Now().AddDate(0, 1, 0)
 	own := h.ActiveGoal(viewer, "Set strategy", "No direction.")
 	h.Checkin(viewer, own.ID, domain.HealthRed, "Stuck.", "Offsite.", far)
@@ -201,7 +204,7 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 	}
 
 	self := h.SignIn("self@example.com")
-	h.SetManager(self, self)
+	h.SyncDirectory(domain.DirectoryPerson{Email: self.Email, ManagerEmail: self.Email})
 	selfGoal := h.ActiveGoal(self, "Write the memo", "Nobody knows the plan.")
 	h.Checkin(self, selfGoal.ID, domain.HealthRed, "Late.", "Block a day.", far)
 	if sig := orgSignals(t, h, self.ID); len(sig.Under) != 0 || sig.Total.Any() {

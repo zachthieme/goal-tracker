@@ -117,7 +117,10 @@ func TestAskAddresseeNoneAboveTheOwner(t *testing.T) {
 		t.Parallel()
 		h := testsupport.New(t, "admin@example.com")
 		_, line := askLine(t, h, "sam@example.com")
-		h.SetManager(line[0], line[0])
+		res := h.SyncDirectory(domain.DirectoryPerson{Email: line[0].Email, ManagerEmail: line[0].Email})
+		if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"sam@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+			t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+		}
 		if got := askAddresseeOf(t, h, line[0]); got != nil {
 			t.Errorf("addressee = %s, want none", got.Email)
 		}
@@ -126,7 +129,10 @@ func TestAskAddresseeNoneAboveTheOwner(t *testing.T) {
 		t.Parallel()
 		h := testsupport.New(t, "admin@example.com")
 		admin, line := askLine(t, h, "sam@example.com", "mia@example.com")
-		h.SetManager(line[1], line[0])
+		res := h.SyncDirectory(domain.DirectoryPerson{Email: line[1].Email, ManagerEmail: line[0].Email})
+		if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"mia@example.com", "sam@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+			t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+		}
 		askMarkDeparted(t, h, admin, line[1])
 		if got := askAddresseeOf(t, h, line[0]); got != nil {
 			t.Errorf("addressee = %s, want none", got.Email)

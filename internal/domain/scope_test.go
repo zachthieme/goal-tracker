@@ -178,9 +178,14 @@ func TestGoalScopeWalksStopAtAManagerCycle(t *testing.T) {
 	cy := h.SignInNamed("cy@example.com", "Cy")
 	viewer := h.SignInNamed("viewer@example.com", "Viewer")
 	// Ana manages Ben, who manages Cy, who manages Ana.
-	h.SetManager(ben, ana)
-	h.SetManager(cy, ben)
-	h.SetManager(ana, cy)
+	res := h.SyncDirectory(
+		domain.DirectoryPerson{Email: ben.Email, ManagerEmail: ana.Email},
+		domain.DirectoryPerson{Email: cy.Email, ManagerEmail: ben.Email},
+		domain.DirectoryPerson{Email: ana.Email, ManagerEmail: cy.Email},
+	)
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"ana@example.com", "ben@example.com", "cy@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	h.ActiveGoal(cy, "Cy's goal", "It matters.")
 	h.ActiveGoal(viewer, "Viewer's goal", "It matters.")
 
@@ -248,7 +253,10 @@ func TestGoalScopeOfASelfManagedPerson(t *testing.T) {
 	t.Parallel()
 	h := testsupport.New(t)
 	boss := h.SignIn("boss@example.com")
-	h.SetManager(boss, boss)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: boss.Email, ManagerEmail: boss.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"boss@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	h.ActiveGoal(boss, "Boss's goal", "It matters.")
 
 	sc := goalScope(t, h, boss, domain.GoalScopeRequest{OrgOf: boss.ID})
@@ -257,7 +265,7 @@ func TestGoalScopeOfASelfManagedPerson(t *testing.T) {
 	}
 
 	dev := h.SignIn("dev@example.com")
-	h.SetManager(dev, boss)
+	h.SyncDirectory(domain.DirectoryPerson{Email: dev.Email, ManagerEmail: boss.Email})
 	h.ActiveGoal(dev, "Dev's goal", "It matters.")
 	sc = goalScope(t, h, boss, domain.GoalScopeRequest{})
 	if !sc.Default || sc.Of == nil || sc.Of.ID != boss.ID || !sc.OffersMine {

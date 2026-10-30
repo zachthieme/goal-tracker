@@ -1,14 +1,28 @@
 package testsupport
 
-import "github.com/zachthieme/goal-tracker/internal/domain"
+import (
+	"fmt"
 
-// SetManager records manager as person's Manager directly, failing the test on
-// error. Only the directory sync sets a Manager in the app (ADR 0008); this is
-// the scenario builder for arranging an Org without one (CONTEXT.md: Manager,
-// Org).
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// SetManager records manager as person's Manager, or none for a zero manager,
+// by syncing person alone through the in-memory Directory, as the directory
+// sync sets every Manager (ADR 0008; CONTEXT.md: Manager, Org). Their Name and
+// Timezone are left as they are. It fails the test on error, on a refused
+// Timezone, and on any Manager cycle in the database: store a cycle with
+// h.SyncDirectory.
 func (h *Harness) SetManager(person, manager domain.Account) {
 	h.T.Helper()
-	if _, err := h.DB.ExecContext(h.T.Context(), `UPDATE accounts SET manager_id = ? WHERE id = ?`, manager.ID, person.ID); err != nil {
-		h.T.Fatalf("SetManager(%s, %s): %v", person.Email, manager.Email, err)
+	call := fmt.Sprintf("SetManager(%s, %s)", person.Email, manager.Email)
+	current := h.account(call, person.ID)
+	var managerEmail string
+	if manager.ID != 0 {
+		managerEmail = h.account(call, manager.ID).Email
 	}
+	h.syncDirectoryPersonRefusingNothing(call, domain.DirectoryPerson{
+		Email:        current.Email,
+		ManagerEmail: managerEmail,
+		Timezone:     current.Timezone,
+	})
 }

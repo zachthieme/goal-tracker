@@ -1296,7 +1296,10 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 		t.Errorf("Home shows My org with no Managers synced")
 	}
 	h.SetManager(dev, lead)
-	h.SetManager(self, self)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: self.Email, ManagerEmail: self.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"self@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	for _, who := range []string{"dev@example.com", "self@example.com"} {
 		if page := getPage(t, signInClient(t, ts.URL, who), ts.URL+"/home"); hasTestID(page, "home-org") {
 			t.Errorf("Home shows My org to %s, who has no one under them", who)
