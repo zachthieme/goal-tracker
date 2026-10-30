@@ -146,13 +146,14 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 }
 
 // writeRefusedHandoff answers a refused Hand off or Reassign from the Goal
-// page: a refused new Owner re-renders the page with the form open and the
-// reason beside it, or, where the page doesn't offer the form, the refusal
-// page headed refused; anything else is refuse's page, headed refused and
+// page: a refused new Owner redirects to the Goal page, where that form is
+// open with the reason beside it and what was sent in it, or, where the page
+// doesn't offer the form, is the refusal page headed refused
+// (refuseGoalForm); anything else is refuse's page, headed refused and
 // linking Back to the Goal.
 func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, refused string, err error) {
 	if errors.Is(err, domain.ErrValidation) {
-		s.renderRefusedFormHeaded(w, r, goalID, current, form, refused, http.StatusUnprocessableEntity, err)
+		s.refuseGoalForm(w, r, goalID, current, form, refused, err)
 		return
 	}
 	s.refuse(w, r, refused, goalPath(goalID), err)

@@ -14,9 +14,9 @@ var errNoParentLinked = domain.Refuse(domain.ErrValidation, "a parent Goal is re
 
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.
-// A refused request, a cycle included, comes back as the Goal page with the
-// form open and the reason beside it, one picking no parent, or none that
-// parses, beside its picker.
+// A refused request, a cycle included, redirects to the Goal page, where that
+// form is open with the reason beside it and what was sent in it, one picking
+// no parent, or none that parses, beside its picker (refuseGoalForm).
 func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	childID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -25,7 +25,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
 	if err != nil {
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, errNoParentLinked)
+		s.refuseGoalForm(w, r, childID, current, formParentLink, "Can't change Goal", errNoParentLinked)
 		return
 	}
 	_, err = s.svc.RequestLink(r.Context(), domain.RequestLinkInput{
@@ -35,10 +35,8 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 		RequesterID: current.ID,
 	})
 	switch {
-	case errors.Is(err, domain.ErrCycle):
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, err)
-	case errors.Is(err, domain.ErrValidation):
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
+	case errors.Is(err, domain.ErrCycle), errors.Is(err, domain.ErrValidation):
+		s.refuseGoalForm(w, r, childID, current, formParentLink, "Can't change Goal", err)
 	case err != nil:
 		s.refuse(w, r, "Can't request link", goalPath(childID), err)
 	default:

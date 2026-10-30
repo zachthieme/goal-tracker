@@ -33,6 +33,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	view.Toast = s.undoToast(w, r, current)
 	r = takeActionItemRefusal(w, r)
 	view.Open = goalForm(r.URL.Query().Get("open"))
+	view.openRefused(r)
 	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
@@ -65,8 +66,9 @@ type goalView struct {
 	// against target shown on the Goal page (CONTEXT.md: Metric).
 	Trends []metricTrend
 	// Open is the one form the page shows open in place, from its ?open=
-	// address, or "" for none. FormError is why that form's last submit was
-	// refused and FormInput what it sent, so it comes back as it was left.
+	// address or a refused submit's refusal (refuseGoalForm), or "" for none.
+	// FormError is why that form's last submit was refused and FormInput what
+	// it sent, so it comes back as it was left.
 	// PickerError is why Link to a parent Goal's submit was refused for
 	// picking no parent, said beside its picker in place of FormError.
 	Open        goalForm
@@ -140,6 +142,19 @@ func (v goalView) offers(form goalForm) bool {
 		return p.LogDraftHighlight
 	}
 	return false
+}
+
+// openRefused opens the Goal page form whose submit was refused, if r carries
+// its refusal and the page still offers it to the viewer, as it was left: why
+// it was refused and what it sent (refuseGoalForm). It wins over ?open=. An
+// Action Item form's refusal names no Goal page form, so opens none.
+func (v *goalView) openRefused(r *http.Request) {
+	ref, ok := refusalIn(r.Context())
+	if !ok || ref.ID != 0 || !v.offers(goalForm(ref.Form)) {
+		return
+	}
+	v.Open, v.FormError, v.FormInput = goalForm(ref.Form), ref.Reason, ref.Input
+	v.PickerError = ref.Problems["parent_id"]
 }
 
 // opens reports whether form is the one the page shows open: the one asked

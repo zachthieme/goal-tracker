@@ -748,9 +748,9 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	}
 }
 
-// A link request refused for making a cycle says so in the form, in the
-// sentence every cycle's refusal uses, naming the Goals by title, not ID
-// (#546, #645).
+// A link request refused for making a cycle goes back to the Goal page and
+// says so in the form, in the sentence every cycle's refusal uses, naming the
+// Goals by title, not ID (#546, #645, #687).
 func TestALinkRequestThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	t.Parallel()
 
@@ -767,15 +767,10 @@ func TestALinkRequestThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 		t.Fatalf("AcceptLink: %v", err)
 	}
 
-	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
-		"parent_id": {fmt.Sprint(parent.ID)},
-	})
-	defer func() { _ = resp.Body.Close() }()
-	page := parsePage(t, readBody(t, resp))
-	if resp.StatusCode != http.StatusConflict {
-		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
-	}
-	got := textOf(findByTestID(t, page, "form-error"))
+	client := signInClient(t, ts.URL, "sam@example.com")
+	back := fmt.Sprintf("/goals/%d", child.ID)
+	postRefusedBack(t, client, ts.URL+back+"/links", url.Values{"parent_id": {fmt.Sprint(parent.ID)}}, back)
+	got := textOf(findByTestID(t, getPage(t, client, ts.URL+back), "form-error"))
 	if want := "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”."; got != want {
 		t.Errorf("form-error = %q, want %q", got, want)
 	}
@@ -997,10 +992,10 @@ func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
 	}
 }
 
-// Request link pressed with no parent picked links nothing: the Goal page
-// comes back, 422, with the form open and the reason beside its picker,
-// which marks its controls refused, the note as typed and still nothing
-// picked (#656).
+// Request link pressed with no parent picked links nothing: it goes back to
+// the Goal page, with the form open and the reason beside its picker, which
+// marks its controls refused, the note as typed and still nothing picked
+// (#656, #687).
 func TestRequestingALinkWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
 	t.Parallel()
 
@@ -1016,12 +1011,9 @@ func TestRequestingALinkWithNoParentPickedIsRefusedBesideThePicker(t *testing.T)
 		"empty parent_id": {"parent_id": {""}, "note": {"Because."}},
 		"not an id":       {"parent_id": {"soon"}, "note": {"Because."}},
 	} {
-		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), sent)
-		defer func() { _ = resp.Body.Close() }()
-		page := parsePage(t, readBody(t, resp))
-		if resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("%s: status %d, want 422", name, resp.StatusCode)
-		}
+		back := fmt.Sprintf("/goals/%d", child.ID)
+		postRefusedBack(t, client, ts.URL+back+"/links", sent, back)
+		page := getPage(t, client, ts.URL+back)
 		if hasTestID(page, "form-error") {
 			t.Errorf("%s: the refusal is above the form, not beside the picker: %s", name, textOf(findByTestID(t, page, "form-error")))
 		}
@@ -1036,12 +1028,12 @@ func TestRequestingALinkWithNoParentPickedIsRefusedBesideThePicker(t *testing.T)
 	}
 }
 
-// A link request refused for its parent, missing or making a cycle, keeps its
-// status, 422 or 409, whether or not the Goal page offers the viewer the link
-// form: offered, the reason is beside the form, a missing parent beside its
-// picker (#656); not offered, it is the refusal page, linking Back to the
+// A link request refused for its parent, missing or making a cycle: offered,
+// a refused link request redirects to the Goal page with the form open, the
+// reason beside the form, a missing parent beside its picker (#656, #687);
+// not offered, it keeps 422 or 409 on the refusal page, linking Back to the
 // Goal (#573).
-func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) {
+func TestARefusedLinkRequestRedirectsOrKeepsItsStatus(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -1057,32 +1049,36 @@ func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) 
 	for _, c := range []struct {
 		name, who, path string
 		form            url.Values
-		status          int
-		reason          string
-		offered         bool
+		// status is the not-offered refusal page's; an offered form's
+		// refusal is a 303 to the Goal page.
+		status  int
+		reason  string
+		offered bool
 		// shownIn is where an offered form says why: beside the picker
 		// (input-error) or above the form (form-error).
 		shownIn string
 	}{
-		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", true, "input-error"},
+		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, 0, "A parent Goal is required.", true, "input-error"},
 		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false, ""},
-		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
+		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, 0,
 			"Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", true, "form-error"},
 		{"cycle, not offered", "pat@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
 			"Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", false, ""},
 	} {
-		resp := postForm(t, signInClient(t, ts.URL, c.who), ts.URL+c.path, c.form)
+		client := signInClient(t, ts.URL, c.who)
+		if c.offered {
+			postRefusedBack(t, client, ts.URL+c.path, c.form, back)
+			if got := textOf(findByTestID(t, getPage(t, client, ts.URL+back), c.shownIn)); got != c.reason {
+				t.Errorf("%s: %s = %q, want %q", c.name, c.shownIn, got, c.reason)
+			}
+			continue
+		}
+		resp := postForm(t, noRedirects(client), ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
 		}
-		if !c.offered {
-			assertRefusalPage(t, page, "Can't change Goal", c.reason, back)
-			continue
-		}
-		if got := textOf(findByTestID(t, page, c.shownIn)); got != c.reason {
-			t.Errorf("%s: %s = %q, want %q", c.name, c.shownIn, got, c.reason)
-		}
+		assertRefusalPage(t, page, "Can't change Goal", c.reason, back)
 	}
 }
