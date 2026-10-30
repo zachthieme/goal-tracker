@@ -2453,6 +2453,89 @@ func TestNoChangeButtonSaysItChecksIn(t *testing.T) {
 	}
 }
 
+// A recorded No change lands on the Goal page with a toast saying so, dated
+// the day it was recorded, and offering no Undo: History records and doesn't
+// undo (CONTEXT.md: History). The toast shows once; a later visit has none
+// (#668).
+func TestNoChangeConfirmsItWithAToastOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, landed := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
+		t.Fatalf("No change landed on %s, want the Goal page", resp.Request.URL.Path)
+	}
+	toast := findByTestID(t, parsePage(t, landed), "toast")
+	if got, want := textOf(toast), "Checked in: no change, Jan 5."; got != want {
+		t.Errorf("the toast reads %q, want %q", got, want)
+	}
+	if buttonNamed(toast, "Undo") != nil || len(findAll(toast, func(n *html.Node) bool { return n.Data == "form" })) != 0 {
+		t.Errorf("the No change toast offers an Undo: %s", renderNode(toast))
+	}
+
+	if later := getPage(t, client, goalPageURL(ts.URL, goal)); hasTestID(later, "toast") {
+		t.Errorf("the toast shows again on a later visit: %s", renderNode(findByTestID(t, later, "toast")))
+	}
+}
+
+// A No change posted through htmx, as the Goal page's and the Check-in page's
+// buttons post it, confirms it on the Goal page htmx then loads, once (#668).
+func TestNoChangeOverHtmxConfirmsItWithAToastOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, _ := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+	defer func() { _ = resp.Body.Close() }()
+	target := resp.Header.Get("HX-Redirect")
+	if target == "" {
+		t.Fatalf("No change over htmx sent no HX-Redirect")
+	}
+
+	toast := findByTestID(t, getPage(t, client, ts.URL+target), "toast")
+	if got, want := textOf(toast), "Checked in: no change, Jan 2."; got != want {
+		t.Errorf("the toast reads %q, want %q", got, want)
+	}
+	if later := getPage(t, client, ts.URL+target); hasTestID(later, "toast") {
+		t.Errorf("the toast shows again on a later visit: %s", renderNode(findByTestID(t, later, "toast")))
+	}
+}
+
+// A refused No change shows its refusal and no toast, there or on the Goal
+// page afterwards: nothing was recorded to confirm (#668).
+func TestRefusedNoChangeShowsNoToast(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	overdue := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, overdue.ID), false)
+	defer func() { _ = resp.Body.Close() }()
+	assertNoChangeRefusalOnForm(t, page, `Milestone "Beta" is overdue`)
+	if hasTestID(parsePage(t, page), "toast") {
+		t.Errorf("the refusal carries a toast: %s", renderNode(findByTestID(t, parsePage(t, page), "toast")))
+	}
+	if later := getPage(t, client, goalPageURL(ts.URL, overdue)); hasTestID(later, "toast") {
+		t.Errorf("the Goal page shows a toast after a refused No change: %s", renderNode(findByTestID(t, later, "toast")))
+	}
+}
+
 // A successful No change over htmx still sends the person back to the Goal
 // page with HX-Redirect (#103).
 func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {

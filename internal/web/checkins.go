@@ -430,7 +430,7 @@ func draftHighlightsFromForm(r *http.Request) []highlightFormData {
 }
 
 // handleNoChangeCheckin records a Check-in repeating the Goal's previous values
-// in one click.
+// in one click, and lands on the Goal page with a toast confirming it.
 func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -440,7 +440,7 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 		s.renderNoChangeRefusal(w, r, current, goalID, err)
 		return
 	}
-	s.checkinRedirect(w, r, goalID)
+	s.confirmNoChange(w, r, goalID)
 }
 
 // renderNoChangeRefusal shows why a No change couldn't be recorded. A refusal

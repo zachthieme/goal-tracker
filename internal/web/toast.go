@@ -189,14 +189,52 @@ func (s *Server) offerUndo(w http.ResponseWriter, r *http.Request, kind undoKind
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
+// noChangeToastTag names a recorded No change in the undo cookie's value,
+// no-change:<goal id>: with no token. It isn't an undoKind: a Goal's History
+// records and doesn't undo (CONTEXT.md: History), so its toast only confirms
+// the No change and offers no Undo, and it has no Undo route (#668).
+const noChangeToastTag = "no-change"
+
+// confirmNoChange has the Goal page of goalID say, once, that a No change was
+// recorded on it, through the undo cookie's one-time, path-scoped round trip,
+// and sends the person there.
+func (s *Server) confirmNoChange(w http.ResponseWriter, r *http.Request, goalID int64) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     undoCookie,
+		Value:    noChangeToastTag + ":" + strconv.FormatInt(goalID, 10) + ":",
+		Path:     goalPath(goalID),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	s.checkinRedirect(w, r, goalID)
+}
+
+// noChangeToast is the toast confirming a No change on goalID, dated by its
+// latest Check-in, when r asks for that Goal's page; nil anywhere else, or
+// when its Check-in can't be read.
+func (s *Server) noChangeToast(r *http.Request, goalID int64) *toast {
+	if id, ok := undoPageGoalID(r); !ok || id != goalID {
+		return nil
+	}
+	c, ok, err := s.svc.LatestCheckin(r.Context(), goalID)
+	if err != nil || !ok {
+		return nil
+	}
+	return &toast{Message: "Checked in: no change, " + s.displayDates().dayOf(c.CreatedAt) + "."}
+}
+
 // undoToast is the toast the requested page carries straight after a
 // decision offered it Undo, or nil when there is no offer, or none current
 // can undo here now. Its Undo posts the offer's token and returns to this
-// page, query and all.
+// page, query and all. A recorded No change's toast comes this way too, with
+// no Undo (noChangeToast).
 func (s *Server) undoToast(w http.ResponseWriter, r *http.Request, current domain.Account) *toast {
 	offer := takeUndo(w, r)
 	if offer.id <= 0 {
 		return nil
+	}
+	if offer.kind == noChangeToastTag {
+		return s.noChangeToast(r, offer.id)
 	}
 	for _, kind := range undoKinds {
 		if kind.tag != offer.kind {

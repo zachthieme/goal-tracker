@@ -105,7 +105,7 @@ test.describe("on the due template", () => {
       .getByTestId("home-due-goal")
       .filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
     await expect(row).toBeVisible();
-    await expect(row.getByRole("button", { name: "No change" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Check in: no change" })).toBeVisible();
     await expect(row.getByTestId("home-due-checkin")).toBeVisible();
     await expectFitsAPhone(page);
   });

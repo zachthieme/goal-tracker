@@ -450,20 +450,24 @@ and so on).
     cookie, so the page has the right theme on first paint with no script.
     With no cookie, or a value it doesn't know, it pins nothing and the page
     follows the system. A Report's Print view and emails ignore the choice.
-- **Toast (`.toast`, `toastNotice` in `layout.templ`):** the one shared
-  notice for an action that can be undone. It says what was done, in
-  `--color-ink` on `--color-surface`, with a small secondary **Undo** 16px
-  beside it, inside a 1px `--color-border-strong` edge, `--radius-lg` and
-  `--shadow-pop`. It is fixed 24px above the bottom of the window, centred,
-  over the page content (`z-index` 30) and no wider than the window less
-  32px, and the page under it gains 128px of bottom padding so nothing ends
-  up hidden behind it. At 600px and below it spans the window less 16px each
-  side, 16px from the bottom, and its message wraps.
+- **Toast (`.toast`, `toastNotice` in `layout.templ`):** the one shared notice
+  for an action that can be undone, or, with no Undo, one that only confirms
+  what was done: a No change. It says what was done, in `--color-ink` on
+  `--color-surface`, with a small secondary **Undo** 16px beside it when there
+  is one to offer, inside a 1px `--color-border-strong` edge, `--radius-lg`
+  and `--shadow-pop`. It is fixed 24px above the bottom of the window,
+  centred, over the page content (`z-index` 30) and no wider than the window
+  less 32px, and the page under it gains 128px of bottom padding so nothing
+  ends up hidden behind it. At 600px and below it spans the window less 16px
+  each side, 16px from the bottom, and its message wraps.
   - **Once, with no script.** The server renders it only on the page shown
     straight after the action. The post that made the change sets the
     `gt_undo` cookie, scoped to that page's path, and the page clears it as it
     reads it, so a reload or a later visit shows nothing. There is no timer:
-    it stays until the person leaves.
+    it stays until the person leaves. A No change sets the same cookie, on
+    its Goal's page, with no token: its toast reads "Checked in: no change,
+    Oct 28." (the day the Check-in was recorded) and has no Undo, as a Goal's
+    History records and doesn't undo.
   - **Undo is a plain form post** to the action's own reversal, checked again
     on the server, so a forged or stale Undo is refused with a message. The
     action records a random one-time token, which the `gt_undo` cookie carries
@@ -492,8 +496,9 @@ and so on).
   - **Where:** removing a link (Goal page), retiring a Dimension value
     (Dimensions page), rejecting a link request or a Handoff (Home, or the
     request's pending page, whichever the Reject came from), and declining a
-    Parent suggestion (Home or the Goal page). A new Undo reuses `toastNotice`
-    rather than making its own notice.
+    Parent suggestion (Home or the Goal page). With no Undo: a No change, from
+    Home, the Goal page or the Check-in page, on the Goal page it lands on. A
+    new Undo, or a new notice, reuses `toastNotice` rather than making its own.
 - **Message page (`.message-page`):** a page that only says one thing (Not
   found, Can't undo, Can't remove link, a refused Nudge, a refused No
   change). It renders through `layout`, with no header strip: its
@@ -805,10 +810,10 @@ and so on).
     the Goal, then the meta: "last check-in 14 days ago" ("no check-in since
     activation 9 days ago" before the first), "every 7 days", each wrapping
     whole, the Check-in overdue chip when it applies, and a "for [Owner]" chip
-    on a Goal they are a Delegate on. A secondary **No change**, shown when the
-    Goal has a Check-in to repeat and a No change wouldn't be refused, and a
-    primary **Check in** sit at the right. A Goal they are a Delegate on
-    appears only here.
+    on a Goal they are a Delegate on. A secondary **Check in: no change**,
+    shown when the Goal has a Check-in to repeat and a No change wouldn't be
+    refused, and a primary **Check in** sit at the right. A Goal they are a
+    Delegate on appears only here.
   - **Asks for help:** the open Asks for help addressed to the person (see
     CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
     Each row has the Goal's Health pill, its title linking to the Comments on
@@ -1124,9 +1129,10 @@ and so on).
     may check in (the Owner or a Delegate) on an Active or On Hold Goal, a
     primary **Check in** (`.btn.primary.sm`) to the Goal's Check-in page. On
     an Active Goal with a Check-in to repeat, where No change isn't refused, a
-    quiet **No change** (`.btn.quiet.sm`) beside it, posting with htmx, or as
-    a plain form post without script. The action menu comes last. At 600px
-    and below the strip wraps, so the actions can drop under the breadcrumb.
+    quiet **Check in: no change** (`.btn.quiet.sm`) beside it, posting with
+    htmx, or as a plain form post without script. The action menu comes last.
+    At 600px and below the strip wraps, so the actions can drop under the
+    breadcrumb.
   - **Action menu (`.gp-more`):** a secondary small button reading "More ▾",
     named and titled "More actions". It is a `<details>`, so it opens without
     script. Its panel (`.gp-menu`) floats 4px under the button, anchored right,
@@ -1419,8 +1425,8 @@ and so on).
     History's weeks are; "every day" for a daily Goal; the last Check-in only
     when there is one). At the line's right, bottom-aligned and wrapping under
     it on a narrow screen, sits No change, for an Active Goal with a Check-in
-    to repeat: a muted "Nothing changed since Oct 5?" beside a secondary **No
-    change** button, or the reason it is refused in its place.
+    to repeat: a muted "Nothing changed since Oct 5?" beside a secondary
+    **Check in: no change** button, or the reason it is refused in its place.
   - **Add to this check-in (`.checkin-add-bar`, `checkinAddBar`):** with
     script, for an Active or On Hold Goal, directly under the header line and
     spanning the form and the rail. It is not a panel: a row ended by a 1px

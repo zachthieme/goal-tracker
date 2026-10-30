@@ -371,9 +371,10 @@ templ themeMenu(class string) {
 
 // toast is the one-time notice the page shown straight after an action
 // carries: what was done, and an Undo button that posts to Undo with Fields as
-// hidden inputs. The server renders it only on that page (takeUndo), so there
-// is no timer and no script; leaving or reloading drops it. Every Undo in the
-// app uses it (DESIGN.md: Toast).
+// hidden inputs, or no Undo when Undo is empty, as after a No change. The
+// server renders it only on that page (takeUndo), so there is no timer and no
+// script; leaving or reloading drops it. Every Undo in the app uses it
+// (DESIGN.md: Toast).
 type toast struct {
 	Message string
 	Undo    string
@@ -391,12 +392,14 @@ templ toastNotice(t *toast) {
 	if t != nil {
 		<aside data-testid="toast" class="toast" role="status" aria-label="Notice">
 			<p>{ t.Message }</p>
-			<form method="post" action={ templ.SafeURL(t.Undo) }>
-				for _, f := range t.Fields {
-					<input type="hidden" name={ f.Name } value={ f.Value }/>
-				}
-				<button type="submit" class="btn sm">Undo</button>
-			</form>
+			if t.Undo != "" {
+				<form method="post" action={ templ.SafeURL(t.Undo) }>
+					for _, f := range t.Fields {
+						<input type="hidden" name={ f.Name } value={ f.Value }/>
+					}
+					<button type="submit" class="btn sm">Undo</button>
+				</form>
+			}
 		</aside>
 	}
 }
