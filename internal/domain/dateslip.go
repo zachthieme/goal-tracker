@@ -83,6 +83,15 @@ func StruckDates(current time.Time, prior []time.Time) []time.Time {
 	return out
 }
 
+// SlipsWords is how many times a date slipped, in the words every slip count
+// shows in: "1 slip", "3 slips" (CONTEXT.md: Date Slip).
+func SlipsWords(n int) string {
+	if n == 1 {
+		return "1 slip"
+	}
+	return fmt.Sprintf("%d slips", n)
+}
+
 // slipPlan is a validated date change waiting to be written with its Check-in.
 type slipPlan struct {
 	milestoneID int64 // 0 for the delivery date or the back-to-Green date

@@ -1566,8 +1566,8 @@ templ milestoneDates(current time.Time, prior []time.Time, dates displayDates) {
 
 // slippedDates renders a date current first, then the most recent date it
 // slipped from struck through, and the number of times it slipped once that is
-// more than one, marked with countTestID: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
-// Slip). prior comes earliest first. A date equal to the current one is never
+// more than one, set off by " · " and marked with countTestID: 11/20 ~~11/03~~ ·
+// 3 slips (CONTEXT.md: Date Slip). prior comes earliest first. A date equal to the current one is never
 // struck through: the most recent that differs is, or none.
 templ slippedDates(current time.Time, prior []time.Time, dates displayDates, countTestID string) {
 	<span>{ dates.date(current) }</span>
@@ -1575,7 +1575,7 @@ templ slippedDates(current time.Time, prior []time.Time, dates displayDates, cou
 		<del>{ dates.date(struck[len(struck)-1]) }</del>
 	}
 	if n := len(prior); n > 1 {
-		<span data-testid={ countTestID }>{ fmt.Sprintf("(%d)", n) }</span>
+		{ " · " }<span data-testid={ countTestID }>{ domain.SlipsWords(n) }</span>
 	}
 }
 

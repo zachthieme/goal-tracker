@@ -3712,7 +3712,7 @@ func TestLatestStatusShowsASlippedBackToGreenDate(t *testing.T) {
 			h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
 			h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
 			h.CheckinMovingPath(sam, g.ID, domain.HealthYellow, "Better.", "Escalate.", jun(29), "The vendor is still out.")
-		}, "Jun 29 Jun 22 (2)", []string{"Jun 22"}, []string{"(2)"}},
+		}, "Jun 29 Jun 22 · 2 slips", []string{"Jun 22"}, []string{"2 slips"}},
 		{"Slipped once", func(g domain.Goal) {
 			h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
 			h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")

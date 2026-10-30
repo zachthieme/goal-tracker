@@ -1056,7 +1056,7 @@ and so on).
       help ("of [Name]" or "· no one above the Owner"), Unlinked, Schedule
       conflict ("· due Nov 7, 22 days after its parent [parent]"), and Parent
       On Hold or Parent Cancelled. A Not Green row whose back-to-Green date
-      slipped adds a `.rk-tag` reading "Back to Green Oct 3 ~~Sep 12~~ (3)".
+      slipped adds a `.rk-tag` reading "Back to Green Oct 3 ~~Sep 12~~ · 3 slips".
       Red and Yellow take no chip, since the badge says so.
     - **Chip popovers:** each chip's words are a button with a dotted
       underline that opens, with no script, a popover naming the signal and
@@ -1251,7 +1251,7 @@ and so on).
   Health" (a Health badge, titled "Red: the lowest Health among Active children", with
   "· 3 of 12 overdue" when any child is Check-in overdue) and "Back to Green
   by" (a date, which shows a slipped date as a Milestone's does, counted
-  within the current Run off Green: "Oct 3 ~~Sep 12~~ (3)"). A cell shows only
+  within the current Run off Green: "Oct 3 ~~Sep 12~~ · 3 slips"). A cell shows only
   when it has something to say: no Rolled-up cell without Active children and
   no Back to Green cell without a Path to Green. The status text follows, then
   "**Path to Green:** <plan> — back to Green by Oct 3", any open Ask for help
@@ -1943,7 +1943,10 @@ and so on).
       `--health-r-bg`, or `.rp-tint-y`, `--health-y-bg`), `--radius-md`,
       12px × 16px padding: "**Path to Green:** …" with its back-to-Green date,
       the label in the Health's ink (`--health-r-ink` / `--health-y-ink`),
-      and any **Asks for help** with it. A Path to Green past its date keeps
+      and any **Asks for help** with it. The back-to-Green date shows the date
+      it last slipped from in the Run off Green struck through, and " · n
+      slips" once it slipped more than once, as a Milestone's date does ("back
+      to Green by Oct 3, 2026 ~~Sep 12, 2026~~ · 3 slips"). A Path to Green past its date keeps
       the Health's tint and carries a Red **Overdue** badge. A Green Goal's
       block, and one that is only Check-in overdue, has no tinted box.
       The rest of the labelled rows follow: Milestones and Metrics, each a
