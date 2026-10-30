@@ -1271,3 +1271,26 @@ func TestCreateDefinedGoalAddsToAFixedListOnlyForAnAdminOwner(t *testing.T) {
 		t.Errorf("problems = %q, want %q", got, want)
 	}
 }
+
+func TestCreateDefinedGoalRefusesACadenceOverNinetyDays(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	in := s.fullDefinition()
+	in.CadenceDays = 91
+
+	_, err := s.h.Service.CreateDefinedGoal(ctx, in)
+
+	var got []string
+	for _, p := range domain.InputErrors(err) {
+		got = append(got, p.Input+": "+p.Message)
+	}
+	want := []string{"cadence: the Check-in cadence can be at most 90 days"}
+	if !slices.Equal(got, want) {
+		t.Errorf("problems = %q, want %q", got, want)
+	}
+	if goals, _ := s.h.Service.ListGoals(ctx); len(goals) != 0 {
+		t.Errorf("Goals = %+v, want none saved", goals)
+	}
+}

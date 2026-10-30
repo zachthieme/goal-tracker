@@ -414,9 +414,12 @@ func (s *Service) MarkGoalDated(ctx context.Context, actorID, goalID int64, deli
 	return s.loadGoal(ctx, goalID)
 }
 
+// MaxCadenceDays is the longest Check-in cadence a Goal may have, in days.
+const MaxCadenceDays = 90
+
 // SetCadence sets how often a Check-in is expected on the Goal, in days. It
-// must be positive (CONTEXT.md: Check-in cadence, 7 days by default). Only the
-// Goal's Owner may set it (ErrNotAuthorized).
+// must be positive and at most MaxCadenceDays (CONTEXT.md: Check-in cadence,
+// 7 days by default). Only the Goal's Owner may set it (ErrNotAuthorized).
 func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days int) (Goal, error) {
 	err := s.WithinTx(ctx, func(tx *Service) error {
 		if err := tx.RequireGoalOwner(ctx, actorID, goalID); err != nil {
@@ -424,6 +427,9 @@ func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days in
 		}
 		if days <= 0 {
 			return Refuse(ErrValidation, "the Check-in cadence must be a positive number of days")
+		}
+		if days > MaxCadenceDays {
+			return Refuse(ErrValidation, "the Check-in cadence can be at most %d days", MaxCadenceDays)
 		}
 		if _, err := tx.queries.SetGoalCadence(ctx, db.SetGoalCadenceParams{
 			CadenceDays: int64(days),

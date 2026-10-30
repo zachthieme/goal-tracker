@@ -507,6 +507,9 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, goa
 	if in.CadenceDays < 0 {
 		refuse(InputCadence, "the Check-in cadence must be a positive number of days")
 	}
+	if in.CadenceDays > MaxCadenceDays {
+		refuse(InputCadence, "the Check-in cadence can be at most %d days", MaxCadenceDays)
+	}
 	for i, m := range in.Milestones {
 		problems = appendInputErrors(problems, milestoneProblems(m.Name, m.Date, MilestoneInput(i, "name"), MilestoneInput(i, "date")))
 	}

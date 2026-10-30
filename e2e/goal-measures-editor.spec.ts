@@ -246,7 +246,54 @@ test.describe("the New goal form's Milestone and Metric editor", () => {
     await expect(item.getByRole("button", { name: "Edit" })).toBeFocused();
     await expect(label(page, "Milestones")).toBeVisible();
   });
+
+  test("(k) warns beside a past date and a late Milestone as they're typed, and never holds activation back", async ({
+    page,
+  }) => {
+    const form = page.getByTestId("goal-form");
+    await fillWhat(page, "Launch the EU storefront");
+    await form.getByRole("group", { name: "Kind" }).getByText("Dated", { exact: true }).click();
+    const delivery = form.getByRole("textbox", { name: /^Delivery date/ });
+    const deliveryWarning = page.getByTestId("goal-form-delivery").getByTestId("input-warning");
+    await delivery.fill(dayBefore(appToday()));
+    await expect(deliveryWarning).toHaveText("This delivery date has already passed.");
+    await expect(delivery).toHaveAttribute("aria-describedby", "delivery_date-warning");
+    await delivery.fill(nextYear);
+    await expect(deliveryWarning).toHaveCount(0);
+
+    await page.getByRole("button", { name: "+ Metric" }).click();
+    const editor = know(page).getByTestId("metric-editor");
+    await editor.getByLabel("Target date").fill(dayBefore(appToday()));
+    await expect(editor.getByTestId("input-warning")).toHaveText("This target date has already passed.");
+    await editor.getByLabel("Target date").fill(nextYear);
+    await expect(editor.getByTestId("input-warning")).toHaveCount(0);
+    await editor.getByRole("button", { name: "Cancel" }).click();
+
+    await addMilestone(page, "Beta in the EU", `${thisYear + 1}-06-01`);
+    const item = know(page).getByTestId("milestone-item");
+    await expect(item.getByTestId("input-warning")).toHaveText("This Milestone is after the delivery date.");
+    await expect(item.getByTestId("measure-item-detail")).toHaveText(`Jun 1, ${thisYear + 1}`);
+    await delivery.fill(`${thisYear + 1}-12-31`);
+    await expect(item.getByTestId("input-warning")).toHaveCount(0);
+
+    await delivery.fill(dayBefore(appToday()));
+    await expect(deliveryWarning).toBeVisible();
+    await expect(item.getByTestId("input-warning")).toBeVisible();
+    await expect(page.getByTestId("activation-checklist").locator('[data-done="false"]')).toHaveCount(0);
+    const activate = page.getByRole("button", { name: "Create and activate" });
+    await expect(activate).toBeEnabled();
+    await activate.click();
+    await expect(page).toHaveURL(/\/goals\/\d+$/);
+    await expect(page.getByTestId("goal-title")).toHaveText("Launch the EU storefront");
+  });
 });
+
+// dayBefore is the ISO date the day before iso.
+function dayBefore(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function know(page: Page): Locator {
   return page.getByTestId("goal-form-know");

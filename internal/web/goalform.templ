@@ -14,6 +14,8 @@ import (
 // Delivery, How you'll know and More detail. Beside it, Ready to activate, a
 // quiet rail holding the submit buttons, stays in view as the form scrolls,
 // and on a narrow screen follows the column (DESIGN.md § New goal page).
+// Dates that make no sense are warned of beside their inputs, and the warnings
+// follow the form as it is typed (goalFormWarningsScript).
 // Script posts the form to /goals/new/checklist on load and as it changes,
 // filled in or not, and swaps Ready to activate for the one that comes back. A
 // refused submit comes back with what was typed, a summary of every problem
@@ -31,6 +33,10 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			class="gf-form"
 			method="post"
 			action={ templ.SafeURL(v.action()) }
+			data-today={ v.Today }
+			data-warn-delivery={ goalFormWarnPastDelivery }
+			data-warn-milestone={ goalFormWarnMilestoneLate }
+			data-warn-target={ goalFormWarnPastMetricDate }
 		>
 			@goalFormLiveChecklist(v)
 			<div class="gf-main">
@@ -42,6 +48,7 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			</div>
 			@goalFormReady(v)
 		</form>
+		@goalFormWarningsScript()
 	}
 }
 
@@ -204,8 +211,12 @@ templ goalFormDelivery(v goalFormView) {
 								aria-invalid="true"
 								aria-describedby={ domain.InputDeliveryDate + "-error" }
 							}
+							if v.warning(domain.InputDeliveryDate) != "" {
+								aria-describedby={ domain.InputDeliveryDate + "-warning" }
+							}
 						/>
 						@goalFormInputError(v, domain.InputDeliveryDate)
+						@goalFormInputWarning(v, domain.InputDeliveryDate)
 					</label>
 				</div>
 				<div class="gf-tile">
@@ -232,6 +243,7 @@ templ goalFormDelivery(v goalFormView) {
 					name={ inputCadenceDays }
 					value={ v.customDays() }
 					min="1"
+					max={ fmt.Sprint(domain.MaxCadenceDays) }
 					step="1"
 					inputmode="numeric"
 					if v.bad(domain.InputCadence) != "" {
@@ -447,7 +459,8 @@ templ metricDirectionField(v goalFormView, input, direction string) {
 	</label>
 }
 
-// goalFormRowInput is one input of a row, marked with why it was refused.
+// goalFormRowInput is one input of a row, marked with why it was refused, or
+// else with what it warns of (goalFormView.warning).
 templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 	<label class="field">
 		<span>{ label }</span>
@@ -465,8 +478,12 @@ templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 				aria-invalid="true"
 				aria-describedby={ input + "-error" }
 			}
+			if v.warning(input) != "" {
+				aria-describedby={ input + "-warning" }
+			}
 		/>
 		@goalFormInputError(v, input)
+		@goalFormInputWarning(v, input)
 	</label>
 }
 
@@ -748,6 +765,73 @@ templ goalFormRowsScript() {
 					settle(null, el.section, following);
 				}
 			});
+		})();
+	</script>
+}
+
+// goalFormWarningsScript keeps the form's date warnings (goalFormView.warning)
+// as the form is typed, on load, input and change, by the same rules, judged
+// against the form's data-today and in the messages it carries: beside the
+// delivery date, beside each open Milestone or Metric editor's date, and on
+// each saved item, after its detail. Changing the Kind or delivery date
+// re-judges every Milestone. An input refused keeps its error and gets no
+// warning; a warning never blocks anything.
+templ goalFormWarningsScript() {
+	<script>
+		(function () {
+			var form = document.querySelector('[data-testid="goal-form"]');
+			if (!form) return;
+			var today = form.getAttribute("data-today");
+			var iso = /^\d{4}-\d{2}-\d{2}$/;
+
+			// warn sets the warning beside input, after the element at, or
+			// clears it when there is no message or the input is refused. An
+			// item's hidden input isn't described by its warning.
+			function warn(input, at, message) {
+				var id = input.name + "-warning";
+				var shown = document.getElementById(id);
+				if (!message || input.getAttribute("aria-invalid") === "true") {
+					if (shown) shown.remove();
+					if (input.getAttribute("aria-describedby") === id) input.removeAttribute("aria-describedby");
+					return;
+				}
+				if (!shown) {
+					shown = document.createElement("span");
+					shown.setAttribute("data-testid", "input-warning");
+					shown.id = id;
+					shown.className = "gf-input-warning";
+					at.after(shown);
+				}
+				shown.textContent = message;
+				if (input.type !== "hidden") input.setAttribute("aria-describedby", id);
+			}
+
+			// place is where input's warning goes: after a saved item's
+			// detail, or after the input itself.
+			function place(input) {
+				var item = input.type === "hidden" && input.closest(".ie-item");
+				return item ? item.querySelector('[data-testid="measure-item-detail"]') : input;
+			}
+
+			function judge() {
+				var dated = form.querySelector("#kind-dated");
+				var input = form.querySelector("#delivery_date");
+				if (!today || !input) return;
+				var delivery = dated && dated.checked && iso.test(input.value) ? input.value : "";
+				warn(input, input, delivery && delivery < today ? form.getAttribute("data-warn-delivery") : "");
+				form.querySelectorAll('[name^="milestones["][name$="].date"]').forEach(function (date) {
+					var late = delivery && iso.test(date.value) && date.value > delivery;
+					warn(date, place(date), late ? form.getAttribute("data-warn-milestone") : "");
+				});
+				form.querySelectorAll('[name^="metrics["][name$="].target_date"]').forEach(function (date) {
+					var past = iso.test(date.value) && date.value < today;
+					warn(date, place(date), past ? form.getAttribute("data-warn-target") : "");
+				});
+			}
+
+			form.addEventListener("input", judge);
+			form.addEventListener("change", judge);
+			judge();
 		})();
 	</script>
 }
@@ -1126,6 +1210,14 @@ templ goalFormInputError(v goalFormView, input string) {
 	}
 }
 
+// goalFormInputWarning is what the form, as typed, warns of beside the named
+// input: never a refusal, so in neutral ink (goalFormView.warning).
+templ goalFormInputWarning(v goalFormView, input string) {
+	if warning := v.warning(input); warning != "" {
+		<span data-testid="input-warning" id={ input + "-warning" } class="gf-input-warning">{ warning }</span>
+	}
+}
+
 // goalFormStyles are the New goal page's own rules on top of app.css.
 templ goalFormStyles() {
 	<style>
@@ -1153,6 +1245,7 @@ templ goalFormStyles() {
 		.gf-errors ul{margin:0;padding-left:20px}
 		.gf-errors a{color:inherit}
 		.gf-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}
+		.gf-input-warning{display:block;font-size:var(--text-secondary);color:var(--color-ink-2)}
 		.gf-actions{display:flex;flex-direction:column;gap:8px}
 		.gf-activate{order:-1}
 		.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}
