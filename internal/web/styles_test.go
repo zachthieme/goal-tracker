@@ -4009,3 +4009,27 @@ func TestImportFileErrorIsInTheDangerInkStyles(t *testing.T) {
 		}
 	}
 }
+
+// The goal form's date warnings sit on their own line in the neutral ink,
+// not the danger ink a refusal takes (#675).
+func TestGoalFormInputWarningIsNeutralStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page := getBody(t, client, ts.URL+"/goals/new")
+
+	rule := cssRule(t, page, ".gf-input-warning")
+	for _, want := range []string{"display:block", "font-size:var(--text-secondary)", "color:var(--color-ink-2)"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".gf-input-warning{%s} lacks %s", rule, want)
+		}
+	}
+	for _, unwanted := range []string{"danger", "border", "outline"} {
+		if strings.Contains(rule, unwanted) {
+			t.Errorf(".gf-input-warning{%s} has %s, want it neutral", rule, unwanted)
+		}
+	}
+}

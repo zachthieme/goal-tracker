@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -31,7 +32,10 @@ type goalFormView struct {
 	// Dates is the clock the existing Milestones and Metrics show their dates
 	// against, and whose year script writes the rest's against. Every render
 	// of the page sets it.
-	Dates        displayDates
+	Dates displayDates
+	// Today is today's date, ISO, in the Owner's Timezone, which the form's
+	// date warnings judge against. Every render that sets Dates sets it.
+	Today        string
 	Linked       []linkedParent
 	Title        string
 	WhyItMatters string
@@ -225,6 +229,62 @@ func (v goalFormView) refusedUnder(prefixes ...string) bool {
 	return false
 }
 
+// The form's date warnings, which never refuse anything (#675).
+const (
+	goalFormWarnPastDelivery   = "This delivery date has already passed."
+	goalFormWarnMilestoneLate  = "This Milestone is after the delivery date."
+	goalFormWarnPastMetricDate = "This target date has already passed."
+)
+
+// warning is what the form, as typed, warns of beside the named input, or ""
+// when nothing: a Dated Goal's delivery date before Today, a Milestone's date
+// after that delivery date, or a Metric's target date before Today. An input
+// refused shows its error instead, and any other input has no warning.
+func (v goalFormView) warning(input string) string {
+	if v.Today == "" || v.bad(input) != "" {
+		return ""
+	}
+	today, err := parseDate(v.Today)
+	if err != nil {
+		return ""
+	}
+	var delivery time.Time
+	if v.Kind == domain.GoalDated {
+		delivery, _ = parseDate(strings.TrimSpace(v.DeliveryDate))
+	}
+	if input == domain.InputDeliveryDate {
+		if !delivery.IsZero() && delivery.Before(today) {
+			return goalFormWarnPastDelivery
+		}
+		return ""
+	}
+	for i, m := range v.Milestones {
+		if input != domain.MilestoneInput(i, "date") {
+			continue
+		}
+		if date, err := parseDate(strings.TrimSpace(m.Date)); err == nil && !delivery.IsZero() && date.After(delivery) {
+			return goalFormWarnMilestoneLate
+		}
+		return ""
+	}
+	for i, m := range v.Metrics {
+		if input != domain.MetricInput(i, "target_date") {
+			continue
+		}
+		if date, err := parseDate(strings.TrimSpace(m.TargetDate)); err == nil && !date.IsZero() && date.Before(today) {
+			return goalFormWarnPastMetricDate
+		}
+		return ""
+	}
+	return ""
+}
+
+// goalFormToday is today's date, ISO, in the Timezone of g's Owner, which the
+// form's date warnings judge against (CONTEXT.md: Timezone).
+func (s *Server) goalFormToday(g domain.Goal) string {
+	return s.svc.Now().In(s.svc.GoalTimezone(g)).Format(dateLayout)
+}
+
 // milestoneRow is one Milestone row of the New goal form, as typed.
 type milestoneRow struct {
 	Name string
@@ -306,7 +366,7 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 			ids = append(ids, id)
 		}
 	}
-	v := goalFormView{Dates: s.displayDates()}
+	v := goalFormView{Dates: s.displayDates(), Today: s.goalFormToday(domain.Goal{Owner: current})}
 	var err error
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids, 0); err != nil {
 		s.serverError(w, r, "could not load goals", err)
@@ -536,7 +596,7 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	v.Problems = goalFormProblems(err)
-	v.Dates = s.displayDates()
+	v.Dates, v.Today = s.displayDates(), s.goalFormToday(domain.Goal{Owner: current})
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
 		s.serverError(w, r, "could not load goals", err)
 		return
@@ -674,7 +734,7 @@ func definitionForm(page domain.GoalDefinitionPage) goalFormView {
 func (s *Server) fillDefinition(current domain.Account, page domain.GoalDefinitionPage, v *goalFormView) {
 	g := page.Goal
 	v.Goal, v.Title = &g, g.Title
-	v.Dates = s.displayDates()
+	v.Dates, v.Today = s.displayDates(), s.goalFormToday(g)
 	v.ExistingMilestones, v.ExistingMetrics = page.Milestones, page.Metrics
 	v.Linked = nil
 	for _, l := range page.Accepted {

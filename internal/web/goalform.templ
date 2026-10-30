@@ -203,9 +203,12 @@ templ goalFormDelivery(v goalFormView) {
 							if v.bad(domain.InputDeliveryDate) != "" {
 								aria-invalid="true"
 								aria-describedby={ domain.InputDeliveryDate + "-error" }
+							} else if v.warning(domain.InputDeliveryDate) != "" {
+								aria-describedby={ domain.InputDeliveryDate + "-warning" }
 							}
 						/>
 						@goalFormInputError(v, domain.InputDeliveryDate)
+						@goalFormInputWarning(v, domain.InputDeliveryDate)
 					</label>
 				</div>
 				<div class="gf-tile">
@@ -448,7 +451,8 @@ templ metricDirectionField(v goalFormView, input, direction string) {
 	</label>
 }
 
-// goalFormRowInput is one input of a row, marked with why it was refused.
+// goalFormRowInput is one input of a row, marked with why it was refused, or
+// else with what it warns of (goalFormView.warning).
 templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 	<label class="field">
 		<span>{ label }</span>
@@ -465,9 +469,12 @@ templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 			if v.bad(input) != "" {
 				aria-invalid="true"
 				aria-describedby={ input + "-error" }
+			} else if v.warning(input) != "" {
+				aria-describedby={ input + "-warning" }
 			}
 		/>
 		@goalFormInputError(v, input)
+		@goalFormInputWarning(v, input)
 	</label>
 }
 
@@ -1127,6 +1134,14 @@ templ goalFormInputError(v goalFormView, input string) {
 	}
 }
 
+// goalFormInputWarning is what the form, as typed, warns of beside the named
+// input: never a refusal, so in neutral ink (goalFormView.warning).
+templ goalFormInputWarning(v goalFormView, input string) {
+	if warning := v.warning(input); warning != "" {
+		<span data-testid="input-warning" id={ input + "-warning" } class="gf-input-warning">{ warning }</span>
+	}
+}
+
 // goalFormStyles are the New goal page's own rules on top of app.css.
 templ goalFormStyles() {
 	<style>
@@ -1154,6 +1169,7 @@ templ goalFormStyles() {
 		.gf-errors ul{margin:0;padding-left:20px}
 		.gf-errors a{color:inherit}
 		.gf-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}
+		.gf-input-warning{display:block;font-size:var(--text-secondary);color:var(--color-ink-2)}
 		.gf-actions{display:flex;flex-direction:column;gap:8px}
 		.gf-activate{order:-1}
 		.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}

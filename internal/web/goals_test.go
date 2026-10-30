@@ -7977,3 +7977,20 @@ func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 		}
 	}
 }
+
+// A delivery date in a past year shows its year on the Goal page, so a
+// "Delivers Jan 1" with none is always this year's (#675).
+func TestGoalPageShowsAPastYearsDeliveryDateWithItsYear(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // the clock is in 2026
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoalDue(sam, "Ship v2", time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC))
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	delivery := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "goal-delivery-date")
+	if got := textOf(delivery); !strings.Contains(got, "Dec 1, 2025") {
+		t.Errorf("the Goal page delivers %q, want Dec 1, 2025 with its year", got)
+	}
+}

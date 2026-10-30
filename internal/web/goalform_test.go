@@ -2990,3 +2990,146 @@ func TestNewGoalFormRefusesACustomCadenceOverNinetyDays(t *testing.T) {
 		t.Errorf("Why it matters is described by %q, want its own problem in the same 422", why.Description)
 	}
 }
+
+// goalFormWarnings are the warnings beside the inputs of form, each input's
+// warning by the name of the input it describes. It fails the test unless
+// each such input names its warning and isn't marked invalid.
+func goalFormWarnings(t *testing.T, form *nethtml.Node) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	for _, w := range findAllByTestID(form, "input-warning") {
+		id := attrOf(w, "id")
+		inputs := findAll(form, func(n *nethtml.Node) bool { return n.Data == "input" && attrOf(n, "aria-describedby") == id })
+		if len(inputs) != 1 {
+			t.Errorf("%d inputs are described by warning %q, want 1", len(inputs), id)
+			continue
+		}
+		if attrOf(inputs[0], "aria-invalid") != "" {
+			t.Errorf("an input with a warning is marked invalid: %s", renderNode(inputs[0]))
+		}
+		got[attrOf(inputs[0], "name")] = textOf(w)
+	}
+	return got
+}
+
+// The New goal form warns beside a delivery date already past, a Milestone
+// after the delivery date and a Metric's target date already past, without
+// refusing them; with today's or later dates, and a Milestone before the
+// delivery date, it warns of nothing (#675).
+func TestRefusedNewGoalFormWarnsOfDatesThatMakeNoSense(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // today is 2026-01-02
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	post := func(delivery, milestone, target string) map[string]string {
+		return goalFormWarnings(t, parsePage(t, refusedNewGoal(t, client, ts.URL, url.Values{
+			"title": {"Cut checkout latency"}, "why_it_matters": {""},
+			"kind": {"Dated"}, "delivery_date": {delivery},
+			"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {milestone},
+			"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"1200"},
+			"metrics[0].target": {"400"}, "metrics[0].target_date": {target},
+		})))
+	}
+
+	want := map[string]string{
+		"delivery_date":          "This delivery date has already passed.",
+		"milestones[0].date":     "This Milestone is after the delivery date.",
+		"metrics[0].target_date": "This target date has already passed.",
+	}
+	if got := post("2025-12-01", "2026-02-01", "2025-12-15"); !maps.Equal(got, want) {
+		t.Errorf("warnings = %q, want %q", got, want)
+	}
+	if got := post("2026-01-02", "2026-01-02", "2026-01-02"); len(got) != 0 {
+		t.Errorf("today's dates are warned of: %q", got)
+	}
+	if got := post("2026-06-01", "2026-03-01", "2026-12-31"); len(got) != 0 {
+		t.Errorf("later dates are warned of: %q", got)
+	}
+}
+
+// A warning never blocks: Create and activate with a delivery date already
+// past, a Milestone after it and a Metric's target date already past
+// activates the Goal at once, with no confirm step first (#675).
+func TestNewGoalFormActivatesDespiteItsDateWarnings(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // today is 2026-01-02
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	g := createdGoal(t, h, client, ts.URL, newGoalForm(map[string]string{
+		"activate": "1", "kind": "Dated", "delivery_date": "2025-12-01",
+		"milestones[0].name": "Profile checkout", "milestones[0].date": "2026-02-01",
+		"metrics[0].name": "p95 latency", "metrics[0].unit": "ms", "metrics[0].baseline": "1200",
+		"metrics[0].target": "400", "metrics[0].target_date": "2025-12-15",
+	}))
+	if g.Lifecycle != domain.LifecycleActive {
+		t.Errorf("Create and activate with dates warned of made a %s Goal, want Active", g.Lifecycle)
+	}
+}
+
+// Finish defining a Dated Goal whose saved delivery date has already passed
+// warns of it as the page loads (#675).
+func TestDefineGoalPageWarnsOfASavedDeliveryDateAlreadyPast(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // today is 2026-01-02
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalDated(context.Background(), sam.ID, g.ID, time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "goal-form")
+	want := map[string]string{"delivery_date": "This delivery date has already passed."}
+	if got := goalFormWarnings(t, form); !maps.Equal(got, want) {
+		t.Errorf("warnings = %q, want %q", got, want)
+	}
+}
+
+// An Ongoing Goal has no delivery date, so a past one left typed in its input
+// is warned of no more than it is saved (#675).
+func TestNewGoalFormDoesntWarnOfAnOngoingGoalsDeliveryDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // today is 2026-01-02
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := parsePage(t, refusedNewGoal(t, client, ts.URL, url.Values{
+		"title": {"Cut checkout latency"}, "why_it_matters": {""},
+		"kind": {"Ongoing"}, "delivery_date": {"2025-12-01"},
+		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-02-01"},
+	}))
+	if got := goalFormWarnings(t, form); len(got) != 0 {
+		t.Errorf("an Ongoing Goal's form warns of %q, want nothing", got)
+	}
+}
+
+// Today, for the form's warnings, is the date in the Owner's Timezone: at
+// 15:04 UTC on Jan 2 it is already Jan 3 at UTC+14, so a Jan 2 delivery date
+// has passed there (#675).
+func TestNewGoalFormJudgesTodayInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t) // 2026-01-02 15:04 UTC
+	sam := h.SignIn("sam@example.com")
+	h.SetTimezone(sam, "Pacific/Kiritimati")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := parsePage(t, refusedNewGoal(t, client, ts.URL, url.Values{
+		"title": {"Cut checkout latency"}, "why_it_matters": {""},
+		"kind": {"Dated"}, "delivery_date": {"2026-01-02"},
+	}))
+	want := map[string]string{"delivery_date": "This delivery date has already passed."}
+	if got := goalFormWarnings(t, form); !maps.Equal(got, want) {
+		t.Errorf("warnings = %q, want %q", got, want)
+	}
+}
