@@ -176,15 +176,19 @@ func assertNeutralRule(t *testing.T, rule string) {
 }
 
 // assertAcceptReject checks a pending request's row decides it at base with
-// Accept as the primary button and a button named Reject that submits at once.
+// Accept as the primary button and, after it, a button named Reject that
+// submits at once.
 func assertAcceptReject(t *testing.T, row, base string) {
 	t.Helper()
 	if accept := between(t, row, `action="`+base+`/accept"`, "</form>"); !strings.Contains(accept, `class="btn primary`) {
 		t.Errorf("Accept isn't the primary button:\n%s", accept)
 	}
-	rejects := findAll(parsePage(t, row), func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == base+"/reject" })
+	parsed := parsePage(t, row)
+	rejects := findAll(parsed, func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == base+"/reject" })
 	if len(rejects) != 1 || buttonNamed(rejects[0], "Reject") == nil {
 		t.Errorf("the row offers no button named Reject posting to %s/reject:\n%s", base, row)
+	} else if accept := buttonNamed(parsed, "Accept"); accept == nil || !precedes(accept, buttonNamed(rejects[0], "Reject")) {
+		t.Errorf("the row does not put Accept before Reject:\n%s", row)
 	}
 	assertSubmitsAtOnce(t, "Reject", row, base+"/reject")
 }

@@ -307,7 +307,7 @@ templ linkRequestRow(l domain.Link) {
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 		</div>
 		<div class="hm-actions">
-			@rejectAccept(fmt.Sprintf("/links/%d", l.ID))
+			@homeAcceptReject(fmt.Sprintf("/links/%d", l.ID))
 		</div>
 	</li>
 }
@@ -328,10 +328,10 @@ templ handoffRequestRow(ho domain.Handoff) {
 		</div>
 		<div class="hm-actions">
 			if len(ho.KeepableDelegates) > 0 {
-				@rejectButton(fmt.Sprintf("/handoffs/%d", ho.ID))
 				<a data-testid="home-request-review" class="btn sm" href="/handoffs">Review</a>
+				@rejectButton(fmt.Sprintf("/handoffs/%d", ho.ID))
 			} else {
-				@rejectAccept(fmt.Sprintf("/handoffs/%d", ho.ID))
+				@homeAcceptReject(fmt.Sprintf("/handoffs/%d", ho.ID))
 			}
 		</div>
 	</li>
@@ -348,15 +348,15 @@ templ acceptReject(base string) {
 	</form>
 }
 
-// rejectAccept is Home's pair of buttons deciding a pending request at base:
-// Reject as a text button, then Accept outlined. Reject sends at once; Home
-// then offers Undo in a toast. Both return to Home.
-templ rejectAccept(base string) {
-	@rejectButton(base)
+// homeAcceptReject is Home's pair of buttons deciding a pending request at
+// base: Accept outlined, then Reject as a text button. Reject sends at once;
+// Home then offers Undo in a toast. Both return to Home.
+templ homeAcceptReject(base string) {
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
 		<input type="hidden" name="return" value="/home"/>
 		<button type="submit" class="btn sm">Accept</button>
 	</form>
+	@rejectButton(base)
 }
 
 // rejectButton rejects the pending request at base at once, returning to Home.

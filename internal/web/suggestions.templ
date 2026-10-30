@@ -78,28 +78,28 @@ templ suggestionRequestRow(p domain.ParentSuggestion) {
 			}
 		</div>
 		<div class="hm-actions">
-			@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), "/home")
+			@acceptDecline(fmt.Sprintf("/parent-suggestions/%d", p.ID), "/home")
 		</div>
 	</li>
 }
 
-// declineAccept is the pair of buttons deciding the Parent suggestion at base,
-// returning to back: Decline as a text button, which sends at once and is
-// offered Undo in a toast, then Accept outlined.
-templ declineAccept(base, back string) {
-	<form method="post" action={ templ.SafeURL(base + "/decline") } class="inline-form">
-		<input type="hidden" name="return" value={ back }/>
-		<button type="submit" class="btn quiet sm">Decline</button>
-	</form>
+// acceptDecline is the pair of buttons deciding the Parent suggestion at base,
+// returning to back: Accept outlined, then Decline as a text button, which
+// sends at once and is offered Undo in a toast.
+templ acceptDecline(base, back string) {
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
 		<input type="hidden" name="return" value={ back }/>
 		<button type="submit" class="btn sm">Accept</button>
+	</form>
+	<form method="post" action={ templ.SafeURL(base + "/decline") } class="inline-form">
+		<input type="hidden" name="return" value={ back }/>
+		<button type="submit" class="btn quiet sm">Decline</button>
 	</form>
 }
 
 // suggestedParents lists, under Contributes to, the Goal's open Parent
 // suggestions the viewer is shown: for whoever may decide them each with
-// Decline and Accept, returning to the Goal page; for the suggester their own
+// Accept and Decline, returning to the Goal page; for the suggester their own
 // with Withdraw.
 templ suggestedParents(v goalView) {
 	if len(v.OpenSuggestions) > 0 {
@@ -118,7 +118,7 @@ templ suggestedParents(v goalView) {
 					<span class="gp-link-meta">
 						if v.Permissions.DecideSuggestions {
 							<span class="gp-decide">
-								@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), goalPath(p.Goal.ID))
+								@acceptDecline(fmt.Sprintf("/parent-suggestions/%d", p.ID), goalPath(p.Goal.ID))
 							</span>
 						} else {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/parent-suggestions/%d/withdraw", p.ID)) }>

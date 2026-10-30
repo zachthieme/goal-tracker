@@ -648,6 +648,9 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 				t.Errorf("%s has no %s %s button:\n%s", tc.what, b.look, b.name, renderNode(tc.row))
 			}
 		}
+		if accept, reject := buttonNamed(tc.row, "Accept"), buttonNamed(tc.row, "Reject"); accept == nil || reject == nil || !precedes(accept, reject) {
+			t.Errorf("%s does not put Accept before Reject:\n%s", tc.what, renderNode(tc.row))
+		}
 		assertSubmitsAtOnce(t, tc.what+"'s Reject", renderNode(tc.row), tc.action+"/reject")
 	}
 
@@ -716,8 +719,8 @@ func TestHomeOmitsEmptySubgroups(t *testing.T) {
 
 // Accepting a Handoff of a Goal with Delegates means choosing which to keep, so
 // Home offers Review, leading to the Pending handoffs page where that choice is
-// made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept. Reject
-// still decides it from Home.
+// made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept and
+// first, where Accept stands. Reject still decides it from Home.
 func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 	t.Parallel()
 
@@ -746,8 +749,12 @@ func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 	if got := textOf(review); got != "Review" {
 		t.Errorf("Review link reads %q, want Review", got)
 	}
-	if form := homeFormTo(row, fmt.Sprintf("/handoffs/%d/reject", handoff.ID)); form == nil || buttonNamed(form, "Reject") == nil {
-		t.Errorf("Handoff with Delegates offers no Reject:\n%s", renderNode(row))
+	form := homeFormTo(row, fmt.Sprintf("/handoffs/%d/reject", handoff.ID))
+	if form == nil || buttonNamed(form, "Reject") == nil {
+		t.Fatalf("Handoff with Delegates offers no Reject:\n%s", renderNode(row))
+	}
+	if !precedes(review, buttonNamed(form, "Reject")) {
+		t.Errorf("Review does not come before Reject, where Accept stands:\n%s", renderNode(row))
 	}
 }
 
@@ -1134,7 +1141,7 @@ func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 
 // A Parent suggestion on a Goal the person Owns is one of Home's Requests,
 // counted in what needs them: who suggested which parent, with the note, and
-// Decline and Accept, each returning to Home. Accepting requests the link.
+// Accept then Decline, each returning to Home. Accepting requests the link.
 func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 	t.Parallel()
 
@@ -1174,6 +1181,9 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 		if got := formSubmission(form).Get("return"); got != "/home" {
 			t.Errorf("Home's %s returns to %q, want /home: %s", label, got, renderNode(form))
 		}
+	}
+	if accept, decline := buttonNamed(row, "Accept"), buttonNamed(row, "Decline"); accept == nil || decline == nil || !precedes(accept, decline) {
+		t.Errorf("the row does not put Accept before Decline:\n%s", renderNode(row))
 	}
 
 	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"return": {"/home"}})
