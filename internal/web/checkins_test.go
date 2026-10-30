@@ -4287,6 +4287,30 @@ func TestCheckinFormRolledUpPanel(t *testing.T) {
 	}
 }
 
+// Without script the explanation shows whenever there is a Rolled-up Health,
+// even while the form's Health matches it: only script hides it then
+// (ticket #664).
+func TestCheckinFormShowsTheExplanationWhenHealthMatchesTheRollup(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+	h.Checkin(sam, f.parent.ID, domain.HealthYellow, "Slipping with the trial work.", "Fix the paywall.", pathDate)
+
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	if got := checkedRadio(page, "health"); got != domain.HealthYellow {
+		t.Fatalf("the form starts on %q, want Yellow", got)
+	}
+	if got := textOf(findByTestID(t, page, "checkin-form-rollup-health")); got != domain.HealthYellow {
+		t.Fatalf("Rolled-up Health = %q, want Yellow", got)
+	}
+	if explanation := formField(t, page, "explanation"); isHidden(explanation.Node) {
+		t.Errorf("the explanation is hidden without script: %s", renderNode(explanation.Node.Parent))
+	}
+}
+
 // The Path to Green's heading notes the Goal's Run off Green beside "Required
 // while Yellow or Red", also on a form re-rendered after a refused submit;
 // a Goal that is Green notes none (ticket #364).
