@@ -1727,6 +1727,28 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	}
 }
 
+// The Reports list calls its saved Reports "reports", as its title and New
+// report do: its section is headed "All reports", and nothing on the page
+// reads "Report Definition", which stays a code and glossary term (#682).
+func TestReportsListHeadsItsReportsAllReportsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The company needs to grow."))
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
+
+	ts := newServer(t, h)
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+
+	if heading := headingNamed(doc, "All reports"); heading == nil || heading.Data != "h2" || !within(findByTestID(t, doc, "report-table"), heading.Parent) {
+		t.Errorf("the list of Reports isn't a section headed All reports: headings %q", textsOf(findAll(doc, func(n *nethtml.Node) bool { return n.Data == "h2" })))
+	}
+	if text := textOf(doc); strings.Contains(text, "Report Definition") {
+		t.Errorf("the page reads %q, which contains Report Definition", text)
+	}
+}
+
 // A published definition's row dates its last publication in the company's
 // timezone, "Jan 1, 2026" for 03:00 UTC on 2 January in Los Angeles, a link to
 // that publication, with who published it; counts its draft's changes since; and draws its Goals that
