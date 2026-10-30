@@ -235,6 +235,31 @@ func TestCheckinFormRolledUpPanelStyles(t *testing.T) {
 	}
 }
 
+// A refused Check-in's field errors sit on their own line in the danger ink,
+// as the Goal form's input errors do (#669).
+func TestCheckinFieldErrorIsInTheDangerInkStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{"health": {domain.HealthYellow}})
+
+	for _, e := range findAllByTestID(parsePage(t, page), "checkin-error") {
+		if !strings.Contains(" "+attrOf(e, "class")+" ", " checkin-input-error ") {
+			t.Errorf("field error %q has class %q, want checkin-input-error", textOf(e), attrOf(e, "class"))
+		}
+	}
+	rule := cssRule(t, page, ".checkin-input-error")
+	for _, want := range []string{"display:block", "font-size:var(--text-secondary)", "color:var(--color-danger-ink)"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".checkin-input-error{%s} lacks %s", rule, want)
+		}
+	}
+}
+
 // The children list's rules live in app.css, shared by the Goal page and the
 // Check-in page, so the two lists can't drift; the Goal page no longer carries
 // its own copy.

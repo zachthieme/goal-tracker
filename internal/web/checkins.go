@@ -161,16 +161,16 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	dates := datesFromForm(r, view.Goal, view.Milestones)
 	lifecycle := lifecycleFromForm(r, view)
 
-	// The form shows the first problem err refuses, from reading the form or
-	// the domain's, beside the input it names (checkinProblem).
+	// The form shows every problem err refuses, from reading the form or the
+	// domain's, each beside the input it names (checkinProblems).
 	formData := func(err error) checkinFormData {
-		var e domain.InputError
+		var errs checkinFormErrors
 		if err != nil {
-			e = checkinProblem(err, view.Shown)
+			errs = checkinProblems(err, view.Shown)
 		}
 		return view.withContext(checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, PathTargetDateReason: pathReason, AsksForHelp: asksForHelp, Explanation: explanation,
-			Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
+			Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Errors: errs,
 			OffTargetConfirmed: offTargetConfirmed,
 		})
 	}
@@ -196,7 +196,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// What the form can't read is refused before anything is sent, in the
 	// order the form shows it.
 	var unparsed formProblems
-	date := unparsed.date("path_to_green", rawDate, "")
+	date := unparsed.date(domain.CheckinInputPathTargetDate, rawDate, "")
 	readings := readingsFromForm(&unparsed, metrics, rawReadings)
 
 	in := domain.SubmitCheckinInput{
@@ -262,18 +262,23 @@ func offTargetSentence(o domain.OffTargetMetric, shown displayDates) string {
 		o.Metric.Name, fmtNum(o.Reading), o.Metric.Unit, fmtNum(o.Metric.Target), shown.date(o.Metric.TargetDate))
 }
 
-// checkinProblem is the problem the Check-in form shows for err: the first
-// it refuses (problemsOf), under the input the form and the domain both name
-// it by, or none for one about the Check-in as a whole, shown at the top of
-// the form. An overdue Milestone's is told as plainReasonShown tells it.
-func checkinProblem(err error, shown displayDates) domain.InputError {
-	problem := *problemsOf(err)[0]
-	about := err
-	if problem.Input != "" {
-		about = &problem
+// checkinProblems are the problems the Check-in form shows for err: every
+// one it refuses (problemsOf), each under the input the form and the domain
+// both name it by, or none for one about the Check-in as a whole, shown at
+// the top of the form. An overdue Milestone's is told as plainReasonShown
+// tells it.
+func checkinProblems(err error, shown displayDates) checkinFormErrors {
+	var out checkinFormErrors
+	for _, p := range problemsOf(err) {
+		problem := *p
+		about := err
+		if problem.Input != "" {
+			about = &problem
+		}
+		problem.Message = sentence(plainReasonShown(about, shown))
+		out = append(out, problem)
 	}
-	problem.Message = sentence(plainReasonShown(about, shown))
-	return problem
+	return out
 }
 
 // readingField names a Metric's reading input.

@@ -62,7 +62,9 @@ type checkinFormData struct {
 	// Lifecycle is the Lifecycle change the reader is making, if any
 	// (CONTEXT.md: Lifecycle).
 	Lifecycle lifecycleFormData
-	Error     domain.InputError
+	// Errors are the problems a refused submit has, every one: each beside
+	// the field it names, or at the top for one about no field.
+	Errors checkinFormErrors
 	// OffTarget are the Metrics off target when a Green was submitted
 	// unconfirmed, or kept through Add another on a form that warned: the form
 	// warns about them, flagged at its top, and offers to save the Green
@@ -197,14 +199,25 @@ func (d checkinFormData) pathTargetLastID() string {
 	return fmt.Sprintf("checkin-path-target-last-%d", d.GoalID)
 }
 
-// pathTargetLastAttrs describe the Back to Green by input by its "Last time"
-// hint, when there is one, and carry that date as data-last for
-// showPathReasonScript to compare against.
-func (d checkinFormData) pathTargetLastAttrs() templ.Attributes {
-	if d.Previous.PathTargetDate == "" {
-		return nil
+// pathTargetAttrs describe the Back to Green by input by its "Last time"
+// hint, when there is one, and by its error, when it was refused (marking it
+// invalid), and carry that date as data-last for showPathReasonScript to
+// compare against.
+func (d checkinFormData) pathTargetAttrs() templ.Attributes {
+	attrs := templ.Attributes{}
+	var describedBy []string
+	if d.Previous.PathTargetDate != "" {
+		describedBy = append(describedBy, d.pathTargetLastID())
+		attrs["data-last"] = d.Previous.PathTargetDate
 	}
-	return templ.Attributes{"aria-describedby": d.pathTargetLastID(), "data-last": d.Previous.PathTargetDate}
+	if d.Errors.of(domain.CheckinInputPathTargetDate) != "" {
+		describedBy = append(describedBy, checkinErrorID(domain.CheckinInputPathTargetDate))
+		attrs["aria-invalid"] = "true"
+	}
+	if len(describedBy) > 0 {
+		attrs["aria-describedby"] = strings.Join(describedBy, " ")
+	}
+	return attrs
 }
 
 // pathReasonShown reports whether the form shows its "Reason for moving it
@@ -214,7 +227,7 @@ func (d checkinFormData) pathTargetLastAttrs() templ.Attributes {
 func (d checkinFormData) pathReasonShown() bool {
 	return (d.PathTargetDate != "" && d.Previous.PathTargetDate != "" && d.PathTargetDate > d.Previous.PathTargetDate) ||
 		strings.TrimSpace(d.PathTargetDateReason) != "" ||
-		d.Error.Input == "path_target_date_reason"
+		d.Errors.of(domain.CheckinInputPathTargetDateReason) != ""
 }
 
 // draftHighlightRows are the rows offering each of drafts, oldest first, each
@@ -254,15 +267,46 @@ func (d checkinFormData) readingProgress(m domain.Metric) (float64, bool) {
 	return min(max((last-m.Baseline)/(m.Target-m.Baseline), 0), 1), true
 }
 
-// errorAbout reports whether e is about one of the named inputs or an input
-// in its family: "milestone" covers every milestone_*_<id> input.
-func errorAbout(e domain.InputError, inputs ...string) bool {
-	for _, input := range inputs {
-		if e.Input == input || strings.HasPrefix(e.Input, input+"_") {
-			return true
+// checkinFormErrors are the problems a refused Check-in has, each under the
+// input it names, as the form and the domain both name it, or under "" for
+// one about the Check-in as a whole.
+type checkinFormErrors []domain.InputError
+
+// of is the message about input, "" when there is none.
+func (errs checkinFormErrors) of(input string) string {
+	for _, e := range errs {
+		if e.Input == input {
+			return e.Message
+		}
+	}
+	return ""
+}
+
+// about reports whether any error is about one of the named inputs or an
+// input in its family: "milestone" covers every milestone_*_<id> input.
+func (errs checkinFormErrors) about(inputs ...string) bool {
+	for _, e := range errs {
+		for _, input := range inputs {
+			if e.Input == input || strings.HasPrefix(e.Input, input+"_") {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// attrs are the attributes of input's control: invalid and described by its
+// error when it was refused, none at all when it wasn't.
+func (errs checkinFormErrors) attrs(input string) templ.Attributes {
+	if errs.of(input) == "" {
+		return nil
+	}
+	return templ.Attributes{"aria-invalid": "true", "aria-describedby": checkinErrorID(input)}
+}
+
+// checkinErrorID is the id of the error about input on the Check-in form.
+func checkinErrorID(input string) string {
+	return "checkin-error-" + input
 }
 
 // highlightRows are the Highlight rows the form shows: those typed, or one
@@ -278,7 +322,7 @@ func (d checkinFormData) highlightRows() []highlightFormData {
 // the error, offers Draft Highlights, the reader added a row, or flagged or
 // wrote something.
 func (d checkinFormData) highlightOpen() bool {
-	if errorAbout(d.Error, "highlight") || len(d.DraftHighlights) > 0 || len(d.Highlights) > 1 {
+	if d.Errors.about("highlight") || len(d.DraftHighlights) > 0 || len(d.Highlights) > 1 {
 		return true
 	}
 	for _, row := range d.Highlights {
@@ -315,7 +359,7 @@ func (d checkinFormData) offTargetWarned() bool {
 // holds the error, the reader changed something in it, a Milestone in it is
 // overdue, or the page was opened with ?open=dates.
 func (d checkinFormData) datesOpen() bool {
-	return d.OpenDates || d.Overdue || errorAbout(d.Error, "delivery_date", "milestone", "new_milestone") || d.Dates.changed()
+	return d.OpenDates || d.Overdue || d.Errors.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
 }
 
 // changed reports whether any date or Milestone field differs from the Goal's
@@ -434,7 +478,7 @@ func (d lifecycleFormData) changeVerbs(serial bool) string {
 // outcome.
 func (d checkinFormData) lifecycleOpen() bool {
 	l := d.Lifecycle
-	return errorAbout(d.Error, "lifecycle", "outcome") || l.To != l.defaultTo() ||
+	return d.Errors.about("lifecycle", "outcome") || l.To != l.defaultTo() ||
 		strings.TrimSpace(l.Reason) != "" || strings.TrimSpace(l.Outcome) != ""
 }
 
@@ -685,7 +729,7 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 						<span class="muted">{ "Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
 						if v.Permissions.NoChange {
 							@noChangeCheckinButton(g.ID, "Check in: no change", "btn")
-						} else if form.Error.Message == "" || form.Error.Input != "" {
+						} else if form.Errors.of("") == "" {
 							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeReason }</p>
 						}
 					</div>
@@ -695,7 +739,7 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 				@checkinAddBar(form.Lifecycle)
 				@checkinForm(form)
 			} else {
-				@checkinFieldError(form.Error, "")
+				@checkinFieldError(form.Errors, "")
 				<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
 			}
 			<aside data-testid="checkin-context" class="checkin-context">
@@ -813,7 +857,7 @@ func checkinContextDates(g domain.Goal, milestones []domain.Milestone, dates dis
 // Check-in, with a refusal shown at the top.
 func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 	d := checkinFormFromLatest(v)
-	d.Error = domain.InputError{Message: refusal}
+	d.Errors = checkinFormErrors{{Message: refusal}}
 	return d
 }
 
@@ -847,7 +891,7 @@ templ checkinForm(d checkinFormData) {
 		// Add another.
 		<button type="submit" data-testid="checkin-default-submit" class="checkin-default-submit" tabindex="-1" aria-hidden="true">Submit check-in</button>
 		@checkinStyles()
-		@checkinFieldError(d.Error, "")
+		@checkinFieldError(d.Errors, "")
 		if d.offTargetWarned() {
 			<p data-testid="checkin-off-target-notice" class="checkin-off-target-notice alert y">
 				A Metric is off target, so a Green needs confirming. <a href="#checkin-off-target">See below</a>
@@ -861,17 +905,17 @@ templ checkinForm(d checkinFormData) {
 				<legend class="sr-only">Health</legend>
 				for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
 					<label class={ "badge", healthClass(health) } title={ health }>
-						<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
+						<input type="radio" name="health" value={ health } checked?={ d.Health == health } { d.Errors.attrs(domain.CheckinInputHealth)... }/>
 						<span class="dot"></span><span class="sr-only">{ health }</span>
 					</label>
 				}
 			</fieldset>
-			@checkinFieldError(d.Error, "health")
+			@checkinFieldError(d.Errors, domain.CheckinInputHealth)
 			<label>
 				What changed since the last check-in?
-				<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
+				<textarea name="status" required { checkinGhostText(d.Previous.Status)... } { d.Errors.attrs(domain.CheckinInputStatus)... }>{ d.Status }</textarea>
 			</label>
-			@checkinFieldError(d.Error, "status")
+			@checkinFieldError(d.Errors, domain.CheckinInputStatus)
 			if d.RolledUp.Present {
 				<div class="checkin-rollup">
 					<p data-testid="checkin-form-rollup">
@@ -883,13 +927,13 @@ templ checkinForm(d checkinFormData) {
 					</p>
 					<label>
 						<span>Explain the difference from Rolled-up Health <span class="hint">Required while it differs from the Rolled-up Health</span></span>
-						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
+						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... } { d.Errors.attrs(domain.CheckinInputExplanation)... }>{ d.Explanation }</textarea>
 					</label>
-					@checkinFieldError(d.Error, "explanation")
+					@checkinFieldError(d.Errors, domain.CheckinInputExplanation)
 				</div>
 			}
 		</section>
-		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Input == "path_to_green" || d.Error.Input == "path_target_date_reason") }>
+		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Errors.about(domain.CheckinInputPathToGreen, domain.CheckinInputPathTargetDate)) }>
 			<legend class="checkin-section-head">
 				<h2>Path to Green</h2>
 				<span class="hint">
@@ -901,24 +945,25 @@ templ checkinForm(d checkinFormData) {
 			</legend>
 			<label>
 				Plan
-				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... }>{ d.PathToGreen }</textarea>
+				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... } { d.Errors.attrs(domain.CheckinInputPathToGreen)... }>{ d.PathToGreen }</textarea>
 			</label>
+			@checkinFieldError(d.Errors, domain.CheckinInputPathToGreen)
 			<div class="checkin-path-target">
 				<label>
 					Back to Green by
-					<input type="date" name="path_target_date" value={ d.PathTargetDate } hx-on:input={ showPathReasonScript } { d.pathTargetLastAttrs()... }/>
+					<input type="date" name="path_target_date" value={ d.PathTargetDate } hx-on:input={ showPathReasonScript } { d.pathTargetAttrs()... }/>
 				</label>
 				if d.Previous.PathTargetDate != "" {
 					<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
 					<span class="hint">A later date needs a reason.</span>
 				}
 			</div>
-			@checkinFieldError(d.Error, "path_to_green")
+			@checkinFieldError(d.Errors, domain.CheckinInputPathTargetDate)
 			<label data-testid="checkin-path-target-reason" hidden?={ !d.pathReasonShown() }>
 				Reason for moving it later
-				<textarea name="path_target_date_reason">{ d.PathTargetDateReason }</textarea>
+				<textarea name="path_target_date_reason" { d.Errors.attrs(domain.CheckinInputPathTargetDateReason)... }>{ d.PathTargetDateReason }</textarea>
 			</label>
-			@checkinFieldError(d.Error, "path_target_date_reason")
+			@checkinFieldError(d.Errors, domain.CheckinInputPathTargetDateReason)
 			// person's own button can't sit inside a label, so the addressee
 			// shows by name alone.
 			<label class="checkin-ask">
@@ -958,9 +1003,10 @@ templ checkinForm(d checkinFormData) {
 								name={ readingField(m.ID) }
 								value={ d.reading(m.ID) }
 								{ checkinGhostText(d.Previous.Readings[m.ID])... }
+								{ d.Errors.attrs(readingField(m.ID))... }
 							/>
 						</label>
-						@checkinFieldError(d.Error, readingField(m.ID))
+						@checkinFieldError(d.Errors, readingField(m.ID))
 					</div>
 				}
 			</fieldset>
@@ -976,10 +1022,10 @@ templ checkinForm(d checkinFormData) {
 					@highlightAddButtons("highlight-add", "btn quiet sm", "")
 					<div class="hl-items" data-hl-items></div>
 					for i, row := range d.DraftHighlights {
-						@checkinDraftHighlightRow(i+1, row, d.Error)
+						@checkinDraftHighlightRow(i+1, row, d.Errors)
 					}
 					for i, row := range d.highlightRows() {
-						@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
+						@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Errors)
 					}
 					<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
 				</div>
@@ -995,14 +1041,14 @@ templ checkinForm(d checkinFormData) {
 				<div class="checkin-section-head">
 					<h2 data-testid="checkin-dates-heading" class="checkin-js-only" tabindex="-1">Dates and Milestones</h2>
 				</div>
-				@checkinDateFields(d.Dates, d.Error)
+				@checkinDateFields(d.Dates, d.Errors)
 			</details>
 			<details data-testid="checkin-lifecycle-section" id="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
 				<summary>{ d.Lifecycle.summary() }</summary>
 				<div class="checkin-section-head">
 					<h2 data-testid="checkin-lifecycle-heading" class="checkin-js-only" tabindex="-1">Lifecycle</h2>
 				</div>
-				@checkinLifecycleFields(d.Lifecycle, d.Error)
+				@checkinLifecycleFields(d.Lifecycle, d.Errors)
 			</details>
 		</div>
 		@checkinSectionsScript()
@@ -1193,7 +1239,7 @@ templ checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDate
 // checkinHighlightRow is the nth Highlight row (counting from 1): a kind and
 // a note. A blank note flags nothing; a note needs a kind, and that error
 // shows in the row.
-templ checkinHighlightRow(n int, row highlightFormData, e domain.InputError) {
+templ checkinHighlightRow(n int, row highlightFormData, errs checkinFormErrors) {
 	<fieldset data-testid="checkin-highlight-row">
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d", n) }</legend>
 		<label>
@@ -1206,7 +1252,7 @@ templ checkinHighlightRow(n int, row highlightFormData, e domain.InputError) {
 			Note
 			<textarea name="highlight_note">{ row.Note }</textarea>
 		</label>
-		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
+		@checkinFieldError(errs, domain.CheckinHighlightInput(n))
 	</fieldset>
 }
 
@@ -1216,7 +1262,7 @@ templ checkinHighlightRow(n int, row highlightFormData, e domain.InputError) {
 // field, the Keep box's value and the kind's and note's names — so the server
 // pairs them by id, an unticked box posting nothing (CONTEXT.md: Draft
 // Highlight).
-templ checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError) {
+templ checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErrors) {
 	{{ id := fmt.Sprint(row.DraftID) }}
 	<fieldset data-testid="checkin-highlight-row" class="checkin-draft-row">
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d · Draft", n) }</legend>
@@ -1236,7 +1282,7 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError
 			Note
 			<textarea name={ "draft_highlight_note_" + id }>{ row.Note }</textarea>
 		</label>
-		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
+		@checkinFieldError(errs, domain.CheckinHighlightInput(n))
 	</fieldset>
 }
 
@@ -1321,6 +1367,7 @@ templ checkinStyles() {
 			.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}
 			.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}
 			.checkin-form label[hidden]{display:none}
+			.checkin-input-error{display:block;margin:0;font-size:var(--text-secondary);color:var(--color-danger-ink)}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}
 			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}
 			.health-toggle label.badge .dot{--dot-size:12px}
@@ -1396,20 +1443,20 @@ templ checkinStyles() {
 // as a Date Slip; moving the delivery date later rules out Green (CONTEXT.md:
 // Date Slip, Milestone). Each date input carries the Goal's current date as
 // data-current, so checkinSummaryScript can tell a changed one.
-templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
+templ checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>
 		if d.Dated {
 			<label>
 				Delivery date
-				<input type="date" name="delivery_date" value={ d.DeliveryDate } data-current={ d.CurrentDeliveryDate }/>
+				<input type="date" name="delivery_date" value={ d.DeliveryDate } data-current={ d.CurrentDeliveryDate } { errs.attrs(domain.CheckinInputDeliveryDate)... }/>
 			</label>
-			@checkinFieldError(e, "delivery_date")
+			@checkinFieldError(errs, domain.CheckinInputDeliveryDate)
 			<label>
 				Reason (required if the delivery date changes)
-				<textarea name="delivery_date_reason">{ d.DeliveryDateReason }</textarea>
+				<textarea name="delivery_date_reason" { errs.attrs(domain.CheckinInputDeliveryDateReason)... }>{ d.DeliveryDateReason }</textarea>
 			</label>
-			@checkinFieldError(e, "delivery_date_reason")
+			@checkinFieldError(errs, domain.CheckinInputDeliveryDateReason)
 		}
 		<div class="ms-grid">
 			<span class="label">Milestone</span>
@@ -1421,9 +1468,9 @@ templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
 					<span class="ms-name">{ row.Milestone.Name }</span>
 					<div>
 						<label>
-							<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date } aria-label={ "Date of " + row.Milestone.Name } data-current={ fmtDate(row.Milestone.TargetDate) }/>
+							<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date } aria-label={ "Date of " + row.Milestone.Name } data-current={ fmtDate(row.Milestone.TargetDate) } { errs.attrs(domain.CheckinMilestoneInput(id, "date"))... }/>
 						</label>
-						@checkinFieldError(e, fmt.Sprintf("milestone_date_%d", id))
+						@checkinFieldError(errs, domain.CheckinMilestoneInput(id, "date"))
 					</div>
 					<div>
 						<label>
@@ -1438,16 +1485,16 @@ templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
 						<div>
 							<label>
 								<span class="hint">Reason, if the date changes</span>
-								<textarea name={ fmt.Sprintf("milestone_date_reason_%d", id) }>{ row.DateReason }</textarea>
+								<textarea name={ fmt.Sprintf("milestone_date_reason_%d", id) } { errs.attrs(domain.CheckinMilestoneInput(id, "date_reason"))... }>{ row.DateReason }</textarea>
 							</label>
-							@checkinFieldError(e, fmt.Sprintf("milestone_date_reason_%d", id))
+							@checkinFieldError(errs, domain.CheckinMilestoneInput(id, "date_reason"))
 						</div>
 						<div>
 							<label>
 								<span class="hint">Reason, if Removed</span>
-								<textarea name={ fmt.Sprintf("milestone_removed_reason_%d", id) }>{ row.RemovedReason }</textarea>
+								<textarea name={ fmt.Sprintf("milestone_removed_reason_%d", id) } { errs.attrs(domain.CheckinMilestoneInput(id, "removed_reason"))... }>{ row.RemovedReason }</textarea>
 							</label>
-							@checkinFieldError(e, fmt.Sprintf("milestone_removed_reason_%d", id))
+							@checkinFieldError(errs, domain.CheckinMilestoneInput(id, "removed_reason"))
 						</div>
 					</div>
 				</div>
@@ -1461,7 +1508,7 @@ templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
 						<label>
 							<input type="date" name="new_milestone_date" value={ row.Date } aria-label="New Milestone date"/>
 						</label>
-						@checkinFieldError(e, fmt.Sprintf("new_milestone_%d", i))
+						@checkinFieldError(errs, domain.CheckinNewMilestoneInput(i))
 					</div>
 					<span class="ms-name hint">New</span>
 				</div>
@@ -1474,42 +1521,44 @@ templ checkinDateFields(d checkinDatesFormData, e domain.InputError) {
 // Check-in. On Hold and Cancelled need a reason; Done needs a one-line outcome
 // and a final value for every Metric (the readings above). A Check-in that
 // takes the Goal out of Active records no Health (CONTEXT.md: Lifecycle).
-templ checkinLifecycleFields(d lifecycleFormData, e domain.InputError) {
+templ checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) {
 	<fieldset data-testid="checkin-lifecycle-fields">
 		<legend>Lifecycle</legend>
 		<div class="lifecycle-choices" role="radiogroup" aria-label="Lifecycle">
 			for _, c := range d.choices() {
 				<label>
-					<input type="radio" name="lifecycle" value={ c.To } checked?={ d.To == c.To }/>
+					<input type="radio" name="lifecycle" value={ c.To } checked?={ d.To == c.To } { errs.attrs(domain.CheckinInputLifecycle)... }/>
 					{ c.Label }
 				</label>
 			}
 		</div>
-		@checkinFieldError(e, "lifecycle")
+		@checkinFieldError(errs, domain.CheckinInputLifecycle)
 		<label>
 			Reason (required for On Hold or Cancelled)
-			<textarea name="lifecycle_reason">{ d.Reason }</textarea>
+			<textarea name="lifecycle_reason" { errs.attrs(domain.CheckinInputLifecycleReason)... }>{ d.Reason }</textarea>
 		</label>
-		@checkinFieldError(e, "lifecycle_reason")
+		@checkinFieldError(errs, domain.CheckinInputLifecycleReason)
 		if slices.Contains(d.Changes, domain.LifecycleDone) {
 			<label>
 				Outcome, in one line (required for Done, with a final value for every Metric)
-				<input type="text" name="outcome" value={ d.Outcome }/>
+				<input type="text" name="outcome" value={ d.Outcome } { errs.attrs(domain.CheckinInputOutcome)... }/>
 			</label>
-			@checkinFieldError(e, "outcome")
+			@checkinFieldError(errs, domain.CheckinInputOutcome)
 		}
 	</fieldset>
 }
 
-// checkinFieldError shows the form's validation message when it is about the
-// named field. One about no field, shown at the top of the form, is styled as
-// an error, like the import page's error flash.
-templ checkinFieldError(e domain.InputError, field string) {
-	if e.Message != "" && e.Input == field {
+// checkinFieldError shows the form's validation message about the named
+// field, in the danger ink, as the Goal form's input errors are, with the id
+// the field is described by (checkinFormErrors.attrs). One about no field,
+// shown at the top of the form, is styled as an error, like the import page's
+// error flash.
+templ checkinFieldError(errs checkinFormErrors, field string) {
+	if msg := errs.of(field); msg != "" {
 		if field == "" {
-			<p data-testid="checkin-error" class="alert r" role="alert">{ e.Message }</p>
+			<p data-testid="checkin-error" class="alert r" role="alert">{ msg }</p>
 		} else {
-			<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+			<p data-testid="checkin-error" id={ checkinErrorID(field) } class="checkin-input-error" role="alert">{ msg }</p>
 		}
 	}
 }

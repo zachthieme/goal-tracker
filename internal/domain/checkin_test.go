@@ -1335,7 +1335,7 @@ func TestMovingBackToGreenDateLaterNeedsAReason(t *testing.T) {
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
-	if !strings.Contains(err.Error(), "moving the back-to-Green date later needs a reason") {
+	if !strings.Contains(err.Error(), "moving Back to Green by later needs a reason") {
 		t.Errorf("err = %q, want it to ask for a reason", err)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
@@ -1509,14 +1509,14 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
 				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Slipping.", PathTargetDate: pathDate}, domain.CheckinInputPathToGreen
 			},
-			message: "a Yellow Goal needs a Path to Green",
+			message: "a Yellow Goal needs a Plan",
 		},
 		{
 			name: "a Path to Green without a target date",
 			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
-				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthRed, Status: "Slipping.", PathToGreen: "Add two engineers."}, domain.CheckinInputPathToGreen
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthRed, Status: "Slipping.", PathToGreen: "Add two engineers."}, domain.CheckinInputPathTargetDate
 			},
-			message: "a Path to Green needs a target date",
+			message: "a Path to Green needs a Back to Green by date",
 		},
 		{
 			name: "a later back-to-Green date without a reason",
@@ -1524,7 +1524,7 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 				h.Checkin(sam, goal.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", pathDate)
 				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Still behind.", PathToGreen: "Add a reviewer.", PathTargetDate: pathDate.AddDate(0, 0, 7)}, domain.CheckinInputPathTargetDateReason
 			},
-			message: "moving the back-to-Green date later needs a reason",
+			message: "moving Back to Green by later needs a reason",
 		},
 		{
 			name: "a Health unlike the Rolled-up Health, unexplained",
@@ -1683,6 +1683,86 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 				t.Errorf("err = %q, want %q", got, want)
 			}
 		})
+	}
+}
+
+// A refused Check-in names every input problem it can find at once, each
+// under its own input, in the order the form shows them (#669).
+func TestCheckinRefusalNamesEveryInputProblemAtOnce(t *testing.T) {
+	t.Parallel()
+
+	type problem struct{ input, message string }
+	cases := []struct {
+		name string
+		in   func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput
+		want []problem
+	}{
+		{
+			name: "a Yellow with no Plan and no Back to Green by date",
+			in: func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Slipping."}
+			},
+			want: []problem{
+				{domain.CheckinInputPathToGreen, "a Yellow Goal needs a Plan"},
+				{domain.CheckinInputPathTargetDate, "a Path to Green needs a Back to Green by date"},
+			},
+		},
+		{
+			name: "a Red with no status and no Plan",
+			in: func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthRed, Status: " ", PathTargetDate: pathDate}
+			},
+			want: []problem{
+				{domain.CheckinInputStatus, "a Check-in needs a status"},
+				{domain.CheckinInputPathToGreen, "a Red Goal needs a Plan"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+			_, err := h.Service.SubmitCheckin(context.Background(), tc.in(sam, goal))
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			var got []problem
+			for _, p := range domain.InputErrors(err) {
+				got = append(got, problem{p.Input, p.Message})
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("InputErrors = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// Moving Back to Green by later needs a reason only once the Check-in's other
+// input problems are clear: a Yellow with no Plan is refused for the Plan
+// alone, and with the Plan given, for the reason (#669).
+func TestCheckinAsksForTheLaterDateReasonOnceTheRestIsClear(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Behind.", "Add a reviewer.", pathDate)
+	in := domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: "Still behind.", PathTargetDate: pathDate.AddDate(0, 0, 7)}
+
+	_, err := h.Service.SubmitCheckin(context.Background(), in)
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != domain.CheckinInputPathToGreen {
+		t.Fatalf("with no Plan: InputErrors(%v) = %+v, want the Plan's alone", err, problems)
+	}
+
+	in.PathToGreen = "Add a reviewer."
+	_, err = h.Service.SubmitCheckin(context.Background(), in)
+	problems := domain.InputErrors(err)
+	if len(problems) != 1 || problems[0].Input != domain.CheckinInputPathTargetDateReason || problems[0].Message != "moving Back to Green by later needs a reason" {
+		t.Fatalf("with the Plan: InputErrors(%v) = %+v, want the reason's alone", err, problems)
 	}
 }
 

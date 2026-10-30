@@ -142,7 +142,7 @@ func planBackToGreenSlip(last, newDate time.Time, reason string) (*slipPlan, err
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return nil, inputError(CheckinInputPathTargetDateReason, "moving the back-to-Green date later needs a reason")
+		return nil, inputError(CheckinInputPathTargetDateReason, "moving Back to Green by later needs a reason")
 	}
 	return &slipPlan{backToGreen: true, oldDate: last, newDate: newDate, reason: reason}, nil
 }
