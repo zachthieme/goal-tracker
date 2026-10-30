@@ -328,12 +328,12 @@ func RuleInput(i int) string { return fmt.Sprintf("rules[%d]", i) }
 func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDefinitionInput, shown []int64) error {
 	var problems []error
 	if in.Name == "" {
-		problems = append(problems, inputError(ReportInputName, "a Report Definition needs a name"))
+		problems = append(problems, inputError(ReportInputName, "give the report a name"))
 	}
 	switch in.Mode {
 	case ReportModeRules:
 		if len(in.Rules) == 0 {
-			problems = append(problems, inputError(ReportInputRules, "a rules Report Definition needs a rule"))
+			problems = append(problems, inputError(ReportInputRules, "add a rule: choose what it tests, such as a Team, and a value"))
 		}
 		for i, rule := range in.Rules {
 			problem, err := s.validateReportRule(ctx, rule)
@@ -345,23 +345,23 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 			}
 		}
 		if len(in.Picked) > 0 {
-			problems = append(problems, inputError(ReportInputPicked, "a rules Report Definition picks no Goals by hand"))
+			problems = append(problems, inputError(ReportInputPicked, "a report of Goals matching rules has no picked Goals"))
 		}
 	case ReportModePicked:
 		if len(in.Picked) == 0 {
-			problems = append(problems, inputError(ReportInputPicked, "a picked Report Definition needs a Goal"))
+			problems = append(problems, inputError(ReportInputPicked, "pick at least one Goal"))
 		}
 		if len(in.Rules) > 0 {
-			problems = append(problems, inputError(ReportInputRules, "a picked Report Definition has no rules"))
+			problems = append(problems, inputError(ReportInputRules, "a report of Goals I pick has no rules"))
 		}
 		if len(in.Include) > 0 {
-			problems = append(problems, inputError(ReportInputInclude, "a picked Report Definition has nothing to Also include"))
+			problems = append(problems, inputError(ReportInputInclude, "a report of Goals I pick has nothing to Also include"))
 		}
 		if len(in.Exclude) > 0 {
-			problems = append(problems, inputError(ReportInputExclude, "a picked Report Definition has nothing to Leave out"))
+			problems = append(problems, inputError(ReportInputExclude, "a report of Goals I pick has nothing to Leave out"))
 		}
 	default:
-		problems = append(problems, inputError(ReportInputMode, "a Report Definition selects by rules or picked Goals, not %q", in.Mode))
+		problems = append(problems, inputError(ReportInputMode, "choose Goals matching rules or Goals I pick, not %q", in.Mode))
 	}
 	for input, ids := range map[string][]int64{ReportInputPicked: in.Picked, ReportInputInclude: in.Include, ReportInputExclude: in.Exclude} {
 		for _, id := range ids {
@@ -369,7 +369,7 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 				if !errors.Is(err, sql.ErrNoRows) {
 					return fmt.Errorf("look up goal: %w", err)
 				}
-				problems = append(problems, inputError(input, "goal %d does not exist", id))
+				problems = append(problems, inputError(input, "a Goal in this list no longer exists; remove it and save again"))
 				break
 			}
 		}
@@ -403,7 +403,7 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 		return "", nil
 	}
 	if len(values) == 0 {
-		return "a rule needs a value", nil
+		return "choose a value for this rule", nil
 	}
 	if rule.Op == RuleIs && len(values) > 1 {
 		return `"is" takes exactly one value`, nil

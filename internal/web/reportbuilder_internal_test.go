@@ -15,7 +15,7 @@ func TestBuilderListsARefusalNamingNoInputAtTheTop(t *testing.T) {
 	v := reportBuilderView{Mode: domain.ReportModeRules, Problems: []*domain.InputError{
 		{Message: "the report could not be saved"},
 		{Input: "elsewhere", Message: "an input the page lacks"},
-		{Input: domain.ReportInputName, Message: "a Report Definition needs a name"},
+		{Input: domain.ReportInputName, Message: "give the report a name"},
 	}}
 	var page strings.Builder
 	if err := reportBuilderPage(&domain.Account{}, v).Render(t.Context(), &page); err != nil {
@@ -34,7 +34,7 @@ func TestBuilderListsARefusalNamingNoInputAtTheTop(t *testing.T) {
 			t.Errorf("%q isn't at the top of the builder:\n%s", want, top)
 		}
 	}
-	if strings.Contains(top, "needs a name") || !strings.Contains(rest, "needs a name") {
+	if strings.Contains(top, "the report a name") || !strings.Contains(rest, "the report a name") {
 		t.Errorf("the name's refusal isn't beside the name alone:\n%s", form)
 	}
 }
