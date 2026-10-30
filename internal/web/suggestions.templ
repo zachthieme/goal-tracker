@@ -8,8 +8,10 @@ import (
 
 // suggestParentPage is the form by which someone other than a Goal's Owner
 // suggests a parent for it, with an optional note: the Owner decides it
-// (CONTEXT.md: Parent suggestion). A refused submit comes back with the
-// reason above the form and the form as it was sent. It sits in the flat
+// (CONTEXT.md: Parent suggestion). The parent is picked with the one-pick
+// Goal picker, opening with nothing picked. A submit picking none comes back
+// with the reason beside the picker, and any other refusal with it above the
+// form; either way the note as typed and nothing picked. It sits in the flat
 // frame: its title in the page header, and the form a plain section
 // (DESIGN.md § Components: Sections).
 //
@@ -29,14 +31,17 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 				<p data-testid="form-error" class="alert r" role="alert">{ v.Error }</p>
 			}
 			<form data-testid="suggest-parent" method="post" action={ templ.SafeURL(goalPath(v.Goal.ID) + "/suggest-parent") } class="sg-form">
-				<label class="field">
-					<span>Parent Goal</span>
-					<select name="parent_id" required autofocus>
-						for _, c := range v.Candidates {
-							<option value={ fmt.Sprint(c.ID) } selected?={ v.Input.Get("parent_id") == fmt.Sprint(c.ID) }>{ c.Title }</option>
-						}
-					</select>
-				</label>
+				<fieldset data-testid="parent-picker" class="sg-picker">
+					<legend>Parent Goal</legend>
+					@goalPicker(goalPickerView{
+						Single:      true,
+						SearchURL:   fmt.Sprintf("/goals/search?%s=%d&%s=%s", searchGoal, v.Goal.ID, searchFor, searchForSuggestion),
+						SearchLabel: "Search Goals to suggest as its parent",
+						Candidates:  v.Candidates,
+						Error:       v.PickerError,
+						Autofocus:   true,
+					})
+				</fieldset>
 				<label class="field">
 					<span>Note (optional)</span>
 					<textarea name="note">{ v.Input.Get("note") }</textarea>
@@ -55,6 +60,8 @@ templ suggestionStyles() {
 	<style>
 		.sg-section{display:flex;flex-direction:column;gap:12px;max-width:560px}
 		.sg-form{display:flex;flex-direction:column;gap:12px}
+		.sg-picker{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
+		.sg-picker>legend{font-weight:600;font-size:var(--text-secondary);color:var(--color-ink);padding:0;margin-bottom:8px}
 		.sg-actions{display:flex;gap:8px;align-items:center}
 	</style>
 }

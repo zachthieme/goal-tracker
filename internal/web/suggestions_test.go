@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -34,35 +36,20 @@ func TestSuggestingAParentFromTheGoalMenu(t *testing.T) {
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	pat := h.SignIn("pat@example.com")
-	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
-	active := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
-	proposed := h.CreateGoal(pat, "Cut costs", "Budgets are tight.")
-	linked := h.ActiveGoal(sam, "Linked parent", "Already linked.")
-	h.RequestLink(sam, goal, linked, "")
-	pending := h.ActiveGoal(pat, "Pending parent", "Already requested.")
-	h.RequestLink(sam, goal, pending, "")
-	below := h.ActiveChildOf(sam, goal, "Below the Goal", "Contributes to it.")
-	onHold := h.OnHoldGoal(pat, "On Hold parent", "Paused.", "Waiting on budget.")
-	done := h.ActiveGoal(pat, "Done parent", "Finished.")
-	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
-		GoalID: done.ID, AuthorID: pat.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "It shipped.",
-	}); err != nil {
-		t.Fatalf("SubmitCheckin Done: %v", err)
-	}
+	sc := newSuggestableScene(t, h)
+	goal, active, pat := sc.goal, sc.active, sc.pat
 
 	client := signInClient(t, ts.URL, "pat@example.com")
 	if got := menuItems(t, getBody(t, client, goalPageURL(ts.URL, goal)))["Suggest a parent"]; got != suggestPath(goal) {
 		t.Fatalf("the menu's Suggest a parent links to %q, want %s", got, suggestPath(goal))
 	}
 	form := pageElement(t, getBody(t, client, ts.URL+suggestPath(goal)), "form", "suggest-parent")
-	for _, g := range []domain.Goal{active, proposed} {
+	for _, g := range []domain.Goal{sc.active, sc.proposed} {
 		if !strings.Contains(form, parentOption(g)) {
 			t.Errorf("the picker leaves out %q:\n%s", g.Title, form)
 		}
 	}
-	for _, g := range []domain.Goal{goal, linked, pending, below, onHold, done} {
+	for _, g := range sc.left {
 		if strings.Contains(form, parentOption(g)) {
 			t.Errorf("the picker offers %q:\n%s", g.Title, form)
 		}
@@ -88,6 +75,116 @@ func TestSuggestingAParentFromTheGoalMenu(t *testing.T) {
 	owner := signInClient(t, ts.URL, "sam@example.com")
 	if _, ok := menuItems(t, getBody(t, owner, goalPageURL(ts.URL, goal)))["Suggest a parent"]; ok {
 		t.Errorf("the Owner is offered Suggest a parent")
+	}
+}
+
+// suggestableScene is pat's view of sam's Active Goal: Goals that may be
+// suggested as its parent, one Active with a Yellow Check-in and one
+// Proposed, both Pat Lee's, and those that may not: the Goal itself, its
+// parent, its Pending parent, a Goal below it, and an On Hold and a Done
+// Goal.
+type suggestableScene struct {
+	pat                    domain.Account
+	goal, active, proposed domain.Goal
+	left                   []domain.Goal
+}
+
+// newSuggestableScene signs in sam and Pat Lee and sets up a suggestableScene.
+func newSuggestableScene(t *testing.T, h *testsupport.Harness) suggestableScene {
+	t.Helper()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	active := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	h.Checkin(pat, active.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", h.Clock.Now().AddDate(0, 1, 0))
+	proposed := h.CreateGoal(pat, "Cut costs", "Budgets are tight.")
+	linked := h.ActiveGoal(sam, "Linked parent", "Already linked.")
+	h.RequestLink(sam, goal, linked, "")
+	pending := h.ActiveGoal(pat, "Pending parent", "Already requested.")
+	h.RequestLink(sam, goal, pending, "")
+	below := h.ActiveChildOf(sam, goal, "Below the Goal", "Contributes to it.")
+	onHold := h.OnHoldGoal(pat, "On Hold parent", "Paused.", "Waiting on budget.")
+	done := h.ActiveGoal(pat, "Done parent", "Finished.")
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: done.ID, AuthorID: pat.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "It shipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin Done: %v", err)
+	}
+	return suggestableScene{pat: pat, goal: goal, active: active, proposed: proposed, left: []domain.Goal{goal, linked, pending, below, onHold, done}}
+}
+
+// Suggest a parent's picker searches only the Goals its select offers, those
+// the Goal may be suggested under, less any already picked, each result
+// showing its Health badge, title and Owner (#656).
+func TestSuggestAParentSearchFindsOnlySuggestableParents(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sc := newSuggestableScene(t, h)
+	client := signInClient(t, ts.URL, "pat@example.com")
+	search := func(picked ...domain.Goal) []*nethtml.Node {
+		q := url.Values{"goal": {fmt.Sprint(sc.goal.ID)}, "for": {"suggestion"}, "q": {""}}
+		for _, g := range picked {
+			q.Add("parent_id", fmt.Sprint(g.ID))
+		}
+		return findAllByTestID(getPage(t, client, ts.URL+"/goals/search?"+q.Encode()), "parent-result")
+	}
+	pick := func(r *nethtml.Node) *nethtml.Node {
+		return findAll(r, func(n *nethtml.Node) bool { return n.Data == "button" })[0]
+	}
+
+	results := search()
+	var titles []string
+	for _, r := range results {
+		titles = append(titles, textOf(pick(r)))
+	}
+	if len(results) != 2 {
+		t.Fatalf("the search found %q, want only %q and %q", titles, sc.active.Title, sc.proposed.Title)
+	}
+	for _, r := range results {
+		if !strings.Contains(textOf(pick(r)), "Pat Lee") {
+			t.Errorf("the result %q doesn't show its Owner", textOf(pick(r)))
+		}
+		switch {
+		case strings.Contains(textOf(pick(r)), sc.active.Title):
+			assertHealthChip(t, healthChipIn(t, pick(r)), domain.HealthYellow)
+		case strings.Contains(textOf(pick(r)), sc.proposed.Title):
+			if lc := findAll(pick(r), func(n *nethtml.Node) bool { return textOf(n) == domain.LifecycleProposed }); len(lc) == 0 {
+				t.Errorf("the Proposed result shows no Lifecycle badge: %s", renderNode(r))
+			}
+		default:
+			t.Errorf("the search found %q, which can't be suggested", textOf(pick(r)))
+		}
+	}
+	if left := search(sc.active); len(left) != 1 || !strings.Contains(textOf(pick(left[0])), sc.proposed.Title) {
+		t.Errorf("with %q picked the search found %q, want only %q", sc.active.Title, textsOf(left), sc.proposed.Title)
+	}
+}
+
+// The Suggest a parent page picks the parent with the Parent Goal picker,
+// opening with nothing picked: its search, which takes the page's focus, and
+// without script a select starting on "Choose a Goal…", so pressing Suggest
+// untouched suggests no Goal that happened to sort first (#656).
+func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	h.CreateGoal(pat, "Cut costs", "Budgets are tight.")
+
+	page := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+suggestPath(goal))
+	picker := assertParentPickerOpensEmpty(t, findByTestID(t, page, "suggest-parent"))
+	search := findAll(picker, func(n *nethtml.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
+	if want := fmt.Sprintf("/goals/search?goal=%d&for=suggestion", goal.ID); attrOf(search, "hx-get") != want {
+		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
+	}
+	if focused := findAll(page, func(n *nethtml.Node) bool { return hasAttr(n, "autofocus") }); len(focused) != 1 || focused[0] != search {
+		t.Errorf("the page focuses %d controls, want only the picker's search", len(focused))
 	}
 }
 

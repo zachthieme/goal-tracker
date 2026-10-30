@@ -12,12 +12,14 @@ import (
 
 // suggestParentView is what the Suggest a parent form shows: the Goal, the
 // Goals that may be suggested as its parent, and, after a refused submit,
-// why and what was sent.
+// why and what was sent. PickerError is why a submit picking no parent was
+// refused, beside the picker; Error is any other refusal, above the form.
 type suggestParentView struct {
-	Goal       domain.Goal
-	Candidates []domain.Goal
-	Error      string
-	Input      url.Values
+	Goal        domain.Goal
+	Candidates  []domain.Goal
+	Error       string
+	PickerError string
+	Input       url.Values
 }
 
 // handleSuggestParentForm shows the form by which someone other than the
