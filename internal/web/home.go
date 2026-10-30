@@ -67,12 +67,16 @@ type homeView struct {
 }
 
 // homeOrg is Home's My org section: what is in trouble in the viewer's Org,
-// leaving out the viewer's own Goals, person by person (CONTEXT.md: Org).
+// counted as the Goal list's My org scope counts it, the viewer's own Goals
+// included, person by person (CONTEXT.md: Org).
 type homeOrg struct {
 	// ViewerID is whose Org it is, for the links to it on Goals and Follow-ups.
 	ViewerID int64
-	// Total counts the flagged Goals across everyone under the viewer.
+	// Total counts the flagged Goals across the viewer's Org, theirs included:
+	// Own plus every person's counts.
 	Total domain.SignalCounts
+	// Own counts the flagged Goals the viewer Owns, for the You row.
+	Own domain.SignalCounts
 	// Flagged are the people directly under the viewer whose Org has anything
 	// flagged, most urgent first.
 	Flagged []domain.PersonSignals
@@ -218,30 +222,45 @@ func (s *Server) refusedNoChanges(ctx context.Context, due []domain.PersonalGoal
 	return refused, nil
 }
 
+// Listed counts the section's rows: the people with anything flagged, and
+// the You row when the viewer's own Goals have anything.
+func (o homeOrg) Listed() int {
+	if o.Own.Any() {
+		return len(o.Flagged) + 1
+	}
+	return len(o.Flagged)
+}
+
 // homeOrgBadge is one count on the My org section: what it counts, for its
-// data-kind, how it reads, and its badge's class.
+// data-kind, how it reads, its badge's class, and where it links.
 type homeOrgBadge struct {
-	Kind         domain.FollowUpKind
-	Label, Class string
+	Kind               domain.FollowUpKind
+	Label, Class, Href string
 }
 
 // homeOrgBadges are c's non-zero counts, Red, then Path to Green overdue,
-// Check-in overdue and Yellow. Red and Yellow take their Health's colour, and
-// the freshness signals the Check-in overdue mark's, as on Follow-ups.
-func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
+// Check-in overdue and Yellow, each linking to the scope org, a ?org= value,
+// filtered to what it counts: Red and Yellow to the Goal list filtered to
+// their Health, the overdue ones to Follow-ups' Waiting on a Check-in group,
+// as the Goal list has no filter for them. Red and Yellow take their Health's
+// colour, and the freshness signals the Check-in overdue mark's, as on
+// Follow-ups.
+func homeOrgBadges(c domain.SignalCounts, org string) []homeOrgBadge {
+	health := func(value string) string { return "/goals?org=" + org + "&health=" + value }
+	waiting := "/follow-ups?org=" + org + "&group=owner"
 	var out []homeOrgBadge
 	for _, b := range []struct {
-		n            int
-		kind         domain.FollowUpKind
-		label, class string
+		n                  int
+		kind               domain.FollowUpKind
+		label, class, href string
 	}{
-		{c.Red, domain.FollowUpRed, domain.HealthRed, healthClass(domain.HealthRed)},
-		{c.PathOverdue, domain.FollowUpPathOverdue, "Path to Green overdue", "st"},
-		{c.CheckinOverdue, domain.FollowUpCheckinOverdue, "Check-in overdue", "st"},
-		{c.Yellow, domain.FollowUpYellow, domain.HealthYellow, healthClass(domain.HealthYellow)},
+		{c.Red, domain.FollowUpRed, domain.HealthRed, healthClass(domain.HealthRed), health("red")},
+		{c.PathOverdue, domain.FollowUpPathOverdue, "Path to Green overdue", "st", waiting},
+		{c.CheckinOverdue, domain.FollowUpCheckinOverdue, "Check-in overdue", "st", waiting},
+		{c.Yellow, domain.FollowUpYellow, domain.HealthYellow, healthClass(domain.HealthYellow), health("yellow")},
 	} {
 		if b.n > 0 {
-			out = append(out, homeOrgBadge{Kind: b.kind, Label: fmt.Sprintf("%d %s", b.n, b.label), Class: b.class})
+			out = append(out, homeOrgBadge{Kind: b.kind, Label: fmt.Sprintf("%d %s", b.n, b.label), Class: b.class, Href: b.href})
 		}
 	}
 	return out
@@ -257,7 +276,7 @@ func (s *Server) loadHomeOrg(ctx context.Context, accountID int64) (*homeOrg, er
 	if err != nil {
 		return nil, err
 	}
-	org := &homeOrg{ViewerID: accountID, Total: sig.Total}
+	org := &homeOrg{ViewerID: accountID, Total: sig.Total, Own: sig.Own}
 	for _, p := range sig.Under {
 		if p.Counts.Any() {
 			org.Flagged = append(org.Flagged, p)

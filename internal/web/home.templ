@@ -79,7 +79,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 			</section>
 			if v.Org != nil {
-				@homeOrgSection(*v.Org)
+				@homeOrgSection(*current, *v.Org)
 			}
 			if len(v.AtRisk) > 0 {
 				<section data-testid="home-not-green" class="hm-section">
@@ -146,24 +146,35 @@ templ homeYourGoals(v homeView) {
 
 // homeOrgSection is the My org section, a plain section on the canvas: counts and
 // people, never Goals. The total line is plain text, set apart from the pills
-// and chips counting each person's Org, and each person's row, their initials,
-// Name and counts, is one link to their Org on Goals; the section ends with
-// links on to the whole Org's Goals and Follow-ups for the detail.
-templ homeOrgSection(org homeOrg) {
+// and chips counting each person's Org. Each row is a link on the person,
+// their initials and Name, to their Org on Goals, then their counts, each a
+// link of its own; a You row for the viewer's own Goals leads them when those
+// have anything flagged. The section ends with links on to the whole Org's
+// Goals and Follow-ups for the detail.
+templ homeOrgSection(viewer domain.Account, org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
 		<h2>
-			@homeHeading("My org", len(org.Flagged))
+			@homeHeading("My org", org.Listed())
 		</h2>
 		if org.Total.Any() {
 			<p data-testid="home-org-total">
-				for i, b := range homeOrgBadges(org.Total) {
+				for i, b := range homeOrgBadges(org.Total, strconv.FormatInt(org.ViewerID, 10)) {
 					if i > 0 {
 						{ " · " }
 					}
-					<span data-testid="home-org-count" data-kind={ string(b.Kind) }>{ b.Label }</span>
+					<a data-testid="home-org-count" data-kind={ string(b.Kind) } href={ templ.SafeURL(b.Href) }>{ b.Label }</a>
 				}
 			</p>
 			<ul class="hm-list">
+				if org.Own.Any() {
+					<li data-testid="home-org-person">
+						<a data-testid="home-org-person-link" class="hm-org-row" href={ templ.SafeURL("/goals?org=" + scopeMineValue) }>
+							<span class="avatar hm-avatar" aria-hidden="true">{ initials(viewer) }</span>
+							<span class="hm-org-name">You</span>
+						</a>
+						@homeOrgCounts(org.Own, scopeMineValue)
+					</li>
+				}
 				for _, p := range org.Flagged {
 					<li data-testid="home-org-person">
 						<a data-testid="home-org-person-link" class="hm-org-row" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
@@ -174,8 +185,8 @@ templ homeOrgSection(org homeOrg) {
 							if p.Person.Departed {
 								<span data-testid="home-org-departed" class="badge lc">departed</span>
 							}
-							@homeOrgCounts(p.Counts)
 						</a>
+						@homeOrgCounts(p.Counts, strconv.FormatInt(p.Person.ID, 10))
 					</li>
 				}
 			</ul>
@@ -207,14 +218,16 @@ templ homeHeading(name string, n int) {
 // homeOrgCounts badges each of a My org row's counts that has anything,
 // labelled to read without colour, Red, then Path to Green overdue, Check-in
 // overdue and Yellow, the Red and Yellow counts with their Health's shape.
-templ homeOrgCounts(c domain.SignalCounts) {
-	for _, b := range homeOrgBadges(c) {
-		<span data-testid="home-org-count" data-kind={ string(b.Kind) } class={ "badge", b.Class }>
+// Each pill is a link to the scope org, a ?org= value, filtered to what it
+// counts (homeOrgBadges).
+templ homeOrgCounts(c domain.SignalCounts, org string) {
+	for _, b := range homeOrgBadges(c, org) {
+		<a data-testid="home-org-count" data-kind={ string(b.Kind) } class={ "badge", b.Class } href={ templ.SafeURL(b.Href) }>
 			if b.Kind == domain.FollowUpRed || b.Kind == domain.FollowUpYellow {
 				<span class="dot"></span>
 			}
 			{ b.Label }
-		</span>
+		</a>
 	}
 }
 
@@ -415,9 +428,10 @@ templ homeStyles() {
 		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:var(--text-label);font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}
 		.hm-list .badge.as-of{border:1px dashed currentColor}
-		.hm-list>li:has(>.hm-org-row){padding:0}
-		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 auto;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
-		.hm-org-row:hover{text-decoration:none;background:var(--color-row-hover)}
+		.hm-list>li:has(>.hm-org-row){padding:0;gap:4px 8px}
+		.hm-org-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0;min-height:44px;padding:4px 0;box-sizing:border-box;color:var(--color-ink)}
+		.hm-org-row:hover{text-decoration:none}
+		.hm-list>li>a.badge{height:auto;min-height:24px}
 		.hm-org-name{font-size:var(--text-body);font-weight:500}
 		.hm-org-row:hover .hm-org-name{text-decoration:underline}
 		.hm-avatar{width:22px;height:22px;flex:none;font-size:10px}

@@ -709,6 +709,39 @@ func TestHomeMyOrgCountsDrawTheSharedShape(t *testing.T) {
 	}
 }
 
+// My org's linked count pills are at least 24px tall, as a target, though
+// Home's other pills are 22px: .hm-list>li>a.badge outranks .hm-list .badge,
+// and a min-height outlasts its height. A row is no longer one target, so
+// hovering it fills no background (#678).
+func TestHomeMyOrgCountLinksAreTargetsStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	newHomeOrgFixture(h)
+
+	page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	rows := findAllByTestID(page, "home-org-person")
+	if len(rows) == 0 {
+		t.Fatalf("My org has no rows, so this test checks nothing")
+	}
+	for _, count := range findAllByTestID(rows[0], "home-org-count") {
+		li := count.Parent
+		if count.Data != "a" || !flatFrameHasClass(count, "badge") || li != rows[0] || li.Data != "li" || !flatFrameHasClass(li.Parent, "hm-list") {
+			t.Errorf("the count isn't a .badge link directly in an .hm-list row, so .hm-list>li>a.badge misses it: %s", renderNode(count))
+		}
+	}
+	css := homeStyleSheetIn(page)
+	assertHomeRuleDeclares(t, css, ".hm-list .badge", "height:22px")
+	assertHomeRuleDeclares(t, css, ".hm-list>li>a.badge", "min-height:24px")
+	if decls, _ := ruleFor(css, ".hm-list .badge"); strings.Contains(decls, "min-height") {
+		t.Errorf(".hm-list .badge{%s} caps the linked pills' min-height", decls)
+	}
+	if decls, _ := ruleFor(css, ".hm-org-row:hover"); strings.Contains(decls, "background") {
+		t.Errorf(".hm-org-row:hover{%s} fills the row, which is no longer one target", decls)
+	}
+}
+
 // homeStyleSheetIn is the stylesheet Home carries itself, its homeStyles: the
 // text of the page's <style> elements, in order.
 func homeStyleSheetIn(root *html.Node) string {
@@ -773,7 +806,7 @@ func TestHomeSectionsAreHeadedH2Styles(t *testing.T) {
 	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
 
 	page := getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
-	for testID, count := range map[string]string{"home-needs-you": "", "home-org": "2", "home-not-green": "1"} {
+	for testID, count := range map[string]string{"home-needs-you": "", "home-org": "3", "home-not-green": "1"} {
 		section := findByTestID(t, page, testID)
 		assertHomeCarriesClass(t, testID, section, "hm-section")
 		var heading *html.Node
