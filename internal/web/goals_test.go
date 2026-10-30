@@ -8230,3 +8230,25 @@ func TestGoalPageShowsAPastYearsDeliveryDateWithItsYear(t *testing.T) {
 		t.Errorf("the Goal page delivers %q, want Dec 1, 2025 with its year", got)
 	}
 }
+
+// A Goal create refused for who is asking, such as someone who has Departed
+// since the page was drawn, is the refusal page, 403, saying why and linking
+// Back to the new Goal form, not a 500 (#701).
+func TestCreatingAGoalRefusedForWhoIsAskingIsTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	srv.HandleRefusedCreateGoalForTest("POST /create-goal-refused-test", domain.Refuse(domain.ErrNotAuthorized, "a Departed person can't create a Goal"))
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/create-goal-refused-test", url.Values{"title": {"Ship search"}, "why_it_matters": {"Some reason."}})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+	assertRefusalPage(t, parsePage(t, body), "Can't create Goal", "A Departed person can't create a Goal.", "/goals/new")
+}

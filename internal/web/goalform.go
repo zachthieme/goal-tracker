@@ -718,12 +718,20 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if errors.Is(err, domain.ErrNotAuthorized) { // #701
-		s.serverError(w, r, "could not create goal", err)
-		return
+	s.answerGoalFormRefused(w, r, current, goalFormFrom{Posted: &v, In: in, ParentIDs: in.ParentIDs}, err)
+}
+
+// answerGoalFormRefused answers a submit of the New goal page, or of the
+// define page of from.Goal, refused with err: answerRefused's, the form
+// coming back as from says (goalFormAgain), headed "Can't create Goal" and
+// linking Back to the New goal form, or "Can't define Goal" and Back to the
+// Goal.
+func (s *Server) answerGoalFormRefused(w http.ResponseWriter, r *http.Request, current domain.Account, from goalFormFrom, err error) {
+	heading, back := "Can't create Goal", "/goals/new"
+	if from.Goal != nil {
+		heading, back = "Can't define Goal", goalPath(from.Goal.ID)
 	}
-	s.answerRefused(w, r, refused{Err: err, Heading: "Can't create Goal", Back: "/goals/new",
-		Form: s.goalFormAgain(r, current, goalFormFrom{Posted: &v, In: in, ParentIDs: in.ParentIDs})})
+	s.answerRefused(w, r, refused{Err: err, Heading: heading, Back: back, Form: s.goalFormAgain(r, current, from)})
 }
 
 // goalFormAgain is the New goal form, or the define page, as from says, for
@@ -917,12 +925,7 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
 		return
 	}
-	if errors.Is(err, domain.ErrNotAuthorized) { // #701
-		s.serverError(w, r, "could not save goal", err)
-		return
-	}
-	s.answerRefused(w, r, refused{Err: err, Heading: "Can't define Goal", Back: goalPath(g.ID),
-		Form: s.goalFormAgain(r, current, goalFormFrom{Goal: &g, Posted: &v, In: in, ParentIDs: in.ParentIDs})})
+	s.answerGoalFormRefused(w, r, current, goalFormFrom{Goal: &g, Posted: &v, In: in, ParentIDs: in.ParentIDs}, err)
 }
 
 // handleDefineGoalChecklist is handleGoalFormChecklist for the define page,
