@@ -137,7 +137,7 @@ templ comment(c domain.Comment, d discussion, reply bool) {
 		{ c.Body }
 	</p>
 	if d.Author {
-		{{ refused, open := actionItemRefusalFor(ctx, "comment-action-item-form", c.ID) }}
+		{{ refused, open := formRefusalFor(ctx, "comment-action-item-form", c.ID) }}
 		<details data-testid="make-action-item" class={ templ.KV("rp-reply", reply) } open?={ open }>
 			<summary class="small">Make action item</summary>
 			<form data-testid="comment-action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
@@ -194,7 +194,7 @@ templ publicationActionItems(d discussion) {
 			}
 		</ul>
 		if d.Author {
-			{{ refused, open := actionItemRefusalFor(ctx, "action-item-form", 0) }}
+			{{ refused, open := formRefusalFor(ctx, "action-item-form", 0) }}
 			{{ goals := d.actionItemGoalChoices() }}
 			{{ about := refusedGoalChoice(refused, goals) }}
 			<details open?={ open }>
@@ -222,7 +222,7 @@ templ publicationActionItems(d discussion) {
 // email and its due date, and its description — required when it is created
 // directly, and otherwise defaulting to the comment's. When the form was just
 // refused, each holds what was posted, with its reason beside it.
-templ actionItemFields(textRequired bool, refused actionItemRefusal) {
+templ actionItemFields(textRequired bool, refused formRefusal) {
 	<label>
 		Action Item
 		if textRequired {
@@ -269,7 +269,7 @@ templ actionItemFields(textRequired bool, refused actionItemRefusal) {
 
 // actionItemFieldError is why the just-refused form's input was refused,
 // beside its control, which names it; nothing when it wasn't.
-templ actionItemFieldError(refused actionItemRefusal, input string) {
+templ actionItemFieldError(refused formRefusal, input string) {
 	if reason := refused.Problems[input]; reason != "" {
 		<span data-testid="form-error" class="alert r" role="alert" id={ refused.errorID(input) }>{ reason }</span>
 	}
@@ -298,7 +298,7 @@ templ actionItemSummary(item domain.ActionItem) {
 // a small Close button, and comes back to returnTo; refused, it comes back
 // open there, as it was left.
 templ closeActionItemForm(item domain.ActionItem, returnTo string) {
-	{{ refused, open := actionItemRefusalFor(ctx, "close-action-item", item.ID) }}
+	{{ refused, open := formRefusalFor(ctx, "close-action-item", item.ID) }}
 	<details data-testid="close-toggle" open?={ open }>
 		<summary class="btn sm">Close</summary>
 		<form data-testid="close-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
@@ -325,7 +325,7 @@ templ closeActionItemForm(item domain.ActionItem, returnTo string) {
 // owner, by email, behind a small Reassign button, and comes back to
 // returnTo; refused, it comes back open there, as it was left.
 templ reassignActionItemForm(item domain.ActionItem, returnTo string) {
-	{{ refused, open := actionItemRefusalFor(ctx, "reassign-action-item", item.ID) }}
+	{{ refused, open := formRefusalFor(ctx, "reassign-action-item", item.ID) }}
 	<details data-testid="reassign-toggle" open?={ open }>
 		<summary class="btn sm">Reassign</summary>
 		<form data-testid="reassign-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/reassign", item.ID)) }>

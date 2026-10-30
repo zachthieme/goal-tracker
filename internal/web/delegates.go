@@ -3,7 +3,6 @@ package web
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -18,7 +17,7 @@ func (s *Server) handleAddDelegate(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	err := s.svc.AddDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	s.writeDelegateResult(w, r, id, current, "Can't add Delegate", err)
+	s.answerDelegateCommand(w, r, id, current, "Can't add Delegate", err)
 }
 
 // handleRemoveDelegate revokes the Delegate named by email on the Goal in the
@@ -29,7 +28,7 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	err := s.svc.RemoveDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	s.writeDelegateResult(w, r, id, current, "Can't remove Delegate", err)
+	s.answerDelegateCommand(w, r, id, current, "Can't remove Delegate", err)
 }
 
 // handleDelegatePage lists every Goal the current Account is a Delegate for,
@@ -61,24 +60,19 @@ type delegatedGoal struct {
 	domain.GoalListing
 }
 
-// writeDelegateResult redirects back to the Goal on success and maps a domain
-// Delegate error to a status: a non-Owner attempt is 403 on the refusal page,
-// headed refused and linking Back to the Goal, a missing Goal the Not found
-// page, and a bad input redirects to the Goal page, where the Delegates form
-// is open with the reason beside it and what was sent in it (refuseGoalForm).
-func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused string, err error) {
-	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrNotAuthorized):
-			s.refuse(w, r, refused, goalPath(goalID), err)
-		case errors.Is(err, domain.ErrNotFound):
-			s.notFound(w, r)
-		case errors.Is(err, domain.ErrValidation):
-			s.refuseGoalForm(w, r, goalID, current, formDelegates, "Can't change Goal", err)
-		default:
-			s.serverError(w, r, "could not update delegates", err)
-		}
+// answerDelegateCommand answers an add or remove of a Delegate on the Goal
+// goalID: done, it returns to the Goal page. Refused, a bad input redirects
+// to the Goal page, where the Delegates form is open with the reason above it
+// and what was sent in it (goalPageForm); anything else is the refusal page,
+// headed heading and linking Back to the Goal (answerRefused).
+func (s *Server) answerDelegateCommand(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, heading string, err error) {
+	if errors.Is(err, domain.ErrCycle) { // #701
+		s.serverError(w, r, "could not update delegates", err)
 		return
 	}
-	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
+	if err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: heading, Back: goalPath(goalID), Form: s.goalPageForm(goalID, current, formDelegates)})
+		return
+	}
+	http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
 }

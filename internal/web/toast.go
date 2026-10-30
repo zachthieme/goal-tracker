@@ -313,9 +313,10 @@ func takeUndo(w http.ResponseWriter, r *http.Request) undoOffer {
 // to the page it was offered on: nothing to undo is a 404 saying so, and a
 // failure a 500 saying nothing changed.
 func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, back string, err error) {
-	s.refuse(w, r, "Can't undo", back, err,
+	s.answerRefused(w, r, refused{Err: err, Heading: "Can't undo", Back: back, Options: []refusalOption{
 		refuseNotFoundSaying("There's nothing here to undo."),
-		refuseFailureSaying("The Undo couldn't be done, so nothing changed. Try again."))
+		refuseFailureSaying("The Undo couldn't be done, so nothing changed. Try again."),
+	}})
 }
 
 // sentence is msg ending in a full stop, its first letter upper-cased only

@@ -19,7 +19,9 @@ func (s *Server) HandleRefusedLinkCycleForTest(pattern string) {
 		if !ok {
 			return
 		}
-		s.refuseGoalForm(w, r, goalID, current, formParentLink, "Can't change Goal",
-			domain.Refuse(domain.ErrCycle, "linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”"))
+		s.answerRefused(w, r, refused{
+			Err:     domain.Refuse(domain.ErrCycle, "linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”"),
+			Heading: "Can't change Goal", Back: goalPath(goalID), Form: s.goalPageForm(goalID, current, formParentLink),
+		})
 	}))
 }

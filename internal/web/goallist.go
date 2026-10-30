@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,11 +55,8 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 		}
 	}
 	var buf bytes.Buffer
-	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); errors.Is(err, domain.ErrValidation) {
-		s.refuse(w, r, "Can't download Goals", string(view.queryURL(func(url.Values) {})), err)
-		return
-	} else if err != nil {
-		s.serverError(w, r, "could not download goals", err)
+	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't download Goals", Back: string(view.queryURL(func(url.Values) {}))})
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")

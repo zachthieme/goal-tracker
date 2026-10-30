@@ -12,7 +12,10 @@ another area's file.
   `accounts.sql`, `goals.sql`); sqlc generates a matching `<area>.sql.go`.
   `models.go` stays shared — only schema-changing tickets touch it.
 - **Web** (`internal/web/`): `routes.go` is the only place routes are
-  registered — a new area adds one line there. `server.go` holds only the
+  registered — a new area adds one line there. A refused command answers
+  through `answerRefused` (`formrefusal.go`), choosing `onPage` for a form on
+  another page and `asPage` for a form that is the page; don't write a new
+  switch on the error kind. `server.go` holds only the
   `Server` type, `ServeHTTP`, rendering, and the auth middleware. Each area's
   handlers live in `<area>.go`, its pages in `<area>.templ` (plus the generated
   `<area>_templ.go`), and its HTTP tests in `<area>_test.go`. Shared page chrome
