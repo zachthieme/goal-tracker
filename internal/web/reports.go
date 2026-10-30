@@ -57,7 +57,9 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	// Closing an Action Item comes back to this draft, baseline and all.
+	// Closing an Action Item comes back to this draft, baseline and all, and
+	// a refused one to its form here.
+	r = takeActionItemRefusal(w, r)
 	if v, ok := s.loadReportDraftView(w, r, current, def, r.URL.RequestURI()); ok {
 		render(w, r, http.StatusOK, reportDraftPage(&current, v))
 	}
@@ -692,6 +694,7 @@ func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, c
 		s.serverError(w, r, "could not load the discussion", err)
 		return
 	}
+	r = takeActionItemRefusal(w, r)
 	render(w, r, http.StatusOK, publicationPage(&current, pub, d, s.pdf != nil))
 }
 

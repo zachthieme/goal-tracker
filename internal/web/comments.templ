@@ -44,7 +44,7 @@ templ goalDiscussion(goalID int64, d discussion) {
 	if d.Pub != nil {
 		<footer data-testid="goal-discussion" class="rp-discussion">
 			if n := commentCount(d.Threads[goalID]); n > 0 {
-				<details>
+				<details open?={ refusalNamesThread(ctx, d.Threads[goalID]) }>
 					<summary data-testid="comment-count">{ plural(n, "comment") }</summary>
 					for _, t := range d.Threads[goalID] {
 						<div data-testid="comment-thread" class="rp-thread">
@@ -125,7 +125,8 @@ templ goalComments(current *domain.Account, v goalView) {
 
 // comment is one comment in a thread — who wrote it, when, and what it says —
 // indented when it is a reply. The Report's author gets the form to turn it
-// into an Action Item, behind its own toggle.
+// into an Action Item, behind its own toggle, which comes back open, as it
+// was left, when it was just refused.
 templ comment(c domain.Comment, d discussion, reply bool) {
 	<p data-testid="comment" class={ templ.KV("rp-reply", reply) }>
 		<strong>
@@ -136,11 +137,12 @@ templ comment(c domain.Comment, d discussion, reply bool) {
 		{ c.Body }
 	</p>
 	if d.Author {
-		<details data-testid="make-action-item" class={ templ.KV("rp-reply", reply) }>
+		{{ refused, open := actionItemRefusalFor(ctx, "comment-action-item-form", c.ID) }}
+		<details data-testid="make-action-item" class={ templ.KV("rp-reply", reply) } open?={ open }>
 			<summary class="small">Make action item</summary>
 			<form data-testid="comment-action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
 				<input type="hidden" name="comment" value={ fmt.Sprintf("%d", c.ID) }/>
-				@actionItemFields(false)
+				@actionItemFields(false, refused)
 				<button type="submit" class="btn sm">Make Action Item</button>
 			</form>
 		</details>
@@ -166,7 +168,8 @@ func plural(n int, noun string) string {
 
 // publicationActionItems lists the Action Items raised on a publication, open
 // or closed with the owner's note, and gives the Report's author the form to
-// create one directly.
+// create one directly, which comes back open, as it was left, when it was
+// just refused.
 templ publicationActionItems(d discussion) {
 	<section id="action-items" data-testid="publication-action-items">
 		<h2>Action Items raised here</h2>
@@ -191,18 +194,22 @@ templ publicationActionItems(d discussion) {
 			}
 		</ul>
 		if d.Author {
-			<details>
+			{{ refused, open := actionItemRefusalFor(ctx, "action-item-form", 0) }}
+			{{ goals := d.actionItemGoalChoices() }}
+			{{ about := refusedGoalChoice(refused, goals) }}
+			<details open?={ open }>
 				<summary class="btn sm">Add Action Item</summary>
 				<form data-testid="action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
-					@actionItemFields(true)
+					@actionItemFields(true, refused)
 					<label>
 						About
-						<select data-testid="action-item-goal" name="goal">
-							<option value="0" selected>The whole Report</option>
-							for _, g := range d.actionItemGoalChoices() {
-								<option value={ fmt.Sprint(g.ID) }>{ g.Title }</option>
+						<select data-testid="action-item-goal" name="goal" { refused.controlAttrs(domain.InputActionItemGoal)... }>
+							<option value="0" selected?={ about == 0 }>The whole Report</option>
+							for _, g := range goals {
+								<option value={ fmt.Sprint(g.ID) } selected?={ about == g.ID }>{ g.Title }</option>
 							}
 						</select>
+						@actionItemFieldError(refused, domain.InputActionItemGoal)
 					</label>
 					<button type="submit" class="btn primary sm">Add Action Item</button>
 				</form>
@@ -213,24 +220,68 @@ templ publicationActionItems(d discussion) {
 
 // actionItemFields are the fields an Action Item is raised with: its owner by
 // email and its due date, and its description — required when it is created
-// directly, and otherwise defaulting to the comment's.
-templ actionItemFields(textRequired bool) {
+// directly, and otherwise defaulting to the comment's. When the form was just
+// refused, each holds what was posted, with its reason beside it.
+templ actionItemFields(textRequired bool, refused actionItemRefusal) {
 	<label>
 		Action Item
 		if textRequired {
-			<input type="text" name="text" required/>
+			<input
+				type="text"
+				name="text"
+				required
+				if refused.Form != "" {
+					value={ refused.typed(domain.InputActionItemText) }
+				}
+				{ refused.controlAttrs(domain.InputActionItemText)... }
+			/>
 		} else {
-			<input type="text" name="text" placeholder="Defaults to the comment"/>
+			<input
+				type="text"
+				name="text"
+				placeholder="Defaults to the comment"
+				if refused.Form != "" {
+					value={ refused.typed(domain.InputActionItemText) }
+				}
+				{ refused.controlAttrs(domain.InputActionItemText)... }
+			/>
 		}
+		@actionItemFieldError(refused, domain.InputActionItemText)
 	</label>
 	<label>
 		Owner
-		<input type="email" name="owner" required/>
+		<input
+			type="email"
+			name="owner"
+			required
+			if refused.Form != "" {
+				value={ refused.typed(domain.InputActionItemOwner) }
+			}
+			{ refused.controlAttrs(domain.InputActionItemOwner)... }
+		/>
+		@actionItemFieldError(refused, domain.InputActionItemOwner)
 	</label>
 	<label>
 		Due
-		<input type="date" name="due" required/>
+		<input
+			type="date"
+			name="due"
+			required
+			if refused.Form != "" {
+				value={ refused.typed(domain.InputActionItemDue) }
+			}
+			{ refused.controlAttrs(domain.InputActionItemDue)... }
+		/>
+		@actionItemFieldError(refused, domain.InputActionItemDue)
 	</label>
+}
+
+// actionItemFieldError is why the just-refused form's input was refused,
+// beside its control, which names it; nothing when it wasn't.
+templ actionItemFieldError(refused actionItemRefusal, input string) {
+	if reason := refused.Problems[input]; reason != "" {
+		<span data-testid="form-error" class="alert r" role="alert" id={ refused.errorID(input) }>{ reason }</span>
+	}
 }
 
 // actionItemSummary is an Action Item on one line: what · who owns it, and
@@ -253,15 +304,26 @@ templ actionItemSummary(item domain.ActionItem) {
 }
 
 // closeActionItemForm lets an Action Item's owner close it with a note, behind
-// a small Close button, and comes back to returnTo.
+// a small Close button, and comes back to returnTo; refused, it comes back
+// open there, as it was left.
 templ closeActionItemForm(item domain.ActionItem, returnTo string) {
-	<details data-testid="close-toggle">
+	{{ refused, open := actionItemRefusalFor(ctx, "close-action-item", item.ID) }}
+	<details data-testid="close-toggle" open?={ open }>
 		<summary class="btn sm">Close</summary>
 		<form data-testid="close-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
 			<input type="hidden" name="return" value={ returnTo }/>
 			<label>
 				Closing note
-				<input type="text" name="note" required/>
+				<input
+					type="text"
+					name="note"
+					required
+					if open {
+						value={ refused.typed(domain.InputClosingNote) }
+					}
+					{ refused.controlAttrs(domain.InputClosingNote)... }
+				/>
+				@actionItemFieldError(refused, domain.InputClosingNote)
 			</label>
 			<button type="submit" class="btn primary sm">Close</button>
 		</form>
@@ -270,15 +332,25 @@ templ closeActionItemForm(item domain.ActionItem, returnTo string) {
 
 // reassignActionItemForm lets those who may hand an open Action Item to a new
 // owner, by email, behind a small Reassign button, and comes back to
-// returnTo.
+// returnTo; refused, it comes back open there, as it was left.
 templ reassignActionItemForm(item domain.ActionItem, returnTo string) {
-	<details data-testid="reassign-toggle">
+	{{ refused, open := actionItemRefusalFor(ctx, "reassign-action-item", item.ID) }}
+	<details data-testid="reassign-toggle" open?={ open }>
 		<summary class="btn sm">Reassign</summary>
 		<form data-testid="reassign-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/reassign", item.ID)) }>
 			<input type="hidden" name="return" value={ returnTo }/>
 			<label>
 				New owner
-				<input type="email" name="owner" required/>
+				<input
+					type="email"
+					name="owner"
+					required
+					if open {
+						value={ refused.typed(domain.InputActionItemOwner) }
+					}
+					{ refused.controlAttrs(domain.InputActionItemOwner)... }
+				/>
+				@actionItemFieldError(refused, domain.InputActionItemOwner)
 			</label>
 			<button type="submit" class="btn primary sm">Reassign</button>
 		</form>

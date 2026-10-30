@@ -2010,12 +2010,17 @@ and so on).
     comments", then a secondary small **Comment** that opens its form. Each
     thread hangs off a 1px left rule, replies indented 24px behind their own
     **Reply**. The Report's author also gets **Make action item** on each
-    comment. It is all `<details>` and form posts, so it works without script.
+    comment. Refused on a field, Make action item comes back to the
+    publication with that comment's thread and form open, as Close and
+    Reassign do (§ Close and Reassign). It is all `<details>` and form posts,
+    so it works without script.
   - **Action Items raised here:** every Action Item raised on this
     publication, as rows: an open one with Close and Reassign, a closed one
     "**[Closed Nov 9, 2026]** — <note>", or "None yet." The Report's author
     also gets a secondary small **Add Action Item**, opening an inline form
-    of Action Item, Owner (email), Due and About.
+    of Action Item, Owner (email), Due and About. Refused on a field, it
+    comes back to the publication with its form open, as Close and Reassign
+    do (§ Close and Reassign).
 - **Close and Reassign (`closeActionItemForm`, `reassignActionItemForm`,
   `.rp-inline-form`):** an open Action Item's owner gets **Close**, and those
   who may hand it on **Reassign**. Each is a `<details>` whose summary is a
@@ -2026,6 +2031,18 @@ and so on).
   each with a primary small submit, and the form comes back to the page it
   was on. Home and the Goal page carry their own copy of the
   `.rp-inline-form` rules.
+  - **Refused:** a Close, Reassign, Add Action Item or Make action item
+    refused on a field comes back to the page it was on (Home, the Goal page,
+    the draft or the publication), redirected after the post. That form is
+    open there, holding what was typed, and each reason sits beside its
+    field: an alert (`.alert.r`, `form-error`) inside the field's label after
+    its control, which is `aria-invalid` and described by it, the first
+    refused field taking focus. Only the first copy of the form on the page
+    opens, and a reload shows the page plainly. A refusal by who you are, or
+    of a form that's gone (an item closed since), shows the refusal page,
+    headed "Can't add Action Item", "Can't close Action Item" or "Can't
+    reassign Action Item"; "Can't comment" heads only a refused comment or
+    reply.
 - **Report builder (`reportBuilderPage` in `reportbuilder.templ`):** one
   centred column up to 720px of plain sections, 24px apart.
   - **Header strip:** the breadcrumb only, "Reports › New" or "Reports ›

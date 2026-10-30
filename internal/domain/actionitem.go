@@ -42,6 +42,16 @@ type ActionItem struct {
 	ReassignedFrom *Account
 }
 
+// The inputs of the forms that raise, close and reassign an Action Item, as a
+// refusal about one of them names it (InputError).
+const (
+	InputActionItemText  = "text"
+	InputActionItemOwner = "owner"
+	InputActionItemDue   = "due"
+	InputActionItemGoal  = "goal"
+	InputClosingNote     = "note"
+)
+
 // RaiseActionItemInput is the raise-an-Action-Item command's input. Set
 // CommentID to turn a comment into the Action Item; its Text then defaults to
 // the comment's, and it is about the comment's Goal. Leave it 0 to create one
@@ -91,23 +101,23 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 				text = c.Body
 			}
 		} else if goalID != 0 && !pub.Report.covers(goalID) {
-			return Refuse(ErrValidation, "goal %d is not in this publication", goalID)
+			return inputError(InputActionItemGoal, "goal %d is not in this publication", goalID)
 		}
 		if text == "" {
-			return Refuse(ErrValidation, "an Action Item needs a description")
+			return inputError(InputActionItemText, "an Action Item needs a description")
 		}
 		if in.DueDate.IsZero() {
-			return Refuse(ErrValidation, "an Action Item needs a due date")
+			return inputError(InputActionItemDue, "an Action Item needs a due date")
 		}
 		owner, err := tx.queries.GetAccount(ctx, in.OwnerID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "an Action Item needs an owner")
+				return inputError(InputActionItemOwner, "an Action Item needs an owner")
 			}
 			return fmt.Errorf("look up owner: %w", err)
 		}
 		if owner.Departed != 0 {
-			return Refuse(ErrValidation, "%s has left the company", owner.Email)
+			return inputError(InputActionItemOwner, "%s has left the company", owner.Email)
 		}
 		row, err := tx.queries.CreateActionItem(ctx, db.CreateActionItemParams{
 			ReportDefinitionID: pub.DefinitionID,
@@ -168,11 +178,8 @@ func (s *Service) IsReportAuthor(ctx context.Context, actorID, pubID int64) (boo
 func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in RaiseActionItemInput, ownerEmail string) (ActionItem, error) {
 	var item ActionItem
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(ownerEmail))
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("look up owner: %w", err)
-			}
+		ownerID, err := tx.accountIDWithEmail(ctx, ownerEmail)
+		if errors.Is(err, ErrValidation) {
 			// Report a missing publication or a refusal before the email.
 			pub, err := tx.GetPublication(ctx, in.PublicationID)
 			if err != nil {
@@ -181,9 +188,11 @@ func (s *Service) RaiseActionItemByEmail(ctx context.Context, actorID int64, in 
 			if err := tx.raiseActionItemRule(ctx, actorID, pub); err != nil {
 				return err
 			}
-			return Refuse(ErrValidation, "no account with email %q", ownerEmail)
 		}
-		in.OwnerID = acc.ID
+		if err != nil {
+			return ownerRefusal(err)
+		}
+		in.OwnerID = ownerID
 		item, err = tx.RaiseActionItem(ctx, actorID, in)
 		return err
 	})
@@ -205,7 +214,7 @@ func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note s
 		}
 		note = strings.TrimSpace(note)
 		if note == "" {
-			return Refuse(ErrValidation, "closing an Action Item needs a note")
+			return inputError(InputClosingNote, "closing an Action Item needs a note")
 		}
 		if err := tx.queries.CloseActionItem(ctx, db.CloseActionItemParams{
 			ClosedAt:    s.clock.Now().Format(timeFormat),
@@ -252,15 +261,15 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 		owner, err := tx.queries.GetAccount(ctx, newOwnerID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "an Action Item needs an owner")
+				return inputError(InputActionItemOwner, "an Action Item needs an owner")
 			}
 			return fmt.Errorf("look up new owner: %w", err)
 		}
 		if owner.Departed != 0 {
-			return Refuse(ErrValidation, "%s has left the company", owner.Email)
+			return inputError(InputActionItemOwner, "%s has left the company", owner.Email)
 		}
 		if owner.ID == item.Owner.ID {
-			return Refuse(ErrValidation, "%s already owns this Action Item", owner.Email)
+			return inputError(InputActionItemOwner, "%s already owns this Action Item", owner.Email)
 		}
 		n, err := tx.queries.ReassignActionItem(ctx, db.ReassignActionItemParams{OwnerID: owner.ID, ID: item.ID})
 		if err != nil {
@@ -303,21 +312,30 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 func (s *Service) ReassignActionItemByEmail(ctx context.Context, actorID, itemID int64, email string) (ActionItem, error) {
 	var item ActionItem
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		acc, err := tx.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("look up new owner: %w", err)
-			}
+		ownerID, err := tx.accountIDWithEmail(ctx, email)
+		if errors.Is(err, ErrValidation) {
 			// Report a missing or unreassignable item before the email.
 			if _, err := tx.reassignableActionItem(ctx, actorID, itemID); err != nil {
 				return err
 			}
-			return Refuse(ErrValidation, "no account with email %q", email)
 		}
-		item, err = tx.ReassignActionItem(ctx, actorID, itemID, acc.ID)
+		if err != nil {
+			return ownerRefusal(err)
+		}
+		item, err = tx.ReassignActionItem(ctx, actorID, itemID, ownerID)
 		return err
 	})
 	return item, err
+}
+
+// ownerRefusal is an Action Item's owner, looked up by email, refused with
+// err: a refusal of the email (accountIDWithEmail's) names the owner input,
+// in its own words; anything else is returned as it is.
+func ownerRefusal(err error) error {
+	if !errors.Is(err, ErrValidation) {
+		return err
+	}
+	return inputError(InputActionItemOwner, "%s", Reason(err))
 }
 
 // reassignableActionItem returns the Action Item itemID if it exists and
