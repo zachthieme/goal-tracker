@@ -2498,7 +2498,9 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	rules = findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "report-rules")
 	pillarKey := fmt.Sprintf("dimension:%d", pillar.ID)
 	option := func(value string) *nethtml.Node {
-		if found := findAll(rules, func(n *nethtml.Node) bool { return (n.Data == "option" || n.Data == "input") && attrOf(n, "value") == value }); len(found) > 0 {
+		if found := findAll(rules, func(n *nethtml.Node) bool {
+			return (n.Data == "option" || n.Data == "input") && attrOf(n, "value") == value
+		}); len(found) > 0 {
 			return found[0]
 		}
 		return nil
