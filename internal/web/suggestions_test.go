@@ -207,8 +207,8 @@ func suggestionScene(t *testing.T, h *testsupport.Harness) (goal, parent domain.
 }
 
 // The Goal page lists its open suggestions for its Owner under Suggested
-// parents, each saying who suggested which parent and why, with Decline and
-// Accept returning to the Goal page; accepting requests the link. The
+// parents, each saying who suggested which parent and why, with Accept and
+// Decline returning to the Goal page; accepting requests the link. The
 // suggester sees their own with Withdraw instead, and anyone else sees none.
 func TestGoalPageListsSuggestedParents(t *testing.T) {
 	t.Parallel()
@@ -238,6 +238,10 @@ func TestGoalPageListsSuggestedParents(t *testing.T) {
 	}
 	if strings.Contains(list, base+"/withdraw") {
 		t.Errorf("the Owner is offered Withdraw:\n%s", list)
+	}
+	listed := parsePage(t, list)
+	if accept, decline := buttonNamed(listed, "Accept"), buttonNamed(listed, "Decline"); accept == nil || decline == nil || !precedes(accept, decline) {
+		t.Errorf("the Owner's list does not put Accept before Decline:\n%s", list)
 	}
 
 	resp := postForm(t, sam, ts.URL+base+"/accept", toastFormOf(t, list, base+"/accept"))

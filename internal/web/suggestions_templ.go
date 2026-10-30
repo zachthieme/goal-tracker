@@ -379,7 +379,7 @@ func suggestionRequestRow(p domain.ParentSuggestion) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), "/home").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = acceptDecline(fmt.Sprintf("/parent-suggestions/%d", p.ID), "/home").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -391,10 +391,10 @@ func suggestionRequestRow(p domain.ParentSuggestion) templ.Component {
 	})
 }
 
-// declineAccept is the pair of buttons deciding the Parent suggestion at base,
-// returning to back: Decline as a text button, which sends at once and is
-// offered Undo in a toast, then Accept outlined.
-func declineAccept(base, back string) templ.Component {
+// acceptDecline is the pair of buttons deciding the Parent suggestion at base,
+// returning to back: Accept outlined, then Decline as a text button, which
+// sends at once and is offered Undo in a toast.
+func acceptDecline(base, back string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -420,9 +420,9 @@ func declineAccept(base, back string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var21 templ.SafeURL
-		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/decline"))
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/accept"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 90, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 90, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -441,14 +441,14 @@ func declineAccept(base, back string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\"> <button type=\"submit\" class=\"btn quiet sm\">Decline</button></form><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\"> <button type=\"submit\" class=\"btn sm\">Accept</button></form><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var23 templ.SafeURL
-		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/accept"))
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/decline"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 94, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/suggestions.templ`, Line: 94, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
@@ -467,7 +467,7 @@ func declineAccept(base, back string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"> <button type=\"submit\" class=\"btn sm\">Accept</button></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"> <button type=\"submit\" class=\"btn quiet sm\">Decline</button></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -477,7 +477,7 @@ func declineAccept(base, back string) templ.Component {
 
 // suggestedParents lists, under Contributes to, the Goal's open Parent
 // suggestions the viewer is shown: for whoever may decide them each with
-// Decline and Accept, returning to the Goal page; for the suggester their own
+// Accept and Decline, returning to the Goal page; for the suggester their own
 // with Withdraw.
 func suggestedParents(v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -581,7 +581,7 @@ func suggestedParents(v goalView) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), goalPath(p.Goal.ID)).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = acceptDecline(fmt.Sprintf("/parent-suggestions/%d", p.ID), goalPath(p.Goal.ID)).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

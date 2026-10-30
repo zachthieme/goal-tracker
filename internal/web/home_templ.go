@@ -1324,7 +1324,7 @@ func linkRequestRow(l domain.Link) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = rejectAccept(fmt.Sprintf("/links/%d", l.ID)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = homeAcceptReject(fmt.Sprintf("/links/%d", l.ID)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1413,16 +1413,16 @@ func handoffRequestRow(ho domain.Handoff) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(ho.KeepableDelegates) > 0 {
-			templ_7745c5c3_Err = rejectButton(fmt.Sprintf("/handoffs/%d", ho.ID)).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<a data-testid=\"home-request-review\" class=\"btn sm\" href=\"/handoffs\">Review</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = rejectButton(fmt.Sprintf("/handoffs/%d", ho.ID)).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		} else {
-			templ_7745c5c3_Err = rejectAccept(fmt.Sprintf("/handoffs/%d", ho.ID)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = homeAcceptReject(fmt.Sprintf("/handoffs/%d", ho.ID)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1492,10 +1492,10 @@ func acceptReject(base string) templ.Component {
 	})
 }
 
-// rejectAccept is Home's pair of buttons deciding a pending request at base:
-// Reject as a text button, then Accept outlined. Reject sends at once; Home
-// then offers Undo in a toast. Both return to Home.
-func rejectAccept(base string) templ.Component {
+// homeAcceptReject is Home's pair of buttons deciding a pending request at
+// base: Accept outlined, then Reject as a text button. Reject sends at once;
+// Home then offers Undo in a toast. Both return to Home.
+func homeAcceptReject(base string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1516,10 +1516,6 @@ func rejectAccept(base string) templ.Component {
 			templ_7745c5c3_Var68 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = rejectButton(base).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -1527,13 +1523,17 @@ func rejectAccept(base string) templ.Component {
 		var templ_7745c5c3_Var69 templ.SafeURL
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(base + "/accept"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 356, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 355, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "\" class=\"inline-form\"><input type=\"hidden\" name=\"return\" value=\"/home\"> <button type=\"submit\" class=\"btn sm\">Accept</button></form>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = rejectButton(base).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

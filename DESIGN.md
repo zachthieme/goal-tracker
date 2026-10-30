@@ -826,11 +826,12 @@ and so on).
     own copy of the `.rp-inline-form` rules.
   - **Requests:** link requests and Handoffs waiting on the person, and Parent
     suggestions on Goals they Own, oldest first, each led by a chip naming its
-    kind. **Reject** (**Decline** for a Parent suggestion) is a quiet button
-    and **Accept** a secondary one. Reject and Decline send at once and return
-    to Home, which offers Undo in the toast. Where accepting needs choices, as
-    a Handoff of a Goal with Delegates does, the button reads **Review** and
-    leads to the Pending handoffs page, where those choices are made.
+    kind. **Accept** a secondary button, then **Reject** (**Decline** for a
+    Parent suggestion) a quiet one; every page that decides a request puts
+    Accept first. Reject and Decline send at once and return to Home, which
+    offers Undo in the toast. Where accepting needs choices, as a Handoff of a
+    Goal with Delegates does, the button reads **Review**, stands where Accept
+    does, and leads to the Pending handoffs page, where those choices are made.
 
   Goals the person is a Delegate on aren't listed again elsewhere: the Your
   goals line has one link to the Delegate page with their number, shown only
