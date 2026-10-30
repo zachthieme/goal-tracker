@@ -3101,6 +3101,60 @@ func TestGoalPageMetricRowsShowASparkline(t *testing.T) {
 	}
 }
 
+// Edit Metric sets the Direction as the goal form does (#655): from baseline
+// and target, the Direction posted counting only when they're equal.
+func TestGoalPageEditMetricDerivesDirection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow signups", "Signups pay the bills.")
+	metric, err := h.Service.AddMetric(t.Context(), goal.Owner.ID, domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Weekly signups", Unit: "signups", Direction: domain.MetricUp,
+		Baseline: 10, Target: 20, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	edit := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "metric-edit")
+	direction := formField(t, edit, "direction")
+	if direction.Label != "Direction — when target equals baseline" {
+		t.Errorf("Edit Metric's Direction is labelled %q, want it to say it counts when target equals baseline", direction.Label)
+	}
+	if direction.Value != domain.MetricUp {
+		t.Errorf("Edit Metric's Direction starts at %q, want the Metric's own, up", direction.Value)
+	}
+
+	for _, c := range []struct {
+		baseline, target, posted, want string
+	}{
+		{"100", "50", domain.MetricUp, domain.MetricDown},
+		{"50", "100", domain.MetricDown, domain.MetricUp},
+		{"5", "5", domain.MetricDown, domain.MetricDown},
+		{"5", "5", domain.MetricUp, domain.MetricUp},
+	} {
+		resp := postForm(t, client, fmt.Sprintf("%s/metrics/%d", ts.URL, metric.ID), url.Values{
+			"name": {"Weekly signups"}, "unit": {"signups"}, "direction": {c.posted},
+			"baseline": {c.baseline}, "target": {c.target}, "target_date": {"2026-06-15"},
+		})
+		_ = readBody(t, resp)
+		_ = resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			t.Fatalf("edit %s → %s: status %d", c.baseline, c.target, resp.StatusCode)
+		}
+		saved, err := h.Service.Metric(t.Context(), metric.ID)
+		if err != nil {
+			t.Fatalf("Metric: %v", err)
+		}
+		if saved.Direction != c.want {
+			t.Errorf("edit to %s → %s posting %s saved Direction %s, want %s", c.baseline, c.target, c.posted, saved.Direction, c.want)
+		}
+	}
+}
+
 // goalHistoryChipCountsIn reads the History block's filter chips as each
 // chip's label mapped to the count beside it.
 func goalHistoryChipCountsIn(t *testing.T, history *nethtml.Node) map[string]string {

@@ -187,7 +187,9 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 // handleEditMetric saves a Metric's Edit form on the Goal page. A number or
 // date that doesn't parse is sent on unparsed, so EditMetric refuses it only
 // once it has checked who sent it. A refusal links Back to the Metric's Goal,
-// read again as handleEditMilestone reads its Milestone.
+// read again as handleEditMilestone reads its Milestone. The Direction is set
+// as the goal form sets a Metric row's (metricDirection): from the baseline
+// and target, the posted one counting only when they're equal.
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -195,14 +197,14 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 	}
 	// Parsed before the input is built, so Unparsed holds every append.
 	var unparsed formProblems
-	baseline, _ := readMetricNumber(&unparsed, "baseline", "baseline", r.FormValue("baseline"))
-	target, _ := readMetricNumber(&unparsed, "target", "target", r.FormValue("target"))
+	baseline, baselineOK := readMetricNumber(&unparsed, "baseline", "baseline", r.FormValue("baseline"))
+	target, targetOK := readMetricNumber(&unparsed, "target", "target", r.FormValue("target"))
 	targetDate := unparsed.date("target_date", r.FormValue("target_date"), "")
 	m, err := s.svc.EditMetric(r.Context(), current.ID, domain.EditMetricInput{
 		MetricID:   id,
 		Name:       r.FormValue("name"),
 		Unit:       r.FormValue("unit"),
-		Direction:  r.FormValue("direction"),
+		Direction:  metricDirection(baseline, target, baselineOK && targetOK, r.FormValue("direction")),
 		Baseline:   baseline,
 		Target:     target,
 		TargetDate: targetDate,

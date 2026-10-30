@@ -1192,8 +1192,11 @@ and so on).
     (§ Deviations 6); and the current value in tabular figures (20, 600) with
     its unit muted, or a muted "—". Under the row sit a muted "Readings (n)"
     disclosure listing each reading against its target and, for the Owner, an
-    **Edit Metric** disclosure. At 600px and below the sparkline drops to its
-    own line.
+    **Edit Metric** disclosure. Its Direction is asked only when target equals
+    baseline, as the goal form's is: the field, "Direction — when target
+    equals baseline", shows with script only while the two are equal, and
+    otherwise the Direction follows from them. At 600px and below the
+    sparkline drops to its own line.
   - **Milestones:** a muted "3 slips · 1 added or removed since Active" line,
     where the slips are the Milestones' date slips only ("1 slip" for one),
     not the delivery date's or the back-to-Green date's. The line shows only
