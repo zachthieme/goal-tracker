@@ -1445,69 +1445,83 @@ func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 // A Goal block's only box is its Path to Green, and only on a Red or Yellow
 // Goal, with Ask for help beside it in the box: a Green Goal's block, and an
 // exception that is only Check-in overdue, render none. Why it matters and
-// Status read as plain text outside it, on the draft and the publication alike
-// (#475). That the box is tinted in its Health's tint, and nothing else in the
-// block is, is TestReportBlockTintsOnlyAPathToGreenStyles.
-func TestReportBlockTintsOnlyAPathToGreenOverHTTP(t *testing.T) {
+// Status read as plain text outside it (#475). That the box is tinted in its
+// Health's tint, and nothing else in the block is, is
+// TestReportBlockTintsOnlyAPathToGreenStyles.
+func TestReportBlockTintsOnlyAPathToGreen(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	h.SetManager(boss, h.SignInNamed("mia@example.com", "Mia Chen"))
-	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
-	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	silent := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
-	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.AskForHelp(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
-	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, silent.ID}})
-	pub := h.PublishReport(boss, def)
+	boss := domain.Account{ID: 1, Email: "boss@example.com"}
+	mia := domain.Account{ID: 2, Email: "mia@example.com", Name: "Mia Chen"}
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	goal := func(id int64, title, why string) domain.Goal {
+		return domain.Goal{ID: id, Title: title, WhyItMatters: why, Owner: boss, Lifecycle: domain.LifecycleActive}
+	}
+	red := goal(11, "Launch in EU", "Expand the market.")
+	yellow := goal(12, "Hire a CFO", "We need one.")
+	green := goal(13, "Cut churn", "Keep customers.")
+	silent := goal(14, "Open Tokyo", "Expand east.")
+	pub := reportBlocksPublication(at,
+		domain.ReportBlock{
+			Goal: red, Health: domain.HealthRed, Status: "Blocked on legal.",
+			PathToGreen: "Hire counsel.", PathTargetDate: at.AddDate(0, 1, 0), AsksForHelp: true, AskAddressee: &mia,
+		},
+		domain.ReportBlock{Goal: yellow, Health: domain.HealthYellow, Status: "Slow.", PathToGreen: "Use a recruiter.", PathTargetDate: at.AddDate(0, 1, 0)},
+		domain.ReportBlock{Goal: green, Health: domain.HealthGreen, Status: "On track.", Badges: []string{domain.BadgeCheckinOverdue}},
+		domain.ReportBlock{Goal: silent, Badges: []string{domain.BadgeCheckinOverdue}},
+	)
 
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	for name, url := range map[string]string{
-		"draft":       reportURL,
-		"publication": reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10),
+	doc := parsePage(t, web.RenderPublicationContent(pub, time.UTC))
+	for _, c := range []struct {
+		goal  domain.Goal
+		boxed bool // whether its block holds a Path to Green box
+	}{
+		{red, true},
+		{yellow, true},
+		{green, false},
+		{silent, false},
 	} {
-		doc := getPage(t, client, url)
-		for _, c := range []struct {
-			goal  domain.Goal
-			boxed bool // whether its block holds a Path to Green box
-		}{
-			{red, true},
-			{yellow, true},
-			{green, false},
-			{silent, false},
-		} {
-			block := reportBlockOf(t, doc, c.goal)
-			boxes := findAllByTestID(block, "report-path-box")
-			for _, id := range []string{"report-why-it-matters", "report-status"} {
-				for _, box := range boxes {
-					if hasTestID(box, id) {
-						t.Errorf("%s: %q's %s sits in the Path to Green box: %s", name, c.goal.Title, id, renderNode(box))
-					}
+		block := reportBlockOf(t, doc, c.goal)
+		boxes := findAllByTestID(block, "report-path-box")
+		for _, id := range []string{"report-why-it-matters", "report-status"} {
+			for _, box := range boxes {
+				if hasTestID(box, id) {
+					t.Errorf("%q's %s sits in the Path to Green box: %s", c.goal.Title, id, renderNode(box))
 				}
 			}
-			if !c.boxed {
-				if len(boxes) != 0 {
-					t.Errorf("%s: %q's block has %d Path to Green boxes, want none:\n%s", name, c.goal.Title, len(boxes), renderNode(block))
-				}
-				continue
-			}
-			if len(boxes) != 1 {
-				t.Fatalf("%s: %q's block has %d Path to Green boxes, want one:\n%s", name, c.goal.Title, len(boxes), renderNode(block))
-			}
-			if len(findAllByTestID(boxes[0], "report-path-to-green")) != 1 {
-				t.Errorf("%s: %q's box doesn't hold its Path to Green:\n%s", name, c.goal.Title, renderNode(boxes[0]))
-			}
 		}
-		ask := findByTestID(t, doc, "report-ask-for-help")
-		if box := findByTestID(t, reportBlockOf(t, doc, red), "report-path-box"); ask.Parent != box {
-			t.Errorf("%s: Launch in EU's Ask for help doesn't sit in its Path to Green's box: %s", name, renderNode(ask.Parent))
+		if !c.boxed {
+			if len(boxes) != 0 {
+				t.Errorf("%q's block has %d Path to Green boxes, want none:\n%s", c.goal.Title, len(boxes), renderNode(block))
+			}
+			continue
 		}
+		if len(boxes) != 1 {
+			t.Fatalf("%q's block has %d Path to Green boxes, want one:\n%s", c.goal.Title, len(boxes), renderNode(block))
+		}
+		if len(findAllByTestID(boxes[0], "report-path-to-green")) != 1 {
+			t.Errorf("%q's box doesn't hold its Path to Green:\n%s", c.goal.Title, renderNode(boxes[0]))
+		}
+	}
+	ask := findByTestID(t, doc, "report-ask-for-help")
+	if box := findByTestID(t, reportBlockOf(t, doc, red), "report-path-box"); ask.Parent != box {
+		t.Errorf("Launch in EU's Ask for help doesn't sit in its Path to Green's box: %s", renderNode(ask.Parent))
+	}
+}
+
+// reportBlocksPublication is a publication of the Report MBR, published at at
+// by boss@example.com, holding blocks as its exceptions, as a test of what a
+// block shows builds one by hand (domain.PublicationFacts).
+func reportBlocksPublication(at time.Time, blocks ...domain.ReportBlock) domain.Publication {
+	publisher := domain.Account{ID: 1, Email: "boss@example.com", Name: "Bo Boss"}
+	r := domain.Report{
+		Definition: domain.ReportDefinition{ID: 1, Name: "MBR"},
+		Baseline:   at.AddDate(0, -1, 0),
+		Exceptions: blocks,
+	}
+	return domain.Publication{
+		ID: 1, DefinitionID: 1, Name: r.Definition.Name, PublishedBy: publisher, PublishedAt: at,
+		Facts: domain.PublicationFacts(r, publisher, at, ""),
 	}
 }
 
@@ -1819,25 +1833,22 @@ func TestReportsListSortsWhatNeedsPublishingFirstOverHTTP(t *testing.T) {
 
 // A Report card's head reads Health first, its "· N wks" and "· was X" straight
 // after it, then the title and its meta line, then the other badges, on the
-// draft and on the print page (#229). That it keeps that order at phone width
-// and in a narrow block is TestReportCardHeadLeadsWithItsHealthStyles.
-func TestReportCardHeadLeadsWithItsHealthOverHTTP(t *testing.T) {
+// publication and on the print page (#229). That it keeps that order at phone
+// width and in a narrow block is TestReportCardHeadLeadsWithItsHealthStyles.
+func TestReportCardHeadLeadsWithItsHealth(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	red := h.ActiveGoal(boss, "Cut infrastructure cost per request", "Margins matter.")
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
-	h.Clock.Advance(10 * 24 * time.Hour)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
-	pub := h.PublishReport(boss, def)
+	boss := domain.Account{ID: 1, Email: "boss@example.com"}
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	red := domain.Goal{ID: 11, Title: "Cut infrastructure cost per request", WhyItMatters: "Margins matter.", Owner: boss, Lifecycle: domain.LifecycleActive}
+	pub := reportBlocksPublication(at, domain.ReportBlock{
+		Goal: red, Health: domain.HealthRed, RunOffGreenWeeks: 2, Badges: []string{domain.BadgeCheckinOverdue},
+		Status: "Blocked on legal.", PathToGreen: "Hire counsel.", PathTargetDate: at.AddDate(0, 1, 0),
+	})
 
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-	printed := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
-	for where, doc := range map[string]*nethtml.Node{"the draft": page, "the print page": printed} {
+	page := parsePage(t, web.RenderPublicationContent(pub, time.UTC))
+	printed := parsePage(t, web.RenderPublicationPrint(pub, time.UTC))
+	for where, doc := range map[string]*nethtml.Node{"the publication": page, "the print page": printed} {
 		block := findByTestID(t, doc, "report-exception")
 		health := findByTestID(t, block, "report-health")
 		run := findByTestID(t, block, "report-run-off-green")
@@ -1918,22 +1929,18 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 // Green in a box of its own. An overdue Path to Green says Overdue in its
 // badge, and one on time doesn't (#478). The label column, and the box's
 // tint, are TestPrintPageLaysOutTheGoalBlockAsOnScreenStyles.
-func TestPrintPageLaysOutTheGoalBlockAsOnScreenOverHTTP(t *testing.T) {
+func TestPrintPageLaysOutTheGoalBlockAsOnScreen(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 0, 7))
-	h.Clock.Advance(14 * 24 * time.Hour)
-	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID}})
-	pub := h.PublishReport(boss, def)
-
-	ts := newServer(t, h)
-	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	boss := domain.Account{ID: 1, Email: "boss@example.com"}
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	red := domain.Goal{ID: 11, Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive}
+	yellow := domain.Goal{ID: 12, Title: "Hire a CFO", WhyItMatters: "We need one.", Owner: boss, Lifecycle: domain.LifecycleActive}
+	pub := reportBlocksPublication(at,
+		domain.ReportBlock{Goal: red, Health: domain.HealthRed, Status: "Blocked on legal.", PathToGreen: "Hire counsel.", PathTargetDate: at.AddDate(0, 1, 0)},
+		domain.ReportBlock{Goal: yellow, Health: domain.HealthYellow, Status: "Slow.", PathToGreen: "Use a recruiter.", PathTargetDate: at.AddDate(0, 0, -7)},
+	)
+	doc := parsePage(t, web.RenderPublicationPrint(pub, time.UTC))
 
 	for _, c := range []struct {
 		goal    domain.Goal
@@ -4384,56 +4391,51 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 	}
 }
 
-// An exception block names each Schedule conflict its Goal is in, after what
-// changed, grouped by side: as the child, under "Parent Goal due earlier", then
-// as the parent, under "Contributing Goal due later", the groups joined by
-// "; ". Each Goal at the other end links to its Goal page, outside the Report
-// though it is, with its Owner shown as every person on that page is (a Name
-// that discloses their email on the draft and the publication, Name (email) at
-// their first mention in Print) and its delivery date as the page writes dates;
-// the block's own delivery date, which its head shows, is not repeated.
-func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
+// An exception block names each Schedule conflict its Goal is in, grouped by
+// side: as the child, under "Parent Goal due earlier", then as the parent,
+// under "Contributing Goal due later", the groups joined by "; ". Each Goal at
+// the other end links to its Goal page, outside the Report though it is, with
+// its Owner shown as every person on that page is (a Name that discloses their
+// email on the publication, Name (email) at their first mention in Print) and
+// its delivery date as the page writes dates; the block's own delivery date,
+// which its head shows, is not repeated. Which conflicts a block holds, and in
+// what order, is TestReportBlockFactsNameEachScheduleConflict.
+func TestReportBlockNamesEachScheduleConflict(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignInNamed("boss@example.com", "Bo Boss")
-	pat := h.SignInNamed("pat@example.com", "Pat Parker")
-	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	boss := domain.Account{ID: 1, Email: "boss@example.com", Name: "Bo Boss"}
+	pat := domain.Account{ID: 2, Email: "pat@example.com", Name: "Pat Parker"}
+	sam := domain.Account{ID: 3, Email: "sam@example.com", Name: "Sam Lee"}
 	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
-	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", date(10, 15))
-	middle := h.ActiveGoalDueLater(boss, "Lisbon office", date(11, 3))
-	child := h.ActiveGoalDueLater(sam, "Wire the network", date(12, 1))
-	h.AcceptedLink(middle, parent)
-	h.AcceptedLink(child, middle)
-	h.Clock.Advance(40 * 24 * time.Hour)
-	h.Checkin(boss, middle.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{middle.ID}})
-	pub := h.PublishReport(boss, def)
+	parent := domain.Goal{ID: 11, Title: "Open in Iberia", Owner: pat, DeliveryDate: date(10, 15)}
+	middle := domain.Goal{ID: 12, Title: "Lisbon office", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(11, 3)}
+	child := domain.Goal{ID: 13, Title: "Wire the network", Owner: sam, DeliveryDate: date(12, 1)}
+	pub := reportBlocksPublication(date(11, 20), domain.ReportBlock{
+		Goal: middle, Health: domain.HealthGreen, Reasons: []domain.ReportReason{domain.ReportReasonScheduleConflict},
+		ScheduleConflicts: []domain.ReportScheduleConflict{
+			{GoalID: parent.ID, Title: parent.Title, Owner: pat, Due: parent.DeliveryDate},
+			{AsParent: true, GoalID: child.ID, Title: child.Title, Owner: sam, Due: child.DeliveryDate},
+		},
+	})
 
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
 	type conflictGroup struct {
 		words   string
 		entries []string
 	}
-	onPage := []conflictGroup{
-		{"Parent Goal due earlier", []string{"Open in Iberia (Pat Parker), due Oct 15, 2026"}},
-		{"Contributing Goal due later", []string{"Wire the network (Sam Lee), due Dec 1, 2026"}},
-	}
 	for _, page := range []struct {
-		name, url string
-		want      []conflictGroup
+		name, html string
+		want       []conflictGroup
 	}{
-		{"draft", reportURL, onPage},
-		{"publication", pubURL, onPage},
-		{"print", pubURL + "/print", []conflictGroup{
+		{"publication", web.RenderPublicationContent(pub, time.UTC), []conflictGroup{
+			{"Parent Goal due earlier", []string{"Open in Iberia (Pat Parker), due Oct 15, 2026"}},
+			{"Contributing Goal due later", []string{"Wire the network (Sam Lee), due Dec 1, 2026"}},
+		}},
+		{"print", web.RenderPublicationPrint(pub, time.UTC), []conflictGroup{
 			{"Parent Goal due earlier", []string{"Open in Iberia (Pat Parker (pat@example.com)), due Oct 15, 2026"}},
 			{"Contributing Goal due later", []string{"Wire the network (Sam Lee (sam@example.com)), due Dec 1, 2026"}},
 		}},
 	} {
-		block := reportBlockOf(t, getPage(t, client, page.url), middle)
+		block := reportBlockOf(t, parsePage(t, page.html), middle)
 		fact := findByTestID(t, block, "report-schedule-conflicts")
 		if !strings.HasPrefix(textOf(fact), "Schedule conflict: ") {
 			t.Errorf("%s: the fact reads %q, want it labelled Schedule conflict:", page.name, textOf(fact))
@@ -4476,15 +4478,6 @@ func TestReportBlockNamesEachScheduleConflictOverHTTP(t *testing.T) {
 			if page.name != "print" && !reportShowsPerson(entries[0], other.email, other.name) {
 				t.Errorf("%s: %q does not show %s as a Name that discloses their email", page.name, got[0], other.name)
 			}
-		}
-		if !precedes(groups[0], groups[1]) {
-			t.Errorf("%s: the contributing-Goal group comes before the parent-Goal group", page.name)
-		}
-		if changed := findAllByTestID(block, "report-changes"); len(changed) > 0 && !precedes(changed[0], fact) {
-			t.Errorf("%s: Schedule conflict comes before Changed", page.name)
-		}
-		if contributes := findAllByTestID(block, "report-contributes-to"); len(contributes) > 0 && !precedes(fact, contributes[0]) {
-			t.Errorf("%s: Schedule conflict comes after Contributes to", page.name)
 		}
 	}
 }
@@ -4529,20 +4522,20 @@ func TestReportScheduleConflictOwnerKeepsTheirOpenBracketOverHTTP(t *testing.T) 
 
 // A block whose only child has no Health yet has no Rolled-up Health to count,
 // so it shows no Rolled-up Health row, only its Supported by, under its label
-// (#246, #475).
+// (#246, #475). That such a block lists no Rolled-up Health is
+// TestReportBlockFactsListSupportedByWithoutARolledUpHealth.
 func TestReportSupportedByStandsAloneWithoutARolledUpHealth(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	parent := h.ActiveGoal(boss, "Growth", "Grow the business.")
-	child := h.ActiveChildOf(boss, parent, "Referral program", "Customers bring customers.")
-	h.Checkin(boss, parent.ID, domain.HealthRed, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Growth", Mode: domain.ReportModePicked, Picked: []int64{parent.ID, child.ID}})
+	boss := domain.Account{ID: 1, Email: "boss@example.com"}
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	parent := domain.Goal{ID: 11, Title: "Growth", WhyItMatters: "Grow the business.", Owner: boss, Lifecycle: domain.LifecycleActive}
+	pub := reportBlocksPublication(at, domain.ReportBlock{
+		Goal: parent, Health: domain.HealthRed, Status: "Off track.", PathToGreen: "Add staff.", PathTargetDate: at.AddDate(0, 1, 0),
+		Behind: []domain.LinkedGoal{{GoalID: 12, Title: "Referral program"}},
+	})
 
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	block := reportBlockOf(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), parent)
+	block := reportBlockOf(t, parsePage(t, web.RenderPublicationContent(pub, time.UTC)), parent)
 	if hasTestID(block, "report-rollup") {
 		t.Errorf("Growth shows a Rolled-up Health with none to count:\n%s", renderNode(block))
 	}
@@ -4552,39 +4545,36 @@ func TestReportSupportedByStandsAloneWithoutARolledUpHealth(t *testing.T) {
 	}
 }
 
-// An exception block whose Goal asks for help says so after its Path to
-// Green, naming whom it asks, or that no one is above the Owner, on the draft,
-// the publication and its Print page alike. A block that doesn't ask says
-// nothing of it.
-func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
+// An exception block whose Goal asks for help says so, naming whom it asks, or
+// that no one is above the Owner, on the publication and its Print page alike.
+// A block that doesn't ask says nothing of it. Whom it asks is
+// TestAskAddresseeIsTheOwnersManager, and that it follows the Path to Green is
+// TestReportBlockFactsListTheBlockInOrder.
+func TestReportBlockShowsAnAskForHelp(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	lee := h.SignIn("lee@example.com")
-	h.SetManager(sam, h.SignInNamed("mia@example.com", "Mia Chen"))
-	later := h.Clock.Now().AddDate(0, 1, 0)
-	asking := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
-	h.AskForHelp(sam, asking.ID, domain.HealthRed, "Blocked on legal.", "Need counsel budget.", later)
-	alone := h.ActiveGoal(lee, "Cut churn", "Keep customers.")
-	h.AskForHelp(lee, alone.ID, domain.HealthYellow, "Slipping.", "Need a reviewer.", later)
-	quiet := h.ActiveGoal(sam, "Ship billing", "Get paid.")
-	h.Checkin(sam, quiet.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{asking.ID, alone.ID, quiet.ID}})
-	pub := h.PublishReport(boss, def)
+	sam := domain.Account{ID: 2, Email: "sam@example.com"}
+	lee := domain.Account{ID: 3, Email: "lee@example.com"}
+	mia := domain.Account{ID: 4, Email: "mia@example.com", Name: "Mia Chen"}
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	later := at.AddDate(0, 1, 0)
+	asking := domain.Goal{ID: 11, Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: sam, Lifecycle: domain.LifecycleActive}
+	alone := domain.Goal{ID: 12, Title: "Cut churn", WhyItMatters: "Keep customers.", Owner: lee, Lifecycle: domain.LifecycleActive}
+	quiet := domain.Goal{ID: 13, Title: "Ship billing", WhyItMatters: "Get paid.", Owner: sam, Lifecycle: domain.LifecycleActive}
+	pub := reportBlocksPublication(at,
+		domain.ReportBlock{
+			Goal: asking, Health: domain.HealthRed, Status: "Blocked on legal.", PathToGreen: "Need counsel budget.", PathTargetDate: later,
+			AsksForHelp: true, AskAddressee: &mia,
+		},
+		domain.ReportBlock{Goal: alone, Health: domain.HealthYellow, Status: "Slipping.", PathToGreen: "Need a reviewer.", PathTargetDate: later, AsksForHelp: true},
+		domain.ReportBlock{Goal: quiet, Health: domain.HealthYellow, Status: "Slipping.", PathToGreen: "Add a team.", PathTargetDate: later},
+	)
 
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
-
-	for name, tc := range map[string]struct{ url, of string }{
-		"draft":       {reportURL, "Asks for help of Mia Chen mia@example.com"},
-		"publication": {pubURL, "Asks for help of Mia Chen mia@example.com"},
-		"print":       {pubURL + "/print", "Asks for help of Mia Chen (mia@example.com)"},
+	for name, tc := range map[string]struct{ html, of string }{
+		"publication": {web.RenderPublicationContent(pub, time.UTC), "Asks for help of Mia Chen mia@example.com"},
+		"print":       {web.RenderPublicationPrint(pub, time.UTC), "Asks for help of Mia Chen (mia@example.com)"},
 	} {
-		page := getPage(t, client, tc.url)
+		page := parsePage(t, tc.html)
 		want := map[string]string{
 			asking.Title: tc.of,
 			alone.Title:  "Asks for help · no one above the Owner",
@@ -4608,21 +4598,14 @@ func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
 				}
 			}
 		}
-		asks := findAllByTestID(page, "report-ask-for-help")
 		var strong int
-		for _, ask := range asks {
+		for _, ask := range findAllByTestID(page, "report-ask-for-help") {
 			if lead := ask.FirstChild; lead != nil && lead.Type == nethtml.ElementNode && lead.Data == "strong" && textOf(lead) == "Asks for help" {
 				strong++
 			}
 		}
 		if strong != 2 {
 			t.Errorf("%s: %d asks for help open with a strong Asks for help, want 2:\n%s", name, strong, renderNode(page))
-		}
-		paths := findAll(page, func(n *nethtml.Node) bool {
-			return attrOf(n, "data-testid") == "report-path-to-green" && strings.Contains(textOf(n), "Need counsel budget.")
-		})
-		if len(paths) == 0 || len(asks) == 0 || !precedes(paths[0], asks[0]) {
-			t.Errorf("%s: the ask doesn't follow the Path to Green:\n%s", name, renderNode(page))
 		}
 	}
 }
