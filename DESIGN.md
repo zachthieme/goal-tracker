@@ -1698,9 +1698,9 @@ and so on).
   - **Header strip:** **Reports**, with no count, and **New report**
     (`.btn.primary.sm`) at its right, leading to the Report builder.
   - **Order, 32px apart:** a muted lead line, then **Open Action Items** when
-    there are any, then **Report Definitions**, each an `h2` with its rows 8px
-    under it. With no Report Definitions, a muted "No reports yet." takes the
-    list's place.
+    there are any, then **All reports**, each an `h2` with its rows 8px under
+    it. With no Report Definitions, a muted "No reports yet." takes the list's
+    place.
   - **Open Action Items (`.rp-chase`):** two groups, **Yours** and **My org**,
     either left out when empty, each soonest due first. A group opens with a
     32px `--color-group` header row (`.rp-group`): its name in 12px, 500
@@ -1712,7 +1712,7 @@ and so on).
     past due, then a muted "Report · Goal · due Nov 7, 2026" and the Owner's
     Name. A row has no actions: closing and reassigning stay on the
     publication, the draft and Home.
-  - **Report Definitions (`.rp-table`):** a table with no fill under a muted
+  - **All reports (`.rp-table`):** a table with no fill under a muted
     label row: Report, Goals, Last published, Draft, and an unlabelled
     Download column. Rows are 44px between hairlines, with
     `--color-row-hover` under the pointer, and don't wrap; the table scrolls

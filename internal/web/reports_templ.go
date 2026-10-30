@@ -93,7 +93,7 @@ func reportsPage(current *domain.Account, data reportsListData) templ.Component 
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<section class=\"rp-defs\" aria-labelledby=\"rp-defs-head\"><h2 id=\"rp-defs-head\">Report Definitions</h2><div class=\"rp-table\"><table data-testid=\"report-table\"><thead><tr><th>Report</th><th>Goals</th><th>Last published</th><th class=\"rp-draft\">Draft</th><th class=\"rp-download-cell\"><span class=\"sr-only\">Download</span></th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<section class=\"rp-defs\" aria-labelledby=\"rp-defs-head\"><h2 id=\"rp-defs-head\">All reports</h2><div class=\"rp-table\"><table data-testid=\"report-table\"><thead><tr><th>Report</th><th>Goals</th><th>Last published</th><th class=\"rp-draft\">Draft</th><th class=\"rp-download-cell\"><span class=\"sr-only\">Download</span></th></tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
