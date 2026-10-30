@@ -23,9 +23,10 @@ import (
 // database holding publications from before records (#647) is reseeded, not
 // upgraded.
 //
-// A new fact payload, or a new field of one, is a field on ReportFact (or on
-// the type it holds), a field on the matching record… type, and its line in
-// recordFactOf and thawFact. Nothing else in publish.go changes.
+// A new kind of fact is its Report<Kind>Fact, a field on recordFact for its
+// payload, and its case in recordFactOf and thawFact; a new field of a payload
+// is a field on the matching record… type and its line in the functions
+// converting it. Nothing else in publish.go changes.
 const publicationRecordVersion = 1
 
 // publicationRecord is a publication as stored.
@@ -237,70 +238,156 @@ func thawPublication(data []byte) (name string, facts []ReportFact, err error) {
 	if rec.Version != publicationRecordVersion {
 		return "", nil, fmt.Errorf("publication record version %d, want %d", rec.Version, publicationRecordVersion)
 	}
-	return rec.Name, thawFacts(rec.Facts), nil
+	facts, err = thawFacts(rec.Facts)
+	if err != nil {
+		return "", nil, err
+	}
+	return rec.Name, facts, nil
 }
 
 func recordFactsOf(facts []ReportFact) []recordFact {
 	return mapRecord(facts, recordFactOf)
 }
 
-func thawFacts(recs []recordFact) []ReportFact {
-	return mapRecord(recs, thawFact)
+// thawFacts is the facts recs store, nil for none, refusing a fact of a kind
+// it doesn't know.
+func thawFacts(recs []recordFact) ([]ReportFact, error) {
+	if len(recs) == 0 {
+		return nil, nil
+	}
+	facts := make([]ReportFact, 0, len(recs))
+	for _, rec := range recs {
+		f, err := thawFact(rec)
+		if err != nil {
+			return nil, err
+		}
+		facts = append(facts, f)
+	}
+	return facts, nil
 }
 
-// recordFactOf is f as stored: one line per payload, each left out when f
-// doesn't carry it.
+// recordFactOf is f as stored: its kind and label, then the payload its value
+// carries, each part left out when empty.
 func recordFactOf(f ReportFact) recordFact {
-	return recordFact{
-		Kind:                   string(f.Kind),
-		Label:                  f.Label,
-		Text:                   f.Text,
-		Byline:                 recordIf(f.Byline != ReportByline{}, func() recordByline { return recordBylineOf(f.Byline) }),
-		HealthCounts:           recordIf(f.HealthCounts != HealthCounts{}, func() recordHealthCounts { return recordHealthCountsOf(f.HealthCounts) }),
-		Movement:               recordIf(f.Kind == ReportFactMovement, func() recordMovement { return recordMovementOf(f.Movement) }),
-		ActionItems:            mapRecord(f.ActionItems, recordActionItemOf),
-		Narrative:              mapRecord(f.Narrative, recordNarrativeSectionOf),
-		Blocks:                 mapRecord(f.Blocks, recordBlockOf),
-		Lines:                  mapRecord(f.Lines, recordLineOf),
-		MembershipChanges:      mapRecord(f.MembershipChanges, recordMembershipChangeOf),
-		Head:                   recordIf(f.Kind == ReportFactBlockHead, func() recordBlockHead { return recordBlockHeadOf(f.Head) }),
-		Changes:                f.Changes,
-		ScheduleConflictGroups: mapRecord(f.ScheduleConflictGroups, recordScheduleConflictGroupOf),
-		Goals:                  mapRecord(f.Goals, recordLinkedGoalOf),
-		Fields:                 mapRecord(f.Fields, recordFieldValueOf),
-		PathToGreen:            recordIf(f.Kind == ReportFactPathToGreen, func() recordPathToGreen { return recordPathToGreenOf(f.PathToGreen) }),
-		Ask:                    recordIf(f.Ask != ReportAsk{}, func() recordAsk { return recordAskOf(f.Ask) }),
-		Milestones:             mapRecord(f.Milestones, recordMilestoneOf),
-		Metrics:                mapRecord(f.Metrics, recordMetricOf),
-		RolledUp:               recordIf(f.RolledUp != ReportRolledUp{}, func() recordRolledUp { return recordRolledUp(f.RolledUp) }),
+	rec := recordFact{Kind: string(f.Kind()), Label: f.Label}
+	switch v := f.Value.(type) {
+	case ReportBylineFact:
+		rec.Byline = recordIf(v.Byline != ReportByline{}, func() recordByline { return recordBylineOf(v.Byline) })
+	case ReportSelectionFact:
+		rec.Text = v.Text
+	case ReportHealthCountsFact:
+		rec.HealthCounts = recordIf(v.Counts != HealthCounts{}, func() recordHealthCounts { return recordHealthCountsOf(v.Counts) })
+	case ReportMovementFact:
+		rec.Movement = new(recordMovementOf(v.Line))
+	case ReportActionItemsFact:
+		rec.ActionItems = mapRecord(v.Items, recordActionItemOf)
+	case ReportIntroductionFact:
+		rec.Text = v.Text
+	case ReportNarrativeFact:
+		rec.Narrative = mapRecord(v.Sections, recordNarrativeSectionOf)
+	case ReportExceptionsFact:
+		rec.Blocks = mapRecord(v.Blocks, recordBlockOf)
+	case ReportOnTrackFact:
+		rec.Lines = mapRecord(v.Lines, recordLineOf)
+	case ReportMembershipChangesFact:
+		rec.MembershipChanges = mapRecord(v.Changes, recordMembershipChangeOf)
+	case ReportBlockHeadFact:
+		rec.Head = new(recordBlockHeadOf(v.Head))
+	case ReportChangedFact:
+		rec.Changes = v.Changes
+	case ReportScheduleConflictFact:
+		rec.ScheduleConflictGroups = mapRecord(v.Groups, recordScheduleConflictGroupOf)
+	case ReportContributesToFact:
+		rec.Goals = mapRecord(v.Goals, recordLinkedGoalOf)
+	case ReportFieldsFact:
+		rec.Fields = mapRecord(v.Values, recordFieldValueOf)
+	case ReportWhyItMattersFact:
+		rec.Text = v.Text
+	case ReportStatusFact:
+		rec.Text = v.Text
+	case ReportPathToGreenFact:
+		rec.PathToGreen = new(recordPathToGreenOf(v.Path))
+	case ReportAskForHelpFact:
+		rec.Ask = recordIf(v.Ask != ReportAsk{}, func() recordAsk { return recordAskOf(v.Ask) })
+	case ReportMilestonesFact:
+		rec.Milestones = mapRecord(v.Marks, recordMilestoneOf)
+	case ReportMetricsFact:
+		rec.Metrics = mapRecord(v.Metrics, recordMetricOf)
+	case ReportRolledUpFact:
+		rec.RolledUp = recordIf(v.RolledUp != ReportRolledUp{}, func() recordRolledUp { return recordRolledUp(v.RolledUp) })
+	case ReportSupportedByFact:
+		rec.Goals = mapRecord(v.Goals, recordLinkedGoalOf)
+	case ReportExplanationFact:
+		rec.Text = v.Text
 	}
+	return rec
 }
 
-// thawFact is the ReportFact rec stores: one line per payload.
-func thawFact(rec recordFact) ReportFact {
-	return ReportFact{
-		Kind:                   ReportFactKind(rec.Kind),
-		Label:                  rec.Label,
-		Text:                   rec.Text,
-		Byline:                 thawIf(rec.Byline, thawByline),
-		HealthCounts:           thawIf(rec.HealthCounts, thawHealthCounts),
-		Movement:               thawIf(rec.Movement, thawMovement),
-		ActionItems:            mapRecord(rec.ActionItems, thawActionItem),
-		Narrative:              mapRecord(rec.Narrative, thawNarrativeSection),
-		Blocks:                 mapRecord(rec.Blocks, thawBlock),
-		Lines:                  mapRecord(rec.Lines, thawLine),
-		MembershipChanges:      mapRecord(rec.MembershipChanges, thawMembershipChange),
-		Head:                   thawIf(rec.Head, thawBlockHead),
-		Changes:                thawSlice(rec.Changes),
-		ScheduleConflictGroups: mapRecord(rec.ScheduleConflictGroups, thawScheduleConflictGroup),
-		Goals:                  mapRecord(rec.Goals, thawLinkedGoal),
-		Fields:                 mapRecord(rec.Fields, thawFieldValue),
-		PathToGreen:            thawIf(rec.PathToGreen, thawPathToGreen),
-		Ask:                    thawIf(rec.Ask, thawAsk),
-		Milestones:             mapRecord(rec.Milestones, thawMilestoneMark),
-		Metrics:                mapRecord(rec.Metrics, thawMetric),
-		RolledUp:               thawIf(rec.RolledUp, func(r recordRolledUp) ReportRolledUp { return ReportRolledUp(r) }),
+// thawFact is the ReportFact rec stores, its value the Report<Kind>Fact its
+// kind names, refusing a kind it doesn't know.
+func thawFact(rec recordFact) (ReportFact, error) {
+	f := ReportFact{Label: rec.Label}
+	switch kind := ReportFactKind(rec.Kind); kind {
+	case ReportFactByline:
+		f.Value = ReportBylineFact{thawIf(rec.Byline, thawByline)}
+	case ReportFactSelection:
+		f.Value = ReportSelectionFact{rec.Text}
+	case ReportFactHealthCounts:
+		f.Value = ReportHealthCountsFact{thawIf(rec.HealthCounts, thawHealthCounts)}
+	case ReportFactMovement:
+		f.Value = ReportMovementFact{thawIf(rec.Movement, thawMovement)}
+	case ReportFactActionItems:
+		f.Value = ReportActionItemsFact{mapRecord(rec.ActionItems, thawActionItem)}
+	case ReportFactIntroduction:
+		f.Value = ReportIntroductionFact{rec.Text}
+	case ReportFactNarrative:
+		f.Value = ReportNarrativeFact{mapRecord(rec.Narrative, thawNarrativeSection)}
+	case ReportFactExceptions:
+		blocks := make([]ReportBlockFacts, 0, len(rec.Blocks))
+		for _, b := range rec.Blocks {
+			block, err := thawBlock(b)
+			if err != nil {
+				return ReportFact{}, err
+			}
+			blocks = append(blocks, block)
+		}
+		f.Value = ReportExceptionsFact{thawSlice(blocks)}
+	case ReportFactOnTrack:
+		f.Value = ReportOnTrackFact{mapRecord(rec.Lines, thawLine)}
+	case ReportFactMembershipChanges:
+		f.Value = ReportMembershipChangesFact{mapRecord(rec.MembershipChanges, thawMembershipChange)}
+	case ReportFactBlockHead:
+		f.Value = ReportBlockHeadFact{thawIf(rec.Head, thawBlockHead)}
+	case ReportFactChanged:
+		f.Value = ReportChangedFact{thawSlice(rec.Changes)}
+	case ReportFactScheduleConflict:
+		f.Value = ReportScheduleConflictFact{mapRecord(rec.ScheduleConflictGroups, thawScheduleConflictGroup)}
+	case ReportFactContributesTo:
+		f.Value = ReportContributesToFact{mapRecord(rec.Goals, thawLinkedGoal)}
+	case ReportFactFields:
+		f.Value = ReportFieldsFact{mapRecord(rec.Fields, thawFieldValue)}
+	case ReportFactWhyItMatters:
+		f.Value = ReportWhyItMattersFact{rec.Text}
+	case ReportFactStatus:
+		f.Value = ReportStatusFact{rec.Text}
+	case ReportFactPathToGreen:
+		f.Value = ReportPathToGreenFact{thawIf(rec.PathToGreen, thawPathToGreen)}
+	case ReportFactAskForHelp:
+		f.Value = ReportAskForHelpFact{thawIf(rec.Ask, thawAsk)}
+	case ReportFactMilestones:
+		f.Value = ReportMilestonesFact{mapRecord(rec.Milestones, thawMilestoneMark)}
+	case ReportFactMetrics:
+		f.Value = ReportMetricsFact{mapRecord(rec.Metrics, thawMetric)}
+	case ReportFactRolledUp:
+		f.Value = ReportRolledUpFact{thawIf(rec.RolledUp, func(r recordRolledUp) ReportRolledUp { return ReportRolledUp(r) })}
+	case ReportFactSupportedBy:
+		f.Value = ReportSupportedByFact{mapRecord(rec.Goals, thawLinkedGoal)}
+	case ReportFactExplanation:
+		f.Value = ReportExplanationFact{rec.Text}
+	default:
+		return ReportFact{}, fmt.Errorf("publication record fact kind %q", kind)
 	}
+	return f, nil
 }
 
 // mapRecord converts each of in by conv, and is nil for none, so a fact
@@ -429,8 +516,12 @@ func recordBlockOf(b ReportBlockFacts) recordBlock {
 	return recordBlock{GoalID: b.GoalID, Facts: recordFactsOf(b.Facts), Reasons: mapRecord(b.Reasons, func(r ReportReason) string { return string(r) })}
 }
 
-func thawBlock(b recordBlock) ReportBlockFacts {
-	return ReportBlockFacts{GoalID: b.GoalID, Facts: thawFacts(b.Facts), Reasons: mapRecord(b.Reasons, func(r string) ReportReason { return ReportReason(r) })}
+func thawBlock(b recordBlock) (ReportBlockFacts, error) {
+	facts, err := thawFacts(b.Facts)
+	if err != nil {
+		return ReportBlockFacts{}, err
+	}
+	return ReportBlockFacts{GoalID: b.GoalID, Facts: facts, Reasons: mapRecord(b.Reasons, func(r string) ReportReason { return ReportReason(r) })}, nil
 }
 
 func recordLineOf(sg SelectedGoal) recordLine {

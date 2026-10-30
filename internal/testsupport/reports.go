@@ -34,7 +34,7 @@ func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinitio
 func (h *Harness) PublicationFact(pub domain.Publication, kind domain.ReportFactKind) domain.ReportFact {
 	h.T.Helper()
 	for _, f := range pub.Facts {
-		if f.Kind == kind {
+		if f.Kind() == kind {
 			return f
 		}
 	}

@@ -37,8 +37,8 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 		t.Errorf("published at %v by %d, want now by %d", pub.PublishedAt, pub.PublishedBy.ID, boss.ID)
 	}
 	block := publishedBlock(t, h, pub, g.ID)
-	if head := factOfKind(t, block, domain.ReportFactBlockHead).Head; head.Health != domain.HealthYellow || head.Title != "Launch in EU" ||
-		head.Owner.Label() != "Ada Okafor" || factOfKind(t, block, domain.ReportFactStatus).Text != "Vendor is late." {
+	if head := factOfKind(t, block, domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head; head.Health != domain.HealthYellow || head.Title != "Launch in EU" ||
+		head.Owner.Label() != "Ada Okafor" || factOfKind(t, block, domain.ReportFactStatus).Value.(domain.ReportStatusFact).Text != "Vendor is late." {
 		t.Fatalf("published block %v, want the Yellow Goal's", factOutline(block))
 	}
 
@@ -64,11 +64,11 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 		t.Errorf("publication changed after the Goal was edited\n got %+v\nwant %+v", got, pub)
 	}
 	block = publishedBlock(t, h, got, g.ID)
-	head := factOfKind(t, block, domain.ReportFactBlockHead).Head
+	head := factOfKind(t, block, domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head
 	if head.Health != domain.HealthYellow || head.Title != "Launch in EU" || head.Owner.Label() != "Ada Okafor" || len(head.PriorDue) != 0 ||
-		factOfKind(t, block, domain.ReportFactWhyItMatters).Text != "Expand the market." {
+		factOfKind(t, block, domain.ReportFactWhyItMatters).Value.(domain.ReportWhyItMattersFact).Text != "Expand the market." {
 		t.Errorf("publication reads %+v, Why it matters %q; want the Goal as published",
-			head, factOfKind(t, block, domain.ReportFactWhyItMatters).Text)
+			head, factOfKind(t, block, domain.ReportFactWhyItMatters).Value.(domain.ReportWhyItMattersFact).Text)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 // failing the test when it has none.
 func publishedBlock(t *testing.T, h *testsupport.Harness, pub domain.Publication, goalID int64) []domain.ReportFact {
 	t.Helper()
-	for _, b := range h.PublicationFact(pub, domain.ReportFactExceptions).Blocks {
+	for _, b := range h.PublicationFact(pub, domain.ReportFactExceptions).Value.(domain.ReportExceptionsFact).Blocks {
 		if b.GoalID == goalID {
 			return b.Facts
 		}
@@ -89,7 +89,8 @@ func publishedBlock(t *testing.T, h *testsupport.Harness, pub domain.Publication
 func publishedBlockIDs(pub domain.Publication) []int64 {
 	var ids []int64
 	for _, f := range pub.Facts {
-		for _, b := range f.Blocks {
+		exceptions, _ := f.Value.(domain.ReportExceptionsFact)
+		for _, b := range exceptions.Blocks {
 			ids = append(ids, b.GoalID)
 		}
 	}
@@ -100,7 +101,8 @@ func publishedBlockIDs(pub domain.Publication) []int64 {
 func publishedLineIDs(pub domain.Publication) []int64 {
 	var ids []int64
 	for _, f := range pub.Facts {
-		for _, sg := range f.Lines {
+		onTrack, _ := f.Value.(domain.ReportOnTrackFact)
+		for _, sg := range onTrack.Lines {
 			ids = append(ids, sg.Goal.ID)
 		}
 	}
@@ -130,7 +132,7 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	}})
 
 	first := publish(t, h, boss, def, time.Time{})
-	if since := h.PublicationFact(first, domain.ReportFactByline).Byline.Since; since.Words != "" {
+	if since := h.PublicationFact(first, domain.ReportFactByline).Value.(domain.ReportBylineFact).Byline.Since; since.Words != "" {
 		t.Errorf("first publication compares against %+v, want no publication", since)
 	}
 	if got, want := publishedBlockIDs(first), []int64{early.ID}; !sameSet(got, want) {
@@ -153,7 +155,7 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	if want := time.Date(2026, 2, 11, 0, 0, 0, 0, time.UTC); !draft.Baseline.Equal(want) {
 		t.Errorf("draft baseline %v, want the first publication's date %v", draft.Baseline, want)
 	}
-	if since := h.PublicationFact(second, domain.ReportFactByline).Byline.Since; since.Words != domain.ReportPreviousPublication || !since.At.Equal(first.PublishedAt) {
+	if since := h.PublicationFact(second, domain.ReportFactByline).Value.(domain.ReportBylineFact).Byline.Since; since.Words != domain.ReportPreviousPublication || !since.At.Equal(first.PublishedAt) {
 		t.Errorf("second publication compares against %+v, want the first publication, at %v", since, first.PublishedAt)
 	}
 	for name, ids := range map[string][2][]int64{
@@ -172,7 +174,7 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	// the previous publication.
 	chosen := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	third := publish(t, h, boss, def, chosen)
-	if since := h.PublicationFact(third, domain.ReportFactByline).Byline.Since; since.Words != "" || !since.At.Equal(chosen) {
+	if since := h.PublicationFact(third, domain.ReportFactByline).Value.(domain.ReportBylineFact).Byline.Since; since.Words != "" || !since.At.Equal(chosen) {
 		t.Errorf("with a chosen baseline, compares against %+v; want no publication, from %v", since, chosen)
 	}
 	if got, want := publishedBlockIDs(third), []int64{early.ID, late.ID}; !sameSet(got, want) {
@@ -291,10 +293,11 @@ func publishedOwners(t *testing.T, h *testsupport.Harness, pub domain.Publicatio
 	t.Helper()
 	var out []domain.Account
 	for _, id := range publishedBlockIDs(pub) {
-		out = append(out, factOfKind(t, publishedBlock(t, h, pub, id), domain.ReportFactBlockHead).Head.Owner)
+		out = append(out, factOfKind(t, publishedBlock(t, h, pub, id), domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head.Owner)
 	}
 	for _, f := range pub.Facts {
-		for _, sg := range f.Lines {
+		onTrack, _ := f.Value.(domain.ReportOnTrackFact)
+		for _, sg := range onTrack.Lines {
 			out = append(out, sg.Goal.Owner)
 		}
 	}
@@ -403,7 +406,7 @@ func TestPublicationFreezesChosenFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	fields := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactFields).Fields
+	fields := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactFields).Value.(domain.ReportFieldsFact).Values
 	if len(fields) != 1 || fields[0].Field.Name != "Budget" || fields[0].Field.Unit != "$" || fields[0].Value != "120" {
 		t.Errorf("published Fields %+v, want Budget 120 $ as published", fields)
 	}
@@ -427,7 +430,7 @@ func TestPublicationFreezesMembershipChanges(t *testing.T) {
 	h.Clock.Advance(day)
 	listGoal(t, h, def, "include", included)
 	pub := h.PublishReport(boss, def)
-	changes := h.PublicationFact(pub, domain.ReportFactMembershipChanges).MembershipChanges
+	changes := h.PublicationFact(pub, domain.ReportFactMembershipChanges).Value.(domain.ReportMembershipChangesFact).Changes
 	if got, want := byGoal(t, changes), map[int64]string{included.ID: "Added: " + domain.MembershipPickedByHand}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("published membership changes %v, want %v", got, want)
 	}
@@ -439,7 +442,7 @@ func TestPublicationFreezesMembershipChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if after := h.PublicationFact(got, domain.ReportFactMembershipChanges).MembershipChanges; !reflect.DeepEqual(after, changes) {
+	if after := h.PublicationFact(got, domain.ReportFactMembershipChanges).Value.(domain.ReportMembershipChangesFact).Changes; !reflect.DeepEqual(after, changes) {
 		t.Errorf("membership changes after editing the definition %+v, want as published %+v", after, changes)
 	}
 }
@@ -486,13 +489,13 @@ func TestPublicationFreezesWhatChangedAndItsOrder(t *testing.T) {
 	if ids, want := publishedBlockIDs(got), []int64{turned.ID, standing.ID}; !slices.Equal(ids, want) {
 		t.Errorf("publication's exceptions %v after the Check-in, want as published %v", ids, want)
 	}
-	if changes := factOfKind(t, publishedBlock(t, h, got, turned.ID), domain.ReportFactChanged).Changes; !slices.Equal(changes, []string{"Turned Red"}) {
+	if changes := factOfKind(t, publishedBlock(t, h, got, turned.ID), domain.ReportFactChanged).Value.(domain.ReportChangedFact).Changes; !slices.Equal(changes, []string{"Turned Red"}) {
 		t.Errorf("publication's first block changes %q, want [Turned Red]", changes)
 	}
 	if slices.ContainsFunc(publishedBlock(t, h, got, standing.ID), isFact(domain.ReportFactChanged)) {
 		t.Errorf("publication's standing block lists changes, want none")
 	}
-	if parts := h.PublicationFact(got, domain.ReportFactMovement).Movement.Parts; !slices.Equal(parts, []string{"1 turned Red"}) {
+	if parts := h.PublicationFact(got, domain.ReportFactMovement).Value.(domain.ReportMovementFact).Line.Parts; !slices.Equal(parts, []string{"1 turned Red"}) {
 		t.Errorf("publication's movement %q, want 1 turned Red", parts)
 	}
 }
@@ -531,7 +534,7 @@ func TestPublicationFreezesItsScheduleConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	groups := factOfKind(t, publishedBlock(t, h, got, child.ID), domain.ReportFactScheduleConflict).ScheduleConflictGroups
+	groups := factOfKind(t, publishedBlock(t, h, got, child.ID), domain.ReportFactScheduleConflict).Value.(domain.ReportScheduleConflictFact).Groups
 	if len(groups) != 1 || groups[0].Words != domain.ReportConflictParentEarlier || len(groups[0].Conflicts) != 1 ||
 		groups[0].Conflicts[0].GoalID != parent.ID || !groups[0].Conflicts[0].Due.Equal(parentDue) {
 		t.Errorf("publication's Schedule conflicts %+v, want the one with Open in Iberia, due %s, as published", groups, parentDue)
@@ -555,15 +558,15 @@ func TestPublicationFreezesItsSelection(t *testing.T) {
 		Rules: []domain.ReportRule{ownerRule(domain.RuleIs, boss), namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive)},
 	})
 	pub := h.PublishReport(boss, def)
-	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Text, "Owner: Dana Okafor · Active"; got != want {
+	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, "Owner: Dana Okafor · Active"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
 	}
 	got, err := h.Service.GetPublication(ctx, pub.ID)
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if want := "Owner: Dana Okafor · Active"; h.PublicationFact(got, domain.ReportFactSelection).Text != want {
-		t.Errorf("reloaded selection %q, want %q", h.PublicationFact(got, domain.ReportFactSelection).Text, want)
+	if want := "Owner: Dana Okafor · Active"; h.PublicationFact(got, domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text != want {
+		t.Errorf("reloaded selection %q, want %q", h.PublicationFact(got, domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, want)
 	}
 
 	h.Clock.Advance(day)
@@ -579,10 +582,10 @@ func TestPublicationFreezesItsSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if sel, want := h.PublicationFact(got, domain.ReportFactSelection).Text, "Owner: Dana Okafor · Active"; sel != want {
+	if sel, want := h.PublicationFact(got, domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, "Owner: Dana Okafor · Active"; sel != want {
 		t.Errorf("selection after editing the rules %q, want as published %q", sel, want)
 	}
-	if next, want := h.PublicationFact(h.PublishReport(boss, updated), domain.ReportFactSelection).Text, "On Hold"; next != want {
+	if next, want := h.PublicationFact(h.PublishReport(boss, updated), domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, "On Hold"; next != want {
 		t.Errorf("next publication's selection %q, want %q", next, want)
 	}
 }
@@ -608,7 +611,7 @@ func TestPublicationSelectionCountsOnlyOverridesThatChangeIt(t *testing.T) {
 		Exclude: []int64{leftOut.ID, unmatched.ID},
 	})
 	pub := h.PublishReport(boss, def)
-	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Text, "Owner: Dana Okafor · 1 added, 1 left out"; got != want {
+	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, "Owner: Dana Okafor · 1 added, 1 left out"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
 	}
 }
@@ -622,7 +625,7 @@ func TestPickedPublicationFreezesItsSelection(t *testing.T) {
 	one := h.ActiveGoal(boss, "One", "why")
 	two := h.ActiveGoal(boss, "Two", "why")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{one.ID, two.ID}})
-	if got, want := h.PublicationFact(h.PublishReport(boss, def), domain.ReportFactSelection).Text, "2 Goals picked by hand"; got != want {
+	if got, want := h.PublicationFact(h.PublishReport(boss, def), domain.ReportFactSelection).Value.(domain.ReportSelectionFact).Text, "2 Goals picked by hand"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
 	}
 }
@@ -646,7 +649,7 @@ func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
 		t.Fatalf("GetPublication: %v", err)
 	}
 	b := publishedBlock(t, h, got, s.Referral.ID)
-	if behind, want := factOfKind(t, b, domain.ReportFactSupportedBy).Goals, []domain.LinkedGoal{
+	if behind, want := factOfKind(t, b, domain.ReportFactSupportedBy).Value.(domain.ReportSupportedByFact).Goals, []domain.LinkedGoal{
 		linked(s.Alpha, domain.HealthRed, true),
 		linked(s.Beta, domain.HealthRed, false),
 		linked(s.Gamma, domain.HealthYellow, false),
@@ -654,10 +657,10 @@ func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
 	}; !slices.Equal(behind, want) {
 		t.Errorf("published Supported by = %+v, want %+v as it read when published", behind, want)
 	}
-	if to, want := factOfKind(t, b, domain.ReportFactContributesTo).Goals, []domain.LinkedGoal{linked(s.Growth, domain.HealthRed, true)}; !slices.Equal(to, want) {
+	if to, want := factOfKind(t, b, domain.ReportFactContributesTo).Value.(domain.ReportContributesToFact).Goals, []domain.LinkedGoal{linked(s.Growth, domain.HealthRed, true)}; !slices.Equal(to, want) {
 		t.Errorf("published Contributes to = %+v, want %+v", to, want)
 	}
-	if count := factOfKind(t, b, domain.ReportFactRolledUp).RolledUp.Count; count != "2 of 5 Red · 1 Yellow" {
+	if count := factOfKind(t, b, domain.ReportFactRolledUp).Value.(domain.ReportRolledUpFact).RolledUp.Count; count != "2 of 5 Red · 1 Yellow" {
 		t.Errorf("published Rolled-up count %q, want 2 Red and 1 Yellow as when published", count)
 	}
 
@@ -697,7 +700,7 @@ func TestPublicationFreezesAnAskForHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if ask := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactAskForHelp).Ask; ask.Addressee == nil || ask.Addressee.Label() != "Mia Chen" {
+	if ask := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactAskForHelp).Value.(domain.ReportAskForHelpFact).Ask; ask.Addressee == nil || ask.Addressee.Label() != "Mia Chen" {
 		t.Errorf("published block asks %+v, want an ask of Mia Chen as published", ask)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
@@ -730,7 +733,7 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	// 16:00 UTC on the date is 01:00 the next day in Tokyo.
 	h.Clock.Set(backToGreen.Add(16 * time.Hour))
 	pub := h.PublishReport(boss, def)
-	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).PathToGreen; !path.Overdue {
+	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path; !path.Overdue {
 		t.Fatalf("published Path to Green %+v, want Overdue, its date passed in Tokyo", path)
 	}
 
@@ -740,7 +743,7 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).PathToGreen; !path.Overdue {
+	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path; !path.Overdue {
 		t.Errorf("published Path to Green %+v after the Owner's Timezone was cleared, want still Overdue, as published", path)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
@@ -768,7 +771,7 @@ func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
 	checkinHealth(h, boss, g, domain.HealthRed)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	if head := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactBlockHead).Head; head.RunOffGreen != "1 wk" {
+	if head := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head; head.RunOffGreen != "1 wk" {
 		t.Fatalf("published head %+v, want 1 week off Green", head)
 	}
 
@@ -779,7 +782,7 @@ func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if head := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactBlockHead).Head; head.RunOffGreen != "1 wk" {
+	if head := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head; head.RunOffGreen != "1 wk" {
 		t.Errorf("publication's head %+v, want still 1 week off Green, as published", head)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
@@ -807,7 +810,7 @@ func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	published := []time.Time{date(2026, 3, 6)}
-	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).PathToGreen; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
+	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
 		t.Fatalf("published Path to Green %+v, want one slipped from %v", path, published)
 	}
 
@@ -818,7 +821,7 @@ func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).PathToGreen; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
+	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
 		t.Errorf("publication's Path to Green %+v, want one still slipped from %v, as published", path, published)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})

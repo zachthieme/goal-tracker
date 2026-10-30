@@ -33,10 +33,10 @@ func Markdown(p domain.Publication) string {
 	// that entered or left, when no fact holds any: no exceptions and none On
 	// track.
 	noGoals := !slices.ContainsFunc(p.Facts, func(f domain.ReportFact) bool {
-		return f.Kind == domain.ReportFactExceptions || f.Kind == domain.ReportFactOnTrack
+		return f.Kind() == domain.ReportFactExceptions || f.Kind() == domain.ReportFactOnTrack
 	})
 	for _, f := range p.Facts {
-		if noGoals && f.Kind == domain.ReportFactMembershipChanges {
+		if noGoals && f.Kind() == domain.ReportFactMembershipChanges {
 			b.WriteString("\nNo Goals selected.\n")
 			noGoals = false
 		}
@@ -50,39 +50,39 @@ func Markdown(p domain.Publication) string {
 
 // writeFact writes one of a publication's facts.
 func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact) {
-	switch f.Kind {
-	case domain.ReportFactByline:
-		fmt.Fprintf(b, "%s %s by %s. ", f.Label, fmtPublished(f.Byline.PublishedAt), text(people.Of(f.Byline.PublishedBy)))
-		if words := f.Byline.Since.Words; words != "" {
-			fmt.Fprintf(b, "Changes since %s, %s.\n", words, fmtPublished(f.Byline.Since.At))
+	switch v := f.Value.(type) {
+	case domain.ReportBylineFact:
+		fmt.Fprintf(b, "%s %s by %s. ", f.Label, fmtPublished(v.Byline.PublishedAt), text(people.Of(v.Byline.PublishedBy)))
+		if words := v.Byline.Since.Words; words != "" {
+			fmt.Fprintf(b, "Changes since %s, %s.\n", words, fmtPublished(v.Byline.Since.At))
 		} else {
-			fmt.Fprintf(b, "Changes since %s.\n", fmtDate(f.Byline.Since.At))
+			fmt.Fprintf(b, "Changes since %s.\n", fmtDate(v.Byline.Since.At))
 		}
-	case domain.ReportFactSelection:
-		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(f.Text))
-	case domain.ReportFactHealthCounts:
-		h := f.HealthCounts
+	case domain.ReportSelectionFact:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(v.Text))
+	case domain.ReportHealthCountsFact:
+		h := v.Counts
 		fmt.Fprintf(b, "\n**%s:** %d %s · %d %s · %d %s · %d %s\n", f.Label,
 			h.Red, domain.HealthRed, h.Yellow, domain.HealthYellow, h.Green, domain.HealthGreen, h.CheckinOverdue, domain.BadgeCheckinOverdue)
-	case domain.ReportFactMovement:
-		since := f.Movement.Since.Words
+	case domain.ReportMovementFact:
+		since := v.Line.Since.Words
 		if since == "" {
-			since = fmtDate(f.Movement.Since.At)
+			since = fmtDate(v.Line.Since.At)
 		}
-		if len(f.Movement.Parts) > 0 {
-			fmt.Fprintf(b, "\n**%s %s:** %s\n", f.Label, since, strings.Join(f.Movement.Parts, " · "))
+		if len(v.Line.Parts) > 0 {
+			fmt.Fprintf(b, "\n**%s %s:** %s\n", f.Label, since, strings.Join(v.Line.Parts, " · "))
 		} else {
 			fmt.Fprintf(b, "\nNo movement since %s.\n", since)
 		}
-	case domain.ReportFactActionItems:
+	case domain.ReportActionItemsFact:
 		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
-		for _, item := range f.ActionItems {
+		for _, item := range v.Items {
 			fmt.Fprintf(b, "- %s — %s — due %s\n", text(item.Text), text(people.Of(item.Owner)), fmtDate(item.DueDate))
 		}
-	case domain.ReportFactIntroduction:
-		fmt.Fprintf(b, "\n%s\n", text(f.Text))
-	case domain.ReportFactNarrative:
-		for _, sec := range f.Narrative {
+	case domain.ReportIntroductionFact:
+		fmt.Fprintf(b, "\n%s\n", text(v.Text))
+	case domain.ReportNarrativeFact:
+		for _, sec := range v.Sections {
 			fmt.Fprintf(b, "\n## %s\n", sec.Heading)
 			for _, note := range sec.Notes {
 				fmt.Fprintf(b, "\n%s\n", text(note))
@@ -94,14 +94,14 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact)
 				}
 			}
 		}
-	case domain.ReportFactExceptions:
+	case domain.ReportExceptionsFact:
 		fmt.Fprintf(b, "\n## %s\n", f.Label)
-		for _, blk := range f.Blocks {
+		for _, blk := range v.Blocks {
 			writeBlock(b, people, blk)
 		}
-	case domain.ReportFactOnTrack:
+	case domain.ReportOnTrackFact:
 		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
-		for _, sg := range f.Lines {
+		for _, sg := range v.Lines {
 			fmt.Fprintf(b, "- %s — %s — %s", health(sg.Health), text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)))
 			if !sg.Goal.DeliveryDate.IsZero() {
 				fmt.Fprintf(b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
@@ -111,9 +111,9 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact)
 			}
 			b.WriteString("\n")
 		}
-	case domain.ReportFactMembershipChanges:
+	case domain.ReportMembershipChangesFact:
 		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
-		for _, c := range f.MembershipChanges {
+		for _, c := range v.Changes {
 			fmt.Fprintf(b, "- %s — %s — %s\n", text(c.Goal.Title), c.Direction, c.Reason)
 		}
 	}
@@ -138,9 +138,9 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 
 // writeBlockFact writes one of an exception block's facts.
 func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact) {
-	switch f.Kind {
-	case domain.ReportFactBlockHead:
-		h := f.Head
+	switch v := f.Value.(type) {
+	case domain.ReportBlockHeadFact:
+		h := v.Head
 		fmt.Fprintf(b, "\n### %s · %s", health(h.Health), text(h.Title))
 		for _, badge := range h.Badges {
 			fmt.Fprintf(b, " **[%s]**", badge)
@@ -154,34 +154,34 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 		if !h.Due.IsZero() {
 			fmt.Fprintf(b, " · due %s%s", struck(h.Due, h.PriorDue), fmtDate(h.Due))
 		}
-	case domain.ReportFactChanged:
-		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, strings.Join(f.Changes, " · "))
-	case domain.ReportFactScheduleConflict:
-		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, scheduleConflicts(people, f.ScheduleConflictGroups))
-	case domain.ReportFactContributesTo:
-		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, linkedGoals(f.Goals))
-	case domain.ReportFactFields:
-		fmt.Fprintf(b, "\n\n%s", fields(f.Fields, "**%s:** %s"))
-	case domain.ReportFactWhyItMatters:
-		fmt.Fprintf(b, "\n\n**%s:** %s\n", f.Label, text(f.Text))
-	case domain.ReportFactStatus, domain.ReportFactExplanation:
-		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(f.Text))
-	case domain.ReportFactPathToGreen:
-		path := f.PathToGreen
+	case domain.ReportChangedFact:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, strings.Join(v.Changes, " · "))
+	case domain.ReportScheduleConflictFact:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, scheduleConflicts(people, v.Groups))
+	case domain.ReportContributesToFact:
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, linkedGoals(v.Goals))
+	case domain.ReportFieldsFact:
+		fmt.Fprintf(b, "\n\n%s", fields(v.Values, "**%s:** %s"))
+	case domain.ReportWhyItMattersFact:
+		fmt.Fprintf(b, "\n\n**%s:** %s\n", f.Label, text(v.Text))
+	case domain.ReportStatusFact:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(v.Text))
+	case domain.ReportPathToGreenFact:
+		path := v.Path
 		fmt.Fprintf(b, "\n**%s:** %s (%s %s)", f.Label, text(path.Plan), path.ByWords, milestoneDate(path.By, path.PriorDates))
 		if path.Overdue {
 			fmt.Fprintf(b, " — **%s**", path.OverdueWords)
 		}
 		b.WriteString("\n")
-	case domain.ReportFactAskForHelp:
-		if f.Ask.Addressee != nil {
-			fmt.Fprintf(b, "\n**%s** of %s\n", f.Label, text(people.Of(*f.Ask.Addressee)))
+	case domain.ReportAskForHelpFact:
+		if v.Ask.Addressee != nil {
+			fmt.Fprintf(b, "\n**%s** of %s\n", f.Label, text(people.Of(*v.Ask.Addressee)))
 		} else {
-			fmt.Fprintf(b, "\n**%s** (%s)\n", f.Label, f.Ask.Words)
+			fmt.Fprintf(b, "\n**%s** (%s)\n", f.Label, v.Ask.Words)
 		}
-	case domain.ReportFactMilestones:
+	case domain.ReportMilestonesFact:
 		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
-		for _, m := range f.Milestones {
+		for _, m := range v.Marks {
 			b.WriteString("- ")
 			if m.Mark != domain.MilestoneMarkNone {
 				fmt.Fprintf(b, "**[%s]** ", m.Mark)
@@ -200,24 +200,26 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 			}
 			b.WriteString("\n")
 		}
-	case domain.ReportFactMetrics:
+	case domain.ReportMetricsFact:
 		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
-		for _, m := range f.Metrics {
+		for _, m := range v.Metrics {
 			fmt.Fprintf(b, "- %s: %s %s %s %s by %s (baseline %s, %s)\n",
 				text(m.Metric.Name), m.Reading(fmtNum), m.AgainstWords, fmtNum(m.Metric.Target), text(m.Metric.Unit),
 				fmtDate(m.Metric.TargetDate), fmtNum(m.Metric.Baseline), m.Metric.Direction)
 		}
-	case domain.ReportFactRolledUp:
+	case domain.ReportRolledUpFact:
 		var parts []string
-		if f.RolledUp.Present {
-			parts = append(parts, "**"+f.Label+":** "+f.RolledUp.Health)
+		if v.RolledUp.Present {
+			parts = append(parts, "**"+f.Label+":** "+v.RolledUp.Health)
 		}
-		if f.RolledUp.Count != "" {
-			parts = append(parts, f.RolledUp.Count)
+		if v.RolledUp.Count != "" {
+			parts = append(parts, v.RolledUp.Count)
 		}
 		fmt.Fprintf(b, "\n%s\n", strings.Join(parts, " · "))
-	case domain.ReportFactSupportedBy:
-		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, linkedGoals(f.Goals))
+	case domain.ReportSupportedByFact:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, linkedGoals(v.Goals))
+	case domain.ReportExplanationFact:
+		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(v.Text))
 	}
 }
 

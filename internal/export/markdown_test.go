@@ -44,6 +44,16 @@ func publication(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) d
 	return published(report(exceptions, lines), "")
 }
 
+// The export shows every fact a publication lists, and every fact of each of
+// its blocks, its label and its words, as the publication page and its Print
+// page do (testsupport.CheckShowsEveryReportFact).
+func TestMarkdownShowsEveryReportFact(t *testing.T) {
+	t.Parallel()
+
+	md := export.Markdown(testsupport.ReportFactParityPublication())
+	testsupport.CheckShowsEveryReportFact(t, "Markdown export", strings.Join(strings.Fields(md), " "))
+}
+
 // The export opens with the Report's name, who published it and when, what it
 // read its changes against, its Goals counted by Health, and the introduction;
 // every Goal that is not an

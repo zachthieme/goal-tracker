@@ -52,12 +52,12 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 
 	h.Clock.Advance(7 * day)
 	second := h.PublishReport(author, def)
-	if items := h.PublicationFact(second, domain.ReportFactActionItems).ActionItems; len(items) != 1 || items[0].ID != item.ID {
+	if items := h.PublicationFact(second, domain.ReportFactActionItems).Value.(domain.ReportActionItemsFact).Items; len(items) != 1 || items[0].ID != item.ID {
 		t.Fatalf("next publication's Action Items %+v, want the open item", items)
 	}
 	h.Clock.Advance(7 * day)
 	third := h.PublishReport(author, def)
-	if items := h.PublicationFact(third, domain.ReportFactActionItems).ActionItems; len(items) != 1 {
+	if items := h.PublicationFact(third, domain.ReportFactActionItems).Value.(domain.ReportActionItemsFact).Items; len(items) != 1 {
 		t.Fatalf("third publication's Action Items %+v, want the still-open item", items)
 	}
 
@@ -78,7 +78,7 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if items := h.PublicationFact(got, domain.ReportFactActionItems).ActionItems; len(items) != 1 || items[0].ID != item.ID || items[0].Closed {
+	if items := h.PublicationFact(got, domain.ReportFactActionItems).Value.(domain.ReportActionItemsFact).Items; len(items) != 1 || items[0].ID != item.ID || items[0].Closed {
 		t.Errorf("earlier publication's frozen Action Items %+v, want the item as it stood, open", items)
 	}
 }

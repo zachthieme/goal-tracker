@@ -113,59 +113,160 @@ func ReportScheduleConflictGroups(conflicts []ReportScheduleConflict) []ReportSc
 	return groups
 }
 
-// ReportFact is one fact a Report shows, in the order it shows them: its kind,
-// the label every output shows it under ("" for one shown without, as the
-// introduction and the narrative are), and its values, in the field its kind
-// names. Each output only formats it: whether a fact shows, where, and in what
-// words is the list's (CONTEXT.md: Report).
+// ReportFact is one fact a Report shows, in the order it shows them: the label
+// every output shows it under ("" for one shown without, as the introduction
+// and the narrative are), and its value, of the type its kind names. Each
+// output only formats it: whether a fact shows, where, and in what words is
+// the list's (CONTEXT.md: Report). No list of facts holds one without a value.
 type ReportFact struct {
-	Kind  ReportFactKind
 	Label string
-
-	// Text is a Selection's plain words, the introduction, or a block's Why
-	// it matters, status or explanation of why its Health differs.
-	Text string
-	// Byline is who published the Report, when, and what it reads changes
-	// against.
-	Byline ReportByline
-	// HealthCounts counts the Report's Goals by Health (Report.HealthCounts).
-	HealthCounts HealthCounts
-	// Movement is the line counting what moved since the baseline.
-	Movement ReportMovementLine
-	// ActionItems are the Report's open Action Items.
-	ActionItems []ActionItem
-	// Narrative is the narrative's sections, each under its own heading.
-	Narrative []ReportNarrativeSection
-	// Blocks are the exception blocks, each its own facts (ReportBlock.Facts).
-	Blocks []ReportBlockFacts
-	// Lines are the one-line Goals, On track.
-	Lines []SelectedGoal
-	// MembershipChanges are the Goals that entered or left the Report.
-	MembershipChanges []MembershipChange
-
-	// Head is an exception block's head.
-	Head ReportBlockHead
-	// Changes say what changed on the block's Goal since the baseline.
-	Changes []string
-	// ScheduleConflictGroups are the Schedule conflicts the block's Goal is
-	// in, by side (ReportScheduleConflictGroups).
-	ScheduleConflictGroups []ReportScheduleConflictGroup
-	// Goals are the Goals a block links to: those it contributes to, or
-	// those behind it, Supported by.
-	Goals []LinkedGoal
-	// Fields are the block's values in the Fields the Report chose.
-	Fields []FieldValue
-	// PathToGreen is the block's plan back to Green.
-	PathToGreen ReportPathToGreen
-	// Ask is the block's Ask for help.
-	Ask ReportAsk
-	// Milestones are the block's Milestones, each with its mark.
-	Milestones []ReportMilestoneMark
-	// Metrics are the block's Metrics against their targets.
-	Metrics []ReportMetric
-	// RolledUp is the block's Rolled-up Health with its count line.
-	RolledUp ReportRolledUp
+	Value ReportFactValue
 }
+
+// Kind is the kind of fact f is, its value's, or "" when it has none.
+func (f ReportFact) Kind() ReportFactKind {
+	if f.Value == nil {
+		return ""
+	}
+	return f.Value.Kind()
+}
+
+// ReportFactValue is what one fact of a Report holds: one Report<Kind>Fact
+// type per entry in AllFactKinds, and no other, so an output switching on
+// its type reads each kind's own values.
+type ReportFactValue interface {
+	Kind() ReportFactKind
+	reportFactValue()
+}
+
+// ReportBylineFact is who published the Report, when, and what it reads
+// changes against.
+type ReportBylineFact struct{ Byline ReportByline }
+
+// ReportSelectionFact is how the Report selected its Goals, in plain words.
+type ReportSelectionFact struct{ Text string }
+
+// ReportHealthCountsFact counts the Report's Goals by Health
+// (Report.HealthCounts).
+type ReportHealthCountsFact struct{ Counts HealthCounts }
+
+// ReportMovementFact is the line counting what moved since the baseline.
+type ReportMovementFact struct{ Line ReportMovementLine }
+
+// ReportActionItemsFact is the Report's open Action Items.
+type ReportActionItemsFact struct{ Items []ActionItem }
+
+// ReportIntroductionFact is the Report Definition's introduction.
+type ReportIntroductionFact struct{ Text string }
+
+// ReportNarrativeFact is the narrative's sections, each under its own heading.
+type ReportNarrativeFact struct{ Sections []ReportNarrativeSection }
+
+// ReportExceptionsFact is the exception blocks, each its own facts
+// (ReportBlock.Facts).
+type ReportExceptionsFact struct{ Blocks []ReportBlockFacts }
+
+// ReportOnTrackFact is the one-line Goals, On track.
+type ReportOnTrackFact struct{ Lines []SelectedGoal }
+
+// ReportMembershipChangesFact is the Goals that entered or left the Report.
+type ReportMembershipChangesFact struct{ Changes []MembershipChange }
+
+// ReportBlockHeadFact is an exception block's head.
+type ReportBlockHeadFact struct{ Head ReportBlockHead }
+
+// ReportChangedFact says what changed on the block's Goal since the baseline.
+type ReportChangedFact struct{ Changes []string }
+
+// ReportScheduleConflictFact is the Schedule conflicts the block's Goal is in,
+// by side (ReportScheduleConflictGroups).
+type ReportScheduleConflictFact struct {
+	Groups []ReportScheduleConflictGroup
+}
+
+// ReportContributesToFact is the Goals the block's Goal contributes to.
+type ReportContributesToFact struct{ Goals []LinkedGoal }
+
+// ReportFieldsFact is the block's values in the Fields the Report chose.
+type ReportFieldsFact struct{ Values []FieldValue }
+
+// ReportWhyItMattersFact is the block's Why it matters, even when empty.
+type ReportWhyItMattersFact struct{ Text string }
+
+// ReportStatusFact is the block's status.
+type ReportStatusFact struct{ Text string }
+
+// ReportPathToGreenFact is the block's plan back to Green.
+type ReportPathToGreenFact struct{ Path ReportPathToGreen }
+
+// ReportAskForHelpFact is the block's Ask for help.
+type ReportAskForHelpFact struct{ Ask ReportAsk }
+
+// ReportMilestonesFact is the block's Milestones, each with its mark.
+type ReportMilestonesFact struct{ Marks []ReportMilestoneMark }
+
+// ReportMetricsFact is the block's Metrics against their targets.
+type ReportMetricsFact struct{ Metrics []ReportMetric }
+
+// ReportRolledUpFact is the block's Rolled-up Health with its count line.
+type ReportRolledUpFact struct{ RolledUp ReportRolledUp }
+
+// ReportSupportedByFact is the Goals behind the block's Goal, Supported by.
+type ReportSupportedByFact struct{ Goals []LinkedGoal }
+
+// ReportExplanationFact is the Owner's explanation of why the block's Health
+// differs from its Rolled-up Health.
+type ReportExplanationFact struct{ Text string }
+
+func (ReportBylineFact) Kind() ReportFactKind            { return ReportFactByline }
+func (ReportSelectionFact) Kind() ReportFactKind         { return ReportFactSelection }
+func (ReportHealthCountsFact) Kind() ReportFactKind      { return ReportFactHealthCounts }
+func (ReportMovementFact) Kind() ReportFactKind          { return ReportFactMovement }
+func (ReportActionItemsFact) Kind() ReportFactKind       { return ReportFactActionItems }
+func (ReportIntroductionFact) Kind() ReportFactKind      { return ReportFactIntroduction }
+func (ReportNarrativeFact) Kind() ReportFactKind         { return ReportFactNarrative }
+func (ReportExceptionsFact) Kind() ReportFactKind        { return ReportFactExceptions }
+func (ReportOnTrackFact) Kind() ReportFactKind           { return ReportFactOnTrack }
+func (ReportMembershipChangesFact) Kind() ReportFactKind { return ReportFactMembershipChanges }
+func (ReportBlockHeadFact) Kind() ReportFactKind         { return ReportFactBlockHead }
+func (ReportChangedFact) Kind() ReportFactKind           { return ReportFactChanged }
+func (ReportScheduleConflictFact) Kind() ReportFactKind  { return ReportFactScheduleConflict }
+func (ReportContributesToFact) Kind() ReportFactKind     { return ReportFactContributesTo }
+func (ReportFieldsFact) Kind() ReportFactKind            { return ReportFactFields }
+func (ReportWhyItMattersFact) Kind() ReportFactKind      { return ReportFactWhyItMatters }
+func (ReportStatusFact) Kind() ReportFactKind            { return ReportFactStatus }
+func (ReportPathToGreenFact) Kind() ReportFactKind       { return ReportFactPathToGreen }
+func (ReportAskForHelpFact) Kind() ReportFactKind        { return ReportFactAskForHelp }
+func (ReportMilestonesFact) Kind() ReportFactKind        { return ReportFactMilestones }
+func (ReportMetricsFact) Kind() ReportFactKind           { return ReportFactMetrics }
+func (ReportRolledUpFact) Kind() ReportFactKind          { return ReportFactRolledUp }
+func (ReportSupportedByFact) Kind() ReportFactKind       { return ReportFactSupportedBy }
+func (ReportExplanationFact) Kind() ReportFactKind       { return ReportFactExplanation }
+
+func (ReportBylineFact) reportFactValue()            {}
+func (ReportSelectionFact) reportFactValue()         {}
+func (ReportHealthCountsFact) reportFactValue()      {}
+func (ReportMovementFact) reportFactValue()          {}
+func (ReportActionItemsFact) reportFactValue()       {}
+func (ReportIntroductionFact) reportFactValue()      {}
+func (ReportNarrativeFact) reportFactValue()         {}
+func (ReportExceptionsFact) reportFactValue()        {}
+func (ReportOnTrackFact) reportFactValue()           {}
+func (ReportMembershipChangesFact) reportFactValue() {}
+func (ReportBlockHeadFact) reportFactValue()         {}
+func (ReportChangedFact) reportFactValue()           {}
+func (ReportScheduleConflictFact) reportFactValue()  {}
+func (ReportContributesToFact) reportFactValue()     {}
+func (ReportFieldsFact) reportFactValue()            {}
+func (ReportWhyItMattersFact) reportFactValue()      {}
+func (ReportStatusFact) reportFactValue()            {}
+func (ReportPathToGreenFact) reportFactValue()       {}
+func (ReportAskForHelpFact) reportFactValue()        {}
+func (ReportMilestonesFact) reportFactValue()        {}
+func (ReportMetricsFact) reportFactValue()           {}
+func (ReportRolledUpFact) reportFactValue()          {}
+func (ReportSupportedByFact) reportFactValue()       {}
+func (ReportExplanationFact) reportFactValue()       {}
 
 // ReportByline says who published a Report and when, and what it reads its
 // changes against.
@@ -227,11 +328,11 @@ type ReportBlockFacts struct {
 // what a publication freezes.
 func PublicationFacts(r Report, by Account, at time.Time, scope string) []ReportFact {
 	facts := []ReportFact{{
-		Kind: ReportFactByline, Label: "Published",
-		Byline: ReportByline{PublishedBy: by, PublishedAt: at, Since: r.Since()},
+		Label: "Published",
+		Value: ReportBylineFact{ReportByline{PublishedBy: by, PublishedAt: at, Since: r.Since()}},
 	}}
 	if scope != "" {
-		facts = append(facts, ReportFact{Kind: ReportFactSelection, Label: "Selection", Text: scope})
+		facts = append(facts, ReportFact{Label: "Selection", Value: ReportSelectionFact{scope}})
 	}
 	return append(facts, r.Facts(at)...)
 }
@@ -245,36 +346,36 @@ func PublicationFacts(r Report, by Account, at time.Time, scope string) []Report
 func (r Report) Facts(asOf time.Time) []ReportFact {
 	var facts []ReportFact
 	if len(r.Exceptions) > 0 || len(r.Lines) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactHealthCounts, Label: "Health", HealthCounts: r.HealthCounts()})
+		facts = append(facts, ReportFact{Label: "Health", Value: ReportHealthCountsFact{r.HealthCounts()}})
 	}
 	if r.Movement != nil {
-		facts = append(facts, ReportFact{Kind: ReportFactMovement, Label: "Since", Movement: ReportMovementLine{Since: r.Since(), Parts: r.Movement.Parts()}})
+		facts = append(facts, ReportFact{Label: "Since", Value: ReportMovementFact{ReportMovementLine{Since: r.Since(), Parts: r.Movement.Parts()}}})
 	}
 	if len(r.ActionItems) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactActionItems, Label: "Open Action Items", ActionItems: r.ActionItems})
+		facts = append(facts, ReportFact{Label: "Open Action Items", Value: ReportActionItemsFact{r.ActionItems}})
 	}
 	if r.Definition.Introduction != "" {
-		facts = append(facts, ReportFact{Kind: ReportFactIntroduction, Text: r.Definition.Introduction})
+		facts = append(facts, ReportFact{Value: ReportIntroductionFact{r.Definition.Introduction}})
 	}
 	if len(r.Narrative) > 0 {
 		sections := make([]ReportNarrativeSection, 0, len(r.Narrative))
 		for _, n := range r.Narrative {
 			sections = append(sections, ReportNarrativeSection{Heading: n.Heading(), Notes: n.Notes, Highlights: n.Highlights})
 		}
-		facts = append(facts, ReportFact{Kind: ReportFactNarrative, Narrative: sections})
+		facts = append(facts, ReportFact{Value: ReportNarrativeFact{sections}})
 	}
 	if len(r.Exceptions) > 0 {
 		blocks := make([]ReportBlockFacts, 0, len(r.Exceptions))
 		for _, b := range r.Exceptions {
 			blocks = append(blocks, ReportBlockFacts{GoalID: b.Goal.ID, Facts: b.Facts(asOf), Reasons: b.Reasons})
 		}
-		facts = append(facts, ReportFact{Kind: ReportFactExceptions, Label: "Exceptions", Blocks: blocks})
+		facts = append(facts, ReportFact{Label: "Exceptions", Value: ReportExceptionsFact{blocks}})
 	}
 	if len(r.Lines) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactOnTrack, Label: "On track", Lines: r.Lines})
+		facts = append(facts, ReportFact{Label: "On track", Value: ReportOnTrackFact{r.Lines}})
 	}
 	if len(r.MembershipChanges) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactMembershipChanges, Label: "Goals that entered or left this report", MembershipChanges: r.MembershipChanges})
+		facts = append(facts, ReportFact{Label: "Goals that entered or left this report", Value: ReportMembershipChangesFact{r.MembershipChanges}})
 	}
 	return facts
 }
@@ -361,43 +462,43 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 	if b.PriorHealth != "" {
 		head.WasHealth = "was " + b.PriorHealth
 	}
-	facts := []ReportFact{{Kind: ReportFactBlockHead, Head: head}}
+	facts := []ReportFact{{Value: ReportBlockHeadFact{head}}}
 	if len(b.Changes) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactChanged, Label: "Changed", Changes: b.Changes})
+		facts = append(facts, ReportFact{Label: "Changed", Value: ReportChangedFact{b.Changes}})
 	}
 	if len(b.ScheduleConflicts) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactScheduleConflict, Label: "Schedule conflict", ScheduleConflictGroups: ReportScheduleConflictGroups(b.ScheduleConflicts)})
+		facts = append(facts, ReportFact{Label: "Schedule conflict", Value: ReportScheduleConflictFact{ReportScheduleConflictGroups(b.ScheduleConflicts)}})
 	}
 	if len(b.ContributesTo) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactContributesTo, Label: "Contributes to", Goals: b.ContributesTo})
+		facts = append(facts, ReportFact{Label: "Contributes to", Value: ReportContributesToFact{b.ContributesTo}})
 	}
 	if len(b.Fields) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactFields, Fields: b.Fields})
+		facts = append(facts, ReportFact{Value: ReportFieldsFact{b.Fields}})
 	}
-	facts = append(facts, ReportFact{Kind: ReportFactWhyItMatters, Label: "Why it matters", Text: g.WhyItMatters})
+	facts = append(facts, ReportFact{Label: "Why it matters", Value: ReportWhyItMattersFact{g.WhyItMatters}})
 	if b.Status != "" {
-		facts = append(facts, ReportFact{Kind: ReportFactStatus, Label: "Status", Text: b.Status})
+		facts = append(facts, ReportFact{Label: "Status", Value: ReportStatusFact{b.Status}})
 	}
 	if b.PathToGreen != "" && needsPathToGreen(b.Health) {
-		facts = append(facts, ReportFact{Kind: ReportFactPathToGreen, Label: "Path to Green", PathToGreen: ReportPathToGreen{
+		facts = append(facts, ReportFact{Label: "Path to Green", Value: ReportPathToGreenFact{ReportPathToGreen{
 			Plan: b.PathToGreen, By: b.PathTargetDate, PriorDates: b.PriorPathTargetDates,
 			Slips: len(b.PriorPathTargetDates), Overdue: PathToGreenOverdueAt(b, asOf),
 			ByWords: ReportBackToGreenBy, OverdueWords: ReportPathOverdue,
-		}})
+		}}})
 	}
 	if b.AsksForHelp {
 		ask := ReportAsk{Addressee: b.AskAddressee}
 		if ask.Addressee == nil {
 			ask.Words = ReportNoOneAboveTheOwner
 		}
-		facts = append(facts, ReportFact{Kind: ReportFactAskForHelp, Label: "Asks for help", Ask: ask})
+		facts = append(facts, ReportFact{Label: "Asks for help", Value: ReportAskForHelpFact{ask}})
 	}
 	if len(b.Milestones) > 0 {
 		marks := make([]ReportMilestoneMark, 0, len(b.Milestones))
 		for _, m := range b.Milestones {
 			marks = append(marks, ReportMilestoneMark{ReportMilestone: m, Mark: MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(b.Location()))})
 		}
-		facts = append(facts, ReportFact{Kind: ReportFactMilestones, Label: "Milestones", Milestones: marks})
+		facts = append(facts, ReportFact{Label: "Milestones", Value: ReportMilestonesFact{marks}})
 	}
 	if len(b.Metrics) > 0 {
 		metrics := make([]ReportMetric, 0, len(b.Metrics))
@@ -405,18 +506,18 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 			m.NoReadingWords, m.AgainstWords = ReportNoReadingYet, ReportAgainstATargetOf
 			metrics = append(metrics, m)
 		}
-		facts = append(facts, ReportFact{Kind: ReportFactMetrics, Label: "Metrics", Metrics: metrics})
+		facts = append(facts, ReportFact{Label: "Metrics", Value: ReportMetricsFact{metrics}})
 	}
 	if count := b.RolledUp.CountLine(); b.RolledUp.Present || count != "" {
-		facts = append(facts, ReportFact{Kind: ReportFactRolledUp, Label: "Rolled-up Health", RolledUp: ReportRolledUp{
+		facts = append(facts, ReportFact{Label: "Rolled-up Health", Value: ReportRolledUpFact{ReportRolledUp{
 			Health: b.RolledUp.Health, Present: b.RolledUp.Present, Count: count,
-		}})
+		}}})
 	}
 	if len(b.Behind) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactSupportedBy, Label: "Supported by", Goals: b.Behind})
+		facts = append(facts, ReportFact{Label: "Supported by", Value: ReportSupportedByFact{b.Behind}})
 	}
 	if b.ShowsExplanation() {
-		facts = append(facts, ReportFact{Kind: ReportFactExplanation, Label: "Why the Health differs", Text: b.Explanation})
+		facts = append(facts, ReportFact{Label: "Why the Health differs", Value: ReportExplanationFact{b.Explanation}})
 	}
 	return facts
 }

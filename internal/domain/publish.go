@@ -45,17 +45,17 @@ func (p Publication) Covers(goalID int64) bool {
 func (p Publication) Goals() []Goal {
 	var out []Goal
 	for _, f := range p.Facts {
-		switch f.Kind {
-		case ReportFactExceptions:
-			for _, b := range f.Blocks {
+		switch v := f.Value.(type) {
+		case ReportExceptionsFact:
+			for _, b := range v.Blocks {
 				for _, bf := range b.Facts {
-					if bf.Kind == ReportFactBlockHead {
-						out = append(out, Goal{ID: bf.Head.GoalID, Title: bf.Head.Title})
+					if head, ok := bf.Value.(ReportBlockHeadFact); ok {
+						out = append(out, Goal{ID: head.Head.GoalID, Title: head.Head.Title})
 					}
 				}
 			}
-		case ReportFactOnTrack:
-			for _, sg := range f.Lines {
+		case ReportOnTrackFact:
+			for _, sg := range v.Lines {
 				out = append(out, Goal{ID: sg.Goal.ID, Title: sg.Goal.Title})
 			}
 		}
@@ -231,8 +231,8 @@ func publicationFromRow(row db.ReportPublication) (Publication, error) {
 	publishedAt, _ := time.Parse(timeFormat, row.PublishedAt)
 	p := Publication{ID: row.ID, DefinitionID: row.ReportDefinitionID, Name: name, PublishedAt: publishedAt, Facts: facts}
 	for _, f := range facts {
-		if f.Kind == ReportFactByline {
-			p.PublishedBy = f.Byline.PublishedBy
+		if byline, ok := f.Value.(ReportBylineFact); ok {
+			p.PublishedBy = byline.Byline.PublishedBy
 		}
 	}
 	return p, nil
