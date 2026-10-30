@@ -51,7 +51,7 @@ A person an Owner authorizes to write and submit Check-ins for a Goal, to add it
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:
-The transfer of a Goal to a new Owner, which takes effect only when the new Owner accepts. Every Handoff is kept in the Goal's history with its outcome: accepted, rejected, or cancelled.
+The transfer of a Goal to a new Owner, which takes effect only when the new Owner accepts. Every Handoff is kept in the Goal's history with its outcome: accepted, rejected, or cancelled. While it is pending, whoever started it or an Admin may cancel it; a cancelled Handoff records who cancelled it.
 _Avoid_: reassignment, transfer
 
 **Ownerless**:

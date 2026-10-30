@@ -103,7 +103,14 @@ templ historyItem(h history, e historyEntry) {
 					@person(ev.Handoff.From)
 					{ "→ " }
 					@person(ev.Handoff.To)
-					<span>{ " — " + ownershipOutcome(ev.Handoff.Status) }</span>
+					if by := ev.Handoff.CancelledBy; ev.Handoff.Status == domain.HandoffCancelled && by != nil {
+						<span>
+							{ " — cancelled by " }
+							@person(*by)
+						</span>
+					} else {
+						<span>{ " — " + ownershipOutcome(ev.Handoff.Status) }</span>
+					}
 				</p>
 				<p class="muted small">
 					{ "started by " }

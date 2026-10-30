@@ -56,6 +56,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /handoffs", s.requireAuth(s.handlePendingHandoffs))
 	s.mux.HandleFunc("POST /handoffs/{id}/accept", s.requireAuth(s.handleAcceptHandoff))
 	s.mux.HandleFunc("POST /handoffs/{id}/reject", s.requireAuth(s.handleRejectHandoff))
+	s.mux.HandleFunc("POST /handoffs/{id}/cancel", s.requireAuth(s.handleCancelHandoff))
 	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
 	s.mux.HandleFunc("POST /accounts/{id}/return", s.requireAuth(s.handleReturnAccount))
 	if s.directorySync != nil {
