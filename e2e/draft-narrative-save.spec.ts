@@ -125,6 +125,13 @@ test("Save and publish doesn't publish when the save is refused or fails, and sa
   expect(page.url()).toBe(draft);
   await page.unroute(narrative);
 
+  // Edited again, the old failure goes: the changes will be saved first.
+  await curation.getByLabel("Misses, note 1").fill("The deploy slipped a week again.");
+  await expect(notSaved).toBeHidden();
+  await expect(confirm.getByTestId("publish-unsaved")).toHaveText("Your narrative changes will be saved first.");
+  await expect(confirm.getByTestId("publish-unsaved")).toBeVisible();
+  await expect(publish).toHaveText("Save and publish");
+
   // No answer at all.
   await page.route(narrative, (route) => route.abort());
   await publish.click();

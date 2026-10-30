@@ -2322,8 +2322,9 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 
 // The builder explains Also include and Leave out with a help button after
 // each legend, leaving the legends, and so the pickers' names, as they were;
-// Goals I pick needs no help. Its rules hint says in plain words what a rule
-// can check.
+// Goals I pick needs no help. Each picker's search box says which Goals it
+// searches, its label naming the picker as ever. Its rules hint says in
+// plain words what a rule can check.
 func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2334,7 +2335,7 @@ func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 
 	for _, tc := range []struct{ picker, legend, label, id, text string }{
 		{"include-picker", "Also include", "What does Also include do?", "include-help", "Goals to add by hand, even if they don't meet the rules."},
-		{"exclude-picker", "Leave out", "What does Leave out do?", "exclude-help", "Goals to drop, even if they meet the rules."},
+		{"exclude-picker", "Leave out", "What does Leave out do?", "exclude-help", "Goals the rules select that this Report drops."},
 	} {
 		picker := pageElement(t, page, "fieldset", tc.picker)
 		if button := assertTermHelp(t, page, picker, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
@@ -2349,6 +2350,20 @@ func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 	}
 	if picked := pageElement(t, page, "fieldset", "picked-picker"); strings.Contains(picked, "disclose help") {
 		t.Errorf("Goals I pick has a help button:\n%s", picked)
+	}
+	parsed := parsePage(t, page)
+	for _, tc := range []struct{ picker, search, placeholder, label string }{
+		{"picked-picker", "picked-q", "Search any Goal by title", "Search Goals: Goals I pick"},
+		{"include-picker", "include-q", "Search Goals the rules leave out", "Search Goals: Also include"},
+		{"exclude-picker", "exclude-q", "Search Goals the rules select", "Search Goals: Leave out"},
+	} {
+		search := formField(t, findByTestID(t, parsed, tc.picker), tc.search)
+		if search.Placeholder != tc.placeholder {
+			t.Errorf("%s's search box reads %q, want %q", tc.picker, search.Placeholder, tc.placeholder)
+		}
+		if search.Label != tc.label {
+			t.Errorf("%s's search box is labelled %q, want %q", tc.picker, search.Label, tc.label)
+		}
 	}
 
 	hint := pageElement(t, page, "p", "rules-hint")

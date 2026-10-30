@@ -251,7 +251,7 @@ func draftMeta(r domain.Report, panel goalsPanel) string {
 // "Leave site?". Save and publish clicks Save narrative and submits the
 // publish form only once that save leaves the status unmarked; when it
 // doesn't, Publish… says why: the refusal's reason, or that the narrative
-// wasn't saved. A save's or Add another's answer swaps in the Narrative
+// wasn't saved, until the author changes the form again. A save's or Add another's answer swaps in the Narrative
 // section unless the author changed the form while it was on its way: then
 // what they typed stays, only the answer's out-of-band parts are taken, and
 // the status stays marked.
@@ -309,6 +309,10 @@ templ narrativeSaveScript() {
 					var boxes = form.querySelectorAll('input[name^="include-"]');
 					count.textContent = form.querySelectorAll('input[name^="include-"]:checked').length + " of " + boxes.length + " in";
 				}
+				// A failed save's reason is about what was sent, not what is
+				// typed now.
+				var notSaved = document.querySelector('[data-testid="publish-not-saved"]');
+				if (notSaved) notSaved.hidden = true;
 				markUnsaved();
 			}
 			function markUnsaved() {

@@ -182,6 +182,20 @@ func goalSearchInput(list string) string {
 	return list + "-q"
 }
 
+// goalSearchPlaceholder is what the search box of the picker for list says
+// it searches: Also include only Goals the rules leave out, Leave out only
+// Goals they select, and Goals I pick any Goal (reportRuleSelection.offers).
+func goalSearchPlaceholder(list string) string {
+	switch list {
+	case inputInclude:
+		return "Search Goals the rules leave out"
+	case inputExclude:
+		return "Search Goals the rules select"
+	default:
+		return "Search any Goal by title"
+	}
+}
+
 // inputShowField is a Field to show beside each Goal, posted once per Field.
 const inputShowField = "field"
 
