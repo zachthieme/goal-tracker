@@ -1,9 +1,10 @@
 // Phone width: at 390px Home, with a Check-in due in Needs you, the Goals
-// list, Follow-ups, the Admin page, a Report draft, with a Schedule
-// conflict's Owner's email disclosed, the New goal page, with its Metric
-// editor open, and the Check-in page fit the screen. Nothing inside main is
-// clipped or scrolls sideways, and every control lies within the window
-// (#343: #258, #268, #338, #229; #368; #369; #364; #387; #642).
+// list, the Goals Table, Follow-ups, the Admin page, a Report draft, with a
+// Schedule conflict's Owner's email disclosed, the New goal page, with its
+// Metric editor open, and the Check-in page fit the screen. Nothing inside
+// main is clipped or scrolls sideways but the Goals Table's own container,
+// which cues its scroll, and every control lies within the window (#343:
+// #258, #268, #338, #229; #368; #369; #364; #387; #642; #686).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, requirePick, signIn, test } from "./fixtures";
@@ -113,6 +114,33 @@ test("at 390px the Goals list stacks each Goal's Owner and Due under its title",
   await expect(row.locator(".gl-owner")).toBeVisible();
   await expect(row.getByTestId("goal-row-due")).toBeVisible();
   await expectFitsAPhone(page);
+});
+
+// The Goals Table doesn't stack at phone width: it keeps every column and
+// scrolls sideways inside its own container, which fades the edge it can
+// scroll toward (#686). The manifest's metricGoal's Owner has a Goal in Mine.
+test("at 390px the Goals Table keeps its columns and cues its sideways scroll", async ({ page, manifest }) => {
+  const goal = requirePick("metricGoal", manifest.metricGoal);
+  await signIn(page, goal.email);
+  await page.goto("/goals?layout=table");
+  const scroll = page.getByTestId("goal-table-scroll");
+  await expect(scroll).toBeVisible();
+  const head = scroll.getByTestId("goal-table-head");
+  for (const name of ["Owner", "Lifecycle", "Last check-in"]) {
+    await expect(head.getByRole("columnheader", { name, exact: true }), `the ${name} column stays`).toBeAttached();
+  }
+  const { scrollWidth, clientWidth, attachment } = await scroll.evaluate((e) => ({
+    scrollWidth: e.scrollWidth,
+    clientWidth: e.clientWidth,
+    attachment: getComputedStyle(e).backgroundAttachment,
+  }));
+  expect(scrollWidth, "the table is wider than its container").toBeGreaterThan(clientWidth);
+  expect(attachment, "the fades are attached local and scroll").toContain("local");
+  expect(attachment, "the fades are attached local and scroll").toContain("scroll");
+  await scroll.evaluate((e) => {
+    e.scrollLeft = e.scrollWidth;
+  });
+  await expectFitsAPhone(page, ["goal-table-scroll"]);
 });
 
 test("at 390px the Follow-ups filters wrap, both selects on screen", async ({ page }) => {
