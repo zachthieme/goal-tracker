@@ -1208,7 +1208,8 @@ func formFields(root *html.Node, name string) []pageField {
 
 // formSubmission is what a browser posts from form as it stands when
 // submitted without a named button: each named field's value, a checkbox or
-// radio only when ticked, buttons and disabled fields left out.
+// radio only when ticked, a multiple select's each selected option, buttons
+// and disabled fields left out.
 func formSubmission(form *html.Node) url.Values {
 	values := url.Values{}
 	seen := map[string]bool{}
@@ -1228,6 +1229,10 @@ func formSubmission(form *html.Node) url.Values {
 				continue
 			case (f.Type == "checkbox" || f.Type == "radio") && !hasAttr(f.Node, "value"):
 				values.Add(name, "on")
+			case f.Type == "select" && hasAttr(f.Node, "multiple"):
+				for _, o := range findAll(f.Node, func(n *html.Node) bool { return n.Data == "option" && hasAttr(n, "selected") }) {
+					values.Add(name, attrOf(o, "value"))
+				}
 			default:
 				values.Add(name, f.Value)
 			}
