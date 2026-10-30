@@ -186,10 +186,10 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	}
 	refuse := func(err error) {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't check in", Back: goalPath(goalID),
-			Partial: func(err error) (templ.Component, error) {
+			Partial: func(_ context.Context, err error) (templ.Component, error) {
 				return checkinForm(refusedForm(err)), nil
 			},
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				return checkinPage(&current, view, refusedForm(err)), nil
 			})})
 	}
@@ -467,8 +467,8 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 // doesn't exist gets the Not found page, and a failure, or a page that can't
 // be loaded, a logged 500 saying the No change couldn't be recorded.
 func (s *Server) refusedNoChange(r *http.Request, current domain.Account, goalID int64, err error) refused {
-	page := func(err error) (templ.Component, error) {
-		view, viewErr := s.checkinView(r.Context(), goalID, current)
+	page := func(ctx context.Context, err error) (templ.Component, error) {
+		view, viewErr := s.checkinView(ctx, goalID, current)
 		switch {
 		case viewErr != nil:
 			return nil, viewErr

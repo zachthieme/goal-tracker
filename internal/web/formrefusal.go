@@ -31,7 +31,7 @@ type refused struct {
 	// what was typed, at 200 (answerSwap): its form again, showing why. A
 	// nil fragment is a form the page no longer offers, answered with the
 	// refusal page; an error is answered as refuse answers it.
-	Partial func(err error) (templ.Component, error)
+	Partial func(ctx context.Context, err error) (templ.Component, error)
 	// Pushed is the address htmx shows for Partial, a whole page
 	// (answerPushedPage); Unswapped has htmx show Partial without swapping
 	// its target (answerUnswapped).
@@ -88,7 +88,7 @@ func refusedStatus(err error) (int, bool) {
 // answerRefusedPartial answers rf's htmx post with its Partial, reporting
 // whether it answered.
 func (s *Server) answerRefusedPartial(w http.ResponseWriter, r *http.Request, rf refused, status int) bool {
-	fragment, err := rf.Partial(rf.Err)
+	fragment, err := rf.Partial(r.Context(), rf.Err)
 	switch {
 	case err != nil:
 		s.refuse(w, r, rf.Heading, rf.Back, err, rf.Options...)
@@ -106,19 +106,19 @@ func (s *Server) answerRefusedPartial(w http.ResponseWriter, r *http.Request, rf
 
 // formAsPage is a form that is the page it is on, such as the New goal form.
 type formAsPage struct {
-	render func(err error) (templ.Component, error)
+	render func(ctx context.Context, err error) (templ.Component, error)
 }
 
 // asPage is a form that is the page, which render draws again for a refusal
 // of what was typed, err, as it was left and saying why. answerRefused
 // answers with it at the refusal's status. A nil page falls back to the
 // refusal page, and an error is answered as refuse answers it.
-func asPage(render func(err error) (templ.Component, error)) refusedForm {
+func asPage(render func(ctx context.Context, err error) (templ.Component, error)) refusedForm {
 	return formAsPage{render: render}
 }
 
 func (f formAsPage) answerInPlace(s *Server, w http.ResponseWriter, r *http.Request, rf refused, status int) bool {
-	page, err := f.render(rf.Err)
+	page, err := f.render(r.Context(), rf.Err)
 	switch {
 	case err != nil:
 		s.refuse(w, r, rf.Heading, rf.Back, err, rf.Options...)

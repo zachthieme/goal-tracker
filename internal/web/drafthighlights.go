@@ -34,8 +34,8 @@ func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change highlight", Back: goalPath(goalID),
 			Form: s.goalPageForm(goalID, current, formDraftHighlight),
-			Partial: func(err error) (templ.Component, error) {
-				return s.draftHighlightsBlock(r.Context(), goalID, current, draftHighlightRefusalOf(r, 0, err))
+			Partial: func(ctx context.Context, err error) (templ.Component, error) {
+				return s.draftHighlightsBlock(ctx, goalID, current, draftHighlightRefusalOf(r, 0, err))
 			}})
 		return
 	}
@@ -91,8 +91,8 @@ func (s *Server) refusedDraftHighlight(r *http.Request, id int64, current domain
 	}
 	rf.Back = goalPath(draft.GoalID)
 	if editing {
-		rf.Partial = func(err error) (templ.Component, error) {
-			return s.draftHighlightsBlock(r.Context(), draft.GoalID, current, draftHighlightRefusalOf(r, id, err))
+		rf.Partial = func(ctx context.Context, err error) (templ.Component, error) {
+			return s.draftHighlightsBlock(ctx, draft.GoalID, current, draftHighlightRefusalOf(r, id, err))
 		}
 	}
 	return rf

@@ -345,7 +345,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 	target := narrativeDraftPath(r, id)
 	if err := s.svc.CurateNarrative(r.Context(), current.ID, id, in); err != nil {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save narrative", Back: target, Unswapped: true,
-			Partial: func(err error) (templ.Component, error) {
+			Partial: func(_ context.Context, err error) (templ.Component, error) {
 				return saveStatus("Not saved: "+refusalSentence(err), true), nil
 			}})
 		return
@@ -504,14 +504,14 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 		// The form offers the Report's Highlights whatever the narrative,
 		// so, refused, the draft as saved serves it, saying why.
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save narrative", Back: narrativeDraftPath(r, def.ID),
-			Partial: func(err error) (templ.Component, error) {
-				saved, err2 := s.svc.DraftReport(r.Context(), def, baseline)
+			Partial: func(ctx context.Context, err error) (templ.Component, error) {
+				saved, err2 := s.svc.DraftReport(ctx, def, baseline)
 				if err2 != nil {
 					return nil, fmt.Errorf("build the draft: %w", err2)
 				}
 				return s.narrativeFormAgainSection(r, def, saved, addNote, "Not saved: "+refusalSentence(err))
 			},
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				return s.narrativeFormAgainPage(r, current, def, baseline, nil, addNote, "Not saved: "+refusalSentence(err))
 			})})
 		return
@@ -658,10 +658,6 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 	}
 	pub, err := s.svc.PublishReport(r.Context(), current.ID, id, baseline)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			s.notFound(w, r)
-			return
-		}
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't publish Report", Back: narrativeDraftPath(r, id)})
 		return
 	}
@@ -887,7 +883,7 @@ func (s *Server) answerReportDelegateCommand(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Report Delegates", Back: draft,
-		Form: asPage(func(err error) (templ.Component, error) {
+		Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 			baseline, baselineErr := pickedBaseline(r)
 			if baselineErr != nil {
 				return nil, baselineErr

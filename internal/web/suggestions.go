@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -54,7 +55,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	}
 	refuse := func(err error) {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't suggest a parent", Back: goalPath(goalID),
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				return s.suggestParentForm(r, current, goalID, err)
 			})})
 	}

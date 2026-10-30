@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -60,7 +61,7 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 	// input when there's no file, and above the form otherwise.
 	refuse := func(err error) {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Admins only", Back: "/home",
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				if errors.Is(err, errNoImportFile) {
 					return importsPage(&current, nil, "", refusalSentence(err)), nil
 				}

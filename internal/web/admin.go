@@ -87,7 +87,7 @@ func (s *Server) adminPageFor(r *http.Request, current domain.Account, links *pa
 // someone who isn't an Admin is refused as refuseNonAdmin refuses them.
 func (s *Server) refusedAdminForm(r *http.Request, current domain.Account, err error, form func(reason string) (*passwordLinksView, adminsSectionView)) refused {
 	return refused{Err: err, Heading: "Admins only", Back: "/home",
-		Form: asPage(func(err error) (templ.Component, error) {
+		Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 			links, admins := form(domain.Reason(err))
 			return s.adminPageFor(r, current, links, admins)
 		})}

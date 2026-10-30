@@ -509,7 +509,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	}
 	if err := s.svc.EditGoalValues(r.Context(), current.ID, edits); err != nil {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save Goals", Back: saved,
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				q.Set("edit", "1")
 				r.URL.RawQuery = q.Encode()
 				view, verr := s.goalsListView(r, current)

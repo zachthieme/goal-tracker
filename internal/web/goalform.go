@@ -730,9 +730,9 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 // a refused submit: as typed, with every problem the refusal names
 // (goalFormProblems).
 func (s *Server) goalFormAgain(r *http.Request, current domain.Account, from goalFormFrom) refusedForm {
-	return asPage(func(err error) (templ.Component, error) {
+	return asPage(func(ctx context.Context, err error) (templ.Component, error) {
 		from.Problems = goalFormProblems(err)
-		v, err := s.buildGoalForm(r.Context(), current, from)
+		v, err := s.buildGoalForm(ctx, current, from)
 		if err != nil {
 			return nil, fmt.Errorf("load the goal form: %w", err)
 		}

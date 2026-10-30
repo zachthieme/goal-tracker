@@ -2,6 +2,7 @@ package web
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -283,12 +284,12 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 	// Only an edit can be refused for who is asking, and only when the
 	// editor lost the right to since editableReport checked.
 	rf := refused{Err: err, Heading: "Can't save Report", Back: "/reports",
-		Form: asPage(func(err error) (templ.Component, error) {
+		Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 			v.Problems = problemsOf(err)
 			if err := s.loadReportBuilder(r, &v); err != nil {
 				return nil, fmt.Errorf("load the builder: %w", err)
 			}
-			return reportBuilderPage(&current, v), nil
+			return reportBuilderPage(&current, v), nil //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 		})}
 	if saved.ID != 0 {
 		rf.Heading, rf.Back = "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10)

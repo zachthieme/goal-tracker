@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net"
 	"net/http"
@@ -80,7 +81,7 @@ func (s *Server) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	// signed in, so nothing else it refuses reaches the refusal page.
 	refuse := func(err error) {
 		s.answerRefused(w, r, refused{Err: err, Heading: "Can't set password", Back: "/",
-			Form: asPage(func(err error) (templ.Component, error) {
+			Form: asPage(func(_ context.Context, err error) (templ.Component, error) {
 				return setPasswordPage(acc.Email, token, refusalSentence(err)), nil
 			})})
 	}
