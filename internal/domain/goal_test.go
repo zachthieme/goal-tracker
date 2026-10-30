@@ -612,3 +612,27 @@ func TestCreateGoalByNoAccountIsRefusedAsNoOwner(t *testing.T) {
 		t.Errorf("message = %q, want %q", domain.Reason(err), want)
 	}
 }
+
+func TestSetCadenceRefusesMoreThanNinetyDays(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+
+	_, err := h.Service.SetCadence(ctx, g.Owner.ID, g.ID, 91)
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if got := domain.Reason(err); got != "the Check-in cadence can be at most 90 days" {
+		t.Errorf("reason = %q", got)
+	}
+	got, err := h.Service.SetCadence(ctx, g.Owner.ID, g.ID, 90)
+	if err != nil {
+		t.Fatalf("SetCadence(90): %v", err)
+	}
+	if got.CadenceDays != 90 {
+		t.Errorf("CadenceDays = %d, want 90", got.CadenceDays)
+	}
+}
