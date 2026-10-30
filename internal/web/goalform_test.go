@@ -2950,3 +2950,43 @@ func TestNewGoalPageCarriesTheMeasureEditorsTemplates(t *testing.T) {
 		t.Errorf("a refused create's How you'll know carries data-year=%q, want 2027", year)
 	}
 }
+
+// A Custom cadence above 90 days is refused beside the days typed, in the
+// same 422 as the form's other problems, and the days input offers no more
+// than 90 (#675).
+func TestNewGoalFormRefusesACustomCadenceOverNinetyDays(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if days := formField(t, getPage(t, client, ts.URL+"/goals/new"), "cadence_days"); attrOf(days.Node, "max") != "90" {
+		t.Errorf("Custom's days input has max=%q, want 90: %s", attrOf(days.Node, "max"), renderNode(days.Node))
+	}
+
+	form := parsePage(t, refusedNewGoal(t, client, ts.URL, url.Values{
+		"title": {"Cut checkout latency"}, "why_it_matters": {""},
+		"cadence": {"custom"}, "cadence_days": {"91"},
+	}))
+	days := formField(t, form, "cadence_days")
+	if attrOf(days.Node, "id") != "cadence" || days.Value != "91" || attrOf(days.Node, "aria-invalid") != "true" {
+		t.Errorf("#cadence isn't the 91 days typed, marked invalid: %s", renderNode(days.Node))
+	}
+	if days.Description != "The Check-in cadence can be at most 90 days." {
+		t.Errorf("#cadence is described by %q, want the most it can be", days.Description)
+	}
+	var cadenceError *nethtml.Node
+	for _, e := range findAllByTestID(form, "input-error") {
+		if attrOf(e, "id") == "cadence-error" {
+			cadenceError = e
+		}
+	}
+	if cadenceError == nil || textOf(cadenceError) != "The Check-in cadence can be at most 90 days." {
+		t.Errorf("no input-error cadence-error says the most the cadence can be:\n%s", renderNode(form))
+	}
+	if why := formField(t, form, "why_it_matters"); why.Description != "A Goal needs to say why it matters." {
+		t.Errorf("Why it matters is described by %q, want its own problem in the same 422", why.Description)
+	}
+}

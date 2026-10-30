@@ -232,6 +232,7 @@ templ goalFormDelivery(v goalFormView) {
 					name={ inputCadenceDays }
 					value={ v.customDays() }
 					min="1"
+					max={ fmt.Sprint(domain.MaxCadenceDays) }
 					step="1"
 					inputmode="numeric"
 					if v.bad(domain.InputCadence) != "" {
