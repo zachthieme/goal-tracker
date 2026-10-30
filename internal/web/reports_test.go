@@ -2052,7 +2052,7 @@ var reportMarkedMilestones = []string{
 	"Done Feb 1, 2026 Pilot",
 	"New Mar 10, 2026 Docs",
 	"Slipped Apr 12, 2026 Apr 2, 2026 Beta",
-	"Slipped Apr 20, 2026 Mar 20, 2026 (3) Vendor sign-off",
+	"Slipped Apr 20, 2026 Mar 20, 2026 · 3 slips · Vendor sign-off",
 	"May 1, 2026 Runbook",
 	"Removed May 20, 2026 Launch party — Budget cut.",
 	"Jun 15, 2026 GA launch",
@@ -4890,7 +4890,7 @@ func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T)
 		prior string // the struck-through date, "" for none
 		count string // the count, "" for none
 	}{
-		{"twice", []time.Time{time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)}, "Mar 13, 2026", "(2)"},
+		{"twice", []time.Time{time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)}, "Mar 13, 2026", "2 slips"},
 		{"once", []time.Time{time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)}, "Mar 6, 2026", ""},
 		{"never", nil, "", ""},
 	} {
@@ -4926,6 +4926,9 @@ func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T)
 				if !strings.HasSuffix(runningText(path), ")") {
 					t.Errorf("%s's back-to-Green date does not close its parenthesis: %q", name, runningText(path))
 				}
+				if want := "· " + tc.count + ")"; tc.count != "" && !strings.HasSuffix(runningText(path), want) {
+					t.Errorf("%s's path doesn't end %q: %q", name, want, runningText(path))
+				}
 			}
 		})
 	}
@@ -4946,7 +4949,7 @@ func TestReportBlockStrikesNoBackToGreenDateEqualToItsOwnOverHTTP(t *testing.T) 
 		prior string      // the struck-through date, "" for none
 		count string      // the count, "" for none
 	}{
-		{"slipped twice, back once", []time.Time{jun(16), jun(23)}, jun(16), "Jun 9, 2026", "(2)"},
+		{"slipped twice, back once", []time.Time{jun(16), jun(23)}, jun(16), "Jun 9, 2026", "2 slips"},
 		{"slipped once, back to the start", []time.Time{jun(16)}, jun(9), "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -5011,10 +5014,10 @@ func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffers
 	if got, want := struckThrough(path), []string{"Jun 9, 2026"}; !slices.Equal(got, want) {
 		t.Errorf("the publication strikes through %q, want %q; path:\n%s", got, want, renderNode(path))
 	}
-	if got, want := textsOf(findAllByTestID(path, "report-back-to-green-slips")), []string{"(2)"}; !slices.Equal(got, want) {
+	if got, want := textsOf(findAllByTestID(path, "report-back-to-green-slips")), []string{"2 slips"}; !slices.Equal(got, want) {
 		t.Errorf("the publication counts the slips as %q, want %q; path:\n%s", got, want, renderNode(path))
 	}
-	if want := "by Jun 16, 2026 Jun 9, 2026 (2))"; !strings.Contains(runningText(path), want) {
+	if want := "by Jun 16, 2026 Jun 9, 2026 · 2 slips)"; !strings.Contains(runningText(path), want) {
 		t.Errorf("the path doesn't read %s: %q", want, runningText(path))
 	}
 }

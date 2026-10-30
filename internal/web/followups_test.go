@@ -3030,10 +3030,10 @@ func TestFollowUpsNotGreenRowsTagASlippedBackToGreenDate(t *testing.T) {
 
 	row := followUpRowIn(t, doc, slipped)
 	tag := findByTestID(t, row, "follow-up-back-to-green")
-	if want := "Back to Green Mar 3 Feb 13 (2)"; textOf(tag) != want {
+	if want := "Back to Green Mar 3 Feb 13 · 2 slips"; textOf(tag) != want {
 		t.Errorf("%q's row tags its back-to-Green date %q, want %q:\n%s", slipped.Title, textOf(tag), want, renderNode(row))
 	}
-	if got := struckThrough(tag); !slices.Equal(got, []string{"Feb 13"}) || textOf(findByTestID(t, tag, "follow-up-back-to-green-slips")) != "(2)" {
+	if got := struckThrough(tag); !slices.Equal(got, []string{"Feb 13"}) || textOf(findByTestID(t, tag, "follow-up-back-to-green-slips")) != "2 slips" {
 		t.Errorf("%q's tag strikes %q through, want Feb 13 and a count of 2 slips:\n%s", slipped.Title, got, renderNode(tag))
 	}
 	if !within(tag, findByTestID(t, row, "follow-up-goal")) || !flatFrameHasClass(tag.Parent, "rk-chips") {

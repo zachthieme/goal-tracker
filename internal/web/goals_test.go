@@ -2596,7 +2596,7 @@ var goalMarkedMilestones = []string{
 	"Done Feb 1 Pilot",
 	"New Mar 10 Docs",
 	"Slipped Apr 12 Apr 2 Beta",
-	"Slipped Apr 20 Mar 20 (3) Vendor sign-off",
+	"Slipped Apr 20 Mar 20 · 3 slips Vendor sign-off",
 	"May 1 Runbook",
 	"Removed May 20 Launch party Removed: Budget cut.",
 	"Jun 15 GA launch",
@@ -7606,8 +7606,8 @@ func TestAPulledInBackToGreenDateStrikesTheDateItDiffersFrom(t *testing.T) {
 	if !slices.Equal(goalPlainDates(got), []string{"Jun 16"}) || !slices.Equal(struckThrough(got), []string{"Jun 9"}) {
 		t.Errorf("the cell doesn't read Jun 16 ~~Jun 9~~: %s", renderNode(got))
 	}
-	if slips := textsOf(findAllByTestID(got, "back-to-green-slips")); !slices.Equal(slips, []string{"(2)"}) {
-		t.Errorf("the slip count = %q, want (2): %s", slips, renderNode(got))
+	if slips := textsOf(findAllByTestID(got, "back-to-green-slips")); !slices.Equal(slips, []string{"2 slips"}) {
+		t.Errorf("the slip count = %q, want 2 slips: %s", slips, renderNode(got))
 	}
 
 	once := h.ActiveGoal(sam, "Slipped once", "It matters.")

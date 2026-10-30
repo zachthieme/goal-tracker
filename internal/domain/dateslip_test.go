@@ -339,3 +339,15 @@ func TestStruckDatesLeaveOutTheCurrentDate(t *testing.T) {
 		}
 	}
 }
+
+// A date's slip count reads in words, the one wording every slip count shows
+// in (CONTEXT.md: Date Slip).
+func TestSlipsWordsSayHowManyTimesADateSlipped(t *testing.T) {
+	t.Parallel()
+
+	for n, want := range map[int]string{1: "1 slip", 2: "2 slips", 4: "4 slips"} {
+		if got := domain.SlipsWords(n); got != want {
+			t.Errorf("SlipsWords(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
