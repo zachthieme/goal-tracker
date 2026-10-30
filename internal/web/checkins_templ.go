@@ -2538,7 +2538,15 @@ func checkinHighlightRow(n int, row highlightFormData, errs checkinFormErrors) t
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</legend> <label>Kind <select name=\"highlight_kind\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</legend> <label>Kind <select name=\"highlight_kind\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinHighlightInput(n)))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2546,20 +2554,28 @@ func checkinHighlightRow(n int, row highlightFormData, errs checkinFormErrors) t
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "</select></label> <label>Note <textarea name=\"highlight_note\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</select></label> <label>Note <textarea name=\"highlight_note\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinHighlightInput(n)))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(row.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1266, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1266, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2567,7 +2583,7 @@ func checkinHighlightRow(n int, row highlightFormData, errs checkinFormErrors) t
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2603,7 +2619,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		}
 		ctx = templ.ClearChildren(ctx)
 		id := fmt.Sprint(row.DraftID)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "<fieldset data-testid=\"checkin-highlight-row\" class=\"checkin-draft-row\"><legend data-testid=\"checkin-highlight-legend\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "<fieldset data-testid=\"checkin-highlight-row\" class=\"checkin-draft-row\"><legend data-testid=\"checkin-highlight-legend\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2616,7 +2632,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</legend> <input type=\"hidden\" name=\"draft_highlight_id\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "</legend> <input type=\"hidden\" name=\"draft_highlight_id\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2629,7 +2645,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "\"> <input type=\"hidden\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "\"> <input type=\"hidden\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2642,7 +2658,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2655,7 +2671,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "\"> <label class=\"checkin-keep\"><input type=\"checkbox\" name=\"draft_highlight_keep\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "\"> <label class=\"checkin-keep\"><input type=\"checkbox\" name=\"draft_highlight_keep\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2668,17 +2684,17 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if row.Keep {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, " checked")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, " checked")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "> Keep</label> <label>Kind <select name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "> Keep</label> <label>Kind <select name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2691,7 +2707,15 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinHighlightInput(n)))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2699,7 +2723,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "</select></label> <label>Note <textarea name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "</select></label> <label>Note <textarea name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2712,20 +2736,28 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinHighlightInput(n)))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var84 string
 		templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(row.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1296, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1296, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2733,7 +2765,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, errs checkinFormErro
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2803,7 +2835,7 @@ func checkinStyles() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "<style>\n\t\t\t.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}\n\t\t\t.gp-cell{display:flex;flex-direction:column;gap:4px}\n\t\t\t.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}\n\t\t\t.checkin-page{max-width:1048px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(240px,280px);gap:24px 48px;align-items:start}\n\t\t\t.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}\n\t\t\t.checkin-head>div{min-width:0}\n\t\t\t.checkin-head p{margin:0}\n\t\t\t.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}\n\t\t\t.checkin-no-change form, .checkin-no-change p{margin:0}\n\t\t\t.checkin-page>*{grid-column:1}\n\t\t\t.checkin-page>.checkin-head{grid-column:1/-1}\n\t\t\t.checkin-page>.checkin-context{grid-column:2;grid-row:2}\n\t\t\t.checkin-page>.checkin-add-bar{grid-column:1/-1;align-self:stretch;min-width:0}\n\t\t\t.checkin-page.checkin-js>.checkin-context{grid-row:3}\n\t\t\t.checkin-page:not(.checkin-js) .checkin-js-only{display:none}\n\t\t\t.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}\n\t\t\t.checkin-add-label{font-size:var(--text-secondary);font-weight:500;color:var(--color-ink-muted)}\n\t\t\t.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}\n\t\t\t.checkin-add-bar .hl-add{display:contents}\n\t\t\t.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}\n\t\t\t.checkin-add-bar .btn{border-radius:var(--radius-full)}\n\t\t\t.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}\n\t\t\t.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}\n\t\t\t.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}\n\t\t\t.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:var(--text-secondary);box-sizing:border-box}\n\t\t\t.checkin-context>section{display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}\n\t\t\t.checkin-context>.checkin-context-children{gap:12px}\n\t\t\t.checkin-context p{margin:0}\n\t\t\t.checkin-rail-head{font-size:var(--text-label);font-weight:500;line-height:1.5;color:var(--color-ink-muted)}\n\t\t\t.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}\n\t\t\t.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}\n\t\t\t.checkin-context-dates p{color:var(--color-ink-2)}\n\t\t\t@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;align-self:stretch;max-height:none;overflow-y:visible;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}}\n\t\t\t@media (max-width:600px){.checkin-context>.checkin-context-dates{display:none}.checkin-context:not(:has(.checkin-context-last)):not(:has(.checkin-context-children)){display:none}}\n\t\t\t@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:24px}\n\t\t\t.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}\n\t\t\t.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t\t.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t\t.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}\n\t\t\t.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}\n\t\t\t.checkin-form legend{font-weight:600;font-size:var(--text-secondary);padding:0}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}\n\t\t\t.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}\n\t\t\t.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}\n\t\t\t.checkin-form label[hidden]{display:none}\n\t\t\t.checkin-input-error{display:block;margin:0;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{--dot-size:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.r{color:var(--health-r-ink)}\n\t\t\t.health-toggle label.y{color:var(--health-y-ink)}\n\t\t\t.health-toggle label.g{color:var(--health-g-ink)}\n\t\t\t.health-toggle label.badge:has(input:checked){border-color:currentColor}\n\t\t\t.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}\n\t\t\t.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}\n\t\t\t.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-rollup{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:12px}\n\t\t\t.checkin-rollup p{margin:0}\n\t\t\t.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}\n\t\t\t.checkin-path-target>.hint{padding-bottom:8px}\n\t\t\t.checkin-form>fieldset.checkin-readings{gap:0}\n\t\t\t.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0}\n\t\t\t.checkin-metric+.checkin-metric{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}\n\t\t\t.checkin-metric-name{font-weight:600}\n\t\t\t.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}\n\t\t\t.checkin-metric-progress::-webkit-progress-bar{background:var(--color-border)}\n\t\t\t.checkin-metric-progress::-webkit-progress-value{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-progress::-moz-progress-bar{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-input{flex:none}\n\t\t\t.checkin-metric-input input{width:120px;font-variant-numeric:tabular-nums;text-align:right}\n\t\t\t.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}\n\t\t\t.checkin-more-group{display:flex;flex-direction:column}\n\t\t\t.checkin-more~.checkin-more{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.checkin-highlights{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:var(--text-secondary);color:var(--color-ink-muted)}\n\t\t\t.checkin-highlights>button{align-self:flex-start}\n\t\t\t.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}\n\t\t\t.checkin-js .checkin-more[open]{padding-bottom:0}\n\t\t\t.checkin-js .checkin-more[open]~.checkin-more[open]{margin-top:24px;padding-top:24px}\n\t\t\t.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}\n\t\t\t.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}\n\t\t\t.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}\n\t\t\t.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}\n\t\t\t.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}\n\t\t\t.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-summary{flex:1;color:var(--color-ink-2);font-size:var(--text-body)}\n\t\t\t.checkin-summary>*{white-space:nowrap}\n\t\t\t.checkin-submit-bar .btn{flex:none}\n\t\t\t.checkin-submit-bar .btn.primary{height:44px}\n\t\t\thtml:has(.checkin-submit-bar){scroll-padding-bottom:80px}\n\t\t\t@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:var(--text-secondary)}.checkin-submit-bar .btn.primary{height:48px}}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<style>\n\t\t\t.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}\n\t\t\t.gp-cell{display:flex;flex-direction:column;gap:4px}\n\t\t\t.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}\n\t\t\t.checkin-page{max-width:1048px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(240px,280px);gap:24px 48px;align-items:start}\n\t\t\t.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}\n\t\t\t.checkin-head>div{min-width:0}\n\t\t\t.checkin-head p{margin:0}\n\t\t\t.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}\n\t\t\t.checkin-no-change form, .checkin-no-change p{margin:0}\n\t\t\t.checkin-page>*{grid-column:1}\n\t\t\t.checkin-page>.checkin-head{grid-column:1/-1}\n\t\t\t.checkin-page>.checkin-context{grid-column:2;grid-row:2}\n\t\t\t.checkin-page>.checkin-add-bar{grid-column:1/-1;align-self:stretch;min-width:0}\n\t\t\t.checkin-page.checkin-js>.checkin-context{grid-row:3}\n\t\t\t.checkin-page:not(.checkin-js) .checkin-js-only{display:none}\n\t\t\t.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}\n\t\t\t.checkin-add-label{font-size:var(--text-secondary);font-weight:500;color:var(--color-ink-muted)}\n\t\t\t.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}\n\t\t\t.checkin-add-bar .hl-add{display:contents}\n\t\t\t.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}\n\t\t\t.checkin-add-bar .btn{border-radius:var(--radius-full)}\n\t\t\t.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}\n\t\t\t.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}\n\t\t\t.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}\n\t\t\t.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:var(--text-secondary);box-sizing:border-box}\n\t\t\t.checkin-context>section{display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}\n\t\t\t.checkin-context>.checkin-context-children{gap:12px}\n\t\t\t.checkin-context p{margin:0}\n\t\t\t.checkin-rail-head{font-size:var(--text-label);font-weight:500;line-height:1.5;color:var(--color-ink-muted)}\n\t\t\t.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}\n\t\t\t.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}\n\t\t\t.checkin-context-dates p{color:var(--color-ink-2)}\n\t\t\t@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;align-self:stretch;max-height:none;overflow-y:visible;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}}\n\t\t\t@media (max-width:600px){.checkin-context>.checkin-context-dates{display:none}.checkin-context:not(:has(.checkin-context-last)):not(:has(.checkin-context-children)){display:none}}\n\t\t\t@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:24px}\n\t\t\t.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}\n\t\t\t.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t\t.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t\t.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}\n\t\t\t.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}\n\t\t\t.checkin-form legend{font-weight:600;font-size:var(--text-secondary);padding:0}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}\n\t\t\t.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}\n\t\t\t.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}\n\t\t\t.checkin-form label[hidden]{display:none}\n\t\t\t.checkin-input-error{display:block;margin:0;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{--dot-size:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.r{color:var(--health-r-ink)}\n\t\t\t.health-toggle label.y{color:var(--health-y-ink)}\n\t\t\t.health-toggle label.g{color:var(--health-g-ink)}\n\t\t\t.health-toggle label.badge:has(input:checked){border-color:currentColor}\n\t\t\t.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}\n\t\t\t.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}\n\t\t\t.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-rollup{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:12px}\n\t\t\t.checkin-rollup p{margin:0}\n\t\t\t.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}\n\t\t\t.checkin-path-target>.hint{padding-bottom:8px}\n\t\t\t.checkin-form>fieldset.checkin-readings{gap:0}\n\t\t\t.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0}\n\t\t\t.checkin-metric+.checkin-metric{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}\n\t\t\t.checkin-metric-name{font-weight:600}\n\t\t\t.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}\n\t\t\t.checkin-metric-progress::-webkit-progress-bar{background:var(--color-border)}\n\t\t\t.checkin-metric-progress::-webkit-progress-value{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-progress::-moz-progress-bar{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-input{flex:none}\n\t\t\t.checkin-metric-input input{width:120px;font-variant-numeric:tabular-nums;text-align:right}\n\t\t\t.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}\n\t\t\t.checkin-more-group{display:flex;flex-direction:column}\n\t\t\t.checkin-more~.checkin-more{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.checkin-highlights{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:var(--text-secondary);color:var(--color-ink-muted)}\n\t\t\t.checkin-highlights>button{align-self:flex-start}\n\t\t\t.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}\n\t\t\t.checkin-js .checkin-more[open]{padding-bottom:0}\n\t\t\t.checkin-js .checkin-more[open]~.checkin-more[open]{margin-top:24px;padding-top:24px}\n\t\t\t.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}\n\t\t\t.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}\n\t\t\t.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}\n\t\t\t.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}\n\t\t\t.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}\n\t\t\t.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-summary{flex:1;color:var(--color-ink-2);font-size:var(--text-body)}\n\t\t\t.checkin-summary>*{white-space:nowrap}\n\t\t\t.checkin-submit-bar .btn{flex:none}\n\t\t\t.checkin-submit-bar .btn.primary{height:44px}\n\t\t\thtml:has(.checkin-submit-bar){scroll-padding-bottom:80px}\n\t\t\t@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:var(--text-secondary)}.checkin-submit-bar .btn.primary{height:48px}}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2844,12 +2876,12 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			templ_7745c5c3_Var87 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "<fieldset data-testid=\"checkin-dates\"><legend>Dates and Milestones</legend> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "<fieldset data-testid=\"checkin-dates\"><legend>Dates and Milestones</legend> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.Dated {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<label>Delivery date <input type=\"date\" name=\"delivery_date\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<label>Delivery date <input type=\"date\" name=\"delivery_date\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2862,7 +2894,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "\" data-current=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "\" data-current=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2875,7 +2907,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2883,7 +2915,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2891,7 +2923,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<label>Reason (required if the delivery date changes) <textarea name=\"delivery_date_reason\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "<label>Reason (required if the delivery date changes) <textarea name=\"delivery_date_reason\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2899,7 +2931,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2912,7 +2944,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2921,13 +2953,13 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "<div class=\"ms-grid\"><span class=\"label\">Milestone</span> <span class=\"label\">Date</span> <span class=\"label\">Status</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "<div class=\"ms-grid\"><span class=\"label\">Milestone</span> <span class=\"label\">Date</span> <span class=\"label\">Status</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, row := range d.Milestones {
 			id := row.Milestone.ID
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "<div data-testid=\"checkin-milestone\" class=\"ms-row\"><span class=\"ms-name\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "<div data-testid=\"checkin-milestone\" class=\"ms-row\"><span class=\"ms-name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2940,7 +2972,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "</span><div><label><input type=\"date\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "</span><div><label><input type=\"date\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2953,7 +2985,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2966,7 +2998,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2979,7 +3011,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "\" data-current=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "\" data-current=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2992,7 +3024,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3000,7 +3032,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3008,7 +3040,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "</div><div><label><select name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "</div><div><label><select name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3021,7 +3053,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3034,7 +3066,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "\"><option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\"><option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3047,17 +3079,17 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.planned() {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, ">Planned</option> <option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, ">Planned</option> <option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3070,17 +3102,17 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.Status == domain.MilestoneDone {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, ">Done</option> <option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, ">Done</option> <option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3093,17 +3125,17 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.Status == domain.MilestoneRemoved {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, ">Removed</option></select></label></div><div class=\"ms-reasons\"><div><label><span class=\"hint\">Reason, if the date changes</span> <textarea name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, ">Removed</option></select></label></div><div class=\"ms-reasons\"><div><label><span class=\"hint\">Reason, if the date changes</span> <textarea name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3116,7 +3148,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3124,7 +3156,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3137,7 +3169,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3145,7 +3177,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</div><div><label><span class=\"hint\">Reason, if Removed</span> <textarea name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "</div><div><label><span class=\"hint\">Reason, if Removed</span> <textarea name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3158,7 +3190,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3166,7 +3198,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3179,7 +3211,7 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3187,13 +3219,13 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "</div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "</div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "<div data-testid=\"checkin-new-milestone\" class=\"ms-row\"><label><input type=\"text\" name=\"new_milestone_name\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "<div data-testid=\"checkin-new-milestone\" class=\"ms-row\"><label><input type=\"text\" name=\"new_milestone_name\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3206,7 +3238,15 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "\" placeholder=\"Add a Milestone\" aria-label=\"New Milestone name\"></label><div><label><input type=\"date\" name=\"new_milestone_date\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "\" placeholder=\"Add a Milestone\" aria-label=\"New Milestone name\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinNewMilestoneInput(i)))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "></label><div><label><input type=\"date\" name=\"new_milestone_date\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3219,7 +3259,15 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "\" aria-label=\"New Milestone date\"></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "\" aria-label=\"New Milestone date\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, errs.attrs(domain.CheckinNewMilestoneInput(i)))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3227,12 +3275,12 @@ func checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "</div><span class=\"ms-name hint\">New</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "</div><span class=\"ms-name hint\">New</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "</div></fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "</div></fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3265,12 +3313,12 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			templ_7745c5c3_Var107 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "<fieldset data-testid=\"checkin-lifecycle-fields\"><legend>Lifecycle</legend><div class=\"lifecycle-choices\" role=\"radiogroup\" aria-label=\"Lifecycle\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "<fieldset data-testid=\"checkin-lifecycle-fields\"><legend>Lifecycle</legend><div class=\"lifecycle-choices\" role=\"radiogroup\" aria-label=\"Lifecycle\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, c := range d.choices() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "<label><input type=\"radio\" name=\"lifecycle\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "<label><input type=\"radio\" name=\"lifecycle\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3283,12 +3331,12 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if d.To == c.To {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3297,7 +3345,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3310,12 +3358,12 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "</label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, "</label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3323,7 +3371,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "<label>Reason (required for On Hold or Cancelled) <textarea name=\"lifecycle_reason\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "<label>Reason (required for On Hold or Cancelled) <textarea name=\"lifecycle_reason\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3331,7 +3379,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, ">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3344,7 +3392,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3353,7 +3401,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			return templ_7745c5c3_Err
 		}
 		if slices.Contains(d.Changes, domain.LifecycleDone) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "<label>Outcome, in one line (required for Done, with a final value for every Metric) <input type=\"text\" name=\"outcome\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "<label>Outcome, in one line (required for Done, with a final value for every Metric) <input type=\"text\" name=\"outcome\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3366,7 +3414,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3374,7 +3422,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, "></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3383,7 +3431,7 @@ func checkinLifecycleFields(d lifecycleFormData, errs checkinFormErrors) templ.C
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 243, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3419,7 +3467,7 @@ func checkinFieldError(errs checkinFormErrors, field string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		if msg := errs.of(field); msg != "" {
 			if field == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, "<p data-testid=\"checkin-error\" class=\"alert r\" role=\"alert\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 244, "<p data-testid=\"checkin-error\" class=\"alert r\" role=\"alert\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3432,12 +3480,12 @@ func checkinFieldError(errs checkinFormErrors, field string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 245, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "<p data-testid=\"checkin-error\" id=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "<p data-testid=\"checkin-error\" id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3450,7 +3498,7 @@ func checkinFieldError(errs checkinFormErrors, field string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "\" class=\"checkin-input-error\" role=\"alert\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "\" class=\"checkin-input-error\" role=\"alert\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -3463,7 +3511,7 @@ func checkinFieldError(errs checkinFormErrors, field string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
