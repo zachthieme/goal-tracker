@@ -463,6 +463,15 @@ func TestCheckinPageContextStyles(t *testing.T) {
 	if rule, _ := ruleFor(styles, ".checkin-context"); !strings.Contains(rule, "font-size:var(--text-secondary)") {
 		t.Errorf(".checkin-context{%s} isn't in small text", rule)
 	}
+	// At 900px and below the rail follows the form, so a hairline above sets
+	// it off from the form, where one below did when it came first, running
+	// the page's full width (#674).
+	narrow := mediaBlock(t, styles, "@media (max-width:900px)")
+	if rule, ok := ruleFor(narrow, ".checkin-context"); !ok ||
+		!strings.Contains(rule, "border-top:1px solid var(--color-border)") || !strings.Contains(rule, "padding:24px 0 0") ||
+		!strings.Contains(rule, "align-self:stretch") || strings.Contains(rule, "border-bottom") {
+		t.Errorf("at 900px .checkin-context{%s} isn't ruled off from the form above it", rule)
+	}
 	phone := mediaBlock(t, styles, "@media (max-width:600px)")
 	// Each phone rule's selector outranks the base rule it overrides
 	// (.checkin-context>section, 0,1,1; ...>section+section, 0,2,1), so it
@@ -3296,8 +3305,8 @@ func assertGoalPageCarriesClass(t *testing.T, what string, n *html.Node, classes
 
 // The Goal page's title is 28px over a 16px lead, the delivery date's dates
 // each wrap whole, never mid-date (#180), the rail sits 300px wide beside a
-// column of up to 860px behind a 1px left edge and stacks under the column at
-// 900px and below, Check in is the primary button, and a Dimension value is a
+// column of up to 860px behind a 1px left edge and stacks between the title
+// and the column at 900px and below (#674), Check in is the primary button, and a Dimension value is a
 // tag (DESIGN.md § Properties rail).
 func TestGoalPageRailHoldsTheGoalsPropertiesStyles(t *testing.T) {
 	t.Parallel()
@@ -3313,7 +3322,7 @@ func TestGoalPageRailHoldsTheGoalsPropertiesStyles(t *testing.T) {
 
 	root := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	main := findByTestID(t, root, "goal-main")
-	assertGoalPageCarriesClass(t, "the column's head", findByTestID(t, root, "goal-head"), "gp-head")
+	assertGoalPageCarriesClass(t, "the head", findByTestID(t, root, "goal-head"), "gp-head")
 	assertGoalPageCarriesClass(t, "Why it matters", findByTestID(t, root, "goal-why-it-matters"), "gp-lead")
 	assertGoalPageCarriesClass(t, "the delivery date", findByTestID(t, root, "goal-delivery-date"), "gp-dates")
 	assertGoalPageCarriesClass(t, "the rail", findByTestID(t, root, "goal-sidebar"), "gp-rail")
@@ -3333,6 +3342,34 @@ func TestGoalPageRailHoldsTheGoalsPropertiesStyles(t *testing.T) {
 	appCSS := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 	assertGoalsRuleDeclares(t, appCSS, ".btn.primary", "background:var(--color-primary-strong)")
 	assertGoalsRuleDeclares(t, appCSS, ".tag", "border-radius:var(--radius-full)")
+}
+
+// Above 900px the grid puts the head and the column on the left, the head
+// over the column, and runs the rail down the right the page's full height,
+// so the page looks as it did when the head sat inside the column. At 900px
+// and below it drops those placements and stacks the three in DOM order:
+// head, rail, column, the rail between hairlines (#674).
+func TestGoalPageGridPlacesHeadRailAndColumnStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	css := goalsStyleSheetIn(getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)))
+	assertGoalsRuleDeclares(t, css, ".gp-body", "grid-template-columns:minmax(0,1fr) 300px", "grid-template-rows:auto 1fr")
+	assertGoalsRuleDeclares(t, css, ".gp-head", "grid-column:1", "grid-row:1", "max-width:860px", "margin:0 auto", "padding:32px 28px 0")
+	assertGoalsRuleDeclares(t, css, ".gp-doc", "grid-column:1", "grid-row:2", "max-width:860px", "padding:40px 28px 64px", "gap:40px")
+	assertGoalsRuleDeclares(t, css, ".gp-rail", "grid-column:2", "grid-row:1/-1", "border-left:1px solid var(--color-border)")
+
+	narrow := mediaBlock(t, css, "@media (max-width:900px)")
+	assertGoalsRuleDeclares(t, narrow, ".gp-body", "grid-template-columns:minmax(0,1fr)", "grid-template-rows:none")
+	for _, sel := range []string{".gp-head", ".gp-doc", ".gp-rail"} {
+		assertGoalsRuleDeclares(t, narrow, sel, "grid-column:auto", "grid-row:auto")
+	}
+	assertGoalsRuleDeclares(t, narrow, ".gp-head", "max-width:none", "padding:20px 16px 0")
+	assertGoalsRuleDeclares(t, narrow, ".gp-rail", "border-left:0", "border-top:1px solid var(--color-border)", "border-bottom:1px solid var(--color-border)")
 }
 
 // A Goal with no Health says so in muted text in its rail.

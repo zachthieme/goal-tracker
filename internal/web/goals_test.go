@@ -4112,6 +4112,37 @@ func TestGoalPageSectionHeadings(t *testing.T) {
 	}
 }
 
+// The Goal page's DOM runs in the order people read it at every width: the
+// title, then the properties rail, then the document column with History
+// last, so on a phone the key facts come right after the title (#674).
+func TestGoalPageReadsTitleThenRailThenColumn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	page := goalPageWithEverySection(t, h, ts)
+
+	head := findByTestID(t, page, "goal-head")
+	sidebar := findByTestID(t, page, "goal-sidebar")
+	main := findByTestID(t, page, "goal-main")
+	body := main.Parent
+	if !flatFrameHasClass(body, "gp-body") {
+		t.Fatalf("the column's parent isn't the .gp-body: %s", renderNode(body))
+	}
+	if got := elementChildrenOf(body); len(got) != 3 || got[0] != head || got[1] != sidebar || got[2] != main {
+		t.Errorf(".gp-body's children aren't the head, the rail and the column: %d children", len(got))
+	}
+	if !precedes(head, sidebar) || !precedes(sidebar, main) {
+		t.Errorf("the page doesn't read the head, then the rail, then the column")
+	}
+	if within(head, main) {
+		t.Errorf("the head is still inside the document column")
+	}
+	if children := elementChildrenOf(main); len(children) == 0 || children[len(children)-1] != findByTestID(t, page, "goal-history") {
+		t.Errorf("History isn't the column's last section")
+	}
+}
+
 // goalPageWithEverySection is the Owner's view of an Active Goal whose page
 // shows every section its document column can: a Check-in with a Highlight,
 // and an open Action Item raised on a Report covering it.
@@ -6556,7 +6587,7 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 	}
 	const (
 		head       = "goal-head"
-		latest     = "goal-checkins"
+		rail       = "goal-sidebar"
 		parents    = "goal-parents"
 		children   = "goal-children"
 		people     = "goal-people"
@@ -6571,15 +6602,15 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		action      string
 		start, next string
 	}{
-		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, latest},
+		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, rail},
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
 		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
 		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, parents},
-		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, latest},
+		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, rail},
 		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
-		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, latest},
+		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, rail},
 		{"ada", "Mark owner departed…", goal, "depart", fmt.Sprintf("/accounts/%d/depart", sam.ID), people, dimensions},
 		{"ada", "Reassign", orphan, "reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID), people, dimensions},
 		{"ada", "Mark returned…", orphan, "return", fmt.Sprintf("/accounts/%d/return", kim.ID), people, dimensions},

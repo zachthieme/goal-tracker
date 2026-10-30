@@ -1082,13 +1082,14 @@ func noChangeCheckinButton(goalID int64, label, class string) templ.Component {
 // Check-in's answers as ghost text. Where a No change would be refused, the
 // line says why in place of its button. A refusal in the form's error, such
 // as why a No change couldn't be recorded, shows at the top of the form, and
-// the line then leaves the reason to it. Beside the form, or between the line
-// and the form on a narrow screen, a quiet rail gives the context for checking
-// in: what the latest Check-in said, the Goal's children (the Goal page's
-// "Contributed to by" list, read-only, so the Owner sees which set the
-// Rolled-up Health), and the Goal's dates (checkinContextDates). On a phone it
-// keeps only the children, as the form's ghost text already shows the latest
-// answers.
+// the line then leaves the reason to it. Beside the form, or after it on a
+// narrow screen (#674), a quiet rail gives the context for checking in: what
+// the latest Check-in said, the Goal's children (the Goal page's "Contributed
+// to by" list, read-only, so the Owner sees which set the Rolled-up Health),
+// and the Goal's dates (checkinContextDates). On a phone it keeps only the
+// children, as the form's ghost text already shows the latest answers. The
+// rail is the page's last child, so it is read and tabbed to after the form;
+// above 900px the grid places it to the form's right.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 func checkinPage(current *domain.Account, v checkinView, form checkinFormData) templ.Component {
@@ -1136,7 +1137,7 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(v.checkinPageMeta())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 681, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 682, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -1154,7 +1155,7 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs("Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 684, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 685, Col: 101}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
@@ -1177,7 +1178,7 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(v.NoChangeReason)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 688, Col: 78}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 689, Col: 78}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -1202,31 +1203,57 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<aside data-testid=\"checkin-context\" class=\"checkin-context\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if c := v.LatestCheckin; c != nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<section data-testid=\"checkin-last-time\" class=\"checkin-context-last\"><h3 class=\"checkin-rail-head\">")
+				templ_7745c5c3_Err = checkinForm(form).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = checkinFieldError(form.Error, "").Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<p data-testid=\"goal-no-health\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var28 string
-				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs("Last time · " + v.Shown.dayOf(c.CreatedAt))
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 699, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 699, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</h3>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<aside data-testid=\"checkin-context\" class=\"checkin-context\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if c := v.LatestCheckin; c != nil {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<section data-testid=\"checkin-last-time\" class=\"checkin-context-last\"><h3 class=\"checkin-rail-head\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var29 string
+				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs("Last time · " + v.Shown.dayOf(c.CreatedAt))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 704, Col: 82}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if c.Health != "" || c.PathToGreen != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<p class=\"checkin-context-health\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<p class=\"checkin-context-health\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1237,49 +1264,49 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 						}
 					}
 					if c.PathToGreen != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<span class=\"muted\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<span class=\"muted\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var29 string
-						templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs("back to Green by " + v.Shown.date(c.PathTargetDate))
+						var templ_7745c5c3_Var30 string
+						templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs("back to Green by " + v.Shown.date(c.PathTargetDate))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 706, Col: 83}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 711, Col: 83}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</p>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</p>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<p data-testid=\"checkin-last-status\" class=\"checkin-last-status\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<p data-testid=\"checkin-last-status\" class=\"checkin-last-status\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var30 string
-				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(c.Status)
+				var templ_7745c5c3_Var31 string
+				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(c.Status)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 710, Col: 81}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 715, Col: 81}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</p></section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</p></section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if len(v.Children) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<section data-testid=\"checkin-children\" class=\"checkin-context-children\"><h3 class=\"checkin-rail-head\">Contributed to by</h3>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<section data-testid=\"checkin-children\" class=\"checkin-context-children\"><h3 class=\"checkin-rail-head\">Contributed to by</h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1287,57 +1314,25 @@ func checkinPage(current *domain.Account, v checkinView, form checkinFormData) t
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</section>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</section>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<section data-testid=\"checkin-context-dates\" class=\"checkin-context-dates\"><h3 class=\"checkin-rail-head\">Dates</h3><p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<section data-testid=\"checkin-context-dates\" class=\"checkin-context-dates\"><h3 class=\"checkin-rail-head\">Dates</h3><p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(checkinContextDates(g, v.Milestones, v.Shown))
+			var templ_7745c5c3_Var32 string
+			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(checkinContextDates(g, v.Milestones, v.Shown))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 721, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 726, Col: 55}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</p></section></aside>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if v.checksIn() {
-				templ_7745c5c3_Err = checkinForm(form).Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = checkinFieldError(form.Error, "").Render(ctx, templ_7745c5c3_Buffer)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<p data-testid=\"goal-no-health\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var32 string
-				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 728, Col: 95}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</p>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</p></section></aside></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1379,7 +1374,7 @@ func checkinAddBar(l lifecycleFormData) templ.Component {
 			templ_7745c5c3_Var33 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<div data-testid=\"checkin-add-bar\" class=\"checkin-add-bar checkin-js-only\" role=\"group\" aria-label=\"Add to this check-in\"><span class=\"checkin-add-label\">Add to this check-in</span><div data-testid=\"checkin-add-buttons\" class=\"checkin-add-buttons\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "<div data-testid=\"checkin-add-bar\" class=\"checkin-add-bar checkin-js-only\" role=\"group\" aria-label=\"Add to this check-in\"><span class=\"checkin-add-label\">Add to this check-in</span><div data-testid=\"checkin-add-buttons\" class=\"checkin-add-buttons\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1387,20 +1382,20 @@ func checkinAddBar(l lifecycleFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<span class=\"checkin-add-divider\" aria-hidden=\"true\"></span> <button data-testid=\"checkin-add-dates\" type=\"button\" class=\"btn sm checkin-add-section\" aria-controls=\"checkin-dates-section\">Move a date or Milestone</button> <button data-testid=\"checkin-add-lifecycle\" type=\"button\" class=\"btn sm checkin-add-section\" aria-controls=\"checkin-lifecycle-section\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<span class=\"checkin-add-divider\" aria-hidden=\"true\"></span> <button data-testid=\"checkin-add-dates\" type=\"button\" class=\"btn sm checkin-add-section\" aria-controls=\"checkin-dates-section\">Move a date or Milestone</button> <button data-testid=\"checkin-add-lifecycle\" type=\"button\" class=\"btn sm checkin-add-section\" aria-controls=\"checkin-lifecycle-section\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(l.addLabel())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 748, Col: 152}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 747, Col: 152}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "</button></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</button></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1515,20 +1510,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<form data-testid=\"checkin-form\" id=\"checkin-form\" class=\"checkin-form\" hx-post=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<form data-testid=\"checkin-form\" id=\"checkin-form\" class=\"checkin-form\" hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/goals/%d/checkins", d.GoalID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 840, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 839, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "\" hx-target=\"#checkin-form\" hx-swap=\"outerHTML\" hx-on:htmx:confirm=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" hx-target=\"#checkin-form\" hx-swap=\"outerHTML\" hx-on:htmx:confirm=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1537,20 +1532,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "\" method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "\" method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 templ.SafeURL
 		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 845, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 844, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\"><button type=\"submit\" data-testid=\"checkin-default-submit\" class=\"checkin-default-submit\" tabindex=\"-1\" aria-hidden=\"true\">Submit check-in</button>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "\"><button type=\"submit\" data-testid=\"checkin-default-submit\" class=\"checkin-default-submit\" tabindex=\"-1\" aria-hidden=\"true\">Submit check-in</button>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1563,12 +1558,12 @@ func checkinForm(d checkinFormData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.offTargetWarned() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<p data-testid=\"checkin-off-target-notice\" class=\"checkin-off-target-notice alert y\">A Metric is off target, so a Green needs confirming. <a href=\"#checkin-off-target\">See below</a></p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<p data-testid=\"checkin-off-target-notice\" class=\"checkin-off-target-notice alert y\">A Metric is off target, so a Green needs confirming. <a href=\"#checkin-off-target\">See below</a></p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<section class=\"checkin-section\"><div class=\"checkin-section-head\"><h2>How is it going?</h2></div><fieldset data-testid=\"checkin-health\" class=\"health-toggle\"><legend class=\"sr-only\">Health</legend> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<section class=\"checkin-section\"><div class=\"checkin-section-head\"><h2>How is it going?</h2></div><fieldset data-testid=\"checkin-health\" class=\"health-toggle\"><legend class=\"sr-only\">Health</legend> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1578,7 +1573,7 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<label class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<label class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1591,61 +1586,61 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(health)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 864, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 863, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "\"><input type=\"radio\" name=\"health\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "\"><input type=\"radio\" name=\"health\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.ResolveAttributeValue(health)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 865, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 864, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if d.Health == health {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "> <span class=\"dot\"></span><span class=\"sr-only\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "> <span class=\"dot\"></span><span class=\"sr-only\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(health)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 866, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 865, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</span></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</span></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1653,7 +1648,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<label>What changed since the last check-in? <textarea name=\"status\" required")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<label>What changed since the last check-in? <textarea name=\"status\" required")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1661,20 +1656,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, ">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(d.Status)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 873, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 872, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1683,7 +1678,7 @@ func checkinForm(d checkinFormData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.RolledUp.Present {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<div class=\"checkin-rollup\"><p data-testid=\"checkin-form-rollup\"><span class=\"muted\">Rolled-up Health:</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<div class=\"checkin-rollup\"><p data-testid=\"checkin-form-rollup\"><span class=\"muted\">Rolled-up Health:</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1692,25 +1687,25 @@ func checkinForm(d checkinFormData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if count := d.RolledUp.CountLine(); count != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<span class=\"muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<span class=\"muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(count)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 882, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 881, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "</p><label><span>Explain the difference from Rolled-up Health <span class=\"hint\">Required while it differs from the Rolled-up Health</span></span> <textarea name=\"explanation\" data-testid=\"checkin-explanation\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</p><label><span>Explain the difference from Rolled-up Health <span class=\"hint\">Required while it differs from the Rolled-up Health</span></span> <textarea name=\"explanation\" data-testid=\"checkin-explanation\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1718,20 +1713,20 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(d.Explanation)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 887, Col: 132}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 886, Col: 132}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1739,12 +1734,12 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1753,7 +1748,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<fieldset data-testid=\"path-to-green-field\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<fieldset data-testid=\"path-to-green-field\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1766,7 +1761,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "\"><legend class=\"checkin-section-head\"><h2>Path to Green</h2><span class=\"hint\">Required while Yellow or Red ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "\"><legend class=\"checkin-section-head\"><h2>Path to Green</h2><span class=\"hint\">Required while Yellow or Red ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1774,14 +1769,14 @@ func checkinForm(d checkinFormData) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(" · " + d.RunOffGreen.Label() + " off Green")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 899, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 898, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</span></legend> <label>Plan <textarea name=\"path_to_green\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "</span></legend> <label>Plan <textarea name=\"path_to_green\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1789,20 +1784,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, ">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, ">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var50 string
 		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(d.PathToGreen)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 905, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 904, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</textarea></label><div class=\"checkin-path-target\"><label>Back to Green by ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</textarea></label><div class=\"checkin-path-target\"><label>Back to Green by ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1810,20 +1805,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<input type=\"date\" name=\"path_target_date\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<input type=\"date\" name=\"path_target_date\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var51 string
 		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.PathTargetDate)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 910, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 909, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var51)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "\" hx-on:input=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "\" hx-on:input=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1832,7 +1827,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1840,43 +1835,43 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "></label> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "></label> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.Previous.PathTargetDate != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<span data-testid=\"checkin-path-target-last\" id=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<span data-testid=\"checkin-path-target-last\" id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.pathTargetLastID())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 913, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 912, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "\" class=\"hint\">Last time: ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "\" class=\"hint\">Last time: ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(d.Shown.dateText(d.Previous.PathTargetDate))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 913, Col: 147}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 912, Col: 147}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</span> <span class=\"hint\">A later date needs a reason.</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</span> <span class=\"hint\">A later date needs a reason.</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1884,30 +1879,30 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<label data-testid=\"checkin-path-target-reason\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<label data-testid=\"checkin-path-target-reason\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !d.pathReasonShown() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, " hidden")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, " hidden")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, ">Reason for moving it later <textarea name=\"path_target_date_reason\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, ">Reason for moving it later <textarea name=\"path_target_date_reason\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var55 string
 		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(d.PathTargetDateReason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 920, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 919, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1915,29 +1910,29 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<label class=\"checkin-ask\"><input type=\"checkbox\" name=\"asks_for_help\" value=\"1\" data-testid=\"checkin-asks-for-help\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "<label class=\"checkin-ask\"><input type=\"checkbox\" name=\"asks_for_help\" value=\"1\" data-testid=\"checkin-asks-for-help\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.AsksForHelp {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, " checked")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, " checked")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "> <strong>Ask for help</strong> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "> <strong>Ask for help</strong> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.AskAddressee != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var56 string
 			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs("· goes to ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 930, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 929, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 			if templ_7745c5c3_Err != nil {
@@ -1947,120 +1942,120 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "</label> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "</label> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.AskAddressee == nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">No one is above the Owner to ask. It still shows on Follow-ups and in Reports.</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">No one is above the Owner to ask. It still shows on Follow-ups and in Reports.</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(d.Metrics) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "<fieldset data-testid=\"checkin-readings\" class=\"checkin-readings\"><legend class=\"checkin-section-head\"><h2>Metrics</h2><span class=\"hint\">Record each Metric's current value</span></legend> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "<fieldset data-testid=\"checkin-readings\" class=\"checkin-readings\"><legend class=\"checkin-section-head\"><h2>Metrics</h2><span class=\"hint\">Record each Metric's current value</span></legend> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, m := range d.Metrics {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "<div class=\"checkin-metric\"><div class=\"checkin-metric-about\"><span class=\"checkin-metric-name\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "<div class=\"checkin-metric\"><div class=\"checkin-metric-about\"><span class=\"checkin-metric-name\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var57 string
 				templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(m.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 948, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 947, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</span> <span class=\"hint\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "</span> <span class=\"hint\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var58 string
 				templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(d.readingRowLine(m))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 949, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 948, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</span> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</span> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if progress, ok := d.readingProgress(m); ok {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<progress class=\"checkin-metric-progress\" aria-hidden=\"true\" max=\"1\" value=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "<progress class=\"checkin-metric-progress\" aria-hidden=\"true\" max=\"1\" value=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var59 string
 					templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmtNum(progress))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 951, Col: 101}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 950, Col: 101}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "\"></progress>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\"></progress>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</div><label class=\"checkin-metric-input\"><input aria-label=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "</div><label class=\"checkin-metric-input\"><input aria-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var60 string
 				templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.Name + " current value")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 956, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 955, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\" type=\"number\" step=\"any\" name=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "\" type=\"number\" step=\"any\" name=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var61 string
 				templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.ResolveAttributeValue(readingField(m.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 959, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 958, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var61)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var62 string
 				templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.reading(m.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 960, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 959, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2068,7 +2063,7 @@ func checkinForm(d checkinFormData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "></label>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "></label>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2076,40 +2071,40 @@ func checkinForm(d checkinFormData) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</fieldset>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</fieldset>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<div class=\"checkin-more-group\"><details data-testid=\"checkin-highlight-section\" id=\"checkin-highlight-section\" class=\"checkin-more\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "<div class=\"checkin-more-group\"><details data-testid=\"checkin-highlight-section\" id=\"checkin-highlight-section\" class=\"checkin-more\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.highlightOpen() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, " open")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, " open")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "><summary>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "><summary>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var63 string
 		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(d.highlightSummary())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 971, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 970, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</summary><div data-testid=\"checkin-highlights\" class=\"checkin-highlights\" data-highlight-editor><div class=\"checkin-section-head hl-js-only\"><h2 data-testid=\"checkin-highlights-heading\" tabindex=\"-1\">Highlights</h2><span class=\"hint\">A Report author can pull each one in</span></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</summary><div data-testid=\"checkin-highlights\" class=\"checkin-highlights\" data-highlight-editor><div class=\"checkin-section-head hl-js-only\"><h2 data-testid=\"checkin-highlights-heading\" tabindex=\"-1\">Highlights</h2><span class=\"hint\">A Report author can pull each one in</span></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2117,7 +2112,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "<div class=\"hl-items\" data-hl-items></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "<div class=\"hl-items\" data-hl-items></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2133,7 +2128,7 @@ func checkinForm(d checkinFormData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "<button type=\"submit\" name=\"add_highlight\" value=\"1\" formnovalidate class=\"btn quiet\">Add another</button></div></details>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "<button type=\"submit\" name=\"add_highlight\" value=\"1\" formnovalidate class=\"btn quiet\">Add another</button></div></details>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2153,30 +2148,30 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "<details data-testid=\"checkin-dates-section\" id=\"checkin-dates-section\" class=\"checkin-more\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "<details data-testid=\"checkin-dates-section\" id=\"checkin-dates-section\" class=\"checkin-more\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.datesOpen() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, " open")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, " open")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "><summary>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "><summary>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(d.Dates.summary(d.Shown))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 995, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 994, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "</summary><div class=\"checkin-section-head\"><h2 data-testid=\"checkin-dates-heading\" class=\"checkin-js-only\" tabindex=\"-1\">Dates and Milestones</h2></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "</summary><div class=\"checkin-section-head\"><h2 data-testid=\"checkin-dates-heading\" class=\"checkin-js-only\" tabindex=\"-1\">Dates and Milestones</h2></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2184,30 +2179,30 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "</details> <details data-testid=\"checkin-lifecycle-section\" id=\"checkin-lifecycle-section\" class=\"checkin-more\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "</details> <details data-testid=\"checkin-lifecycle-section\" id=\"checkin-lifecycle-section\" class=\"checkin-more\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.lifecycleOpen() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, " open")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, " open")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "><summary>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "><summary>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var65 string
 		templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.JoinStringErrs(d.Lifecycle.summary())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1002, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1001, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var65))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "</summary><div class=\"checkin-section-head\"><h2 data-testid=\"checkin-lifecycle-heading\" class=\"checkin-js-only\" tabindex=\"-1\">Lifecycle</h2></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "</summary><div class=\"checkin-section-head\"><h2 data-testid=\"checkin-lifecycle-heading\" class=\"checkin-js-only\" tabindex=\"-1\">Lifecycle</h2></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2215,7 +2210,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "</details></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "</details></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2230,7 +2225,7 @@ func checkinForm(d checkinFormData) templ.Component {
 			}
 		}
 		if d.OffTargetConfirmed && d.Health == domain.HealthGreen {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<input type=\"hidden\" name=\"off_target_confirmed\" value=\"1\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "<input type=\"hidden\" name=\"off_target_confirmed\" value=\"1\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2239,20 +2234,20 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "<div data-testid=\"checkin-submit-bar\" class=\"checkin-submit-bar\"><div data-testid=\"checkin-summary\" class=\"checkin-summary\" aria-live=\"polite\"></div><a class=\"btn quiet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "<div data-testid=\"checkin-submit-bar\" class=\"checkin-submit-bar\"><div data-testid=\"checkin-summary\" class=\"checkin-summary\" aria-live=\"polite\"></div><a class=\"btn quiet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var66 templ.SafeURL
 		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", d.GoalID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1019, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1018, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "\">Back to Goal</a> <button type=\"submit\" class=\"btn primary\">Submit check-in</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "\">Back to Goal</a> <button type=\"submit\" class=\"btn primary\">Submit check-in</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2292,7 +2287,7 @@ func checkinSectionsScript() templ.Component {
 			templ_7745c5c3_Var67 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "<script>\n\t\t(function () {\n\t\t\tvar page = document.querySelector(\".checkin-page\");\n\t\t\tvar bar = page && page.querySelector(\".checkin-add-bar\");\n\t\t\tif (!bar) return;\n\t\t\tpage.classList.add(\"checkin-js\");\n\t\t\tbar.querySelectorAll(\".checkin-add-section\").forEach(function (b) {\n\t\t\t\tvar s = section(b);\n\t\t\t\tb.toggleAttribute(\"data-used\", !!s && s.open);\n\t\t\t});\n\t\t\tif (bar.checkinWired) return;\n\t\t\tbar.checkinWired = true;\n\t\t\tbar.addEventListener(\"click\", function (e) {\n\t\t\t\tvar b = e.target.closest(\"button[aria-controls]\");\n\t\t\t\tvar s = b && !b.disabled && section(b);\n\t\t\t\tif (!s) return;\n\t\t\t\ts.open = true;\n\t\t\t\tvar heading = s.querySelector(\"h2[tabindex]\");\n\t\t\t\tif (heading) heading.scrollIntoView({ block: \"start\" });\n\t\t\t\tif (b.hasAttribute(\"data-highlight-add\")) {\n\t\t\t\t\tvar own = s.querySelector('[data-highlight-add][data-kind=\"' + b.getAttribute(\"data-kind\") + '\"]');\n\t\t\t\t\tif (own) own.click();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tb.setAttribute(\"data-used\", \"\");\n\t\t\t\tif (heading) heading.focus({ preventScroll: true });\n\t\t\t});\n\n\t\t\tfunction section(b) {\n\t\t\t\treturn document.getElementById(b.getAttribute(\"aria-controls\"));\n\t\t\t}\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "<script>\n\t\t(function () {\n\t\t\tvar page = document.querySelector(\".checkin-page\");\n\t\t\tvar bar = page && page.querySelector(\".checkin-add-bar\");\n\t\t\tif (!bar) return;\n\t\t\tpage.classList.add(\"checkin-js\");\n\t\t\tbar.querySelectorAll(\".checkin-add-section\").forEach(function (b) {\n\t\t\t\tvar s = section(b);\n\t\t\t\tb.toggleAttribute(\"data-used\", !!s && s.open);\n\t\t\t});\n\t\t\tif (bar.checkinWired) return;\n\t\t\tbar.checkinWired = true;\n\t\t\tbar.addEventListener(\"click\", function (e) {\n\t\t\t\tvar b = e.target.closest(\"button[aria-controls]\");\n\t\t\t\tvar s = b && !b.disabled && section(b);\n\t\t\t\tif (!s) return;\n\t\t\t\ts.open = true;\n\t\t\t\tvar heading = s.querySelector(\"h2[tabindex]\");\n\t\t\t\tif (heading) heading.scrollIntoView({ block: \"start\" });\n\t\t\t\tif (b.hasAttribute(\"data-highlight-add\")) {\n\t\t\t\t\tvar own = s.querySelector('[data-highlight-add][data-kind=\"' + b.getAttribute(\"data-kind\") + '\"]');\n\t\t\t\t\tif (own) own.click();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tb.setAttribute(\"data-used\", \"\");\n\t\t\t\tif (heading) heading.focus({ preventScroll: true });\n\t\t\t});\n\n\t\t\tfunction section(b) {\n\t\t\t\treturn document.getElementById(b.getAttribute(\"aria-controls\"));\n\t\t\t}\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2334,7 +2329,7 @@ func checkinSummaryScript() templ.Component {
 			templ_7745c5c3_Var68 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, "<script>\n\t\t(function () {\n\t\t\tif (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", start);\n\t\t\telse start();\n\n\t\t\tfunction start() {\n\t\t\t\tvar form = document.getElementById(\"checkin-form\");\n\t\t\t\tvar bar = form && form.querySelector(\"[data-testid=checkin-submit-bar]\");\n\t\t\t\tvar summary = bar && bar.querySelector(\"[data-testid=checkin-summary]\");\n\t\t\t\tif (!summary) return;\n\t\t\t\tvar shown = null;\n\t\t\t\trender();\n\t\t\t\tform.addEventListener(\"input\", render);\n\t\t\t\tform.addEventListener(\"change\", render);\n\t\t\t\tnew MutationObserver(function (changes) {\n\t\t\t\t\tif (changes.some(function (c) { return !bar.contains(c.target); })) render();\n\t\t\t\t}).observe(form, { childList: true, subtree: true });\n\n\t\t\t\tfunction all(selector) {\n\t\t\t\t\treturn Array.prototype.slice.call(form.querySelectorAll(selector));\n\t\t\t\t}\n\n\t\t\t\tfunction typed(el) {\n\t\t\t\t\treturn el.value.trim() !== \"\";\n\t\t\t\t}\n\n\t\t\t\tfunction count(n, noun) {\n\t\t\t\t\treturn n === 1 ? \"1 \" + noun : n + \" \" + noun + \"s\";\n\t\t\t\t}\n\n\t\t\t\tfunction datesChanged() {\n\t\t\t\t\treturn all(\"input[data-current]\").some(function (el) { return el.value.trim() !== el.getAttribute(\"data-current\"); }) ||\n\t\t\t\t\t\tall(\"select[name^=milestone_status_]\").some(function (el) { return el.value !== \"\" && el.value !== \"Planned\"; }) ||\n\t\t\t\t\t\tall(\"[name=delivery_date_reason], [name^=milestone_date_reason_], [name^=milestone_removed_reason_], [name=new_milestone_name], [name=new_milestone_date]\").some(typed);\n\t\t\t\t}\n\n\t\t\t\tfunction render() {\n\t\t\t\t\tvar health = form.querySelector(\"input[name=health]:checked\");\n\t\t\t\t\tvar lifecycle = form.querySelector(\"input[name=lifecycle]:checked\");\n\t\t\t\t\tvar to = lifecycle ? lifecycle.value : \"\";\n\t\t\t\t\tvar parts = [];\n\t\t\t\t\tif (health && (to === \"\" || to === \"Active\")) parts.push({ health: health.value });\n\t\t\t\t\tif (health && (health.value === \"Yellow\" || health.value === \"Red\") && all(\"[name=path_to_green]\").some(typed)) parts.push(\"Path to Green\");\n\t\t\t\t\tvar readings = all(\"input[name^=reading_]\").filter(typed).length;\n\t\t\t\t\tif (readings) parts.push(count(readings, \"Metric\"));\n\t\t\t\t\tvar highlights = all(\"[name=highlight_note]\").filter(typed).length +\n\t\t\t\t\t\tall(\"[name=draft_highlight_keep]\").filter(function (el) { return el.type !== \"checkbox\" || el.checked; }).length;\n\t\t\t\t\tif (highlights) parts.push(count(highlights, \"Highlight\"));\n\t\t\t\t\tif (datesChanged()) parts.push(\"dates changed\");\n\t\t\t\t\tif (to) parts.push(\"→ \" + to);\n\t\t\t\t\tvar key = JSON.stringify(parts);\n\t\t\t\t\tif (key === shown) return;\n\t\t\t\t\tshown = key;\n\t\t\t\t\tsummary.replaceChildren();\n\t\t\t\t\tparts.forEach(function (part, i) {\n\t\t\t\t\t\tif (i) summary.appendChild(document.createTextNode(\" · \"));\n\t\t\t\t\t\tsummary.appendChild(typeof part === \"string\" ? text(part) : badge(part.health));\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\tfunction text(s) {\n\t\t\t\t\tvar span = document.createElement(\"span\");\n\t\t\t\t\tspan.textContent = s;\n\t\t\t\t\treturn span;\n\t\t\t\t}\n\n\t\t\t\tfunction badge(health) {\n\t\t\t\t\tvar span = document.createElement(\"span\");\n\t\t\t\t\tspan.className = \"badge shape \" + ({ Green: \"g\", Yellow: \"y\", Red: \"r\" }[health] || \"lc\");\n\t\t\t\t\tvar dot = document.createElement(\"span\");\n\t\t\t\t\tdot.className = \"dot\";\n\t\t\t\t\tspan.appendChild(dot);\n\t\t\t\t\t// A Health's colour and shape say it: its word is for a\n\t\t\t\t\t// screen reader and the tooltip (DESIGN.md § Health).\n\t\t\t\t\tspan.title = health;\n\t\t\t\t\tvar word = document.createElement(\"span\");\n\t\t\t\t\tword.className = \"sr-only\";\n\t\t\t\t\tword.textContent = health;\n\t\t\t\t\tspan.appendChild(word);\n\t\t\t\t\treturn span;\n\t\t\t\t}\n\t\t\t}\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "<script>\n\t\t(function () {\n\t\t\tif (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", start);\n\t\t\telse start();\n\n\t\t\tfunction start() {\n\t\t\t\tvar form = document.getElementById(\"checkin-form\");\n\t\t\t\tvar bar = form && form.querySelector(\"[data-testid=checkin-submit-bar]\");\n\t\t\t\tvar summary = bar && bar.querySelector(\"[data-testid=checkin-summary]\");\n\t\t\t\tif (!summary) return;\n\t\t\t\tvar shown = null;\n\t\t\t\trender();\n\t\t\t\tform.addEventListener(\"input\", render);\n\t\t\t\tform.addEventListener(\"change\", render);\n\t\t\t\tnew MutationObserver(function (changes) {\n\t\t\t\t\tif (changes.some(function (c) { return !bar.contains(c.target); })) render();\n\t\t\t\t}).observe(form, { childList: true, subtree: true });\n\n\t\t\t\tfunction all(selector) {\n\t\t\t\t\treturn Array.prototype.slice.call(form.querySelectorAll(selector));\n\t\t\t\t}\n\n\t\t\t\tfunction typed(el) {\n\t\t\t\t\treturn el.value.trim() !== \"\";\n\t\t\t\t}\n\n\t\t\t\tfunction count(n, noun) {\n\t\t\t\t\treturn n === 1 ? \"1 \" + noun : n + \" \" + noun + \"s\";\n\t\t\t\t}\n\n\t\t\t\tfunction datesChanged() {\n\t\t\t\t\treturn all(\"input[data-current]\").some(function (el) { return el.value.trim() !== el.getAttribute(\"data-current\"); }) ||\n\t\t\t\t\t\tall(\"select[name^=milestone_status_]\").some(function (el) { return el.value !== \"\" && el.value !== \"Planned\"; }) ||\n\t\t\t\t\t\tall(\"[name=delivery_date_reason], [name^=milestone_date_reason_], [name^=milestone_removed_reason_], [name=new_milestone_name], [name=new_milestone_date]\").some(typed);\n\t\t\t\t}\n\n\t\t\t\tfunction render() {\n\t\t\t\t\tvar health = form.querySelector(\"input[name=health]:checked\");\n\t\t\t\t\tvar lifecycle = form.querySelector(\"input[name=lifecycle]:checked\");\n\t\t\t\t\tvar to = lifecycle ? lifecycle.value : \"\";\n\t\t\t\t\tvar parts = [];\n\t\t\t\t\tif (health && (to === \"\" || to === \"Active\")) parts.push({ health: health.value });\n\t\t\t\t\tif (health && (health.value === \"Yellow\" || health.value === \"Red\") && all(\"[name=path_to_green]\").some(typed)) parts.push(\"Path to Green\");\n\t\t\t\t\tvar readings = all(\"input[name^=reading_]\").filter(typed).length;\n\t\t\t\t\tif (readings) parts.push(count(readings, \"Metric\"));\n\t\t\t\t\tvar highlights = all(\"[name=highlight_note]\").filter(typed).length +\n\t\t\t\t\t\tall(\"[name=draft_highlight_keep]\").filter(function (el) { return el.type !== \"checkbox\" || el.checked; }).length;\n\t\t\t\t\tif (highlights) parts.push(count(highlights, \"Highlight\"));\n\t\t\t\t\tif (datesChanged()) parts.push(\"dates changed\");\n\t\t\t\t\tif (to) parts.push(\"→ \" + to);\n\t\t\t\t\tvar key = JSON.stringify(parts);\n\t\t\t\t\tif (key === shown) return;\n\t\t\t\t\tshown = key;\n\t\t\t\t\tsummary.replaceChildren();\n\t\t\t\t\tparts.forEach(function (part, i) {\n\t\t\t\t\t\tif (i) summary.appendChild(document.createTextNode(\" · \"));\n\t\t\t\t\t\tsummary.appendChild(typeof part === \"string\" ? text(part) : badge(part.health));\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\tfunction text(s) {\n\t\t\t\t\tvar span = document.createElement(\"span\");\n\t\t\t\t\tspan.textContent = s;\n\t\t\t\t\treturn span;\n\t\t\t\t}\n\n\t\t\t\tfunction badge(health) {\n\t\t\t\t\tvar span = document.createElement(\"span\");\n\t\t\t\t\tspan.className = \"badge shape \" + ({ Green: \"g\", Yellow: \"y\", Red: \"r\" }[health] || \"lc\");\n\t\t\t\t\tvar dot = document.createElement(\"span\");\n\t\t\t\t\tdot.className = \"dot\";\n\t\t\t\t\tspan.appendChild(dot);\n\t\t\t\t\t// A Health's colour and shape say it: its word is for a\n\t\t\t\t\t// screen reader and the tooltip (DESIGN.md § Health).\n\t\t\t\t\tspan.title = health;\n\t\t\t\t\tvar word = document.createElement(\"span\");\n\t\t\t\t\tword.className = \"sr-only\";\n\t\t\t\t\tword.textContent = health;\n\t\t\t\t\tspan.appendChild(word);\n\t\t\t\t\treturn span;\n\t\t\t\t}\n\t\t\t}\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2371,30 +2366,30 @@ func checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDates
 			templ_7745c5c3_Var69 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "<section data-testid=\"checkin-off-target\" id=\"checkin-off-target\" class=\"checkin-off-target\" role=\"alert\"><input type=\"hidden\" name=\"off_target_warned\" value=\"1\"><p><strong>A Metric is off target. Is the Goal still Green?</strong></p><ul>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, "<section data-testid=\"checkin-off-target\" id=\"checkin-off-target\" class=\"checkin-off-target\" role=\"alert\"><input type=\"hidden\" name=\"off_target_warned\" value=\"1\"><p><strong>A Metric is off target. Is the Goal still Green?</strong></p><ul>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, o := range missed {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "<li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "<li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(offTargetSentence(o, shown))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1186, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1185, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, "</li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "</ul><p>Change the Health and submit, or confirm it's Green.</p><button type=\"submit\" name=\"confirm_off_target\" value=\"1\" class=\"btn\">Confirm Green</button></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</ul><p>Change the Health and submit, or confirm it's Green.</p><button type=\"submit\" name=\"confirm_off_target\" value=\"1\" class=\"btn\">Confirm Green</button></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2426,20 +2421,20 @@ func checkinHighlightRow(n int, row highlightFormData, e domain.InputError) temp
 			templ_7745c5c3_Var71 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<fieldset data-testid=\"checkin-highlight-row\"><legend data-testid=\"checkin-highlight-legend\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "<fieldset data-testid=\"checkin-highlight-row\"><legend data-testid=\"checkin-highlight-legend\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var72 string
 		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Highlight %d", n))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1199, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1198, Col: 81}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</legend> <label>Kind <select name=\"highlight_kind\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "</legend> <label>Kind <select name=\"highlight_kind\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2447,20 +2442,20 @@ func checkinHighlightRow(n int, row highlightFormData, e domain.InputError) temp
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</select></label> <label>Note <textarea name=\"highlight_note\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</select></label> <label>Note <textarea name=\"highlight_note\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var73 string
 		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(row.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1208, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1207, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2468,7 +2463,7 @@ func checkinHighlightRow(n int, row highlightFormData, e domain.InputError) temp
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2504,95 +2499,95 @@ func checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError)
 		}
 		ctx = templ.ClearChildren(ctx)
 		id := fmt.Sprint(row.DraftID)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "<fieldset data-testid=\"checkin-highlight-row\" class=\"checkin-draft-row\"><legend data-testid=\"checkin-highlight-legend\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "<fieldset data-testid=\"checkin-highlight-row\" class=\"checkin-draft-row\"><legend data-testid=\"checkin-highlight-legend\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Highlight %d · Draft", n))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1223, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1222, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</legend> <input type=\"hidden\" name=\"draft_highlight_id\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "</legend> <input type=\"hidden\" name=\"draft_highlight_id\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1224, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1223, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "\"> <input type=\"hidden\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "\"> <input type=\"hidden\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var77 string
 		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.ResolveAttributeValue("draft_highlight_logged_by_" + id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1225, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1224, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var78 string
 		templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.LoggedBy)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1225, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1224, Col: 86}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "\"> <label class=\"checkin-keep\"><input type=\"checkbox\" name=\"draft_highlight_keep\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "\"> <label class=\"checkin-keep\"><input type=\"checkbox\" name=\"draft_highlight_keep\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var79 string
 		templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1227, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1226, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var79)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if row.Keep {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, " checked")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, " checked")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "> Keep</label> <label>Kind <select name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "> Keep</label> <label>Kind <select name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var80 string
 		templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.ResolveAttributeValue("draft_highlight_kind_" + id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1232, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1231, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2600,33 +2595,33 @@ func checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "</select></label> <label>Note <textarea name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "</select></label> <label>Note <textarea name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var81 string
 		templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue("draft_highlight_note_" + id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1238, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1237, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var82 string
 		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(row.Note)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1238, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1237, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2634,7 +2629,7 @@ func checkinDraftHighlightRow(n int, row highlightFormData, e domain.InputError)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2704,7 +2699,7 @@ func checkinStyles() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "<style>\n\t\t\t.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}\n\t\t\t.gp-cell{display:flex;flex-direction:column;gap:4px}\n\t\t\t.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}\n\t\t\t.checkin-page{max-width:1048px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(240px,280px);gap:24px 48px;align-items:start}\n\t\t\t.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}\n\t\t\t.checkin-head>div{min-width:0}\n\t\t\t.checkin-head p{margin:0}\n\t\t\t.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}\n\t\t\t.checkin-no-change form, .checkin-no-change p{margin:0}\n\t\t\t.checkin-page>*{grid-column:1}\n\t\t\t.checkin-page>.checkin-head{grid-column:1/-1}\n\t\t\t.checkin-page>.checkin-context{grid-column:2;grid-row:2}\n\t\t\t.checkin-page>.checkin-add-bar{grid-column:1/-1;align-self:stretch;min-width:0}\n\t\t\t.checkin-page.checkin-js>.checkin-context{grid-row:3}\n\t\t\t.checkin-page:not(.checkin-js) .checkin-js-only{display:none}\n\t\t\t.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}\n\t\t\t.checkin-add-label{font-size:var(--text-secondary);font-weight:500;color:var(--color-ink-muted)}\n\t\t\t.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}\n\t\t\t.checkin-add-bar .hl-add{display:contents}\n\t\t\t.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}\n\t\t\t.checkin-add-bar .btn{border-radius:var(--radius-full)}\n\t\t\t.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}\n\t\t\t.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}\n\t\t\t.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}\n\t\t\t.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:var(--text-secondary);box-sizing:border-box}\n\t\t\t.checkin-context>section{display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}\n\t\t\t.checkin-context>.checkin-context-children{gap:12px}\n\t\t\t.checkin-context p{margin:0}\n\t\t\t.checkin-rail-head{font-size:var(--text-label);font-weight:500;line-height:1.5;color:var(--color-ink-muted)}\n\t\t\t.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}\n\t\t\t.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}\n\t\t\t.checkin-context-dates p{color:var(--color-ink-2)}\n\t\t\t@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible;padding:0 0 24px;border-left:0;border-bottom:1px solid var(--color-border)}}\n\t\t\t@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}\n\t\t\t@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:24px}\n\t\t\t.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}\n\t\t\t.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t\t.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t\t.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}\n\t\t\t.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}\n\t\t\t.checkin-form legend{font-weight:600;font-size:var(--text-secondary);padding:0}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}\n\t\t\t.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}\n\t\t\t.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}\n\t\t\t.checkin-form label[hidden]{display:none}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{--dot-size:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.r{color:var(--health-r-ink)}\n\t\t\t.health-toggle label.y{color:var(--health-y-ink)}\n\t\t\t.health-toggle label.g{color:var(--health-g-ink)}\n\t\t\t.health-toggle label.badge:has(input:checked){border-color:currentColor}\n\t\t\t.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}\n\t\t\t.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}\n\t\t\t.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-rollup{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:12px}\n\t\t\t.checkin-rollup p{margin:0}\n\t\t\t.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}\n\t\t\t.checkin-path-target>.hint{padding-bottom:8px}\n\t\t\t.checkin-form>fieldset.checkin-readings{gap:0}\n\t\t\t.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0}\n\t\t\t.checkin-metric+.checkin-metric{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}\n\t\t\t.checkin-metric-name{font-weight:600}\n\t\t\t.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}\n\t\t\t.checkin-metric-progress::-webkit-progress-bar{background:var(--color-border)}\n\t\t\t.checkin-metric-progress::-webkit-progress-value{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-progress::-moz-progress-bar{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-input{flex:none}\n\t\t\t.checkin-metric-input input{width:120px;font-variant-numeric:tabular-nums;text-align:right}\n\t\t\t.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}\n\t\t\t.checkin-more-group{display:flex;flex-direction:column}\n\t\t\t.checkin-more~.checkin-more{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.checkin-highlights{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:var(--text-secondary);color:var(--color-ink-muted)}\n\t\t\t.checkin-highlights>button{align-self:flex-start}\n\t\t\t.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}\n\t\t\t.checkin-js .checkin-more[open]{padding-bottom:0}\n\t\t\t.checkin-js .checkin-more[open]~.checkin-more[open]{margin-top:24px;padding-top:24px}\n\t\t\t.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}\n\t\t\t.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}\n\t\t\t.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}\n\t\t\t.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}\n\t\t\t.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}\n\t\t\t.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-summary{flex:1;color:var(--color-ink-2);font-size:var(--text-body)}\n\t\t\t.checkin-summary>*{white-space:nowrap}\n\t\t\t.checkin-submit-bar .btn{flex:none}\n\t\t\t.checkin-submit-bar .btn.primary{height:44px}\n\t\t\thtml:has(.checkin-submit-bar){scroll-padding-bottom:80px}\n\t\t\t@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:var(--text-secondary)}.checkin-submit-bar .btn.primary{height:48px}}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "<style>\n\t\t\t.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}\n\t\t\t.gp-cell{display:flex;flex-direction:column;gap:4px}\n\t\t\t.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}\n\t\t\t.checkin-page{max-width:1048px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,720px) minmax(240px,280px);gap:24px 48px;align-items:start}\n\t\t\t.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}\n\t\t\t.checkin-head>div{min-width:0}\n\t\t\t.checkin-head p{margin:0}\n\t\t\t.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}\n\t\t\t.checkin-no-change form, .checkin-no-change p{margin:0}\n\t\t\t.checkin-page>*{grid-column:1}\n\t\t\t.checkin-page>.checkin-head{grid-column:1/-1}\n\t\t\t.checkin-page>.checkin-context{grid-column:2;grid-row:2}\n\t\t\t.checkin-page>.checkin-add-bar{grid-column:1/-1;align-self:stretch;min-width:0}\n\t\t\t.checkin-page.checkin-js>.checkin-context{grid-row:3}\n\t\t\t.checkin-page:not(.checkin-js) .checkin-js-only{display:none}\n\t\t\t.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:24px;border-bottom:1px solid var(--color-border)}\n\t\t\t.checkin-add-label{font-size:var(--text-secondary);font-weight:500;color:var(--color-ink-muted)}\n\t\t\t.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}\n\t\t\t.checkin-add-bar .hl-add{display:contents}\n\t\t\t.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}\n\t\t\t.checkin-add-bar .btn{border-radius:var(--radius-full)}\n\t\t\t.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}\n\t\t\t.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}\n\t\t\t.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}\n\t\t\t.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto;padding-left:24px;border-left:1px solid var(--color-border);font-size:var(--text-secondary);box-sizing:border-box}\n\t\t\t.checkin-context>section{display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}\n\t\t\t.checkin-context>.checkin-context-children{gap:12px}\n\t\t\t.checkin-context p{margin:0}\n\t\t\t.checkin-rail-head{font-size:var(--text-label);font-weight:500;line-height:1.5;color:var(--color-ink-muted)}\n\t\t\t.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}\n\t\t\t.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}\n\t\t\t.checkin-context-dates p{color:var(--color-ink-2)}\n\t\t\t@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;align-self:stretch;max-height:none;overflow-y:visible;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}}\n\t\t\t@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}\n\t\t\t@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:24px}\n\t\t\t.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}\n\t\t\t.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}\n\t\t\t.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}\n\t\t\t.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more-group{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t\t.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}\n\t\t\t.checkin-form legend.checkin-section-head{width:100%;margin-bottom:16px;border-top:1px solid var(--color-border);padding-top:24px;box-sizing:border-box}\n\t\t\t.checkin-form legend{font-weight:600;font-size:var(--text-secondary);padding:0}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}\n\t\t\t.checkin-form .hint{font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}\n\t\t\t.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}\n\t\t\t.checkin-form label[hidden]{display:none}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:var(--text-body);height:44px;padding:0 12px;border:2px solid transparent;border-radius:var(--radius-md);cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{--dot-size:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.r{color:var(--health-r-ink)}\n\t\t\t.health-toggle label.y{color:var(--health-y-ink)}\n\t\t\t.health-toggle label.g{color:var(--health-g-ink)}\n\t\t\t.health-toggle label.badge:has(input:checked){border-color:currentColor}\n\t\t\t.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}\n\t\t\t.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}\n\t\t\t.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-rollup{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:12px}\n\t\t\t.checkin-rollup p{margin:0}\n\t\t\t.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}\n\t\t\t.checkin-path-target>.hint{padding-bottom:8px}\n\t\t\t.checkin-form>fieldset.checkin-readings{gap:0}\n\t\t\t.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0}\n\t\t\t.checkin-metric+.checkin-metric{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}\n\t\t\t.checkin-metric-name{font-weight:600}\n\t\t\t.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}\n\t\t\t.checkin-metric-progress::-webkit-progress-bar{background:var(--color-border)}\n\t\t\t.checkin-metric-progress::-webkit-progress-value{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-progress::-moz-progress-bar{background:var(--color-primary-strong)}\n\t\t\t.checkin-metric-input{flex:none}\n\t\t\t.checkin-metric-input input{width:120px;font-variant-numeric:tabular-nums;text-align:right}\n\t\t\t.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}\n\t\t\t.checkin-more-group{display:flex;flex-direction:column}\n\t\t\t.checkin-more~.checkin-more{border-top:1px solid var(--color-border)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.checkin-highlights{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:var(--text-secondary);color:var(--color-ink-muted)}\n\t\t\t.checkin-highlights>button{align-self:flex-start}\n\t\t\t.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}\n\t\t\t.checkin-js .checkin-more[open]{padding-bottom:0}\n\t\t\t.checkin-js .checkin-more[open]~.checkin-more[open]{margin-top:24px;padding-top:24px}\n\t\t\t.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}\n\t\t\t.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}\n\t\t\t.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}\n\t\t\t.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}\n\t\t\t.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}\n\t\t\t.checkin-submit-bar{position:sticky;bottom:16px;z-index:10;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-summary{flex:1;color:var(--color-ink-2);font-size:var(--text-body)}\n\t\t\t.checkin-summary>*{white-space:nowrap}\n\t\t\t.checkin-submit-bar .btn{flex:none}\n\t\t\t.checkin-submit-bar .btn.primary{height:44px}\n\t\t\thtml:has(.checkin-submit-bar){scroll-padding-bottom:80px}\n\t\t\t@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:var(--text-secondary)}.checkin-submit-bar .btn.primary{height:48px}}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2745,38 +2740,38 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			templ_7745c5c3_Var85 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "<fieldset data-testid=\"checkin-dates\"><legend>Dates and Milestones</legend> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "<fieldset data-testid=\"checkin-dates\"><legend>Dates and Milestones</legend> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if d.Dated {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "<label>Delivery date <input type=\"date\" name=\"delivery_date\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "<label>Delivery date <input type=\"date\" name=\"delivery_date\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var86 string
 			templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.DeliveryDate)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1406, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1405, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" data-current=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "\" data-current=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var87 string
 			templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.CurrentDeliveryDate)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1406, Col: 105}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1405, Col: 105}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var87)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "\"></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\"></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2784,20 +2779,20 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<label>Reason (required if the delivery date changes) <textarea name=\"delivery_date_reason\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "<label>Reason (required if the delivery date changes) <textarea name=\"delivery_date_reason\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var88 string
 			templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(d.DeliveryDateReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1411, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1410, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2806,78 +2801,78 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<div class=\"ms-grid\"><span class=\"label\">Milestone</span> <span class=\"label\">Date</span> <span class=\"label\">Status</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "<div class=\"ms-grid\"><span class=\"label\">Milestone</span> <span class=\"label\">Date</span> <span class=\"label\">Status</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, row := range d.Milestones {
 			id := row.Milestone.ID
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "<div data-testid=\"checkin-milestone\" class=\"ms-row\"><span class=\"ms-name\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<div data-testid=\"checkin-milestone\" class=\"ms-row\"><span class=\"ms-name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var89 string
 			templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1422, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1421, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "</span><div><label><input type=\"date\" name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</span><div><label><input type=\"date\" name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var90 string
 			templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_date_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1425, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1424, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var90)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var91 string
 			templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Date)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1425, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1424, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var91)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var92 string
 			templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.ResolveAttributeValue("Date of " + row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1425, Col: 135}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1424, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var92)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "\" data-current=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "\" data-current=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var93 string
 			templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmtDate(row.Milestone.TargetDate))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1425, Col: 186}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1424, Col: 186}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var93)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "\"></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "\"></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2885,128 +2880,128 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "</div><div><label><select name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</div><div><label><select name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var94 string
 			templ_7745c5c3_Var94, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_status_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1431, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1430, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var94)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "\" aria-label=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "\" aria-label=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var95 string
 			templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.ResolveAttributeValue("Status of " + row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1431, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1430, Col: 109}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var95)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "\"><option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "\"><option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var96 string
 			templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestonePlanned)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1432, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1431, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var96)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.planned() {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, ">Planned</option> <option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, ">Planned</option> <option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var97 string
 			templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestoneDone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1433, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1432, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var97)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.Status == domain.MilestoneDone {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, ">Done</option> <option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, ">Done</option> <option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var98 string
 			templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestoneRemoved)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1434, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1433, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var98)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if row.Status == domain.MilestoneRemoved {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, ">Removed</option></select></label></div><div class=\"ms-reasons\"><div><label><span class=\"hint\">Reason, if the date changes</span> <textarea name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, ">Removed</option></select></label></div><div class=\"ms-reasons\"><div><label><span class=\"hint\">Reason, if the date changes</span> <textarea name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var99 string
 			templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_date_reason_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1442, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1441, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var99)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var100 string
 			templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinStringErrs(row.DateReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1442, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1441, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3014,33 +3009,33 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</div><div><label><span class=\"hint\">Reason, if Removed</span> <textarea name=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "</div><div><label><span class=\"hint\">Reason, if Removed</span> <textarea name=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var101 string
 			templ_7745c5c3_Var101, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_removed_reason_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1449, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1448, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var101)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var102 string
 			templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(row.RemovedReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1449, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1448, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</textarea></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "</textarea></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3048,39 +3043,39 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "</div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "</div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "<div data-testid=\"checkin-new-milestone\" class=\"ms-row\"><label><input type=\"text\" name=\"new_milestone_name\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "<div data-testid=\"checkin-new-milestone\" class=\"ms-row\"><label><input type=\"text\" name=\"new_milestone_name\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var103 string
 			templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1459, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1458, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var103)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "\" placeholder=\"Add a Milestone\" aria-label=\"New Milestone name\"></label><div><label><input type=\"date\" name=\"new_milestone_date\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "\" placeholder=\"Add a Milestone\" aria-label=\"New Milestone name\"></label><div><label><input type=\"date\" name=\"new_milestone_date\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var104 string
 			templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Date)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1463, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1462, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var104)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "\" aria-label=\"New Milestone date\"></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "\" aria-label=\"New Milestone date\"></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3088,12 +3083,12 @@ func checkinDateFields(d checkinDatesFormData, e domain.InputError) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</div><span class=\"ms-name hint\">New</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "</div><span class=\"ms-name hint\">New</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "</div></fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "</div></fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3126,53 +3121,53 @@ func checkinLifecycleFields(d lifecycleFormData, e domain.InputError) templ.Comp
 			templ_7745c5c3_Var105 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<fieldset data-testid=\"checkin-lifecycle-fields\"><legend>Lifecycle</legend><div class=\"lifecycle-choices\" role=\"radiogroup\" aria-label=\"Lifecycle\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "<fieldset data-testid=\"checkin-lifecycle-fields\"><legend>Lifecycle</legend><div class=\"lifecycle-choices\" role=\"radiogroup\" aria-label=\"Lifecycle\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, c := range d.choices() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "<label><input type=\"radio\" name=\"lifecycle\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<label><input type=\"radio\" name=\"lifecycle\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var106 string
 			templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.ResolveAttributeValue(c.To)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1484, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1483, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var106)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if d.To == c.To {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var107 string
 			templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1485, Col: 14}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1484, Col: 14}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "</label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "</label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3180,20 +3175,20 @@ func checkinLifecycleFields(d lifecycleFormData, e domain.InputError) templ.Comp
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "<label>Reason (required for On Hold or Cancelled) <textarea name=\"lifecycle_reason\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "<label>Reason (required for On Hold or Cancelled) <textarea name=\"lifecycle_reason\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var108 string
 		templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(d.Reason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1492, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1491, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "</textarea></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "</textarea></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3202,20 +3197,20 @@ func checkinLifecycleFields(d lifecycleFormData, e domain.InputError) templ.Comp
 			return templ_7745c5c3_Err
 		}
 		if slices.Contains(d.Changes, domain.LifecycleDone) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "<label>Outcome, in one line (required for Done, with a final value for every Metric) <input type=\"text\" name=\"outcome\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "<label>Outcome, in one line (required for Done, with a final value for every Metric) <input type=\"text\" name=\"outcome\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var109 string
 			templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Outcome)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1498, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1497, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var109)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "\"></label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "\"></label>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3224,7 +3219,7 @@ func checkinLifecycleFields(d lifecycleFormData, e domain.InputError) templ.Comp
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3258,38 +3253,38 @@ func checkinFieldError(e domain.InputError, field string) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		if e.Message != "" && e.Input == field {
 			if field == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "<p data-testid=\"checkin-error\" class=\"alert r\" role=\"alert\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "<p data-testid=\"checkin-error\" class=\"alert r\" role=\"alert\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var111 string
 				templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.JoinStringErrs(e.Message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1511, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1510, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var111))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "<p data-testid=\"checkin-error\" role=\"alert\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "<p data-testid=\"checkin-error\" role=\"alert\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var112 string
 				templ_7745c5c3_Var112, templ_7745c5c3_Err = templ.JoinStringErrs(e.Message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1513, Col: 58}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 1512, Col: 58}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var112))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

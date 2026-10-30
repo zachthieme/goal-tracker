@@ -134,11 +134,16 @@ writing to the same Goal at once each see only their own write.
 a Check-in due in Needs you, the Goals list, Follow-ups, the Admin page, a
 Report draft, with a Schedule conflict's Owner's email shown by clicking their
 Name (and hidden by clicking again), the New goal page, with its Metric editor
-open, and the Check-in page, with Yellow picked, don't clip or scroll
-sideways, and keep every control on screen. It also checks the Goals Table's
-scroll cue: at 390px the table keeps every column and scrolls sideways inside
-its own container, which fits the window and fades the edge it can scroll
-toward.
+open, a Goal page, and the Check-in page, with Yellow picked, don't clip or
+scroll sideways, and keep every control on screen. It also checks the Goals
+Table's scroll cue: at 390px the table keeps every column and scrolls sideways
+inside its own container, which fits the window and fades the edge it can
+scroll toward. It checks the order a phone shows: at 390px a Goal page reads
+its title, then its properties rail (Health, Lifecycle, Owner, Delegates,
+Dimensions, Contributes to), then Latest status, Metrics and Comments, with
+History last, and the Check-in form comes before Contributed to by. At 1280px
+the Goal page's rail still runs down the right beside the title and column,
+and the Check-in page's context column still sits right of the form.
 [`download-menu.spec.ts`](download-menu.spec.ts) checks the Download menu on
 a Report's row on the Reports list and in a publication's header: at 390px
 the open popover lies inside the window and nothing passes the window's edge,

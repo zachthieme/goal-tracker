@@ -1392,6 +1392,17 @@ func within(n, root *html.Node) bool {
 	return false
 }
 
+// elementChildrenOf is n's child elements, in order.
+func elementChildrenOf(n *html.Node) []*html.Node {
+	var children []*html.Node
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode {
+			children = append(children, c)
+		}
+	}
+	return children
+}
+
 // renderNode is n's markup, for a failure message.
 func renderNode(n *html.Node) string {
 	var b strings.Builder

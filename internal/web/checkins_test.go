@@ -4309,6 +4309,61 @@ func TestCheckinPageContextSectionsInOrder(t *testing.T) {
 	}
 }
 
+// The form comes before the context rail in the page, so on a narrow screen,
+// where the page stacks in DOM order, "How is it going?" comes before
+// Contributed to by; the rail is the page's last child, after the form or after
+// the note that a Goal takes no Check-ins (#674).
+func TestCheckinPageFormComesBeforeTheContext(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+	checkedIn := h.ActiveGoal(sam, "Ship it", "It matters.")
+	h.Checkin(sam, checkedIn.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Migrate billing", "It matters."), domain.LifecycleCancelled)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	checkedInPage := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, checkedIn.ID))
+	if !hasTestID(checkedInPage, "no-change-card") {
+		t.Fatalf("the Goal with a Check-in offers no no-change card")
+	}
+
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	form := findByTestID(t, page, "checkin-form")
+	aside := findByTestID(t, page, "checkin-context")
+	findByTestID(t, aside, "checkin-children")
+	if !precedes(form, aside) {
+		t.Errorf("the context rail comes before the form")
+	}
+	if !checkinContextIsLastOnThePage(aside) {
+		t.Errorf("the context rail isn't the page's last child")
+	}
+	if !precedes(checkinAddBar(t, page), aside) {
+		t.Errorf("the add bar doesn't come before the context rail")
+	}
+	if !precedes(findByTestID(t, checkedInPage, "no-change-card"), findByTestID(t, checkedInPage, "checkin-context")) {
+		t.Errorf("the no-change card doesn't come before the context rail")
+	}
+
+	cancelledPage := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, cancelled.ID))
+	aside = findByTestID(t, cancelledPage, "checkin-context")
+	if !precedes(findByTestID(t, cancelledPage, "goal-no-health"), aside) || !checkinContextIsLastOnThePage(aside) {
+		t.Errorf("on a Goal that takes no Check-ins the rail doesn't follow the note")
+	}
+}
+
+// checkinContextIsLastOnThePage reports whether the context rail is the
+// .checkin-page's last child element.
+func checkinContextIsLastOnThePage(aside *html.Node) bool {
+	page := aside.Parent
+	if page == nil || !slices.Contains(strings.Fields(attrOf(page, "class")), "checkin-page") {
+		return false
+	}
+	children := elementChildrenOf(page)
+	return children[len(children)-1] == aside
+}
+
 // A refused htmx submit swaps back only the form; the column sits outside it,
 // so it isn't sent again (ticket #366).
 func TestCheckinRefusedSubmitLeavesTheContextAlone(t *testing.T) {

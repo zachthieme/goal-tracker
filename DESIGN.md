@@ -1105,12 +1105,15 @@ and so on).
     then the Fix. No cell is reordered.
     The meanings panel puts each name over its meaning.
 - **Goal page (`goalPage` in `goals.templ`):** a header strip, any banners,
-  then a document column with a properties rail beside it. The page drops its
-  width cap and padding. The column is up to 860px, centred in the space left
-  of the rail. The rail is 300px at the right, behind a 1px `--color-border`
-  left edge that runs the page's full height. At 900px and below the rail
-  stacks under the column, with a hairline above it in place of its left
-  edge.
+  then the head, the properties rail and the document column, in that order
+  in the page, so it is the order people read and Tab through at every width.
+  The page drops its width cap and padding. Above 900px the rail is on the
+  right, beside the title and the column: the head sits over the column, both
+  up to 860px and centred in the space left of the rail, and the rail is
+  300px wide, behind a 1px `--color-border` left edge that runs the page's
+  full height. At 900px and below the rail stacks between the title and the
+  column's sections, with History last: a hairline above and below it in
+  place of its left edge, 20px from the head, with 16px sides.
 - **Goal page header strip (`goalPageHeader`):** the 48px page header, with
   no `h1` (§ Page header).
   - **Breadcrumb:** "Goals › <first Goal it contributes to> › <its title>",
@@ -1159,8 +1162,9 @@ and so on).
   else sees no link. The Path to Green overdue strip has no link, because
   CONTEXT.md surfaces both the same way. Strips stack with no gap. The ratios
   are in § Deviations 9.
-- **Goal page head (`.gp-head`):** it opens the document column: the title as
-  the page's `h1` (28/1.2, 600, -0.02em), the Why it matters lead, then any
+- **Goal page head (`.gp-head`):** it opens the page, over the document
+  column and before the rail, with the column's sides and a 32px top (20px at
+  900px and below): the title as the page's `h1` (28/1.2, 600, -0.02em), the Why it matters lead, then any
   note the Lifecycle came with ("Outcome: …" for a Done Goal, "Reason: …" for
   an On Hold or Cancelled one) in muted text, 12px apart. The Goal's
   properties are in the rail, never the head.
@@ -1523,9 +1527,10 @@ and so on).
 
   Above 900px the rail is 240–280px wide, on the right of the form and 48px
   from it, under the header line and the add bar, and sticky (`top: 24px`),
-  scrolling within itself when it is taller than the window. At 900px and
-  below it sits above the form, after the header line and the add bar, loses
-  its left edge, ends in a hairline, and doesn't stick. At 600px and below it
+  scrolling within itself when it is taller than the window. It comes after
+  the form in the page, so at 900px and below the rail follows the form: it
+  loses its left edge, opens with a hairline 24px above its content, and
+  doesn't stick. At 600px and below it
   drops Last time and Dates, which the form's ghost text already covers, so
   only Contributed to by stays, and a Goal with no children shows no rail.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
