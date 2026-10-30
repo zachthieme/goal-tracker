@@ -1671,8 +1671,9 @@ func TestDraftHeaderKeepsPublishInReachOverHTTP(t *testing.T) {
 // The reports page is headed Reports with a plain line on what a Report is,
 // and New report links to the builder in place of a form of its own: POST
 // /reports is gone. Each definition is a row of the status table: its name and
-// scope, its Goal count, and, never published, "Never" and "Not published". Its
-// one Goal has no Health yet, so the row draws no Health bar.
+// scope, its Goal count, and, never published, "Never", linking nowhere, and
+// "Not published". Its one Goal has no Health yet, so the row draws no Health
+// bar.
 func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1709,6 +1710,9 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 			t.Errorf("row's %s reads %q, want %q", testID, got, want)
 		}
 	}
+	if never := findByTestID(t, row, "report-published"); len(findAll(never.Parent, func(n *nethtml.Node) bool { return n.Data == "a" })) != 0 {
+		t.Errorf("a never-published row's Last published cell has a link: %s", renderNode(never.Parent))
+	}
 	if hasTestID(row, "report-health-bar") {
 		t.Errorf("a report whose Goals have no Health draws a Health bar; row:\n%s", renderNode(row))
 	}
@@ -1724,8 +1728,8 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 }
 
 // A published definition's row dates its last publication in the company's
-// timezone, "Jan 1, 2026" for 03:00 UTC on 2 January in Los Angeles, with who
-// published it; counts its draft's changes since; and draws its Goals that
+// timezone, "Jan 1, 2026" for 03:00 UTC on 2 January in Los Angeles, a link to
+// that publication, with who published it; counts its draft's changes since; and draws its Goals that
 // have a Health as a bar labelled for assistive technology, leaving out the
 // three new Goals that have none yet. The amber pill and the bar's units are
 // TestReportsListRowShowsTheLastPublicationAndChangesStyles.
@@ -1751,7 +1755,7 @@ func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 	})
 	h.Clock.Set(time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC))
 	h.AddReportDelegate(boss, ada, def)
-	h.PublishReport(ada, def)
+	pub := h.PublishReport(ada, def)
 	h.Clock.Advance(24 * time.Hour)
 	for _, title := range []string{"Hire", "Ship", "Sell"} {
 		h.ActiveGoal(boss, title, "why")
@@ -1773,6 +1777,9 @@ func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 	}
 	if bar := findByTestID(t, row, "report-health-bar"); attrOf(bar, "role") != "img" || attrOf(bar, "aria-label") != "1 Green, 0 Yellow, 1 Red" {
 		t.Errorf("the Health bar isn't labelled 1 Green, 0 Yellow, 1 Red for assistive technology: %s", renderNode(bar))
+	}
+	if link := linkTo(row, fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)); link == nil || textOf(link) != "Jan 1, 2026" {
+		t.Errorf("row doesn't link Jan 1, 2026 to its last publication; row:\n%s", renderNode(row))
 	}
 	if !reportShowsPerson(row, "ada.okafor@example.com", "Ada Okafor") {
 		t.Errorf("row doesn't show Ada Okafor published it; row:\n%s", renderNode(row))

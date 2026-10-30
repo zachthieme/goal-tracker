@@ -95,9 +95,9 @@ templ reportsActionItemRow(l domain.ActionItemListing) {
 
 // reportRow is one Report Definition in the status list, on one line: its
 // name then its scope, its Goal count then a bar of their Health, its last
-// publication's date in the company's timezone (loc) then its publisher, or
-// Never, its draft's changes since, or Not published, and a Download menu for
-// its last publication, a PDF file when pdfFile.
+// publication's date in the company's timezone (loc), linking to it, then its
+// publisher, or Never, its draft's changes since, or Not published, and a
+// Download menu for its last publication, a PDF file when pdfFile.
 templ reportRow(sum domain.ReportSummary, loc *time.Location, pdfFile bool) {
 	<tr data-testid="report-row">
 		<td class="rp-name">
@@ -112,7 +112,7 @@ templ reportRow(sum domain.ReportSummary, loc *time.Location, pdfFile bool) {
 		</td>
 		<td>
 			if p := sum.LastPublication; p != nil {
-				<span data-testid="report-published">{ showDayOfYear(p.PublishedAt, loc) }</span>
+				<a data-testid="report-published" class="rp-published" href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d", sum.Definition.ID, p.ID)) }>{ showDayOfYear(p.PublishedAt, loc) }</a>
 				<span class="small muted">
 					{ "by " }
 					@person(p.PublishedBy)
@@ -1874,6 +1874,7 @@ templ reportStyles() {
 		.rp-table tbody tr:last-child>td{border-bottom:1px solid var(--color-border)}
 		.rp-name{width:40%;max-width:0;overflow:hidden;text-overflow:ellipsis}
 		.rp-name>a{font-weight:500;color:var(--color-ink)}
+		.rp-published{font-weight:500;color:var(--color-ink)}
 		.rp-name>span,.rp-table td>.small{margin-left:8px}
 		.rp-draft{text-align:right}
 		.rp-download-cell{width:1%;text-align:right}
