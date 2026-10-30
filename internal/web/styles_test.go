@@ -3534,6 +3534,62 @@ func TestGoalTableHasNoTotalsRowAndIsntGroupedStyles(t *testing.T) {
 	}
 }
 
+// At 600px and below the Goal table's scrolling container fades the edge it
+// can scroll toward (#686): canvas layers attached local cover fixed
+// --color-border-strong fades at whichever end is reached, so a fade shows
+// only while there is more to that side. Every column stays, the frame stays
+// flat, and wider screens and the other .table-scroll tables are left alone.
+// Edit values' container is the same one.
+func TestGoalTableScrollFadesItsEdgeAtPhoneWidthStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship the phone table", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals?layout=table", "/goals?layout=table&edit=1"} {
+		root := getPage(t, client, ts.URL+path)
+		scroll := findByTestID(t, root, "goal-table-scroll")
+		var children []*html.Node
+		for c := scroll.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode {
+				children = append(children, c)
+			}
+		}
+		if scroll.Data != "div" || !flatFrameHasClass(scroll, "table-scroll") || len(children) != 1 || attrOf(children[0], "data-testid") != "goal-table" {
+			t.Errorf("%s: goal-table-scroll isn't a .table-scroll div holding only the Goal table: %s", path, renderNode(scroll))
+		}
+	}
+
+	css := homeStyleSheetIn(getPage(t, client, ts.URL+"/goals?layout=table"))
+	phone := mediaBlocks(css, "@media (max-width:600px)")
+	var fade string
+	for _, block := range phone {
+		if decls, ok := ruleFor(block, ".gl-table .table-scroll"); ok {
+			fade = decls
+		}
+	}
+	for _, want := range []string{"local", "scroll", "var(--color-canvas)", "var(--color-border-strong)", "linear-gradient("} {
+		if !strings.Contains(fade, want) {
+			t.Errorf("at 600px .gl-table .table-scroll{%s} lacks %s", fade, want)
+		}
+	}
+	for _, unwanted := range []string{"box-shadow", "--shadow-pop", "rgba("} {
+		if strings.Contains(fade, unwanted) {
+			t.Errorf("at 600px .gl-table .table-scroll{%s} isn't flat: it has %s", fade, unwanted)
+		}
+	}
+	outside := css
+	for _, block := range phone {
+		outside = strings.Replace(outside, block, "", 1)
+	}
+	if decls, ok := ruleFor(outside, ".gl-table .table-scroll"); ok && strings.Contains(decls, "background") {
+		t.Errorf("above 600px .gl-table .table-scroll{%s} has a background", decls)
+	}
+}
+
 // An Active Goal's Incomplete flag is a quiet status: an .lc alert in the
 // neutral chip's surface, not Check-in overdue's dashed .st (CONTEXT.md:
 // Incomplete).

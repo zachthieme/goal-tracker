@@ -392,7 +392,7 @@ templ goalTableLayout(view goalsListData) {
 
 // goalTableGrid is the Goal table itself, its sort headers and its rows.
 templ goalTableGrid(view goalsListData) {
-	<div class="table-scroll">
+	<div data-testid="goal-table-scroll" class="table-scroll">
 		<table data-testid="goal-table">
 			<thead data-testid="goal-table-head">
 				<tr>
@@ -654,6 +654,9 @@ templ goalLinkIf(link bool, g domain.Goal) {
 //     row's gutter, then its Owner, Due and Last check-in wrapping under it;
 //   - the table layout keeps its Columns control, sort headers and edit mode,
 //     restyled as the same hairline list, scrolling sideways in its own box.
+//     At 600px and below it keeps every column and fades the edge it can
+//     scroll toward: canvas layers that scroll with the table cover the fixed
+//     --color-border-strong fades at whichever end is reached.
 templ goalsStyles() {
 	<style>
 		.page:has(>#goal-list){max-width:none;padding:0 0 64px;gap:0}
@@ -736,7 +739,7 @@ templ goalsStyles() {
 		@media (pointer:coarse){.gl-more-toggle>summary,.gl-bar input[type=search],.gl-seg{height:auto;min-height:44px}.gl-seg a{min-height:40px}}
 		@media (max-width:1200px){.gl-list .gl-col-owner{width:168px}.gl-list .gl-col-due{width:152px}.gl-list .gl-col-checkin{width:136px}}
 		@media (max-width:900px){.gl-filters{padding:12px 16px}.gl-list tr>:first-child,.gl-table tr>:first-child{padding-left:16px}.gl-list tr>:last-child,.gl-table tr>:last-child{padding-right:16px}.gl-list .gl-col-health{width:28px}.gl-list .gl-col-owner{width:160px}.gl-list .gl-col-due{width:136px}.gl-list .gl-col-checkin{width:120px}.gl-columns,.gl-edit-hint,.gl-edit-actions{padding-left:16px;padding-right:16px}.gl-download{padding-left:4px;padding-right:4px}.gl-edit-errors{margin-left:16px;margin-right:16px}}
-		@media (max-width:600px){.gl-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gl-bar input[type=search]{flex:1 1 100%;max-width:none;margin-left:0}.gl-list{table-layout:auto}.gl-list thead{display:none}.gl-list tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:12px 16px 12px 40px;border-bottom:1px solid var(--color-border)}.gl-list td,.gl-list th,.gl-list tr>*,.gl-list tr>:first-child,.gl-list tr>:last-child{display:block;height:auto;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-group)}.gl-list [colspan]{flex-basis:100%}.gl-list .gl-health{order:-2;width:12px;margin-left:-24px}.gl-list .gl-goal{order:-1;flex-basis:100%}.gl-title{white-space:normal}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:var(--text-secondary);font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}}
+		@media (max-width:600px){.gl-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gl-bar input[type=search]{flex:1 1 100%;max-width:none;margin-left:0}.gl-list{table-layout:auto}.gl-list thead{display:none}.gl-list tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:12px 16px 12px 40px;border-bottom:1px solid var(--color-border)}.gl-list td,.gl-list th,.gl-list tr>*,.gl-list tr>:first-child,.gl-list tr>:last-child{display:block;height:auto;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-group)}.gl-list [colspan]{flex-basis:100%}.gl-list .gl-health{order:-2;width:12px;margin-left:-24px}.gl-list .gl-goal{order:-1;flex-basis:100%}.gl-title{white-space:normal}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:var(--text-secondary);font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}.gl-table .table-scroll{background:linear-gradient(to right,var(--color-canvas) 30%,transparent) left/40px 100% no-repeat local,linear-gradient(to left,var(--color-canvas) 30%,transparent) right/40px 100% no-repeat local,linear-gradient(to right,var(--color-border-strong),transparent) left/12px 100% no-repeat scroll,linear-gradient(to left,var(--color-border-strong),transparent) right/12px 100% no-repeat scroll,var(--color-canvas)}}
 	</style>
 }
 

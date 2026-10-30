@@ -970,7 +970,12 @@ and so on).
     wrapping, chips under it) with its Health shape in the 40px gutter at its
     left, then the Owner, "Due …" and "Last check-in …", each date led by a
     muted label. Dimension tags are hidden, and group headers become
-    full-width strips. The Table layout doesn't stack; it scrolls.
+    full-width strips. The Table layout doesn't stack; it scrolls. It keeps
+    every column, and its container fades the edge it can scroll toward: a
+    12px `--color-border-strong` fade, covered by `--color-canvas` layers
+    that scroll with the table, so a fade shows only while there is more to
+    that side (the right at first, both mid-scroll, the left at the end, and
+    neither on a table that fits).
   - **On a coarse pointer** the chips, + Filter, the search and the switch are
     at least 44px tall.
 - **Scope (Goals and Follow-ups, `pageScopeSelect` in `scope.templ`):** the
