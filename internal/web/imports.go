@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -22,7 +23,20 @@ const maxImportRequestBytes = maxImportBytes + 64<<10
 // it, but only an Admin gets the upload form (ticket #22: an Admin runs the
 // import).
 func (s *Server) handleImportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	render(w, r, http.StatusOK, importsPage(&current, nil, ""))
+	render(w, r, http.StatusOK, importsPage(&current, nil, "", ""))
+}
+
+// handleImportTemplate downloads the import's CSV template: the header row of
+// the import format's own columns, to fill in and upload (#676).
+func (s *Server) handleImportTemplate(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	var buf bytes.Buffer
+	if err := importer.WriteTemplate(&buf); err != nil {
+		s.serverError(w, r, "could not write the import template", err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="goal-import-template.csv"`)
+	_, _ = w.Write(buf.Bytes())
 }
 
 // handleRunImport reads an uploaded CSV or XLSX and runs a dry run or a commit,
@@ -33,12 +47,12 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	if err := r.ParseMultipartForm(maxImportBytes); err != nil {
-		render(w, r, http.StatusBadRequest, importsPage(&current, nil, "Could not read the upload."))
+		render(w, r, http.StatusBadRequest, importsPage(&current, nil, "Could not read the upload.", ""))
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		render(w, r, http.StatusUnprocessableEntity, importsPage(&current, nil, "Choose a CSV or XLSX file to import."))
+		render(w, r, http.StatusUnprocessableEntity, importsPage(&current, nil, "", "Choose a file to import."))
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -74,10 +88,10 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 		default:
 			s.logServerError(r, err)
 		}
-		render(w, r, status, importsPage(&current, nil, flash))
+		render(w, r, status, importsPage(&current, nil, flash, ""))
 		return
 	}
-	render(w, r, http.StatusOK, importsPage(&current, &report, ""))
+	render(w, r, http.StatusOK, importsPage(&current, &report, "", ""))
 }
 
 // importRowLabel is the title shown for a report row, or a placeholder when the

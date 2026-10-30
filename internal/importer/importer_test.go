@@ -1248,3 +1248,42 @@ func TestCommitOfHugeRowNumberWorkbookCreatesNothing(t *testing.T) {
 		t.Errorf("Commit created %d Goals, want none", len(goals))
 	}
 }
+
+// The required columns are the ones a spreadsheet's header must have (#676).
+func TestColumnsMarkTitleOwnerWhyItMattersAndKindRequired(t *testing.T) {
+	t.Parallel()
+
+	var required []string
+	for _, c := range importer.Columns {
+		if c.Required {
+			required = append(required, c.Name)
+		}
+	}
+	if want := []string{"Title", "Owner", "Why it matters", "Kind"}; !slices.Equal(required, want) {
+		t.Errorf("required columns = %q, want %q", required, want)
+	}
+}
+
+// The template is the header row of the import format's own columns but the
+// ID, and uploaded unchanged it dry-runs clean with no rows (#676).
+func TestTemplateIsTheHeaderRowAndDryRunsWithNoRows(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	if err := importer.WriteTemplate(&buf); err != nil {
+		t.Fatalf("WriteTemplate: %v", err)
+	}
+	if got, want := buf.String(), "Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents\n"; got != want {
+		t.Errorf("template = %q, want %q", got, want)
+	}
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goal-import-template.csv", buf.Bytes())
+	if err != nil {
+		t.Fatalf("DryRun of the template: %v", err)
+	}
+	if len(rep.Rows) != 0 {
+		t.Errorf("DryRun of the template reported %d rows, want 0: %+v", len(rep.Rows), rep.Rows)
+	}
+}

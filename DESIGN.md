@@ -2110,12 +2110,22 @@ and so on).
   optional) and **Retire this Field** (or **Restore this Field**). With no
   Fields, a muted "No Fields yet."
 - **Import Goals page (`importsPage` in `imports.templ`):** "Import Goals" is
-  the header strip's title, under "Admin ›" for an Admin, over a muted line naming the column format's
-  document. Anyone but an Admin sees only "Only an Admin may import Goals."
+  the header strip's title, under "Admin ›" for an Admin, over a muted line:
+  "Load Goals from a spreadsheet (CSV or XLSX), one Goal per row." Anyone but
+  an Admin sees only "Only an Admin may import Goals."
   An Admin sees the form (`.im-form`), a plain section up to 560px wide: a
   refused upload's reason as an alert, the Spreadsheet file input (CSV or
-  XLSX), **Dry run** (primary) and **Commit** (secondary), and three muted
-  hints. After a run, the report (`.im-report`): a summary alert, then a table
+  XLSX), **Dry run** (primary) and **Commit** (secondary), a "Columns" list,
+  a "Download a CSV template" link, and three muted hints. Pressed with no
+  file chosen, Dry run or Commit is refused with "Choose a file to import."
+  directly under the file input (`.im-input-error`, the secondary size in
+  `--color-danger-ink`, as the Goal form's input errors are), the input
+  marked invalid and described by it, and no alert. The Columns list
+  (`.im-columns`) gives each of the import format's own columns
+  (`importer.Columns`) in order: its name in semibold, a muted "Required"
+  beside a required one, and its one-line meaning in `--color-ink-2` under
+  it. The link downloads `goal-import-template.csv`, the header row of every
+  one of those columns but ID. After a run, the report (`.im-report`): a summary alert, then a table
   of Row, Goal and Errors laid out as Admin's, each row's errors a list in
   `--color-danger-ink` or a muted "None", scrolling inside its own container
   at phone width.
