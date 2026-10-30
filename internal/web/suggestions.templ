@@ -31,7 +31,7 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 				<p data-testid="form-error" class="alert r" role="alert">{ v.Error }</p>
 			}
 			<form data-testid="suggest-parent" method="post" action={ templ.SafeURL(goalPath(v.Goal.ID) + "/suggest-parent") } class="sg-form">
-				<fieldset data-testid="parent-picker" class="sg-picker">
+				<fieldset data-testid="parent-picker" class="gf-picker-field">
 					<legend>Parent Goal</legend>
 					@goalPicker(goalPickerView{
 						Single:      true,
@@ -60,8 +60,6 @@ templ suggestionStyles() {
 	<style>
 		.sg-section{display:flex;flex-direction:column;gap:12px;max-width:560px}
 		.sg-form{display:flex;flex-direction:column;gap:12px}
-		.sg-picker{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
-		.sg-picker>legend{font-weight:600;font-size:var(--text-secondary);color:var(--color-ink);padding:0;margin-bottom:8px}
 		.sg-actions{display:flex;gap:8px;align-items:center}
 	</style>
 }

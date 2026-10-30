@@ -34,7 +34,8 @@ func (s *Server) handleSuggestParentForm(w http.ResponseWriter, r *http.Request,
 
 // handleSuggestParent suggests the Goal named by parent_id as the path's
 // Goal's parent, with an optional note, and returns to the Goal page. A
-// refused suggestion comes back as the form with the reason.
+// refused suggestion comes back as the form with the reason, one picking no
+// parent, or none that parses, beside the picker.
 func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -42,7 +43,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
 	if err != nil {
-		s.renderSuggestParent(w, r, current, goalID, http.StatusUnprocessableEntity, errors.New("pick a parent Goal to suggest"))
+		s.renderSuggestParent(w, r, current, goalID, http.StatusUnprocessableEntity, errNoParentSuggested)
 		return
 	}
 	_, err = s.svc.SuggestParent(r.Context(), current.ID, goalID, parentID, r.FormValue("note"))
@@ -62,8 +63,14 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	}
 }
 
+// errNoParentSuggested refuses a Suggest a parent submit that picks no
+// parent, which the form says beside its picker.
+var errNoParentSuggested = errors.New("pick a parent Goal to suggest")
+
 // renderSuggestParent renders goalID's Suggest a parent form with status,
-// and, when refused is set, its reason and what was sent.
+// and, when refused is set, its reason, beside the picker when no parent was
+// picked (errNoParentSuggested) and above the form otherwise, and the note
+// sent.
 func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, status int, refused error) {
 	goal, err := s.svc.ViewGoal(r.Context(), goalID)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -81,7 +88,11 @@ func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	}
 	v := suggestParentView{Goal: goal, Candidates: candidates}
 	if refused != nil {
-		v.Error = sentence(domain.Reason(refused))
+		if errors.Is(refused, errNoParentSuggested) {
+			v.PickerError = sentence(domain.Reason(refused))
+		} else {
+			v.Error = sentence(domain.Reason(refused))
+		}
 		v.Input = r.PostForm
 	}
 	render(w, r, status, suggestParentPage(&current, v))

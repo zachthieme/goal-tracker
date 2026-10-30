@@ -1447,19 +1447,24 @@ templ addGoalValue(v goalView, d domain.Dimension) {
 }
 
 // requestParentLink is the open-in-place form, under Contributes to, by which
-// the Owner asks that this Goal contribute to another, with an optional note.
+// the Owner asks that this Goal contribute to another, picked with the
+// one-pick Goal picker, with an optional note. It opens with nothing picked,
+// and a submit picking none comes back with the reason beside the picker.
 templ requestParentLink(v goalView) {
 	if v.opens(formParentLink) {
 		@openGoalForm(v, formParentLink, "Link to a parent Goal") {
 			<form data-testid="request-link" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", v.Goal.ID)) } class="gp-form">
-				<label class="field">
-					<span>Parent Goal</span>
-					<select name="parent_id" required autofocus>
-						for _, c := range v.Candidates {
-							<option value={ fmt.Sprintf("%d", c.ID) } selected?={ v.FormInput.Get("parent_id") == fmt.Sprintf("%d", c.ID) }>{ c.Title }</option>
-						}
-					</select>
-				</label>
+				<fieldset data-testid="parent-picker" class="gf-picker-field">
+					<legend>Parent Goal</legend>
+					@goalPicker(goalPickerView{
+						Single:      true,
+						SearchURL:   fmt.Sprintf("/goals/search?%s=%d", searchGoal, v.Goal.ID),
+						SearchLabel: "Search Goals to contribute to",
+						Candidates:  v.Candidates,
+						Error:       v.PickerError,
+						Autofocus:   true,
+					})
+				</fieldset>
 				<label class="field">
 					<span>Note (optional)</span>
 					<textarea name="note">{ v.FormInput.Get("note") }</textarea>

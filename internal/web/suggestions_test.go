@@ -222,8 +222,8 @@ func TestSuggestAParentPageIsInTheFlatFrame(t *testing.T) {
 	assertInFlatFrame(t, postFormBody(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(goal.ID)}}), "Suggest a parent")
 }
 
-// A refused suggestion comes back as the form with the reason, as sent, and
-// records nothing more.
+// A refused suggestion comes back as the form with the reason above it, the
+// note as typed and nothing picked, and records nothing more (#656).
 func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	t.Parallel()
 
@@ -245,15 +245,57 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
-	form := pageElement(t, page, "form", "suggest-parent")
-	if reason := pageElement(t, page, "p", "form-error"); !strings.Contains(reason, "Pat Lee has already suggested that parent") {
+	root := parsePage(t, page)
+	if reason := textOf(findByTestID(t, root, "form-error")); !strings.Contains(reason, "Pat Lee has already suggested that parent") {
 		t.Errorf("the reason doesn't say who suggested it: %s", reason)
 	}
-	if !strings.Contains(form, "me too") || !strings.Contains(form, parentOption(parent)+` selected`) {
-		t.Errorf("the form doesn't come back as sent:\n%s", form)
+	form := findByTestID(t, root, "suggest-parent")
+	if note := formField(t, form, "note").Value; note != "me too" {
+		t.Errorf("the note comes back %q, want it as typed", note)
 	}
+	assertParentPickerOpensEmpty(t, form)
 	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 1 {
 		t.Errorf("the Goal has %d suggestions, want 1", len(all))
+	}
+}
+
+// Suggest pressed with no parent picked suggests nothing: the form comes back,
+// 422, with the reason beside the picker, which marks its controls refused,
+// the note as typed and still nothing picked (#656).
+func TestSuggestingWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "pat@example.com")
+
+	for name, sent := range map[string]url.Values{
+		"no parent_id":    {"note": {"outages start here"}},
+		"empty parent_id": {"parent_id": {""}, "note": {"outages start here"}},
+		"not an id":       {"parent_id": {"soon"}, "note": {"outages start here"}},
+	} {
+		resp := postForm(t, client, ts.URL+suggestPath(goal), sent)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422", name, resp.StatusCode)
+		}
+		if hasTestID(page, "form-error") {
+			t.Errorf("%s: the refusal is above the form, not beside the picker: %s", name, textOf(findByTestID(t, page, "form-error")))
+		}
+		form := findByTestID(t, page, "suggest-parent")
+		picker := assertParentPickerOpensEmpty(t, form)
+		assertPickerRefused(t, picker, "Pick a parent Goal to suggest.")
+		if note := formField(t, form, "note").Value; note != "outages start here" {
+			t.Errorf("%s: the note comes back %q, want it as typed", name, note)
+		}
+	}
+	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 0 {
+		t.Errorf("the Goal has %d suggestions, want none", len(all))
 	}
 }
 

@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -7012,16 +7013,19 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		reason            string
 		// field is the control that keeps what was typed, typed.
 		field, typed string
+		// shownIn is where the open form says why: above it, form-error,
+		// when "".
+		shownIn string
 	}{
-		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", "to_email", "nobody@example.com"},
-		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", "email", "nobody@example.com"},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because."},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", "note", "Because."},
-		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com"},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01"},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA"},
-		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  "},
-		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots"},
+		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", "to_email", "nobody@example.com", ""},
+		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", "email", "nobody@example.com", ""},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because.", ""},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", "note", "Because.", "input-error"},
+		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com", ""},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01", ""},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA", ""},
+		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  ", ""},
+		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots", ""},
 	} {
 		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
 		defer func() { _ = resp.Body.Close() }()
@@ -7031,7 +7035,7 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 			continue
 		}
 		open := goalOpenFormIn(t, parsePage(t, page), tc.form)
-		reason := textOf(findByTestID(t, open, "form-error"))
+		reason := textOf(findByTestID(t, open, cmp.Or(tc.shownIn, "form-error")))
 		if !strings.Contains(reason, tc.reason) {
 			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
 		}

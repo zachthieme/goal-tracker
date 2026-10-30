@@ -4136,3 +4136,53 @@ func TestDefineGoalTitleTextIsHeadingStyleStyles(t *testing.T) {
 		t.Errorf(".gf-title-text{%s} is underlined like an input", rule)
 	}
 }
+
+// The Parent Goal picker's error is styled as the goal form's field errors
+// are, on Suggest a parent and the Goal page's Link to a parent Goal too,
+// which don't carry the goal form's styles: the picker brings its own
+// .gf-input-error rule (#656).
+func TestParentPickerErrorIsInTheDangerInkStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	for _, tc := range []struct {
+		name, who, opened, action string
+	}{
+		{"Suggest a parent", "pat@example.com", fmt.Sprintf("/goals/%d/suggest-parent", goal.ID), fmt.Sprintf("/goals/%d/suggest-parent", goal.ID)},
+		{"Link to a parent Goal", "sam@example.com", fmt.Sprintf("/goals/%d?open=parent-link", goal.ID), fmt.Sprintf("/goals/%d/links", goal.ID)},
+	} {
+		client := signInClient(t, ts.URL, tc.who)
+		for what, root := range map[string]*html.Node{
+			"opened":  getPage(t, client, ts.URL+tc.opened),
+			"refused": parsePage(t, postFormBody(t, client, ts.URL+tc.action, url.Values{"parent_id": {""}})),
+		} {
+			css := homeStyleSheetIn(root)
+			if _, ok := ruleFor(css, ".gf-form"); ok {
+				t.Errorf("%s %s carries the goal form's styles, so the picker's own aren't what's tested", tc.name, what)
+			}
+			decls, ok := ruleFor(css, ".gf-input-error")
+			if !ok {
+				t.Errorf("%s %s has no .gf-input-error rule", tc.name, what)
+				continue
+			}
+			for _, want := range []string{"display:block", "font-size:var(--text-secondary)", "color:var(--color-danger-ink)"} {
+				if !strings.Contains(decls, want) {
+					t.Errorf("%s %s: .gf-input-error{%s} lacks %s", tc.name, what, decls, want)
+				}
+			}
+			if what != "refused" {
+				continue
+			}
+			e := findByTestID(t, findByTestID(t, root, "parent-picker"), "input-error")
+			if !slices.Contains(strings.Fields(attrOf(e, "class")), "gf-input-error") {
+				t.Errorf("%s: the picker's error %q has class %q, want gf-input-error", tc.name, textOf(e), attrOf(e, "class"))
+			}
+		}
+	}
+}

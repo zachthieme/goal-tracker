@@ -87,7 +87,8 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 // Done, there is nowhere beside it to say why, so the refusal page says it,
 // headed "Can't change Goal", at the status refused's kind has, linking Back
 // to the Goal. Either way the reason is a sentence without its internal
-// prefix.
+// prefix. Offered, it is above the form, or for a link request picking no
+// parent (errNoParentLinked) beside the form's picker.
 func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
 	s.renderRefusedFormHeaded(w, r, goalID, current, form, "Can't change Goal", status, refused)
 }
@@ -108,7 +109,12 @@ func (s *Server) renderRefusedFormHeaded(w http.ResponseWriter, r *http.Request,
 		s.refuse(w, r, heading, goalPath(goalID), refused)
 		return
 	}
-	view.Open, view.FormError, view.FormInput = form, sentence(domain.Reason(refused)), r.PostForm
+	view.Open, view.FormInput = form, r.PostForm
+	if reason := sentence(domain.Reason(refused)); errors.Is(refused, errNoParentLinked) {
+		view.PickerError = reason
+	} else {
+		view.FormError = reason
+	}
 	render(w, r, status, goalPage(&current, view))
 }
 

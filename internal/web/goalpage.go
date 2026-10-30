@@ -67,9 +67,12 @@ type goalView struct {
 	// Open is the one form the page shows open in place, from its ?open=
 	// address, or "" for none. FormError is why that form's last submit was
 	// refused and FormInput what it sent, so it comes back as it was left.
-	Open      goalForm
-	FormError string
-	FormInput url.Values
+	// PickerError is why Link to a parent Goal's submit was refused for
+	// picking no parent, said beside its picker in place of FormError.
+	Open        goalForm
+	FormError   string
+	PickerError string
+	FormInput   url.Values
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for. It hides the
 	// embedded GoalPage.History, the loader's list it is built from.

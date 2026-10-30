@@ -705,7 +705,8 @@ func goalPickerScript() templ.Component {
 // goalPickerStyles are the Goal picker's rules on top of app.css, wherever it
 // sits: its chips, search and results, which of its parts show with script
 // and which without, keyed on the picker itself, and its error, as the goal
-// form's field errors are.
+// form's field errors are. A page heading it with its own fieldset classes
+// that gf-picker-field, its legend read as a field's label is.
 func goalPickerStyles() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -727,7 +728,7 @@ func goalPickerStyles() templ.Component {
 			templ_7745c5c3_Var33 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<style>\n\t\t.gf-picker{display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.gf-picker:not(.gf-js) .gf-js-only{display:none}\n\t\t.gf-picker.gf-js .gf-no-js{display:none}\n\t\t.gf-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.gf-chips:empty{display:none}\n\t\t.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.gf-chip .gf-input-error{flex-basis:100%}\n\t\t.gf-search input{width:100%}\n\t\t.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.gf-results:empty{display:none}\n\t\t.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}\n\t\t.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}\n\t\t.gf-picker select[multiple]{width:100%;min-height:8em}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<style>\n\t\t.gf-picker{display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.gf-picker-field{border:0;padding:0;margin:0;min-width:0}\n\t\t.gf-picker-field>legend{padding:0;margin-bottom:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}\n\t\t.gf-picker:not(.gf-js) .gf-js-only{display:none}\n\t\t.gf-picker.gf-js .gf-no-js{display:none}\n\t\t.gf-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.gf-chips:empty{display:none}\n\t\t.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.gf-chip .gf-input-error{flex-basis:100%}\n\t\t.gf-search input{width:100%}\n\t\t.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.gf-results:empty{display:none}\n\t\t.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}\n\t\t.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}\n\t\t.gf-picker select[multiple]{width:100%;min-height:8em}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

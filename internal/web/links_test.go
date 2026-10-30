@@ -965,10 +965,81 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	}
 }
 
+// The Goal page's Link to a parent Goal picks the parent with the Parent Goal
+// picker, opening with nothing picked: its search, the open form's focus,
+// asks for the Goals the Goal could contribute to, which leave out those it
+// already does (#656).
+func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	child := h.CreateGoal(sam, "Site speed", "Shoppers abandon slow pages.")
+	linked := h.CreateGoal(sam, "Site revenue", "The business needs it.")
+	free := h.CreateGoal(sam, "Site trust", "Shoppers doubt us.")
+	h.RequestLink(sam, child, linked, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getPage(t, client, goalPageURL(ts.URL, child)+"?open=parent-link")
+	picker := assertParentPickerOpensEmpty(t, findByTestID(t, page, "request-link"))
+	search := findAll(picker, func(n *html.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
+	if want := fmt.Sprintf("/goals/search?goal=%d", child.ID); attrOf(search, "hx-get") != want {
+		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
+	}
+	if !hasAttr(search, "autofocus") {
+		t.Errorf("the picker's search doesn't take the open form's focus")
+	}
+	results := findAllByTestID(getPage(t, client, ts.URL+attrOf(search, "hx-get")+"&q=site"), "parent-result")
+	if len(results) != 1 || !strings.Contains(textOf(results[0]), free.Title) {
+		t.Errorf("the search found %q, want only %q", textsOf(results), free.Title)
+	}
+}
+
+// Request link pressed with no parent picked links nothing: the Goal page
+// comes back, 422, with the form open and the reason beside its picker,
+// which marks its controls refused, the note as typed and still nothing
+// picked (#656).
+func TestRequestingALinkWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	child := h.CreateGoal(sam, "Site speed", "Shoppers abandon slow pages.")
+	h.CreateGoal(sam, "Site revenue", "The business needs it.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for name, sent := range map[string]url.Values{
+		"no parent_id":    {"note": {"Because."}},
+		"empty parent_id": {"parent_id": {""}, "note": {"Because."}},
+		"not an id":       {"parent_id": {"soon"}, "note": {"Because."}},
+	} {
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), sent)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422", name, resp.StatusCode)
+		}
+		if hasTestID(page, "form-error") {
+			t.Errorf("%s: the refusal is above the form, not beside the picker: %s", name, textOf(findByTestID(t, page, "form-error")))
+		}
+		form := findByTestID(t, page, "request-link")
+		assertPickerRefused(t, assertParentPickerOpensEmpty(t, form), "A parent Goal is required.")
+		if note := formField(t, form, "note").Value; note != "Because." {
+			t.Errorf("%s: the note comes back %q, want it as typed", name, note)
+		}
+	}
+	if parents := h.ParentsOf(child); len(parents) != 0 {
+		t.Errorf("the Goal contributes to %+v, want none", parents)
+	}
+}
+
 // A link request refused for its parent, missing or making a cycle, keeps its
 // status, 422 or 409, whether or not the Goal page offers the viewer the link
-// form: offered, the reason is beside the form; not offered, it is the
-// refusal page, linking Back to the Goal (#573).
+// form: offered, the reason is beside the form, a missing parent beside its
+// picker (#656); not offered, it is the refusal page, linking Back to the
+// Goal (#573).
 func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) {
 	t.Parallel()
 
@@ -988,13 +1059,16 @@ func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) 
 		status          int
 		reason          string
 		offered         bool
+		// shownIn is where an offered form says why: beside the picker
+		// (input-error) or above the form (form-error).
+		shownIn string
 	}{
-		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", true},
-		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false},
+		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", true, "input-error"},
+		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false, ""},
 		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
-			"That Goal already contributes to this one, so linking them would make a cycle.", true},
+			"That Goal already contributes to this one, so linking them would make a cycle.", true, "form-error"},
 		{"cycle, not offered", "pat@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
-			"Linking these Goals would make a cycle: the parent already contributes to the child.", false},
+			"Linking these Goals would make a cycle: the parent already contributes to the child.", false, ""},
 	} {
 		resp := postForm(t, signInClient(t, ts.URL, c.who), ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()
@@ -1006,8 +1080,8 @@ func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) 
 			assertRefusalPage(t, page, "Can't change Goal", c.reason, back)
 			continue
 		}
-		if got := textOf(findByTestID(t, page, "form-error")); got != c.reason {
-			t.Errorf("%s: form-error = %q, want %q", c.name, got, c.reason)
+		if got := textOf(findByTestID(t, page, c.shownIn)); got != c.reason {
+			t.Errorf("%s: %s = %q, want %q", c.name, c.shownIn, got, c.reason)
 		}
 	}
 }

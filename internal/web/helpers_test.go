@@ -1814,3 +1814,22 @@ func assertParentPickerOpensEmpty(t *testing.T, root *html.Node) *html.Node {
 	}
 	return picker
 }
+
+// assertPickerRefused checks a Goal picker says why beside it, as an
+// input-error reading reason that its search and select are described by and
+// marked refused with.
+func assertPickerRefused(t *testing.T, picker *html.Node, reason string) {
+	t.Helper()
+	errs := findAllByTestID(picker, "input-error")
+	if len(errs) != 1 || textOf(errs[0]) != reason {
+		t.Errorf("the picker's error reads %q, want %q", textsOf(errs), reason)
+		return
+	}
+	for _, name := range []string{"q", "parent_id"} {
+		for _, f := range formFields(picker, name) {
+			if attrOf(f.Node, "aria-invalid") != "true" || f.Description != reason {
+				t.Errorf("the picker's %s isn't marked refused and described by %q: %s", f.Type, reason, openTag(renderNode(f.Node)))
+			}
+		}
+	}
+}
