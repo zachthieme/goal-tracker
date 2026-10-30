@@ -550,3 +550,28 @@ func TestImportWithNoFileSaysSoBesideTheInputOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// An import that fails for no reason the app gives, such as the Dimensions it
+// reads the columns by failing to load, answers as any other failed command
+// does: the logged 500 error page, not the Import page saying it failed, and
+// its cause reaches the server log (#701).
+func TestAFailedImportIsTheLoggedErrorPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts, buf := loggedServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	h.FailReads("dimensions")
+	before := len(logRecords(t, buf))
+
+	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", webImportCSV, "commit")
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	if body != "action failed\n" {
+		t.Errorf("body %q, want the error page's %q", body, "action failed\n")
+	}
+	assertLoggedOnce(t, buf, before, http.MethodPost, "/imports", "no such table: dimensions")
+}

@@ -339,6 +339,37 @@ func TestSuggestingWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
 	}
 }
 
+// The Goal's Owner, who links it to a parent rather than suggesting one, is
+// refused Suggest a parent as anyone refused for who they are is: the refusal
+// page, 403, linking back to the Goal, not the form again, and nothing is
+// recorded (#701).
+func TestTheOwnerSuggestingAParentGetsTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(parent.ID)}})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status %d, want 403", resp.StatusCode)
+	}
+	assertRefusalPage(t, page, "Can't suggest a parent",
+		"The Goal's Owner links it to a parent rather than suggesting one.", fmt.Sprintf("/goals/%d", goal.ID))
+	if hasTestID(page, "suggest-parent") {
+		t.Error("the refusal shows the Suggest a parent form again")
+	}
+	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 0 {
+		t.Errorf("the Goal has %d suggestions, want none", len(all))
+	}
+}
+
 // Someone else's Unlinked Goal on the Follow-ups page has Suggest a parent as its
 // Fix, and following it suggests a parent the same way.
 func TestSuggestingAParentFromTheFollowUpsFix(t *testing.T) {

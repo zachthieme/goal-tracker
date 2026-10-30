@@ -94,11 +94,6 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 	} else {
 		report, err = imp.DryRun(r.Context(), current.ID, header.Filename, data)
 	}
-	if err != nil && !errors.Is(err, domain.ErrValidation) && !errors.Is(err, domain.ErrNotAuthorized) { // #701
-		s.logServerError(r, err)
-		render(w, r, http.StatusInternalServerError, importsPage(&current, nil, "The import failed.", ""))
-		return
-	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
 		err = domain.Refuse(domain.ErrNotAuthorized, "only an Admin may import Goals")
 	}
