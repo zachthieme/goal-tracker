@@ -356,7 +356,8 @@ func TestReportLifecycleRule(t *testing.T) {
 
 // A Goal must meet every rule, and meets one by having any of its values. A
 // rules definition then adds the Goals to Also include and takes away those
-// to Leave out; a Goal in both is left out (CONTEXT.md: Report rule).
+// to Leave out, which may list one the rules don't select (CONTEXT.md: Report
+// rule).
 func TestReportRulesAndOverrides(t *testing.T) {
 	t.Parallel()
 
@@ -370,13 +371,13 @@ func TestReportRulesAndOverrides(t *testing.T) {
 	bossWeb := h.CreateGoal(boss, "Boss, Web", "why")
 	samPlatform := h.CreateGoal(sam, "Sam, Platform", "why")
 	samWeb := h.CreateGoal(sam, "Sam, Web", "why")
-	bothLists := h.CreateGoal(sam, "Sam, Identity", "why")
+	samIdentity := h.CreateGoal(sam, "Sam, Identity", "why")
 	h.AssignGoalValue(bossPlatform, platform)
 	h.AssignGoalValue(bossIdentity, identity)
 	h.AssignGoalValue(bossWeb, web)
 	h.AssignGoalValue(samPlatform, platform)
 	h.AssignGoalValue(samWeb, web)
-	h.AssignGoalValue(bothLists, identity)
+	h.AssignGoalValue(samIdentity, identity)
 	rules := []domain.ReportRule{
 		dimensionRule(team, domain.RuleIsAnyOf, platform, identity),
 		ownerRule(domain.RuleIs, boss),
@@ -391,8 +392,8 @@ func TestReportRulesAndOverrides(t *testing.T) {
 		Name:    "Overridden",
 		Mode:    domain.ReportModeRules,
 		Rules:   rules,
-		Include: []int64{samWeb.ID, bothLists.ID},
-		Exclude: []int64{bossIdentity.ID, bothLists.ID},
+		Include: []int64{samWeb.ID},
+		Exclude: []int64{bossIdentity.ID, samIdentity.ID},
 	})
 	if got, want := selectByDefault(t, h, overridden), []int64{bossPlatform.ID, samWeb.ID}; !sameSet(got, want) {
 		t.Errorf("with Also include and Leave out selected %v, want %v", got, want)
@@ -600,6 +601,7 @@ func TestSaveReportDefinitionRefusals(t *testing.T) {
 		{"Top-level is any of", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIsAnyOf}), "rules[0]", `a Top-level rule is "is Top-level" or "is not Top-level"`},
 		{"unknown Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Include: []int64{9999}}, "include", gone},
 		{"unknown Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Exclude: []int64{9999}}, "exclude", gone},
+		{"Goal in both Also include and Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Include: []int64{g.ID}, Exclude: []int64{g.ID}}, "exclude", "Grow revenue is in Also include too: keep it in one list"},
 		{"rules definition with a picked list", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Picked: []int64{g.ID}}, "picked", "a report of Goals matching rules has no picked Goals"},
 		{"picked definition with no Goals", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked}, "picked", "pick at least one Goal"},
 		{"unknown picked Goal", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID, 9999}}, "picked", gone},

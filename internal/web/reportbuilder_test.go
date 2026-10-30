@@ -1186,6 +1186,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	kept := h.ActiveGoal(boss, "Grow revenue", "Matters.")
 	gone := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	keptOut := h.ActiveGoal(boss, "Retire the old API", "Matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	id := func(n int64) string { return strconv.FormatInt(n, 10) }
@@ -1228,7 +1229,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"include":            {id(kept.ID), id(gone.ID)},
 		"remove-include":     {id(gone.ID)},
-		"exclude":            {id(gone.ID), id(kept.ID)},
+		"exclude":            {id(gone.ID), id(keptOut.ID)},
 		"remove-exclude":     {id(gone.ID)},
 	})
 	defer func() { _ = resp.Body.Close() }()
@@ -1246,12 +1247,12 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	}
 	for _, def := range defs {
 		def, _ = h.Service.GetReportDefinition(context.Background(), def.ID)
-		want := []int64{kept.ID}
+		want, wantOut := []int64{kept.ID}, []int64{keptOut.ID}
 		if def.Mode == domain.ReportModePicked && !slices.Equal(def.Picked, want) {
 			t.Errorf("Save with Remove ticked picks %v, want %v", def.Picked, want)
 		}
-		if def.Mode == domain.ReportModeRules && (!slices.Equal(def.Include, want) || !slices.Equal(def.Exclude, want)) {
-			t.Errorf("Save with Remove ticked includes %v and leaves out %v, want %v for each", def.Include, def.Exclude, want)
+		if def.Mode == domain.ReportModeRules && (!slices.Equal(def.Include, want) || !slices.Equal(def.Exclude, wantOut)) {
+			t.Errorf("Save with Remove ticked includes %v and leaves out %v, want %v and %v", def.Include, def.Exclude, want, wantOut)
 		}
 	}
 }
@@ -1303,17 +1304,21 @@ func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	listed := map[string]domain.Goal{
+		"include": h.ActiveGoal(boss, "Grow revenue", "Matters."),
+		"exclude": h.ActiveGoal(boss, "Cut churn", "Matters."),
+	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
 		Name: "MBR", Mode: domain.ReportModeRules,
 		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
-		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+		Include: []int64{listed["include"].ID}, Exclude: []int64{listed["exclude"].ID},
 	})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
 	for _, list := range []string{"include", "exclude"} {
+		g := listed[list]
 		chip := pageElement(t, page, "li", list+"-chip")
 		box := regexp.MustCompile(`<label class="([^"]*)"><input type="checkbox" name="remove-` + list + `" value="` + strconv.FormatInt(g.ID, 10) + `"> Remove</label>`).FindStringSubmatch(chip)
 		if box == nil {
@@ -1870,11 +1875,14 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	listed := map[string]domain.Goal{
+		"include": h.ActiveGoal(boss, "Grow revenue", "Matters."),
+		"exclude": h.ActiveGoal(boss, "Cut churn", "Matters."),
+	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
 		Name: "MBR", Mode: domain.ReportModeRules,
 		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
-		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+		Include: []int64{listed["include"].ID}, Exclude: []int64{listed["exclude"].ID},
 	})
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
@@ -1892,6 +1900,7 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 		t.Errorf("the rule's remove lost its title or its submit: %s", rule)
 	}
 	for _, list := range []string{"include", "exclude"} {
+		g := listed[list]
 		chip := tagAround(t, pageElement(t, page, "li", list+"-chip"), `aria-label="Remove `+g.Title+`"`)
 		iconButton(list+" chip's remove", chip)
 		if attr(chip, "title") != "Remove "+g.Title || attr(chip, "type") != "button" || !slices.Contains(strings.Fields(attr(chip, "class")), "rb-js-only") {
