@@ -1,14 +1,28 @@
 package testsupport
 
-import "github.com/zachthieme/goal-tracker/internal/domain"
+import (
+	"fmt"
 
-// SetTimezone records tz, an IANA name or "" for none, as person's Timezone
-// directly, failing the test on error. Only the directory sync sets a Timezone
-// in the app; this is the scenario builder for arranging one without it
-// (CONTEXT.md: Timezone).
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// SetTimezone records tz, an IANA name or "" for none, as person's Timezone,
+// by syncing person alone through the in-memory Directory, as the directory
+// sync sets every Timezone (ADR 0008; CONTEXT.md: Timezone). Their Name and
+// Manager are left as they are. It fails the test on error, on a refused
+// Timezone, and on any Manager cycle in the database: store a cycle with
+// h.SyncDirectory.
 func (h *Harness) SetTimezone(person domain.Account, tz string) {
 	h.T.Helper()
-	if _, err := h.DB.ExecContext(h.T.Context(), `UPDATE accounts SET timezone = ? WHERE id = ?`, tz, person.ID); err != nil {
-		h.T.Fatalf("SetTimezone(%s, %q): %v", person.Email, tz, err)
+	call := fmt.Sprintf("SetTimezone(%s, %q)", person.Email, tz)
+	current := h.account(call, person.ID)
+	var managerEmail string
+	if current.ManagerID != nil {
+		managerEmail = h.account(call, *current.ManagerID).Email
 	}
+	h.syncDirectoryPersonRefusingNothing(call, domain.DirectoryPerson{
+		Email:        current.Email,
+		ManagerEmail: managerEmail,
+		Timezone:     tz,
+	})
 }

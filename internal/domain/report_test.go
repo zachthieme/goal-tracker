@@ -1015,7 +1015,10 @@ func TestReportRuleManagersLeavesOutSelfReferences(t *testing.T) {
 	vp := h.SignIn("vp@example.com")
 	vera := h.SignIn("vera@example.com")
 	mia := h.SignIn("mia@example.com")
-	h.SetManager(vp, vp)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: vp.Email, ManagerEmail: vp.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"vp@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 
 	got, err := h.Service.ReportRuleManagers(ctx)
 	if err != nil {
@@ -1025,7 +1028,7 @@ func TestReportRuleManagersLeavesOutSelfReferences(t *testing.T) {
 		t.Errorf("with only a self-reference ReportRuleManagers = %v, want none", got)
 	}
 
-	h.SetManager(mia, vera)
+	h.SyncDirectory(domain.DirectoryPerson{Email: mia.Email, ManagerEmail: vera.Email})
 	got, err = h.Service.ReportRuleManagers(ctx)
 	if err != nil {
 		t.Fatalf("ReportRuleManagers: %v", err)

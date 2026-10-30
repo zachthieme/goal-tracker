@@ -1613,7 +1613,10 @@ func TestBuilderOffersNoOrgForASelfReferenceOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "vp@example.com")
 	vp := h.SignInNamed("vp@example.com", "Priya Raman")
-	h.SetManager(vp, vp)
+	res := h.SyncDirectory(domain.DirectoryPerson{Email: vp.Email, ManagerEmail: vp.Email})
+	if got, want := testsupport.CycleEmails(res.Cycles), [][]string{{"vp@example.com"}}; !slices.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("the sync's Cycles = %q, want %q", got, want)
+	}
 	h.ActiveGoal(vp, "Grow revenue", "Matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vp@example.com")
