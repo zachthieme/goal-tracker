@@ -1096,6 +1096,37 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 	}
 }
 
+// A Check-in posting a Lifecycle the Goal can't move to comes back with every
+// Lifecycle choice refused and described by the Lifecycle error, none of them
+// picked, so each takes the refused edge (ticket #707).
+func TestCheckinRefusedLifecycleMarksEveryChoice(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Back to the drawing board."},
+		"lifecycle": {domain.LifecycleProposed},
+	})
+	choices := formFields(findByTestID(t, parsePage(t, body), "checkin-lifecycle-fields"), "lifecycle")
+	if len(choices) == 0 {
+		t.Fatal("the refused form offers no Lifecycle choices")
+	}
+	const want = "A Check-in can't move an Active Goal to \"Proposed\"."
+	for _, c := range choices {
+		if attrOf(c.Node, "aria-invalid") != "true" || c.Description != want || c.Checked {
+			t.Errorf("Lifecycle choice %q is aria-invalid %q, described %q, checked %v; want it invalid, described %q, unchecked",
+				c.Label, attrOf(c.Node, "aria-invalid"), c.Description, c.Checked, want)
+		}
+	}
+}
+
 // A Check-in that moves the delivery date without a reason gets its error next
 // to the delivery date's reason field.
 func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {

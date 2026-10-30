@@ -1438,6 +1438,7 @@ templ checkinStyles() {
 			.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}
 			.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}
 			.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}
+			.lifecycle-choices:not(:has(input:checked)) label:has(input[aria-invalid=true]){outline:1px solid var(--color-danger-ink);outline-offset:2px;border-radius:var(--radius-sm)}
 			.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}
 			.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}
 			.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}
