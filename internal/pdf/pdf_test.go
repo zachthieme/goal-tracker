@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -275,9 +276,7 @@ func TestARenderWithoutAPDFFails(t *testing.T) {
 	t.Parallel()
 
 	fake := filepath.Join(t.TempDir(), "chromium")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho 'no display' >&2\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeScript(t, fake, "#!/bin/sh\necho 'no display' >&2\n")
 
 	b, err := pdf.Chromium{Path: fake}.Render(t.Context(), []byte("<p>hi</p>"), "http://127.0.0.1:1")
 	if err == nil {
@@ -296,10 +295,7 @@ func TestARenderOutlastsChromiumsHelpers(t *testing.T) {
 	dir := t.TempDir()
 	gone := filepath.Join(dir, "gone")
 	fake := filepath.Join(dir, "chromium")
-	script := "#!/bin/sh\n(sleep 0.3; touch '" + gone + "') </dev/null >/dev/null 2>&1 &\n"
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeScript(t, fake, "#!/bin/sh\n(sleep 0.3; touch '"+gone+"') </dev/null >/dev/null 2>&1 &\n")
 
 	_, _ = pdf.Chromium{Path: fake}.Render(t.Context(), []byte("<p>hi</p>"), "http://127.0.0.1:1")
 	if _, err := os.Stat(gone); err != nil {
@@ -315,10 +311,7 @@ func TestARenderRunsChromiumWithoutItsSandbox(t *testing.T) {
 	dir := t.TempDir()
 	args := filepath.Join(dir, "args")
 	fake := filepath.Join(dir, "chromium")
-	script := "#!/bin/sh\nfor arg; do echo \"$arg\"; done > '" + args + "'\n"
-	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeScript(t, fake, "#!/bin/sh\nfor arg; do echo \"$arg\"; done > '"+args+"'\n")
 
 	_, _ = pdf.Chromium{Path: fake}.Render(t.Context(), []byte("<p>hi</p>"), "http://127.0.0.1:1")
 	b, err := os.ReadFile(args)
@@ -395,10 +388,25 @@ func TestFindLooksOnPATH(t *testing.T) {
 func executable(t *testing.T, dir, name string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+	writeScript(t, path, "#!/bin/sh\n")
+	return path
+}
+
+// writeScript writes an executable script to path holding syscall.ForkLock,
+// as a parallel test's fork would otherwise inherit the file still open for
+// writing and leave it unrunnable, "text file busy", until that child execs
+// (golang/go#22315).
+func writeScript(t *testing.T, path, script string) {
+	t.Helper()
+	var err error
+	func() {
+		syscall.ForkLock.RLock()
+		defer syscall.ForkLock.RUnlock()
+		err = os.WriteFile(path, []byte(script), 0o755)
+	}()
+	if err != nil {
 		t.Fatal(err)
 	}
-	return path
 }
 
 // A TMPDIR such as /tmp has room for Chromium's socket in a render's own

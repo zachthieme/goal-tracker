@@ -91,11 +91,13 @@ const goalFormReadyID = "goal-form-ready"
 // goalFormReady is the Ready to activate section, sticky beside the form: how
 // many of the activation checklist's items the form meets, as "n of m done"
 // and a bar, each item's mark, ✓ or ○, with its done or to do for screen
-// readers alone, and the submit buttons. Create and activate posts activate=1
-// and is disabled while the live checklist is incomplete; Save as Proposed
-// needs a Title and Why it matters, plus the delivery date when Dated is chosen. Save
-// as Proposed comes first in the markup, so Enter in a text field saves as
-// Proposed, while CSS order shows Create and activate first.
+// readers alone, and the submit buttons. The activate button, Create and
+// activate on the New goal page and Activate Goal on the define page
+// (activateLabel), posts activate=1 and is disabled while the live checklist
+// is incomplete; Save as Proposed needs a Title and Why it matters, plus the
+// delivery date when Dated is chosen. Save as Proposed comes first in the
+// markup, so Enter in a text field saves as Proposed, while CSS order shows
+// the activate button first.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalFormReady(v goalFormView) {
@@ -123,7 +125,7 @@ templ goalFormReady(v goalFormView) {
 		</ul>
 		<div class="gf-actions">
 			<button type="submit" class="btn">Save as Proposed</button>
-			<button type="submit" id={ domain.InputActivate } name={ domain.InputActivate } value="1" class="btn primary gf-activate" disabled?={ v.activateDisabled() }>Create and activate</button>
+			<button type="submit" id={ domain.InputActivate } name={ domain.InputActivate } value="1" class="btn primary gf-activate" disabled?={ v.activateDisabled() }>{ v.activateLabel() }</button>
 		</div>
 		<p class="muted small">Saving needs a Title and Why it matters, and a delivery date if Dated is chosen.</p>
 		<a class="small gf-cancel" href={ v.cancelURL() }>Cancel</a>
@@ -143,33 +145,37 @@ templ goalFormCheckLabel(item activationItem) {
 // goalFormWhat opens the form with no heading of its own, the page header
 // holding the page's <h1>: a muted line saying the Goal is Proposed until it's
 // activated, then the Goal's Title, focused, as a heading-style input, and its
-// Why it matters. Finishing a saved Goal, the Title is read-only and the Why it matters
+// Why it matters. Finishing a saved Goal, the Title is heading-style text, not
+// an input, with a link to rename it on the Goal page, and the Why it matters
 // takes the focus.
 templ goalFormWhat(v goalFormView) {
 	<section data-testid="goal-form-what" class="gf-section gf-what">
 		<p class="gf-page-line">Proposed until it's activated</p>
-		<label class="field">
-			<span class="sr-only">Title</span>
-			<input
-				type="text"
-				class="gf-title"
-				id={ domain.InputTitle }
-				name={ domain.InputTitle }
-				value={ v.Title }
-				placeholder="Name the outcome"
-				required
-				if v.Goal == nil {
+		if v.Goal == nil {
+			<label class="field">
+				<span class="sr-only">Title</span>
+				<input
+					type="text"
+					class="gf-title"
+					id={ domain.InputTitle }
+					name={ domain.InputTitle }
+					value={ v.Title }
+					placeholder="Name the outcome"
+					required
 					autofocus
-				} else {
-					readonly
-				}
-				if v.bad(domain.InputTitle) != "" {
-					aria-invalid="true"
-					aria-describedby={ domain.InputTitle + "-error" }
-				}
-			/>
-			@goalFormInputError(v, domain.InputTitle)
-		</label>
+					if v.bad(domain.InputTitle) != "" {
+						aria-invalid="true"
+						aria-describedby={ domain.InputTitle + "-error" }
+					}
+				/>
+				@goalFormInputError(v, domain.InputTitle)
+			</label>
+		} else {
+			<div class="field">
+				<p data-testid="goal-form-title" class="gf-title-text">{ v.Goal.Title }</p>
+				<p class="muted small"><a href={ v.renameURL() }>Rename it on the Goal page</a></p>
+			</div>
+		}
 		<label class="field">
 			<span>Why it matters <span class="hint">· the customer problem, and what changes when this succeeds</span></span>
 			<textarea
@@ -1253,6 +1259,7 @@ templ goalFormStyles() {
 		.gf-page-line{margin:0;font-size:var(--text-secondary);line-height:1.5;color:var(--color-ink-muted)}
 		.gf-what .gf-title{font-weight:600;font-size:28px;line-height:1.2;letter-spacing:-0.02em;height:auto;padding:4px 0;border:0;border-bottom:1px solid var(--color-border-strong);border-radius:0;background:transparent}
 		.gf-what .gf-title[aria-invalid=true]{border-bottom-color:var(--color-danger-ink)}
+		.gf-what .gf-title-text{margin:0;font-weight:600;font-size:28px;line-height:1.2;letter-spacing:-0.02em;padding:4px 0;border:0;overflow-wrap:anywhere}
 		.gf-delivery{gap:24px}
 		.gf-group{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
 		.gf-group>legend{font-weight:600;font-size:var(--text-secondary);padding:0;margin-bottom:8px}

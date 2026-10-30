@@ -1582,7 +1582,11 @@ func TestGoalFormChecklistAnswersAnEmptyTitleAndWhyItMatters(t *testing.T) {
 		if strings.HasPrefix(live, "<form") || !strings.Contains(attr(live, "hx-trigger"), "from:closest form") {
 			t.Errorf("%s: the live checklist doesn't post from inside the form: %s", path, live)
 		}
-		for _, input := range []string{`name="title"`, `name="why_it_matters"`} {
+		required := []string{`name="why_it_matters"`}
+		if path == "/goals/new" {
+			required = append(required, `name="title"`)
+		}
+		for _, input := range required {
 			if tag := tagAround(t, form, input); !strings.Contains(tag, " required") {
 				t.Errorf("%s: %s isn't required: %s", path, input, tag)
 			}
@@ -1726,8 +1730,8 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	if tag := openTag(form); attr(tag, "action") != fmt.Sprintf("/goals/%d/define", g.ID) {
 		t.Errorf("the define form doesn't post to its own address: %s", tag)
 	}
-	if title := tagAround(t, form, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
-		t.Errorf("Title isn't the Goal's, read-only: %s", title)
+	if got := textOf(findByTestID(t, parsePage(t, form), "goal-form-title")); got != g.Title {
+		t.Errorf("the Title reads %q, want the Goal's %q", got, g.Title)
 	}
 	if !strings.Contains(form, ">"+g.WhyItMatters+"</textarea>") {
 		t.Errorf("Why it matters isn't prefilled:\n%s", form)
@@ -2087,12 +2091,12 @@ func TestGoalFormParentChipRemoveLeavesItsParentOut(t *testing.T) {
 	}
 	again := h.CreateGoal(sam, "Ship the app", "Mobile matters.")
 	resp = definePost(t, client, ts.URL, again, func(form url.Values) {
-		form.Set("title", "")
+		form.Set("why_it_matters", "")
 		pick(form)
 	})
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("a define post with no title answered %d, want 422:\n%s", resp.StatusCode, page)
+		t.Fatalf("a define post with no Why it matters answered %d, want 422:\n%s", resp.StatusCode, page)
 	}
 	if got, want := chips(page), []string{fmt.Sprint(kept.ID)}; !slices.Equal(got, want) {
 		t.Errorf("a refused define comes back with parent chips %q, want %q", got, want)
@@ -2483,8 +2487,8 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 }
 
 // Finish defining is the same page: its page header reads Finish defining
-// under the Goal's title, linking back to it, with no card, and its Title
-// stays the Goal's, read-only.
+// under the Goal's title, linking back to it, with no card, and its Title is
+// the Goal's, shown as text with a link to rename it on the Goal page (#673).
 func TestDefineGoalPageIsHeadedFinishDefining(t *testing.T) {
 	t.Parallel()
 
@@ -2499,10 +2503,104 @@ func TestDefineGoalPageIsHeadedFinishDefining(t *testing.T) {
 	if crumb := tagAround(t, page, `class="ph-parent"`); attr(crumb, "href") != fmt.Sprintf("/goals/%d", g.ID) {
 		t.Errorf("the breadcrumb doesn't link to the Goal: %s", crumb)
 	}
-	form := pageElement(t, page, "form", "goal-form")
-	what := pageElement(t, form, "section", "goal-form-what")
-	if title := tagAround(t, what, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
-		t.Errorf("Title isn't the Goal's, read-only: %s", title)
+	form := findByTestID(t, parsePage(t, page), "goal-form")
+	what := findByTestID(t, form, "goal-form-what")
+	if got := textOf(findByTestID(t, what, "goal-form-title")); got != g.Title {
+		t.Errorf("the Title reads %q, want the Goal's %q", got, g.Title)
+	}
+	if fields := formFields(form, "title"); len(fields) != 0 {
+		t.Errorf("the define form has %d title fields, want none: the Title is text here", len(fields))
+	}
+	rename := linkTo(what, fmt.Sprintf("/goals/%d?open=title-why-it-matters", g.ID))
+	if rename == nil || textOf(rename) != "Rename it on the Goal page" {
+		t.Errorf("the Title has no Rename it on the Goal page link to its Edit title and Why it matters form:\n%s", renderNode(what))
+	}
+}
+
+// The define page finishes a Goal that already exists, so its activate button
+// reads Activate Goal, as the Goal page's Define card calls it, and the live
+// checklist's card carries the same; the New goal page's still reads Create
+// and activate (#673).
+func TestDefineGoalPageOffersActivateGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	define := getPage(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	if buttonNamed(define, "Activate Goal") == nil || buttonNamed(define, "Create and activate") != nil {
+		t.Errorf("the define page's buttons aren't Activate Goal without Create and activate:\n%s", renderNode(findByTestID(t, define, "goal-form-ready")))
+	}
+	newGoal := getPage(t, client, ts.URL+"/goals/new")
+	if buttonNamed(newGoal, "Create and activate") == nil || buttonNamed(newGoal, "Activate Goal") != nil {
+		t.Errorf("the New goal page's buttons aren't Create and activate without Activate Goal:\n%s", renderNode(findByTestID(t, newGoal, "goal-form-ready")))
+	}
+
+	card, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/define/checklist", ts.URL, g.ID), url.Values{"why_it_matters": {g.WhyItMatters}})
+	if status != http.StatusOK || buttonNamed(parsePage(t, card), "Activate Goal") == nil {
+		t.Errorf("the define checklist answered %d without Activate Goal:\n%s", status, card)
+	}
+}
+
+// The define page's Rename it on the Goal page leads to the Goal page with
+// its Edit title and Why it matters form open, holding the Title (#673).
+func TestDefineGoalPageRenameLinkOpensTheTitleForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	define := getPage(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	var rename *nethtml.Node
+	for _, a := range findAll(define, func(n *nethtml.Node) bool { return n.Data == "a" && textOf(n) == "Rename it on the Goal page" }) {
+		rename = a
+	}
+	if rename == nil {
+		t.Fatalf("the define page has no Rename it on the Goal page link:\n%s", renderNode(define))
+	}
+	page := getPage(t, client, ts.URL+attrOf(rename, "href"))
+	open := findByTestID(t, page, "edit-title-why-it-matters")
+	if title := formField(t, open, "title"); title.Value != g.Title {
+		t.Errorf("the Edit title and Why it matters form holds %q, want %q", title.Value, g.Title)
+	}
+}
+
+// The define form posts no Title, so the Goal's own is saved: a post without
+// one activates the Goal as it is named (#673).
+func TestDefineGoalPostWithoutATitleKeepsTheGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.AddMilestoneAsAuthor(context.Background(), g.Owner.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := definePost(t, client, ts.URL, g, func(form url.Values) {
+		form.Del("title")
+		form.Set("kind", domain.GoalDated)
+		form.Set("delivery_date", "2026-09-01")
+		form.Set("activate", "1")
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if page := readBody(t, resp); resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) {
+		t.Fatalf("the post answered %d at %s, want the Goal:\n%s", resp.StatusCode, resp.Request.URL, page)
+	}
+	got, err := h.Service.ViewGoal(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.Lifecycle != domain.LifecycleActive || got.Title != g.Title {
+		t.Errorf("the Goal is %s titled %q, want Active titled %q", got.Lifecycle, got.Title, g.Title)
 	}
 }
 

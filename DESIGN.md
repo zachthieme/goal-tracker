@@ -1651,11 +1651,12 @@ and so on).
     mark ✓ in an 18px `--health-g-ink` circle or ○ as an empty 2px
     `--color-border-strong` ring, its done or to do for screen readers alone;
     the buttons, stacked and as wide as the rail, **Create and activate**
-    (primary) over **Save as Proposed** (Enter in a field saves as Proposed);
-    a muted line on what saving needs; and a small **Cancel** link. With
-    script, the form posts to the checklist on load and as it is typed, and
-    the rail is swapped for the answer, Create and activate staying disabled
-    until every item is done. Without script the rail shows the checklist as
+    (primary) on the New goal page, **Activate Goal** on Finish defining, over
+    **Save as Proposed** (Enter in a field saves as Proposed); a muted line on
+    what saving needs; and a small **Cancel** link. With script, the form
+    posts to the checklist on load and as it is typed, and the rail is
+    swapped for the answer, the activate button staying disabled until every
+    item is done. Without script the rail shows the checklist as
     the page rendered it, and the server decides.
   - **A refused submit** comes back as the same page, with what was typed. A
     summary leads the column (`.alert.r`): **The Goal wasn't created.** (**The
@@ -1673,11 +1674,15 @@ and so on).
     still submit, activation asks no confirmation, and Ready to activate
     ignores it. An input refused shows its reason instead. The page renders
     the warnings, and with script they follow the form as it is typed.
-  - **Finish defining** (`/goals/<id>/define`): the Title is the Goal's and
-    read-only, and Why it matters takes the focus. The Goal's own Milestones
-    and Metrics are a read-only list at the top of How you'll know, and
-    Contributes to lists the Goals already asked, a Pending one "waiting on
-    <Owner>".
+  - **Finish defining** (`/goals/<id>/define`): the Title is the Goal's,
+    shown as heading-style text (`.gf-title-text`, 28/1.2, 600, -0.02em) with
+    no underline or box, since it can't change here, over a muted small
+    "Rename it on the Goal page" link to the Goal page with Edit title and Why
+    it matters open. Why it matters takes the focus, and the activate button
+    reads **Activate Goal**, as the Goal page's Define card calls it. The
+    Goal's own Milestones and Metrics are a read-only list at the top of How
+    you'll know, and Contributes to lists the Goals already asked, a Pending
+    one "waiting on <Owner>".
   - **At 960px and below** the rail follows the column as its last section,
     under a hairline, and doesn't stick. At 600px and below the Kind tiles
     stack, the cadence is a 2×2 grid, and an editor's fields go one to a row.
