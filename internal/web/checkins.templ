@@ -867,7 +867,9 @@ func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 // Highlight, dates and Milestones, and Lifecycle each sit in a collapsed
 // section that opens when it holds an error or a value the reader typed; with
 // script, the Highlight editor (highlighteditor.templ) upgrades the Highlight
-// section into add buttons, an editor and items. The
+// section into add buttons, an editor and items. With script, the
+// explanation of a difference from the Rolled-up Health shows only while the
+// Health picked differs from it (checkinExplanationScript). The
 // Path to Green asks for a reason for moving its back-to-Green date only once
 // the date is later than the latest Check-in's (see pathReasonShown). The form
 // ends with its submit bar, which sticks to the window's bottom while the form
@@ -925,11 +927,12 @@ templ checkinForm(d checkinFormData) {
 							<span class="muted">{ count }</span>
 						}
 					</p>
-					<label>
+					<label data-rolled-up={ d.RolledUp.Health }>
 						<span>Explain the difference from Rolled-up Health <span class="hint">Required while it differs from the Rolled-up Health</span></span>
 						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... } { d.Errors.attrs(domain.CheckinInputExplanation)... }>{ d.Explanation }</textarea>
 					</label>
 					@checkinFieldError(d.Errors, domain.CheckinInputExplanation)
+					@checkinExplanationScript()
 				</div>
 			}
 		</section>
@@ -1109,6 +1112,32 @@ templ checkinSectionsScript() {
 
 			function section(b) {
 				return document.getElementById(b.getAttribute("aria-controls"));
+			}
+		})();
+	</script>
+}
+
+// checkinExplanationScript asks for the explanation of a difference from the
+// Rolled-up Health only while the Health picked differs from it, the label's
+// data-rolled-up: it hides the field while they match, and shows it again as
+// the Health changes, what was typed kept. It never hides the field while it
+// carries its error. Without script the field always shows; the server drops
+// an explanation sent while the Healths match. It isn't behind a once handle,
+// so it runs again on the form an htmx re-render swaps in.
+templ checkinExplanationScript() {
+	<script>
+		(function () {
+			var form = document.getElementById("checkin-form");
+			var why = form && form.querySelector("label[data-rolled-up]");
+			if (!why) return;
+			show();
+			form.addEventListener("change", function (e) {
+				if (e.target.name === "health") show();
+			});
+
+			function show() {
+				var health = form.querySelector("input[name=health]:checked");
+				why.hidden = !!health && health.value === why.getAttribute("data-rolled-up") && !why.querySelector("[aria-invalid=true]");
 			}
 		})();
 	</script>

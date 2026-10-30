@@ -1471,8 +1471,10 @@ and so on).
   - **Rolled-up Health (`.checkin-rollup`):** when the Goal has one. Not a
     panel: a 1px `--color-border` hairline, then a muted "Rolled-up Health:",
     the Health badge and its muted count line ("1 of 5 Red · 1 Yellow"), then
-    "Explain the difference from Rolled-up Health", asked whenever there is a
-    Rolled-up Health.
+    "Explain the difference from Rolled-up Health", asked only while the
+    picked Health differs from the Rolled-up Health: script hides it while they
+    match, keeping what was typed. Without script it always shows when there is
+    a Rolled-up Health.
   - **Path to Green:** Plan; Back to Green by, with "Last time: Oct 3" and "A
     later date needs a reason." beside the date on one wrapping row; "Reason
     for moving it later", shown only while the date is later than last time's;

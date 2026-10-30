@@ -150,17 +150,31 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await marcus.goto(`/goals/${chain.team.id}/checkin`);
     const form = marcus.getByTestId("checkin-form");
     await expect(form.getByTestId("checkin-form-rollup")).toContainText("Rolled-up Health: Yellow");
-    // The Explanation is there whenever there is a Rolled-up Health, whatever
-    // Health is picked.
-    for (const health of ["Yellow", "Red", "Green"]) {
+    // With script, the Explanation is asked only while the picked Health
+    // differs from the Rolled-up Health.
+    const explanation = form.getByTestId("checkin-explanation");
+    for (const [health, asked] of [
+      ["Yellow", false],
+      ["Red", true],
+      ["Yellow", false],
+      ["Green", true],
+    ] as const) {
       await pickHealth(form, health);
-      await expect(form.getByTestId("checkin-explanation")).toBeVisible();
+      await expect(explanation).toBeVisible({ visible: asked });
     }
 
+    // What was typed stays while it's hidden.
+    await explanation.fill("Typed before matching.");
+    await pickHealth(form, "Yellow");
+    await expect(explanation).toBeHidden();
+    await pickHealth(form, "Green");
+    await expect(explanation).toHaveValue("Typed before matching.");
+
     await statusBox(form).fill("On track overall.");
-    await form.getByTestId("checkin-explanation").fill("");
+    await explanation.fill("");
     await submit(form);
     await expect(fieldError(form, "explanation")).toContainText("differs from the Rolled-up Health (Yellow)");
+    await expect(explanation).toBeVisible();
 
     const why = "The vendor slip is covered by the project's plan; the team Goal still lands.";
     await form.getByTestId("checkin-explanation").fill(why);
