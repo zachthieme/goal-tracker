@@ -346,7 +346,9 @@ and so on).
          and icon `--color-ink`.
        - **The current item:** an item is current on its own address and
          every page under it, so a Goal's page, New goal and a Check-in all
-         mark Goals.
+         mark Goals. The Admin tools' pages (Dimensions, Fields, Import Goals,
+         Definition log) mark Admin likewise, for an Admin, as pages under
+         Admin (`adminToolPaths` in `layout.templ`).
        - **Counts:** Home counts what needs the person. Follow-ups counts the
          Goals it flags in the person's default scope (see Scope), as many as
          a bare `/follow-ups` lists for them. Goals, Reports and Admin carry no
@@ -391,7 +393,9 @@ and so on).
   - **The title:** at its left, the page's title as an `h1` at 14/1.4, 600,
     cut short with an ellipsis when long. On a page under another, its parent
     leads it as a muted link and `›` ("Goal title › Check in"), the `›` hidden
-    from screen readers. A muted count in tabular figures follows where the
+    from screen readers. An Admin tool's page leads with "Admin ›" for an
+    Admin ("Admin › Dimensions", `adminToolHead` in `admin.templ`), and its
+    title alone for anyone else, who has no Admin page. A muted count in tabular figures follows where the
     page has one ("24 in My org").
   - **Breadcrumbs:** the Goal page, a publication and the Report builder
     put a `<nav aria-label="Breadcrumb">` there instead ("Goals › <Goal
@@ -2051,7 +2055,8 @@ and so on).
     `--color-danger-ink`. At 600px and below a field-plus-button form wraps.
 - **Dimensions page (`dimensionsPage` in `dimensions.templ`):** anyone signed
   in can read it, and only an Admin sees its controls. "Dimensions" is the
-  header strip's title, over a muted intro line.
+  header strip's title, under "Admin ›" for an Admin, over a muted intro
+  line.
   - **Define a Dimension:** for an Admin, a primary button that is a
     `<details>` summary, so it works without script, opening the form under it
     as a plain section up to 560px wide: Name, Values ("comma-separated"),
@@ -2078,7 +2083,8 @@ and so on).
     several, behind a 2px `--color-danger-ink` rule down its left, announced as
     an alert.
 - **Fields page (`fieldsPage` in `fields.templ`):** laid out as Dimensions
-  is. "Fields" is the header strip's title, over a muted intro line. For an
+  is. "Fields" is the header strip's title, under "Admin ›" for an Admin,
+  over a muted intro line. For an
   Admin, **Define a Field** opens a form of Name, "It holds" (a number, a
   short text, a long text or a date; "this can't change later") and Unit,
   then **Create Field**. The list (`.fd-list`) has a row per Field between
@@ -2087,7 +2093,7 @@ and so on).
   optional) and **Retire this Field** (or **Restore this Field**). With no
   Fields, a muted "No Fields yet."
 - **Import Goals page (`importsPage` in `imports.templ`):** "Import Goals" is
-  the header strip's title, over a muted line naming the column format's
+  the header strip's title, under "Admin ›" for an Admin, over a muted line naming the column format's
   document. Anyone but an Admin sees only "Only an Admin may import Goals."
   An Admin sees the form (`.im-form`), a plain section up to 560px wide: a
   refused upload's reason as an alert, the Spreadsheet file input (CSV or
@@ -2098,7 +2104,7 @@ and so on).
   at phone width.
 - **Definition log (`definitionLogPage` in `definitionlog.templ`):** anyone
   signed in reads it, and Admin's tools link to it. "Definition log" is the
-  header strip's title, with no actions, over a muted intro line: "Every
+  header strip's title, under "Admin ›" for an Admin, with no actions, over a muted intro line: "Every
   change to the Dimensions and Fields, newest first", or "Every change to
   <name>" when narrowed to one.
   - **Narrowing (`.dl-scope`):** a GET form, so it needs no script: "Show

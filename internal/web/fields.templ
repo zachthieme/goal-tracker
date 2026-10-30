@@ -23,7 +23,7 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ fieldsPage(current *domain.Account, fields []domain.Field) {
 	{{ admin := current != nil && current.IsAdmin }}
-	@framedLayout("Fields", current, pageHeader(pageHead{Title: "Fields"})) {
+	@framedLayout("Fields", current, pageHeader(adminToolHead(current, "Fields"))) {
 		@fieldsStyles()
 		<p class="muted">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p>
 		if admin {

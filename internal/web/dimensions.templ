@@ -28,7 +28,7 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) {
 	{{ admin := current != nil && current.IsAdmin }}
-	@framedLayout("Dimensions", current, pageHeader(pageHead{Title: "Dimensions"})) {
+	@framedLayout("Dimensions", current, pageHeader(adminToolHead(current, "Dimensions"))) {
 		@dimensionsStyles()
 		<p class="muted">The Dimensions Goals are tagged with, and their values.</p>
 		if refusal != nil {
