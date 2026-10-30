@@ -359,39 +359,6 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 	}
 }
 
-// Only the Owner, a Delegate or an Admin sets a Goal's Dimension values: another
-// signed-in person posting to the endpoint is refused with 403 and the value is
-// unchanged.
-func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	owner := h.SignIn("owner@example.com")
-	h.SignIn("other@example.com")
-	quarter := h.CreateDimension(boss, "Quarter", "Q3", "Q4")
-	goal := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
-	h.AssignGoalValue(goal, quarter.Values[1])
-	ts := newServer(t, h)
-
-	otherClient := signInClient(t, ts.URL, "other@example.com")
-	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
-	resp := postForm(t, otherClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", quarter.Values[0].ID)}})
-	defer func() { _ = resp.Body.Close() }()
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("non-Owner assign status = %d, want 403", resp.StatusCode)
-	}
-
-	values, err := h.Service.GoalValues(context.Background(), goal.ID)
-	if err != nil {
-		t.Fatalf("GoalValues: %v", err)
-	}
-	if len(values) != 1 || values[0].Value != "Q4" {
-		t.Errorf("values = %+v, want Q4 unchanged", values)
-	}
-}
-
 // With Dimensions out of the main nav, a non-Admin who doesn't own the Goal
 // reaches the Dimensions page from the Goal page's Dimensions section — before
 // any Dimension is defined as well as after.
@@ -2455,22 +2422,18 @@ func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) 
 	}
 }
 
-// The Owner or a Delegate adds a Milestone from the Goal page's Milestones
-// card while the Goal is Proposed, Active or On Hold: + Add opens an Add
-// Milestone form in place, and posting it reloads the Goal page with the new
-// Milestone listed (CONTEXT.md: Milestone).
+// The Owner adds a Milestone from the Goal page's Milestones card: + Add
+// opens an Add Milestone form in place, and posting it reloads the Goal page
+// with the new Milestone listed (CONTEXT.md: Milestone). Who may add one, in
+// which Lifecycle, is the domain's (TestMilestoneChangesAdmitOnlyTheOwnerOrADelegate,
+// TestAddMilestoneAsAuthorByADelegateWhileOnHold).
 func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	dana := h.SignIn("dana@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	onHold := h.OnHoldGoal(sam, "Migrate billing", "Billing is brittle.", "Waiting on finance.")
-	for _, g := range []domain.Goal{proposed, active, onHold} {
-		h.AddDelegate(sam, dana, g.ID)
-	}
 	ts := newServer(t, h)
 
 	// churn is the card's Milestone Churn, or "" where it shows none.
@@ -2488,11 +2451,7 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 		churnBefore, churnAfter string
 	}{
 		{"sam@example.com", proposed, "", ""},
-		{"dana@example.com", proposed, "", ""},
 		{"sam@example.com", active, "0", "1"},
-		{"dana@example.com", active, "1", "2"},
-		{"sam@example.com", onHold, "0", "0"},
-		{"dana@example.com", onHold, "0", "0"},
 	} {
 		client := signInClient(t, ts.URL, tc.who)
 		card := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, tc.goal)), "goal-milestones")
@@ -2530,154 +2489,16 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 	}
 }
 
-// Only the Goal's Owner or a Delegate may add or edit its Milestones: anyone
-// else is refused with 403 by both routes and nothing changes, and the Goal
-// page offers them no Add Milestone form. A Done or Cancelled Goal takes no
-// new Milestone, so even its Owner is offered no form and is refused.
-func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	h.SignIn("ada@example.com")
-	h.SignIn("pat@example.com")
-	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
-		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("AddMilestoneAsAuthor: %v", err)
-	}
-	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	ts := newServer(t, h)
-	rows := func(g domain.Goal) []string {
-		t.Helper()
-		ms, err := h.Service.ListMilestones(t.Context(), g.ID)
-		if err != nil {
-			t.Fatalf("ListMilestones: %v", err)
-		}
-		var out []string
-		for _, m := range ms {
-			out = append(out, m.Name+" "+m.TargetDate.Format("2006-01-02"))
-		}
-		return out
-	}
-	offersAddMilestone := func(root *nethtml.Node) bool {
-		return hasTestID(root, "open-milestones") || hasTestID(root, "add-milestone")
-	}
-
-	for _, who := range []string{"pat@example.com", "ada@example.com"} {
-		client := signInClient(t, ts.URL, who)
-		for _, g := range []domain.Goal{proposed, active} {
-			before := rows(g)
-			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
-			defer func() { _ = resp.Body.Close() }()
-			reason := textOf(findByTestID(t, parsePage(t, readBody(t, resp)), "refused-reason"))
-			if resp.StatusCode != http.StatusForbidden || reason != "Only the Owner or a Delegate may change this Goal's Milestones." {
-				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, reason)
-			}
-			m := onlyMilestone(t, h, g)
-			resp = postForm(t, client, fmt.Sprintf("%s/milestones/%d", ts.URL, m.ID), url.Values{"name": {"Renamed"}, "target_date": {m.TargetDate.Format("2006-01-02")}})
-			_ = readBody(t, resp)
-			if resp.StatusCode != http.StatusForbidden {
-				t.Errorf("%s editing on %s: %d, want 403", who, g.Lifecycle, resp.StatusCode)
-			}
-			if after := rows(g); !slices.Equal(after, before) {
-				t.Errorf("%s changed %s's Milestones: %q, was %q", who, g.Lifecycle, after, before)
-			}
-			for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
-				if offersAddMilestone(getPage(t, client, u)) {
-					t.Errorf("%s is offered the Add Milestone form at %s", who, u)
-				}
-			}
-		}
-	}
-
-	sam2 := signInClient(t, ts.URL, "sam@example.com")
-	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
-		g := h.ActiveGoal(sam, "Ended "+lifecycle, "It mattered.")
-		h.EndGoalInCheckin(sam, g.ID, lifecycle)
-		for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
-			if offersAddMilestone(getPage(t, sam2, u)) {
-				t.Errorf("the Owner of a %s Goal is offered the Add Milestone form at %s", lifecycle, u)
-			}
-		}
-		before := rows(g)
-		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
-		defer func() { _ = resp.Body.Close() }()
-		body := textOf(parsePage(t, readBody(t, resp)))
-		if want := "A " + lifecycle + " Goal's Milestones can't change."; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
-			t.Errorf("adding to a %s Goal answered %d %q, want 422 saying %q", lifecycle, resp.StatusCode, body, want)
-		}
-		for _, internal := range []string{"validation failed", "not authorized"} {
-			if strings.Contains(body, internal) {
-				t.Errorf("adding to a %s Goal answered %q, carrying the internal %q prefix", lifecycle, body, internal)
-			}
-		}
-		if after := rows(g); !slices.Equal(after, before) {
-			t.Errorf("a %s Goal took a Milestone: %q", lifecycle, after)
-		}
-	}
-}
-
-// The Owner's Edit on a Proposed Goal's Milestone changes its name and date,
-// but a Delegate's on an Active Goal's Milestone is refused, rename and date
-// alike: a Milestone is edited only while its Goal is Proposed, and after that
-// its date moves only in a Check-in (CONTEXT.md: Milestone, Date Slip).
-func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
+// On a Proposed Goal a Delegate is offered the same Edit form on each
+// Milestone as its Owner, posting to the Milestone, and what they save is
+// kept, name and date; a reader is offered none, for EditMilestone allows
+// only the Owner and Delegates (TestMilestoneChangesAdmitOnlyTheOwnerOrADelegate).
+func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	dana := h.SignIn("dana@example.com")
-	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), proposed.Owner.ID, domain.AddMilestoneInput{
-		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
-	}); err != nil {
-		t.Fatalf("AddMilestoneAsAuthor: %v", err)
-	}
-	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.AddDelegate(sam, dana, active.ID)
-	ts := newServer(t, h)
-
-	pricing := onlyMilestone(t, h, proposed)
-	sam2 := signInClient(t, ts.URL, "sam@example.com")
-	section := findByTestID(t, getPage(t, sam2, goalPageURL(ts.URL, proposed)), "goal-milestones")
-	editAction := fmt.Sprintf("/milestones/%d", pricing.ID)
-	if edits := findAll(section, func(n *nethtml.Node) bool { return n.Data == "form" && attrOf(n, "action") == editAction }); len(edits) != 1 {
-		t.Fatalf("the Milestones section has %d Edit forms posting to %s, want 1: %s", len(edits), editAction, renderNode(section))
-	}
-	resp := postForm(t, sam2, ts.URL+editAction, url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
-	defer func() { _ = resp.Body.Close() }()
-	_ = readBody(t, resp)
-	if got := onlyMilestone(t, h, proposed); resp.StatusCode != http.StatusOK || got.Name != "Pricing page live" || got.TargetDate.Format("2006-01-02") != "2026-04-15" {
-		t.Errorf("the Owner's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
-	}
-
-	beta := onlyMilestone(t, h, active)
-	dana2 := signInClient(t, ts.URL, "dana@example.com")
-	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {beta.TargetDate.Format("2006-01-02")}})
-	_ = readBody(t, resp)
-	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusUnprocessableEntity || got.Name != "Beta" {
-		t.Errorf("a Delegate's rename on an Active Goal answered %d and left %q, want 422 and Beta", resp.StatusCode, got.Name)
-	}
-	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {"2026-12-01"}})
-	_ = readBody(t, resp)
-	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusUnprocessableEntity || !got.TargetDate.Equal(beta.TargetDate) {
-		t.Errorf("moving an Active Goal's Milestone date outside a Check-in answered %d and left %s", resp.StatusCode, got.TargetDate)
-	}
-}
-
-// On a Proposed Goal a Delegate is offered the same Edit form on each
-// Milestone as its Owner, and what they save is kept, name and date; a reader
-// and an Admin who is neither Owner nor Delegate are offered none, for
-// EditMilestone allows only the Owner and Delegates.
-func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	dana := h.SignIn("dana@example.com")
-	h.SignIn("ada@example.com")
 	h.SignIn("pat@example.com")
 	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
 	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
@@ -2704,6 +2525,9 @@ func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
 		t.Fatalf("a Delegate on a Proposed Goal isn't offered Save on its Milestone: %s", renderNode(section))
 	}
 	pricing := onlyMilestone(t, h, proposed)
+	if edits := goalFormsPostingTo(section, fmt.Sprintf("/milestones/%d", pricing.ID)); len(edits) != 1 {
+		t.Errorf("the Milestones section has %d Edit forms posting to the Milestone, want 1: %s", len(edits), renderNode(section))
+	}
 	resp := postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, pricing.ID), url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
 	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
@@ -2711,11 +2535,9 @@ func TestDelegateEditsAProposedGoalsMilestoneOverHTTP(t *testing.T) {
 		t.Errorf("a Delegate's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
 	}
 
-	for _, who := range []string{"pat@example.com", "ada@example.com"} {
-		section := milestones(signInClient(t, ts.URL, who))
-		if fields := formFields(section, "name"); len(fields) != 0 || buttonNamed(section, "Save") != nil {
-			t.Errorf("%s is offered a Milestone's Edit form on a Proposed Goal: %s", who, renderNode(section))
-		}
+	section = milestones(signInClient(t, ts.URL, "pat@example.com"))
+	if fields := formFields(section, "name"); len(fields) != 0 || buttonNamed(section, "Save") != nil {
+		t.Errorf("a reader is offered a Milestone's Edit form on a Proposed Goal: %s", renderNode(section))
 	}
 }
 
@@ -3031,17 +2853,17 @@ func TestGoalPageOffersLinkRemoveOnlyToEitherGoalsOwner(t *testing.T) {
 	}
 }
 
-// Activate Goal shows only to the Owner of a Proposed Goal: not to its
-// Delegate, an Admin or a stranger, and not to the Owner once it is Active.
+// Activate Goal shows on a Proposed Goal's Define this Goal to whoever may
+// activate it, its Owner, and not to someone who may not, such as its
+// Delegate. Who may, in which Lifecycle, is the domain's
+// (TestActivateGoalAdmitsOnlyTheOwner, TestActivateRefusesGoalThatIsNotProposed,
+// TestGoalPageOffersExactlyWhatEachCommandAccepts).
 func TestGoalPageOffersActivateGoalOnlyToAProposedGoalsOwner(t *testing.T) {
 	t.Parallel()
-	h := testsupport.New(t, "admin@example.com")
+	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	morgan := h.SignIn("morgan@example.com")
-	h.SignIn("rita@example.com")
-	h.SignIn("admin@example.com")
 	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
-	active := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.AddDelegate(sam, morgan, proposed.ID)
 	ts := newServer(t, h)
 
@@ -3052,9 +2874,6 @@ func TestGoalPageOffersActivateGoalOnlyToAProposedGoalsOwner(t *testing.T) {
 	}{
 		{"sam@example.com", "the Owner of the Proposed Goal", proposed, true},
 		{"morgan@example.com", "a Delegate on the Proposed Goal", proposed, false},
-		{"admin@example.com", "an Admin on the Proposed Goal", proposed, false},
-		{"rita@example.com", "a stranger to the Proposed Goal", proposed, false},
-		{"sam@example.com", "the Owner of the Active Goal", active, false},
 	} {
 		page := getPage(t, signInClient(t, ts.URL, v.who), goalPageURL(ts.URL, v.goal))
 		if got := buttonNamed(findByTestID(t, page, "goal-main"), "Activate Goal") != nil; got != v.want {
@@ -4102,66 +3921,6 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 	open := goalOpenFormIn(t, getPage(t, samClient, ts.URL+back), "dimensions")
 	if reason := textOf(findByTestID(t, open, "form-error")); !strings.Contains(reason, "Hooli is retired") {
 		t.Errorf("adding hooli: the open form's error %q doesn't say Hooli is retired", reason)
-	}
-}
-
-// A Delegate sees the Goal page's Dimension value controls and sets values and
-// adds to an Extendable list through them; an Account with no role on the Goal
-// sees no controls and is refused with 403 (CONTEXT.md: Delegate).
-func TestDelegateSetsAndAddsDimensionValuesButAStrangerCannotOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	dee := h.SignIn("dee@example.com")
-	h.SignIn("cory@example.com")
-	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
-	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
-	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.AddDelegate(sam, dee, goal.ID)
-	ts := newServer(t, h)
-	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
-	deeClient := signInClient(t, ts.URL, "dee@example.com")
-	coryClient := signInClient(t, ts.URL, "cory@example.com")
-
-	if page := getPage(t, deeClient, goalURL); goalMenuItemsIn(t, page)["Edit Dimension values"] == "" || !hasTestID(page, "open-dimensions") {
-		t.Fatalf("Delegate's Goal page doesn't offer to edit Dimension values:\n%s", renderNode(page))
-	}
-	goalOpenFormIn(t, getPage(t, deeClient, goalURL+"?open=dimensions"), "dimensions")
-	for _, form := range []url.Values{
-		{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}},
-		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Globex"}},
-	} {
-		resp := postForm(t, deeClient, goalURL+"/dimensions", form)
-		defer func() { _ = resp.Body.Close() }()
-		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
-			t.Fatalf("Delegate posting %v: status %d: %s", form, resp.StatusCode, body)
-		}
-	}
-	shown := goalRailDimensionValuesIn(t, getPage(t, deeClient, goalURL))
-	for _, want := range []string{"Reliability", "Globex"} {
-		if !slices.Contains(shown, want) {
-			t.Errorf("Goal page doesn't show %s set by the Delegate: %q", want, shown)
-		}
-	}
-
-	if page := getPage(t, coryClient, goalURL+"?open=dimensions"); len(goalOpenFormsIn(page)) > 0 || hasTestID(page, "open-dimensions") {
-		t.Errorf("stranger's Goal page offers Dimension value controls:\n%s", renderNode(page))
-	}
-	for _, form := range []url.Values{
-		{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}},
-		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Initech"}},
-	} {
-		resp := postForm(t, coryClient, goalURL+"/dimensions", form)
-		defer func() { _ = resp.Body.Close() }()
-		_ = readBody(t, resp)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("stranger posting %v: status %d, want 403", form, resp.StatusCode)
-		}
-	}
-	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme", "Globex"}) {
-		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }
 
@@ -6792,61 +6551,45 @@ func goalLifecycleMenuItemsIn(t *testing.T, root *nethtml.Node) map[string]strin
 	return out
 }
 
-// Whoever may check in — the Owner or a Delegate — finds the Lifecycle changes
-// the Goal allows in the action menu, after the other items: Put on hold…,
-// Mark done… and Cancel… on an Active Goal, Cancel… alone on an On Hold one,
-// none on a Proposed, Done or Cancelled one. Each leads to the Check-in page
-// with that change picked. Nobody else sees them, an Admin included.
+// Whoever may check in finds the Lifecycle changes the Goal allows in the
+// action menu, after the other items: Put on hold…, Mark done… and Cancel… on
+// an Active Goal, and on an On Hold one Cancel… alone, for the Check-in form
+// resumes it by default. Each leads to the Check-in page with that change
+// picked. Nobody else sees them. Who may make which change, in which
+// Lifecycle, is the domain's (TestGoalPageOffersExactlyWhatEachCommandAccepts).
 func TestGoalPageActionMenuOffersLifecycleChangesOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "ada@example.com")
-	h.SignIn("ada@example.com")
+	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	tpm := h.SignIn("tpm@example.com")
 	h.SignIn("mel@example.com")
 	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
-	proposed := h.CreateGoal(sam, "Hire a team", "We need people.")
-	done := h.ActiveGoal(sam, "Ship v1", "Customers wait.")
-	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
-	cancelled := h.ActiveGoal(sam, "Rewrite in Rust", "Speed.")
-	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
-	for _, g := range []domain.Goal{active, onHold, proposed, done, cancelled} {
-		h.AddDelegate(sam, tpm, g.ID)
-	}
 	ts := newServer(t, h)
 	checkin := func(g domain.Goal, to string) string {
 		return fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", g.ID, url.QueryEscape(to))
 	}
 
-	for _, who := range []string{"sam@example.com", "tpm@example.com"} {
-		client := signInClient(t, ts.URL, who)
-		for _, tc := range []struct {
-			goal domain.Goal
-			want map[string]string
-		}{
-			{active, map[string]string{
-				"Put on hold…": checkin(active, domain.LifecycleOnHold),
-				"Mark done…":   checkin(active, domain.LifecycleDone),
-				"Cancel…":      checkin(active, domain.LifecycleCancelled),
-			}},
-			{onHold, map[string]string{"Cancel…": checkin(onHold, domain.LifecycleCancelled)}},
-			{proposed, map[string]string{}},
-			{done, map[string]string{}},
-			{cancelled, map[string]string{}},
-		} {
-			page := getPage(t, client, goalPageURL(ts.URL, tc.goal))
-			if got := goalLifecycleMenuItemsIn(t, page); !maps.Equal(got, tc.want) {
-				t.Errorf("%s on the %s Goal: Lifecycle items are %v, want %v", who, tc.goal.Lifecycle, got, tc.want)
-			}
+	client := signInClient(t, ts.URL, "sam@example.com")
+	for _, tc := range []struct {
+		goal domain.Goal
+		want map[string]string
+	}{
+		{active, map[string]string{
+			"Put on hold…": checkin(active, domain.LifecycleOnHold),
+			"Mark done…":   checkin(active, domain.LifecycleDone),
+			"Cancel…":      checkin(active, domain.LifecycleCancelled),
+		}},
+		{onHold, map[string]string{"Cancel…": checkin(onHold, domain.LifecycleCancelled)}},
+	} {
+		page := getPage(t, client, goalPageURL(ts.URL, tc.goal))
+		if got := goalLifecycleMenuItemsIn(t, page); !maps.Equal(got, tc.want) {
+			t.Errorf("on the %s Goal: Lifecycle items are %v, want %v", tc.goal.Lifecycle, got, tc.want)
 		}
 	}
-	for _, who := range []string{"mel@example.com", "ada@example.com"} {
-		page := getPage(t, signInClient(t, ts.URL, who), goalPageURL(ts.URL, active))
-		if got := goalLifecycleMenuItemsIn(t, page); len(got) > 0 {
-			t.Errorf("%s, who may not check in, sees Lifecycle items %v", who, got)
-		}
+	page := getPage(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, active))
+	if got := goalLifecycleMenuItemsIn(t, page); len(got) > 0 {
+		t.Errorf("someone who may not check in sees Lifecycle items %v", got)
 	}
 
 	// They come last in the menu, in that order.
@@ -7021,70 +6764,204 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 	}
 }
 
-// A refused submit from a form opened in place goes back to the Goal page's
-// own address, where that same form is open, the reason beside it as a
-// sentence without the internal "validation failed:" prefix (#192), and what
-// was typed still in it, rather than a bare error page. A reload shows the
-// plain Goal page (#687).
-func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
+// goalPageRefusalAnswer is how the Goal page answers a refused post from one
+// of its forms: back on the page with the form open in place (303), the
+// refusal page, or the Not found page.
+type goalPageRefusalAnswer int
+
+const (
+	goalPageRefusalInPlace goalPageRefusalAnswer = iota
+	goalPageRefusalPage
+	goalPageRefusalNotFound
+)
+
+// Each Goal page form (goalForm) answers each kind of refusal as the refusal
+// module does (TestARefusedCommandIsAnsweredInPlaceOrOnTheRefusalPage), and
+// which command refuses whom is the domain's
+// (TestGoalPageOffersExactlyWhatEachCommandAccepts); this is the wiring
+// between them. A refusal of what was typed (Validation) goes back to the
+// Goal page's own address, where that same form is open, the reason above it
+// as a sentence without the internal "validation failed:" prefix (#192), or
+// beside the picker it names, and what was typed still in it; a reload shows
+// the plain Goal page (#687). A form the page no longer offers its sender
+// says why on the refusal page instead, as does a form posting no input,
+// which has nothing to come back with. Someone the command refuses
+// (NotAuthorized) gets the refusal page at 403, and the page offers them no
+// way to open the form; a Goal that isn't there (NotFound) is the Not found
+// page.
+func TestGoalPageFormsAnswerEachRefusalKindOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	h.CreateExtendableDimension(ada, "Team", "Core")
+	h.SignIn("pat@example.com")
+	team := h.CreateExtendableDimension(ada, "Team", "Core")
 	budget := h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	done := h.ActiveGoal(sam, "Ship v2", "Customers wait for v2.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
-	team := dimensionByName(t, h, "Team")
 	ts := newServer(t, h)
 	clients := map[string]*http.Client{
 		"sam": signInClient(t, ts.URL, "sam@example.com"),
 		"ada": signInClient(t, ts.URL, "ada@example.com"),
+		"pat": signInClient(t, ts.URL, "pat@example.com"),
 	}
-	path := func(g domain.Goal, rest string) string { return fmt.Sprintf("/goals/%d%s", g.ID, rest) }
+	const missing = 999999
+	path := func(goalID int64, rest string) string { return fmt.Sprintf("/goals/%d%s", goalID, rest) }
+	account := func(id int64, rest string) string { return fmt.Sprintf("/accounts/%d%s", id, rest) }
+	var (
+		handoff     = url.Values{"to_email": {"pat@example.com"}}
+		reassign    = url.Values{"email": {"pat@example.com"}}
+		parentLink  = url.Values{"parent_id": {fmt.Sprint(orphan.ID)}, "note": {"Because."}}
+		delegates   = url.Values{"email": {"pat@example.com"}}
+		milestone   = url.Values{"name": {"GA"}, "target_date": {"2026-05-01"}}
+		dimensions  = url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"Infra"}}
+		fields      = url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"5"}}
+		highlight   = url.Values{"kind": {domain.HighlightInsight}, "note": {"Slow on mobile."}}
+		titleAndWhy = url.Values{"title": {"Halve outages"}, "why_it_matters": {"Outages cost us customers."}}
+		topLevel    = url.Values{"top_level": {"true"}}
+	)
 
 	for _, tc := range []struct {
-		who, form, action string
-		sent              url.Values
-		reason            string
-		// field is the control that keeps what was typed, typed.
-		field, typed string
-		// shownIn is where the open form says why: above it, form-error,
-		// when "".
-		shownIn string
+		kind, form, who, action string
+		goal                    domain.Goal
+		sent                    url.Values
+		answer                  goalPageRefusalAnswer
+		status                  int
+		// reason is what the open form says, in part, or the refusal page's
+		// reason, whole; heading and back are the refusal page's.
+		reason, heading, back string
+		// field is the open form's control that keeps what was typed, typed;
+		// shownIn is where it says why: above it, form-error, when "".
+		field, typed, shownIn string
 	}{
-		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", "to_email", "nobody@example.com", ""},
-		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", "email", "nobody@example.com", ""},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because.", ""},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "Pick a Goal to contribute to.", "note", "Because.", "input-error"},
-		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com", ""},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01", ""},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA", ""},
-		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", "new_value", "  ", ""},
-		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", "value", "lots", ""},
+		{kind: "Validation", form: "handoff", who: "sam", goal: goal, action: path(goal.ID, "/handoff"), sent: url.Values{"to_email": {"nobody@example.com"}},
+			answer: goalPageRefusalInPlace, reason: "No account with email", field: "to_email", typed: "nobody@example.com"},
+		{kind: "Validation", form: "reassign", who: "ada", goal: orphan, action: path(orphan.ID, "/reassign"), sent: url.Values{"email": {"nobody@example.com"}},
+			answer: goalPageRefusalInPlace, reason: "No account with email", field: "email", typed: "nobody@example.com"},
+		{kind: "Validation", form: "parent-link", who: "sam", goal: goal, action: path(goal.ID, "/links"), sent: url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}},
+			answer: goalPageRefusalInPlace, reason: "cannot contribute to itself", field: "note", typed: "Because."},
+		{kind: "Validation", form: "parent-link", who: "sam", goal: goal, action: path(goal.ID, "/links"), sent: url.Values{"parent_id": {""}, "note": {"Because."}},
+			answer: goalPageRefusalInPlace, reason: "Pick a Goal to contribute to.", field: "note", typed: "Because.", shownIn: "input-error"},
+		{kind: "Validation", form: "delegates", who: "sam", goal: goal, action: path(goal.ID, "/delegates"), sent: url.Values{"email": {"nobody@example.com"}},
+			answer: goalPageRefusalInPlace, reason: "nobody@example.com", field: "email", typed: "nobody@example.com"},
+		{kind: "Validation", form: "milestones", who: "sam", goal: goal, action: path(goal.ID, "/milestones"), sent: url.Values{"name": {"  "}, "target_date": {"2026-05-01"}},
+			answer: goalPageRefusalInPlace, reason: "A Milestone needs a name.", field: "target_date", typed: "2026-05-01"},
+		{kind: "Validation", form: "milestones", who: "sam", goal: goal, action: path(goal.ID, "/milestones"), sent: url.Values{"name": {"GA"}, "target_date": {""}},
+			answer: goalPageRefusalInPlace, reason: "A Milestone needs a date.", field: "name", typed: "GA"},
+		{kind: "Validation", form: "dimensions", who: "sam", goal: goal, action: path(goal.ID, "/dimensions"), sent: url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}},
+			answer: goalPageRefusalInPlace, reason: "cannot be blank", field: "new_value", typed: "  "},
+		{kind: "Validation", form: "fields", who: "sam", goal: goal, action: path(goal.ID, "/fields"), sent: url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}},
+			answer: goalPageRefusalInPlace, reason: "Budget", field: "value", typed: "lots"},
+		{kind: "Validation", form: "draft-highlight", who: "sam", goal: goal, action: path(goal.ID, "/draft-highlights"), sent: url.Values{"kind": {domain.HighlightInsight}, "note": {"  "}},
+			answer: goalPageRefusalInPlace, reason: "A Draft Highlight needs a note.", field: "kind", typed: domain.HighlightInsight},
+		{kind: "Validation", form: "title-why-it-matters", who: "sam", goal: goal, action: path(goal.ID, "/why-it-matters"), sent: url.Values{"title": {"   "}, "why_it_matters": {"Outages cost us customers."}},
+			answer: goalPageRefusalInPlace, reason: "A Goal needs a title.", field: "why_it_matters", typed: "Outages cost us customers."},
+		{kind: "Validation, on a form the page no longer offers", form: "milestones", who: "sam", goal: done, action: path(done.ID, "/milestones"), sent: milestone,
+			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't change Goal", reason: "A Done Goal's Milestones can't change.", back: path(done.ID, "")},
+		{kind: "Validation, posting no input", form: "depart", who: "ada", goal: goal, action: account(missing, "/depart"),
+			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark departed", reason: "Account does not exist.", back: "/home"},
+		{kind: "Validation, posting no input", form: "return", who: "ada", goal: orphan, action: account(missing, "/return"),
+			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark returned", reason: "Account does not exist.", back: "/home"},
+
+		{kind: "NotAuthorized", form: "handoff", who: "pat", goal: goal, action: path(goal.ID, "/handoff"), sent: handoff,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't hand off Goal", reason: "Only the Goal's Owner or an Admin may start a Handoff.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "reassign", who: "pat", goal: orphan, action: path(orphan.ID, "/reassign"), sent: reassign,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't reassign Goal", reason: "Only an Admin may do this.", back: path(orphan.ID, "")},
+		{kind: "NotAuthorized", form: "depart", who: "pat", goal: goal, action: account(sam.ID, "/depart"),
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't mark departed", reason: "Only an Admin may do this.", back: "/home"},
+		{kind: "NotAuthorized", form: "return", who: "pat", goal: orphan, action: account(kim.ID, "/return"),
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't mark returned", reason: "Only an Admin may do this.", back: "/home"},
+		{kind: "NotAuthorized", form: "top-level", who: "pat", goal: goal, action: path(goal.ID, "/top-level"), sent: topLevel,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Top-level", reason: "Only an Admin may do this.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "parent-link", who: "pat", goal: goal, action: path(goal.ID, "/links"), sent: parentLink,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Goal's Owner may link it to a parent.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "delegates", who: "pat", goal: goal, action: path(goal.ID, "/delegates"), sent: delegates,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't add Delegate", reason: "Only the Goal's Owner may authorize a Delegate.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "milestones", who: "pat", goal: goal, action: path(goal.ID, "/milestones"), sent: milestone,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Owner or a Delegate may change this Goal's Milestones.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "dimensions", who: "pat", goal: goal, action: path(goal.ID, "/dimensions"), sent: dimensions,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Owner, a Delegate or an Admin may set a Goal's Dimension values.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized, choosing one value", form: "dimensions", who: "pat", goal: goal, action: path(goal.ID, "/dimensions"), sent: url.Values{"value_id": {fmt.Sprint(team.Values[0].ID)}},
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Owner, a Delegate or an Admin may set a Goal's Dimension values.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "fields", who: "pat", goal: goal, action: path(goal.ID, "/fields"), sent: fields,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Owner, a Delegate or an Admin may set a Goal's Fields.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "draft-highlight", who: "pat", goal: goal, action: path(goal.ID, "/draft-highlights"), sent: highlight,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change highlight", reason: "Only the Owner or a Delegate may log, see, edit or delete this Goal's Draft Highlights.", back: path(goal.ID, "")},
+		{kind: "NotAuthorized", form: "title-why-it-matters", who: "pat", goal: goal, action: path(goal.ID, "/why-it-matters"), sent: titleAndWhy,
+			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't change Goal", reason: "Only the Goal's Owner or an Admin may change it.", back: path(goal.ID, "")},
+
+		{kind: "NotFound", form: "handoff", who: "sam", action: path(missing, "/handoff"), sent: handoff, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "reassign", who: "ada", action: path(missing, "/reassign"), sent: reassign, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "top-level", who: "ada", action: path(missing, "/top-level"), sent: topLevel, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "parent-link", who: "sam", action: path(missing, "/links"), sent: parentLink, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "delegates", who: "sam", action: path(missing, "/delegates"), sent: delegates, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "milestones", who: "sam", action: path(missing, "/milestones"), sent: milestone, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "dimensions", who: "sam", action: path(missing, "/dimensions"), sent: dimensions, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "fields", who: "sam", action: path(missing, "/fields"), sent: fields, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "draft-highlight", who: "sam", action: path(missing, "/draft-highlights"), sent: highlight, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "title-why-it-matters", who: "sam", action: path(missing, "/why-it-matters"), sent: titleAndWhy, answer: goalPageRefusalNotFound},
 	} {
-		goalPath := tc.action[:strings.LastIndex(tc.action, "/")]
-		postRefusedBack(t, clients[tc.who], ts.URL+tc.action, tc.sent, goalPath)
-		open := goalOpenFormIn(t, getPage(t, clients[tc.who], ts.URL+goalPath), tc.form)
-		reason := textOf(findByTestID(t, open, cmp.Or(tc.shownIn, "form-error")))
-		if !strings.Contains(reason, tc.reason) {
-			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
-		}
-		for _, internal := range []string{"validation failed", "not authorized"} {
-			if strings.Contains(reason, internal) {
-				t.Errorf("%s: open form's error %q carries the internal %q prefix", tc.form, reason, internal)
+		name := tc.kind + ": " + tc.form
+		client := clients[tc.who]
+		resp := postForm(t, noRedirects(client), ts.URL+tc.action, tc.sent)
+		defer func() { _ = resp.Body.Close() }()
+		body := readBody(t, resp)
+		page := parsePage(t, body)
+		switch tc.answer {
+		case goalPageRefusalInPlace:
+			back := path(tc.goal.ID, "")
+			if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
+				t.Errorf("%s: status %d to %q, want 303 to %q", name, resp.StatusCode, resp.Header.Get("Location"), back)
+				continue
 			}
-		}
-		if typed := formFields(open, tc.field); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == tc.typed }) {
-			t.Errorf("%s: open form lost what was typed (%s %q): %s", tc.form, tc.field, tc.typed, renderNode(open))
-		}
-		if reload := getPage(t, clients[tc.who], ts.URL+goalPath); len(goalOpenFormsIn(reload)) != 0 || hasTestID(reload, "form-error") {
-			t.Errorf("%s: a reload still shows a form open %v, or its error", tc.form, goalOpenFormsIn(reload))
+			open := goalOpenFormIn(t, getPage(t, client, ts.URL+back), tc.form)
+			reason := textOf(findByTestID(t, open, cmp.Or(tc.shownIn, "form-error")))
+			if !strings.Contains(reason, tc.reason) {
+				t.Errorf("%s: open form's error %q doesn't say %q", name, reason, tc.reason)
+			}
+			for _, internal := range []string{"validation failed", "not authorized"} {
+				if strings.Contains(reason, internal) {
+					t.Errorf("%s: open form's error %q carries the internal %q prefix", name, reason, internal)
+				}
+			}
+			if typed := formFields(open, tc.field); !slices.ContainsFunc(typed, func(f pageField) bool { return f.Value == tc.typed }) {
+				t.Errorf("%s: open form lost what was typed (%s %q): %s", name, tc.field, tc.typed, renderNode(open))
+			}
+			if reload := getPage(t, client, ts.URL+back); len(goalOpenFormsIn(reload)) != 0 || hasTestID(reload, "form-error") {
+				t.Errorf("%s: a reload still shows a form open %v, or its error", name, goalOpenFormsIn(reload))
+			}
+		case goalPageRefusalPage:
+			if resp.StatusCode != tc.status {
+				t.Errorf("%s: status %d, want %d:\n%s", name, resp.StatusCode, tc.status, body)
+				continue
+			}
+			assertRefusalPage(t, page, tc.heading, tc.reason, tc.back)
+			if tc.status != http.StatusForbidden {
+				continue
+			}
+			if open := goalOpenFormsIn(getPage(t, client, goalPageURL(ts.URL, tc.goal)+"?open="+tc.form)); len(open) != 0 {
+				t.Errorf("%s: ?open=%s shows %q open to one the command refuses", name, tc.form, open)
+			}
+			offered := getPage(t, client, goalPageURL(ts.URL, tc.goal))
+			if hasTestID(offered, "open-"+tc.form) {
+				t.Errorf("%s: the page offers a link opening %s to one the command refuses", name, tc.form)
+			}
+			for label, href := range goalMenuItemsIn(t, offered) {
+				if strings.HasSuffix(href, "?open="+tc.form) {
+					t.Errorf("%s: the action menu's %s opens %s to one the command refuses", name, label, tc.form)
+				}
+			}
+		case goalPageRefusalNotFound:
+			if resp.StatusCode != http.StatusNotFound || !hasTestID(page, "not-found") {
+				t.Errorf("%s: status %d, want the Not found page:\n%s", name, resp.StatusCode, body)
+			}
 		}
 	}
 }
@@ -7149,19 +7026,18 @@ func TestARefusedGoalFormAndActionItemShareTheOneRefusalCookieOverHTTP(t *testin
 }
 
 // Add Milestone answers a date that doesn't parse by naming it, as Edit
-// Milestone does, and only once it has checked who sent it: the Owner or a
-// Delegate goes back to the Goal page with the form open and the reason
-// beside it (#687), a stranger only the refusal, and an empty date is still
-// no date (#595).
+// Milestone does, and only once it has checked who sent it: the Owner goes
+// back to the Goal page with the form open and the reason beside it (#687), a
+// stranger only the refusal, and an empty date is still no date (#595). A
+// Delegate may add one as the Owner may
+// (TestMilestoneChangesAdmitOnlyTheOwnerOrADelegate).
 func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	dana := h.SignIn("dana@example.com")
 	h.SignIn("pat@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.AddDelegate(sam, dana, goal.ID)
 	ts := newServer(t, h)
 	back := fmt.Sprintf("/goals/%d", goal.ID)
 	action := ts.URL + back + "/milestones"
@@ -7173,7 +7049,6 @@ func TestAddMilestoneNamesAnUnparseableDateOverHTTP(t *testing.T) {
 		reason string
 	}{
 		{"the Owner", "sam@example.com", "soon", http.StatusSeeOther, `"soon" isn't a date.`},
-		{"a Delegate", "dana@example.com", "soon", http.StatusSeeOther, `"soon" isn't a date.`},
 		{"the Owner", "sam@example.com", "", http.StatusSeeOther, "A Milestone needs a date."},
 		{"a stranger", "pat@example.com", "soon", http.StatusForbidden, "Only the Owner or a Delegate may change this Goal's Milestones."},
 	} {
@@ -7338,40 +7213,6 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	return fmt.Sprintf("goal %+v\nmetrics %+v\nrevisions %+v", g, metrics, revisions)
 }
 
-// Editing a Goal's Metrics and Activating it are the Owner's alone, and its
-// Why it matters the Owner's or an Admin's (#281): anyone else, a Delegate
-// included, is refused with 403 and the Goal is left as it was (#191).
-func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	owner := h.SignIn("owner@example.com")
-	delegate := h.SignIn("tpm@example.com")
-	h.SignIn("other@example.com")
-	ts := newServer(t, h)
-	clients := map[string]*http.Client{
-		"another Account": signInClient(t, ts.URL, "other@example.com"),
-		"a Delegate":      signInClient(t, ts.URL, "tpm@example.com"),
-	}
-
-	for _, route := range ownerOnlyRoutes() {
-		g, metricID := ownerOnlyGoal(t, h, owner)
-		h.AddDelegate(owner, delegate, g.ID)
-		before := ownerOnlyGoalState(t, h, g.ID)
-		for who, client := range clients {
-			resp := postForm(t, client, ts.URL+route.path(g.ID, metricID), route.form)
-			defer func() { _ = resp.Body.Close() }()
-			_ = readBody(t, resp)
-			if resp.StatusCode != http.StatusForbidden {
-				t.Errorf("%s by %s: status = %d, want 403", route.name, who, resp.StatusCode)
-			}
-			if after := ownerOnlyGoalState(t, h, g.ID); after != before {
-				t.Errorf("%s by %s changed the Goal:\nbefore %s\nafter  %s", route.name, who, before, after)
-			}
-		}
-	}
-}
-
 // The Owner still uses each owner-only route as before (#191).
 func TestOwnerStillSetsUpTheirGoalOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -7423,54 +7264,35 @@ func titleWhyItMattersOpen(g domain.Goal) string {
 	return fmt.Sprintf("/goals/%d?open=title-why-it-matters", g.ID)
 }
 
-// The Owner and an Admin get Edit title and Why it matters on a Goal in any
-// Lifecycle, opening a form in the page head that holds the current title and
-// Why it matters. A Delegate and another Account get neither the item nor the form
-// (#281).
-func TestEditTitleAndWhyItMattersIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
+// Edit title and Why it matters, in the action menu, opens a form in the page
+// head that holds the current title and Why it matters (#281). Who is offered
+// it, in which Lifecycle, is the domain's
+// (TestGoalPageOffersExactlyWhatEachCommandAccepts); that the page offers it
+// to no one else is TestGoalPageFormsAnswerEachRefusalKindOverHTTP's.
+func TestEditTitleAndWhyItMattersOpensHoldingTheCurrentOnesOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t, "ada@example.com")
-	h.SignIn("ada@example.com")
+	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	tpm := h.SignIn("tpm@example.com")
-	h.SignIn("mel@example.com")
-	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	done := h.ActiveGoal(sam, "Ship v2", "Customers wait for v2.")
-	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, g := range []domain.Goal{active, proposed, done} {
-		h.AddDelegate(sam, tpm, g.ID)
-		for _, who := range []string{"sam@example.com", "ada@example.com"} {
-			client := signInClient(t, ts.URL, who)
-			if got := goalMenuItemsIn(t, getPage(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; got != titleWhyItMattersOpen(g) {
-				t.Errorf("%s on %q: Edit title and Why it matters leads to %q, want %q", who, g.Title, got, titleWhyItMattersOpen(g))
-			}
-			open := goalOpenFormIn(t, getPage(t, client, ts.URL+titleWhyItMattersOpen(g)), "title-why-it-matters")
-			if headingNamed(open, "Edit title and Why it matters") == nil {
-				t.Errorf("%s on %q: the open form is not labelled Edit title and Why it matters: %s", who, g.Title, renderNode(open))
-			}
-			if title := formField(t, open, "title"); title.Type != "text" || title.Value != g.Title || !hasAttr(title.Node, "autofocus") {
-				t.Errorf("%s on %q: the Title input is not a focused text input holding %q: %s", who, g.Title, g.Title, renderNode(title.Node))
-			}
-			if why := formFields(open, "why_it_matters"); len(why) != 1 || why[0].Type != "textarea" || why[0].Value != g.WhyItMatters {
-				t.Errorf("%s on %q: the Why it matters textarea doesn't hold %q: %s", who, g.Title, g.WhyItMatters, renderNode(open))
-			}
-			if buttonNamed(open, "Save") == nil {
-				t.Errorf("%s on %q: the form has no Save button: %s", who, g.Title, renderNode(open))
-			}
-		}
-		for _, who := range []string{"tpm@example.com", "mel@example.com"} {
-			client := signInClient(t, ts.URL, who)
-			if got, ok := goalMenuItemsIn(t, getPage(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; ok {
-				t.Errorf("%s on %q is offered Edit title and Why it matters, leading to %q", who, g.Title, got)
-			}
-			if open := goalOpenFormsIn(getPage(t, client, ts.URL+titleWhyItMattersOpen(g))); len(open) != 0 {
-				t.Errorf("%s on %q: ?open=title-why-it-matters shows %d forms open, want none", who, g.Title, len(open))
-			}
-		}
+	if got := goalMenuItemsIn(t, getPage(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; got != titleWhyItMattersOpen(g) {
+		t.Errorf("Edit title and Why it matters leads to %q, want %q", got, titleWhyItMattersOpen(g))
+	}
+	open := goalOpenFormIn(t, getPage(t, client, ts.URL+titleWhyItMattersOpen(g)), "title-why-it-matters")
+	if headingNamed(open, "Edit title and Why it matters") == nil {
+		t.Errorf("the open form is not labelled Edit title and Why it matters: %s", renderNode(open))
+	}
+	if title := formField(t, open, "title"); title.Type != "text" || title.Value != g.Title || !hasAttr(title.Node, "autofocus") {
+		t.Errorf("the Title input is not a focused text input holding %q: %s", g.Title, renderNode(title.Node))
+	}
+	if why := formFields(open, "why_it_matters"); len(why) != 1 || why[0].Type != "textarea" || why[0].Value != g.WhyItMatters {
+		t.Errorf("the Why it matters textarea doesn't hold %q: %s", g.WhyItMatters, renderNode(open))
+	}
+	if buttonNamed(open, "Save") == nil {
+		t.Errorf("the form has no Save button: %s", renderNode(open))
 	}
 }
 
@@ -7687,39 +7509,18 @@ func TestARefusedGoalFormTooLongToCarryBackAnswersWithTheRefusalPage(t *testing.
 	}
 }
 
-// Nobody but the Owner or an Admin edits the title and Why it matters: a Delegate or
-// another Account is refused with 403 and the Goal is left as it was. A post
-// with only a Why it matters, as before the form had a title, still edits the Why it
-// matters and leaves the title (#281).
-func TestEditTitleAndWhyItMattersIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
+// A post with only a Why it matters, as before the Edit title and Why it
+// matters form had a title, still edits the Why it matters and leaves the
+// title (#281). Who may edit them is the domain's
+// (TestTitleAndWhyItMattersEditsAdmitOnlyTheOwnerOrAnAdmin).
+func TestEditWhyItMattersWithoutATitleKeepsTheTitleOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	tpm := h.SignIn("tpm@example.com")
-	h.SignIn("mel@example.com")
 	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.AddDelegate(sam, tpm, g.ID)
 	ts := newServer(t, h)
 	goalURL := fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID)
-
-	for _, who := range []string{"tpm@example.com", "mel@example.com"} {
-		resp := postForm(t, signInClient(t, ts.URL, who), goalURL, url.Values{
-			"title": {"Halve outages"}, "why_it_matters": {"Outages cost us customers."},
-		})
-		defer func() { _ = resp.Body.Close() }()
-		_ = readBody(t, resp)
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("%s: status = %d, want 403", who, resp.StatusCode)
-		}
-		got, _ := h.Service.ViewGoal(t.Context(), g.ID)
-		if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost trust." {
-			t.Errorf("%s changed the Goal to %q / %q", who, got.Title, got.WhyItMatters)
-		}
-		if _, titles := titleWhyItMattersHistory(t, h, g.ID); titles != 0 {
-			t.Errorf("%s recorded %d title changes", who, titles)
-		}
-	}
 
 	_ = postFormBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL, url.Values{
 		"why_it_matters": {"Outages cost us customers."},
