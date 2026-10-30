@@ -274,11 +274,11 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await expect(elena.getByTestId("curation-count")).toHaveText(`${highlights.length} of ${highlights.length} in`);
     expect(await leavingWarns(elena), "leaving with unsaved changes warns").toBe(true);
 
-    // Publish… won't publish what she hasn't saved.
+    // Publish… won't publish what she hasn't saved without saving it first.
     const confirm = elena.getByTestId("publish-confirm");
     await confirm.getByText("Publish…").click();
-    await expect(confirm.getByTestId("publish-unsaved")).toHaveText("Save the narrative first.");
-    await expect(confirm.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+    await expect(confirm.getByTestId("publish-unsaved")).toHaveText("Your narrative changes will be saved first.");
+    await expect(confirm.getByRole("button", { name: "Save and publish", exact: true })).toBeEnabled();
     await confirm.getByText("Publish…").click();
 
     // Saving writes one entry in the Report log, which the page's History shows.

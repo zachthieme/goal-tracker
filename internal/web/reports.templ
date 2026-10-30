@@ -246,34 +246,46 @@ func draftMeta(r domain.Report, panel goalsPanel) string {
 // narrativeSaveScript keeps the compose form's unsaved changes in sight. A
 // change to the form marks the save status Unsaved changes, and its Highlights
 // count follows the boxes ticked. While the status is marked (data-unsaved),
-// Publish… says to save the narrative first, its Publish button disabled, and
-// leaving or reloading the page asks the browser's "Leave site?". A save's or
-// Add another's answer swaps in the Narrative section unless the author
-// changed the form while it was on its way: then what they typed stays, only
-// the answer's out-of-band parts are taken, and the status stays marked.
+// Publish… says the changes will be saved first, its Publish button reads
+// Save and publish, and leaving or reloading the page asks the browser's
+// "Leave site?". Save and publish clicks Save narrative and submits the
+// publish form only once that save leaves the status unmarked; when it
+// doesn't, Publish… says why: the refusal's reason, or that the narrative
+// wasn't saved. A save's or Add another's answer swaps in the Narrative
+// section unless the author changed the form while it was on its way: then
+// what they typed stays, only the answer's out-of-band parts are taken, and
+// the status stays marked.
 // Without script none of it runs, and Publish works as ever.
 templ narrativeSaveScript() {
 	<script>
 		(function () {
 			// edits counts the author's changes; sent is the count when the
-			// Narrative section last posted.
-			var edits = 0, sent = 0, stale = false;
+			// Narrative section last posted. publishing is true while Save and
+			// publish waits on its save, and saving is that save's request.
+			var edits = 0, sent = 0, stale = false, publishing = false, saving = null;
 			document.addEventListener("input", changed);
 			document.addEventListener("change", changed);
 			// toggle doesn't bubble, so Publish… opening is caught on its way down.
 			document.addEventListener("toggle", heed, true);
 			document.addEventListener("htmx:afterSettle", heed);
 			document.addEventListener("htmx:beforeRequest", function (e) {
-				if (fromNarrative(e)) sent = edits;
+				if (!fromNarrative(e)) return;
+				sent = edits;
+				if (publishing && !saving) saving = e.detail.xhr;
 			});
 			document.addEventListener("htmx:beforeSwap", function (e) {
 				stale = fromNarrative(e) && edits !== sent;
 				if (stale) e.detail.swapOverride = "none";
 			});
-			document.addEventListener("htmx:afterRequest", function () {
-				if (!stale) return;
-				stale = false;
-				markUnsaved();
+			document.addEventListener("submit", saveThenPublish, true);
+			// A swapped-out save answers from an ancestor still on the page,
+			// so its request, not where it came from, says whose it is.
+			document.addEventListener("htmx:afterRequest", function (e) {
+				if (stale) {
+					stale = false;
+					markUnsaved();
+				}
+				if (saving && e.detail.xhr === saving) published(e.detail.successful);
 			});
 			window.addEventListener("beforeunload", function (e) {
 				if (!unsaved()) return;
@@ -309,9 +321,47 @@ templ narrativeSaveScript() {
 			function heed() {
 				var publish = document.querySelector('[data-testid="publish-confirm"]');
 				if (!publish) return;
-				var refused = unsaved();
-				publish.querySelector('[data-testid="publish-unsaved"]').hidden = !refused;
-				publish.querySelector('[data-testid="report-publish"] button').disabled = refused;
+				var pending = unsaved(), notSaved = publish.querySelector('[data-testid="publish-not-saved"]');
+				if (!pending) notSaved.hidden = true;
+				publish.querySelector('[data-testid="publish-unsaved"]').hidden = !pending || !notSaved.hidden;
+				publish.querySelector('[data-testid="report-publish"] button').textContent = pending ? "Save and publish" : "Publish";
+			}
+			function saveThenPublish(e) {
+				var form = e.target, save = document.querySelector("#narrative-curation .rp-save-narrative");
+				if (!(form instanceof Element) || form.getAttribute("data-testid") !== "report-publish" || !unsaved() || !save) return;
+				e.preventDefault();
+				if (publishing) return;
+				publishing = true;
+				form.querySelector("button").disabled = true;
+				document.querySelector('[data-testid="publish-not-saved"]').hidden = true;
+				heed();
+				save.click();
+			}
+			// published submits the publish form once the save, ok when it got
+			// an answer to swap in, left the status unmarked; otherwise it says
+			// why. A dropped request answers before its send-error marks the
+			// status Not saved, so ok, not the status, says it wasn't saved.
+			function published(ok) {
+				publishing = false;
+				saving = null;
+				var form = document.querySelector('[data-testid="report-publish"]');
+				form.querySelector("button").disabled = false;
+				if (!unsaved()) {
+					form.submit();
+					return;
+				}
+				var result = document.getElementById("save-result").textContent, refusal = "Not saved: ";
+				if (!ok) {
+					tell("The narrative wasn't saved.");
+				} else if (result.indexOf(refusal) === 0) {
+					tell("The narrative wasn't saved: " + result.slice(refusal.length));
+				}
+			}
+			function tell(text) {
+				var notSaved = document.querySelector('[data-testid="publish-not-saved"]');
+				notSaved.textContent = text;
+				notSaved.hidden = false;
+				heed();
 			}
 		})();
 	</script>
@@ -538,8 +588,10 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 // reportPublish is the draft header's Publish…: a disclosure confirming what
 // the publication will freeze, with Cancel, which reloads the draft as it
 // stands and so closes it, and the publish form. While the compose form has
-// unsaved changes, script shows "Save the narrative first." and disables
-// Publish (narrativeSaveScript). A date the reader picked is
+// unsaved changes, script says they will be saved first and Publish becomes
+// Save and publish, which saves the narrative and publishes only once that
+// save took, saying why when it didn't (narrativeSaveScript). A date the
+// reader picked is
 // carried on the action; otherwise publishing reads against the previous
 // publication, as the draft does.
 templ reportPublish(r domain.Report, chip baselineChip) {
@@ -549,7 +601,8 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 			<div>
 				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
 				@publishSummaryText(r, chip, false)
-				<p data-testid="publish-unsaved" role="alert" hidden><strong>Save the narrative first.</strong></p>
+				<p data-testid="publish-unsaved" role="status" hidden><strong>Your narrative changes will be saved first.</strong></p>
+				<p data-testid="publish-not-saved" role="alert" hidden></p>
 			</div>
 			<div class="rp-actions">
 				<a data-testid="publish-cancel" class="btn quiet" href={ templ.SafeURL(chip.Draft + chip.Query) }>Cancel</a>
