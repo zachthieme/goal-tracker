@@ -32,6 +32,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Every request puts Accept first: Home's link requests and Handoffs now read Accept then Reject (Review then Reject for a Handoff with Delegates), and Parent suggestions on Home and the Goal page read Accept then Decline, matching the Pending links and Pending handoffs pages (#679).
 - [user] Home's My org counts the same Goals as Goals and Follow-ups scoped to My org, your own included in a "You" row, so its rows add up to its total again; each count now links to that scope filtered to what it counts (Red and Yellow to the Goal list by Health, the overdue ones to Follow-ups' Waiting on a Check-in group), and a person's name links to their Org apart from their counts (#678).
 
+**Infrastructure:**
+- [internal] Campaign planning no longer counts `DESIGN.md` as a collision: `vetinari/config.mts` gives vetinari a `fileSet` resolver that drops it, so two tickets that both edit it can share a wave. Nearly every UI ticket cites it, which had put one ticket in each wave (a 40-issue campaign planned 32 waves, 16 without it). Replaying 23 pairs of nearby campaign branches that both edited it gave no conflict; `styles_test.go` stays counted, since tests appended at its end do conflict (jjforge/vetinari#611).
+
 **Architecture:**
 - [internal] Creating a Goal names who creates it, and the domain checks one rule for it: a person creates Goals only for themselves, unless they are the Admin running an import. The web, Goal definition and importer callers no longer hold that rule themselves (#650).
 

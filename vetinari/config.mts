@@ -4,6 +4,7 @@
 // which is gitignored and never committed. Modeled on pike's config (also Go).
 import { resolve } from "node:path";
 import {
+  defaultFileSet,
   defineConfig,
   githubBlockedBy,
   githubFetchTask,
@@ -11,6 +12,17 @@ import {
   githubIssuesByLabel,
   githubMarkPendingVerify,
 } from "vetinari";
+
+// Files two co-wave tickets may both edit: the planner leaves them out of the
+// collision keys, and integration's conflict park catches the rare clash.
+// DESIGN.md is on nearly every UI ticket's Touches: line, so counting it put
+// one ticket in each wave (a 40-issue campaign planned 32 waves, about 14
+// without it); replaying 23 pairs of nearby campaign branches that both edited
+// it with git merge-tree gave no conflict. styles_test.go stays counted: its
+// tests are appended at the end of the file, and that does conflict.
+// jjforge/vetinari#611 asks for this as a config field.
+const coWaveSafe = new Set(["DESIGN.md"]);
+const ticketFiles = defaultFileSet();
 
 export default defineConfig({
   project: "goal-tracker",
@@ -83,6 +95,14 @@ export default defineConfig({
 
   // Native GitHub "blocked by" links drive dependency-ordered campaign waves.
   blockedBy: githubBlockedBy("zachthieme/goal-tracker"),
+
+  // Which files a ticket touches, for keeping a wave file-disjoint: the
+  // default resolver's, less the co-wave-safe files above. Confidence is the
+  // default's, so a ticket citing only DESIGN.md still plans.
+  fileSet: (ticket) => {
+    const { files, confident } = ticketFiles(ticket);
+    return { files: files.filter((f) => !coWaveSafe.has(f)), confident };
+  },
 
   // Lets `campaign ready-for-agent` select its issue set from the tracker.
   listByLabel: githubIssuesByLabel("zachthieme/goal-tracker"),
