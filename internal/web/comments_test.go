@@ -1089,3 +1089,27 @@ func TestARefusalStaysOnThePageItWasSentBackToOverHTTP(t *testing.T) {
 		t.Errorf("the draft doesn't show its refused Close open:\n%s", renderNode(page))
 	}
 }
+
+// A refused Add Action Item too long to carry back to its form answers with
+// the refusal page instead, headed Can't add Action Item (#660).
+func TestARefusedActionItemTooLongToCarryBackAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+
+	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "author@example.com")), ts.URL+pubPath+"/action-items", url.Values{
+		"text": {strings.Repeat("Book the EU legal review. ", 120)}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, page, "Can't add Action Item", `No account with email "nobody@example.com".`, pubPath)
+}
