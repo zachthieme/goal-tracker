@@ -2103,8 +2103,8 @@ func TestGoalFormParentChipRemoveLeavesItsParentOut(t *testing.T) {
 	}
 }
 
-// A parent chip carries a Remove checkbox for its parent, which the form's
-// script hides, as its × removes the chip instead (ticket #168).
+// A parent chip carries a Remove checkbox for its parent, which the picker's
+// script hides, as its × removes the chip instead (ticket #168, #656).
 func TestGoalFormParentChipHasARemoveCheckboxScriptHides(t *testing.T) {
 	t.Parallel()
 
@@ -2123,8 +2123,8 @@ func TestGoalFormParentChipHasARemoveCheckboxScriptHides(t *testing.T) {
 	if !slices.Contains(strings.Fields(box[1]), "gf-no-js") {
 		t.Errorf("the parent chip's Remove is class %q, which script doesn't hide", box[1])
 	}
-	if !strings.Contains(page, ".gf-form.gf-js .gf-no-js{display:none}") {
-		t.Errorf("the form's styles don't hide .gf-no-js when script runs")
+	if !strings.Contains(page, ".gf-picker.gf-js .gf-no-js{display:none}") {
+		t.Errorf("the picker's styles don't hide .gf-no-js when its script runs")
 	}
 }
 

@@ -160,6 +160,16 @@ type parentChoice struct {
 	Asks   string
 }
 
+// pickedParents are the Contributes to picker's chips: each parent picked,
+// with why it was refused.
+func (v goalFormView) pickedParents() []goalPickerChip {
+	var chips []goalPickerChip
+	for _, p := range v.Parents {
+		chips = append(chips, goalPickerChip{Choice: p, Error: v.bad(domain.ParentInput(p.Goal.ID))})
+	}
+	return chips
+}
+
 // asked names each Owner the picked parents ask to accept, once each, in the
 // order picked.
 func (v goalFormView) asked() []string {
@@ -545,15 +555,16 @@ const (
 	cadenceCustom    = "custom"
 )
 
-// goalSearchLimit is the most matches the Contributes to search answers.
+// goalSearchLimit is the most matches the Goal picker's search answers.
 const goalSearchLimit = 20
 
-// handleSearchGoals answers the Contributes to search as it is typed: each
+// handleSearchGoals answers the Goal picker's search as it is typed: each
 // candidate whose title contains q, ignoring case, less the parents already
 // picked, which come along as parent_id, the first goalSearchLimit of them.
-// On the define page goal names the Goal being finished, and the candidates
-// are those it could contribute to. Each result carries the chip picking it
-// adds.
+// goal names the Goal being finished on the define page or picked a parent
+// for, and the candidates are those it could contribute to, or with
+// for=suggestion those it could be suggested under (goalSearchCandidates).
+// Each result carries the chip picking it adds.
 func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	var picked []int64
 	for _, value := range r.URL.Query()[inputParentID] {
@@ -562,7 +573,7 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 		}
 	}
 	goalID, _ := strconv.ParseInt(r.URL.Query().Get(searchGoal), 10, 64)
-	_, candidates, err := s.splitParents(r.Context(), picked, goalID)
+	candidates, err := s.goalSearchCandidates(r.Context(), picked, goalID, r.URL.Query().Get(searchFor))
 	if err != nil {
 		s.serverError(w, r, "could not search goals", err)
 		return
@@ -583,6 +594,23 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	render(w, r, http.StatusOK, goalSearchResults(matches))
+}
+
+// goalSearchCandidates are the Goals the Goal picker's search looks among,
+// less those picked: with forWhat searchForSuggestion, those goalID could be
+// suggested under (domain.Service.SuggestableParents); otherwise those it
+// could contribute to (splitParents).
+func (s *Server) goalSearchCandidates(ctx context.Context, picked []int64, goalID int64, forWhat string) ([]domain.Goal, error) {
+	if goalID != 0 && forWhat == searchForSuggestion {
+		suggestable, err := s.svc.SuggestableParents(ctx, goalID)
+		if err != nil {
+			return nil, fmt.Errorf("load suggestable parents: %w", err)
+		}
+		_, rest := domain.PickParents(suggestable, picked)
+		return rest, nil
+	}
+	_, rest, err := s.splitParents(ctx, picked, goalID)
+	return rest, err
 }
 
 // handleCreateDefinedGoal submits the New goal page: the Goal is created as
@@ -618,9 +646,17 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
 }
 
-// searchGoal is the Contributes to search's parameter naming the Goal being
-// finished on the define page.
+// searchGoal is the Goal picker's search parameter naming the Goal being
+// finished on the define page, or picked a parent for.
 const searchGoal = "goal"
+
+// searchFor is the Goal picker's search parameter naming what it picks for:
+// searchForSuggestion, the parents the Goal may be suggested under
+// (domain.Service.SuggestableParents), or else those it may contribute to.
+const (
+	searchFor           = "for"
+	searchForSuggestion = "suggestion"
+)
 
 // heading names the page: New goal, or Finish defining.
 func (v goalFormView) heading() string {

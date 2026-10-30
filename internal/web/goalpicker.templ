@@ -1,0 +1,218 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// goalPicker picks Goals under the name parent_id: the chips picked, each
+// holding its parent_id, the search as it is typed, whose results show each
+// Goal's Health, title and Owner, and without script a select of the
+// candidates, then why the pick was refused. One-pick (Single), it opens with
+// nothing picked, a pick replaces the chip there, and the no-script select
+// starts on "Choose a Goal…". Neither control is required: the server decides.
+// The search asks on every input, not only a changed one: htmx's changed
+// remembers the query a one-pick's clearing leaves behind, so typing it again
+// wouldn't ask.
+templ goalPicker(v goalPickerView) {
+	<div class="gf-picker" data-goal-picker data-single?={ v.Single }>
+		<ul data-testid="parent-chips" id="parent-chips" class="gf-chips">
+			if !v.Single {
+				for _, p := range v.Picked {
+					@parentChip(p.Choice, p.Error)
+				}
+			}
+		</ul>
+		<div class="gf-js-only gf-search">
+			<input
+				type="search"
+				id="parent-search"
+				name="q"
+				placeholder="Search Goals by title"
+				autocomplete="off"
+				aria-label={ v.SearchLabel }
+				aria-controls="parent-results"
+				hx-get={ v.SearchURL }
+				hx-trigger="input delay:300ms, search"
+				hx-target="#parent-results"
+				hx-swap="innerHTML"
+				hx-sync="this:replace"
+				hx-include="#parent-chips [name='parent_id']"
+				autofocus?={ v.Autofocus }
+				{ invalid(v.Error, inputParentID)... }
+			/>
+			<ul data-testid="parent-results" id="parent-results" class="gf-results" aria-live="polite"></ul>
+		</div>
+		if v.Single {
+			<div class="field gf-no-js">
+				<select data-testid="parent-select" id={ inputParentID } name={ inputParentID } aria-label="Parent Goal" { invalid(v.Error, inputParentID)... }>
+					<option value="" selected>Choose a Goal…</option>
+					for _, c := range v.Candidates {
+						<option value={ fmt.Sprint(c.ID) }>{ c.Title }</option>
+					}
+				</select>
+			</div>
+		} else {
+			<label class="field gf-no-js">
+				<span>Pick any to contribute to <span class="hint">— hold Ctrl or ⌘ for several</span></span>
+				<select data-testid="parent-select" id={ inputParentID } name={ inputParentID } multiple { invalid(v.Error, inputParentID)... }>
+					for _, c := range v.Candidates {
+						<option value={ fmt.Sprint(c.ID) }>{ c.Title }</option>
+					}
+				</select>
+			</label>
+		}
+		if v.Error != "" {
+			<span data-testid="input-error" id={ inputParentID + "-error" } class="gf-input-error">{ v.Error }</span>
+		}
+	</div>
+	@goalPickerOnce.Once() {
+		@goalPickerStyles()
+		@goalPickerScript()
+	}
+}
+
+// goalPickerOnce renders the Goal picker's styles and script once per page,
+// however many pickers it holds.
+var goalPickerOnce = templ.NewOnceHandle()
+
+// parentChip is a picked parent: its hidden parent_id, its Health badge (its
+// Lifecycle when it has no Health), its title, and the × that removes it, or
+// without script its Remove checkbox, which leaves it out on submit. It
+// carries the label of the Owner picking it asks, for script to rebuild the
+// goal form's hint from.
+templ parentChip(p parentChoice, bad string) {
+	<li
+		data-testid="parent-chip"
+		id={ domain.ParentInput(p.Goal.ID) }
+		class="gf-chip"
+		if p.Asks != "" {
+			data-asks={ p.Asks }
+		}
+	>
+		<input type="hidden" name={ inputParentID } value={ fmt.Sprint(p.Goal.ID) }/>
+		@parentBadge(p)
+		<span class="gf-chip-title">{ p.Goal.Title }</span>
+		<button type="button" class="btn quiet sm gf-js-only" data-remove-chip aria-label={ "Remove " + p.Goal.Title } title={ "Remove " + p.Goal.Title }>×</button>
+		<label class="gf-no-js small"><input type="checkbox" name={ inputRemoveParent } value={ fmt.Sprint(p.Goal.ID) }/> Remove</label>
+		if bad != "" {
+			<span data-testid="input-error" id={ domain.ParentInput(p.Goal.ID) + "-error" } class="gf-input-error">{ bad }</span>
+		}
+	</li>
+}
+
+// goalSearchResults are the Goal picker's search matches, each a button
+// that picks it beside the <template> of the chip picking it adds.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
+templ goalSearchResults(matches []parentChoice) {
+	if len(matches) == 0 {
+		<li data-testid="parent-no-results" class="muted small">No Goals match.</li>
+	}
+	for _, p := range matches {
+		<li data-testid="parent-result">
+			<button type="button" class="gf-result" data-pick>
+				@parentBadge(p)
+				<span>{ p.Goal.Title }</span>
+				<span class="muted small">{ p.Goal.Owner.Label() }</span>
+			</button>
+			<template>
+				@parentChip(p, "")
+			</template>
+		</li>
+	}
+}
+
+// parentBadge is a parent's Health, as the Goal page's sidebar shows a linked
+// Goal's, or its Lifecycle when it has none.
+templ parentBadge(p parentChoice) {
+	if p.Health != "" {
+		@healthChip("", p.Health)
+	} else {
+		<span class="badge lc">{ p.Goal.Lifecycle }</span>
+	}
+}
+
+// goalPickerScript turns each Goal picker on the page to search, those after
+// it once the page has loaded: it marks the picker gf-js, sets its no-script
+// select aside, keeps Enter in the search from submitting, adds a result's
+// chip when it is picked (one-pick, in place of the chip there, clearing the
+// search), and removes a chip at its ×. Each time its chips change it
+// dispatches a bubbling goal-picker-change.
+templ goalPickerScript() {
+	<script>
+		(function () {
+			function init() {
+				document.querySelectorAll("[data-goal-picker]").forEach(bind);
+			}
+			function bind(picker) {
+				if (picker.classList.contains("gf-js")) return;
+				picker.classList.add("gf-js");
+				var single = picker.hasAttribute("data-single");
+				var chips = picker.querySelector('[data-testid="parent-chips"]');
+				var search = picker.querySelector('input[type="search"]');
+				var results = picker.querySelector('[data-testid="parent-results"]');
+				picker.querySelector('[data-testid="parent-select"]').disabled = true;
+				function changed() {
+					picker.dispatchEvent(new CustomEvent("goal-picker-change", { bubbles: true }));
+				}
+				search.addEventListener("keydown", function (e) {
+					if (e.key === "Enter") e.preventDefault();
+				});
+				picker.addEventListener("click", function (e) {
+					var pick = e.target.closest("[data-pick]");
+					if (pick) {
+						var result = pick.closest("li");
+						var chip = result.querySelector("template").content.firstElementChild.cloneNode(true);
+						if (single) {
+							chips.replaceChildren(chip);
+							search.value = "";
+							results.replaceChildren();
+						} else {
+							chips.appendChild(chip);
+							result.remove();
+						}
+						changed();
+						search.focus();
+						return;
+					}
+					var remove = e.target.closest("[data-remove-chip]");
+					if (remove) {
+						remove.closest("[data-testid='parent-chip']").remove();
+						changed();
+						search.focus();
+					}
+				});
+			}
+			init();
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+		})();
+	</script>
+}
+
+// goalPickerStyles are the Goal picker's rules on top of app.css, wherever it
+// sits: its chips, search and results, which of its parts show with script
+// and which without, keyed on the picker itself, and its error, as the goal
+// form's field errors are. A page heading it with its own fieldset classes
+// that gf-picker-field, its legend read as a field's label is.
+templ goalPickerStyles() {
+	<style>
+		.gf-picker{display:flex;flex-direction:column;gap:8px;min-width:0}
+		.gf-picker-field{border:0;padding:0;margin:0;min-width:0}
+		.gf-picker-field>legend{padding:0;margin-bottom:8px;font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}
+		.gf-picker:not(.gf-js) .gf-js-only{display:none}
+		.gf-picker.gf-js .gf-no-js{display:none}
+		.gf-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}
+		.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
+		.gf-chips:empty{display:none}
+		.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
+		.gf-chip .gf-input-error{flex-basis:100%}
+		.gf-search input{width:100%}
+		.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+		.gf-results:empty{display:none}
+		.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}
+		.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}
+		.gf-picker select[multiple]{width:100%;min-height:8em}
+	</style>
+}

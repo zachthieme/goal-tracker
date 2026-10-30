@@ -1272,14 +1272,22 @@ and so on).
   small **Cancel** link back to the plain page. A refused submit comes back as
   the same page with the same form open, the reason in an alert at its top
   and what was typed still in it. It is all links and plain form posts, so it
-  works without script.
+  works without script; Link to a parent Goal's picker searches only with
+  script, and falls back to a select.
   - **Where each opens:** Edit title and Why it matters (the Owner or an
     Admin; the title and the Why it matters as they stand, with a **Save**)
     and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
     departed and Mark returned in the rail under the Owner row. Delegates in
     their row: the current people with **Remove**, and an email input to add
-    one. Link to a parent Goal under Contributes to, and
-    the Dimension and Field forms in their groups. Add a Milestone under the
+    one. Link to a parent Goal under Contributes to: **Parent Goal**, the
+    one-pick Goal picker (`goalPicker`) under a visible legend, its search
+    focused, of the Goals this one could contribute to, whose results show
+    each one's Health badge, title and Owner, and a pick as one chip, a
+    second pick replacing it. Nothing is chosen at first; without script it
+    is a select of every other Goal's title starting on "Choose a Goal…". A
+    **Request link** with nothing picked is refused beside the picker, in
+    danger ink, not in the alert, and nothing is picked when it comes back.
+    Then the Dimension and Field forms in their groups. Add a Milestone under the
     Milestones table (a name, a date and **Add Milestone**, for the Owner or a
     Delegate until the Goal is Done or Cancelled). Without script, the Draft
     Highlight form in its section.
@@ -1670,9 +1678,11 @@ and so on).
     Dimensions or Fields. A Dimension taking several values offers a pill
     checkbox for each (`.gf-pick`) in a 1px `--color-border-strong` edge; a
     chosen one takes a `--color-primary-subtle` fill and a 1px
-    `--color-primary-strong` edge. Contributes to is a search, with a chip for each
-    Goal picked (its Health badge, its title and ×); without script it is a
-    multiple select, with a Remove box on each chip.
+    `--color-primary-strong` edge. Contributes to is the shared Goal picker
+    (`goalPicker`, which Suggest a parent and Link to a parent Goal use
+    one-pick): a search, with a chip for each Goal picked (its Health badge,
+    its title and ×); without script it is a multiple select, with a Remove
+    box on each chip.
   - **Ready to activate (`goalFormReady`, `.gf-ready`):** a rail, not a raised
     surface, behind a 1px `--color-border` left edge with 24px inside it, and
     sticky (`top: 24px`), so it stays in view as the form scrolls. Top to
@@ -2288,9 +2298,16 @@ and so on).
   header strip's title, with no actions. One plain section (`.sg-section`),
   up to 560px wide: an `h2`, "Parent suggestion", over a muted "For <Goal>,
   owned by <Name>, who decides whether to link it."; a refusal's reason as an
-  alert; **Parent Goal**, a select of the Goals it could contribute to;
-  **Note (optional)**; then a primary **Suggest** and a quiet **Cancel** back
-  to the Goal page. A refused submit comes back as sent.
+  alert; **Parent Goal**, the one-pick Goal picker (`goalPicker`) under a
+  visible legend: a search, focused, of the Goals the Goal could be
+  suggested under, whose results show each one's Health badge, title and
+  Owner, and a pick as one chip (its Health badge, its title and ×), a second
+  pick replacing it. Nothing is chosen at first; without script it is a
+  select of those Goals' titles starting on "Choose a Goal…". Then **Note
+  (optional)**; then a primary **Suggest** and a quiet **Cancel** back to the
+  Goal page. A submit with nothing picked is refused beside the picker, in
+  danger ink, and any other refusal in the alert; either way the note comes
+  back as typed and nothing is picked.
 
 ## Motion
 
