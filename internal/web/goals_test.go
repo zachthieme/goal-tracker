@@ -8080,17 +8080,20 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 	for _, c := range []struct {
 		name, path string
 		form       url.Values
-		shownAt    string
-		reason     string
+		// status is the Owner's answer, followed, and shownAt where it says
+		// why: the Goal page's open Edit (#700) or the refusal page.
+		status  int
+		shownAt string
+		reason  string
 	}{
 		{"edit milestone", fmt.Sprintf("/milestones/%d", milestone.ID), url.Values{"name": {"Beta"}, "target_date": {"soon"}},
-			"refused-reason", `"soon" isn't a date.`},
+			http.StatusOK, "form-error", `"soon" isn't a date.`},
 		{"edit metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
 			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
-		}, "refused-reason", `"lots" isn't a number for the baseline.`},
+		}, http.StatusOK, "form-error", `"lots" isn't a number for the baseline.`},
 		{"activate", fmt.Sprintf("/goals/%d/activate", bare.ID), nil,
-			"refused-reason", "A Goal must be marked Dated or Ongoing to become Active."},
+			http.StatusUnprocessableEntity, "refused-reason", "A Goal must be marked Dated or Ongoing to become Active."},
 	} {
 		before := ownerOnlyGoalState(t, h, g.ID) + ownerOnlyGoalState(t, h, bare.ID)
 
@@ -8104,8 +8107,8 @@ func TestGoalCommandsRefuseAStrangerBeforeWhatTheySent(t *testing.T) {
 		resp = postForm(t, clients["sam@example.com"], ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
-		if resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("%s by the Owner: status %d, want 422", c.name, resp.StatusCode)
+		if resp.StatusCode != c.status {
+			t.Errorf("%s by the Owner: status %d, want %d", c.name, resp.StatusCode, c.status)
 		}
 		if got := textOf(findByTestID(t, page, c.shownAt)); !strings.Contains(got, c.reason) {
 			t.Errorf("%s by the Owner: %s reads %q, want %q", c.name, c.shownAt, got, c.reason)
@@ -8140,8 +8143,9 @@ func TestGoalPageHasNoContributorsOverHTTP(t *testing.T) {
 }
 
 // A refused Milestone or Metric edit links Back to the Goal it belongs to,
-// not to the Goal whose id is the Milestone's or Metric's (#581): Goals made
-// first take the low ids, so the edited records' ids name other Goals.
+// or comes back to that Goal's page, not to the Goal whose id is the
+// Milestone's or Metric's (#581, #700): Goals made first take the low ids, so
+// the edited records' ids name other Goals.
 func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 	t.Parallel()
 
@@ -8183,31 +8187,31 @@ func TestRefusedMilestoneAndMetricEditsLinkBackToTheirGoal(t *testing.T) {
 			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
 		}, "Only the Goal's Owner may change its Metrics.", `"lots" isn't a number for the baseline.`},
 	} {
-		for _, by := range []struct {
-			who    string
-			client *http.Client
-			status int
-			reason string
-		}{
-			{"a stranger", stranger, http.StatusForbidden, c.strangerReason},
-			{"the Owner", owner, http.StatusUnprocessableEntity, c.ownerReason},
-		} {
-			resp := postForm(t, by.client, ts.URL+fmt.Sprintf(c.route, c.recordID), c.form)
-			defer func() { _ = resp.Body.Close() }()
-			page := parsePage(t, readBody(t, resp))
-			if resp.StatusCode != by.status {
-				t.Errorf("%s by %s: status %d, want %d", c.name, by.who, resp.StatusCode, by.status)
-			}
-			assertRefusalPage(t, page, "Can't change Goal", by.reason, fmt.Sprintf("/goals/%d", g.ID))
-			if link := linkTo(page, fmt.Sprintf("/goals/%d", c.recordID)); link != nil {
-				t.Errorf("%s by %s links to /goals/%d, the Goal sharing its id:\n%s", c.name, by.who, c.recordID, renderNode(page))
-			}
+		resp := postForm(t, stranger, ts.URL+fmt.Sprintf(c.route, c.recordID), c.form)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by a stranger: status %d, want 403", c.name, resp.StatusCode)
+		}
+		assertRefusalPage(t, page, "Can't change Goal", c.strangerReason, fmt.Sprintf("/goals/%d", g.ID))
+		if link := linkTo(page, fmt.Sprintf("/goals/%d", c.recordID)); link != nil {
+			t.Errorf("%s by a stranger links to /goals/%d, the Goal sharing its id:\n%s", c.name, c.recordID, renderNode(page))
+		}
+
+		resp = postForm(t, noRedirects(owner), ts.URL+fmt.Sprintf(c.route, c.recordID), c.form)
+		defer func() { _ = resp.Body.Close() }()
+		_ = readBody(t, resp)
+		if want := fmt.Sprintf("/goals/%d", g.ID); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
+			t.Errorf("%s by the Owner: status %d to %q, want 303 to %q", c.name, resp.StatusCode, resp.Header.Get("Location"), want)
+		}
+		if got := textOf(findByTestID(t, getPage(t, owner, goalPageURL(ts.URL, g)), "form-error")); got != c.ownerReason {
+			t.Errorf("%s by the Owner: its Goal page says %q, want %q", c.name, got, c.ownerReason)
 		}
 
 		// One there isn't is still the Not found page, not a refusal.
-		resp := postForm(t, owner, ts.URL+fmt.Sprintf(c.route, 999), c.form)
+		resp = postForm(t, owner, ts.URL+fmt.Sprintf(c.route, 999), c.form)
 		defer func() { _ = resp.Body.Close() }()
-		page := parsePage(t, readBody(t, resp))
+		page = parsePage(t, readBody(t, resp))
 		if resp.StatusCode != http.StatusNotFound || !hasTestID(page, "not-found") {
 			t.Errorf("%s on a missing id: status %d, want the Not found page:\n%s", c.name, resp.StatusCode, renderNode(page))
 		}
@@ -8251,4 +8255,139 @@ func TestCreatingAGoalRefusedForWhoIsAskingIsTheRefusalPage(t *testing.T) {
 		t.Errorf("status %d, want 403", resp.StatusCode)
 	}
 	assertRefusalPage(t, parsePage(t, body), "Can't create Goal", "A Departed person can't create a Goal.", "/goals/new")
+}
+
+// A Milestone or Metric edit refused for what was typed comes back to the
+// Goal page, redirected after the post, with that row's Edit open, the reason
+// in one sentence above its form, and what was typed still in it; every other
+// row's Edit stays closed, and a reload shows the page plainly (#700).
+func TestARefusedMilestoneOrMetricEditComesBackToItsRowOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g, metricID := ownerOnlyGoal(t, h, sam)
+	if _, err := h.Service.AddMetric(t.Context(), sam.ID, domain.AddMetricInput{
+		GoalID: g.ID, Name: "Checkout errors", Unit: "%", Direction: domain.MetricDown,
+		Baseline: 3, Target: 1, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	var milestones []domain.Milestone
+	for _, name := range []string{"Beta cut", "GA"} {
+		m, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
+			GoalID: g.ID, Name: name, TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
+		})
+		if err != nil {
+			t.Fatalf("AddMilestoneAsAuthor: %v", err)
+		}
+		milestones = append(milestones, m)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	back := fmt.Sprintf("/goals/%d", g.ID)
+
+	for _, c := range []struct {
+		name string
+		// toggle is the test ID of each row's Edit, form its form's, and
+		// action where the refused one posts.
+		toggle, form, action string
+		sent                 url.Values
+		reason               string
+		// kept are the inputs whose typed values the open form must hold.
+		kept []string
+	}{
+		{"edit milestone", "milestone-edit", "edit-milestone", fmt.Sprintf("/milestones/%d", milestones[1].ID),
+			url.Values{"name": {"  "}, "target_date": {"2026-04-01"}},
+			"A Milestone needs a name.", []string{"name", "target_date"}},
+		{"edit metric", "metric-edit", "edit-metric", fmt.Sprintf("/metrics/%d", metricID), url.Values{
+			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
+			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-30"},
+		}, `"lots" isn't a number for the baseline.`, []string{"name", "unit", "baseline", "target", "target_date"}},
+	} {
+		postRefusedBack(t, client, ts.URL+c.action, c.sent, back)
+		page := getPage(t, client, ts.URL+back)
+		open := openDetails(page, c.toggle)
+		if len(open) != 1 {
+			t.Errorf("%s: %d %s toggles open, want 1:\n%s", c.name, len(open), c.toggle, renderNode(page))
+			continue
+		}
+		form := findByTestID(t, open[0], c.form)
+		if got := attrOf(form, "action"); got != c.action {
+			t.Errorf("%s: the open form posts to %q, want %q", c.name, got, c.action)
+		}
+		if reason := textOf(findByTestID(t, open[0], "form-error")); reason != c.reason {
+			t.Errorf("%s: the open form says %q, want %q", c.name, reason, c.reason)
+		}
+		for _, input := range c.kept {
+			if got := formField(t, form, input).Value; got != c.sent.Get(input) {
+				t.Errorf("%s: %s holds %q, want %q as typed", c.name, input, got, c.sent.Get(input))
+			}
+		}
+		if errors := findAllByTestID(page, "form-error"); len(errors) != 1 {
+			t.Errorf("%s: page has %d form errors, want 1", c.name, len(errors))
+		}
+
+		reload := getPage(t, client, ts.URL+back)
+		if open := openDetails(reload, c.toggle); len(open) != 0 || hasTestID(reload, "form-error") {
+			t.Errorf("%s: a reload shows %d %s toggles open, or the refusal", c.name, len(open), c.toggle)
+		}
+	}
+}
+
+// A refused Milestone or Metric edit that can't come back to its row answers
+// with the refusal page, headed Can't change Goal, at 422, linking Back to
+// the Goal and setting no refusal: one too long to carry, and a Milestone's
+// Edit once its Goal is Active, when the page no longer offers it (#700).
+func TestARefusedMilestoneOrMetricEditWithNoRowToComeBackToAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	proposed, metricID := ownerOnlyGoal(t, h, sam)
+	planned, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: proposed.ID, Name: "Beta cut", TargetDate: time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	onActive, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: active.ID, Name: "GA", TargetDate: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	for _, c := range []struct {
+		name, action string
+		sent         url.Values
+		reason       string
+		goal         domain.Goal
+	}{
+		{"a Milestone edit too long to carry", fmt.Sprintf("/milestones/%d", planned.ID),
+			url.Values{"name": {strings.Repeat(" ", 4000)}, "target_date": {"2026-04-01"}}, "A Milestone needs a name.", proposed},
+		{"a Metric edit too long to carry", fmt.Sprintf("/metrics/%d", metricID), url.Values{
+			"name": {"p99 checkout latency"}, "unit": {strings.Repeat("ms", 2000)}, "direction": {"down"},
+			"baseline": {"lots"}, "target": {"500"}, "target_date": {"2026-06-15"},
+		}, `"lots" isn't a number for the baseline.`, proposed},
+		{"a Milestone edit on an Active Goal", fmt.Sprintf("/milestones/%d", onActive.ID),
+			url.Values{"name": {"GA, again"}, "target_date": {"2026-05-02"}},
+			"A Milestone is edited only while its Goal is Proposed: change its date in a Check-in, with a reason.", active},
+	} {
+		resp := postForm(t, client, ts.URL+c.action, c.sent)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity || resp.Header.Get("Location") != "" {
+			t.Errorf("%s: status %d to %q, want 422 and no redirect", c.name, resp.StatusCode, resp.Header.Get("Location"))
+		}
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "gt_refused" {
+				t.Errorf("%s: the refusal set the gt_refused cookie %q", c.name, cookie.Value)
+			}
+		}
+		assertRefusalPage(t, page, "Can't change Goal", c.reason, fmt.Sprintf("/goals/%d", c.goal.ID))
+	}
 }

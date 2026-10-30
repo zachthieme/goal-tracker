@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,20 @@ func (s *Server) goalPageForm(goalID int64, current domain.Account, form goalFor
 		})
 }
 
+// goalRowForm is form, the Edit form of the Goal page's row for the record
+// id, posting fields, on the Goal goalID's page as current sees it: refused
+// for what it sent, it redirects to the Goal page, where that row's Edit is
+// open, as it was left, saying why above it in one sentence (#700). When
+// offered says the page no longer offers the row's Edit, such as a
+// Milestone's once the Goal is Active, the refusal page says why (onPage).
+func (s *Server) goalRowForm(goalID int64, current domain.Account, form string, id int64, fields []string, offered func(goalView) bool) *formOnPage {
+	return onPage(goalPath(goalID), form, id, fields).inOneSentence().
+		offeredWhen(func(ctx context.Context) (bool, error) {
+			view, err := s.goalPageView(ctx, goalID, current)
+			return err == nil && offered(view), err
+		})
+}
+
 // answerGoalCommand answers a command on the Goal goalID from its page:
 // done, it returns to the Goal page; refused with err, it is answerRefused's,
 // headed Can't change Goal and linking Back to the Goal, form coming back in
@@ -131,8 +146,10 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, curr
 // handleEditMilestone saves a Milestone's Edit form on the Goal page. A date
 // that doesn't parse is sent on unparsed, so EditMilestone refuses it only
 // once it has checked who sent it. A refusal returns no Milestone, so it is
-// read again for the refusal page to link Back to its Goal, or Home when it
-// can't be read; the path's id is a Milestone's, not a Goal's.
+// read again to find its Goal: refused for what was typed, the form comes back
+// open on its row there (goalRowForm), and the refusal page links Back to
+// it, or Home when it can't be read; the path's id is a Milestone's, not a
+// Goal's.
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -148,11 +165,16 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 		Unparsed:    unparsed,
 	})
 	if err != nil {
-		back := "/home"
+		back, form := "/home", refusedForm(nil)
 		if milestone, lookErr := s.svc.Milestone(r.Context(), id); lookErr == nil {
 			back = goalPath(milestone.GoalID)
+			form = s.goalRowForm(milestone.GoalID, current, "edit-milestone", id, []string{"name", "target_date"},
+				func(v goalView) bool {
+					return v.Permissions.EditMilestones &&
+						slices.ContainsFunc(v.ListedMilestones, func(m domain.ListedMilestone) bool { return m.ID == id })
+				})
 		}
-		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back})
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back, Form: form})
 		return
 	}
 	http.Redirect(w, r, goalPath(m.GoalID), http.StatusSeeOther)
@@ -160,8 +182,8 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, cur
 
 // handleEditMetric saves a Metric's Edit form on the Goal page. A number or
 // date that doesn't parse is sent on unparsed, so EditMetric refuses it only
-// once it has checked who sent it. A refusal links Back to the Metric's Goal,
-// read again as handleEditMilestone reads its Milestone. The Direction is set
+// once it has checked who sent it. A refusal comes back to the Metric's
+// Goal, read again as handleEditMilestone reads its Milestone. The Direction is set
 // as the goal form sets a Metric row's (metricDirection): from the baseline
 // and target, the posted one counting only when they're equal.
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -185,11 +207,15 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, curren
 		Unparsed:   unparsed,
 	})
 	if err != nil {
-		back := "/home"
+		back, form := "/home", refusedForm(nil)
 		if metric, lookErr := s.svc.Metric(r.Context(), id); lookErr == nil {
 			back = goalPath(metric.GoalID)
+			form = s.goalRowForm(metric.GoalID, current, "edit-metric", id, []string{"name", "unit", "baseline", "target", "direction", "target_date"},
+				func(v goalView) bool {
+					return v.Permissions.EditMetrics && slices.ContainsFunc(v.Metrics, func(m domain.Metric) bool { return m.ID == id })
+				})
 		}
-		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back})
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Goal", Back: back, Form: form})
 		return
 	}
 	http.Redirect(w, r, goalPath(m.GoalID), http.StatusSeeOther)

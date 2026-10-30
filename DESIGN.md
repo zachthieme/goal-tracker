@@ -1223,8 +1223,9 @@ and so on).
     **Edit Metric** disclosure. Its Direction is asked only when target equals
     baseline, as the goal form's is: the field, "Direction — when target
     equals baseline", shows with script only while the two are equal, and
-    otherwise the Direction follows from them. At 600px and below the
-    sparkline drops to its own line.
+    otherwise the Direction follows from them. A refused **Save** comes back
+    in place (§ Forms that open in place: Refused on a row). At 600px and
+    below the sparkline drops to its own line.
   - **Milestones:** a muted "3 slips · 1 added or removed since Active" line,
     where the slips are the Milestones' date slips only ("1 slip" for one),
     not the delivery date's or the back-to-Green date's. The line shows only
@@ -1237,7 +1238,10 @@ and so on).
     a Health, so they show their word and no Health shape, and a Report lists
     them the same way. Date is in tabular figures, a slipped date shown as
     § Status cells shows it. A Removed Milestone is struck through, with its
-    reason under it. The table scrolls inside its own container on a phone.
+    reason under it. While the Goal is Proposed, the Owner and Delegates get a
+    quiet small **Edit** on each row, a disclosure of its name and date with
+    a **Save**, whose refusal comes back in place (§ Forms that open in place:
+    Refused on a row). The table scrolls inside its own container on a phone.
   - **Highlights**, as "**Miss**: <Note>" rows, when there are any;
   - **Draft Highlights**, for the Owner and Delegates (§ Check-in form's
     optional sections: On the Goal page);
@@ -1247,7 +1251,8 @@ and so on).
   - **Comments (`#comments`):** threads oldest first. Each comment shows its
     author by Name, a muted timestamp and the body, with replies indented 24px
     and a **Reply** disclosure. After the threads comes the form to start one,
-    open to everyone signed in.
+    open to everyone signed in. A comment or reply refused for what was typed
+    (a blank one) comes back in place, as on a Report (§ Discussion).
   - **History** (§ History timeline).
 
   Metrics, Milestones and Comments show a muted "No … yet." line when empty.
@@ -1302,8 +1307,16 @@ and so on).
   the reason in an alert at its top and what was typed still in it. A
   reload, or the link shared, shows the plain Goal page. Where the page no
   longer offers that form, or what was typed is too long to carry back, the
-  refusal page says why instead, linking **Back** to the Goal. It is all
-  links and plain form posts, so it
+  refusal page says why instead, linking **Back** to the Goal.
+  - **Refused on a row:** a Milestone's **Edit** or a Metric's **Edit
+    Metric** refused for what was typed comes back the same way, to
+    `/goals/{id}`, with that row's disclosure open, the reason in an alert
+    above its form, what was typed still in it, and its first field focused;
+    every other row's stays closed. Where the page no longer offers that Edit
+    (a Milestone's once the Goal is Active), or what was typed is too long to
+    carry back, the refusal page says why, headed "Can't change Goal".
+
+  It is all links and plain form posts, so it
   works without script; Contribute to a Goal's picker searches only with
   script, and falls back to a select.
   - **Where each opens:** Edit title and Why it matters (the Owner or an
@@ -2098,8 +2111,12 @@ and so on).
     **Reply**. The Report's author also gets **Make action item** on each
     comment. Refused on a field, Make action item comes back to the
     publication with that comment's thread and form open, as Close and
-    Reassign do (§ Close and Reassign). It is all `<details>` and form posts,
-    so it works without script.
+    Reassign do (§ Close and Reassign). A Comment or Reply refused for what
+    was typed (a blank one) comes back the same way, to its Goal's discussion
+    (`#goal-<id>`): a Reply open under its thread's first comment, the thread
+    open, and a Comment's form open, each holding what was typed with the
+    reason beside it. It is all `<details>` and form posts, so it works
+    without script.
   - **Action Items raised here:** every Action Item raised on this
     publication, as rows: an open one with Close and Reassign, a closed one
     "**[Closed Nov 9, 2026]** — <note>", or "None yet." The Report's author
@@ -2129,8 +2146,9 @@ and so on).
     opens, and a reload shows the page plainly. A refusal by who you are, or
     of a form that's gone (an item closed since), shows the refusal page,
     headed "Can't add Action Item", "Can't close Action Item" or "Can't
-    reassign Action Item"; "Can't comment" heads only a refused comment or
-    reply.
+    reassign Action Item"; "Can't comment" heads only a comment or reply that
+    can't come back to its form: one too long to carry, or on a Goal the
+    publication doesn't cover.
 - **Report builder (`reportBuilderPage` in `reportbuilder.templ`):** one
   centred column up to 720px of plain sections, 24px apart.
   - **Header strip:** the breadcrumb only, "Reports › New" or "Reports ›
