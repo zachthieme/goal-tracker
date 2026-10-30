@@ -262,9 +262,10 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
 }
 
-// A No change whose Goal can't be loaded answers 500 on the refusal page, and the
-// load's failure, not the No change's, reaches the server log.
-func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
+// A No change whose Goal's Milestones can't be read fails before anything is
+// recorded: it answers 500 on the refusal page saying nothing was recorded,
+// and the No change's own failure reaches the server log.
+func TestANoChangeWhoseMilestonesCantBeReadIsLoggedWithItsCause(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -282,7 +283,7 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)
 	}
-	assertRefusalPage(t, parsePage(t, page), "Can't check in", "The Goal couldn't be loaded, so nothing was recorded. Try again.", fmt.Sprintf("/goals/%d", goal.ID))
+	assertRefusalPage(t, parsePage(t, page), "Can't check in", "The No change couldn't be recorded. Try again.", fmt.Sprintf("/goals/%d", goal.ID))
 	// The handler's failure is logged at ERROR. The sidebar reads the overdue
 	// Milestones too, when the refusal page draws its frame after that, so
 	// then it says at WARN that it left out its Follow-ups count (#483, #628).
@@ -294,8 +295,8 @@ func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
 	if failed["level"] != "ERROR" || failed["method"] != http.MethodPost || failed["path"] != path {
 		t.Errorf("first record %v, want an ERROR for %s %s", failed, http.MethodPost, path)
 	}
-	if err, _ := failed["err"].(string); !strings.Contains(err, "load milestones: list milestones: SQL logic error: no such table: milestones") {
-		t.Errorf("the ERROR's err %q, want the Goal's failed Milestones read", err)
+	if err, _ := failed["err"].(string); !strings.Contains(err, "no such table: milestones") {
+		t.Errorf("the ERROR's err %q, want the No change's failed Milestones read", err)
 	}
 	if sidebar["level"] != "WARN" || sidebar["msg"] != "sidebar read failed" || sidebar["method"] != http.MethodPost || sidebar["path"] != path {
 		t.Errorf("second record %v, want the sidebar's WARN for %s %s", sidebar, http.MethodPost, path)

@@ -412,3 +412,142 @@ func TestMarkGoalDatedRefusesAnOwnerOnceTheGoalIsActiveOrDone(t *testing.T) {
 		}
 	}
 }
+
+// reasonedCommand is one Goal command and the reason it is refused with.
+type reasonedCommand struct {
+	name string
+	run  func() error
+	want string
+}
+
+// expectRefusedWithReasons runs each of commands, each to be refused with
+// ErrNotAuthorized saying its own reason.
+func expectRefusedWithReasons(t *testing.T, commands []reasonedCommand) {
+	t.Helper()
+	for _, c := range commands {
+		err := c.run()
+		if !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: %v, want ErrNotAuthorized", c.name, err)
+			continue
+		}
+		if got := domain.Reason(err); got != c.want {
+			t.Errorf("%s says %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// Setting a Goal's Fields, its Goal table cells or its Dimension values is
+// refused with the reason the value-setter rule judges: a Departed Delegate is
+// told a Departed person can't act, and a present reader with no rights who
+// may.
+func TestGoalValueSettersAreRefusedWithTheRulesReason(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	rita := h.SignIn("rita@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	g := h.ActiveGoal(sam, "Theirs", "People can't find things.")
+	h.AddDelegate(sam, dana, g.ID)
+	h.MarkDeparted(admin, dana)
+
+	commands := func(actorID int64) (field, cell, values func() error) {
+		return func() error {
+				return h.Service.SetGoalField(ctx, actorID, g.ID, budget.ID, "10")
+			}, func() error {
+				return h.Service.EditGoalValues(ctx, actorID, []domain.ValueEdit{{GoalID: g.ID, FieldID: budget.ID, Value: "10"}})
+			}, func() error {
+				_, err := h.Service.SetGoalDimensionValues(ctx, actorID, domain.DimensionValuesEdit{GoalID: g.ID, DimensionID: pillar.ID, ValueIDs: []int64{pillar.Values[0].ID}})
+				return err
+			}
+	}
+	danaField, danaCell, danaValues := commands(dana.ID)
+	ritaField, ritaCell, _ := commands(rita.ID)
+	expectRefusedWithReasons(t, []reasonedCommand{
+		{"SetGoalField by a Departed Delegate", danaField, "a Departed person can't set a Goal's Fields"},
+		{"EditGoalValues by a Departed Delegate", danaCell, "a Departed person can't set the values of Theirs"},
+		{"SetGoalDimensionValues by a Departed Delegate", danaValues, "a Departed person can't set a Goal's Dimension values"},
+		{"SetGoalField by a reader", ritaField, "only the Owner, a Delegate or an Admin may set a Goal's Fields"},
+		{"EditGoalValues by a reader", ritaCell, "only the Owner, a Delegate or an Admin may set the values of Theirs"},
+	})
+}
+
+// Changing a Goal's Milestones, or logging, seeing, editing or deleting its
+// Draft Highlights, is refused with the reason the rule for who writes its
+// Check-ins judges: a Departed Delegate is told a Departed person can't act,
+// and a present reader with no rights who may.
+func TestMilestoneAndDraftHighlightWritersAreRefusedWithTheRulesReason(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	rita := h.SignIn("rita@example.com")
+	g := h.CreateGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, dana, g.ID)
+	due := h.Clock.Now().AddDate(0, 2, 0)
+	m, err := h.Service.AddMilestoneAsAuthor(ctx, sam.ID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: due})
+	if err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	draft := h.LogDraftHighlight(dana, g.ID, "", "Indexing is fast.")
+	h.MarkDeparted(admin, dana)
+
+	commands := func(actorID int64) []func() error {
+		return []func() error{
+			func() error {
+				_, err := h.Service.AddMilestoneAsAuthor(ctx, actorID, domain.AddMilestoneInput{GoalID: g.ID, Name: "Launch", TargetDate: due})
+				return err
+			},
+			func() error {
+				_, err := h.Service.EditMilestone(ctx, actorID, domain.EditMilestoneInput{MilestoneID: m.ID, Name: "Beta, again", TargetDate: due})
+				return err
+			},
+			func() error {
+				_, err := h.Service.LogDraftHighlight(ctx, domain.LogDraftHighlightInput{GoalID: g.ID, AuthorID: actorID, Note: "Ranking is better."})
+				return err
+			},
+			func() error {
+				_, err := h.Service.PendingDraftHighlights(ctx, actorID, g.ID)
+				return err
+			},
+			func() error {
+				_, err := h.Service.EditDraftHighlight(ctx, actorID, draft.ID, "", "Indexing is faster.")
+				return err
+			},
+			func() error {
+				_, err := h.Service.DeleteDraftHighlight(ctx, actorID, draft.ID)
+				return err
+			},
+		}
+	}
+	names := []string{"AddMilestoneAsAuthor", "EditMilestone", "LogDraftHighlight", "PendingDraftHighlights", "EditDraftHighlight", "DeleteDraftHighlight"}
+	const (
+		departedMilestones = "a Departed person can't change this Goal's Milestones"
+		departedDrafts     = "a Departed person can't log, see, edit or delete this Goal's Draft Highlights"
+		readerMilestones   = "only the Owner or a Delegate may change this Goal's Milestones"
+		readerDrafts       = "only the Owner or a Delegate may log, see, edit or delete this Goal's Draft Highlights"
+	)
+	var want []reasonedCommand
+	for _, who := range []struct {
+		name               string
+		actorID            int64
+		milestones, drafts string
+	}{
+		{"a Departed Delegate", dana.ID, departedMilestones, departedDrafts},
+		{"a reader", rita.ID, readerMilestones, readerDrafts},
+	} {
+		for i, run := range commands(who.actorID) {
+			reason := who.drafts
+			if i < 2 {
+				reason = who.milestones
+			}
+			want = append(want, reasonedCommand{names[i] + " by " + who.name, run, reason})
+		}
+	}
+	expectRefusedWithReasons(t, want)
+}

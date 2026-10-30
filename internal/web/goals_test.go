@@ -5496,7 +5496,7 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 		t.Errorf("status = %d, want 403", resp.StatusCode)
 	}
 	assertRefusalPage(t, parsePage(t, body), "Can't save Goals",
-		"Only its Owner, a Delegate or an Admin may set the values of Theirs.", "/goals?layout=table")
+		"Only the Owner, a Delegate or an Admin may set the values of Theirs.", "/goals?layout=table")
 	for _, g := range []domain.Goal{mine, theirs} {
 		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
 			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)

@@ -84,7 +84,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if v.CanCheckin && (v.Permissions.LogDraftHighlight || len(v.DraftHighlights) > 0) {
+		if v.CheckinRefusal == nil && (v.Permissions.LogDraftHighlight || len(v.DraftHighlights) > 0) {
 			templ_7745c5c3_Err = templ.RenderScriptItems(ctx, templ_7745c5c3_Buffer, swapErrorPageScript)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

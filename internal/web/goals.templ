@@ -770,7 +770,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				if g.Ownerless {
 					<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the company and it needs an Admin to reassign it.</span></p>
 				}
-				@goalFreshness(g.ID, v.Freshness, v.CanCheckin, v.dates())
+				@goalFreshness(g.ID, v.Freshness, v.CheckinRefusal == nil, v.dates())
 				@goalSignals(v.Signals, v.dates())
 				@goalIncomplete(v.Incomplete)
 			</div>

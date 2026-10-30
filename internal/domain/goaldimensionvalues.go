@@ -72,7 +72,7 @@ func (e DimensionValuesEdit) newValueInput() string {
 func (s *Service) SetGoalDimensionValues(ctx context.Context, actorID int64, e DimensionValuesEdit) (DimensionValue, error) {
 	var typed DimensionValue
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireGoalValueSetter(ctx, actorID, e.GoalID); err != nil {
+		if err := tx.requireGoalValueSetter(ctx, actorID, e.GoalID, setDimensionValuesAct); err != nil {
 			return err
 		}
 		var err error

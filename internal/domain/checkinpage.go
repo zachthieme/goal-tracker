@@ -14,12 +14,12 @@ import (
 // only its children.
 type CheckinPage struct {
 	Goal Goal
-	// Viewer is the Account the page is read for. CanCheckin says whether they
-	// may write the Goal's Check-ins (RequireCheckinAuthor), whatever its
-	// Lifecycle. For anyone who may not, the page holds only the Goal and
-	// Viewer.
-	Viewer     Account
-	CanCheckin bool
+	// Viewer is the Account the page is read for. CheckinRefusal is why they
+	// may not write the Goal's Check-ins (RequireCheckinAuthor), whatever its
+	// Lifecycle, as the rule refuses them; nil when they may. For anyone who
+	// may not, the page holds only the Goal, Viewer and CheckinRefusal.
+	Viewer         Account
+	CheckinRefusal error
 	// Permissions are what they may do with its Check-ins now, as the Goal
 	// page's Permissions say.
 	Permissions CheckinPermissions
@@ -81,8 +81,11 @@ func (s *Service) CheckinPage(ctx context.Context, actorID, goalID int64) (Check
 	if err != nil {
 		return CheckinPage{}, err
 	}
-	if p.CanCheckin, err = goalPagePermits(checkinAuthorRuleRefusal(actor, g)); err != nil || !p.CanCheckin {
-		return p, err
+	if p.CheckinRefusal, err = goalPageRefusal(checkinAuthorRuleRefusal(actor, g, submitCheckinAct)); err != nil {
+		return CheckinPage{}, err
+	}
+	if p.CheckinRefusal != nil {
+		return p, nil
 	}
 	if err := s.readCheckinPageLinks(ctx, &p); err != nil {
 		return CheckinPage{}, err

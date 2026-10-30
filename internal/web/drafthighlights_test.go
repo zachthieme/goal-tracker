@@ -564,7 +564,7 @@ func TestARefusedDraftHighlightChangeAnswersWithTheRefusalPage(t *testing.T) {
 	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	retries := h.LogDraftHighlight(sam, active.ID, domain.HighlightInsight, "Retries mask the root cause.")
 	edit := url.Values{"kind": {domain.HighlightInsight}, "note": {"Changed."}}
-	const notTheirs = "Only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights."
+	const notTheirs = "Only the Owner or a Delegate may log, see, edit or delete this Goal's Draft Highlights."
 
 	for _, c := range []struct {
 		name, who, path string
