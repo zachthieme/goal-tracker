@@ -2065,8 +2065,16 @@ and so on).
     `--radius-full` pills in a 1px `--color-border` edge, each its title and
     its round ×. With script, a full-width search lists matches as buttons,
     each a title and a muted Owner; picking one adds its chip and refreshes
-    Matches. Without script, a multiple select of every Goal not yet picked,
-    and a "Remove" checkbox on each chip in place of its ×.
+    Matches. Without script, a multiple select of the same Goals, and a
+    "Remove" checkbox on each chip in place of its ×. Each list offers only a
+    pick that changes something, read from the rules and both lists as they
+    stand, the rules alone selecting as Matches reads them (so a Goal
+    finished before the baseline isn't selected): **Also include** offers
+    the Goals the rules don't select, **Leave out** those they do, each less
+    the Goals in either list; **Goals I pick** every Goal not yet picked. With no complete
+    rule, Leave out offers nothing and says "Add a rule first: Leave out drops
+    Goals the rules select." A Goal posted in both lists is refused beside
+    Leave out, naming it.
   - **Matches:** an `h2` "Matches 12 Goals" over 40px rows between hairlines,
     each a Goal's Health badge (or its Lifecycle as a `badge lc`), its title
     in 500 `--color-ink`, and a muted "added" for a Goal only Also include

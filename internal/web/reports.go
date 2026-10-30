@@ -888,19 +888,6 @@ func distinctOwners(goals []domain.Goal) []domain.Account {
 	return out
 }
 
-// formInt64s reads a repeated form field as a slice of ids, dropping blanks and
-// unparseable values.
-func formInt64s(r *http.Request, key string) []int64 {
-	raw := r.Form[key]
-	out := make([]int64, 0, len(raw))
-	for _, v := range raw {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
 // handleAddReportDelegate makes the Account named by email a Report Delegate on
 // the Report Definition in the path. Only its creator or an Admin may, so
 // anyone else's attempt is 403; an email the domain refuses comes back on the

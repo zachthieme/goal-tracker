@@ -565,50 +565,294 @@ func TestBuilderLeavesOutARowWithNoAttributeAndAStaleValueOverHTTP(t *testing.T)
 	}
 }
 
-// GET /reports/goals/search answers a builder picker's search: every Goal at
-// any level whose title contains q, ignoring case, less those already in the
-// picker's list. Leave out searches every Goal, not just the current
-// matches. Each result holds the chip picking it adds to that list, and the
-// builder's pickers search there.
-func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
+// Each picker searches /reports/goals/search for its list. With the rules as
+// typed, Also include finds by title only the Goals they don't select, and
+// Leave out only those they do, so neither offers a pick that changes nothing.
+// Picking a result adds the chip holding its id to the list searched.
+func TestBuilderGoalSearchOffersWhatTheRulesDontDecideOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	parent := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Secure every login", "Matters."))
-	sdk := h.ActiveChildOf(boss, parent, "Mobile SDK auth update", "Matters.")
-	listed := h.ActiveGoal(boss, "Migrate AUTH service", "Matters.")
-	h.ActiveGoal(boss, "Edge cache rollout", "Matters.")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	autoscale := h.ActiveGoal(boss, "Autoscale the API tier", "Matters.")
+	h.AssignGoalValue(autoscale, platform)
+	redesign := h.ActiveGoal(boss, "Redesign the API docs", "Matters.")
+	h.AssignGoalValue(redesign, web)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
 
-	builder := getBody(t, client, ts.URL+"/reports/new")
+	builder := getPage(t, client, ts.URL+"/reports/new")
 	for _, list := range []string{"picked", "include", "exclude"} {
-		picker := pageElement(t, builder, "fieldset", list+"-picker")
-		if !strings.Contains(picker, `hx-get="/reports/goals/search?list=`+list+`"`) {
-			t.Errorf("the %s picker doesn't search /reports/goals/search:\n%s", list, picker)
+		search := findAll(findByTestID(t, builder, list+"-picker"), func(n *nethtml.Node) bool { return hasAttr(n, "data-goal-search") })
+		if len(search) != 1 || attrOf(search[0], "hx-get") != "/reports/goals/search?list="+list {
+			t.Errorf("the %s picker doesn't search /reports/goals/search?list=%s", list, list)
 		}
 	}
 
-	q := url.Values{"list": {"exclude"}, "q": {"auth"}, "exclude": {strconv.FormatInt(listed.ID, 10)}}
-	page := getBody(t, client, ts.URL+"/reports/goals/search?"+q.Encode())
-	results := strings.Split(page, `data-testid="report-goal-result"`)[1:]
-	if len(results) != 1 || !strings.Contains(between(t, results[0], "data-pick", "</button>"), sdk.Title) {
-		t.Fatalf("searching Leave out for %q found %d results, want only %q:\n%s", "auth", len(results), sdk.Title, page)
+	isPlatform := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10)},
 	}
-	chip := between(t, results[0], "<template>", "</template>")
-	if !strings.Contains(chip, `<input type="hidden" name="exclude" value="`+strconv.FormatInt(sdk.ID, 10)+`">`) {
-		t.Errorf("picking %q adds the chip %s", sdk.Title, chip)
+	for _, c := range []struct {
+		list string
+		want domain.Goal
+	}{{"include", redesign}, {"exclude", autoscale}} {
+		results := searchReportGoals(t, client, ts.URL, c.list, "api", isPlatform)
+		if got := reportGoalResultTitles(t, results); !slices.Equal(got, []string{c.want.Title}) {
+			t.Errorf("with Team is Platform, searching %s for %q finds %q, want only %q", c.list, "api", got, c.want.Title)
+		}
+		chip := formFields(findByTestID(t, results, "report-goal-result"), c.list)
+		if len(chip) != 1 || chip[0].Value != strconv.FormatInt(c.want.ID, 10) {
+			t.Errorf("picking %q from %s adds no chip holding its id to %s", c.want.Title, c.list, c.list)
+		}
 	}
+}
+
+// With no complete rule yet the rules select nothing, so Leave out's search
+// finds nothing to drop and says to add a rule first, while Also include's
+// finds any Goal by title.
+func TestBuilderLeaveOutSearchAsksForARuleFirstOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform")
+	autoscale := h.ActiveGoal(boss, "Autoscale the API tier", "Matters.")
+	h.AssignGoalValue(autoscale, team.Values[0])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	noValue := url.Values{"mode": {domain.ReportModeRules}, "rules[0].attribute": {dim}, "rules[0].op": {domain.RuleIs}}
+	results := searchReportGoals(t, client, ts.URL, "exclude", "api", noValue)
+	if got := reportGoalResultTitles(t, results); len(got) != 0 {
+		t.Errorf("with no complete rule, Leave out's search finds %q, want nothing", got)
+	}
+	if got, want := textOf(findByTestID(t, results, "goal-search-needs-rule")), "Add a rule first: Leave out drops Goals the rules select."; got != want {
+		t.Errorf("with no complete rule, Leave out's search says %q, want %q", got, want)
+	}
+	include := searchReportGoals(t, client, ts.URL, "include", "api", noValue)
+	if got := reportGoalResultTitles(t, include); !slices.Equal(got, []string{autoscale.Title}) {
+		t.Errorf("with no complete rule, Also include's search finds %q, want %q", got, autoscale.Title)
+	}
+	if hasTestID(include, "goal-search-needs-rule") {
+		t.Errorf("Also include's search asks for a rule first, though it needs none")
+	}
+}
+
+// Neither list's search offers a Goal already in the other, though the rules
+// would have it offered: a Goal Also include listed before the rules came to
+// select it, or one Leave out listed before they stopped.
+func TestBuilderGoalSearchLeavesOutTheOtherListsGoalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	goal := func(title string, value domain.DimensionValue) domain.Goal {
+		g := h.ActiveGoal(boss, title, "Matters.")
+		h.AssignGoalValue(g, value)
+		return g
+	}
+	includedPlatform := goal("Autoscale the API tier", platform)
+	platformOffer := goal("Shard the API database", platform)
+	excludedWeb := goal("Redesign the API docs", web)
+	webOffer := goal("Localise the API portal", web)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+	id := func(g domain.Goal) string { return strconv.FormatInt(g.ID, 10) }
+
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10)},
+		"include":            {id(includedPlatform)},
+		"exclude":            {id(excludedWeb)},
+	}
+	for _, c := range []struct {
+		list string
+		want domain.Goal
+	}{{"exclude", platformOffer}, {"include", webOffer}} {
+		if got := reportGoalResultTitles(t, searchReportGoals(t, client, ts.URL, c.list, "api", form)); !slices.Equal(got, []string{c.want.Title}) {
+			t.Errorf("with %q in Also include and %q in Leave out, searching %s finds %q, want only %q",
+				includedPlatform.Title, excludedWeb.Title, c.list, got, c.want.Title)
+		}
+	}
+}
+
+// The builder's search, sent as its markup has htmx send it, with the whole
+// form and text typed in more than one box, filters by the box of the list
+// searched.
+func TestBuilderGoalSearchFiltersByItsOwnBoxOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform")
+	platform := team.Values[0]
+	autoscale := h.ActiveGoal(boss, "Autoscale the API tier", "Matters.")
+	h.AssignGoalValue(autoscale, platform)
+	docs := h.ActiveGoal(boss, "Write the platform docs", "Matters.")
+	h.AssignGoalValue(docs, platform)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	page := parsePage(t, postFormBody(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10)},
+		"do":                 {"show-matches"},
+	}))
+	form := findByTestID(t, page, "report-builder")
+	search := findAll(findByTestID(t, page, "exclude-picker"), func(n *nethtml.Node) bool { return hasAttr(n, "data-goal-search") })[0]
+	if attrOf(search, "hx-include") != "closest form" {
+		t.Fatalf("Leave out's search includes %q, not its form", attrOf(search, "hx-include"))
+	}
+	sent := formSubmission(form)
+	sent.Set("include-q", "docs")
+	sent.Set(attrOf(search, "name"), "tier")
+	results := getPage(t, client, ts.URL+attrOf(search, "hx-get")+"&"+sent.Encode())
+	if got := reportGoalResultTitles(t, results); !slices.Equal(got, []string{autoscale.Title}) {
+		t.Errorf("typing %q in Leave out's box and %q in Also include's, Leave out finds %q, want only %q", "tier", "docs", got, autoscale.Title)
+	}
+}
+
+// Without script, Also include's and Leave out's selects offer the Goals
+// their searches find for the rules as last posted, and with no complete rule
+// Leave out's is empty and says to add one.
+func TestBuilderNoScriptPickersOfferWhatTheSearchesFindOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	goal := func(title string, value domain.DimensionValue) domain.Goal {
+		g := h.ActiveGoal(boss, title, "Matters.")
+		h.AssignGoalValue(g, value)
+		return g
+	}
+	autoscale := goal("Autoscale the API tier", platform)
+	listedOut := goal("Shard the API database", platform)
+	redesign := goal("Redesign the API docs", web)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+	options := func(page *nethtml.Node, list string) []string {
+		return textsOf(findAll(findByTestID(t, page, list+"-select"), func(n *nethtml.Node) bool { return n.Data == "option" }))
+	}
+
+	form := url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10)},
+		"exclude":            {strconv.FormatInt(listedOut.ID, 10)},
+	}
+	shown := url.Values{"do": {"show-matches"}}
+	maps.Copy(shown, form)
+	page := parsePage(t, postFormBody(t, client, ts.URL+"/reports/new", shown))
+	for _, c := range []struct {
+		list string
+		want []string
+	}{{"include", []string{redesign.Title}}, {"exclude", []string{autoscale.Title}}} {
+		if got := options(page, c.list); !slices.Equal(got, c.want) {
+			t.Errorf("with Team is Platform, the %s select offers %q, want %q", c.list, got, c.want)
+		}
+		if got := reportGoalResultTitles(t, searchReportGoals(t, client, ts.URL, c.list, "", form)); !slices.Equal(got, c.want) {
+			t.Errorf("with Team is Platform, the %s search finds %q, want %q as its select offers", c.list, got, c.want)
+		}
+	}
+	if hasTestID(page, "goal-search-needs-rule") {
+		t.Errorf("with a complete rule, Leave out still asks for one")
+	}
+
+	noRule := parsePage(t, postFormBody(t, client, ts.URL+"/reports/new", url.Values{"name": {"Platform MBR"}, "mode": {domain.ReportModeRules}, "do": {"show-matches"}}))
+	if got := options(noRule, "exclude"); len(got) != 0 {
+		t.Errorf("with no rule, the Leave out select offers %q, want nothing", got)
+	}
+	note := findByTestID(t, noRule, "goal-search-needs-rule")
+	if got, want := textOf(note), "Add a rule first: Leave out drops Goals the rules select."; got != want || !within(note, findByTestID(t, noRule, "exclude-picker")) {
+		t.Errorf("with no rule, Leave out says %q, want %q beside its select", got, want)
+	}
+}
+
+// A Goal posted in both Also include and Leave out is refused, 422, with the
+// reason beside Leave out naming it, and nothing saved.
+func TestBuilderRefusesAGoalInBothListsBesideLeaveOutOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	autoscale := h.ActiveGoal(boss, "Autoscale the API tier", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := strconv.FormatInt(autoscale.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"include":            {id},
+		"exclude":            {id},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("saving a Goal in both lists: status %d, want 422", resp.StatusCode)
+	}
+	errs := findAllByTestID(findByTestID(t, page, "exclude-picker"), "input-error")
+	if want := "Autoscale the API tier is in Also include too: keep it in one list."; len(errs) != 1 || textOf(errs[0]) != want {
+		t.Errorf("Leave out says %q, want %q", textsOf(errs), want)
+	}
+	if defs, err := h.Service.ListReportDefinitions(context.Background()); err != nil || len(defs) != 0 {
+		t.Errorf("the refused definition was saved: %v (%v)", defs, err)
+	}
+}
+
+// searchReportGoals is what the builder's search of list finds for q, typed
+// into its box, with the rest of the builder's form as given.
+func searchReportGoals(t *testing.T, client *http.Client, base, list, q string, form url.Values) *nethtml.Node {
+	t.Helper()
+	params := url.Values{"list": {list}, list + "-q": {q}}
+	for name, values := range form {
+		params[name] = values
+	}
+	return getPage(t, client, base+"/reports/goals/search?"+params.Encode())
+}
+
+// reportGoalResultTitles are the titles of the Goals a picker's search found,
+// in order.
+func reportGoalResultTitles(t *testing.T, results *nethtml.Node) []string {
+	t.Helper()
+	var out []string
+	for _, r := range findAllByTestID(results, "report-goal-result") {
+		out = append(out, textOf(findByTestID(t, r, "report-goal-result-title")))
+	}
+	return out
 }
 
 // Each picker's search swaps its matches into its results list rather than
 // inheriting the builder's outerHTML swap, which would replace the list and
 // lose the id the next search targets, and syncs only with itself, so a search
-// and the rail's refresh don't abort each other. It sends the chips already
-// picked by including their list, which is there even with no chips, so htmx
-// never finds nothing to include (#180). The search answers bare items, with
-// no list of its own to nest or id to collide.
+// and the rail's refresh don't abort each other. It sends the whole builder
+// form around it, the rules and both lists as they stand, which is always
+// there, so htmx never finds nothing to include (#180), and its box is named
+// for its list, so the form's other search boxes don't stand in for it. The
+// search answers bare items, with no list of its own to nest or id to collide.
 func TestBuilderGoalSearchKeepsItsResultsListOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -626,19 +870,23 @@ func TestBuilderGoalSearchKeepsItsResultsListOverHTTP(t *testing.T) {
 			"hx-target":  "#" + list + "-results",
 			"hx-swap":    "innerHTML",
 			"hx-sync":    "this:replace",
-			"hx-include": "#" + list + "-chips",
+			"hx-include": "closest form",
+			"name":       list + "-q",
 		} {
 			if got := html.UnescapeString(attr(search, name)); got != want {
 				t.Errorf("the %s search's %s = %q, want %q", list, name, got, want)
 			}
 		}
-		if !strings.Contains(picker, `id="`+list+`-chips"`) {
-			t.Errorf("the %s picker with no chips has no #%s-chips list to include:\n%s", list, list, picker)
+	}
+	form := findByTestID(t, parsePage(t, builder), "report-builder")
+	for _, list := range []string{"picked", "include", "exclude"} {
+		if box := formFields(form, list+"-q"); len(box) != 1 || attrOf(box[0].Node, "type") != "search" {
+			t.Errorf("the builder form has no one %s search box to include", list)
 		}
 	}
 
 	for _, q := range []string{"spike", "nothing like it"} {
-		page := getBody(t, client, ts.URL+"/reports/goals/search?"+url.Values{"list": {"picked"}, "q": {q}}.Encode())
+		page := getBody(t, client, ts.URL+"/reports/goals/search?"+url.Values{"list": {"picked"}, "picked-q": {q}}.Encode())
 		if body := strings.TrimSpace(page); !strings.HasPrefix(body, "<li") || strings.Contains(body, "<ul") || attr(body, "id") != "" {
 			t.Errorf("searching %q answers more than bare items:\n%s", q, page)
 		}
@@ -1186,6 +1434,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	kept := h.ActiveGoal(boss, "Grow revenue", "Matters.")
 	gone := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	keptOut := h.ActiveGoal(boss, "Retire the old API", "Matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	id := func(n int64) string { return strconv.FormatInt(n, 10) }
@@ -1228,7 +1477,7 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 		"rules[0].op":        {domain.RuleIs},
 		"include":            {id(kept.ID), id(gone.ID)},
 		"remove-include":     {id(gone.ID)},
-		"exclude":            {id(gone.ID), id(kept.ID)},
+		"exclude":            {id(gone.ID), id(keptOut.ID)},
 		"remove-exclude":     {id(gone.ID)},
 	})
 	defer func() { _ = resp.Body.Close() }()
@@ -1246,12 +1495,12 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	}
 	for _, def := range defs {
 		def, _ = h.Service.GetReportDefinition(context.Background(), def.ID)
-		want := []int64{kept.ID}
+		want, wantOut := []int64{kept.ID}, []int64{keptOut.ID}
 		if def.Mode == domain.ReportModePicked && !slices.Equal(def.Picked, want) {
 			t.Errorf("Save with Remove ticked picks %v, want %v", def.Picked, want)
 		}
-		if def.Mode == domain.ReportModeRules && (!slices.Equal(def.Include, want) || !slices.Equal(def.Exclude, want)) {
-			t.Errorf("Save with Remove ticked includes %v and leaves out %v, want %v for each", def.Include, def.Exclude, want)
+		if def.Mode == domain.ReportModeRules && (!slices.Equal(def.Include, want) || !slices.Equal(def.Exclude, wantOut)) {
+			t.Errorf("Save with Remove ticked includes %v and leaves out %v, want %v and %v", def.Include, def.Exclude, want, wantOut)
 		}
 	}
 }
@@ -1303,17 +1552,21 @@ func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	listed := map[string]domain.Goal{
+		"include": h.ActiveGoal(boss, "Grow revenue", "Matters."),
+		"exclude": h.ActiveGoal(boss, "Cut churn", "Matters."),
+	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
 		Name: "MBR", Mode: domain.ReportModeRules,
 		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
-		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+		Include: []int64{listed["include"].ID}, Exclude: []int64{listed["exclude"].ID},
 	})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
 	for _, list := range []string{"include", "exclude"} {
+		g := listed[list]
 		chip := pageElement(t, page, "li", list+"-chip")
 		box := regexp.MustCompile(`<label class="([^"]*)"><input type="checkbox" name="remove-` + list + `" value="` + strconv.FormatInt(g.ID, 10) + `"> Remove</label>`).FindStringSubmatch(chip)
 		if box == nil {
@@ -1870,11 +2123,14 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	listed := map[string]domain.Goal{
+		"include": h.ActiveGoal(boss, "Grow revenue", "Matters."),
+		"exclude": h.ActiveGoal(boss, "Cut churn", "Matters."),
+	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
 		Name: "MBR", Mode: domain.ReportModeRules,
 		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
-		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+		Include: []int64{listed["include"].ID}, Exclude: []int64{listed["exclude"].ID},
 	})
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
@@ -1892,6 +2148,7 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 		t.Errorf("the rule's remove lost its title or its submit: %s", rule)
 	}
 	for _, list := range []string{"include", "exclude"} {
+		g := listed[list]
 		chip := tagAround(t, pageElement(t, page, "li", list+"-chip"), `aria-label="Remove `+g.Title+`"`)
 		iconButton(list+" chip's remove", chip)
 		if attr(chip, "title") != "Remove "+g.Title || attr(chip, "type") != "button" || !slices.Contains(strings.Fields(attr(chip, "class")), "rb-js-only") {

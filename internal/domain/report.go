@@ -321,10 +321,11 @@ const (
 func RuleInput(i int) string { return fmt.Sprintf("rules[%d]", i) }
 
 // validateReportDefinition returns every input of in that can't be saved, each
-// as an *InputError, joined. A rules definition needs rules and carries no
-// picked list; a picked definition needs Goals and carries no rules, Also
-// include or Leave out. Every Goal listed must exist. shown are the Fields the
-// saved definition already shows, which may since have been Retired.
+// as an *InputError, joined. A rules definition needs rules, carries no
+// picked list, and lists a Goal in at most one of Also include and Leave out;
+// a picked definition needs Goals and carries no rules, Also include or Leave
+// out. Every Goal listed must exist. shown are the Fields the saved definition
+// already shows, which may since have been Retired.
 func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDefinitionInput, shown []int64) error {
 	var problems []error
 	if in.Name == "" {
@@ -346,6 +347,13 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 		}
 		if len(in.Picked) > 0 {
 			problems = append(problems, inputError(ReportInputPicked, "a report of Goals matching rules has no picked Goals"))
+		}
+		problem, err := s.reportListsOverlap(ctx, in)
+		if err != nil {
+			return err
+		}
+		if problem != nil {
+			problems = append(problems, problem)
 		}
 	case ReportModePicked:
 		if len(in.Picked) == 0 {
@@ -382,6 +390,26 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 		problems = append(problems, fieldProblem)
 	}
 	return errors.Join(problems...)
+}
+
+// reportListsOverlap refuses, beside Leave out, the first Goal in both of in's
+// Also include and Leave out, naming it, or is nil when they share none. A
+// listed Goal that doesn't exist is refused as missing, not here.
+func (s *Service) reportListsOverlap(ctx context.Context, in SaveReportDefinitionInput) (*InputError, error) {
+	for _, id := range in.Exclude {
+		if !slices.Contains(in.Include, id) {
+			continue
+		}
+		g, err := s.queries.GetGoal(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("look up goal: %w", err)
+		}
+		return inputError(ReportInputExclude, "%s is in Also include too: keep it in one list", g.Goal.Title), nil
+	}
+	return nil, nil
 }
 
 // validateReportRule says what is wrong with rule, or "" when nothing is. Its

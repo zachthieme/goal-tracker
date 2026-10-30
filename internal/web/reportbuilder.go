@@ -45,8 +45,11 @@ type reportBuilderView struct {
 
 	// Attributes are what a rule can test, each with the values it offers.
 	Attributes []ruleAttribute
-	// Goals are every Goal, at any level, the pickers offer.
-	Goals []domain.Goal
+	// Offers are the Goals each list's picker offers to add, by the list's
+	// input name (reportRuleSelection.offers); LeaveOutNeedsRule is true when
+	// Leave out offers none because no rule is complete yet.
+	Offers            map[string][]domain.Goal
+	LeaveOutNeedsRule bool
 	// Fields are the Fields still offered to show, and any Retired one the
 	// saved definition already shows.
 	Fields []domain.Field
@@ -141,6 +144,12 @@ const (
 	inputInclude = "include"
 	inputExclude = "exclude"
 )
+
+// goalSearchInput is the name of the search box of the picker for list: one
+// per list, as the search sends the whole form.
+func goalSearchInput(list string) string {
+	return list + "-q"
+}
 
 // inputShowField is a Field to show beside each Goal, posted once per Field.
 const inputShowField = "field"
@@ -271,21 +280,9 @@ func (s *Server) handleReportMatches(w http.ResponseWriter, r *http.Request, _ d
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	var id int64
-	if raw := r.PostFormValue("id"); raw != "" {
-		var err error
-		if id, err = strconv.ParseInt(raw, 10, 64); err != nil {
-			s.notFound(w, r)
-			return
-		}
-		if _, err := s.svc.GetReportDefinition(r.Context(), id); err != nil {
-			if errors.Is(err, domain.ErrNotFound) {
-				s.notFound(w, r)
-				return
-			}
-			s.serverError(w, r, "could not load report", err)
-			return
-		}
+	id, ok := s.builderDefinitionID(w, r)
+	if !ok {
+		return
 	}
 	v, _ := readReportBuilder(r)
 	goals, err := s.svc.ListGoals(r.Context())
@@ -301,49 +298,142 @@ func (s *Server) handleReportMatches(w http.ResponseWriter, r *http.Request, _ d
 	render(w, r, http.StatusOK, reportMatchesRail(m))
 }
 
-// handleSearchReportGoals answers a builder picker's search as it is typed:
-// every Goal, at any level, whose title contains q, ignoring case, less those
-// already in the picker's list, which come along under the list's name. Each
-// result carries the chip picking it adds to that list.
+// builderDefinitionID is the saved definition the builder's form, as posted
+// or sent with a search, names by its optional id, whose default baseline its
+// rules are read against; 0 for a new one. ok is false, the answer written,
+// when the id names no definition.
+func (s *Server) builderDefinitionID(w http.ResponseWriter, r *http.Request) (id int64, ok bool) {
+	raw := r.Form.Get("id")
+	if raw == "" {
+		return 0, true
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return 0, false
+	}
+	if _, err := s.svc.GetReportDefinition(r.Context(), id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			s.notFound(w, r)
+			return 0, false
+		}
+		s.serverError(w, r, "could not load report", err)
+		return 0, false
+	}
+	return id, true
+}
+
+// handleSearchReportGoals answers a builder picker's search as it is typed,
+// the search sending the builder's whole form: the Goals the list offers
+// (reportRuleSelection.offers), at any level, whose titles contain what is
+// typed in the list's box, ignoring case. Each result carries the chip
+// picking it adds to that list. Leave out with no complete rule finds
+// nothing, and says to add one.
 func (s *Server) handleSearchReportGoals(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	list := r.URL.Query().Get("list")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "could not read the search", http.StatusBadRequest)
+		return
+	}
+	list := r.Form.Get("list")
 	if !slices.Contains([]string{inputPicked, inputInclude, inputExclude}, list) {
 		http.Error(w, "unknown Goal list", http.StatusBadRequest)
 		return
 	}
+	id, ok := s.builderDefinitionID(w, r)
+	if !ok {
+		return
+	}
+	v, _ := readReportBuilderForm(r.Form)
+	v.ID = id
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
 		s.serverError(w, r, "could not search goals", err)
 		return
 	}
-	var listed []int64
-	for _, raw := range r.URL.Query()[list] {
-		if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
-			listed = append(listed, id)
+	var sel reportRuleSelection
+	if list != inputPicked {
+		if sel, err = s.selectByReportRules(r, v); err != nil {
+			s.serverError(w, r, "could not search goals", err)
+			return
 		}
 	}
-	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	q := strings.ToLower(strings.TrimSpace(r.Form.Get(goalSearchInput(list))))
 	var matches []domain.Goal
-	for _, g := range goals {
-		if !slices.Contains(listed, g.ID) && strings.Contains(strings.ToLower(g.Title), q) {
+	for _, g := range sel.offers(list, goals, v) {
+		if strings.Contains(strings.ToLower(g.Title), q) {
 			matches = append(matches, g)
 		}
 	}
-	render(w, r, http.StatusOK, reportGoalSearchResults(list, matches))
+	render(w, r, http.StatusOK, reportGoalSearchResults(list, matches, list == inputExclude && sel.NeedsRule))
 }
 
-// readReportBuilder reads the builder's form as typed, both modes' inputs
-// kept, and the definition it saves: only what the chosen mode selects by.
+// reportRuleSelection is what the builder's rules, as typed, select alone,
+// before Also include and Leave out, as the rail reads them: the Goals they
+// match, less any finished before the baseline. NeedsRule is true when no
+// rule is complete yet, so they select nothing.
+type reportRuleSelection struct {
+	NeedsRule bool
+	Selected  []int64
+}
+
+// selectByReportRules is what the rules of the builder v select alone, read
+// against the default baseline of the saved definition v.ID, or of a new one.
+func (s *Server) selectByReportRules(r *http.Request, v reportBuilderView) (reportRuleSelection, error) {
+	rules := completeReportRules(v.Rules)
+	if len(rules) == 0 {
+		return reportRuleSelection{NeedsRule: true}, nil
+	}
+	sel, err := s.svc.SelectGoalsAgainst(r.Context(), domain.ReportDefinition{ID: v.ID, Mode: domain.ReportModeRules, Rules: rules}, time.Time{})
+	if err != nil {
+		return reportRuleSelection{}, err
+	}
+	out := reportRuleSelection{}
+	for _, sg := range sel.Goals {
+		out.Selected = append(out.Selected, sg.Goal.ID)
+	}
+	return out, nil
+}
+
+// offers are the Goals of goals the builder v's picker for list offers to
+// add: for Goals I pick, every Goal not yet picked; for Also include, those
+// the rules don't select, and for Leave out those they do, each less the
+// Goals already in either list, so no pick is a no-op and no Goal is in both.
+func (sel reportRuleSelection) offers(list string, goals []domain.Goal, v reportBuilderView) []domain.Goal {
+	var out []domain.Goal
+	for _, g := range goals {
+		var offered bool
+		switch list {
+		case inputPicked:
+			offered = !slices.Contains(v.PickedIDs, g.ID)
+		case inputInclude, inputExclude:
+			listed := slices.Contains(v.IncludeIDs, g.ID) || slices.Contains(v.ExcludeIDs, g.ID)
+			offered = !listed && slices.Contains(sel.Selected, g.ID) == (list == inputExclude)
+		}
+		if offered {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// readReportBuilder reads the builder's posted form as typed, both modes'
+// inputs kept, and the definition it saves, as readReportBuilderForm does.
 func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveReportDefinitionInput) {
+	return readReportBuilderForm(r.PostForm)
+}
+
+// readReportBuilderForm reads the builder's form as typed, both modes' inputs
+// kept, and the definition it saves: only what the chosen mode selects by.
+func readReportBuilderForm(form url.Values) (v reportBuilderView, in domain.SaveReportDefinitionInput) {
 	v = reportBuilderView{
-		Name:         r.PostFormValue("name"),
-		Introduction: r.PostFormValue("introduction"),
-		Mode:         r.PostFormValue("mode"),
-		Rules:        reportRuleRows(r.PostForm),
-		PickedIDs:    listedGoals(r, inputPicked),
-		IncludeIDs:   listedGoals(r, inputInclude),
-		ExcludeIDs:   listedGoals(r, inputExclude),
-		FieldIDs:     formInt64s(r, inputShowField),
+		Name:         form.Get("name"),
+		Introduction: form.Get("introduction"),
+		Mode:         form.Get("mode"),
+		Rules:        reportRuleRows(form),
+		PickedIDs:    listedGoals(form, inputPicked),
+		IncludeIDs:   listedGoals(form, inputInclude),
+		ExcludeIDs:   listedGoals(form, inputExclude),
+		FieldIDs:     parseInt64s(form[inputShowField]),
 	}
 	in = domain.SaveReportDefinitionInput{Name: v.Name, Introduction: v.Introduction, Mode: v.Mode, FieldIDs: v.FieldIDs}
 	switch v.Mode {
@@ -434,13 +524,24 @@ func removeChip(list string) string {
 	return "remove-" + list
 }
 
-// listedGoals are the ids posted for the Goal list, without repeats, less
+// listedGoals are the ids form posts for the Goal list, without repeats, less
 // those whose chip's Remove is ticked.
-func listedGoals(r *http.Request, list string) []int64 {
-	removed := formInt64s(r, removeChip(list))
-	return slices.DeleteFunc(dedupeInt64s(formInt64s(r, list)), func(id int64) bool {
+func listedGoals(form url.Values, list string) []int64 {
+	removed := parseInt64s(form[removeChip(list)])
+	return slices.DeleteFunc(dedupeInt64s(parseInt64s(form[list])), func(id int64) bool {
 		return slices.Contains(removed, id)
 	})
+}
+
+// parseInt64s are the ids among raw, each that parses.
+func parseInt64s(raw []string) []int64 {
+	out := make([]int64, 0, len(raw))
+	for _, v := range raw {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // dedupeInt64s is ids without repeats, in first-seen order: a Goal both
@@ -474,7 +575,6 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Fields = slices.DeleteFunc(fields, func(f domain.Field) bool {
 		return f.Retired && !slices.Contains(v.SavedFieldIDs, f.ID)
 	})
-	v.Goals = goals
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
@@ -492,6 +592,15 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 		return err
 	}
 	v.Attributes = ruleAttributes(dims, ownerPeople, orgPeople, len(managers) > 0)
+	sel, err := s.selectByReportRules(r, *v)
+	if err != nil {
+		return err
+	}
+	v.Offers = map[string][]domain.Goal{}
+	for _, list := range []string{inputPicked, inputInclude, inputExclude} {
+		v.Offers[list] = sel.offers(list, goals, *v)
+	}
+	v.LeaveOutNeedsRule = sel.NeedsRule
 	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
@@ -599,11 +708,7 @@ func (s *Server) matchReport(r *http.Request, goals []domain.Goal, v reportBuild
 	if v.Mode == domain.ReportModePicked {
 		def.Mode, def.Picked = domain.ReportModePicked, existing(v.PickedIDs)
 	} else {
-		for _, row := range v.Rules {
-			if rule := row.rule(); rule.Attribute == domain.RuleTopLevel || len(rule.Values) > 0 {
-				def.Rules = append(def.Rules, rule)
-			}
-		}
+		def.Rules = completeReportRules(v.Rules)
 		if len(def.Rules) == 0 {
 			return reportMatches{NeedsRule: true}, nil
 		}
@@ -622,6 +727,18 @@ func (s *Server) matchReport(r *http.Request, goals []domain.Goal, v reportBuild
 		m.Shown = append(m.Shown, reportMatch{SelectedGoal: sg, Added: sg.Via == domain.SelectedByAlsoInclude})
 	}
 	return m, nil
+}
+
+// completeReportRules are the rules of rows that are complete enough to
+// select by: each with a value, or a Top-level one, which takes none.
+func completeReportRules(rows []reportRuleRow) []domain.ReportRule {
+	var out []domain.ReportRule
+	for _, row := range rows {
+		if rule := row.rule(); rule.Attribute == domain.RuleTopLevel || len(rule.Values) > 0 {
+			out = append(out, rule)
+		}
+	}
+	return out
 }
 
 // goalsByID are the Goals with the given ids, in the order given, leaving out
