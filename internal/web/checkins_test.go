@@ -1127,6 +1127,58 @@ func TestCheckinRefusedLifecycleMarksEveryChoice(t *testing.T) {
 	}
 }
 
+// A Check-in on an On Hold Goal that neither resumes nor Cancels it, its
+// Lifecycle left blank or On Hold, comes back with the keep refusal beside the
+// Lifecycle field and every offered choice refused, described by it and
+// unpicked, so each takes the refused edge (ticket #711): 422 with the page
+// for a plain post, and the fragment at 200 for htmx.
+func TestCheckinKeepingOnHoldMarksEveryLifecycleChoice(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.OnHoldGoal(sam, "Reduce outages", "Outages cost trust.", "Waiting on the vendor.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	checkinsURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+
+	const want = "An On Hold Goal can only be resumed or Cancelled in a Check-in."
+	for _, lifecycle := range []string{"", domain.LifecycleOnHold} {
+		form := url.Values{
+			"health":    {domain.HealthGreen},
+			"status":    {"Still waiting."},
+			"lifecycle": {lifecycle},
+		}
+		resp := postForm(t, samClient, checkinsURL, form)
+		plain := readBody(t, resp)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("plain post, Lifecycle %q: status %d, want 422", lifecycle, resp.StatusCode)
+		}
+		htmx, status := postFormHX(t, samClient, checkinsURL, form)
+		if status != http.StatusOK {
+			t.Errorf("htmx post, Lifecycle %q: status %d, want 200", lifecycle, status)
+		}
+		for how, body := range map[string]string{"plain": plain, "htmx": htmx} {
+			doc := parsePage(t, body)
+			if msg := fieldError(t, doc, "lifecycle"); msg != want {
+				t.Errorf("%s post, Lifecycle %q: Lifecycle field's error = %q, want %q", how, lifecycle, msg, want)
+			}
+			choices := formFields(findByTestID(t, doc, "checkin-lifecycle-fields"), "lifecycle")
+			if len(choices) == 0 {
+				t.Fatalf("%s post, Lifecycle %q: the refused form offers no Lifecycle choices", how, lifecycle)
+			}
+			for _, c := range choices {
+				if attrOf(c.Node, "aria-invalid") != "true" || c.Description != want || c.Checked {
+					t.Errorf("%s post, Lifecycle %q: choice %q is aria-invalid %q, described %q, checked %v; want it invalid, described %q, unchecked",
+						how, lifecycle, c.Label, attrOf(c.Node, "aria-invalid"), c.Description, c.Checked, want)
+				}
+			}
+		}
+	}
+}
+
 // A Check-in that moves the delivery date without a reason gets its error next
 // to the delivery date's reason field.
 func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {

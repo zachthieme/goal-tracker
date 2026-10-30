@@ -1180,7 +1180,9 @@ func TestCheckinMissingHealthEdgesItsChoicesStyles(t *testing.T) {
 // nor can a ring on the radio, which Chromium draws square whatever its
 // border-radius. So while none is picked, each choice with an invalid radio
 // takes a 1px outline in the danger ink, the width of the Health choices'
-// edge, set off 2px with rounded corners. Picking one drops it.
+// edge, set off 2px with rounded corners. Picking one drops it. Every choice
+// keeps a little inline padding, refused or not, so the edge clears its radio
+// and its text and the choices don't move as it comes and goes (ticket #711).
 func TestCheckinRefusedLifecycleEdgesItsChoicesStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1207,8 +1209,15 @@ func TestCheckinRefusedLifecycleEdgesItsChoicesStyles(t *testing.T) {
 	styles := between(t, page, ".checkin-page{", "</style>")
 	const sel = ".lifecycle-choices:not(:has(input:checked)) label:has(input[aria-invalid=true])"
 	decls, ok := ruleFor(styles, sel)
-	if !ok || !strings.Contains(decls, "outline:1px solid var(--color-danger-ink)") || !strings.Contains(decls, "outline-offset:2px") {
-		t.Errorf("%s{%s} doesn't edge the choice 1px in var(--color-danger-ink), set off 2px", sel, decls)
+	if !ok || !strings.Contains(decls, "outline:1px solid var(--color-danger-ink)") || !strings.Contains(decls, "outline-offset:2px") ||
+		!strings.Contains(decls, "border-radius:var(--radius-sm)") {
+		t.Errorf("%s{%s} doesn't edge the choice 1px in var(--color-danger-ink), set off 2px with var(--radius-sm) corners", sel, decls)
+	}
+	const base = ".lifecycle-choices label"
+	decls, _ = ruleFor(styles, base)
+	m := regexp.MustCompile(`(?:^|;)\s*padding-inline:\s*(\d+)px\s*(?:;|$)`).FindStringSubmatch(decls)
+	if m == nil || m[1] == "0" {
+		t.Errorf("%s{%s} gives the choice no padding-inline of some px, refused or not, so the edge sits against its text", base, decls)
 	}
 }
 

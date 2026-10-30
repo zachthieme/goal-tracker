@@ -176,8 +176,8 @@ func TestARefusedCommandIsAnsweredInPlaceOrOnTheRefusalPage(t *testing.T) {
 
 // A refused form's cookie lives only long enough for the redirect to its page
 // to be followed, so a refusal not taken then — the page failed to load, or
-// was never visited — doesn't come back on a later visit. Its page, flags and
-// clearing are as before.
+// was never visited — doesn't come back on a later visit. It is still scoped
+// to its page, HttpOnly and SameSite Lax.
 func TestARefusedFormsCookieExpiresSoonAfterTheRedirect(t *testing.T) {
 	t.Parallel()
 
