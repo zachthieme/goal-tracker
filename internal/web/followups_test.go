@@ -465,7 +465,7 @@ func TestFollowUpsPageListsUnlinkedGoals(t *testing.T) {
 
 	doc := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups")
 
-	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, loner), "unlinked"), "rk-tag", "Unlinked · no parent Goal, not Top-level")
+	assertFollowUpChip(t, followUpChipIn(t, followUpRowIn(t, doc, loner), "unlinked"), "rk-tag", "Unlinked · contributes to no Goal, not Top-level")
 	for _, g := range []domain.Goal{top, aligned} {
 		if hasFollowUpRowIn(doc, g) {
 			t.Errorf("the Follow-ups table lists %q", g.Title)
@@ -1165,7 +1165,7 @@ func TestFollowUpFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
 	}
 }
 
-// An Unlinked Goal's Fix for its Owner is Link to a parent, opening the Goal
+// An Unlinked Goal's Fix for its Owner is Contribute to a Goal, opening the Goal
 // page's parent-link form; anyone else, a Delegate included, who can't link
 // it, gets Suggest a parent, opening the Suggest a parent form.
 func TestFollowUpFixOnAnUnlinkedGoalIsLinkToAParentForItsOwner(t *testing.T) {
@@ -1183,7 +1183,7 @@ func TestFollowUpFixOnAnUnlinkedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 	for _, c := range []struct {
 		viewer, label, href string
 	}{
-		{"sam@example.com", "Link to a parent", goal + "?open=parent-link"},
+		{"sam@example.com", "Contribute to a Goal", goal + "?open=parent-link"},
 		{"dee@example.com", "Suggest a parent", goal + "/suggest-parent"},
 		{"kim@example.com", "Suggest a parent", goal + "/suggest-parent"},
 	} {
@@ -1192,8 +1192,8 @@ func TestFollowUpFixOnAnUnlinkedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 		if label != c.label || href != c.href {
 			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
 		}
-		if label == "Link to a parent" && !hasTestID(getPage(t, client, ts.URL+href), "request-link") {
-			t.Errorf("Link to a parent doesn't open the parent-link form")
+		if label == "Contribute to a Goal" && !hasTestID(getPage(t, client, ts.URL+href), "request-link") {
+			t.Errorf("Contribute to a Goal doesn't open the parent-link form")
 		}
 		if label == "Suggest a parent" && !hasTestID(getPage(t, client, ts.URL+href), "suggest-parent") {
 			t.Errorf("Suggest a parent doesn't open the Suggest a parent form")

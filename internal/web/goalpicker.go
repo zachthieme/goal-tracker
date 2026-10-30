@@ -5,8 +5,8 @@ import (
 )
 
 // goalPickerView is what a Goal picker shows: the define page's Contributes
-// to control, and the one-pick Parent Goal of Suggest a parent and of the
-// Goal page's Link to a parent Goal. Script searches the Goals by title as it
+// to control, and the one-pick Contributes to of Suggest a parent and of the
+// Goal page's Contribute to a Goal. Script searches the Goals by title as it
 // is typed, each result showing its Health, title and Owner, and picking one
 // adds its chip; without script it is a select of the candidates.
 type goalPickerView struct {

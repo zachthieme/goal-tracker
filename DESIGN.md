@@ -720,10 +720,10 @@ and so on).
 
   **A chosen option's edge is `--color-primary-strong`,** never
   `--color-primary` or `--color-border-strong`: on a tinted track's current
-  segment, a Kind tile and its radio dot, and a Where it fits pick. It is the
-  edge that tells the chosen option apart, so it needs WCAG's 3:1, which
-  `--color-primary` (2.49:1 on the canvas) and `--color-border-strong` (2.95:1
-  on the track) miss in light (Deviations 6).
+  segment, a Kind tile and its radio dot, and a Dimensions and Fields pick.
+  It is the edge that tells the chosen option apart, so it needs WCAG's 3:1,
+  which `--color-primary` (2.49:1 on the canvas) and `--color-border-strong`
+  (2.95:1 on the track) miss in light (Deviations 6).
 - **Inputs:** text, email, password, date, number and search inputs and
   selects take a `--color-surface` fill, a 1px `--color-border-strong` edge,
   `--radius-md`, 40px height with 16px sides, and `--color-ink` text, with
@@ -1004,13 +1004,13 @@ and so on).
   - **Table layout (`goalTableLayout`, `?layout=table`):** the same Goals, not
     grouped, with no totals row (ADR 0005).
     - **Above the table:** a **Columns** disclosure (`.gl-columns`) with a
-      tick for every column but Title and an **Apply**, remembered in this
+      tick for every column but Goal and an **Apply**, remembered in this
       browser by the `goal_table_hidden` cookie, then quiet small **Download
       CSV** (the filtered Goals in the import format) and **Edit values**.
-    - **Columns:** Health (the badge), Title, Owner, Lifecycle, Delivery date
-      and Last check-in, then one per offered Dimension and Field. Each label
-      is a link that sorts by it, marked ↑ or ↓ and by `aria-sort`. Unsorted,
-      the rows keep the list's problems-first order.
+    - **Columns:** Health (the badge), Goal, Owner, Lifecycle, Due and Last
+      check-in, then one per offered Dimension and Field. Each label is a
+      link that sorts by it, marked ↑ or ↓ and by `aria-sort`. Unsorted, the
+      rows keep the list's problems-first order.
     - **Look:** 40px rows in 14px with `--color-row-hover`, no wrapping except
       a Long text Field's, which wraps from 240px, and the list's label row.
       The table scrolls sideways inside its own container.
@@ -1125,9 +1125,9 @@ and so on).
       Admin, on an Ownerless Goal), **Check in** (primary, on the person's
       own or Delegated overdue Goal), **Nudge** (a form post back to this
       page; once a Goal is nudged today, a disabled "Nudged today by
-      [Name]"), **Link to a parent**, a Schedule conflict's **Check in** with
-      its dates open, **Open parent**, **Suggest a parent**, **See Action
-      Items** or **Open Goal**.
+      [Name]"), **Contribute to a Goal**, a Schedule conflict's **Check in**
+      with its dates open, **Open parent**, **Suggest a parent**, **See
+      Action Items** or **Open Goal**.
   - **Order:** most urgent first: Active Goals, then Ownerless, then by Health
     (Red, Yellow, none, Green), then the longest Path to Green, Milestone and
     Action Item overdue, then the furthest past its Check-in cadence, then the
@@ -1172,10 +1172,10 @@ and so on).
     36px tall (44px on a coarse pointer), in `--color-ink` at 500, with a
     `--color-primary-subtle` fill on hover. Each person sees only the actions
     they may take: Edit title and Why it matters, Hand off, Add a delegate,
-    Link to a parent Goal, Suggest a parent, Add a child Goal, Edit Dimension
-    values, Edit Fields, Mark or Unmark Top-level, Mark owner departed…, Mark
-    returned… and Reassign. Add a child Goal is open to anyone, so every
-    viewer sees the menu. For whoever may check in, the Lifecycle changes the
+    Contribute to a Goal, Suggest a parent, New contributing Goal, Edit
+    Dimension values, Edit Fields, Mark or Unmark Top-level, Mark owner
+    departed…, Mark returned… and Reassign. New contributing Goal is open to
+    anyone, so every viewer sees the menu. For whoever may check in, the Lifecycle changes the
     Goal allows come last: **Put on hold…**, **Mark done…** and **Cancel…**
     on an Active Goal, **Cancel…** alone on an On Hold one. These lead to the
     Check-in page with that change picked and its section open
@@ -1304,21 +1304,24 @@ and so on).
   longer offers that form, or what was typed is too long to carry back, the
   refusal page says why instead, linking **Back** to the Goal. It is all
   links and plain form posts, so it
-  works without script; Link to a parent Goal's picker searches only with
+  works without script; Contribute to a Goal's picker searches only with
   script, and falls back to a select.
   - **Where each opens:** Edit title and Why it matters (the Owner or an
     Admin; the title and the Why it matters as they stand, with a **Save**)
     and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
     departed and Mark returned in the rail under the Owner row. Delegates in
     their row: the current people with **Remove**, and the person picker
-    (`personPicker`) to add one. Link to a parent Goal under Contributes to: **Parent Goal**, the
-    one-pick Goal picker (`goalPicker`) under a visible legend, its search
+    (`personPicker`) to add one. Contribute to a Goal (the form's heading;
+    the rail's **+ Add** that opens it is named "Add a Goal it contributes
+    to", keeping its text in its name) under Contributes to: **Contributes
+    to**, the one-pick Goal picker (`goalPicker`) under a visible legend, its search
     focused, of the Goals this one could contribute to, whose results show
     each one's Health badge, title and Owner, and a pick as one chip, a
     second pick replacing it. Nothing is chosen at first; without script it
     is a select of every other Goal's title starting on "Choose a Goal…". A
-    **Request link** with nothing picked is refused beside the picker, in
-    danger ink, not in the alert, and nothing is picked when it comes back.
+    **Request link** with nothing picked is refused beside the picker, "Pick
+    a Goal to contribute to.", in danger ink, not in the alert, and nothing is
+    picked when it comes back.
     Then the Dimension and Field forms in their groups. Add a Milestone under the
     Milestones table (a name, a date and **Add Milestone**, for the Owner or a
     Delegate until the Goal is Done or Cancelled). Without script, the Draft
@@ -1702,17 +1705,17 @@ and so on).
     activate", or "At least one Metric to activate" once Ongoing is chosen),
     then the Milestone and Metric editor (below).
   - **More detail:** its `<h2>` with a muted "optional, and editable later"
-    beside it. **Contributes to** and **Where it fits** are `<details>` rows,
-    48px each with a hairline between them: the name in 600 `--color-ink`, a
-    muted "· " and what it holds ("· none", "· not set", or the names), and
-    **Set** or **Change** at the right in 600 `--color-primary-strong`. A row
-    opens by itself when it holds a refused input or, for Where it fits, a
-    required value not set. Where it fits shows only when there are
-    Dimensions or Fields. A Dimension taking several values offers a pill
+    beside it. **Contributes to** and **Dimensions and Fields** are
+    `<details>` rows, 48px each with a hairline between them: the name in 600
+    `--color-ink`, a muted "· " and what it holds ("· none", "· not set", or
+    the names), and **Set** or **Change** at the right in 600
+    `--color-primary-strong`. A row opens by itself when it holds a refused
+    input or, for Dimensions and Fields, a required value not set. Dimensions
+    and Fields shows only when there are Dimensions or Fields. A Dimension taking several values offers a pill
     checkbox for each (`.gf-pick`) in a 1px `--color-border-strong` edge; a
     chosen one takes a `--color-primary-subtle` fill and a 1px
     `--color-primary-strong` edge. Contributes to is the shared Goal picker
-    (`goalPicker`, which Suggest a parent and Link to a parent Goal use
+    (`goalPicker`, which Suggest a parent and Contribute to a Goal use
     one-pick): a search, with a chip for each Goal picked (its Health badge,
     its title and ×); without script it is a multiple select, with a Remove
     box on each chip.
@@ -2334,16 +2337,16 @@ and so on).
   header strip's title, with no actions. One plain section (`.sg-section`),
   up to 560px wide: an `h2`, "Parent suggestion", over a muted "For <Goal>,
   owned by <Name>, who decides whether to link it."; a refusal's reason as an
-  alert; **Parent Goal**, the one-pick Goal picker (`goalPicker`) under a
+  alert; **Contributes to**, the one-pick Goal picker (`goalPicker`) under a
   visible legend: a search, focused, of the Goals the Goal could be
   suggested under, whose results show each one's Health badge, title and
   Owner, and a pick as one chip (its Health badge, its title and ×), a second
   pick replacing it. Nothing is chosen at first; without script it is a
   select of those Goals' titles starting on "Choose a Goal…". Then **Note
   (optional)**; then a primary **Suggest** and a quiet **Cancel** back to the
-  Goal page. A submit with nothing picked is refused beside the picker, in
-  danger ink, and any other refusal in the alert; either way the note comes
-  back as typed and nothing is picked.
+  Goal page. A submit with nothing picked is refused beside the picker, "Pick
+  a Goal for it to contribute to.", in danger ink, and any other refusal in
+  the alert; either way the note comes back as typed and nothing is picked.
 
 ## Motion
 
@@ -2550,9 +2553,9 @@ given):
      is in § Deviations 3's table, and `scripts/contrast.py` checks it.
    - A chosen option's edge is `--color-primary-strong` (§ Segmented
      controls): the current segment of a tinted track, a chosen Kind tile, its
-     radio dot and a chosen Where it fits pick. The edge sits between the
-     option's fill, `--color-canvas` or `--color-primary-subtle`, and what is
-     around it, the canvas or the `--color-chip-bg` track.
+     radio dot and a chosen Dimensions and Fields pick. The edge sits between
+     the option's fill, `--color-canvas` or `--color-primary-subtle`, and what
+     is around it, the canvas or the `--color-chip-bg` track.
 
      | Theme | Mark | On | Ratio |
      | --- | --- | --- | --- |
@@ -2571,8 +2574,8 @@ given):
      | Light | Current chip edge `--color-primary-strong` `#0F766E` | canvas / primary light | 5.47 / 4.86 |
      | Dark | Resting chip edge `--color-border-strong` `#6B6F77` | canvas / surface / primary subtle | 3.78 / 3.59 / 3.69 |
      | Dark | Current chip edge `--color-primary-strong` `#14B8A6` | canvas / primary light | 7.65 / 5.41 |
-   - An unticked Where it fits pick on New goal (§ Pages) rests in a 1px
-     `--color-border-strong` edge, with no fill of its own, on the canvas.
+   - An unticked Dimensions and Fields pick on New goal (§ Pages) rests in a
+     1px `--color-border-strong` edge, with no fill of its own, on the canvas.
      `--color-border` (1.17:1) missed in light.
 
      | Theme | Mark | On | Ratio |

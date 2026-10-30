@@ -1798,11 +1798,11 @@ func assertNeutralRule(t *testing.T, rule string) {
 	}
 }
 
-// assertParentPickerOpensEmpty checks root holds a one-pick Parent Goal
-// picker with nothing picked: a parent-picker fieldset whose visible legend
-// is Parent Goal, holding the search and an empty parent-chips, and a single
-// no-script select starting on "Choose a Goal…", with nothing required. It
-// returns the picker.
+// assertParentPickerOpensEmpty checks root holds a one-pick Goal picker with
+// nothing picked: a parent-picker fieldset whose visible legend is
+// Contributes to, holding the search and an empty parent-chips, and a single
+// no-script select named Contributes to starting on "Choose a Goal…", with
+// nothing required. It returns the picker.
 func assertParentPickerOpensEmpty(t *testing.T, root *html.Node) *html.Node {
 	t.Helper()
 	picker := findByTestID(t, root, "parent-picker")
@@ -1810,8 +1810,8 @@ func assertParentPickerOpensEmpty(t *testing.T, root *html.Node) *html.Node {
 		t.Errorf("the parent picker is a <%s>, want a fieldset", picker.Data)
 	}
 	legends := findAll(picker, func(n *html.Node) bool { return n.Data == "legend" })
-	if len(legends) != 1 || textOf(legends[0]) != "Parent Goal" || slices.Contains(strings.Fields(attrOf(legends[0], "class")), "sr-only") {
-		t.Errorf("the parent picker isn't headed by a visible Parent Goal legend: %s", renderNode(picker))
+	if len(legends) != 1 || textOf(legends[0]) != "Contributes to" || slices.Contains(strings.Fields(attrOf(legends[0], "class")), "sr-only") {
+		t.Errorf("the parent picker isn't headed by a visible Contributes to legend: %s", renderNode(picker))
 	}
 	if search := findAll(picker, func(n *html.Node) bool { return attrOf(n, "id") == "parent-search" }); len(search) != 1 || attrOf(search[0], "type") != "search" {
 		t.Errorf("the parent picker has no search: %s", renderNode(picker))
@@ -1822,6 +1822,9 @@ func assertParentPickerOpensEmpty(t *testing.T, root *html.Node) *html.Node {
 	sel := findByTestID(t, picker, "parent-select")
 	if hasAttr(sel, "multiple") || attrOf(sel, "name") != "parent_id" {
 		t.Errorf("the no-script picker isn't a single select of parent_id: %s", openTag(renderNode(sel)))
+	}
+	if attrOf(sel, "aria-label") != "Contributes to" {
+		t.Errorf("the no-script picker is named %q, want Contributes to", attrOf(sel, "aria-label"))
 	}
 	opts := findAll(sel, func(n *html.Node) bool { return n.Data == "option" })
 	if len(opts) == 0 || textOf(opts[0]) != "Choose a Goal…" || !hasAttr(opts[0], "value") || attrOf(opts[0], "value") != "" || !hasAttr(opts[0], "selected") {

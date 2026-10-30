@@ -948,7 +948,7 @@ templ goalRail(v goalView) {
 			@goalFields(v)
 		</section>
 		<section data-testid="goal-parents" class="gp-block gp-rail-group">
-			@groupHead(v, formParentLink, "+ Add", "Add a parent Goal") {
+			@groupHead(v, formParentLink, "+ Add", "Add a Goal it contributes to") {
 				<h3>Contributes to</h3>
 			}
 			@linkList(g, v.Parents, v.LinkHealth, v.RemovableLinks, "no-parents", "This Goal contributes to nothing yet.")
@@ -1446,10 +1446,10 @@ templ addGoalValue(v goalView, d domain.Dimension) {
 // and a submit picking none comes back with the reason beside the picker.
 templ requestParentLink(v goalView) {
 	if v.opens(formParentLink) {
-		@openGoalForm(v, formParentLink, "Link to a parent Goal") {
+		@openGoalForm(v, formParentLink, "Contribute to a Goal") {
 			<form data-testid="request-link" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", v.Goal.ID)) } class="gp-form">
 				<fieldset data-testid="parent-picker" class="gf-picker-field">
-					<legend>Parent Goal</legend>
+					<legend>Contributes to</legend>
 					@goalPicker(goalPickerView{
 						Single:      true,
 						SearchURL:   fmt.Sprintf("/goals/search?%s=%d", searchGoal, v.Goal.ID),

@@ -3414,7 +3414,7 @@ func TestDefineCardLinksToFinishDefining(t *testing.T) {
 	}
 }
 
-// Add a child Goal is the New goal form now, so its old route is gone.
+// New contributing Goal is the New goal form now, so its old route is gone.
 func TestCreateChildGoalRouteIsGone(t *testing.T) {
 	t.Parallel()
 
@@ -4628,7 +4628,7 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
-	want := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
+	want := []string{"Health", "Goal", "Owner", "Lifecycle", "Due", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
 	if got := goalTableHeadsIn(t, page); !slices.Equal(got, want) {
 		t.Fatalf("columns = %q, want %q", got, want)
 	}
@@ -4823,10 +4823,10 @@ func goalTableSubmitColumns(t *testing.T, client *http.Client, base string, page
 	return getPage(t, client, base+"/goals?"+values.Encode())
 }
 
-// A Columns control hides any Goal table column but Title. It is a plain form,
-// so it works without JavaScript, and the choice is remembered in that browser:
-// the column stays hidden on the next visit, while another browser still shows
-// it. Hiding keeps the filters.
+// A Columns control hides any Goal table column but Goal, its title. It is a
+// plain form, so it works without JavaScript, and the choice is remembered in
+// that browser: the column stays hidden on the next visit, while another
+// browser still shows it. Hiding keeps the filters.
 func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	t.Parallel()
 
@@ -4839,7 +4839,7 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	h.CreateGoal(sam, "Bravo", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	all := []string{"Health", "Title", "Owner", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
+	all := []string{"Health", "Goal", "Owner", "Lifecycle", "Due", "Last check-in", "Pillar", "Budget"}
 
 	page := getPage(t, client, ts.URL+"/goals?layout=table&q=alpha")
 	if got := goalTableHeadsIn(t, page); !slices.Equal(got, all) {
@@ -4847,11 +4847,11 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	}
 	form := findByTestID(t, page, "goal-columns")
 	if titles := findAll(form, func(n *nethtml.Node) bool { return attrOf(n, "value") == "title" }); len(titles) > 0 {
-		t.Errorf("the Columns control offers to hide Title: %s", renderNode(form))
+		t.Errorf("the Columns control offers to hide Goal: %s", renderNode(form))
 	}
 
 	page = goalTableSubmitColumns(t, client, ts.URL, page, "Owner", "Budget")
-	want := []string{"Health", "Title", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
+	want := []string{"Health", "Goal", "Lifecycle", "Due", "Last check-in", "Pillar"}
 	if got := goalTableHeadsIn(t, page); !slices.Equal(got, want) {
 		t.Errorf("after hiding Owner and Budget, columns = %q, want %q", got, want)
 	}
@@ -4868,8 +4868,8 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 	}
 
 	everything := goalTableSubmitColumns(t, client, ts.URL, next, all...)
-	if got := goalTableHeadsIn(t, everything); !slices.Equal(got, []string{"Title"}) {
-		t.Errorf("hiding every column leaves %q, want Title alone", got)
+	if got := goalTableHeadsIn(t, everything); !slices.Equal(got, []string{"Goal"}) {
+		t.Errorf("hiding every column leaves %q, want Goal alone", got)
 	}
 	restored := goalTableSubmitColumns(t, client, ts.URL, everything)
 	if got := goalTableHeadsIn(t, restored); !slices.Equal(got, all) {
@@ -5133,7 +5133,7 @@ func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
 				t.Errorf("%s's %s cell has an input = %v, want %v", tc.goal.Title, head, got, tc.editable)
 			}
 		}
-		for _, head := range []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in"} {
+		for _, head := range []string{"Goal", "Owner", "Health", "Lifecycle", "Due", "Last check-in"} {
 			if cell := goalTableCellIn(t, page, row, head); len(goalTableInputsIn(cell)) > 0 {
 				t.Errorf("%s's %s cell has an input: %s", tc.goal.Title, head, renderNode(cell))
 			}
@@ -6241,7 +6241,7 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	if got, want := goalRowTitlesIn(goalTableRowsIn(t, swapped), goals...), goalRowTitlesIn(goalTableRowsIn(t, direct), goals...); !slices.Equal(got, want) {
 		t.Errorf("table under htmx lists %q, but %s loaded directly lists %q", got, address, want)
 	}
-	if !goalTableSortsBy(swapped, "Title", "descending") {
+	if !goalTableSortsBy(swapped, "Goal", "descending") {
 		t.Errorf("the table under htmx lost its sort: %s", renderNode(swapped))
 	}
 	// The List / Table switch sits in the header strip, which the filter form
@@ -6582,7 +6582,7 @@ func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testi
 	}
 	for _, g := range []domain.Goal{alpha, beta} {
 		row := goalTableRowOf(t, root, g)
-		for _, head := range []string{"Title", "Health", "Lifecycle", "Delivery date"} {
+		for _, head := range []string{"Goal", "Health", "Lifecycle", "Due"} {
 			if cell := goalTableCellIn(t, root, row, head); linkTo(cell, goalHref(g.ID)) == nil {
 				t.Errorf("%s's %s cell doesn't link to the Goal: %s", g.Title, head, renderNode(cell))
 			}
@@ -6666,13 +6666,13 @@ func TestGoalPageHeaderOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
 }
 
 // The action menu lists the actions a person may take, each a plain link to the
-// Goal page with that action's form open, but Add a child Goal, which links to
+// Goal page with that action's form open, but New contributing Goal, which links to
 // the New goal form with this Goal picked as its parent: an Owner gets Edit
-// title and Why it matters, Hand off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
+// title and Why it matters, Hand off, Add a delegate, Contribute to a Goal, New contributing Goal and, with
 // Dimensions and Fields defined, Edit Dimension values and Edit Fields; an
 // Admin gets Edit title and Why it matters too, and adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
-// Reassign and Mark returned… in place of Hand off; anyone else only Add a
-// child Goal. Anyone but the Owner gets Suggest a parent, linking to its own
+// Reassign and Mark returned… in place of Hand off; anyone else only New
+// contributing Goal. Anyone but the Owner gets Suggest a parent, linking to its own
 // form. The Owner also gets the Lifecycle changes, which lead to the Check-in
 // page (TestGoalPageActionMenuOffersLifecycleChangesOverHTTP).
 func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
@@ -6704,8 +6704,8 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Edit title and Why it matters": open(goal, "title-why-it-matters"),
 			"Hand off":                      open(goal, "handoff"),
 			"Add a delegate":                open(goal, "delegates"),
-			"Link to a parent Goal":         open(goal, "parent-link"),
-			"Add a child Goal":              child(goal),
+			"Contribute to a Goal":          open(goal, "parent-link"),
+			"New contributing Goal":         child(goal),
 			"Edit Dimension values":         open(goal, "dimensions"),
 			"Edit Fields":                   open(goal, "fields"),
 			"Put on hold…":                  fmt.Sprintf("/goals/%d/checkin?lifecycle=On+Hold", goal.ID),
@@ -6716,7 +6716,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Edit title and Why it matters": open(goal, "title-why-it-matters"),
 			"Hand off":                      open(goal, "handoff"),
 			"Suggest a parent":              suggest(goal),
-			"Add a child Goal":              child(goal),
+			"New contributing Goal":         child(goal),
 			"Edit Dimension values":         open(goal, "dimensions"),
 			"Edit Fields":                   open(goal, "fields"),
 			"Mark Top-level":                open(goal, "top-level"),
@@ -6725,7 +6725,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 		{"ada@example.com", orphan, map[string]string{
 			"Edit title and Why it matters": open(orphan, "title-why-it-matters"),
 			"Suggest a parent":              suggest(orphan),
-			"Add a child Goal":              child(orphan),
+			"New contributing Goal":         child(orphan),
 			"Edit Dimension values":         open(orphan, "dimensions"),
 			"Edit Fields":                   open(orphan, "fields"),
 			"Mark Top-level":                open(orphan, "top-level"),
@@ -6733,8 +6733,8 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Reassign":                      open(orphan, "reassign"),
 		}},
 		{"mel@example.com", goal, map[string]string{
-			"Suggest a parent": suggest(goal),
-			"Add a child Goal": child(goal),
+			"Suggest a parent":      suggest(goal),
+			"New contributing Goal": child(goal),
 		}},
 	} {
 		page := getPage(t, signInClient(t, ts.URL, tc.who), goalPageURL(ts.URL, tc.goal))
@@ -6884,7 +6884,7 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, rail},
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
-		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
+		{"sam", "Contribute to a Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
 		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, parents},
 		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, rail},
@@ -7027,7 +7027,7 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", "to_email", "nobody@example.com", ""},
 		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", "email", "nobody@example.com", ""},
 		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", "note", "Because.", ""},
-		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", "note", "Because.", "input-error"},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "Pick a Goal to contribute to.", "note", "Because.", "input-error"},
 		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", "email", "nobody@example.com", ""},
 		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", "target_date", "2026-05-01", ""},
 		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", "name", "GA", ""},

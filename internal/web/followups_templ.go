@@ -1349,7 +1349,7 @@ func followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) tem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)+" · no parent Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, followUpName(sig.Kind)+" · contributes to no Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

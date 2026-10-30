@@ -140,7 +140,7 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"sg-form\"><fieldset data-testid=\"parent-picker\" class=\"gf-picker-field\"><legend>Parent Goal</legend>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"sg-form\"><fieldset data-testid=\"parent-picker\" class=\"gf-picker-field\"><legend>Contributes to</legend>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

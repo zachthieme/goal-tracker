@@ -277,7 +277,7 @@ templ followUpChip(today time.Time, g domain.Goal, sig domain.FollowUpSignal) {
 			</span>
 		case domain.FollowUpUnlinked:
 			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">
-				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · no parent Goal, not Top-level")
+				@followUpTip(sig.Kind, followUpName(sig.Kind)+" · contributes to no Goal, not Top-level")
 			</span>
 		case domain.FollowUpScheduleConflicts:
 			<span data-testid="follow-up-signal" data-kind={ string(sig.Kind) } class="rk-tag">

@@ -842,9 +842,9 @@ templ goalFormWarningsScript() {
 	</script>
 }
 
-// goalFormMore is the "More detail" section: Contributes to and Where it fits,
-// optional, each a one-line row that opens in place. A closed row's inputs
-// still post, so it works without script.
+// goalFormMore is the "More detail" section: Contributes to and Dimensions
+// and Fields, optional, each a one-line row that opens in place. A closed
+// row's inputs still post, so it works without script.
 templ goalFormMore(v goalFormView) {
 	<section data-testid="goal-form-more" class="gf-section gf-more">
 		<h2>More detail <span class="muted">optional, and editable later</span></h2>
@@ -854,7 +854,7 @@ templ goalFormMore(v goalFormView) {
 		</details>
 		if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
 			<details data-testid="goal-form-fits-row" class="gf-more-row" open?={ v.fitsOpen() }>
-				@goalFormMoreSummary("Where it fits", v.fitsNames(), "not set")
+				@goalFormMoreSummary("Dimensions and Fields", v.fitsNames(), "not set")
 				@goalFormFits(v)
 			</details>
 		}
@@ -937,7 +937,7 @@ templ goalFormParentsHintScript() {
 	</script>
 }
 
-// goalFormFits is the Where it fits field: each Dimension still offered,
+// goalFormFits is the Dimensions and Fields field: each Dimension still offered,
 // a select when a Goal takes one of its values and checkboxes when it takes
 // several, with an input to add a value when it's Extendable, then an input of
 // each Field's type. Nothing here is needed to save, though its note names
@@ -946,7 +946,7 @@ templ goalFormParentsHintScript() {
 // More detail shows it only when there are Dimensions or Fields.
 templ goalFormFits(v goalFormView) {
 	<fieldset data-testid="goal-form-fits" class="gf-section">
-		<legend class="sr-only">Where it fits</legend>
+		<legend class="sr-only">Dimensions and Fields</legend>
 		<p data-testid="goal-form-fits-note" class="muted small">
 			{ v.fitsRequiredNote() }
 			if v.Suggested {
@@ -962,7 +962,7 @@ templ goalFormFits(v goalFormView) {
 	</fieldset>
 }
 
-// fitsRequiredNote opens Where it fits' note: optional, when no Dimension or
+// fitsRequiredNote opens Dimensions and Fields' note: optional, when no Dimension or
 // Field is required, or else the required ones, named as the checklist names
 // them (domain.JudgeDefinition skips a Retired one), and the rest optional
 // when any are left.
@@ -989,10 +989,10 @@ func (v goalFormView) fitsRequiredNote() string {
 	return note
 }
 
-// goalFormDimension is one Dimension of Where it fits, each value chosen
-// posting its value_id: a select, None at first, when a Goal takes one value,
-// and a checkbox each when it takes several. A Retired value shows only when
-// it was posted.
+// goalFormDimension is one Dimension in Dimensions and Fields, each value
+// chosen posting its value_id: a select, None at first, when a Goal takes one
+// value, and a checkbox each when it takes several. A Retired value shows only
+// when it was posted.
 templ goalFormDimension(v goalFormView, d domain.Dimension) {
 	if d.TakesSeveral() {
 		<fieldset id={ dimensionInput(d) } class="gf-group">
@@ -1050,8 +1050,8 @@ templ goalFormNewValue(v goalFormView, d domain.Dimension) {
 	}
 }
 
-// goalFormField is one Field of Where it fits: an input of its type, as the
-// Goal page's fieldInput renders it, named for the Field.
+// goalFormField is one Field in Dimensions and Fields: an input of its type,
+// as the Goal page's fieldInput renders it, named for the Field.
 templ goalFormField(v goalFormView, f domain.Field) {
 	{{ input := domain.FieldInput(f.ID) }}
 	<label class="field">

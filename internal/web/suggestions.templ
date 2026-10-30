@@ -32,7 +32,7 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 			}
 			<form data-testid="suggest-parent" method="post" action={ templ.SafeURL(goalPath(v.Goal.ID) + "/suggest-parent") } class="sg-form">
 				<fieldset data-testid="parent-picker" class="gf-picker-field">
-					<legend>Parent Goal</legend>
+					<legend>Contributes to</legend>
 					@goalPicker(goalPickerView{
 						Single:      true,
 						SearchURL:   fmt.Sprintf("/goals/search?%s=%d&%s=%s", searchGoal, v.Goal.ID, searchFor, searchForSuggestion),

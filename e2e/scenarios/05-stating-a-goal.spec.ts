@@ -129,8 +129,9 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     await expect(contributes).toBeHidden();
     await openContributesTo(priya);
     await expect(contributes).toBeVisible();
-    // Where it fits opens by itself: Team and the Field are required, and unset.
-    const fits = more.getByRole("group", { name: "Where it fits" });
+    // Dimensions and Fields opens by itself: Team and the Field are required,
+    // and unset.
+    const fits = more.getByRole("group", { name: "Dimensions and Fields" });
     await expect(fits.getByRole("combobox", { name: "Team", exact: true })).toBeVisible();
     await expect(fits.getByLabel(fieldName, { exact: true })).toBeVisible();
   });
@@ -226,7 +227,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     await expect(count).toHaveText("4 of 6 done");
 
     await priya.getByTestId("goal-form-fits").scrollIntoViewIfNeeded();
-    await expect(ready, "the card stays in view beside Where it fits").toBeInViewport();
+    await expect(ready, "the card stays in view beside Dimensions and Fields").toBeInViewport();
 
     await priya.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: team.team });
     await expectItem(priya, "A value in Team", true);
@@ -336,7 +337,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     await priya.goto("/follow-ups?group=plan");
     for (const g of [goalA, goalB]) {
       const unlinked = followUpRow(priya, g.title).locator('[data-testid="follow-up-signal"][data-kind="unlinked"]');
-      await expect(unlinked).toHaveText("Unlinked · no parent Goal, not Top-level");
+      await expect(unlinked).toHaveText("Unlinked · contributes to no Goal, not Top-level");
     }
     // The Goal with a parent isn't Unlinked (it may show another plan signal,
     // such as a Schedule conflict with the team Goal).

@@ -4137,8 +4137,8 @@ func TestDefineGoalTitleTextIsHeadingStyleStyles(t *testing.T) {
 	}
 }
 
-// The Parent Goal picker's error is styled as the goal form's field errors
-// are, on Suggest a parent and the Goal page's Link to a parent Goal too,
+// The Contributes to picker's error is styled as the goal form's field errors
+// are, on Suggest a parent and the Goal page's Contribute to a Goal too,
 // which don't carry the goal form's styles: the picker brings its own
 // .gf-input-error rule (#656).
 func TestParentPickerErrorIsInTheDangerInkStyles(t *testing.T) {
@@ -4155,7 +4155,7 @@ func TestParentPickerErrorIsInTheDangerInkStyles(t *testing.T) {
 		name, who, opened, action string
 	}{
 		{"Suggest a parent", "pat@example.com", fmt.Sprintf("/goals/%d/suggest-parent", goal.ID), fmt.Sprintf("/goals/%d/suggest-parent", goal.ID)},
-		{"Link to a parent Goal", "sam@example.com", fmt.Sprintf("/goals/%d?open=parent-link", goal.ID), fmt.Sprintf("/goals/%d/links", goal.ID)},
+		{"Contribute to a Goal", "sam@example.com", fmt.Sprintf("/goals/%d?open=parent-link", goal.ID), fmt.Sprintf("/goals/%d/links", goal.ID)},
 	} {
 		client := signInClient(t, ts.URL, tc.who)
 		for what, root := range map[string]*html.Node{

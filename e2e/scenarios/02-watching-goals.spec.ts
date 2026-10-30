@@ -227,11 +227,12 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       const more = page.getByTestId("goal-more");
       await more.getByTitle("More actions").click();
       const offered = await more.getByRole("link").allTextContents();
-      for (const owners of ["Hand off", "Add a delegate", "Link to a parent Goal", "Edit Dimension values"]) {
+      for (const owners of ["Hand off", "Add a delegate", "Contribute to a Goal", "Edit Dimension values"]) {
         expect(offered, `"${g.title}" offers the manager no "${owners}"`).not.toContain(owners);
       }
-      // Anyone may suggest a parent for an Active Goal, or add a child to it.
-      expect(offered).toEqual(expect.arrayContaining(["Suggest a parent", "Add a child Goal"]));
+      // Anyone may suggest a parent for an Active Goal, or start a Goal that
+      // contributes to it.
+      expect(offered).toEqual(expect.arrayContaining(["Suggest a parent", "New contributing Goal"]));
     }
 
     // A Check-in posted straight to the Goal is refused, and records nothing.

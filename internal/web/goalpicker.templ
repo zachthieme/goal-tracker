@@ -46,7 +46,7 @@ templ goalPicker(v goalPickerView) {
 		</div>
 		if v.Single {
 			<div class="field gf-no-js">
-				<select data-testid="parent-select" id={ inputParentID } name={ inputParentID } aria-label="Parent Goal" { invalid(v.Error, inputParentID)... }>
+				<select data-testid="parent-select" id={ inputParentID } name={ inputParentID } aria-label="Contributes to" { invalid(v.Error, inputParentID)... }>
 					<option value="" selected>Choose a Goal…</option>
 					for _, c := range v.Candidates {
 						<option value={ fmt.Sprint(c.ID) }>{ c.Title }</option>
