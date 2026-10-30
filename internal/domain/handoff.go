@@ -272,12 +272,8 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 		}
 		return Handoff{}, fmt.Errorf("look up handoff: %w", err)
 	}
-	if row.ToOwner != actorID {
-		return Handoff{}, Refuse(ErrNotAuthorized, "only the person who rejected a Handoff may undo it")
-	}
-	notRejected := Refuse(ErrValidation, "this Handoff isn't rejected, so there is nothing to undo")
-	if row.Status != HandoffRejected {
-		return Handoff{}, notRejected
+	if err := handoffRejectionUndoRefusal(row, actorID); err != nil {
+		return Handoff{}, err
 	}
 	if _, err := s.spendUndo(ctx, token, undoHandoffRejection, handoffID, actorID); err != nil {
 		return Handoff{}, err
@@ -314,7 +310,7 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 			return fmt.Errorf("restore handoff: %w", err)
 		}
 		if n == 0 {
-			return notRejected
+			return errHandoffNotRejected
 		}
 		return nil
 	})
@@ -322,6 +318,43 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 		return Handoff{}, err
 	}
 	return s.loadHandoff(ctx, handoffID)
+}
+
+// errHandoffNotRejected refuses to undo a Handoff that isn't rejected.
+var errHandoffNotRejected = Refuse(ErrValidation, "this Handoff isn't rejected, so there is nothing to undo")
+
+// handoffRejectionUndoRefusal is the rule for who may still undo rejecting
+// handoff, which RestoreHandoff and CanUndoHandoffRejection both ask: actorID
+// is its proposed new Owner, who rejected it, and it is still rejected.
+func handoffRejectionUndoRefusal(handoff db.Handoff, actorID int64) error {
+	if handoff.ToOwner != actorID {
+		return Refuse(ErrNotAuthorized, "only the person who rejected a Handoff may undo it")
+	}
+	if handoff.Status != HandoffRejected {
+		return errHandoffNotRejected
+	}
+	return nil
+}
+
+// CanUndoHandoffRejection says whether actorID may still undo rejecting
+// Handoff handoffID with token, by RestoreHandoff's own rule: for the viewer,
+// the token and the Handoff itself. It doesn't answer for what has happened
+// since to the Goal, its other Handoffs or its new Owner, which RestoreHandoff
+// checks only when the Undo is posted. A Handoff that doesn't exist is
+// ErrNotFound.
+func (s *Service) CanUndoHandoffRejection(ctx context.Context, actorID, handoffID int64, token string) (bool, error) {
+	row, err := s.queries.GetHandoff(ctx, handoffID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("%w: handoff %d", ErrNotFound, handoffID)
+		}
+		return false, fmt.Errorf("look up handoff: %w", err)
+	}
+	refusal := handoffRejectionUndoRefusal(row, actorID)
+	if refusal == nil {
+		_, refusal = s.peekUndo(ctx, token, undoHandoffRejection, handoffID, actorID)
+	}
+	return goalPagePermits(refusal)
 }
 
 // Handoff returns a Handoff with its Goal, both Owners, and its initiator
