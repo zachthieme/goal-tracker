@@ -3132,4 +3132,17 @@ func TestNewGoalFormJudgesTodayInTheOwnersTimezone(t *testing.T) {
 	if got := goalFormWarnings(t, form); !maps.Equal(got, want) {
 		t.Errorf("warnings = %q, want %q", got, want)
 	}
+
+	// Script judges against the same today, in the same words.
+	goalForm := findByTestID(t, form, "goal-form")
+	for name, want := range map[string]string{
+		"data-today":          "2026-01-03",
+		"data-warn-delivery":  "This delivery date has already passed.",
+		"data-warn-milestone": "This Milestone is after the delivery date.",
+		"data-warn-target":    "This target date has already passed.",
+	} {
+		if got := attrOf(goalForm, name); got != want {
+			t.Errorf("the form carries %s=%q, want %q", name, got, want)
+		}
+	}
 }

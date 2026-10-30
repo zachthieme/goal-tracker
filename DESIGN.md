@@ -1657,6 +1657,17 @@ and so on).
     Goal wasn't saved.** on Finish defining), over each problem, linked to its
     input. Each refused input takes a `--color-danger-ink` edge, with the
     reason under it in 13px `--color-danger-ink`.
+  - **Date warnings (`.gf-input-warning`):** dates that make no sense are
+    warned of, never refused: a Dated Goal's delivery date already past ("This
+    delivery date has already passed."), a Milestone after the delivery date
+    ("This Milestone is after the delivery date."), and a Metric's target date
+    already past ("This target date has already passed."), today being the
+    Owner's. The warning sits under its input, or on a saved Milestone or
+    Metric under its detail line, in 13px `--color-ink-2`: neutral, with no
+    edge on the input and not the danger ink. It blocks nothing: both buttons
+    still submit, activation asks no confirmation, and Ready to activate
+    ignores it. An input refused shows its reason instead. The page renders
+    the warnings, and with script they follow the form as it is typed.
   - **Finish defining** (`/goals/<id>/define`): the Title is the Goal's and
     read-only, and Why it matters takes the focus. The Goal's own Milestones
     and Metrics are a read-only list at the top of How you'll know, and
@@ -1707,7 +1718,7 @@ and so on).
   tinted track with 4px inside it (§ Segmented controls), its segments at
   `--radius-sm`, 44px on a coarse pointer. The focused segment takes the usual
   ring. Custom shows a "Days between Check-ins" number input under the
-  control. At 600px and below the control becomes a 2×2 grid the width of the
+  control, taking 1 to 90 days; more is refused. At 600px and below the control becomes a 2×2 grid the width of the
   form.
 - **Reports list (`reportsPage` in `reports.templ`):** a full-bleed list
   page: it drops its width cap and side padding (`.rp-index`), and every

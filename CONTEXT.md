@@ -137,7 +137,7 @@ How long an Active Goal has been Yellow or Red without a Green Check-in in betwe
 _Avoid_: time in status, red streak, days red
 
 **Check-in overdue**:
-An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the Owner's Timezone. On Hold Goals are never Check-in overdue. Surfaced as prominently as Red; a Rolled-up Health says how many children are Check-in overdue ("3 of 12 overdue") without changing its color.
+An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default, and 1 to 90 days), counted in days of the Owner's Timezone. On Hold Goals are never Check-in overdue. Surfaced as prominently as Red; a Rolled-up Health says how many children are Check-in overdue ("3 of 12 overdue") without changing its color.
 _Avoid_: stale, missing update, Check-in due (that's a Check-in coming up within the cadence)
 
 **Lifecycle**:
