@@ -1806,10 +1806,10 @@ func TestReportsListLinksToTheBuilderStyles(t *testing.T) {
 	assertReportsRuleDeclares(t, css, ".small", "font-size:var(--text-secondary)")
 }
 
-// A published Report's row shows its last publication's date in full ink,
-// counts its draft's changes in an amber pill, and draws its Goals' Health as
-// a bar, a Green unit then a Red one in their Health's mark
-// (TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP).
+// A published Report's row shows its last publication's date in full ink at
+// 500, like the Report's name, counts its draft's changes in an amber pill,
+// and draws its Goals' Health as a bar, a Green unit then a Red one in their
+// Health's mark (TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP).
 func TestReportsListRowShowsTheLastPublicationAndChangesStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1833,9 +1833,11 @@ func TestReportsListRowShowsTheLastPublicationAndChangesStyles(t *testing.T) {
 
 	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
 	row := findByTestID(t, doc, "report-row")
-	if published := findByTestID(t, row, "report-published"); flatFrameHasClass(published, "muted") {
+	published := findByTestID(t, row, "report-published")
+	if flatFrameHasClass(published, "muted") {
 		t.Errorf("the last publication's date is muted: %s", renderNode(published))
 	}
+	assertReportsCarriesClass(t, "the last publication's date", published, "rp-published")
 	assertReportsCarriesClass(t, "the row's changes", findByTestID(t, row, "report-draft"), "rp-changes-hot")
 	bar := findByTestID(t, row, "report-health-bar")
 	assertReportsCarriesClass(t, "the Health bar", bar, "rp-bar")
@@ -1850,6 +1852,7 @@ func TestReportsListRowShowsTheLastPublicationAndChangesStyles(t *testing.T) {
 	}
 
 	styles := reportsStyleSheetIn(doc)
+	assertReportsRuleDeclares(t, styles, ".rp-published", "font-weight:500", "color:var(--color-ink)")
 	assertReportsRuleDeclares(t, styles, ".rp-changes-hot", "border-radius:var(--radius-full)", "background:var(--health-y-bg)", "color:var(--health-y-ink)")
 	assertReportsRuleDeclares(t, styles, ".rp-bar>.g", "background:var(--health-g-mark)")
 	assertReportsRuleDeclares(t, styles, ".rp-bar>.r", "background:var(--health-r-mark)")

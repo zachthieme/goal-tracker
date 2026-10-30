@@ -1719,8 +1719,9 @@ and so on).
       scope in small muted text beside it, sharing one ellipsis.
     - **Goals:** the count, then a 120px × 8px Health bar (`.rp-bar`) drawn as
       Home's is (§ Health distribution bar), when any Goal has a Health.
-    - **Last published:** the date with its year ("Nov 7, 2026") and a small
-      muted "by <Name>", or a muted "Never".
+    - **Last published:** the date with its year ("Nov 7, 2026"), linking to
+      that publication in 500 `--color-ink` (`.rp-published`), and a small
+      muted "by <Name>", or a muted "Never", linking nowhere.
     - **Draft**, right-aligned: a muted "Not published" or "0 changes", or
       "3 changes" as a Yellow pill (`.rp-changes-hot`: `--health-y-bg`,
       `--health-y-ink`, 600, `--radius-full`).
