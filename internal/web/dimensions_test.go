@@ -1031,7 +1031,9 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 // status: one that isn't there is 422, as the domain refuses it for its
 // input, and someone not an Admin is 403 (#573). A button with nothing typed,
 // such as Retire, answers so, and so does a form with typed input the page no
-// longer offers, or whose refusal is too long to carry back to it (#702).
+// longer offers, or whose refusal is too long to carry back to it (#702). The
+// rename of a value Retired since the page loaded is one the page no longer
+// offers, so it doesn't come back to that value's row with Edit open (#706).
 func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -1039,6 +1041,10 @@ func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	h.SignIn("sam@example.com")
 	quarter := h.CreateDimension(boss, "Quarter", "Q3", "Q4")
+	retired := quarter.Values[1]
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, retired.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
 	ts := newServer(t, h)
 	long := strings.Repeat("Q", 1600) + "; Q5"
 
@@ -1053,6 +1059,8 @@ func TestARefusedDimensionChangeAnswersWithTheRefusalPage(t *testing.T) {
 		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/dimensions/%d/retire", quarter.ID), url.Values{}, http.StatusForbidden, "Only an Admin may do this."},
 		{"a value added to a Dimension that isn't there", "boss@example.com", "/dimensions/99999/values", url.Values{"value": {"Q1"}}, http.StatusUnprocessableEntity, "Dimension does not exist."},
 		{"a rename of a value that isn't there", "boss@example.com", "/dimension-values/99999/rename", url.Values{"value": {" "}}, http.StatusUnprocessableEntity, "A value cannot be blank."},
+		{"a rename of a value Retired since the page loaded", "boss@example.com", fmt.Sprintf("/dimension-values/%d/rename", retired.ID), url.Values{"value": {" "}},
+			http.StatusUnprocessableEntity, "A value cannot be blank."},
 		{"a rename too long to carry", "boss@example.com", fmt.Sprintf("/dimension-values/%d/rename", quarter.Values[0].ID), url.Values{"value": {long}},
 			http.StatusUnprocessableEntity, long + ": a value can't contain a semicolon, because the import format uses it to separate values."},
 	} {
