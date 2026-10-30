@@ -20,7 +20,7 @@ type OwnedGoal = { id: number; title: string; metric: boolean };
 test.describe("on the due template", () => {
   test.use({ template: "due" });
 
-  test("the week: No change on the routine Goals, a fresh Check-in over the ghost text on the one that moved", async ({
+  test("the week: No change on the routine Goals, a fresh Check-in on the one that moved", async ({
     page,
     manifest,
   }) => {
@@ -311,7 +311,7 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
     const form = covering.getByTestId("checkin-form");
     await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill(status);
     // The Owner's Health stays picked; a Yellow or Red one needs a Path to
-    // Green written afresh, as the form shows last week's only as ghost text.
+    // Green written afresh, as the form starts it empty.
     const path = form.getByTestId("path-to-green-field");
     if (await path.isVisible()) {
       await path.getByLabel("Plan").fill(`Keep to ${owner.name}'s plan until they're back.`);
