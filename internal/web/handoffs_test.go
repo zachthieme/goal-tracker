@@ -400,8 +400,8 @@ func TestHandoffAndReassignTheGoalPageDoesNotOfferAnswerTheRefusalPage(t *testin
 
 // A Depart or Return that is refused answers the refusal page, linking Back to
 // Home: 403 for someone who isn't an Admin, and 422 for an Admin's that can't
-// be done to that person. A path that names no Account by number is the Not
-// found page.
+// be done to that person. A path that names no Account, whether it isn't a
+// number or is one no Account has, is the Not found page.
 func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -429,8 +429,6 @@ func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
 		{"a Return by a non-Admin", pat, fmt.Sprintf("/accounts/%d/return", leo.ID), http.StatusForbidden, "Can't mark returned", "Only an Admin may do this."},
 		{"a Depart of someone Departed", bossClient, fmt.Sprintf("/accounts/%d/depart", leo.ID), http.StatusUnprocessableEntity, "Can't mark departed", "Leo has already left the company."},
 		{"a Return of someone not Departed", bossClient, fmt.Sprintf("/accounts/%d/return", sam.ID), http.StatusUnprocessableEntity, "Can't mark returned", "Sam hasn't left the company."},
-		{"a Depart of no Account", bossClient, "/accounts/999999/depart", http.StatusUnprocessableEntity, "Can't mark departed", "Account does not exist."},
-		{"a Return of no Account", bossClient, "/accounts/999999/return", http.StatusUnprocessableEntity, "Can't mark returned", "Account does not exist."},
 	} {
 		resp := postForm(t, c.client, ts.URL+c.path, url.Values{})
 		page := parsePage(t, readBody(t, resp))
@@ -442,6 +440,7 @@ func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
 	}
 	for _, action := range []string{"depart", "return"} {
 		assertNotFoundPageFor(t, bossClient, http.MethodPost, ts.URL+"/accounts/sam/"+action, "/home")
+		assertNotFoundPageFor(t, bossClient, http.MethodPost, ts.URL+"/accounts/999999/"+action, "/home")
 	}
 	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || acc.Departed {
 		t.Errorf("Sam after a refused Depart = %+v, %v; want still present", acc, err)

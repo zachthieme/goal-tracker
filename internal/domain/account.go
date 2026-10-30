@@ -216,13 +216,13 @@ func (s *Service) SetName(ctx context.Context, accountID int64, name string) err
 // pending, so the new Owner can still accept them. Only an Admin may do this,
 // and only of someone who hasn't Departed already (markDepartedRefusal);
 // actorID identifies the acting Account. An accountID naming no Account is
-// refused first, whoever asks.
+// ErrNotFound, whoever asks.
 func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
 		person, err := tx.queries.GetAccount(ctx, accountID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "account does not exist")
+				return fmt.Errorf("%w: account %d", ErrNotFound, accountID)
 			}
 			return fmt.Errorf("look up account: %w", err)
 		}
@@ -248,14 +248,14 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 // while they were away stays with its new Owner, and a cancelled Handoff stays
 // cancelled (CONTEXT.md: Departed). Only an Admin may do this, and only of
 // someone who has Departed (markReturnedRefusal); actorID identifies the
-// acting Account. An accountID naming no Account is refused first, whoever
+// acting Account. An accountID naming no Account is ErrNotFound, whoever
 // asks.
 func (s *Service) MarkReturned(ctx context.Context, actorID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
 		person, err := tx.queries.GetAccount(ctx, accountID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "account does not exist")
+				return fmt.Errorf("%w: account %d", ErrNotFound, accountID)
 			}
 			return fmt.Errorf("look up account: %w", err)
 		}
@@ -349,7 +349,8 @@ func (s *Service) MakeAdmin(ctx context.Context, actorID int64, emailAddr string
 // RemoveAdmin takes the Admin role from the person behind accountID; someone
 // who isn't an Admin is left as they are. No Admin can take it from
 // themselves, so there is always at least one (CONTEXT.md: Admin). Only an
-// Admin may do this; actorID identifies the acting Account.
+// Admin may do this; actorID identifies the acting Account. An accountID
+// naming no Account is ErrNotFound.
 func (s *Service) RemoveAdmin(ctx context.Context, actorID, accountID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
 		if err := tx.requireAdmin(ctx, actorID); err != nil {
@@ -361,7 +362,7 @@ func (s *Service) RemoveAdmin(ctx context.Context, actorID, accountID int64) err
 		row, err := tx.queries.GetAccount(ctx, accountID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return Refuse(ErrValidation, "account does not exist")
+				return fmt.Errorf("%w: account %d", ErrNotFound, accountID)
 			}
 			return fmt.Errorf("look up account: %w", err)
 		}

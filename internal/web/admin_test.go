@@ -1123,8 +1123,9 @@ func TestAdminRemovesAnotherAdminFromTheAdminPage(t *testing.T) {
 
 // No Admin can take the role from themselves, even by posting their own id:
 // the Admins section says so and they stay an Admin. An id that's no one's,
-// or isn't an id, is not found: the Not found page, deliberately, rather
-// than the domain's refusal at 422, for there is no such Account (#701).
+// or isn't an id, is the Not found page, for there is no such Account: the
+// domain refuses an id no Account has as not found, as answerRefused answers
+// any NotFound.
 func TestAdminCantRemoveTheirOwnAdminRole(t *testing.T) {
 	t.Parallel()
 
