@@ -561,16 +561,26 @@ func TestReportLifecycleRuleKeepsAGoalThatChangedSinceTheBaseline(t *testing.T) 
 // rules[i] counts from zero (CONTEXT.md: Report Definition, Report rule). Each
 // message is in a person's words, naming what the builder shows (the report,
 // a rule, a Goal) rather than "Report Definition", and the ones the builder
-// can provoke say what to do.
+// can provoke say what to do. The table walks every refusal
+// validateReportDefinition and validateReportRule give, the rule clashes,
+// Also include and Leave out overlapping, and the Field refusals included
+// (#671).
 func TestSaveReportDefinitionRefusals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	team := h.CreateDimension(boss, "Team", "Platform")
+	ann := h.SignInNamed("ann@example.com", "Ann Avery")
+	bob := h.SignInNamed("bob@example.com", "Bob Byrne")
+	team := h.CreateDimension(boss, "Team", "Platform", "Payments")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth")
-	platform, growth := team.Values[0], pillar.Values[0]
+	platform, payments, growth := team.Values[0], team.Values[1], pillar.Values[0]
 	g := h.CreateGoal(boss, "Grow revenue", "why")
+	legacy := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	if err := h.Service.RetireField(context.Background(), boss.ID, legacy.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	topLevel := func(op string) domain.ReportRule { return domain.ReportRule{Attribute: domain.RuleTopLevel, Op: op} }
 	isPlatform := dimensionRule(team, domain.RuleIs, platform)
 	gone := "a Goal in this list no longer exists; remove it and save again"
 	rules := func(rs ...domain.ReportRule) domain.SaveReportDefinitionInput {
@@ -608,6 +618,15 @@ func TestSaveReportDefinitionRefusals(t *testing.T) {
 		{"picked definition with rules", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Rules: []domain.ReportRule{isPlatform}}, "rules", "a report of Goals I pick has no rules"},
 		{"picked definition with Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Include: []int64{g.ID}}, "include", "a report of Goals I pick has nothing to Also include"},
 		{"picked definition with Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Exclude: []int64{g.ID}}, "exclude", "a report of Goals I pick has nothing to Leave out"},
+		{"Team rules that clash", rules(isPlatform, dimensionRule(team, domain.RuleIs, payments)), "rules[1]",
+			`A Goal has one Team, so none can be both Platform and Payments. To include either, put them in one rule with "is any of".`},
+		{"Owner rules that clash", rules(ownerRule(domain.RuleIs, ann), ownerRule(domain.RuleIs, bob)), "rules[1]",
+			`A Goal has one Owner, so none can be both Ann Avery and Bob Byrne. To include either, put them in one rule with "is any of".`},
+		{"Health rules that clash", rules(namedRule(domain.RuleHealth, domain.RuleIs, domain.HealthRed), namedRule(domain.RuleHealth, domain.RuleIs, domain.HealthGreen)), "rules[1]",
+			`A Goal has one Health, so none can be both Red and Green. To include either, put them in one rule with "is any of".`},
+		{"Top-level rules that clash", rules(topLevel(domain.RuleIs), topLevel(domain.RuleIsNot)), "rules[1]", "A Goal can't be both Top-level and not Top-level."},
+		{"unknown Field", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{9999}}, "fields", "field 9999 does not exist"},
+		{"Retired Field", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{legacy.ID}}, "fields", "Legacy code is retired, so a Report can't be set to show it"},
 	} {
 		_, err := h.Service.SaveReportDefinition(context.Background(), boss.ID, c.in)
 		problems := domain.InputErrors(err)
