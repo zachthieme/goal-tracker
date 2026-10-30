@@ -2301,6 +2301,40 @@ func TestGoalPageMilestoneSlipCountCountsOnlyMilestoneSlipsOverHTTP(t *testing.T
 	}
 }
 
+// A Milestone Removed after it slipped keeps its slips in the Milestones'
+// slip count: Beta slips once, then a later Check-in Removes it, and the
+// count still reads 1 slip (#665).
+func TestGoalPageMilestoneSlipCountKeepsARemovedMilestonesSlipsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	beta := onlyMilestone(t, h, goal)
+	checkin := func(status string, change domain.MilestoneChangeInput) {
+		t.Helper()
+		h.Clock.Advance(time.Hour)
+		if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: status,
+			PathToGreen: "Swap vendors.", PathTargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+			Milestones: []domain.MilestoneChangeInput{change},
+		}); err != nil {
+			t.Fatalf("SubmitCheckin %q: %v", status, err)
+		}
+	}
+	checkin("Beta moves.", domain.MilestoneChangeInput{MilestoneID: beta.ID, TargetDate: beta.TargetDate.AddDate(0, 0, 7), DateReason: "Design review moved."})
+	checkin("Beta is dropped.", domain.MilestoneChangeInput{MilestoneID: beta.ID, Status: domain.MilestoneRemoved, RemovedReason: "Folded into GA."})
+	ts := newServer(t, h)
+
+	section := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)), "goal-milestones")
+	if got := goalMilestoneRowsIn(section); len(got) != 1 || !strings.HasPrefix(got[0], "Removed ") {
+		t.Fatalf("Milestone rows read %q, want Beta alone, Removed", got)
+	}
+	if got := textOf(findByTestID(t, section, "goal-slip-count")); got != "1" {
+		t.Errorf("the Milestones' slip count reads %q, want 1: Beta's slip before it was Removed", got)
+	}
+}
+
 // An Active Goal with no Milestones, such as an Ongoing one, shows "No
 // Milestones yet." alone: no slip count or Milestone Churn, whatever Date
 // Slips its back-to-Green date has.

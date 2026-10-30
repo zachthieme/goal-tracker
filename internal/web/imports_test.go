@@ -503,40 +503,50 @@ func postImportWithoutFile(t *testing.T, client *http.Client, rawURL, action str
 
 // A Dry run or Commit with no file chosen is refused, 422, with "Choose a file
 // to import." beside the file input rather than a flash at the top, and
-// nothing is imported (#676).
+// nothing is imported (#676) — whether the body has no file part or, as some
+// browsers send, a file part with filename="" and no content.
 func TestImportWithNoFileSaysSoBesideTheInputOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	for _, action := range []string{"commit", "dry-run"} {
-		t.Run(action, func(t *testing.T) {
-			t.Parallel()
+	bodies := map[string]func(t *testing.T, client *http.Client, rawURL, action string) *http.Response{
+		"no file part": postImportWithoutFile,
+		"empty file part": func(t *testing.T, client *http.Client, rawURL, action string) *http.Response {
+			t.Helper()
+			return postImportRaw(t, client, rawURL, "", "", action)
+		},
+	}
+	for body, post := range bodies {
+		for _, action := range []string{"commit", "dry-run"} {
+			t.Run(body+"/"+action, func(t *testing.T) {
+				t.Parallel()
 
-			h := testsupport.New(t, "admin@example.com")
-			ts := newServer(t, h)
-			admin := signInClient(t, ts.URL, "admin@example.com")
+				h := testsupport.New(t, "admin@example.com")
+				ts := newServer(t, h)
+				admin := signInClient(t, ts.URL, "admin@example.com")
 
-			resp := postImportWithoutFile(t, admin, ts.URL+"/imports", action)
-			defer func() { _ = resp.Body.Close() }()
-			page := parsePage(t, readBody(t, resp))
-			if resp.StatusCode != http.StatusUnprocessableEntity {
-				t.Errorf("status %d, want 422", resp.StatusCode)
-			}
-			if got := textOf(findByTestID(t, page, "import-file-error")); got != "Choose a file to import." {
-				t.Errorf("file error = %q, want %q", got, "Choose a file to import.")
-			}
-			file := formField(t, page, "file")
-			if got := attrOf(file.Node, "aria-invalid"); got != "true" {
-				t.Errorf("file input aria-invalid = %q, want true", got)
-			}
-			if got := attrOf(file.Node, "aria-describedby"); got != "file-error" {
-				t.Errorf("file input aria-describedby = %q, want file-error", got)
-			}
-			if hasTestID(page, "import-flash") {
-				t.Errorf("a missing file flashed at the top as well:\n%s", textOf(findByTestID(t, page, "import-flash")))
-			}
-			if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
-				t.Errorf("ListGoals = %d Goals, %v after an import with no file, want none", len(goals), err)
-			}
-		})
+				resp := post(t, admin, ts.URL+"/imports", action)
+				defer func() { _ = resp.Body.Close() }()
+				page := parsePage(t, readBody(t, resp))
+				if resp.StatusCode != http.StatusUnprocessableEntity {
+					t.Errorf("status %d, want 422", resp.StatusCode)
+				}
+				if got := textOf(findByTestID(t, page, "import-file-error")); got != "Choose a file to import." {
+					t.Errorf("file error = %q, want %q", got, "Choose a file to import.")
+				}
+				file := formField(t, page, "file")
+				if got := attrOf(file.Node, "aria-invalid"); got != "true" {
+					t.Errorf("file input aria-invalid = %q, want true", got)
+				}
+				if got := attrOf(file.Node, "aria-describedby"); got != "file-error" {
+					t.Errorf("file input aria-describedby = %q, want file-error", got)
+				}
+				if hasTestID(page, "import-flash") {
+					t.Errorf("a missing file flashed at the top as well:\n%s", textOf(findByTestID(t, page, "import-flash")))
+				}
+				if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
+					t.Errorf("ListGoals = %d Goals, %v after an import with no file, want none", len(goals), err)
+				}
+			})
+		}
 	}
 }

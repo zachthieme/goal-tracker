@@ -182,6 +182,31 @@ func TestAdminToolPagesMarkAdminCurrent(t *testing.T) {
 	}
 }
 
+// The pages an Admin tool answers with other than a plain GET of its own
+// path — a dry run's report, re-rendered by the POST to /imports, and the
+// Definition log narrowed to one Dimension by its about query — still mark
+// Admin current (#683).
+func TestAdminToolAnswersToAPostOrAQueryMarkAdminCurrent(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	teams := h.CreateDimension(ada, "Team", "Core", "Infra")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	report := parsePage(t, postImport(t, client, ts.URL+"/imports", "goals.csv", webImportCSV, "dry-run"))
+	findByTestID(t, report, "import-report")
+	assertAdminCurrent(t, "a dry run's POST /imports", report)
+
+	path := fmt.Sprintf("/definition-log?about=dimension:%d", teams.ID)
+	narrowed := getPage(t, client, ts.URL+path)
+	if got := textOf(chosenOption(formField(t, narrowed, "about").Node)); got != "Team" {
+		t.Errorf("%s shows changes to %q, want it narrowed to Team", path, got)
+	}
+	assertAdminCurrent(t, path, narrowed)
+}
+
 // The header strip of each page an Admin tool opens leads its title with
 // "Admin ›" for an Admin, linking back to the Admin page. Anyone else has no
 // Admin page to go back to, and sees the title alone.

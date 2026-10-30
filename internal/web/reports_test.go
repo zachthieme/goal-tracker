@@ -4520,6 +4520,69 @@ func TestReportScheduleConflictOwnerKeepsTheirOpenBracketOverHTTP(t *testing.T) 
 	}
 }
 
+// On a draft Report, a block in Schedule conflicts on both sides reads its
+// grouped line as a publication does: "Parent Goal due earlier", then
+// "Contributing Goal due later", each naming the Goal at the other end with
+// its Owner and date, and neither repeating the block's own date (#644).
+func TestDraftReportBlockGroupsItsScheduleConflictsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	pat := h.SignInNamed("pat@example.com", "Pat Parker")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	date := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	parent := h.ActiveGoalDueLater(pat, "Open in Iberia", date(10, 15))
+	middle := h.ActiveGoalDueLater(boss, "Lisbon office", date(11, 3))
+	child := h.ActiveGoalDueLater(sam, "Wire the network", date(12, 1))
+	h.AcceptedLink(middle, parent)
+	h.AcceptedLink(child, middle)
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, middle.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{middle.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	block := reportBlockOf(t, getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), middle)
+	fact := findByTestID(t, block, "report-schedule-conflicts")
+	want := []struct {
+		words string
+		entry string
+		other domain.Goal
+	}{
+		{"Parent Goal due earlier", "Open in Iberia (Pat Parker), due Oct 15, 2026", parent},
+		{"Contributing Goal due later", "Wire the network (Sam Lee), due Dec 1, 2026", child},
+	}
+	groups := findAllByTestID(fact, "report-schedule-conflict-group")
+	if got := textsOf(groups); len(got) != len(want) {
+		t.Fatalf("the draft's Schedule conflict groups read %q, want %d groups:\n%s", got, len(want), renderNode(fact))
+	}
+	var wantGroups []string
+	for i, w := range want {
+		wantGroups = append(wantGroups, w.words+" · "+w.entry)
+		if got := runningText(groups[i]); got != wantGroups[i] {
+			t.Errorf("group %d reads %q, want %q", i, got, wantGroups[i])
+		}
+		entries := findAllByTestID(groups[i], "report-schedule-conflict")
+		if len(entries) != 1 {
+			t.Errorf("the %s group has %d entries, want 1", w.words, len(entries))
+			continue
+		}
+		if got := runningText(entries[0]); got != w.entry {
+			t.Errorf("the %s group's entry reads %q, want %q", w.words, got, w.entry)
+		}
+		if link := linkTo(entries[0], fmt.Sprintf("/goals/%d", w.other.ID)); link == nil || textOf(link) != w.other.Title {
+			t.Errorf("the %s group's entry doesn't link %s to its Goal page", w.words, w.other.Title)
+		}
+	}
+	if got, want := runningText(fact), "Schedule conflict: "+strings.Join(wantGroups, "; "); got != want {
+		t.Errorf("the fact reads %q, want %q", got, want)
+	}
+	if strings.Contains(textOf(fact), "Nov 3, 2026") {
+		t.Errorf("the fact repeats the block's own delivery date: %q", textOf(fact))
+	}
+}
+
 // A block whose only child has no Health yet has no Rolled-up Health to count,
 // so it shows no Rolled-up Health row, only its Supported by, under its label
 // (#246, #475). That such a block lists no Rolled-up Health is
@@ -4810,6 +4873,64 @@ func TestReportBlockStrikesNoBackToGreenDateEqualToItsOwnOverHTTP(t *testing.T) 
 			}
 		})
 	}
+}
+
+// A publication whose frozen back-to-Green date slipped once and came back to
+// where it started holds that one prior date, equal to its own: the
+// publication and its print page strike no date through and count no slips,
+// reading the date alone (#684).
+func TestPublicationFrozenWithAPriorBackToGreenDateEqualToItsOwnStrikesNoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", jun(9))
+	h.Clock.Advance(24 * time.Hour)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", jun(16), "Counsel starts later.")
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Counsel found.", "Hire counsel.", jun(9))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	frozen, ok := frozenBackToGreenOf(h.PublicationFact(pub, domain.ReportFactExceptions), g)
+	if !ok || !slices.EqualFunc(frozen.PriorDates, []time.Time{jun(9)}, time.Time.Equal) || !frozen.By.Equal(jun(9)) {
+		t.Fatalf("the publication froze a back-to-Green date of %s with prior dates %v, want Jun 9 with Jun 9 alone", frozen.By, frozen.PriorDates)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	for name, url := range map[string]string{"publication": pubURL, "print page": pubURL + "/print"} {
+		path := findByTestID(t, reportBlockOf(t, getPage(t, client, url), g), "report-path-to-green")
+		if got := struckThrough(path); len(got) != 0 {
+			t.Errorf("%s strikes through %q, want nothing; path:\n%s", name, got, renderNode(path))
+		}
+		if hasTestID(path, "report-back-to-green-slips") || strings.Contains(runningText(path), "slip") {
+			t.Errorf("%s counts the slips: %q", name, runningText(path))
+		}
+		if want := "by Jun 9, 2026)"; !strings.HasSuffix(runningText(path), want) {
+			t.Errorf("%s's path doesn't end %q: %q", name, want, runningText(path))
+		}
+	}
+}
+
+// frozenBackToGreenOf is the Path to Green a publication's Exceptions fact
+// froze for g's block, and whether it froze one.
+func frozenBackToGreenOf(exceptions domain.ReportFact, g domain.Goal) (domain.ReportPathToGreen, bool) {
+	ex, _ := exceptions.Value.(domain.ReportExceptionsFact)
+	for _, b := range ex.Blocks {
+		if b.GoalID != g.ID {
+			continue
+		}
+		for _, f := range b.Facts {
+			if p, ok := f.Value.(domain.ReportPathToGreenFact); ok {
+				return p.Path, true
+			}
+		}
+	}
+	return domain.ReportPathToGreen{}, false
 }
 
 // slippedBackToGreenTexts is s as the texts of the elements that show it: none for "".

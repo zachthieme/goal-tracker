@@ -1094,3 +1094,64 @@ func TestARefusedActionItemTooLongToCarryBackAnswersWithTheRefusalPage(t *testin
 	}
 	assertRefusalPage(t, page, "Can't add Action Item", `No account with email "nobody@example.com" — check the address or pick from the list.`, pubPath)
 }
+
+// A refusal sent back to a page that no longer offers its form — the Action
+// Item closed between the refused Close and the GET — leaves the page plain:
+// no form open, no error, no refusal page. A later refusal on that page still
+// opens its own form (#660).
+func TestARefusalWhoseFormIsGoneLeavesThePagePlainOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	var items []domain.ActionItem
+	for _, text := range []string{"Get a second quote.", "Book the EU legal review."} {
+		item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+			PublicationID: pub.ID, Text: text, OwnerID: owner.ID, DueDate: h.Clock.Now(),
+		})
+		if err != nil {
+			t.Fatalf("RaiseActionItem: %v", err)
+		}
+		items = append(items, item)
+	}
+	gone, kept := items[0], items[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+	draftPath := fmt.Sprintf("/reports/%d", def.ID)
+	closePath := func(item domain.ActionItem) string { return fmt.Sprintf("/action-items/%d/close", item.ID) }
+
+	postRefusedBack(t, client, ts.URL+closePath(gone), url.Values{"note": {" "}, "return": {draftPath}}, draftPath)
+	if _, err := h.Service.CloseActionItem(context.Background(), owner.ID, gone.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+
+	resp, err := ctxGet(t, client, ts.URL+draftPath)
+	if err != nil {
+		t.Fatalf("GET %s: %v", draftPath, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusOK || !hasTestID(page, "report-name") || hasTestID(page, "refusal") {
+		t.Fatalf("status %d; want the draft at 200:\n%s", resp.StatusCode, renderNode(page))
+	}
+	if open := openDetails(page, "close-toggle"); len(open) != 0 {
+		t.Errorf("%d Close toggles open on the draft, want none", len(open))
+	}
+	if hasTestID(page, "form-error") {
+		t.Errorf("the draft shows a form error for a form it no longer offers: %q", textOf(findByTestID(t, page, "form-error")))
+	}
+
+	postRefusedBack(t, client, ts.URL+closePath(kept), url.Values{"note": {" "}, "return": {draftPath}}, draftPath)
+	page = getPage(t, client, ts.URL+draftPath)
+	open := openDetails(page, "close-toggle")
+	if len(open) != 1 {
+		t.Fatalf("%d Close toggles open after the later refusal, want 1:\n%s", len(open), renderNode(page))
+	}
+	if got := attrOf(findByTestID(t, open[0], "close-action-item"), "action"); got != closePath(kept) {
+		t.Errorf("the open Close is %q, want the later refusal's %q", got, closePath(kept))
+	}
+}
