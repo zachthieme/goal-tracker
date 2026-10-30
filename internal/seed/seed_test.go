@@ -269,8 +269,8 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 
 // Among the Active Goals, a few are Check-in overdue — their last Check-in is
 // older than their cadence — while most are up to date. The org outcomes are
-// Top-level Goals, so the Unlinked list the signals page shows is exactly the
-// five side projects.
+// Top-level Goals, so the Unlinked Goals Follow-ups shows are exactly the five
+// side projects.
 func checkinOverdueAndUnlinked(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 	end := h.Clock.Now()

@@ -11,47 +11,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// The Freshness signals page is the Check-in overdue list: every Check-in
-// overdue Goal with how long since its last update, and every Goal whose Path
-// to Green is overdue. Fresh Goals aren't listed.
-func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
-	h.Clock.Advance(10 * 24 * time.Hour)
-	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
-	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
-	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
-
-	client := signInClient(t, ts.URL, "sam@example.com")
-	page := getBody(t, client, ts.URL+"/freshness")
-
-	checkinOverdue := pageElement(t, page, "ul", "checkin-overdue-goals")
-	if !strings.Contains(checkinOverdue, navTo(silent.ID)) || !strings.Contains(checkinOverdue, "10 days") {
-		t.Errorf("Check-in overdue list does not show %q silent for 10 days; section:\n%s", silent.Title, checkinOverdue)
-	}
-	for _, g := range []domain.Goal{fresh, stalled} {
-		if strings.Contains(checkinOverdue, navTo(g.ID)) {
-			t.Errorf("Check-in overdue list includes %q, which checked in today", g.Title)
-		}
-	}
-
-	if section := pageElement(t, page, "section", "overdue-paths-section"); !strings.Contains(section, "<p>Active Goals past their Path to Green's target date and not yet Green.</p>") {
-		t.Errorf("overdue Paths to Green section doesn't say what's listed; section:\n%s", section)
-	}
-	overdue := pageElement(t, page, "ul", "overdue-paths")
-	if !strings.Contains(overdue, navTo(stalled.ID)) || !strings.Contains(overdue, "back to Green by Jan 5") {
-		t.Errorf("overdue Paths to Green do not show %q due back at Green by Jan 5; section:\n%s", stalled.Title, overdue)
-	}
-	if strings.Contains(overdue, navTo(silent.ID)) || strings.Contains(overdue, navTo(fresh.ID)) {
-		t.Errorf("overdue Paths to Green list a Goal with no Path to Green; section:\n%s", overdue)
-	}
-}
-
 // A Goal's page flags it when it is Check-in overdue or its Path to Green is
 // overdue, and beside the Rolled-up Health says how many Active children are
 // Check-in overdue without changing the color. A fresh Goal shows no freshness

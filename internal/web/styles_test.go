@@ -742,6 +742,33 @@ func TestHomeMyOrgCountLinksAreTargetsStyles(t *testing.T) {
 	}
 }
 
+// A link request's note on Home is set apart by its indent and a 1px neutral
+// rule, not a coloured side stripe, on a line of its own under the request
+// (#67, #677).
+func TestHomeLinkRequestNoteIsSetApartByANeutralRuleStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(pat, "Reduce outages", "Outages cost trust."), "Displays drive most outages.")
+
+	page := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	note := findByTestID(t, page, "home-request-note")
+	assertHomeCarriesClass(t, "the link request's note", note, "hm-note")
+	if !flatFrameHasClass(note.Parent, "hm-what") {
+		t.Errorf("the note isn't directly in the row's .hm-what, so it doesn't take its own line there: %s", renderNode(note.Parent))
+	}
+	css := homeStyleSheetIn(page)
+	decls, ok := ruleFor(css, ".hm-note")
+	if !ok {
+		t.Fatalf("Home has no .hm-note rule")
+	}
+	assertNeutralRule(t, decls)
+	assertHomeRuleDeclares(t, css, ".hm-note", "flex-basis:100%", "margin:0", "color:var(--color-ink-muted)")
+}
+
 // homeStyleSheetIn is the stylesheet Home carries itself, its homeStyles: the
 // text of the page's <style> elements, in order.
 func homeStyleSheetIn(root *html.Node) string {

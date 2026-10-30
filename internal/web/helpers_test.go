@@ -1747,3 +1747,14 @@ func assertNameKeepsItsOpenBracket(t *testing.T, root *html.Node, label string) 
 		}
 	}
 }
+
+// assertNeutralRule checks a rule indents its element 12px from a 1px left
+// rule in --color-border, the neutral alternative to a coloured side stripe.
+func assertNeutralRule(t *testing.T, rule string) {
+	t.Helper()
+	for _, want := range []string{"padding-left:12px", "border-left:1px solid var(--color-border)"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("rule lacks %s; rule: %s", want, rule)
+		}
+	}
+}

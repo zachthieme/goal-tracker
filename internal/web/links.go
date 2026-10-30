@@ -56,26 +56,15 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	}
 }
 
-// handlePendingLinks shows the current Account the link requests awaiting their
-// decision as the Owner of each request's parent Goal.
-func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	pending, err := s.svc.PendingLinkRequests(r.Context(), current.ID)
-	if err != nil {
-		s.serverError(w, r, "could not list pending requests", err)
-		return
-	}
-	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, s.undoToast(w, r, current)))
-}
-
 // handleAcceptLink accepts a pending request; only the parent's Owner may. It
-// returns to the page the Accept came from (its return: Home, or else the
-// pending page), and a refusal links back there.
+// returns to the page the Accept came from (its return, or else Home), and a
+// refusal links back there.
 func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	back := returnTo(r, "/links")
+	back := returnTo(r, "/home")
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
 		s.refuse(w, r, "Can't accept link", back, err)
 		return
@@ -84,15 +73,14 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleRejectLink rejects a pending request; only the parent's Owner may. It
-// returns to the page the reject came from (its return: Home, or else the
-// pending page), which offers Undo once in a toast. A refusal links back
-// there.
+// returns to the page the reject came from (its return, or else Home), which
+// offers Undo once in a toast. A refusal links back there.
 func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	back := returnTo(r, "/links")
+	back := returnTo(r, "/home")
 	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
 	if err != nil {
 		s.refuse(w, r, "Can't reject link", back, err)

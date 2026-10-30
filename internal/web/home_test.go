@@ -665,6 +665,31 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	}
 }
 
+// A link request's note shows under it on Home, so the parent's Owner reads
+// why before deciding; a request without one shows no note (#677).
+func TestHomeShowsALinkRequestsNote(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	noted := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	bare := h.CreateGoal(sam, "Patch firmware", "Old firmware crashes.")
+	h.RequestLink(sam, noted, parent, "Displays drive most outages.")
+	h.RequestLink(sam, bare, parent, "")
+
+	requests := findByTestID(t, getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home"), "home-requests")
+
+	if got := textOf(findByTestID(t, homeRowIn(t, requests, noted), "home-request-note")); got != "Displays drive most outages." {
+		t.Errorf("the noted request's note reads %q, want %q", got, "Displays drive most outages.")
+	}
+	if row := homeRowIn(t, requests, bare); hasTestID(row, "home-request-note") {
+		t.Errorf("a request without a note shows one:\n%s", renderNode(row))
+	}
+}
+
 // A "Needs you" subgroup with nothing in it is left out, and with nothing at
 // all the list shows a single caught-up line.
 func TestHomeOmitsEmptySubgroups(t *testing.T) {
@@ -980,7 +1005,8 @@ func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
 // Goals to check in on plus what's waiting on them — and showing no count when
 // nothing does. Its count is a pill of its own, set apart from the sidebar's
 // other counts, because it means something needs the person. Home replaces the
-// pending-links, pending-handoffs, and delegated nav items, whose pages stay.
+// pending-links, pending-handoffs, and delegated nav items; the pending-handoffs
+// and delegated pages stay.
 func TestNavCountsWhatNeedsYou(t *testing.T) {
 	t.Parallel()
 

@@ -408,7 +408,7 @@ and so on).
     (§ A Report's draft page).
   - **How a page gets one:** it renders through `framedLayout` with a header.
     A page rendered through `layout` has no strip and keeps its own head in
-    its content: the Message pages, Graph signals and Freshness signals.
+    its content: the Message pages.
 - **Signed-out pages (`.signed-out`):** sign-in, set password, and Not found
   while signed out, have no sidebar. A 56px bar (`.signed-out-bar`), with no
   edge or fill, holds the app's name at the left and a quiet small **Theme**
@@ -826,9 +826,10 @@ and so on).
     own copy of the `.rp-inline-form` rules.
   - **Requests:** link requests and Handoffs waiting on the person, and Parent
     suggestions on Goals they Own, oldest first, each led by a chip naming its
-    kind. **Accept** a secondary button, then **Reject** (**Decline** for a
-    Parent suggestion) a quiet one; every page that decides a request puts
-    Accept first. Reject and Decline send at once and return to Home, which
+    kind. A link request's note shows under it, indented 12px from a 1px
+    `--color-border` rule (`.hm-note`). **Accept** a secondary button, then
+    **Reject** (**Decline** for a Parent suggestion) a quiet one; every page
+    that decides a request puts Accept first. Reject and Decline send at once and return to Home, which
     offers Undo in the toast. Where accepting needs choices, as a Handoff of a
     Goal with Delegates does, the button reads **Review**, stands where Accept
     does, and leads to the Pending handoffs page, where those choices are made.
@@ -2149,20 +2150,16 @@ and so on).
     yet." before the first); then, at the right, a small primary **Check in**
     on an Active or On Hold Goal, or a muted "A Proposed Goal takes no
     Check-ins." naming any other Lifecycle. The row wraps on a narrow screen.
-- **Pending links and Pending handoffs (`pendingLinksPage` in `links.templ`,
-  `pendingHandoffsPage` in `handoffs.templ`):** the requests waiting on the
-  person's decision, laid out alike (`pendingStyles`). The page's name is the
-  header strip's title, with no actions, and its one section (`.pd-section`)
-  is an `h2` over a muted sentence, then a row per request (`.pd-list`).
+- **Pending handoffs (`pendingHandoffsPage` and `pendingStyles` in
+  `handoffs.templ`):** the Handoffs waiting on the person's decision. The
+  page's name is the header strip's title, with no actions, and its one
+  section (`.pd-section`) is an `h2` over a muted sentence, then a row per
+  Handoff (`.pd-list`).
   - **A row (`.pd-row`):** at least 44px between hairlines, what is asked at
     the left and its decision at the right, wrapping under it on a narrow
     screen. **Accept** is a small primary button and **Reject** a small
     danger one, which sends at once; the page that follows offers Undo in the
     toast. With nothing pending, one muted row says so.
-  - **Pending links:** "Link requests", "Goals asking to contribute to yours.
-    Accept one to link it into the graph." A row reads "<Goal> (Owner <Name>)
-    wants to contribute to <Goal>", any note under it indented 12px from a
-    1px `--color-border` rule (`.pd-note`). "No pending requests."
   - **Pending handoffs:** "Handoffs to you", "Goals someone wants to hand to
     you. Nothing changes hands until you accept." A row reads "<Goal> —
     <Name> wants to hand this Goal to you". When the Goal has Delegates who
