@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -29,6 +30,36 @@ type ReportSummary struct {
 	// Platform or Identity · Active · 1 added, 1 left out" or "5 Goals picked
 	// by hand".
 	Scope string
+}
+
+// ByPublishingNeed orders ReportSummaries as the Reports list's status table
+// does: never-published Reports first, then those with changes, most first,
+// then the rest by when they were last published, oldest first. Ties go by
+// name.
+func ByPublishingNeed(a, b ReportSummary) int {
+	rank := func(s ReportSummary) int {
+		switch {
+		case s.LastPublication == nil:
+			return 0
+		case *s.Changes > 0:
+			return 1
+		}
+		return 2
+	}
+	if c := cmp.Compare(rank(a), rank(b)); c != 0 {
+		return c
+	}
+	switch rank(a) {
+	case 1:
+		if c := cmp.Compare(*b.Changes, *a.Changes); c != 0 {
+			return c
+		}
+	case 2:
+		if c := a.LastPublication.PublishedAt.Compare(b.LastPublication.PublishedAt); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(a.Definition.Name, b.Definition.Name)
 }
 
 // HealthCounts are how many of a Report's Goals have each Owner-set Health,

@@ -410,3 +410,42 @@ func reportSummary(t *testing.T, h *testsupport.Harness, def domain.ReportDefini
 	}
 	return sum
 }
+
+// The Reports list puts first what most needs publishing: never-published
+// Reports, then those with changes, most first, then the rest by when they
+// were last published, oldest first. Ties within each go by name.
+func TestByPublishingNeedRanksWhatNeedsPublishingFirst(t *testing.T) {
+	t.Parallel()
+
+	never := func(name string) domain.ReportSummary {
+		return domain.ReportSummary{Definition: domain.ReportDefinition{Name: name}}
+	}
+	published := func(name string, day, changes int) domain.ReportSummary {
+		return domain.ReportSummary{
+			Definition:      domain.ReportDefinition{Name: name},
+			LastPublication: &domain.Publication{PublishedAt: time.Date(2026, 3, day, 9, 0, 0, 0, time.UTC)},
+			Changes:         &changes,
+		}
+	}
+	sums := []domain.ReportSummary{
+		published("Zeta", 1, 0),
+		published("Gamma", 1, 2),
+		never("Beta"),
+		published("Eta", 3, 0),
+		published("Epsilon", 3, 2),
+		published("Theta", 1, 0),
+		published("Delta", 2, 5),
+		never("Alpha"),
+	}
+
+	slices.SortFunc(sums, domain.ByPublishingNeed)
+
+	var got []string
+	for _, s := range sums {
+		got = append(got, s.Definition.Name)
+	}
+	want := []string{"Alpha", "Beta", "Delta", "Epsilon", "Gamma", "Theta", "Zeta", "Eta"}
+	if !slices.Equal(got, want) {
+		t.Errorf("ranked %q, want %q", got, want)
+	}
+}
