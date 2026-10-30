@@ -131,7 +131,7 @@ func TestAuthorCreatesActionItemDirectly(t *testing.T) {
 			t.Errorf("%s: err %v, want ErrValidation", name, err)
 		}
 	}
-	if _, err := h.Service.RaiseActionItemByEmail(ctx, author.ID, direct, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+	if _, err := h.Service.RaiseActionItemByEmail(ctx, author.ID, direct, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com" — check the address or pick from the list` {
 		t.Errorf("owner with no account: err %v, want ErrValidation that no account has it", err)
 	}
 }
@@ -1149,7 +1149,7 @@ func TestActionItemRefusalsNameTheirInput(t *testing.T) {
 		{"a Departed owner", domain.InputActionItemOwner, "gone@example.com has left the company", func() error {
 			return raise(domain.RaiseActionItemInput{Text: "x", OwnerID: gone.ID, DueDate: due})
 		}},
-		{"an owner by an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com"`, func() error {
+		{"an owner by an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com" — check the address or pick from the list`, func() error {
 			_, err := w.h.Service.RaiseActionItemByEmail(ctx, w.creator.ID, domain.RaiseActionItemInput{PublicationID: w.pub.ID, Text: "x", DueDate: due}, "nobody@example.com")
 			return err
 		}},
@@ -1172,7 +1172,7 @@ func TestActionItemRefusalsNameTheirInput(t *testing.T) {
 			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "owner@example.com")
 			return err
 		}},
-		{"a reassign to an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com"`, func() error {
+		{"a reassign to an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com" — check the address or pick from the list`, func() error {
 			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "nobody@example.com")
 			return err
 		}},

@@ -115,7 +115,7 @@ func TestAddReportDelegateRefusals(t *testing.T) {
 			t.Errorf("adding %s: err = %v, want ErrValidation", c.name, err)
 		}
 	}
-	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+	if err := h.Service.AddReportDelegateByEmail(ctx, w.alice.ID, w.def.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com" — check the address or pick from the list` {
 		t.Errorf("adding an unknown email: err = %v, want ErrValidation that no account has it", err)
 	}
 	if err := h.Service.AddReportDelegate(ctx, w.alice.ID, w.def.ID+100, w.sam.ID); !errors.Is(err, domain.ErrNotFound) {

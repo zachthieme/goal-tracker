@@ -95,7 +95,7 @@ func (s *Service) AddReportDelegateByEmail(ctx context.Context, actorID, defID i
 			if _, err := tx.reportDelegatesDefinition(ctx, actorID, defID); err != nil {
 				return err
 			}
-			return Refuse(ErrValidation, "no account with email %q", email)
+			return noAccountWithEmail(email)
 		}
 		return tx.AddReportDelegate(ctx, actorID, defID, acc.ID)
 	})

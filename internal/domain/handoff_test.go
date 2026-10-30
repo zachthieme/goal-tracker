@@ -1249,7 +1249,7 @@ func TestHandoffByEmailAuthorizesBeforeLookingUpTheEmail(t *testing.T) {
 		if err := c.run(rita.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("%s of an unknown email by someone not permitted = %v, want ErrNotAuthorized", c.name, err)
 		}
-		if err := c.run(c.permitted.ID); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com"` {
+		if err := c.run(c.permitted.ID); !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != `no account with email "nobody@example.com" — check the address or pick from the list` {
 			t.Errorf("%s of an unknown email by %s = %v, want ErrValidation that no account has it", c.name, c.permitted.Email, err)
 		}
 	}

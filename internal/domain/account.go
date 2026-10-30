@@ -176,11 +176,18 @@ func (s *Service) accountIDWithEmail(ctx context.Context, emailAddr string) (int
 	a, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(emailAddr))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, Refuse(ErrValidation, "no account with email %q", emailAddr)
+			return 0, noAccountWithEmail(emailAddr)
 		}
 		return 0, fmt.Errorf("look up account: %w", err)
 	}
 	return a.ID, nil
+}
+
+// noAccountWithEmail refuses a by-email command whose email no Account has,
+// naming it and saying how to put it right: a person picker offers everyone
+// who has one.
+func noAccountWithEmail(emailAddr string) error {
+	return Refuse(ErrValidation, "no account with email %q — check the address or pick from the list", emailAddr)
 }
 
 // SetName records the Name the company's sign-in supplies for the person behind
