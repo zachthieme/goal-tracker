@@ -48,9 +48,9 @@ type GoalPage struct {
 	DraftHighlights []DraftHighlight
 	Delegates       []Account
 	// Viewer is the Account the page is read for. CheckinRefusal is why they
-	// may not write the Goal's Check-ins (RequireCheckinAuthor), whatever its
-	// Lifecycle, as the rule refuses them, nil when they may; Permissions are
-	// what they may do with it now.
+	// may not write the Goal's Check-ins (checkinAuthorRuleRefusal, as
+	// SubmitCheckin applies it), whatever its Lifecycle, as the rule refuses
+	// them, nil when they may; Permissions are what they may do with it now.
 	Viewer         Account
 	CheckinRefusal error
 	Permissions    GoalPermissions
@@ -125,7 +125,7 @@ type GoalPermissions struct {
 	// CheckinPermissions: what they may do with its Check-ins.
 	CheckinPermissions
 	// WritesCheckins: they write its Check-ins, whatever its Lifecycle
-	// (RequireCheckinAuthor), as a nil GoalPage.CheckinRefusal says.
+	// (checkinAuthorRuleRefusal), as a nil GoalPage.CheckinRefusal says.
 	WritesCheckins bool
 	// AddMilestone: those who write its Check-ins, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
@@ -135,7 +135,8 @@ type GoalPermissions struct {
 	// LogDraftHighlight: the same people, while it takes Draft Highlights
 	// (LogDraftHighlight).
 	LogDraftHighlight bool
-	// SetValues: its Owner, a Delegate or an Admin (RequireGoalValueSetter).
+	// SetValues: its Owner, a Delegate or an Admin (SetGoalDimensionValues,
+	// SetGoalField and EditGoalValues).
 	SetValues bool
 	// ManageDelegates, LinkParent, EditMetrics and DecideSuggestions: its
 	// Owner, in any Lifecycle (AddDelegate, RequestLink, AddMetric and

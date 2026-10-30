@@ -15,9 +15,10 @@ import (
 type CheckinPage struct {
 	Goal Goal
 	// Viewer is the Account the page is read for. CheckinRefusal is why they
-	// may not write the Goal's Check-ins (RequireCheckinAuthor), whatever its
-	// Lifecycle, as the rule refuses them; nil when they may. For anyone who
-	// may not, the page holds only the Goal, Viewer and CheckinRefusal.
+	// may not write the Goal's Check-ins (checkinAuthorRuleRefusal, as
+	// SubmitCheckin applies it), whatever its Lifecycle, as the rule refuses
+	// them; nil when they may. For anyone who may not, the page holds only
+	// the Goal, Viewer and CheckinRefusal.
 	Viewer         Account
 	CheckinRefusal error
 	// Permissions are what they may do with its Check-ins now, as the Goal
