@@ -745,13 +745,16 @@ templ goalsStyles() {
 
 // goalPage shows a single Goal in the flat frame (DESIGN.md § Goal page). Its
 // header strip is the breadcrumb, with Check in and the More menu at its right.
-// Under it, any warning banners run as quiet full-width strips, then a document
-// column — the title, Why it matters as a lead paragraph, then Latest status,
-// Metrics, Milestones, Highlights, Draft Highlights, Action Items, Comments and
-// History as sections — beside a properties rail of its Health, Lifecycle,
-// people, cadence, delivery, level, Dimension values and Fields, then what it
-// contributes to and what contributes to it. Nothing on it is a card; at 900px
-// and below the rail stacks under the column.
+// Under it, any warning banners run as quiet full-width strips, then the head
+// — the title, with Why it matters as a lead paragraph — then a properties rail
+// of its Health, Lifecycle, people, cadence, delivery, level, Dimension values
+// and Fields, then what it contributes to and what contributes to it, then a
+// document column of Latest status, Metrics, Milestones, Highlights, Draft
+// Highlights, Action Items, Comments and History as sections. That is the order
+// people read and Tab through at every width: above 900px the grid sets the
+// head over the column and runs the rail down their right; at 900px and below
+// the three stack in that order, so on a phone the key facts come right after
+// the title and History last (#674). Nothing on it is a card.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ goalPage(current *domain.Account, v goalView) {
@@ -769,8 +772,9 @@ templ goalPage(current *domain.Account, v goalView) {
 			</div>
 			@toastNotice(v.Toast)
 			<div class="gp-body">
+				@goalHead(v)
+				@goalRail(v)
 				<div data-testid="goal-main" class="gp-doc">
-					@goalHead(v)
 					if v.Permissions.DefineGoal {
 						@defineGoal(v)
 					}
@@ -814,7 +818,6 @@ templ goalPage(current *domain.Account, v goalView) {
 					@goalComments(current, v)
 					@goalHistory(v.History)
 				</div>
-				@goalRail(v)
 			</div>
 		</div>
 	}
@@ -869,8 +872,8 @@ templ goalActionItemRow(l domain.ActionItemListing, current *domain.Account, ret
 	</li>
 }
 
-// goalHead opens the document column: the Goal's title at 28px, its Why it
-// matters as a 16px lead paragraph, and what its Lifecycle came with — the
+// goalHead opens the page, over the document column and before the rail: the
+// Goal's title at 28px, its Why it matters as a 16px lead paragraph, and what its Lifecycle came with — the
 // outcome of a Done Goal or why it is On Hold or Cancelled. The Edit title and
 // Why it matters form and Mark Top-level open here in place.
 templ goalHead(v goalView) {
@@ -918,7 +921,10 @@ templ topLevelControl(g domain.Goal) {
 // goalRail is the Goal page's properties rail, behind a 1px left edge: its
 // properties as label and value rows (goalProperties), then its Dimension
 // values, its Fields, the Goals it contributes to and those contributing to it.
-// Each group's form opens in place in the rail from its heading's link.
+// Each group's form opens in place in the rail from its heading's link. It
+// follows the head and comes before the document column: it runs down their
+// right above 900px, and at 900px and below stacks between them, ruled above
+// and below.
 templ goalRail(v goalView) {
 	{{ g := v.Goal }}
 	<aside data-testid="goal-sidebar" class="gp-rail" aria-label="Properties">
@@ -1035,8 +1041,10 @@ templ goalProperties(v goalView) {
 }
 
 // goalPageStyles are the Goal page's own rules on top of app.css: the frame of
-// banners, document column and rail, which runs full width and full height
-// under the header strip; the header strip's breadcrumb and actions with the
+// banners, head, rail and document column, which runs full width and full
+// height under the header strip — above 900px a grid sets the head over the
+// column on the left and the rail down the right across both rows, and at 900px
+// and below it drops those placements so the three stack in DOM order; the header strip's breadcrumb and actions with the
 // More menu; the column's title, lead and sections, each a 13/600 heading
 // over hairline-ruled rows; the Metric rows with their sparklines; and the
 // rail's label and value rows. On a coarse pointer the More menu's items and a
@@ -1065,9 +1073,9 @@ templ goalPageStyles() {
 		.gp-menu ul{list-style:none;margin:0;padding:0}
 		.gp-menu li>a{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}
 		.gp-menu li>a:hover{background:var(--color-primary-subtle);text-decoration:none}
-		.gp-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 300px}
-		.gp-doc{width:100%;max-width:860px;margin:0 auto;padding:32px 28px 64px;box-sizing:border-box;display:flex;flex-direction:column;gap:40px;min-width:0}
-		.gp-head{display:flex;flex-direction:column;gap:12px}
+		.gp-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto 1fr}
+		.gp-doc{grid-column:1;grid-row:2;width:100%;max-width:860px;margin:0 auto;padding:40px 28px 64px;box-sizing:border-box;display:flex;flex-direction:column;gap:40px;min-width:0}
+		.gp-head{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:12px;width:100%;max-width:860px;margin:0 auto;padding:32px 28px 0;box-sizing:border-box;min-width:0}
 		.gp-head h1{margin:0;font-size:28px;line-height:1.2;font-weight:600;letter-spacing:-0.02em}
 		.gp-head>p{margin:0}
 		.gp-statement{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
@@ -1121,7 +1129,7 @@ templ goalPageStyles() {
 		.gp-check{display:flex;gap:8px;align-items:baseline}
 		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--color-ink-muted)}
 		.gp-check.done>span:first-child{color:var(--health-g-ink)}
-		.gp-rail{display:flex;flex-direction:column;gap:16px;min-width:0;padding:20px 20px 48px;border-left:1px solid var(--color-border);box-sizing:border-box;font-size:var(--text-secondary)}
+		.gp-rail{grid-column:2;grid-row:1/-1;display:flex;flex-direction:column;gap:16px;min-width:0;padding:20px 20px 48px;border-left:1px solid var(--color-border);box-sizing:border-box;font-size:var(--text-secondary)}
 		.gp-rail>*+*{padding-top:16px;border-top:1px solid var(--color-border)}
 		.gp-rail h3{margin:0;font-size:var(--text-label);line-height:1.5;font-weight:600;letter-spacing:0;color:var(--color-ink)}
 		.gp-rail .gp-block{gap:8px}
@@ -1145,7 +1153,7 @@ templ goalPageStyles() {
 		.gp-prop strong{font-weight:500}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 		@media (pointer:coarse){.gp-menu li>a{min-height:44px}.gp-group-head>a{display:inline-flex;align-items:center;min-height:44px}}
-		@media (max-width:900px){.gp-body{grid-template-columns:minmax(0,1fr)}.gp-doc{max-width:none;padding:20px 16px 32px;gap:32px}.gp-rail{padding:20px 16px 48px;border-left:0;border-top:1px solid var(--color-border)}.gp-banners .alert{padding:8px 16px}}
+		@media (max-width:900px){.gp-body{grid-template-columns:minmax(0,1fr);grid-template-rows:none}.gp-head{grid-column:auto;grid-row:auto;max-width:none;padding:20px 16px 0}.gp-doc{grid-column:auto;grid-row:auto;max-width:none;padding:20px 16px 32px;gap:32px}.gp-rail{grid-column:auto;grid-row:auto;margin-top:20px;padding:20px 16px;border-left:0;border-top:1px solid var(--color-border);border-bottom:1px solid var(--color-border)}.gp-banners .alert{padding:8px 16px}}
 		@media (max-width:600px){.gp-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gp-metric{grid-template-columns:minmax(0,1fr) auto}.gp-metric>.gp-metric-spark{grid-column:1/-1;grid-row:2}}
 	</style>
 }

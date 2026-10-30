@@ -1,15 +1,19 @@
 // Phone width: at 390px Home, with a Check-in due in Needs you, the Goals
 // list, the Goals Table, Follow-ups, the Admin page, a Report draft, with a
 // Schedule conflict's Owner's email disclosed, the New goal page, with its
-// Metric editor open, and the Check-in page fit the screen. Nothing inside
-// main is clipped or scrolls sideways but the Goals Table's own container,
-// which cues its scroll, and every control lies within the window (#343:
-// #258, #268, #338, #229; #368; #369; #364; #387; #642; #686).
-import type { Page } from "@playwright/test";
+// Metric editor open, a Goal page and the Check-in page fit the screen.
+// Nothing inside main is clipped or scrolls sideways but the Goals Table's own
+// container, which cues its scroll, and every control lies within the window
+// (#343: #258, #268, #338, #229; #368; #369; #364; #387; #642; #686). The Goal
+// page reads its title, its properties rail, then its column with History
+// last, and the Check-in page its form before Contributed to by, with both
+// laid out as before at 1280px (#674).
+import type { Locator, Page } from "@playwright/test";
 
 import { admin, expect, requirePick, signIn, test } from "./fixtures";
 
 const phone = { width: 390, height: 800 };
+const desktop = { width: 1280, height: 800 };
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize(phone);
@@ -266,5 +270,79 @@ test("at 390px the Check-in page fits", async ({ page, manifest }) => {
   await expect(children).toBeVisible();
   await expect(children).toHaveCSS("border-top-style", "none");
   await expect(children).toHaveCSS("padding-top", "0px");
+  // How is it going? comes before Contributed to by (#674).
+  const formBox = (await box(form))!;
+  const contextBox = (await box(context))!;
+  expect(formBox.bottom, "the form ends above the context column").toBeLessThanOrEqual(contextBox.top + 1);
   await expectFitsAPhone(page, ["checkin-add-buttons"]);
 });
+
+// At 1280px the Check-in page keeps its context column to the form's right,
+// starting level with the form, though it comes after the form in the page
+// (#674).
+test("at 1280px the Check-in page's context column sits right of the form", async ({ page, manifest }) => {
+  await page.setViewportSize(desktop);
+  const goal = requirePick("metricParentGoal", manifest.metricParentGoal);
+  await signIn(page, goal.email);
+  await page.goto(`/goals/${goal.id}/checkin`);
+  const form = (await box(page.getByTestId("checkin-form")))!;
+  const context = (await box(page.getByTestId("checkin-context")))!;
+  expect(context.left, "the context column is right of the form").toBeGreaterThanOrEqual(form.right - 1);
+  expect(context.top, "the context column starts above the form's end").toBeLessThanOrEqual(form.bottom + 1);
+});
+
+// At 390px a Goal's page reads its title, then its properties rail, then the
+// document column with History last, so Health, Lifecycle, Owner, Delegates,
+// Dimensions and Contributes to come right after the title (#674).
+test("at 390px the Goal page shows its properties after the title and History last", async ({
+  page,
+  manifest,
+}) => {
+  const goal = requirePick("metricParentGoal", manifest.metricParentGoal);
+  await signIn(page, goal.email);
+  await page.goto(`/goals/${goal.id}`);
+  const at = async (id: string) => (await box(page.getByTestId(id)))!;
+  const title = await at("goal-title");
+  const sidebar = await at("goal-sidebar");
+  const latest = await at("goal-checkins");
+  expect(title.bottom, "the title ends above the rail").toBeLessThanOrEqual(sidebar.top + 1);
+  expect(sidebar.bottom, "the rail ends above Latest status").toBeLessThanOrEqual(latest.top + 1);
+  const history = await at("goal-history");
+  for (const id of ["goal-sidebar", "goal-checkins", "goal-metrics", "goal-comments"]) {
+    expect(history.top, `History starts below ${id}`).toBeGreaterThanOrEqual((await at(id)).bottom - 1);
+  }
+  for (const id of ["goal-meta", "goal-delegates", "goal-dimensions", "goal-parents"]) {
+    await expect(page.getByTestId(id), `${id} shows`).toBeVisible();
+  }
+  await expectFitsAPhone(page);
+});
+
+// At 1280px the same Goal page looks as it did before the rail moved up the
+// page: the title over the column on the left, and the rail down the right
+// from the top (#674).
+test("at 1280px the Goal page's rail runs down the right beside the title and column", async ({
+  page,
+  manifest,
+}) => {
+  await page.setViewportSize(desktop);
+  const goal = requirePick("metricParentGoal", manifest.metricParentGoal);
+  await signIn(page, goal.email);
+  await page.goto(`/goals/${goal.id}`);
+  const at = async (id: string) => (await box(page.getByTestId(id)))!;
+  const sidebar = await at("goal-sidebar");
+  const main = await at("goal-main");
+  const head = await at("goal-head");
+  expect(sidebar.left, "the rail is right of the column").toBeGreaterThanOrEqual(main.right - 1);
+  expect(sidebar.left, "the rail is right of the title").toBeGreaterThanOrEqual(head.right - 1);
+  const title = await at("goal-title");
+  expect(sidebar.top, "the rail starts level with the title or above").toBeLessThanOrEqual(title.top + 1);
+  expect(head.bottom, "the title sits over the column").toBeLessThanOrEqual(main.top + 1);
+});
+
+// box is the locator's bounding box by its edges, or null when it has none.
+async function box(
+  locator: Locator,
+): Promise<{ top: number; bottom: number; left: number; right: number } | null> {
+  const b = await locator.boundingBox();
+  return b && { top: b.y, bottom: b.y + b.height, left: b.x, right: b.x + b.width };
+}

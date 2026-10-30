@@ -663,13 +663,14 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // Check-in's answers as ghost text. Where a No change would be refused, the
 // line says why in place of its button. A refusal in the form's error, such
 // as why a No change couldn't be recorded, shows at the top of the form, and
-// the line then leaves the reason to it. Beside the form, or between the line
-// and the form on a narrow screen, a quiet rail gives the context for checking
-// in: what the latest Check-in said, the Goal's children (the Goal page's
-// "Contributed to by" list, read-only, so the Owner sees which set the
-// Rolled-up Health), and the Goal's dates (checkinContextDates). On a phone it
-// keeps only the children, as the form's ghost text already shows the latest
-// answers.
+// the line then leaves the reason to it. Beside the form, or after it on a
+// narrow screen (#674), a quiet rail gives the context for checking in: what
+// the latest Check-in said, the Goal's children (the Goal page's "Contributed
+// to by" list, read-only, so the Owner sees which set the Rolled-up Health),
+// and the Goal's dates (checkinContextDates). On a phone it keeps only the
+// children, as the form's ghost text already shows the latest answers. The
+// rail is the page's last child, so it is read and tabbed to after the form;
+// above 900px the grid places it to the form's right.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) {
@@ -692,6 +693,10 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 			</div>
 			if v.checksIn() {
 				@checkinAddBar(form.Lifecycle)
+				@checkinForm(form)
+			} else {
+				@checkinFieldError(form.Error, "")
+				<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
 			}
 			<aside data-testid="checkin-context" class="checkin-context">
 				if c := v.LatestCheckin; c != nil {
@@ -721,12 +726,6 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 					<p>{ checkinContextDates(g, v.Milestones, v.Shown) }</p>
 				</section>
 			</aside>
-			if v.checksIn() {
-				@checkinForm(form)
-			} else {
-				@checkinFieldError(form.Error, "")
-				<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
-			}
 		</div>
 	}
 }
@@ -1306,7 +1305,7 @@ templ checkinStyles() {
 			.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
 			.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}
 			.checkin-context-dates p{color:var(--color-ink-2)}
-			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible;padding:0 0 24px;border-left:0;border-bottom:1px solid var(--color-border)}}
+			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;align-self:stretch;max-height:none;overflow-y:visible;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}}
 			@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
 			@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}
 			.checkin-form{display:flex;flex-direction:column;gap:24px}

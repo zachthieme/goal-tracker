@@ -61,10 +61,10 @@ func historyEntries(history string) []string {
 	return strings.Split(history, `data-testid="history-entry"`)[1:]
 }
 
-// historyBlock is the Goal page's History block, up to the sidebar.
+// historyBlock is the Goal page's History block, to its own closing tag.
 func historyBlock(t *testing.T, page string) string {
 	t.Helper()
-	return between(t, page, `data-testid="goal-history"`, "<aside")
+	return pageElement(t, page, "div", "goal-history")
 }
 
 // ownershipEntries are the Handoffs and Admin Reassigns on the Goal page's
