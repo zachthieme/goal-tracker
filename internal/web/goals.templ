@@ -1264,10 +1264,7 @@ templ ownerForms(v goalView) {
 	if v.opens(formHandoff) {
 		@openGoalForm(v, formHandoff, "Hand off") {
 			<form data-testid="handoff-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/handoff", g.ID)) } class="gp-form">
-				<label class="field">
-					<span>New Owner's email</span>
-					<input type="email" name="to_email" value={ v.FormInput.Get("to_email") } required autofocus/>
-				</label>
+				@personPicker(personField{Name: "to_email", Value: v.FormInput.Get("to_email"), Caption: "New Owner's email", Autofocus: true})
 				<button type="submit" class="btn">Start handoff</button>
 			</form>
 		}
@@ -1275,10 +1272,7 @@ templ ownerForms(v goalView) {
 	if v.opens(formReassign) {
 		@openGoalForm(v, formReassign, "Reassign") {
 			<form data-testid="reassign-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/reassign", g.ID)) } class="gp-form">
-				<label class="field">
-					<span>New Owner's email</span>
-					<input type="email" name="email" value={ v.FormInput.Get("email") } required autofocus/>
-				</label>
+				@personPicker(personField{Name: "email", Value: v.FormInput.Get("email"), Caption: "New Owner's email", Autofocus: true})
 				<button type="submit" class="btn">Reassign</button>
 			</form>
 		}

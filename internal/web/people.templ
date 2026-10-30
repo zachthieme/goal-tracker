@@ -19,3 +19,143 @@ templ personSearchResults(matches []domain.Account) {
 		</li>
 	}
 }
+
+// personField is a person picker's field: the name it posts the email under,
+// what it holds, and its caption, shown or for a screen reader only. Attrs
+// are any more attributes of its input, such as a refusal's aria-invalid and
+// aria-describedby.
+type personField struct {
+	Name, Value, Caption string
+	CaptionHidden        bool
+	Autofocus            bool
+	Attrs                templ.Attributes
+}
+
+// personPicker chooses a person by email. Without script it is a plain
+// required email input; personPickerScript turns it into a search by Name or
+// email whose results drop down under it, a pick putting the person's email
+// in the field. The results sit outside the label, so the label holds only
+// its input.
+templ personPicker(f personField) {
+	<div class="person-picker">
+		<label class="field">
+			if f.CaptionHidden {
+				<span class="sr-only">{ f.Caption }</span>
+			} else {
+				<span>{ f.Caption }</span>
+			}
+			<input type="email" name={ f.Name } value={ f.Value } placeholder="Email" required data-person-picker autofocus?={ f.Autofocus } { f.Attrs... }/>
+		</label>
+		<ul data-testid="person-results" class="person-results" aria-live="polite" hidden></ul>
+	</div>
+}
+
+// personPickerScript upgrades every person picker to search people by Name or
+// email: its input turns text, and typing, 300ms after the last key, asks
+// /people/search and drops the latest answer under it. A pick puts the
+// person's email in the input; Escape, focus leaving the picker or a click
+// outside it hides the results, so they never cover the buttons below; and
+// ArrowDown steps into them. Submitting posts whatever the input holds, so a
+// typed email still works. Listening on the document reaches pickers htmx
+// swaps in, and nothing is evaluated (#519).
+templ personPickerScript() {
+	<script>
+		(function () {
+			var pickerSelector = "input[data-person-picker]";
+			var lastID = 0;
+			function resultsOf(input) {
+				var p = input.closest(".person-picker");
+				return p && p.querySelector(".person-results");
+			}
+			function hide(list) {
+				list.hidden = true;
+				list.innerHTML = "";
+			}
+			function upgrade() {
+				document.querySelectorAll(pickerSelector).forEach(function (input) {
+					var list = resultsOf(input);
+					if (!list || input.hasAttribute("aria-controls")) return;
+					if (!list.id) {
+						do { lastID++; } while (document.getElementById("person-results-" + lastID));
+						list.id = "person-results-" + lastID;
+					}
+					input.type = "text";
+					input.placeholder = "Name or email";
+					input.autocomplete = "off";
+					input.setAttribute("aria-autocomplete", "list");
+					input.setAttribute("aria-controls", list.id);
+				});
+			}
+			document.addEventListener("DOMContentLoaded", upgrade);
+			document.addEventListener("htmx:load", upgrade);
+			document.addEventListener("input", function (e) {
+				var input = e.target;
+				if (!input.matches || !input.matches(pickerSelector)) return;
+				var list = resultsOf(input);
+				if (!list) return;
+				clearTimeout(input.personTimer);
+				var asked = input.personAsked = (input.personAsked || 0) + 1;
+				var q = input.value.trim();
+				if (!q) {
+					hide(list);
+					return;
+				}
+				input.personTimer = setTimeout(function () {
+					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+						.then(function (r) { return r.ok ? r.text() : ""; })
+						.then(function (html) {
+							if (asked !== input.personAsked) return;
+							list.innerHTML = html;
+							list.hidden = html.trim() === "";
+						});
+				}, 300);
+			});
+			// Keep focus in the input while a result is pressed, so the
+			// focusout below doesn't hide the results before the click.
+			document.addEventListener("mousedown", function (e) {
+				if (e.target.closest && e.target.closest(".person-results")) e.preventDefault();
+			});
+			document.addEventListener("click", function (e) {
+				var b = e.target.closest && e.target.closest("[data-pick-person]");
+				var picker = b && b.closest(".person-picker");
+				if (picker) {
+					var input = picker.querySelector(pickerSelector);
+					clearTimeout(input.personTimer);
+					input.personAsked = (input.personAsked || 0) + 1;
+					input.value = b.getAttribute("data-email");
+					hide(b.closest(".person-results"));
+					input.focus();
+				}
+				document.querySelectorAll(".person-results:not([hidden])").forEach(function (list) {
+					if (!list.parentNode.contains(e.target)) hide(list);
+				});
+			});
+			document.addEventListener("keydown", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (!input || !list) return;
+				var results = Array.prototype.slice.call(list.querySelectorAll("[data-pick-person]"));
+				var at = results.indexOf(e.target);
+				if (e.key === "Escape" && !list.hidden) {
+					e.preventDefault();
+					hide(list);
+					input.focus();
+				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
+					e.preventDefault();
+					results[Math.min(at + 1, results.length - 1)].focus();
+				} else if (e.key === "ArrowUp" && at >= 0) {
+					e.preventDefault();
+					(at === 0 ? input : results[at - 1]).focus();
+				}
+			});
+			document.addEventListener("focusout", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var list = picker.querySelector(".person-results");
+				if (list && !list.hidden) hide(list);
+			});
+		})();
+	</script>
+}

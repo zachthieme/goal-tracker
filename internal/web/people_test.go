@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
+	nethtml "golang.org/x/net/html"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -84,5 +89,82 @@ func TestPersonSearchSignedOutSendsToSignIn(t *testing.T) {
 	}
 	if hasTestID(parsePage(t, body), "person-result") {
 		t.Errorf("signed out, the search answers people:\n%s", body)
+	}
+}
+
+// Each form that chooses a person holds the person picker: without script, a
+// required email input, captioned as before, with its results list beside it.
+func TestEveryFormChoosingAPersonHoldsThePersonPicker(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	h.MarkDeparted(ada, kim)
+	def := h.SaveReportDefinition(sam, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	pub := h.PublishReport(sam, def)
+	_, err := h.Service.RaiseActionItem(t.Context(), sam.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Book the EU legal review.", OwnerID: sam.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	if _, err := h.Service.AddComment(t.Context(), sam.ID, pub.ID, goal.ID, "Why did the vendor slip?"); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	ts := newServer(t, h)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	adaClient := signInClient(t, ts.URL, "ada@example.com")
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	for _, tc := range []struct {
+		client        *http.Client
+		page, form    string
+		name, caption string
+	}{
+		{samClient, goalPageURL(ts.URL, goal) + "?open=delegates", "add-delegate", "email", "Delegate email"},
+		{samClient, goalPageURL(ts.URL, goal) + "?open=handoff", "handoff-goal", "to_email", "New Owner's email"},
+		{adaClient, goalPageURL(ts.URL, orphan) + "?open=reassign", "reassign-goal", "email", "New Owner's email"},
+		{samClient, draftURL, "add-report-delegate", "email", "Report Delegate email"},
+		{samClient, pubURL, "action-item-form", "owner", "Owner"},
+		{samClient, pubURL, "comment-action-item-form", "owner", "Owner"},
+		{samClient, pubURL, "reassign-action-item", "owner", "New owner"},
+	} {
+		form := findByTestID(t, getPage(t, tc.client, tc.page), tc.form)
+		findByTestID(t, form, "person-results")
+		f := formField(t, form, tc.name)
+		if f.Type != "email" || !hasAttr(f.Node, "required") || !hasAttr(f.Node, "data-person-picker") {
+			t.Errorf("%s's %s isn't a required email input the person picker upgrades: %s", tc.form, tc.name, renderNode(f.Node))
+		}
+		if f.Label != tc.caption {
+			t.Errorf("%s's %s is labelled %q, want %q", tc.form, tc.name, f.Label, tc.caption)
+		}
+	}
+}
+
+// A framed page loads the person picker's script once, in its head, so every
+// picker on the page, and any htmx swaps in, is upgraded to search.
+func TestFramedPageLoadsThePersonPickerScriptOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getPage(t, client, ts.URL+"/home")
+	heads := findAll(page, func(n *nethtml.Node) bool { return n.Data == "head" })
+	if len(heads) != 1 {
+		t.Fatalf("page has %d heads, want 1", len(heads))
+	}
+	pickers := findAll(page, func(n *nethtml.Node) bool {
+		return n.Data == "script" && n.FirstChild != nil && strings.Contains(n.FirstChild.Data, "input[data-person-picker]")
+	})
+	if len(pickers) != 1 || pickers[0].Parent != heads[0] {
+		t.Errorf("page loads the person picker's script %d times, want once, in its head", len(pickers))
 	}
 }

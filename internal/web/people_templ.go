@@ -90,4 +90,167 @@ func personSearchResults(matches []domain.Account) templ.Component {
 	})
 }
 
+// personField is a person picker's field: the name it posts the email under,
+// what it holds, and its caption, shown or for a screen reader only. Attrs
+// are any more attributes of its input, such as a refusal's aria-invalid and
+// aria-describedby.
+type personField struct {
+	Name, Value, Caption string
+	CaptionHidden        bool
+	Autofocus            bool
+	Attrs                templ.Attributes
+}
+
+// personPicker chooses a person by email. Without script it is a plain
+// required email input; personPickerScript turns it into a search by Name or
+// email whose results drop down under it, a pick putting the person's email
+// in the field. The results sit outside the label, so the label holds only
+// its input.
+func personPicker(f personField) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var5 == nil {
+			templ_7745c5c3_Var5 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"person-picker\"><label class=\"field\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if f.CaptionHidden {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<span class=\"sr-only\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var6 string
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(f.Caption)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/people.templ`, Line: 43, Col: 37}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var7 string
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(f.Caption)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/people.templ`, Line: 45, Col: 21}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<input type=\"email\" name=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.Name)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/people.templ`, Line: 47, Col: 36}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var9 string
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(f.Value)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/people.templ`, Line: 47, Col: 54}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" placeholder=\"Email\" required data-person-picker")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if f.Autofocus {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, " autofocus")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, f.Attrs)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "></label><ul data-testid=\"person-results\" class=\"person-results\" aria-live=\"polite\" hidden></ul></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// personPickerScript upgrades every person picker to search people by Name or
+// email: its input turns text, and typing, 300ms after the last key, asks
+// /people/search and drops the latest answer under it. A pick puts the
+// person's email in the input; Escape, focus leaving the picker or a click
+// outside it hides the results, so they never cover the buttons below; and
+// ArrowDown steps into them. Submitting posts whatever the input holds, so a
+// typed email still works. Listening on the document reaches pickers htmx
+// swaps in, and nothing is evaluated (#519).
+func personPickerScript() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var10 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var10 == nil {
+			templ_7745c5c3_Var10 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<script>\n\t\t(function () {\n\t\t\tvar pickerSelector = \"input[data-person-picker]\";\n\t\t\tvar lastID = 0;\n\t\t\tfunction resultsOf(input) {\n\t\t\t\tvar p = input.closest(\".person-picker\");\n\t\t\t\treturn p && p.querySelector(\".person-results\");\n\t\t\t}\n\t\t\tfunction hide(list) {\n\t\t\t\tlist.hidden = true;\n\t\t\t\tlist.innerHTML = \"\";\n\t\t\t}\n\t\t\tfunction upgrade() {\n\t\t\t\tdocument.querySelectorAll(pickerSelector).forEach(function (input) {\n\t\t\t\t\tvar list = resultsOf(input);\n\t\t\t\t\tif (!list || input.hasAttribute(\"aria-controls\")) return;\n\t\t\t\t\tif (!list.id) {\n\t\t\t\t\t\tdo { lastID++; } while (document.getElementById(\"person-results-\" + lastID));\n\t\t\t\t\t\tlist.id = \"person-results-\" + lastID;\n\t\t\t\t\t}\n\t\t\t\t\tinput.type = \"text\";\n\t\t\t\t\tinput.placeholder = \"Name or email\";\n\t\t\t\t\tinput.autocomplete = \"off\";\n\t\t\t\t\tinput.setAttribute(\"aria-autocomplete\", \"list\");\n\t\t\t\t\tinput.setAttribute(\"aria-controls\", list.id);\n\t\t\t\t});\n\t\t\t}\n\t\t\tdocument.addEventListener(\"DOMContentLoaded\", upgrade);\n\t\t\tdocument.addEventListener(\"htmx:load\", upgrade);\n\t\t\tdocument.addEventListener(\"input\", function (e) {\n\t\t\t\tvar input = e.target;\n\t\t\t\tif (!input.matches || !input.matches(pickerSelector)) return;\n\t\t\t\tvar list = resultsOf(input);\n\t\t\t\tif (!list) return;\n\t\t\t\tclearTimeout(input.personTimer);\n\t\t\t\tvar asked = input.personAsked = (input.personAsked || 0) + 1;\n\t\t\t\tvar q = input.value.trim();\n\t\t\t\tif (!q) {\n\t\t\t\t\thide(list);\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tinput.personTimer = setTimeout(function () {\n\t\t\t\t\tfetch(\"/people/search?q=\" + encodeURIComponent(q), { credentials: \"same-origin\" })\n\t\t\t\t\t\t.then(function (r) { return r.ok ? r.text() : \"\"; })\n\t\t\t\t\t\t.then(function (html) {\n\t\t\t\t\t\t\tif (asked !== input.personAsked) return;\n\t\t\t\t\t\t\tlist.innerHTML = html;\n\t\t\t\t\t\t\tlist.hidden = html.trim() === \"\";\n\t\t\t\t\t\t});\n\t\t\t\t}, 300);\n\t\t\t});\n\t\t\t// Keep focus in the input while a result is pressed, so the\n\t\t\t// focusout below doesn't hide the results before the click.\n\t\t\tdocument.addEventListener(\"mousedown\", function (e) {\n\t\t\t\tif (e.target.closest && e.target.closest(\".person-results\")) e.preventDefault();\n\t\t\t});\n\t\t\tdocument.addEventListener(\"click\", function (e) {\n\t\t\t\tvar b = e.target.closest && e.target.closest(\"[data-pick-person]\");\n\t\t\t\tvar picker = b && b.closest(\".person-picker\");\n\t\t\t\tif (picker) {\n\t\t\t\t\tvar input = picker.querySelector(pickerSelector);\n\t\t\t\t\tclearTimeout(input.personTimer);\n\t\t\t\t\tinput.personAsked = (input.personAsked || 0) + 1;\n\t\t\t\t\tinput.value = b.getAttribute(\"data-email\");\n\t\t\t\t\thide(b.closest(\".person-results\"));\n\t\t\t\t\tinput.focus();\n\t\t\t\t}\n\t\t\t\tdocument.querySelectorAll(\".person-results:not([hidden])\").forEach(function (list) {\n\t\t\t\t\tif (!list.parentNode.contains(e.target)) hide(list);\n\t\t\t\t});\n\t\t\t});\n\t\t\tdocument.addEventListener(\"keydown\", function (e) {\n\t\t\t\tvar picker = e.target.closest && e.target.closest(\".person-picker\");\n\t\t\t\tif (!picker) return;\n\t\t\t\tvar input = picker.querySelector(pickerSelector);\n\t\t\t\tvar list = picker.querySelector(\".person-results\");\n\t\t\t\tif (!input || !list) return;\n\t\t\t\tvar results = Array.prototype.slice.call(list.querySelectorAll(\"[data-pick-person]\"));\n\t\t\t\tvar at = results.indexOf(e.target);\n\t\t\t\tif (e.key === \"Escape\" && !list.hidden) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\thide(list);\n\t\t\t\t\tinput.focus();\n\t\t\t\t} else if (e.key === \"ArrowDown\" && !list.hidden && results.length) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tresults[Math.min(at + 1, results.length - 1)].focus();\n\t\t\t\t} else if (e.key === \"ArrowUp\" && at >= 0) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\t(at === 0 ? input : results[at - 1]).focus();\n\t\t\t\t}\n\t\t\t});\n\t\t\tdocument.addEventListener(\"focusout\", function (e) {\n\t\t\t\tvar picker = e.target.closest && e.target.closest(\".person-picker\");\n\t\t\t\tif (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;\n\t\t\t\tvar list = picker.querySelector(\".person-results\");\n\t\t\t\tif (list && !list.hidden) hide(list);\n\t\t\t});\n\t\t})();\n\t</script>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
 var _ = templruntime.GeneratedTemplate
