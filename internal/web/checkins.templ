@@ -684,7 +684,7 @@ templ checkinPage(current *domain.Account, v checkinView, form checkinFormData) 
 					<div data-testid="no-change-card" class="checkin-no-change">
 						<span class="muted">{ "Nothing changed since " + v.Shown.dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
 						if v.Permissions.NoChange {
-							@noChangeCheckinButton(g.ID, "No change", "btn")
+							@noChangeCheckinButton(g.ID, "Check in: no change", "btn")
 						} else if form.Error.Message == "" || form.Error.Input != "" {
 							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeReason }</p>
 						}

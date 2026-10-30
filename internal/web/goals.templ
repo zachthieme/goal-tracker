@@ -844,7 +844,7 @@ templ goalPageHeader(v goalView) {
 			if v.Permissions.CheckIn {
 				<a class="btn primary sm" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
 				if v.Permissions.NoChange {
-					@noChangeCheckinButton(g.ID, "No change", "btn quiet sm")
+					@noChangeCheckinButton(g.ID, "Check in: no change", "btn quiet sm")
 				}
 			}
 			@goalMore(v)

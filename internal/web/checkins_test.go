@@ -1934,7 +1934,7 @@ func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
 	if want := "Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?"; !strings.Contains(textOf(card), want) {
 		t.Errorf("no-change card reads %q, want it to ask %q", textOf(card), want)
 	}
-	if button := buttonNamed(findByTestID(t, card, "no-change-checkin"), "No change"); button == nil {
+	if button := buttonNamed(findByTestID(t, card, "no-change-checkin"), "Check in: no change"); button == nil {
 		t.Errorf("no-change card has no No change button; it reads %q", textOf(card))
 	}
 }
@@ -2423,6 +2423,33 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a failed No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// The one-click No change says it records a Check-in, on the Goal page's header
+// and on the Check-in page alike: it reads "Check in: no change", not a bare
+// "No change" that can be taken for a filter or a note (#668).
+func TestNoChangeButtonSaysItChecksIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for page, where := range map[string]string{
+		"Goal page":     goalPageURL(ts.URL, goal),
+		"Check-in page": fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID),
+	} {
+		form := findByTestID(t, getPage(t, client, where), "no-change-checkin")
+		if buttonNamed(form, "Check in: no change") == nil {
+			t.Errorf("the %s's No change isn't named %q: %s", page, "Check in: no change", renderNode(form))
+		}
+		if buttonNamed(form, "No change") != nil {
+			t.Errorf("the %s still offers a bare %q: %s", page, "No change", renderNode(form))
+		}
 	}
 }
 

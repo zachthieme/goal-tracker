@@ -288,7 +288,7 @@ func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 			t.Errorf("Check-in overdue Goal's row lacks %s:\n%s", testID, renderNode(row))
 		}
 	}
-	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID)); form == nil || buttonNamed(form, "No change") == nil {
+	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID)); form == nil || buttonNamed(form, "Check in: no change") == nil {
 		t.Errorf("Check-in overdue Goal's row offers no No change:\n%s", renderNode(row))
 	}
 	if got := textOf(findByTestID(t, row, "home-due-status")); !strings.Contains(got, "last check-in 16 days ago · every 14 days") {
@@ -320,7 +320,7 @@ func TestHomeDueRowLeadsWithItsHealth(t *testing.T) {
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 	row := homeRowIn(t, findByTestID(t, page, "home-due"), checkinOverdue)
 	health, title, status := findByTestID(t, row, "home-due-health"), linkTo(row, homeGoalPath(checkinOverdue)), findByTestID(t, row, "home-due-status")
-	noChange, checkIn := buttonNamed(row, "No change"), findByTestID(t, row, "home-due-checkin")
+	noChange, checkIn := buttonNamed(row, "Check in: no change"), findByTestID(t, row, "home-due-checkin")
 	if noChange == nil || !precedes(health, title) || !precedes(title, status) || !precedes(status, noChange) || !precedes(noChange, checkIn) {
 		t.Errorf("row doesn't read Health, title, meta line, then No change and Check in:\n%s", renderNode(row))
 	}
@@ -469,7 +469,7 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
 	row := homeRowIn(t, findByTestID(t, page, "home-due"), silent)
-	if buttonNamed(row, "No change") != nil || len(homeFormsEndingIn(row, "/no-change")) != 0 {
+	if buttonNamed(row, "Check in: no change") != nil || len(homeFormsEndingIn(row, "/no-change")) != 0 {
 		t.Errorf("Goal with no Check-in offers No change:\n%s", renderNode(row))
 	}
 	if !hasTestID(row, "home-due-checkin") {
@@ -1066,7 +1066,7 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 	for action, label := range map[string]string{
-		fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID): "No change",
+		fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID): "Check in: no change",
 		fmt.Sprintf("/links/%d/accept", link.ID):                       "Accept",
 		fmt.Sprintf("/links/%d/reject", link.ID):                       "Reject",
 	} {
@@ -1102,11 +1102,11 @@ func TestHomeOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
 	if !hasTestID(row, "home-due-checkin") {
 		t.Errorf("the overdue Goal's row has no Check in:\n%s", renderNode(row))
 	}
-	if buttonNamed(row, "No change") != nil || len(homeFormsEndingIn(row, "/checkins/no-change")) != 0 {
+	if buttonNamed(row, "Check in: no change") != nil || len(homeFormsEndingIn(row, "/checkins/no-change")) != 0 {
 		t.Errorf("the overdue Goal's row offers a No change that would be refused:\n%s", renderNode(row))
 	}
 	row = homeRowIn(t, due, repeatable)
-	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", repeatable.ID)); form == nil || buttonNamed(form, "No change") == nil {
+	if form := homeFormTo(row, fmt.Sprintf("/goals/%d/checkins/no-change", repeatable.ID)); form == nil || buttonNamed(form, "Check in: no change") == nil {
 		t.Errorf("the repeatable Goal's row lacks its No change:\n%s", renderNode(row))
 	}
 	if !hasTestID(row, "home-due-checkin") {
