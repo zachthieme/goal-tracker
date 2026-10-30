@@ -286,6 +286,35 @@ test.describe("the New goal form's Milestone and Metric editor", () => {
     await expect(page).toHaveURL(/\/goals\/\d+$/);
     await expect(page.getByTestId("goal-title")).toHaveText("Launch the EU storefront");
   });
+
+  test("(l) a delivery date refused warns once it's typed again, keeping why it was refused", async ({ page }) => {
+    const form = page.getByTestId("goal-form");
+    await fillWhat(page, "Launch the EU storefront");
+    await form.getByRole("group", { name: "Kind" }).getByText("Dated", { exact: true }).click();
+    const refused = page.waitForResponse(
+      (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/goals/new",
+    );
+    await page.getByRole("button", { name: "Save as Proposed" }).click();
+    expect((await refused).status()).toBe(422);
+
+    const section = page.getByTestId("goal-form-delivery");
+    const delivery = form.getByRole("textbox", { name: /^Delivery date/ });
+    const error = section.getByTestId("input-error").filter({ hasText: "delivery date" });
+    const warning = section.getByTestId("input-warning");
+    await expect(delivery).toHaveAttribute("aria-invalid", "true");
+    await expect(error).toHaveText("A Dated Goal needs a delivery date.");
+    await expect(warning).toHaveCount(0);
+
+    await delivery.fill(dayBefore(appToday()));
+    await expect(warning).toHaveText("This delivery date has already passed.");
+    await expect(error).toHaveText("A Dated Goal needs a delivery date.");
+    await expect(delivery).toHaveAccessibleDescription(
+      "A Dated Goal needs a delivery date. This delivery date has already passed.",
+    );
+    await delivery.fill(nextYear);
+    await expect(warning).toHaveCount(0);
+    await expect(delivery).toHaveAccessibleDescription("A Dated Goal needs a delivery date.");
+  });
 });
 
 // dayBefore is the ISO date the day before iso.
