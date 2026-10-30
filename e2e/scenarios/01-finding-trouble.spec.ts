@@ -118,7 +118,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     const rule = builder.getByTestId("report-rule");
     await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
     await rule.getByLabel("Operator").selectOption({ label: "is any of" });
-    await rule.getByLabel("Values").selectOption({ label: "Platform" });
+    await rule.getByTestId("rule-values").getByRole("checkbox", { name: "Platform", exact: true }).check();
     await builder.getByRole("button", { name: "Save report" }).click();
     await expect(leaderPage.getByTestId("report-draft").getByTestId("report-name")).toHaveText(reportName);
 

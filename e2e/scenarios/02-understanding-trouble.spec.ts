@@ -46,7 +46,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await expect(rule).toHaveCount(1);
     await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
     await rule.getByLabel("Operator").selectOption({ label: "is any of" });
-    await rule.getByLabel("Values").selectOption({ label: "Platform" });
+    await rule.getByTestId("rule-values").getByRole("checkbox", { name: "Platform", exact: true }).check();
 
     const rail = elena.getByTestId("report-matches");
     await expect(rail.getByTestId("matches-count")).toHaveText(`Matches ${platform.length} Goals`);

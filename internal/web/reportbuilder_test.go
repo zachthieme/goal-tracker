@@ -134,7 +134,6 @@ func TestBuilderRefusalKeepsValuesAndShowsEachErrorBesideItsInputOverHTTP(t *tes
 		`name="introduction">Where Platform stands.</textarea>`,
 		`value="rules" checked`,
 		`<option value="` + dim + `" selected>Team</option>`,
-		`<option value="` + dim + "=" + id(platform.ID) + `" selected>Platform</option>`,
 		`<option value="lifecycle" selected>Lifecycle</option>`,
 		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
 		`<input type="hidden" name="exclude" value="` + id(sso.ID) + `">`,
@@ -153,6 +152,9 @@ func TestBuilderRefusalKeepsValuesAndShowsEachErrorBesideItsInputOverHTTP(t *tes
 	}
 	if strings.Contains(rows[0], `data-testid="input-error"`) {
 		t.Errorf("the good Team rule is marked refused:\n%s", rows[0])
+	}
+	if _, _, chosen := ruleRowValues(findAllByTestID(parsePage(t, page), "report-rule")[0], 0); !slices.Equal(chosen, []string{"Platform"}) {
+		t.Errorf("the refused builder's Team rule has %q chosen, want Platform", chosen)
 	}
 	if !strings.Contains(rows[1], `id="rules[1]-error"`) || !strings.Contains(rows[1], "Choose a value for this rule.") {
 		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", rows[1])
@@ -219,8 +221,6 @@ func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 	for _, want := range []string{
 		`name="name" value="Exec weekly"`,
 		`name="introduction">Every Monday.</textarea>`,
-		`<option value="health=Red" selected>Red</option>`,
-		`<option value="health=Yellow" selected>Yellow</option>`,
 		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
 	} {
 		if !strings.Contains(builder, want) {
@@ -239,8 +239,12 @@ func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 		ops[0][2] != "is Top-level" || ops[1][2] != "is not Top-level" {
 		t.Errorf("the Top-level row offers operators %q, want only is Top-level and is not Top-level", ops)
 	}
-	if values := pageElement(t, topLevel, "select", "rule-values"); strings.Contains(values, " selected") {
-		t.Errorf("the Top-level row holds values:\n%s", values)
+	parsed := findAllByTestID(parsePage(t, page), "report-rule")
+	if labels, _, _ := ruleRowValues(parsed[0], 0); len(labels) > 0 {
+		t.Errorf("the Top-level row offers values %q", labels)
+	}
+	if _, kind, chosen := ruleRowValues(parsed[1], 1); kind != "checkbox" || !slices.Equal(chosen, []string{domain.HealthYellow, domain.HealthRed}) {
+		t.Errorf("Add rule left the Health rule with %s values %q chosen, want checkboxes Yellow and Red", kind, chosen)
 	}
 	if strings.Contains(rows[2], " selected") {
 		t.Errorf("the added row isn't blank:\n%s", rows[2])
@@ -250,9 +254,10 @@ func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 	}
 }
 
-// A Top-level row that comes back from the server still carries every
-// attribute's values, which script hides until the row tests one, so switching
-// it to a Dimension offers that Dimension's values and the rule saves.
+// Without script a row's values follow its attribute once the form is sent:
+// a Top-level row, which shows none, switched to Team and sent with Show
+// matches comes back with only Team's values, as radios under "is", and the
+// Team value then chosen saves.
 func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -270,8 +275,52 @@ func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
 		"name":               {"Platform MBR"},
 		"mode":               {domain.ReportModeRules},
-		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].attribute": {dim},
 		"rules[0].op":        {domain.RuleIs},
+		"do":                 {"show-matches"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Show matches: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder := findByTestID(t, parsePage(t, page), "report-builder")
+	row := findByTestID(t, builder, "report-rule")
+	labels, kind, _ := ruleRowValues(row, 0)
+	if !slices.Equal(labels, []string{"Platform", "Identity"}) || kind != "radio" {
+		t.Fatalf("the row switched to Team offers %s values %q, want radios Platform and Identity:\n%s", kind, labels, renderNode(row))
+	}
+
+	form := formSubmission(builder)
+	form.Set("rules[0].value", dim+"="+strconv.FormatInt(platform.ID, 10))
+	resp = postForm(t, noRedirects(client), ts.URL+"/reports/new", form)
+	draft := assertSavedReport(t, client, ts.URL, resp)
+	if got, want := draftGoalTitles(t, draft), []string{reliability.Title}; !slices.Equal(got, want) {
+		t.Errorf("the switched rule selects %q, want %q", got, want)
+	}
+}
+
+// A row testing an attribute shows only that attribute's values, as
+// checkboxes under "is any of", and a row testing nothing yet shows every
+// attribute's, as checkboxes under each attribute's label, as Add rule
+// renders them without script.
+func TestBuilderRowShowsOnlyItsAttributesValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Identity", "Growth")
+	h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIsAnyOf},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(team.Values[0].ID, 10), dim + "=" + strconv.FormatInt(team.Values[2].ID, 10)},
 		"do":                 {"add-rule"},
 	})
 	defer func() { _ = resp.Body.Close() }()
@@ -279,35 +328,36 @@ func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
 	}
-	builder := pageElement(t, page, "form", "report-builder")
-	topLevel := strings.Split(builder, `data-testid="report-rule"`)[1]
-	if !strings.Contains(topLevel, `name="rules[0].value"`) {
-		t.Fatalf("the Top-level row has no rules[0].value select:\n%s", topLevel)
+	rows := findAllByTestID(findByTestID(t, parsePage(t, page), "report-builder"), "report-rule")
+	if len(rows) != 2 {
+		t.Fatalf("got %d rule rows, want the Team row and a new one", len(rows))
 	}
-	values := pageElement(t, topLevel, "select", "rule-values")
-	if regexp.MustCompile(`<select[^>]*\shidden`).MatchString(values) {
-		t.Errorf("the Top-level row's values are hidden in the markup, not by script:\n%s", values)
+	labels, kind, chosen := ruleRowValues(rows[0], 0)
+	if !slices.Equal(labels, []string{"Platform", "Identity", "Growth"}) || kind != "checkbox" || !slices.Equal(chosen, []string{"Platform", "Growth"}) {
+		t.Errorf("the Team row offers %s values %q with %q chosen, want checkboxes of only the Teams with Platform and Growth chosen", kind, labels, chosen)
 	}
-	for _, want := range []string{`label="Team"`, `label="Owner"`, `label="Lifecycle"`, `label="Health"`} {
-		if !strings.Contains(values, want) {
-			t.Errorf("the Top-level row's values have no %s group:\n%s", want, values)
-		}
-	}
-	option := regexp.MustCompile(`<option value="([^"]*)">Platform</option>`).FindStringSubmatch(values)
-	if option == nil {
-		t.Fatalf("the Top-level row's values offer no Platform:\n%s", values)
+	if groups := findAllByTestID(rows[0], "rule-value-group"); len(groups) != 0 {
+		t.Errorf("the Team row's values are in %d groups, want none", len(groups))
 	}
 
-	resp = postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
-		"name":               {"Platform MBR"},
-		"mode":               {domain.ReportModeRules},
-		"rules[0].attribute": {dim},
-		"rules[0].op":        {domain.RuleIs},
-		"rules[0].value":     {html.UnescapeString(option[1])},
-	})
-	draft := assertSavedReport(t, client, ts.URL, resp)
-	if got, want := draftGoalTitles(t, draft), []string{reliability.Title}; !slices.Equal(got, want) {
-		t.Errorf("the switched rule selects %q, want %q", got, want)
+	var headings []string
+	for _, g := range findAllByTestID(rows[1], "rule-value-group") {
+		legend := findAll(g, func(n *nethtml.Node) bool { return n.Data == "legend" })
+		if len(legend) == 0 {
+			t.Fatalf("a value group has no heading:\n%s", renderNode(g))
+		}
+		headings = append(headings, textOf(legend[0]))
+		for _, f := range formFields(g, "rules[1].value") {
+			if f.Type != "checkbox" {
+				t.Errorf("the new row's %s value %q is a %s, want a checkbox", textOf(legend[0]), f.Label, f.Type)
+			}
+		}
+	}
+	if want := []string{"Team", "Owner", "Lifecycle", "Health"}; !slices.Equal(headings, want) {
+		t.Errorf("the new row's values are grouped under %q, want %q", headings, want)
+	}
+	if labels, _, _ := ruleRowValues(rows[1], 1); !slices.Contains(labels, "Identity") || !slices.Contains(labels, domain.HealthRed) {
+		t.Errorf("the new row offers %q, want every attribute's values", labels)
 	}
 }
 
@@ -382,15 +432,15 @@ func TestBuilderAttributeSelectOffersEveryLiveAttributeAndNoFieldOverHTTP(t *tes
 	if want := []string{"Choose…", "Team", "Owner", "Lifecycle", "Health", "Top-level"}; !slices.Equal(offered, want) {
 		t.Errorf("the attribute select offers %q, want %q", offered, want)
 	}
-	values := pageElement(t, builder, "select", "rule-values")
-	for _, want := range []string{">Platform<", ">Sam Rivera<", ">" + domain.LifecycleOnHold + "<", ">" + domain.HealthYellow + "<"} {
-		if !strings.Contains(values, want) {
-			t.Errorf("the values don't offer %s:\n%s", want, values)
+	labels, _, _ := ruleRowValues(findByTestID(t, parsePage(t, builder), "report-rule"), 0)
+	for _, want := range []string{"Platform", "Sam Rivera", domain.LifecycleOnHold, domain.HealthYellow} {
+		if !slices.Contains(labels, want) {
+			t.Errorf("the values don't offer %s: %q", want, labels)
 		}
 	}
 	for _, gone := range []string{"Legacy", "Growth", "Budget"} {
-		if strings.Contains(values, gone) {
-			t.Errorf("the values offer %s:\n%s", gone, values)
+		if slices.Contains(labels, gone) {
+			t.Errorf("the values offer %s: %q", gone, labels)
 		}
 	}
 }
@@ -492,10 +542,56 @@ func TestBuilderRerendersAChangedRowWithOnlyItsOwnValuesOverHTTP(t *testing.T) {
 		if resp.StatusCode != tc.status {
 			t.Fatalf("%s: status %d, want %d; body:\n%s", tc.what, resp.StatusCode, tc.status, page)
 		}
-		values := pageElement(t, pageElement(t, page, "form", "report-builder"), "select", "rule-values")
-		if got := regexp.MustCompile(`value="([^"]*)" selected`).FindAllStringSubmatch(values, -1); len(got) != 1 || got[0][1] != domain.RuleLifecycle+"="+domain.LifecycleActive {
-			t.Errorf("after %s the row's values select %v, want only lifecycle=Active:\n%s", tc.what, got, values)
+		row := findByTestID(t, findByTestID(t, parsePage(t, page), "report-builder"), "report-rule")
+		if got := formSubmission(row)["rules[0].value"]; !slices.Equal(got, []string{domain.RuleLifecycle + "=" + domain.LifecycleActive}) {
+			t.Errorf("after %s the row's values post %q, want only lifecycle=Active:\n%s", tc.what, got, renderNode(row))
 		}
+		if labels, _, _ := ruleRowValues(row, 0); slices.Contains(labels, "vp@example.com") || len(labels) != len(domain.Lifecycles()) {
+			t.Errorf("after %s the Lifecycle row offers %q, want only the Lifecycles", tc.what, labels)
+		}
+	}
+}
+
+// Two rules no Goal can meet both, such as two Teams on a Dimension a Goal
+// takes one value of, are refused beside the later rule, saving nothing.
+func TestBuilderRefusesRulesNoGoalCanMeetBothBesideTheLaterOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(team.Values[0].ID, 10)},
+		"rules[1].attribute": {dim},
+		"rules[1].op":        {domain.RuleIs},
+		"rules[1].value":     {dim + "=" + strconv.FormatInt(team.Values[1].ID, 10)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("Team is Platform and is Growth: status %d, want 422; body:\n%s", resp.StatusCode, page)
+	}
+	rows := findAllByTestID(findByTestID(t, parsePage(t, page), "report-builder"), "report-rule")
+	if len(rows) != 2 {
+		t.Fatalf("got %d rule rows, want 2", len(rows))
+	}
+	if bad := findAllByTestID(rows[0], "input-error"); len(bad) != 0 {
+		t.Errorf("the first rule is refused: %q", textsOf(bad))
+	}
+	bad := findAllByTestID(rows[1], "input-error")
+	if want := `A Goal has one Team, so none can be both Platform and Growth. To include either, put them in one rule with "is any of".`; len(bad) != 1 || textOf(bad[0]) != want {
+		t.Errorf("the later rule's error reads %q, want %q", textsOf(bad), want)
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("the refused save saved %d definitions", len(defs))
 	}
 }
 
@@ -1505,11 +1601,10 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	}
 }
 
-// Without script, a Top-level rule row offers only "is Top-level" and "is not
-// Top-level": its values list, kept in the markup so script can switch the row
-// to another attribute, is hidden by a style that applies only before script
-// runs. Other rows keep theirs.
-func TestBuilderTopLevelRowHidesItsValuesWithoutScriptOverHTTP(t *testing.T) {
+// A Top-level rule row tests no values, so it shows none and offers only "is
+// Top-level" and "is not Top-level"; the blank row beside it offers every
+// attribute's.
+func TestBuilderTopLevelRowShowsNoValuesOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1530,18 +1625,18 @@ func TestBuilderTopLevelRowHidesItsValuesWithoutScriptOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
 	}
-	rows := strings.Split(pageElement(t, page, "form", "report-builder"), `data-testid="report-rule"`)[1:]
+	rows := findAllByTestID(parsePage(t, page), "report-rule")
 	if len(rows) != 2 {
 		t.Fatalf("got %d rule rows, want the Top-level row and a new one", len(rows))
 	}
-	if !strings.Contains(openTag(rows[0]), "data-top-level") {
-		t.Errorf("the Top-level row isn't marked data-top-level: %s", openTag(rows[0]))
+	if labels, _, _ := ruleRowValues(rows[0], 0); len(labels) > 0 {
+		t.Errorf("the Top-level row offers values %q", labels)
 	}
-	if strings.Contains(openTag(rows[1]), "data-top-level") {
-		t.Errorf("the new, empty row is marked data-top-level: %s", openTag(rows[1]))
+	if values := findByTestID(t, rows[0], "rule-values"); !hasAttr(values, "hidden") {
+		t.Errorf("the Top-level row's empty values aren't hidden:\n%s", renderNode(values))
 	}
-	if got := cssRule(t, page, `.rb-form:not(.rb-js) [data-top-level] [data-testid="rule-values"]`); got != "display:none" {
-		t.Errorf("without script, a Top-level row's values are styled %q, want display:none", got)
+	if labels, _, _ := ruleRowValues(rows[1], 1); !slices.Contains(labels, "Platform") {
+		t.Errorf("the new row offers %q, want every attribute's values", labels)
 	}
 }
 
@@ -1754,11 +1849,13 @@ func TestBuilderSavesAndReloadsAnOrgRuleOverHTTP(t *testing.T) {
 		`<option value="` + domain.RuleIs + `" selected>is in the org of</option>`,
 		`<option value="` + domain.RuleIsAnyOf + `">is in the org of any of</option>`,
 		`<option value="` + domain.RuleIsNot + `">is not in the org of</option>`,
-		`<option value="` + person + `" selected>Priya Raman</option>`,
 	} {
 		if !strings.Contains(edit, want) {
 			t.Errorf("the reloaded rule lacks %s:\n%s", want, edit)
 		}
+	}
+	if got := checkedRadio(parsePage(t, edit), "rules[0].value"); got != "Priya Raman" {
+		t.Errorf("the reloaded rule has %q chosen, want Priya Raman", got)
 	}
 }
 
@@ -1785,14 +1882,12 @@ func TestBuilderOffersTheOrgOnlyWhenAnyoneHasAManagerOverHTTP(t *testing.T) {
 	}
 
 	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
-	edit := pageElement(t, getBody(t, client, draftURL+"/edit"), "div", "report-rule")
-	for _, want := range []string{
-		`<option value="` + domain.RuleOrg + `" selected>` + reportOrgAttributeLabel + `</option>`,
-		`<option value="` + domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10) + `" selected>Priya Raman</option>`,
-	} {
-		if !strings.Contains(edit, want) {
-			t.Errorf("the saved Org rule doesn't load, lacking %s:\n%s", want, edit)
-		}
+	edit := findByTestID(t, parsePage(t, getBody(t, client, draftURL+"/edit")), "report-rule")
+	if got := formField(t, edit, "rules[0].attribute").Value; got != domain.RuleOrg {
+		t.Errorf("the saved Org rule loads testing %q, want %q:\n%s", got, domain.RuleOrg, renderNode(edit))
+	}
+	if got := checkedRadio(edit, "rules[0].value"); got != "Priya Raman" {
+		t.Errorf("the saved Org rule loads with %q chosen, want Priya Raman:\n%s", got, renderNode(edit))
 	}
 	if got, want := draftGoalTitles(t, getBody(t, client, draftURL)), []string{vps.Title}; !slices.Equal(got, want) {
 		t.Errorf("with no Manager known, the Org rule's draft selects %q, want %q", got, want)
@@ -1813,7 +1908,6 @@ func TestEditBuilderKeepsAnOwnerRulesPersonWhoOwnsNoGoalOverHTTP(t *testing.T) {
 	samID, vpID := strconv.FormatInt(sam.ID, 10), strconv.FormatInt(vp.ID, 10)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vp@example.com")
-	samOption := `<option value="` + domain.RuleOwner + "=" + samID + `" selected>Sam Ito</option>`
 
 	for _, c := range []struct {
 		op  string
@@ -1826,8 +1920,9 @@ func TestEditBuilderKeepsAnOwnerRulesPersonWhoOwnsNoGoalOverHTTP(t *testing.T) {
 			{Attribute: domain.RuleOwner, Op: c.op, Values: c.ids},
 		}})
 		draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
-		if row := pageElement(t, getBody(t, client, ts.URL+draftPath+"/edit"), "div", "report-rule"); !strings.Contains(row, samOption) {
-			t.Errorf("Owner %s: the edit page's rule lacks %s:\n%s", c.op, samOption, row)
+		row := findByTestID(t, parsePage(t, getBody(t, client, ts.URL+draftPath+"/edit")), "report-rule")
+		if _, _, chosen := ruleRowValues(row, 0); !slices.Contains(chosen, "Sam Ito") {
+			t.Errorf("Owner %s: the edit page's rule has %q chosen, want Sam Ito among them", c.op, chosen)
 		}
 
 		form := url.Values{
@@ -1910,11 +2005,13 @@ func TestNewBuilderStartsWithTheAuthorsOrgOverHTTP(t *testing.T) {
 	for _, want := range []string{
 		`<option value="` + domain.RuleOrg + `" selected>` + reportOrgAttributeLabel + `</option>`,
 		`<option value="` + domain.RuleIs + `" selected>is in the org of</option>`,
-		`<option value="` + domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10) + `" selected>Priya Raman</option>`,
 	} {
 		if !strings.Contains(rows[0], want) {
 			t.Errorf("the new builder's rule lacks %s:\n%s", want, rows[0])
 		}
+	}
+	if got := checkedRadio(findByTestID(t, parsePage(t, page), "report-rule"), "rules[0].value"); got != "Priya Raman" {
+		t.Errorf("the started org rule has %q chosen, want Priya Raman", got)
 	}
 	if note := pageElement(t, rules, "p", "rules-start-note"); !strings.Contains(note, "Started with your org. Change or remove it.") {
 		t.Errorf("the note under the rules reads %s", note)
@@ -1957,11 +2054,29 @@ func TestNewBuilderStartsWithTheAuthorsOwnGoalsOverHTTP(t *testing.T) {
 	for _, want := range []string{
 		`<option value="` + domain.RuleOwner + `" selected>Owner</option>`,
 		`<option value="` + domain.RuleIs + `" selected>is</option>`,
-		`<option value="` + domain.RuleOwner + "=" + strconv.FormatInt(sam.ID, 10) + `" selected>Sam Rivera</option>`,
 	} {
 		if !strings.Contains(rows[0], want) {
 			t.Errorf("the new builder's rule lacks %s:\n%s", want, rows[0])
 		}
+	}
+	row := findByTestID(t, parsePage(t, page), "report-rule")
+	values := formFields(row, "rules[0].value")
+	if len(values) == 0 {
+		t.Fatalf("the started rule has no values to choose:\n%s", renderNode(row))
+	}
+	for _, v := range values {
+		if v.Type != "radio" {
+			t.Errorf("the started \"is\" rule's value %q is a %s, want a radio", v.Label, v.Type)
+		}
+	}
+	if got := checkedRadio(row, "rules[0].value"); got != "Sam Rivera" {
+		t.Errorf("the started rule has %q chosen, want Sam Rivera", got)
+	}
+	if got := formSubmission(row)["rules[0].value"]; !slices.Equal(got, []string{domain.RuleOwner + "=" + strconv.FormatInt(sam.ID, 10)}) {
+		t.Errorf("the started rule posts values %q, want the author's", got)
+	}
+	if multiple := findAll(row, func(n *nethtml.Node) bool { return n.Data == "select" && hasAttr(n, "multiple") }); len(multiple) > 0 {
+		t.Errorf("the rule row holds a multiple select:\n%s", renderNode(row))
 	}
 	if note := pageElement(t, rules, "p", "rules-start-note"); !strings.Contains(note, "Started with your own Goals. Change or remove it.") {
 		t.Errorf("the note under the rules reads %s", note)
@@ -2255,4 +2370,23 @@ func TestBuilderRefusesAnEmptySelectionInPlainWordsOverHTTP(t *testing.T) {
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
 		t.Errorf("a refused save saved %d definitions", len(defs))
 	}
+}
+
+// ruleRowValues are the values the i-th rule row offers as a person sees
+// them: each one's label, the control they share ("radio" or "checkbox", or
+// "" when there are none or they differ), and the labels of those chosen.
+func ruleRowValues(row *nethtml.Node, i int) (labels []string, kind string, chosen []string) {
+	for n, f := range formFields(row, "rules["+strconv.Itoa(i)+"].value") {
+		labels = append(labels, f.Label)
+		switch {
+		case n == 0:
+			kind = f.Type
+		case kind != f.Type:
+			kind = ""
+		}
+		if f.Checked {
+			chosen = append(chosen, f.Label)
+		}
+	}
+	return labels, kind, chosen
 }

@@ -81,7 +81,7 @@ async function buildRuleReport(page: Page, name: string, team = "Platform"): Pro
   const rule = builder.getByTestId("report-rule").first();
   await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
   await rule.getByLabel("Operator").selectOption({ label: "is any of" });
-  await rule.getByLabel("Values").selectOption({ label: team });
+  await rule.getByTestId("rule-values").getByRole("checkbox", { name: team, exact: true }).check();
   await builder.getByRole("button", { name: "Save report" }).click();
   await page.waitForURL(/\/reports\/\d+$/);
 }

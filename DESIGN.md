@@ -2076,12 +2076,29 @@ and so on).
     **What's in this report**, an outlined segmented control (§ Segmented
     controls), Goals matching rules | Goals I pick, which with `:has()` shows
     only its own section; **Rules**, under a hairline: each rule a wrapping
-    row (`.rb-rule`) of What the rule tests, Operator, Values and its ×, then
-    a quiet small **+ Add rule**, then **Also include** and **Leave out**,
+    row (`.rb-rule`) of What the rule tests, Operator, its Values and its ×,
+    then a quiet small **+ Add rule**, then **Also include** and **Leave out**,
     each a Goal picker; or **Goals I pick**, one Goal picker; **+ Fields to
     show**, a quiet small disclosure when there are Fields; **Matches**
     (`.rb-rail`); and **Save report**, primary, with a secondary **Show
     matches** beside it without script.
+  - **Rule row (`reportRuleRowInputs`):** the attribute and operator
+    selects, the values, and the × (`.btn.rb-remove`). The values are a
+    bordered list (`.rb-value-list`, `--radius-md`, up to 14em tall, then
+    scrolling, opened on the first chosen value) of labelled controls, each
+    a value's label: radios under "is", which takes one, and checkboxes under
+    "is any of" and "is not". A row shows only its attribute's values; a
+    Top-level row has none, and shows no list. With script, a row's values
+    come from one `<template>` per attribute outside the rows, so changing
+    the attribute swaps them, and changing the operator turns radios into
+    checkboxes and back, keeping what is chosen (only the first, going to
+    "is"). Without script, a row testing nothing yet lists every attribute's
+    values as checkboxes, each attribute's under its label, and a row
+    switched to another attribute shows that attribute's values once the
+    form is sent. With script, **+ Add rule** adds a blank row under the last
+    and focuses its attribute, and × removes its row and focuses the next
+    row's attribute, or + Add rule; neither reloads the page, and both
+    refresh Matches. Without script both submit the form.
   - **Goal picker (`reportGoalPicker`):** a legend (with a help button for Also
     include and Leave out), then the picked Goals as chips (`.rb-chip`):
     `--radius-full` pills in a 1px `--color-border` edge, each its title and
@@ -2105,8 +2122,8 @@ and so on).
 - **Icon remove button (`.btn.rb-remove`):** the Report builder's × on a rule
   row and on a Goal chip. It is a 40px square, the height of the selects
   beside it, with a 1px `--color-border-strong` edge, the secondary button's
-  hover and the standard focus ring. On a rule row it submits the form
-  without the row, so it works without script. On a Goal chip it is round and
+  hover and the standard focus ring. On a rule row it removes the row in
+  place with script, and without script submits the form without the row. On a Goal chip it is round and
   forms the pill's right end: the chip keeps only its 12px left padding, so it
   stays compact. On a coarse pointer it is 44px wide as well as tall. It
   shows only the ×, so it always carries an `aria-label` and a matching

@@ -362,7 +362,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     const rule = priya.getByTestId("report-rule").first();
     await rule.getByTestId("rule-attribute").selectOption({ label: "Team" });
     await rule.getByTestId("rule-op").selectOption({ label: "is" });
-    await rule.getByTestId("rule-values").selectOption({ label: team.team });
+    await rule.getByTestId("rule-values").getByRole("radio", { name: team.team, exact: true }).check();
     await priya.getByRole("button", { name: "Save report" }).click();
     await expect(priya).toHaveURL(/\/reports\/\d+$/);
     const goals = priya.getByTestId("report-draft").locator('[data-testid="report-exception"], [data-testid="selected-goal"]');

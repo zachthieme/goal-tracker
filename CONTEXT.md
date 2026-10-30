@@ -204,7 +204,7 @@ The record of everything that changed on a Report Definition, newest first, each
 _Avoid_: Definition log (a Goal's), history (the draft's History, which merges it with the publications), audit trail
 
 **Report rule**:
-A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. An org rule reads "Owner is in the org of Priya": its Owner is in any named person's org, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
+A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. An org rule reads "Owner is in the org of Priya": its Owner is in any named person's org, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. "is" takes exactly one value; "is any of" and "is not" take one or more. Two rules no Goal can meet are refused: two "is" or "is any of" rules with no value in common on an attribute a Goal holds one value of (Owner, Health, or a Dimension whose Selection is one), or "is Top-level" with "is not Top-level". A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
 _Avoid_: filter, query, criteria
 
 **Comment**:
