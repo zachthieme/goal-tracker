@@ -145,7 +145,7 @@ Where a Goal is in its existence: Proposed, Active, On Hold, Done, or Cancelled.
 _Avoid_: status, state, New (use Proposed)
 
 **Date Slip**:
-A recorded change to a Goal's delivery date, a Milestone's date, or a Path to Green's back-to-Green date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03). A Milestone's date shows current first, then the date it last slipped from struck through (11/03 ~~10/15~~), and how many times it slipped once that is more than once (11/20 ~~11/03~~ (3)). A date is never shown struck through beside itself: a back-to-Green date moved back earlier, which is no Date Slip, strikes through the most recent earlier date that differs.
+A recorded change to a Goal's delivery date, a Milestone's date, or a Path to Green's back-to-Green date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03). A Milestone's date shows current first, then the date it last slipped from struck through (11/03 ~~10/15~~), and how many times it slipped once that is more than once (11/20 ~~11/03~~ · 3 slips). A date is never shown struck through beside itself: a back-to-Green date moved back earlier, which is no Date Slip, strikes through the most recent earlier date that differs.
 _Avoid_: New Date (as a status), re-plan, reschedule
 
 **Milestone Churn**:

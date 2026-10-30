@@ -5765,7 +5765,7 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 		}
 	case domain.ReportFactPathToGreen:
 		p := f.PathToGreen
-		out = append(out, p.Plan, p.ByWords(), fmt.Sprintf("(%d)", p.Slips))
+		out = append(out, p.Plan, p.ByWords(), domain.SlipsWords(p.Slips))
 		if p.Overdue {
 			out = append(out, p.OverdueWords())
 		}

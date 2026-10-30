@@ -126,8 +126,9 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 // baseline and the due date with its history struck through; then each of its
 // other facts under its label. A Path to Green's back-to-Green date is struck
 // through as a Milestone's is when it slipped in the Run off Green
-// ("2026-10-03 ~~2026-09-12~~ (2)") and marked Overdue once that date has
-// passed ("— **Overdue**").
+// ("2026-10-03 ~~2026-09-12~~ · 2 slips") and marked Overdue once that date
+// has passed ("— **Overdue**"). A Milestone's name is set off by " · " from its
+// date's slip count when that shows.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	for _, f := range blk.Facts(asOf) {
 		writeBlockFact(b, people, f)
@@ -188,7 +189,11 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 			if m.Milestone.Status == domain.MilestoneRemoved {
 				name = "~~" + name + "~~"
 			}
-			fmt.Fprintf(b, "%s %s", milestoneDate(m.Milestone.TargetDate, m.PriorDates), name)
+			sep := " "
+			if len(m.PriorDates) > 1 {
+				sep = " · "
+			}
+			fmt.Fprintf(b, "%s%s%s", milestoneDate(m.Milestone.TargetDate, m.PriorDates), sep, name)
 			if m.Milestone.RemovedReason != "" {
 				fmt.Fprintf(b, " — %s", text(m.Milestone.RemovedReason))
 			}
@@ -305,7 +310,7 @@ func struck(current time.Time, prior []time.Time) string {
 
 // milestoneDate renders a Milestone's date current first, then the most recent
 // date it slipped from struck through, and the number of times it slipped once
-// that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date Slip). Prior
+// that is more than one: 11/20 ~~11/03~~ · 3 slips (CONTEXT.md: Date Slip). Prior
 // dates come earliest first. A date equal to the current one is never struck
 // through: the most recent that differs is, or none.
 func milestoneDate(current time.Time, prior []time.Time) string {
@@ -314,7 +319,7 @@ func milestoneDate(current time.Time, prior []time.Time) string {
 		out += fmt.Sprintf(" ~~%s~~", fmtDate(struck[len(struck)-1]))
 	}
 	if n := len(prior); n > 1 {
-		out += fmt.Sprintf(" (%d)", n)
+		out += " · " + domain.SlipsWords(n)
 	}
 	return out
 }

@@ -169,7 +169,7 @@ func TestMarkdownListsMilestonesAsMarkDateName(t *testing.T) {
 
 	want := `**Milestones:**
 
-- **[Slipped]** 2026-04-20 ~~2026-04-03~~ (3) Vendor sign-off
+- **[Slipped]** 2026-04-20 ~~2026-04-03~~ · 3 slips · Vendor sign-off
 - **[Slipped]** 2026-04-01 ~~2026-03-20~~ Security review
 - **[New]** 2026-03-10 Docs
 - 2026-02-21 Due on the day
@@ -818,7 +818,7 @@ func TestMarkdownStrikesTheBackToGreenDateItSlippedFrom(t *testing.T) {
 		prior []time.Time
 		want  string
 	}{
-		{[]time.Time{date(2026, 9, 5), date(2026, 9, 12)}, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03 ~~2026-09-12~~ (2))\n"},
+		{[]time.Time{date(2026, 9, 5), date(2026, 9, 12)}, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03 ~~2026-09-12~~ · 2 slips)\n"},
 		{[]time.Time{date(2026, 9, 12)}, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03 ~~2026-09-12~~)\n"},
 		{nil, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03)\n"},
 	} {
@@ -875,7 +875,7 @@ func TestMarkdownStrikesNoDateEqualToItsOwn(t *testing.T) {
 	}}, nil))
 	for _, want := range []string{
 		" · due ~~2026-11-01~~ ~~2026-11-23~~ 2026-11-09\n",
-		"**Path to Green:** Hire counsel. (back to Green by 2026-06-16 ~~2026-06-09~~ (2))\n",
+		"**Path to Green:** Hire counsel. (back to Green by 2026-06-16 ~~2026-06-09~~ · 2 slips)\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown lacks %q:\n%s", want, got)
