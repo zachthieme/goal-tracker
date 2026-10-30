@@ -258,7 +258,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     await priya.getByTestId("finish-defining").click();
     await expect(priya).toHaveURL(new RegExp(`/goals/${goalAId}/define$`));
     await expect(priya.getByRole("heading", { level: 1, name: "Finish defining" })).toBeVisible();
-    const activate = priya.getByRole("button", { name: "Create and activate" });
+    const activate = priya.getByRole("button", { name: "Activate Goal" });
     await expect(activate).toBeDisabled();
     await expectItem(priya, "Why it matters", true);
     await fillDated(priya, "Refund flow live in all EU markets");
@@ -417,7 +417,7 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
     await page.getByLabel(/^Why it matters/).fill("");
     expect((await cleared).ok()).toBe(true);
     await expectItem(page, "Why it matters", false);
-    await expect(activate).toBeDisabled();
+    await expect(page.getByTestId("goal-form-ready").getByRole("button", { name: "Activate Goal" })).toBeDisabled();
     await expectRefusedByTheBrowser(page, /^Why it matters/, () =>
       page.getByRole("button", { name: "Save as Proposed" }).click(),
     );

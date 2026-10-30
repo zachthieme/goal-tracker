@@ -4070,3 +4070,30 @@ func TestGoalFormInputWarningIsNeutralStyles(t *testing.T) {
 		}
 	}
 }
+
+// Finishing a saved Goal, its Title is text in the Title input's heading
+// style, 28/1.2 at 600, with no underline or box to look editable (#673).
+func TestDefineGoalTitleTextIsHeadingStyleStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+
+	title := findByTestID(t, parsePage(t, page), "goal-form-title")
+	if !slices.Contains(strings.Fields(attrOf(title, "class")), "gf-title-text") {
+		t.Errorf("the Title isn't styled by .gf-title-text: %s", renderNode(title))
+	}
+	rule := cssRule(t, page, ".gf-what .gf-title-text")
+	for _, want := range []string{"font-size:28px", "line-height:1.2", "font-weight:600", "letter-spacing:-0.02em", "border:0"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".gf-title-text{%s} lacks %s", rule, want)
+		}
+	}
+	if strings.Contains(rule, "border-bottom") {
+		t.Errorf(".gf-title-text{%s} is underlined like an input", rule)
+	}
+}

@@ -135,6 +135,16 @@ func (v goalFormView) readyCount() (done, of int) {
 	return done, len(items)
 }
 
+// activateLabel is what the activate button reads: Create and activate on
+// the New goal page, and Activate Goal finishing a Goal that exists, as the
+// Goal page's Define card calls it.
+func (v goalFormView) activateLabel() string {
+	if v.Goal == nil {
+		return "Create and activate"
+	}
+	return "Activate Goal"
+}
+
 // activateDisabled says Create and activate is disabled: only on the live
 // card, while the checklist is incomplete.
 func (v goalFormView) activateDisabled() bool {
@@ -652,6 +662,12 @@ func (v goalFormView) cancelURL() templ.SafeURL {
 	return templ.SafeURL(fmt.Sprintf("/goals/%d", v.Goal.ID))
 }
 
+// renameURL is the Goal page with its Edit title and Why it matters form
+// open, where the Goal being finished is renamed, as the define page can't.
+func (v goalFormView) renameURL() templ.SafeURL {
+	return templ.SafeURL(fmt.Sprintf("/goals/%d?open=%s", v.Goal.ID, formTitleWhyItMatters))
+}
+
 // linkedParent is a Goal the Goal being finished already contributes to, or
 // has asked to and is waiting on: Pending.
 type linkedParent struct {
@@ -749,16 +765,18 @@ func (s *Server) fillDefinition(current domain.Account, page domain.GoalDefiniti
 }
 
 // handleDefineGoal submits the define page: the Proposed Goal is changed as
-// the form now says, and activated too when Create and activate posts
-// activate=1, and the post lands on its page, as handleCreateDefinedGoal's
-// does. A refused submit comes back as the define page, 422, as typed, with
-// every problem, and nothing saved.
+// the form now says, and activated too when Activate Goal posts activate=1,
+// and the post lands on its page, as handleCreateDefinedGoal's does. The form
+// posts no Title, which can't change here, so the Goal's own is kept. A
+// refused submit comes back as the define page, 422, as typed, with every
+// problem, and nothing saved.
 func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	g, ok := s.definableGoal(w, r, current)
 	if !ok {
 		return
 	}
 	v, in := readGoalForm(r, current)
+	in.Title = g.Title
 	in.Activate = r.PostFormValue(domain.InputActivate) == "1"
 	_, err := s.svc.DefineGoal(r.Context(), current.ID, g.ID, in)
 	if err == nil {
