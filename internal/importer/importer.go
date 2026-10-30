@@ -636,7 +636,7 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 	if err != nil {
 		return 0, []string{fmt.Sprintf("could not create Owner account: %v", err)}
 	}
-	g, err := tx.CreateGoal(ctx, domain.CreateGoalInput{Title: s.title, WhyItMatters: s.whyItMatters, OwnerID: owner.ID})
+	g, err := tx.CreateGoal(ctx, adminID, domain.CreateGoalInput{Title: s.title, WhyItMatters: s.whyItMatters, OwnerID: owner.ID})
 	if err != nil {
 		return 0, []string{message(err)}
 	}

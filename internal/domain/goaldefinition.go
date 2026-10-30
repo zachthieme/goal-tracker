@@ -371,7 +371,7 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 // writeDefinedGoal creates the Goal and writes each part of its definition,
 // within the transaction the caller holds.
 func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Goal, error) {
-	g, err := s.CreateGoal(ctx, CreateGoalInput{Title: in.Title, WhyItMatters: in.WhyItMatters, OwnerID: in.OwnerID})
+	g, err := s.CreateGoal(ctx, in.OwnerID, CreateGoalInput{Title: in.Title, WhyItMatters: in.WhyItMatters, OwnerID: in.OwnerID})
 	if err != nil {
 		return Goal{}, err
 	}

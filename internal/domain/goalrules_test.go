@@ -17,9 +17,9 @@ type departedCommand struct {
 }
 
 // A Departed person can't act (CONTEXT.md: Departed): every command the Owner
-// of the Goal they leave Ownerless would make is refused them with
-// ErrNotAuthorized once they leave, though each was accepted the moment
-// before.
+// of the Goal they leave Ownerless would make, and creating a Goal for
+// themselves, is refused them with ErrNotAuthorized once they leave, though
+// each was accepted the moment before.
 func TestGoalRulesRefuseADepartedOwner(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -62,6 +62,10 @@ func TestGoalRulesRefuseADepartedOwner(t *testing.T) {
 		}},
 		{"EditTitleAndWhyItMatters", func(tx *domain.Service) error {
 			_, err := tx.EditTitleAndWhyItMatters(ctx, olive.ID, ownerless.ID, &title, ownerless.WhyItMatters)
+			return err
+		}},
+		{"CreateGoal", func(tx *domain.Service) error {
+			_, err := tx.CreateGoal(ctx, olive.ID, domain.CreateGoalInput{Title: "Ship import", WhyItMatters: "People bring data.", OwnerID: olive.ID})
 			return err
 		}},
 	}
