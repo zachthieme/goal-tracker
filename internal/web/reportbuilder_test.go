@@ -154,7 +154,7 @@ func TestBuilderRefusalKeepsValuesAndShowsEachErrorBesideItsInputOverHTTP(t *tes
 	if strings.Contains(rows[0], `data-testid="input-error"`) {
 		t.Errorf("the good Team rule is marked refused:\n%s", rows[0])
 	}
-	if !strings.Contains(rows[1], `id="rules[1]-error"`) || !strings.Contains(rows[1], "needs a value") {
+	if !strings.Contains(rows[1], `id="rules[1]-error"`) || !strings.Contains(rows[1], "Choose a value for this rule.") {
 		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", rows[1])
 	}
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
@@ -525,8 +525,8 @@ func TestBuilderRefusesARowLeftWithNoValueOfItsOwnOverHTTP(t *testing.T) {
 	}
 	row := findByTestID(t, findByTestID(t, parsePage(t, page), "report-builder"), "report-rule")
 	bad := findAll(row, func(n *nethtml.Node) bool { return attrOf(n, "id") == "rules[0]-error" })
-	if len(bad) != 1 || textOf(bad[0]) != "A rule needs a value." {
-		t.Errorf("the row's error reads %q, want %q:\n%s", textsOf(bad), "A rule needs a value.", renderNode(row))
+	if len(bad) != 1 || textOf(bad[0]) != "Choose a value for this rule." {
+		t.Errorf("the row's error reads %q, want %q:\n%s", textsOf(bad), "Choose a value for this rule.", renderNode(row))
 	}
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
 		t.Errorf("the refused save saved %d definitions", len(defs))
@@ -1945,5 +1945,54 @@ func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
 	}
 	if strings.Contains(hint, "Rules can test") {
 		t.Errorf("rules hint still reads the old shorthand: %s", hint)
+	}
+}
+
+// Saving with only an empty rule row, its attribute left at "Choose…", is
+// refused beside the Rules, saying what to add; and saving Goals I pick with
+// none picked is refused beside the picked Goals. Neither page speaks of a
+// "Report Definition", a term a person doesn't see (ticket #671).
+func TestBuilderRefusesAnEmptySelectionInPlainWordsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, tc := range []struct {
+		what    string
+		form    url.Values
+		section string
+		want    string
+	}{
+		{"only an empty rule row", url.Values{
+			"name":               {"MBR"},
+			"mode":               {domain.ReportModeRules},
+			"rules[0].attribute": {""},
+			"rules[0].op":        {domain.RuleIs},
+		}, "report-rules", "Add a rule: choose what it tests, such as a Team, and a value."},
+		{"Goals I pick with none picked", url.Values{
+			"name": {"MBR"},
+			"mode": {domain.ReportModePicked},
+		}, "report-picked", "Pick at least one Goal."},
+	} {
+		resp := postForm(t, client, ts.URL+"/reports/new", tc.form)
+		page := readBody(t, resp)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("%s: status %d, want 422; body:\n%s", tc.what, resp.StatusCode, page)
+		}
+		doc := parsePage(t, page)
+		section := findByTestID(t, findByTestID(t, doc, "report-builder"), tc.section)
+		if got := textsOf(findAllByTestID(section, "input-error")); len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s: the %s section's errors read %q, want only %q", tc.what, tc.section, got, tc.want)
+		}
+		if text := textOf(doc); strings.Contains(text, "Report Definition") {
+			t.Errorf("%s: the refused page says \"Report Definition\":\n%s", tc.what, text)
+		}
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("a refused save saved %d definitions", len(defs))
 	}
 }

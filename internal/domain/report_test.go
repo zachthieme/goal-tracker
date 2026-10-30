@@ -557,7 +557,10 @@ func TestReportLifecycleRuleKeepsAGoalThatChangedSinceTheBaseline(t *testing.T) 
 }
 
 // Saving refuses each input it can't take with an InputError naming it:
-// rules[i] counts from zero (CONTEXT.md: Report Definition, Report rule).
+// rules[i] counts from zero (CONTEXT.md: Report Definition, Report rule). Each
+// message is in a person's words, naming what the builder shows (the report,
+// a rule, a Goal) rather than "Report Definition", and the ones the builder
+// can provoke say what to do.
 func TestSaveReportDefinitionRefusals(t *testing.T) {
 	t.Parallel()
 
@@ -568,44 +571,55 @@ func TestSaveReportDefinitionRefusals(t *testing.T) {
 	platform, growth := team.Values[0], pillar.Values[0]
 	g := h.CreateGoal(boss, "Grow revenue", "why")
 	isPlatform := dimensionRule(team, domain.RuleIs, platform)
+	gone := "a Goal in this list no longer exists; remove it and save again"
 	rules := func(rs ...domain.ReportRule) domain.SaveReportDefinitionInput {
 		return domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: rs}
 	}
 
 	for _, c := range []struct {
-		name string
-		in   domain.SaveReportDefinitionInput
-		want string
+		name    string
+		in      domain.SaveReportDefinitionInput
+		want    string
+		message string
 	}{
-		{"blank name", domain.SaveReportDefinitionInput{Name: " ", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}}, "name"},
-		{"unknown mode", domain.SaveReportDefinitionInput{Name: "MBR", Mode: "graph", Picked: []int64{g.ID}}, "mode"},
-		{"rules definition with no rules", rules(), "rules"},
-		{"rule with no values", rules(isPlatform, dimensionRule(team, domain.RuleIsAnyOf)), "rules[1]"},
-		{"is with two values", rules(domain.ReportRule{Attribute: domain.RuleLifecycle, Op: domain.RuleIs, Values: []string{domain.LifecycleActive, domain.LifecycleOnHold}}), "rules[0]"},
-		{"unknown operator", rules(domain.ReportRule{Attribute: domain.RuleLifecycle, Op: "contains", Values: []string{domain.LifecycleActive}}), "rules[0]"},
-		{"unknown attribute", rules(domain.ReportRule{Attribute: "field", Op: domain.RuleIs, Values: []string{"1"}}), "rules[0]"},
-		{"unknown Dimension", rules(domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: 9999, Op: domain.RuleIs, Values: []string{strconv.FormatInt(platform.ID, 10)}}), "rules[0]"},
-		{"unknown Dimension value", rules(domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]"},
-		{"value of another Dimension", rules(isPlatform, dimensionRule(team, domain.RuleIsNot, growth)), "rules[1]"},
-		{"unknown Account", rules(domain.ReportRule{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]"},
-		{"unknown Org person", rules(domain.ReportRule{Attribute: domain.RuleOrg, Op: domain.RuleIsAnyOf, Values: []string{"9999"}}), "rules[0]"},
-		{"unknown Lifecycle", rules(namedRule(domain.RuleLifecycle, domain.RuleIs, "Paused")), "rules[0]"},
-		{"unknown Health", rules(namedRule(domain.RuleHealth, domain.RuleIsNot, "Blue")), "rules[0]"},
-		{"Top-level with values", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIs, Values: []string{"yes"}}), "rules[0]"},
-		{"Top-level is any of", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIsAnyOf}), "rules[0]"},
-		{"unknown Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Include: []int64{9999}}, "include"},
-		{"unknown Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Exclude: []int64{9999}}, "exclude"},
-		{"rules definition with a picked list", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Picked: []int64{g.ID}}, "picked"},
-		{"picked definition with no Goals", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked}, "picked"},
-		{"unknown picked Goal", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID, 9999}}, "picked"},
-		{"picked definition with rules", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Rules: []domain.ReportRule{isPlatform}}, "rules"},
-		{"picked definition with Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Include: []int64{g.ID}}, "include"},
-		{"picked definition with Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Exclude: []int64{g.ID}}, "exclude"},
+		{"blank name", domain.SaveReportDefinitionInput{Name: " ", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}}, "name", "give the report a name"},
+		{"unknown mode", domain.SaveReportDefinitionInput{Name: "MBR", Mode: "graph", Picked: []int64{g.ID}}, "mode", `choose Goals matching rules or Goals I pick, not "graph"`},
+		{"rules definition with no rules", rules(), "rules", "add a rule: choose what it tests, such as a Team, and a value"},
+		{"rule with no values", rules(isPlatform, dimensionRule(team, domain.RuleIsAnyOf)), "rules[1]", "choose a value for this rule"},
+		{"is with two values", rules(domain.ReportRule{Attribute: domain.RuleLifecycle, Op: domain.RuleIs, Values: []string{domain.LifecycleActive, domain.LifecycleOnHold}}), "rules[0]", `"is" takes exactly one value`},
+		{"unknown operator", rules(domain.ReportRule{Attribute: domain.RuleLifecycle, Op: "contains", Values: []string{domain.LifecycleActive}}), "rules[0]", `"contains" is not a rule operator`},
+		{"unknown attribute", rules(domain.ReportRule{Attribute: "field", Op: domain.RuleIs, Values: []string{"1"}}), "rules[0]", `"field" is not a rule attribute`},
+		{"unknown Dimension", rules(domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: 9999, Op: domain.RuleIs, Values: []string{strconv.FormatInt(platform.ID, 10)}}), "rules[0]", "Dimension 9999 does not exist"},
+		{"unknown Dimension value", rules(domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]", `"9999" is not a value of Team`},
+		{"value of another Dimension", rules(isPlatform, dimensionRule(team, domain.RuleIsNot, growth)), "rules[1]", `"` + strconv.FormatInt(growth.ID, 10) + `" is not a value of Team`},
+		{"unknown Account", rules(domain.ReportRule{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]", `"9999" is not an Account`},
+		{"unknown Org person", rules(domain.ReportRule{Attribute: domain.RuleOrg, Op: domain.RuleIsAnyOf, Values: []string{"9999"}}), "rules[0]", `"9999" is not an Account`},
+		{"unknown Lifecycle", rules(namedRule(domain.RuleLifecycle, domain.RuleIs, "Paused")), "rules[0]", `"Paused" is not a Lifecycle`},
+		{"unknown Health", rules(namedRule(domain.RuleHealth, domain.RuleIsNot, "Blue")), "rules[0]", `"Blue" is not a Health`},
+		{"Top-level with values", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIs, Values: []string{"yes"}}), "rules[0]", `a Top-level rule is "is Top-level" or "is not Top-level"`},
+		{"Top-level is any of", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIsAnyOf}), "rules[0]", `a Top-level rule is "is Top-level" or "is not Top-level"`},
+		{"unknown Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Include: []int64{9999}}, "include", gone},
+		{"unknown Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Exclude: []int64{9999}}, "exclude", gone},
+		{"rules definition with a picked list", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{isPlatform}, Picked: []int64{g.ID}}, "picked", "a report of Goals matching rules has no picked Goals"},
+		{"picked definition with no Goals", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked}, "picked", "pick at least one Goal"},
+		{"unknown picked Goal", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID, 9999}}, "picked", gone},
+		{"picked definition with rules", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Rules: []domain.ReportRule{isPlatform}}, "rules", "a report of Goals I pick has no rules"},
+		{"picked definition with Also include", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Include: []int64{g.ID}}, "include", "a report of Goals I pick has nothing to Also include"},
+		{"picked definition with Leave out", domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, Exclude: []int64{g.ID}}, "exclude", "a report of Goals I pick has nothing to Leave out"},
 	} {
 		_, err := h.Service.SaveReportDefinition(context.Background(), boss.ID, c.in)
 		problems := domain.InputErrors(err)
 		if !errors.Is(err, domain.ErrValidation) || len(problems) != 1 || problems[0].Input != c.want {
 			t.Errorf("%s: err = %v (inputs %v), want one InputError naming %s", c.name, err, inputNames(problems), c.want)
+			continue
+		}
+		if got := problems[0].Message; got != c.message {
+			t.Errorf("%s: message = %q, want %q", c.name, got, c.message)
+		}
+		for _, term := range []string{"Report Definition", "rules Report", "picked Report"} {
+			if strings.Contains(problems[0].Message, term) {
+				t.Errorf("%s: message %q says %q, a term a person doesn't see", c.name, problems[0].Message, term)
+			}
 		}
 	}
 
