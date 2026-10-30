@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -39,49 +40,59 @@ type ActivationRequirement struct {
 	Reason string
 }
 
-// DefinitionDraft is a Goal's definition as typed on the New goal or Define
-// form: its Why it matters, its Kind and delivery date (zero when none
-// parses), how many Milestones and Metrics it has, saved and typed, the
-// Dimension values chosen, and the new value typed for each Dimension and the
-// value typed in each Field, by ID. Its Owner is the person typing it.
-type DefinitionDraft struct {
-	WhyItMatters string
+// SavedDefinition is what the Proposed Goal being defined already has that
+// the definition command's input keeps or adds to: its Kind and delivery date
+// ("" and zero for none), how many Milestones and Metrics it has saved, and
+// its saved value in each Field, by Field ID. Its zero value is a new Goal's.
+type SavedDefinition struct {
 	Kind         string
 	DeliveryDate time.Time
 	Milestones   int
 	Metrics      int
-	Chosen       map[int64]bool
-	NewValues    map[int64]string
 	FieldValues  map[int64]string
 }
 
-// JudgeDefinition judges d against the activation standard, out of dims and
-// fields, the Dimensions and Fields there are. A Retired Dimension or Field is
-// never required; a required Dimension is met by a value chosen in it or, when
-// it is Extendable, a new value typed, and a required Field by a value typed.
-func JudgeDefinition(d DefinitionDraft, dims []Dimension, fields []Field) []ActivationRequirement {
+// JudgeDefinition judges what the definition command (CreateDefinedGoal,
+// DefineGoal) would be given, in, onto the Goal that has saved, against the
+// activation standard, out of dims and fields, the Dimensions and Fields
+// there are. Its Owner is the person typing it, so in.OwnerID isn't read. With
+// no Kind given, the saved Kind and delivery date count, as DefineGoal keeps
+// them (#688). The saved Milestones and Metrics count with those given. A
+// Retired Dimension or Field is never required; a required Dimension is met
+// by a value chosen in it or, when it is Extendable, a new value typed, and a
+// required Field by a value given, or, when none is given for it, even blank,
+// by its saved value, which DefineGoal keeps (#688).
+func JudgeDefinition(in DefinedGoalInput, saved SavedDefinition, dims []Dimension, fields []Field) []ActivationRequirement {
 	state := activationState{
-		WhyItMatters: d.WhyItMatters,
+		WhyItMatters: in.WhyItMatters,
 		Owned:        true,
-		Kind:         d.Kind,
-		DeliveryDate: d.DeliveryDate,
-		Milestones:   d.Milestones,
-		Metrics:      d.Metrics,
+		Kind:         in.Kind,
+		DeliveryDate: in.DeliveryDate,
+		Milestones:   saved.Milestones + len(in.Milestones),
+		Metrics:      saved.Metrics + len(in.Metrics),
+	}
+	if in.Kind == "" {
+		state.Kind, state.DeliveryDate = saved.Kind, saved.DeliveryDate
 	}
 	for _, dim := range dims {
 		if !dim.Required || dim.Retired {
 			continue
 		}
-		set := dim.Extendable() && strings.TrimSpace(d.NewValues[dim.ID]) != ""
+		set := dim.Extendable() && strings.TrimSpace(in.NewValues[dim.ID]) != ""
 		for _, val := range dim.Values {
-			set = set || d.Chosen[val.ID]
+			set = set || slices.Contains(in.ValueIDs, val.ID)
 		}
 		state.Required = append(state.Required, RequiredValue{Name: dim.Name, Set: set, DimensionID: dim.ID})
 	}
 	for _, f := range fields {
-		if f.Required && !f.Retired {
-			state.Required = append(state.Required, RequiredValue{Name: f.Name, Set: strings.TrimSpace(d.FieldValues[f.ID]) != "", FieldID: f.ID})
+		if !f.Required || f.Retired {
+			continue
 		}
+		value, given := in.FieldValues[f.ID]
+		if !given {
+			value = saved.FieldValues[f.ID]
+		}
+		state.Required = append(state.Required, RequiredValue{Name: f.Name, Set: strings.TrimSpace(value) != "", FieldID: f.ID})
 	}
 	return judgeActivation(state)
 }

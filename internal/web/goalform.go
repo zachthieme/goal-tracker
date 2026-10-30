@@ -72,41 +72,22 @@ type goalFormView struct {
 	// Create and activate follows the checklist. Without it, as the page
 	// loads, Create and activate is enabled, since the server decides.
 	Live bool
-}
-
-// activation is the form, as typed, judged against the activation standard
-// for its Ready to activate checklist. Its Owner is the person creating or
-// finishing it. Only a Dated Goal's delivery date counts, and only one that
-// parses; a Milestone or Metric row counts once anything is typed in it, as
-// the saved ones do (domain.JudgeDefinition).
-func (v goalFormView) activation() []domain.ActivationRequirement {
-	d := domain.DefinitionDraft{
-		WhyItMatters: v.WhyItMatters,
-		Kind:         v.Kind,
-		Milestones:   len(v.ExistingMilestones) + len(v.Milestones),
-		Metrics:      len(v.ExistingMetrics) + len(v.Metrics),
-		Chosen:       v.Chosen,
-		NewValues:    v.NewValues,
-		FieldValues:  v.FieldValues,
-	}
-	if v.Kind == domain.GoalDated {
-		if date, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
-			d.DeliveryDate = date
-		}
-	}
-	return domain.JudgeDefinition(d, v.Dimensions, v.Fields)
+	// Activation is the form, as it would post, judged against the
+	// activation standard (domain.JudgeDefinition). Only buildGoalForm sets
+	// it.
+	Activation []domain.ActivationRequirement
 }
 
 // checklist is the form's Ready to activate checklist, as typed.
 func (v goalFormView) checklist() []activationItem {
-	return activationChecklist(v.activation(), v.Unsaved)
+	return activationChecklist(v.Activation, v.Unsaved)
 }
 
 // requiredValues are the form's requirements of a value in a required
 // Dimension or Field, in checklist order.
 func (v goalFormView) requiredValues() []domain.ActivationRequirement {
 	var out []domain.ActivationRequirement
-	for _, r := range v.activation() {
+	for _, r := range v.Activation {
 		if r.Rule == domain.ActivationValue {
 			out = append(out, r)
 		}
@@ -386,26 +367,133 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 			ids = append(ids, id)
 		}
 	}
-	v := goalFormView{Dates: s.displayDates(), Today: s.goalFormToday(domain.Goal{Owner: current})}
-	var err error
-	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids, 0); err != nil {
-		s.serverError(w, r, "could not load goals", err)
+	v, err := s.buildGoalForm(r.Context(), current, goalFormFrom{ParentIDs: ids})
+	if err != nil {
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
-	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		s.serverError(w, r, "could not load dimensions and fields", err)
-		return
+	render(w, r, http.StatusOK, goalFormPage(&current, v))
+}
+
+// goalFormFrom is what buildGoalForm builds the goal form's view from.
+type goalFormFrom struct {
+	// Goal is the Proposed Goal being finished, nil on the New goal page.
+	Goal *domain.Goal
+	// Posted is the form as readGoalForm read it, nil on a GET, and In what
+	// it read with it, unused when Posted is nil.
+	Posted *goalFormView
+	In     domain.DefinedGoalInput
+	// ParentIDs are the parents picked: in.ParentIDs, or ?parent= on GET
+	// /goals/new.
+	ParentIDs []int64
+	// Problems are a refused submit's, from goalFormProblems.
+	Problems []*domain.InputError
+	// Card says the view is the live checklist's: build only what the Ready
+	// to activate card judges.
+	Card bool
+}
+
+// buildGoalForm builds the New goal or define page's view for current, from
+// from, with its Ready to activate checklist judged from the input the form
+// would post and what the Goal being finished has saved
+// (domain.JudgeDefinition). Each page's reads are its own: the define page's
+// through GoalDefinitionPage (ADR 0010), and the live checklist's only what
+// the card judges.
+func (s *Server) buildGoalForm(ctx context.Context, current domain.Account, from goalFormFrom) (goalFormView, error) {
+	var v goalFormView
+	if from.Posted != nil {
+		v = *from.Posted
+	}
+	var in domain.DefinedGoalInput
+	var saved domain.SavedDefinition
+	var err error
+	if from.Goal == nil {
+		in, err = s.buildNewGoalForm(ctx, current, from, &v)
+	} else {
+		in, saved, err = s.buildDefineForm(ctx, current, from, &v)
+	}
+	if err != nil {
+		return goalFormView{}, err
+	}
+	v.Dates, v.Problems, v.Live = s.displayDates(), from.Problems, from.Card
+	v.Activation = domain.JudgeDefinition(in, saved, v.Dimensions, v.Fields)
+	return v, nil
+}
+
+// buildNewGoalForm fills the New goal page's v for current, from from, and
+// gives the input its checklist judges: that posted, or, as the page loads,
+// the values the picked parents suggest.
+func (s *Server) buildNewGoalForm(ctx context.Context, current domain.Account, from goalFormFrom, v *goalFormView) (domain.DefinedGoalInput, error) {
+	var err error
+	if !from.Card {
+		v.Today = s.goalFormToday(domain.Goal{Owner: current})
+		if v.Parents, v.Candidates, err = s.pickParents(ctx, current, from.ParentIDs, 0); err != nil {
+			return domain.DefinedGoalInput{}, err
+		}
+	}
+	if err := s.loadWhereItFits(ctx, v); err != nil {
+		return domain.DefinedGoalInput{}, err
+	}
+	if from.Posted != nil {
+		return from.In, nil
 	}
 	parentIDs := make([]int64, 0, len(v.Parents))
 	for _, p := range v.Parents {
 		parentIDs = append(parentIDs, p.Goal.ID)
 	}
-	if v.Chosen, err = s.svc.SuggestedValues(r.Context(), parentIDs, v.Dimensions); err != nil {
-		s.serverError(w, r, "could not load parent goals' values", err)
-		return
+	if v.Chosen, err = s.svc.SuggestedValues(ctx, parentIDs, v.Dimensions); err != nil {
+		return domain.DefinedGoalInput{}, fmt.Errorf("load parent goals' values: %w", err)
 	}
 	v.Suggested = len(v.Chosen) > 0
-	render(w, r, http.StatusOK, goalFormPage(&current, v))
+	return domain.DefinedGoalInput{ValueIDs: slices.Sorted(maps.Keys(v.Chosen))}, nil
+}
+
+// buildDefineForm fills the define page's v for current, from from, and
+// gives the input its checklist judges, the form as saved when nothing is
+// posted, and what the Goal has saved that the input keeps or adds to. The
+// live checklist reads only the Goal's Milestones, Metrics and Field values,
+// and Where it fits.
+func (s *Server) buildDefineForm(ctx context.Context, current domain.Account, from goalFormFrom, v *goalFormView) (domain.DefinedGoalInput, domain.SavedDefinition, error) {
+	g := *from.Goal
+	in := from.In
+	var savedFields []domain.FieldValue
+	if from.Card {
+		v.Goal = &g
+		var err error
+		if v.ExistingMilestones, err = s.svc.ListMilestones(ctx, g.ID); err != nil {
+			return in, domain.SavedDefinition{}, fmt.Errorf("load milestones: %w", err)
+		}
+		if v.ExistingMetrics, err = s.svc.ListMetrics(ctx, g.ID); err != nil {
+			return in, domain.SavedDefinition{}, fmt.Errorf("load metrics: %w", err)
+		}
+		if savedFields, err = s.svc.GoalFields(ctx, g.ID); err != nil {
+			return in, domain.SavedDefinition{}, fmt.Errorf("load field values: %w", err)
+		}
+		if err := s.loadWhereItFits(ctx, v); err != nil {
+			return in, domain.SavedDefinition{}, err
+		}
+	} else {
+		page, err := s.svc.GoalDefinitionPage(ctx, g, from.ParentIDs)
+		if err != nil {
+			return in, domain.SavedDefinition{}, fmt.Errorf("load goal: %w", err)
+		}
+		if from.Posted == nil {
+			*v, in = definitionForm(page)
+		}
+		s.fillDefinition(current, page, v)
+		savedFields = page.FieldValues
+	}
+	saved := domain.SavedDefinition{
+		Kind:         g.Kind,
+		DeliveryDate: g.DeliveryDate,
+		Milestones:   len(v.ExistingMilestones),
+		Metrics:      len(v.ExistingMetrics),
+		FieldValues:  map[int64]string{},
+	}
+	for _, f := range savedFields {
+		saved.FieldValues[f.Field.ID] = f.Value
+	}
+	return in, saved, nil
 }
 
 // loadWhereItFits gives v the Dimensions and Fields still offered for setting
@@ -633,14 +721,9 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		s.serverError(w, r, "could not create goal", err)
 		return
 	}
-	v.Problems = goalFormProblems(err)
-	v.Dates, v.Today = s.displayDates(), s.goalFormToday(domain.Goal{Owner: current})
-	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
-		s.serverError(w, r, "could not load goals", err)
-		return
-	}
-	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		s.serverError(w, r, "could not load dimensions and fields", err)
+	v, err = s.buildGoalForm(r.Context(), current, goalFormFrom{Posted: &v, In: in, ParentIDs: in.ParentIDs, Problems: goalFormProblems(err)})
+	if err != nil {
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
@@ -744,20 +827,19 @@ func (s *Server) handleDefineGoalForm(w http.ResponseWriter, r *http.Request, cu
 	if !ok {
 		return
 	}
-	page, err := s.svc.GoalDefinitionPage(r.Context(), g, nil)
+	v, err := s.buildGoalForm(r.Context(), current, goalFormFrom{Goal: &g})
 	if err != nil {
-		s.serverError(w, r, "could not load goal", err)
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
-	v := definitionForm(page)
-	s.fillDefinition(current, page, &v)
 	render(w, r, http.StatusOK, goalFormPage(&current, v))
 }
 
-// definitionForm is the form as the saved Goal on page fills it: its Title,
+// definitionForm is the form as the saved Goal on page fills it — its Title,
 // Why it matters, Kind and delivery date, cadence, Dimension values and
-// Fields.
-func definitionForm(page domain.GoalDefinitionPage) goalFormView {
+// Fields — and the input it would post, as readGoalForm reads one, but for
+// its Owner.
+func definitionForm(page domain.GoalDefinitionPage) (goalFormView, domain.DefinedGoalInput) {
 	g := page.Goal
 	v := goalFormView{
 		Title:        g.Title,
@@ -769,13 +851,18 @@ func definitionForm(page domain.GoalDefinitionPage) goalFormView {
 		NewValues:    map[int64]string{},
 		FieldValues:  map[int64]string{},
 	}
+	in := domain.DefinedGoalInput{WhyItMatters: g.WhyItMatters, Kind: g.Kind, FieldValues: v.FieldValues}
+	if g.Kind == domain.GoalDated {
+		in.DeliveryDate = g.DeliveryDate
+	}
 	for _, val := range page.Values {
 		v.Chosen[val.ID] = true
+		in.ValueIDs = append(in.ValueIDs, val.ID)
 	}
 	for _, f := range page.FieldValues {
 		v.FieldValues[f.Field.ID] = f.Value
 	}
-	return v
+	return v, in
 }
 
 // fillDefinition gives the define page's v, for current, the Goal it
@@ -786,7 +873,7 @@ func definitionForm(page domain.GoalDefinitionPage) goalFormView {
 func (s *Server) fillDefinition(current domain.Account, page domain.GoalDefinitionPage, v *goalFormView) {
 	g := page.Goal
 	v.Goal, v.Title = &g, g.Title
-	v.Dates, v.Today = s.displayDates(), s.goalFormToday(g)
+	v.Today = s.goalFormToday(g)
 	v.ExistingMilestones, v.ExistingMetrics = page.Milestones, page.Metrics
 	v.Linked = nil
 	for _, l := range page.Accepted {
@@ -823,13 +910,11 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 		s.serverError(w, r, "could not save goal", err)
 		return
 	}
-	v.Problems = goalFormProblems(err)
-	page, err := s.svc.GoalDefinitionPage(r.Context(), g, in.ParentIDs)
+	v, err = s.buildGoalForm(r.Context(), current, goalFormFrom{Goal: &g, Posted: &v, In: in, ParentIDs: in.ParentIDs, Problems: goalFormProblems(err)})
 	if err != nil {
-		s.serverError(w, r, "could not load goal", err)
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
-	s.fillDefinition(current, page, &v)
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
 }
 
@@ -841,22 +926,12 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	v, _ := readGoalForm(r, current)
-	v.Goal = &g
-	var err error
-	if v.ExistingMilestones, err = s.svc.ListMilestones(r.Context(), g.ID); err != nil {
-		s.serverError(w, r, "could not load milestones", err)
+	v, in := readGoalForm(r, current)
+	v, err := s.buildGoalForm(r.Context(), current, goalFormFrom{Goal: &g, Posted: &v, In: in, Card: true})
+	if err != nil {
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
-	if v.ExistingMetrics, err = s.svc.ListMetrics(r.Context(), g.ID); err != nil {
-		s.serverError(w, r, "could not load metrics", err)
-		return
-	}
-	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		s.serverError(w, r, "could not load dimensions and fields", err)
-		return
-	}
-	v.Live = true
 	render(w, r, http.StatusOK, goalFormReady(v))
 }
 
@@ -865,12 +940,12 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 // form's values, and Create and activate disabled until every item is done.
 // It saves nothing.
 func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v, _ := readGoalForm(r, current)
-	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		s.serverError(w, r, "could not load dimensions and fields", err)
+	v, in := readGoalForm(r, current)
+	v, err := s.buildGoalForm(r.Context(), current, goalFormFrom{Posted: &v, In: in, Card: true})
+	if err != nil {
+		s.serverError(w, r, "could not load the goal form", err)
 		return
 	}
-	v.Live = true
 	render(w, r, http.StatusOK, goalFormReady(v))
 }
 

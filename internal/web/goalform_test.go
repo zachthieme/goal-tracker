@@ -1354,26 +1354,21 @@ func readyCard(t *testing.T, page string) (card, activate string) {
 }
 
 // The Ready to activate card's checklist runs on the form as typed: posted to
-// /goals/new/checklist, a partial form comes back as the card alone with each
-// item done or to do, "n of m", and Create and activate disabled, and a
-// complete one with it enabled. A required Dimension or Field counts as set by
-// a value chosen, a value typed to add, or a Field's value typed.
+// /goals/new/checklist, a partial form comes back as the card alone, "n of m
+// done", with Create and activate disabled, and a complete one with it
+// enabled. Which form counts for which item is domain.JudgeDefinition's rule
+// (TestJudgeDefinition); this checks the card is judged from what's posted.
 func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
-	h.SetDimensionRequired(boss, pillar, true)
-	team := h.CreateExtendableDimension(boss, "Team", "Payments")
-	h.SetDimensionRequired(boss, team, true)
 	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "USD")
 	h.SetFieldRequired(boss, budget, true)
-	h.CreateField(boss, "Notes", domain.FieldShortText, "")
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	checklist := func(form url.Values) string {
+	checklist := func(form url.Values) *nethtml.Node {
 		t.Helper()
 		resp := postForm(t, client, ts.URL+"/goals/new/checklist", form)
 		defer func() { _ = resp.Body.Close() }()
@@ -1381,51 +1376,48 @@ func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("the checklist answered %d:\n%s", resp.StatusCode, body)
 		}
-		if strings.Contains(body, `data-testid="goal-form"`) || strings.Contains(body, "<html") {
+		page := parsePage(t, body)
+		if len(findAllByTestID(page, "goal-form")) != 0 {
 			t.Errorf("the checklist answered more than the card:\n%s", body)
 		}
-		return body
+		return findByTestID(t, page, "goal-form-ready")
+	}
+	// budgetDone says the card's "A value in Budget" item is done.
+	budgetDone := func(card *nethtml.Node) bool {
+		t.Helper()
+		for _, li := range findAll(findByTestID(t, card, "activation-checklist"), func(n *nethtml.Node) bool { return n.Data == "li" }) {
+			if strings.Contains(textOf(li), "A value in Budget") {
+				return attrOf(li, "data-done") == "true"
+			}
+		}
+		t.Fatalf("the card has no A value in Budget item:\n%s", renderNode(card))
+		return false
 	}
 
-	partial := checklist(url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "milestones[0].name": {"Beta"}, "value_id": {fmt.Sprint(pillar.Values[0].ID)}})
-	card, activate := readyCard(t, partial)
-	want := map[string]bool{
-		"Why it matters":                         true,
-		"Owner":                                  true,
-		"Dated with a delivery date, or Ongoing": false,
-		"A Milestone or Metric":                  true,
-		"A value in Pillar":                      true,
-		"A value in Team":                        false,
-		"A value in Budget":                      false,
+	card := checklist(url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}})
+	if got := textOf(findByTestID(t, card, "goal-form-ready-count")); got != "2 of 5 done" {
+		t.Errorf("a partial form's card counts %q, want 2 of 5 done", got)
 	}
-	if got := activationItems(t, card); !maps.Equal(got, want) {
-		t.Errorf("partial form's checklist = %v, want %v", got, want)
+	if budgetDone(card) {
+		t.Error("A value in Budget is done with no Budget posted")
 	}
-	if !strings.Contains(card, "4 of 7") {
-		t.Errorf("the card doesn't say 4 of 7:\n%s", card)
-	}
-	if !strings.Contains(activate, " disabled") {
-		t.Errorf("Create and activate is enabled with items missing: %s", activate)
+	if activate := buttonNamed(card, "Create and activate"); activate == nil || !hasAttr(activate, "disabled") {
+		t.Errorf("Create and activate isn't disabled with items missing:\n%s", renderNode(card))
 	}
 
-	complete := checklist(url.Values{
+	card = checklist(url.Values{
 		"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."},
 		"kind": {"Ongoing"}, "metrics[0].name": {"p95"},
-		"value_id":                           {fmt.Sprint(pillar.Values[1].ID)},
-		fmt.Sprintf("new_value:%d", team.ID): {"Search"},
-		fmt.Sprintf("field:%d", budget.ID):   {"25000"},
+		fmt.Sprintf("field:%d", budget.ID): {"25000"},
 	})
-	card, activate = readyCard(t, complete)
-	for item, done := range activationItems(t, card) {
-		if !done {
-			t.Errorf("%q still missing on a complete form", item)
-		}
+	if got := textOf(findByTestID(t, card, "goal-form-ready-count")); got != "5 of 5 done" {
+		t.Errorf("a complete form's card counts %q, want 5 of 5 done", got)
 	}
-	if !strings.Contains(card, "7 of 7") {
-		t.Errorf("the card doesn't say 7 of 7:\n%s", card)
+	if !budgetDone(card) {
+		t.Error("A value in Budget is to do with Budget posted")
 	}
-	if strings.Contains(activate, " disabled") {
-		t.Errorf("Create and activate is disabled on a complete form: %s", activate)
+	if activate := buttonNamed(card, "Create and activate"); activate == nil || hasAttr(activate, "disabled") {
+		t.Errorf("Create and activate isn't enabled on a complete form:\n%s", renderNode(card))
 	}
 
 	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
@@ -1997,6 +1989,9 @@ func TestDefineGoalFormCreateAndActivate(t *testing.T) {
 	card, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/define/checklist", ts.URL, g.ID), form)
 	if status != http.StatusOK || strings.Contains(tagAround(t, card, `name="activate"`), " disabled") {
 		t.Errorf("the live checklist answered %d with Create and activate disabled:\n%s", status, card)
+	}
+	if linkTo(parsePage(t, card), fmt.Sprintf("/goals/%d", g.ID)) == nil {
+		t.Errorf("the live checklist's Cancel doesn't lead back to the Goal:\n%s", card)
 	}
 
 	resp := definePost(t, client, ts.URL, g, func(form url.Values) {
