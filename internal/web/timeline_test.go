@@ -16,6 +16,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
+	nethtml "golang.org/x/net/html"
 )
 
 // oneOfEachKind arranges an Active Goal with one History entry of each kind on
@@ -2162,5 +2163,40 @@ func TestGoalHistoryListsABackToGreenSlip(t *testing.T) {
 		if !strings.Contains(slips, want) {
 			t.Errorf("the Check-in's Date Slips lack %q:\n%s", want, slips)
 		}
+	}
+}
+
+// A Handoff cancelled before who cancels one was recorded has no canceller:
+// its History entry reads "— cancelled", naming nobody, rather than dropping
+// the outcome (#659).
+func TestHistoryReadsACancelledHandoffWithNoCancellerAsCancelled(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	pat := h.SignInNamed("pat@example.com", "Pat Next")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	ho := h.StartHandoff(sam, goal.ID, pat)
+	if _, err := h.Service.CancelHandoff(t.Context(), ho.ID, sam.ID); err != nil {
+		t.Fatalf("CancelHandoff: %v", err)
+	}
+	// A Handoff cancelled before migration 0002 holds no canceller.
+	if _, err := h.DB.ExecContext(t.Context(), `UPDATE handoffs SET cancelled_by = NULL WHERE id = ?`, ho.ID); err != nil {
+		t.Fatalf("clear cancelled_by: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d?history=ownership&shown=25", ts.URL, goal.ID))
+	entries := findAllByTestID(findByTestID(t, page, "goal-history"), "history-entry")
+	if len(entries) != 1 {
+		t.Fatalf("History lists %d ownership changes, want 1:\n%s", len(entries), strings.Join(textsOf(entries), "\n"))
+	}
+	lines := findAll(entries[0], func(n *nethtml.Node) bool { return n.Data == "p" })
+	if len(lines) < 2 {
+		t.Fatalf("the entry has %d lines, want its head and its handoff:\n%s", len(lines), renderNode(entries[0]))
+	}
+	if got, want := runningText(lines[1]), "Sam Owner → Pat Next — cancelled"; got != want {
+		t.Errorf("the Handoff reads %q, want %q", got, want)
 	}
 }
