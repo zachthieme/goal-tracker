@@ -300,6 +300,90 @@ func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
 	}
 }
 
+// Without script a row switched from "is any of" to "is" still posts every
+// value it had checked. Show matches brings it back testing only the first,
+// as the scripted switch keeps it: one radio checked, and the rail listing
+// only that value's Goals (ticket #691).
+func TestBuilderIsRowPostedWithTwoValuesShowsOnlyTheFirstOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	platform, growth := team.Values[0], team.Values[1]
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	h.AssignGoalValue(reliability, platform)
+	churn := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	h.AssignGoalValue(churn, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	page := parsePage(t, postFormBody(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10), dim + "=" + strconv.FormatInt(growth.ID, 10)},
+		"do":                 {"show-matches"},
+	}))
+	row := findByTestID(t, page, "report-rule")
+	if _, kind, chosen := ruleRowValues(row, 0); kind != "radio" || !slices.Equal(chosen, []string{"Platform"}) {
+		t.Errorf("the \"is\" row posted with Platform and Growth comes back as %s values with %q chosen, want one radio, Platform:\n%s",
+			kind, chosen, renderNode(row))
+	}
+	rail := findByTestID(t, page, "report-matches")
+	if got, want := textOf(findByTestID(t, rail, "matches-count")), "Matches 1 Goal"; got != want {
+		t.Errorf("the rail says %q, want %q", got, want)
+	}
+	if got, want := reportRailTitles(rail), []string{reliability.Title}; !slices.Equal(got, want) {
+		t.Errorf("the rail lists %q, want only Platform's %q", got, want)
+	}
+}
+
+// Saving an "is" row posted with two values is refused, 422, beside the row,
+// which comes back with only the first value checked, and nothing is saved
+// (ticket #691).
+func TestBuilderRefusesAnIsRowPostedWithTwoValuesBesideItOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	platform, growth := team.Values[0], team.Values[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(platform.ID, 10), dim + "=" + strconv.FormatInt(growth.ID, 10)},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("saving \"is\" with two values: status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	row := findByTestID(t, parsePage(t, body), "report-rule")
+	if got, want := textOf(findByTestID(t, row, "input-error")), `"is" takes exactly one value.`; !strings.Contains(got, want) {
+		t.Errorf("the row's refusal says %q, want %q beside it", got, want)
+	}
+	if _, kind, chosen := ruleRowValues(row, 0); kind != "radio" || !slices.Equal(chosen, []string{"Platform"}) {
+		t.Errorf("the refused row comes back as %s values with %q chosen, want one radio, Platform:\n%s", kind, chosen, renderNode(row))
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("a refused save saved %d definitions", len(defs))
+	}
+}
+
+// reportRailTitles are the titles of the Goals the rail lists, in its order.
+func reportRailTitles(rail *nethtml.Node) []string {
+	return textsOf(findAll(rail, func(n *nethtml.Node) bool { return attrOf(n, "class") == "rb-match-title" }))
+}
+
 // A row testing an attribute shows only that attribute's values, as
 // checkboxes under "is any of", and a row testing nothing yet shows every
 // attribute's, as checkboxes under each attribute's label, as Add rule

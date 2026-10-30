@@ -462,13 +462,15 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 }
 
 // readReportBuilderForm reads the builder's form as typed, both modes' inputs
-// kept, and the definition it saves: only what the chosen mode selects by.
+// kept, each rule row as its inputs can hold it (asChosen), and the
+// definition it saves: only what the chosen mode selects by, its rules as
+// posted.
 func readReportBuilderForm(form url.Values) (v reportBuilderView, in domain.SaveReportDefinitionInput) {
+	rows := reportRuleRows(form)
 	v = reportBuilderView{
 		Name:         form.Get("name"),
 		Introduction: form.Get("introduction"),
 		Mode:         form.Get("mode"),
-		Rules:        reportRuleRows(form),
 		PickedIDs:    listedGoals(form, inputPicked),
 		IncludeIDs:   listedGoals(form, inputInclude),
 		ExcludeIDs:   listedGoals(form, inputExclude),
@@ -480,9 +482,12 @@ func readReportBuilderForm(form url.Values) (v reportBuilderView, in domain.Save
 		in.Picked = v.PickedIDs
 	case domain.ReportModeRules:
 		in.Include, in.Exclude = v.IncludeIDs, v.ExcludeIDs
-		for _, row := range v.Rules {
+		for _, row := range rows {
 			in.Rules = append(in.Rules, row.rule())
 		}
+	}
+	for _, row := range rows {
+		v.Rules = append(v.Rules, row.asChosen())
 	}
 	return v, in
 }
@@ -540,6 +545,18 @@ func reportRuleRows(form url.Values) []reportRuleRow {
 		}
 	}
 	return rows
+}
+
+// asChosen is the row as its inputs can hold it: under "is", whose radios
+// hold one value, only its first posted value. Without script a row switched
+// from "is any of" to "is" still posts every value it had checked; it shows,
+// and the rail reads it, as the scripted switch keeps it, while saving it as
+// posted is refused.
+func (row reportRuleRow) asChosen() reportRuleRow {
+	if row.valueInputType() == "radio" && len(row.Values) > 1 {
+		row.Values = row.Values[:1]
+	}
+	return row
 }
 
 // rule is the Report rule the row posts. Its values are the domain's, without
