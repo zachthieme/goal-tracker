@@ -22,19 +22,24 @@ type undoOfferKind[S any] struct {
 }
 
 // undoOfferCase is one case an agreement test asks about: arrange makes its
-// state from the kind's change and says who asks, with what token.
+// state from the kind's change and says who asks, with what token, and want
+// is the case's answer: nil when the Undo is offered and accepted, or the
+// error kind (ErrNotAuthorized or ErrValidation) it is refused with.
 type undoOfferCase[S any] struct {
 	name    string
+	want    error
 	arrange func(h *testsupport.Harness, sc S) (viewer domain.Account, token string)
 }
 
 // undoOfferAgrees checks, for each case on a fresh harness, that kind's offer
-// is made exactly when its restore, made with the same viewer, record and
-// token in a transaction rolled back after it, accepts the Undo, and that
-// what isn't offered is refused with ErrNotAuthorized or ErrValidation. It
-// fails unless some case is both offered and accepted and some refused, since
-// either alone proves nothing of the rule, and unless the offer for a record
-// that doesn't exist is ErrNotFound.
+// is made exactly when the case wants it, and that its restore, made with the
+// same viewer, record and token in a transaction rolled back after it,
+// accepts the Undo when offered and otherwise refuses it with the case's
+// error kind. The two agreeing isn't enough alone, since both ask the same
+// rule: loosening it would still agree. It fails unless some case is both
+// offered and accepted and some refused, since either alone proves nothing of
+// the rule, and unless the offer for a record that doesn't exist is
+// ErrNotFound.
 func undoOfferAgrees[S any](t *testing.T, kind undoOfferKind[S], cases []undoOfferCase[S]) {
 	t.Helper()
 	ctx := context.Background()
@@ -56,12 +61,14 @@ func undoOfferAgrees[S any](t *testing.T, kind undoOfferKind[S], cases []undoOff
 			t.Fatalf("%s: the transaction ended %v", c.name, err)
 		}
 		switch {
-		case offered && got == nil:
+		case offered != (c.want == nil):
+			t.Errorf("%s: offered = %v, want %v", c.name, offered, c.want == nil)
+		case c.want == nil && got == nil:
 			accepted = true
-		case !offered && (errors.Is(got, domain.ErrNotAuthorized) || errors.Is(got, domain.ErrValidation)):
+		case c.want != nil && errors.Is(got, c.want):
 			refused = true
 		default:
-			t.Errorf("%s: offered = %v, but the Undo returned %v", c.name, offered, got)
+			t.Errorf("%s: offered = %v, but the Undo returned %v, want %v", c.name, offered, got, c.want)
 		}
 	}
 	if !accepted {
@@ -115,29 +122,29 @@ func TestALinkRemovalUndoIsOfferedExactlyWhenRestoreLinkAccepts(t *testing.T) {
 		},
 	}
 	undoOfferAgrees(t, kind, []undoOfferCase[linkRemovalUndo]{
-		{"the remover", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the remover", nil, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			return sc.sam, sc.removal.UndoToken
 		}},
-		{"the parent's Owner, with the remover's token", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the parent's Owner, with the remover's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			return sc.pat, sc.removal.UndoToken
 		}},
-		{"someone else, with the remover's token", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"someone else, with the remover's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			return sc.quinn, sc.removal.UndoToken
 		}},
-		{"the remover, with a made-up token", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the remover, with a made-up token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			return sc.sam, "not-a-token"
 		}},
-		{"the remover, after an earlier Undo", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the remover, after an earlier Undo", domain.ErrValidation, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			if _, err := h.Service.RestoreLink(context.Background(), sc.removal.ID, sc.sam.ID, sc.removal.UndoToken); err != nil {
 				h.T.Fatalf("RestoreLink: %v", err)
 			}
 			return sc.sam, sc.removal.UndoToken
 		}},
-		{"the remover, after UndoWindow and a second", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the remover, after UndoWindow and a second", domain.ErrValidation, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			h.Clock.Advance(domain.UndoWindow + time.Second)
 			return sc.sam, sc.removal.UndoToken
 		}},
-		{"the remover, once they own neither Goal", func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
+		{"the remover, once they own neither Goal", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRemovalUndo) (domain.Account, string) {
 			handOffAndAccept(h, sc.sam, sc.child, sc.quinn)
 			return sc.sam, sc.removal.UndoToken
 		}},
@@ -178,25 +185,25 @@ func TestALinkRejectionUndoIsOfferedExactlyWhenRestoreLinkRequestAccepts(t *test
 		},
 	}
 	undoOfferAgrees(t, kind, []undoOfferCase[linkRejectionUndo]{
-		{"the rejecter", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"the rejecter", nil, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			return sc.pat, sc.rejection.UndoToken
 		}},
-		{"the requester, with the rejecter's token", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"the requester, with the rejecter's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			return sc.sam, sc.rejection.UndoToken
 		}},
-		{"someone else, with the rejecter's token", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"someone else, with the rejecter's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			return sc.quinn, sc.rejection.UndoToken
 		}},
-		{"the rejecter, with a made-up token", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"the rejecter, with a made-up token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			return sc.pat, "not-a-token"
 		}},
-		{"the rejecter, after an earlier Undo", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"the rejecter, after an earlier Undo", domain.ErrValidation, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			if _, err := h.Service.RestoreLinkRequest(context.Background(), sc.rejection.ID, sc.pat.ID, sc.rejection.UndoToken); err != nil {
 				h.T.Fatalf("RestoreLinkRequest: %v", err)
 			}
 			return sc.pat, sc.rejection.UndoToken
 		}},
-		{"the rejecter, after UndoWindow and a second", func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
+		{"the rejecter, after UndoWindow and a second", domain.ErrValidation, func(h *testsupport.Harness, sc linkRejectionUndo) (domain.Account, string) {
 			h.Clock.Advance(domain.UndoWindow + time.Second)
 			return sc.pat, sc.rejection.UndoToken
 		}},
@@ -237,25 +244,25 @@ func TestAHandoffRejectionUndoIsOfferedExactlyWhenRestoreHandoffAccepts(t *testi
 		},
 	}
 	undoOfferAgrees(t, kind, []undoOfferCase[handoffRejectionUndo]{
-		{"the rejecter", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"the rejecter", nil, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			return sc.quinn, sc.token
 		}},
-		{"the Goal's Owner, with the rejecter's token", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"the Goal's Owner, with the rejecter's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			return sc.sam, sc.token
 		}},
-		{"someone else, with the rejecter's token", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"someone else, with the rejecter's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			return sc.rita, sc.token
 		}},
-		{"the rejecter, with a made-up token", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"the rejecter, with a made-up token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			return sc.quinn, "not-a-token"
 		}},
-		{"the rejecter, after an earlier Undo", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"the rejecter, after an earlier Undo", domain.ErrValidation, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			if _, err := h.Service.RestoreHandoff(context.Background(), sc.handoff.ID, sc.quinn.ID, sc.token); err != nil {
 				h.T.Fatalf("RestoreHandoff: %v", err)
 			}
 			return sc.quinn, sc.token
 		}},
-		{"the rejecter, after UndoWindow and a second", func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
+		{"the rejecter, after UndoWindow and a second", domain.ErrValidation, func(h *testsupport.Harness, sc handoffRejectionUndo) (domain.Account, string) {
 			h.Clock.Advance(domain.UndoWindow + time.Second)
 			return sc.quinn, sc.token
 		}},
@@ -299,29 +306,29 @@ func TestASuggestionDeclineUndoIsOfferedExactlyWhenUndoDeclineAccepts(t *testing
 		},
 	}
 	undoOfferAgrees(t, kind, []undoOfferCase[suggestionDeclineUndo]{
-		{"the decliner", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the decliner", nil, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			return sc.sam, sc.token
 		}},
-		{"the suggester, with the decliner's token", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the suggester, with the decliner's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			return sc.rita, sc.token
 		}},
-		{"someone else, with the decliner's token", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"someone else, with the decliner's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			return sc.quinn, sc.token
 		}},
-		{"the decliner, with a made-up token", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the decliner, with a made-up token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			return sc.sam, "not-a-token"
 		}},
-		{"the decliner, after an earlier Undo", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the decliner, after an earlier Undo", domain.ErrValidation, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			if err := h.Service.UndoDeclineParentSuggestion(context.Background(), sc.sam.ID, sc.suggestion.ID, sc.token); err != nil {
 				h.T.Fatalf("UndoDeclineParentSuggestion: %v", err)
 			}
 			return sc.sam, sc.token
 		}},
-		{"the decliner, after UndoWindow and a second", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the decliner, after UndoWindow and a second", domain.ErrValidation, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			h.Clock.Advance(domain.UndoWindow + time.Second)
 			return sc.sam, sc.token
 		}},
-		{"the decliner, after handing the Goal off", func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
+		{"the decliner, after handing the Goal off", nil, func(h *testsupport.Harness, sc suggestionDeclineUndo) (domain.Account, string) {
 			handOffAndAccept(h, sc.sam, sc.goal, sc.quinn)
 			return sc.sam, sc.token
 		}},
@@ -360,32 +367,26 @@ func TestAValueRetirementUndoIsOfferedExactlyWhenUndoRetireAccepts(t *testing.T)
 		},
 	}
 	ctx := context.Background()
-	noLongerAdmin := func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
-		if err := h.Service.RemoveAdmin(ctx, sc.ada.ID, sc.admin.ID); err != nil {
-			h.T.Fatalf("RemoveAdmin: %v", err)
-		}
-		return sc.admin, sc.token
-	}
 	undoOfferAgrees(t, kind, []undoOfferCase[valueRetirementUndo]{
-		{"the retiring Admin", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"the retiring Admin", nil, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			return sc.admin, sc.token
 		}},
-		{"another Admin, with the retiring Admin's token", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"another Admin, with the retiring Admin's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			return sc.ada, sc.token
 		}},
-		{"someone not an Admin, with the retiring Admin's token", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"someone not an Admin, with the retiring Admin's token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			return sc.rita, sc.token
 		}},
-		{"the retiring Admin, with a made-up token", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"the retiring Admin, with a made-up token", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			return sc.admin, "not-a-token"
 		}},
-		{"the retiring Admin, after the value's own Restore", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"the retiring Admin, after the value's own Restore", domain.ErrValidation, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			if err := h.Service.RestoreDimensionValue(ctx, sc.admin.ID, sc.value.ID); err != nil {
 				h.T.Fatalf("RestoreDimensionValue: %v", err)
 			}
 			return sc.admin, sc.token
 		}},
-		{"the retiring Admin, after it is restored, renamed and retired again", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		{"the retiring Admin, after it is restored, renamed and retired again", domain.ErrValidation, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			if err := h.Service.RestoreDimensionValue(ctx, sc.admin.ID, sc.value.ID); err != nil {
 				h.T.Fatalf("RestoreDimensionValue: %v", err)
 			}
@@ -397,17 +398,16 @@ func TestAValueRetirementUndoIsOfferedExactlyWhenUndoRetireAccepts(t *testing.T)
 			}
 			return sc.admin, sc.token
 		}},
-		{"the retiring Admin, once no longer an Admin", noLongerAdmin},
-		{"the retiring Admin, after UndoWindow and a second", func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+		// Refused for who they are, not for a changed value.
+		{"the retiring Admin, once no longer an Admin", domain.ErrNotAuthorized, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
+			if err := h.Service.RemoveAdmin(ctx, sc.ada.ID, sc.admin.ID); err != nil {
+				h.T.Fatalf("RemoveAdmin: %v", err)
+			}
+			return sc.admin, sc.token
+		}},
+		{"the retiring Admin, after UndoWindow and a second", domain.ErrValidation, func(h *testsupport.Harness, sc valueRetirementUndo) (domain.Account, string) {
 			h.Clock.Advance(domain.UndoWindow + time.Second)
 			return sc.admin, sc.token
 		}},
 	})
-	// The Admin no longer an Admin is refused for who they are, not for a
-	// changed value.
-	h, sc := kind.setup(t)
-	viewer, token := noLongerAdmin(h, sc)
-	if err := h.Service.UndoRetireDimensionValue(ctx, viewer.ID, sc.value.ID, token); !errors.Is(err, domain.ErrNotAuthorized) {
-		t.Errorf("UndoRetireDimensionValue once no longer an Admin: err = %v, want ErrNotAuthorized", err)
-	}
 }
