@@ -1904,8 +1904,9 @@ and so on).
     once that save succeeds. When it doesn't, nothing is published, the
     button stays Save and publish, the save status says what it says for any
     save, and the panel says why: "The narrative wasn't saved: <reason>" for a
-    refusal, "The narrative wasn't saved." for an error or no answer. If the
-    author changes the form while the save is on its way, those changes are
+    refusal, "The narrative wasn't saved." for an error or no answer, until
+    the narrative is edited again, when it says the changes will be saved
+    first once more. If the author changes the form while the save is on its way, those changes are
     unsaved again and it doesn't publish. With nothing unsaved the button
     reads Publish. Without script there's no unsaved state to track, and
     Publish works as ever. At 600px and below it spans the window less 16px
@@ -2162,11 +2163,17 @@ and so on).
     row's attribute, or + Add rule; neither reloads the page, and both
     refresh Matches. Without script both submit the form.
   - **Goal picker (`reportGoalPicker`):** a legend (with a help button for Also
-    include and Leave out), then the picked Goals as chips (`.rb-chip`):
-    `--radius-full` pills in a 1px `--color-border` edge, each its title and
-    its round ×. With script, a full-width search lists matches as buttons,
-    each a title and a muted Owner; picking one adds its chip and refreshes
-    Matches. Without script, a multiple select of the same Goals, and a
+    include, "Goals to add by hand, even if they don't meet the rules.", and
+    Leave out, "Goals the rules select that this Report drops."), then the
+    picked Goals as chips (`.rb-chip`): `--radius-full` pills in a 1px
+    `--color-border` edge, each its title and its round ×. With script, a
+    full-width search lists matches as buttons, each a title and a muted
+    Owner; picking one adds its chip and refreshes Matches. Its placeholder
+    says what it searches: "Search Goals the rules leave out" for Also
+    include, "Search Goals the rules select" for Leave out, and "Search any
+    Goal by title" for Goals I pick. When a rule row changes, an open Also
+    include or Leave out result list is searched again, or closed when its
+    box is empty. Without script, a multiple select of the same Goals, and a
     "Remove" checkbox on each chip in place of its ×. Each list offers only a
     pick that changes something, read from the rules and both lists as they
     stand, the rules alone selecting as Matches reads them (so a Goal

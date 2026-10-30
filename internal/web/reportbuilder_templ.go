@@ -1161,7 +1161,7 @@ func reportBuilderError(v reportBuilderView, input string) templ.Component {
 const alsoIncludeHelp = "Goals to add by hand, even if they don't meet the rules."
 
 // leaveOutHelp says what the builder's Leave out list does.
-const leaveOutHelp = "Goals to drop, even if they meet the rules."
+const leaveOutHelp = "Goals the rules select that this Report drops."
 
 // reportGoalPicker picks Goals at any level for one of the builder's lists,
 // list naming it. Each Goal in the list is a chip holding its id; script
@@ -1357,170 +1357,183 @@ func reportGoalPicker(v reportBuilderView, list, legend, help string, chosen []d
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "\" placeholder=\"Search any Goal by title\" autocomplete=\"off\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "\" placeholder=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var59 string
-		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue("Search Goals: " + legend)
+		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(goalSearchPlaceholder(list))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 304, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 302, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\" aria-controls=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "\" autocomplete=\"off\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var60 string
-		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
+		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.ResolveAttributeValue("Search Goals: " + legend)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 305, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 304, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "\" hx-get=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, "\" aria-controls=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var61 string
-		templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.ResolveAttributeValue("/reports/goals/search?list=" + list)
+		templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 306, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 305, Col: 37}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var61)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "\" hx-trigger=\"input changed delay:300ms, search\" hx-target=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, "\" hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var62 string
-		templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.ResolveAttributeValue("#" + list + "-results")
+		templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.ResolveAttributeValue("/reports/goals/search?list=" + list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 308, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 306, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var62)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "\" hx-swap=\"innerHTML\" hx-sync=\"this:replace\" hx-include=\"closest form\" data-goal-search><ul data-testid=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, "\" hx-trigger=\"input changed delay:300ms, search\" hx-target=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var63 string
-		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
+		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.ResolveAttributeValue("#" + list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 314, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 308, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var63)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "\" id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, "\" hx-swap=\"innerHTML\" hx-sync=\"this:replace\" hx-include=\"closest form\" data-goal-search><ul data-testid=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var64 string
 		templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 314, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 314, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var64)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "\" class=\"rb-results\" aria-live=\"polite\"></ul></div><label class=\"field rb-no-js\"><span>Pick Goals <span class=\"hint\">— hold Ctrl or ⌘ for several</span></span> <select data-testid=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "\" id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var65 string
-		templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-select")
+		templ_7745c5c3_Var65, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 318, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 314, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var65)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "\" class=\"rb-results\" aria-live=\"polite\"></ul></div><label class=\"field rb-no-js\"><span>Pick Goals <span class=\"hint\">— hold Ctrl or ⌘ for several</span></span> <select data-testid=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var66 string
-		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
+		templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-select")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 318, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 318, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var66)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\" multiple>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "\" name=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var67 string
+		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 318, Col: 55}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "\" multiple>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, g := range v.Offers[list] {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<option value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var67 string
-			templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 320, Col: 37}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var68 string
-			templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
+			templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 320, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 320, Col: 37}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var68))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</option>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</select> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if list == inputExclude && v.LeaveOutNeedsRule {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<span data-testid=\"goal-search-needs-rule\" class=\"muted small\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var69 string
-			templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(leaveOutNeedsRule)
+			templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 324, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 320, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</option>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "</select> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if list == inputExclude && v.LeaveOutNeedsRule {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "<span data-testid=\"goal-search-needs-rule\" class=\"muted small\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var70 string
+			templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(leaveOutNeedsRule)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 324, Col: 86}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1528,7 +1541,7 @@ func reportGoalPicker(v reportBuilderView, list, legend, help string, chosen []d
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</fieldset>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "</fieldset>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1561,63 +1574,63 @@ func reportGoalSearchResults(list string, matches []domain.Goal, needsRule bool)
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var70 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var70 == nil {
-			templ_7745c5c3_Var70 = templ.NopComponent
+		templ_7745c5c3_Var71 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var71 == nil {
+			templ_7745c5c3_Var71 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if needsRule {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "<li data-testid=\"goal-search-needs-rule\" class=\"muted small\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var71 string
-			templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(leaveOutNeedsRule)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 342, Col: 82}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</li>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else if len(matches) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "<li class=\"muted small\">No Goals match.</li>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		for _, g := range matches {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "<li data-testid=\"report-goal-result\"><button type=\"button\" class=\"rb-result\" data-pick><span data-testid=\"report-goal-result-title\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<li data-testid=\"goal-search-needs-rule\" class=\"muted small\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var72 string
-			templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
+			templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(leaveOutNeedsRule)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 349, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 342, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "</span> <span class=\"muted small\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</li>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else if len(matches) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "<li class=\"muted small\">No Goals match.</li>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		for _, g := range matches {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 141, "<li data-testid=\"report-goal-result\"><button type=\"button\" class=\"rb-result\" data-pick><span data-testid=\"report-goal-result-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var73 string
-			templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(g.Owner.Label())
+			templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 350, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 349, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "</span></button><template>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 142, "</span> <span class=\"muted small\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var74 string
+			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(g.Owner.Label())
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 350, Col: 47}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "</span></button><template>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1625,7 +1638,7 @@ func reportGoalSearchResults(list string, matches []domain.Goal, needsRule bool)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 143, "</template></li>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "</template></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1656,12 +1669,12 @@ func reportBuilderScript() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var74 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var74 == nil {
-			templ_7745c5c3_Var74 = templ.NopComponent
+		templ_7745c5c3_Var75 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var75 == nil {
+			templ_7745c5c3_Var75 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 144, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"report-builder\"]');\n\t\t\tif (!form) return;\n\t\t\tvar inputs = form.querySelector('[data-testid=\"report-builder-inputs\"]');\n\t\t\tform.classList.add(\"rb-js\");\n\t\t\tvar ops = {\n\t\t\t\tvalues: [[\"is\", \"is\"], [\"is any of\", \"is any of\"], [\"is not\", \"is not\"]],\n\t\t\t\t\"top-level\": [[\"is\", \"is Top-level\"], [\"is not\", \"is not Top-level\"]],\n\t\t\t\torg: [[\"is\", \"is in the org of\"], [\"is any of\", \"is in the org of any of\"], [\"is not\", \"is not in the org of\"]]\n\t\t\t};\n\t\t\tfunction attributeOf(row) { return row.querySelector('[data-testid=\"rule-attribute\"]'); }\n\t\t\tfunction listOf(row) { return row.querySelector(\"[data-rule-values]\"); }\n\t\t\tfunction narrowOps(row) {\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tvar op = row.querySelector('[data-testid=\"rule-op\"]');\n\t\t\t\tvar chosen = op.value;\n\t\t\t\top.textContent = \"\";\n\t\t\t\t(ops[attribute] || ops.values).forEach(function (o) {\n\t\t\t\t\top.add(new Option(o[1], o[0], false, o[0] === chosen));\n\t\t\t\t});\n\t\t\t}\n\t\t\t// setKind makes the row's values radios under \"is\", keeping only\n\t\t\t// the first chosen, and checkboxes otherwise, keeping every one.\n\t\t\tfunction setKind(row) {\n\t\t\t\tvar radio = row.querySelector('[data-testid=\"rule-op\"]').value === \"is\";\n\t\t\t\tvar values = Array.from(listOf(row).querySelectorAll(\"input\"));\n\t\t\t\tvar chosen = values.map(function (input) { return input.checked; });\n\t\t\t\t// Every type first: a ticked box turned radio unticks the\n\t\t\t\t// group's radio before it.\n\t\t\t\tvalues.forEach(function (input) { input.type = radio ? \"radio\" : \"checkbox\"; });\n\t\t\t\tvar first = chosen.indexOf(true);\n\t\t\t\tvalues.forEach(function (input, i) { input.checked = radio ? i === first : chosen[i]; });\n\t\t\t}\n\t\t\t// fill gives the row its attribute's values alone: those it was\n\t\t\t// rendered with when it tests that attribute again, so a Retired\n\t\t\t// value it holds stays, or else its attribute's template's.\n\t\t\tfunction fill(row) {\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tvar list = listOf(row);\n\t\t\t\tvar name = attributeOf(row).name.replace(/\\.attribute$/, \".value\");\n\t\t\t\tvar source = null;\n\t\t\t\tif (attribute && attribute === row.renderedAttribute) {\n\t\t\t\t\tsource = row.renderedValues;\n\t\t\t\t} else if (attribute) {\n\t\t\t\t\tvar template = form.querySelector('template[data-rule-values-for=\"' + attribute + '\"]');\n\t\t\t\t\tsource = template && template.content;\n\t\t\t\t}\n\t\t\t\tlist.textContent = \"\";\n\t\t\t\tif (source) list.appendChild(source.cloneNode(true));\n\t\t\t\tlist.querySelectorAll(\"input\").forEach(function (input) { input.name = name; });\n\t\t\t\tlist.closest('[data-testid=\"rule-values\"]').hidden = !list.querySelector(\"input\");\n\t\t\t}\n\t\t\tfunction rowsOf() { return Array.from(form.querySelectorAll(\"[data-rule]\")); }\n\t\t\t// reveal scrolls a row's values to its first chosen one, top of\n\t\t\t// the list, moving only the list, so a long list such as the\n\t\t\t// Owners opens on what the row tests.\n\t\t\tfunction reveal(row) {\n\t\t\t\tvar list = listOf(row);\n\t\t\t\tvar first = list.querySelector(\"input:checked\");\n\t\t\t\tif (!first) return;\n\t\t\t\tlist.scrollTop += first.closest(\"label\").getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop;\n\t\t\t}\n\t\t\trowsOf().forEach(function (row) {\n\t\t\t\tnarrowOps(row);\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tif (attribute) {\n\t\t\t\t\trow.renderedAttribute = attribute;\n\t\t\t\t\trow.renderedValues = document.createDocumentFragment();\n\t\t\t\t\tArray.from(listOf(row).children).forEach(function (n) { row.renderedValues.appendChild(n.cloneNode(true)); });\n\t\t\t\t}\n\t\t\t\tfill(row);\n\t\t\t\treveal(row);\n\t\t\t});\n\t\t\t// A web font that loads late changes each value's height.\n\t\t\tif (document.fonts) document.fonts.ready.then(function () { rowsOf().forEach(reveal); });\n\t\t\t// A blank row to add, from the first: what it tests and its\n\t\t\t// values cleared, and no Retired attribute offered.\n\t\t\tvar blank = rowsOf()[0].cloneNode(true);\n\t\t\tblank.querySelectorAll('[data-testid=\"input-error\"]').forEach(function (n) { n.remove(); });\n\t\t\tblank.querySelectorAll(\"option[data-retired]\").forEach(function (o) { o.remove(); });\n\t\t\tvar next = rowsOf().reduce(function (max, row) {\n\t\t\t\treturn Math.max(max, parseInt(attributeOf(row).name.replace(/^rules\\[(\\d+)\\].*$/, \"$1\"), 10) + 1);\n\t\t\t}, 0);\n\t\t\tvar add = form.querySelector('button[name=\"do\"][value=\"add-rule\"]');\n\t\t\tfunction addRule() {\n\t\t\t\tvar row = blank.cloneNode(true);\n\t\t\t\tvar i = next++;\n\t\t\t\tattributeOf(row).name = \"rules[\" + i + \"].attribute\";\n\t\t\t\tattributeOf(row).value = \"\";\n\t\t\t\trow.querySelector('[data-testid=\"rule-op\"]').name = \"rules[\" + i + \"].op\";\n\t\t\t\trow.querySelector('button[name=\"remove-rule\"]').value = String(i);\n\t\t\t\tvar rows = rowsOf();\n\t\t\t\tvar last = rows[rows.length - 1];\n\t\t\t\tif (last) last.after(row); else add.closest(\"div\").before(row);\n\t\t\t\tnarrowOps(row);\n\t\t\t\trow.querySelector('[data-testid=\"rule-op\"]').selectedIndex = 0;\n\t\t\t\tfill(row);\n\t\t\t\tattributeOf(row).focus();\n\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t}\n\t\t\tform.addEventListener(\"change\", function (e) {\n\t\t\t\tvar row = e.target.closest(\"[data-rule]\");\n\t\t\t\tif (!row) return;\n\t\t\t\tif (e.target.matches('[data-testid=\"rule-attribute\"]')) {\n\t\t\t\t\tnarrowOps(row);\n\t\t\t\t\tfill(row);\n\t\t\t\t\tsetKind(row);\n\t\t\t\t} else if (e.target.matches('[data-testid=\"rule-op\"]')) {\n\t\t\t\t\tsetKind(row);\n\t\t\t\t}\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tif (e.target.closest('button[name=\"do\"][value=\"add-rule\"]')) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\taddRule();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest('button[name=\"remove-rule\"]');\n\t\t\t\tif (!remove) return;\n\t\t\t\te.preventDefault();\n\t\t\t\tvar row = remove.closest(\"[data-rule]\");\n\t\t\t\tvar rows = rowsOf();\n\t\t\t\tvar after = rows[rows.indexOf(row) + 1];\n\t\t\t\trow.remove();\n\t\t\t\tif (after) attributeOf(after).focus(); else add.focus();\n\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t});\n\t\t\tform.querySelectorAll(\"[data-goal-picker] .rb-no-js select\").forEach(function (select) {\n\t\t\t\tselect.disabled = true;\n\t\t\t});\n\t\t\tform.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\" && e.target.matches(\"[data-goal-search]\")) e.preventDefault();\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar picker = e.target.closest(\"[data-goal-picker]\");\n\t\t\t\tif (!picker) return;\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tpicker.querySelector(\".rb-chips\").appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\tvar search = picker.querySelector(\"[data-goal-search]\");\n\t\t\t\t\tsearch.value = \"\";\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"li\").remove();\n\t\t\t\t\tpicker.querySelector(\"[data-goal-search]\").focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "<script>\n\t\t(function () {\n\t\t\tvar form = document.querySelector('[data-testid=\"report-builder\"]');\n\t\t\tif (!form) return;\n\t\t\tvar inputs = form.querySelector('[data-testid=\"report-builder-inputs\"]');\n\t\t\tform.classList.add(\"rb-js\");\n\t\t\tvar ops = {\n\t\t\t\tvalues: [[\"is\", \"is\"], [\"is any of\", \"is any of\"], [\"is not\", \"is not\"]],\n\t\t\t\t\"top-level\": [[\"is\", \"is Top-level\"], [\"is not\", \"is not Top-level\"]],\n\t\t\t\torg: [[\"is\", \"is in the org of\"], [\"is any of\", \"is in the org of any of\"], [\"is not\", \"is not in the org of\"]]\n\t\t\t};\n\t\t\tfunction attributeOf(row) { return row.querySelector('[data-testid=\"rule-attribute\"]'); }\n\t\t\tfunction listOf(row) { return row.querySelector(\"[data-rule-values]\"); }\n\t\t\tfunction narrowOps(row) {\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tvar op = row.querySelector('[data-testid=\"rule-op\"]');\n\t\t\t\tvar chosen = op.value;\n\t\t\t\top.textContent = \"\";\n\t\t\t\t(ops[attribute] || ops.values).forEach(function (o) {\n\t\t\t\t\top.add(new Option(o[1], o[0], false, o[0] === chosen));\n\t\t\t\t});\n\t\t\t}\n\t\t\t// setKind makes the row's values radios under \"is\", keeping only\n\t\t\t// the first chosen, and checkboxes otherwise, keeping every one.\n\t\t\tfunction setKind(row) {\n\t\t\t\tvar radio = row.querySelector('[data-testid=\"rule-op\"]').value === \"is\";\n\t\t\t\tvar values = Array.from(listOf(row).querySelectorAll(\"input\"));\n\t\t\t\tvar chosen = values.map(function (input) { return input.checked; });\n\t\t\t\t// Every type first: a ticked box turned radio unticks the\n\t\t\t\t// group's radio before it.\n\t\t\t\tvalues.forEach(function (input) { input.type = radio ? \"radio\" : \"checkbox\"; });\n\t\t\t\tvar first = chosen.indexOf(true);\n\t\t\t\tvalues.forEach(function (input, i) { input.checked = radio ? i === first : chosen[i]; });\n\t\t\t}\n\t\t\t// fill gives the row its attribute's values alone: those it was\n\t\t\t// rendered with when it tests that attribute again, so a Retired\n\t\t\t// value it holds stays, or else its attribute's template's.\n\t\t\tfunction fill(row) {\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tvar list = listOf(row);\n\t\t\t\tvar name = attributeOf(row).name.replace(/\\.attribute$/, \".value\");\n\t\t\t\tvar source = null;\n\t\t\t\tif (attribute && attribute === row.renderedAttribute) {\n\t\t\t\t\tsource = row.renderedValues;\n\t\t\t\t} else if (attribute) {\n\t\t\t\t\tvar template = form.querySelector('template[data-rule-values-for=\"' + attribute + '\"]');\n\t\t\t\t\tsource = template && template.content;\n\t\t\t\t}\n\t\t\t\tlist.textContent = \"\";\n\t\t\t\tif (source) list.appendChild(source.cloneNode(true));\n\t\t\t\tlist.querySelectorAll(\"input\").forEach(function (input) { input.name = name; });\n\t\t\t\tlist.closest('[data-testid=\"rule-values\"]').hidden = !list.querySelector(\"input\");\n\t\t\t}\n\t\t\tfunction rowsOf() { return Array.from(form.querySelectorAll(\"[data-rule]\")); }\n\t\t\t// reveal scrolls a row's values to its first chosen one, top of\n\t\t\t// the list, moving only the list, so a long list such as the\n\t\t\t// Owners opens on what the row tests.\n\t\t\tfunction reveal(row) {\n\t\t\t\tvar list = listOf(row);\n\t\t\t\tvar first = list.querySelector(\"input:checked\");\n\t\t\t\tif (!first) return;\n\t\t\t\tlist.scrollTop += first.closest(\"label\").getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop;\n\t\t\t}\n\t\t\trowsOf().forEach(function (row) {\n\t\t\t\tnarrowOps(row);\n\t\t\t\tvar attribute = attributeOf(row).value;\n\t\t\t\tif (attribute) {\n\t\t\t\t\trow.renderedAttribute = attribute;\n\t\t\t\t\trow.renderedValues = document.createDocumentFragment();\n\t\t\t\t\tArray.from(listOf(row).children).forEach(function (n) { row.renderedValues.appendChild(n.cloneNode(true)); });\n\t\t\t\t}\n\t\t\t\tfill(row);\n\t\t\t\treveal(row);\n\t\t\t});\n\t\t\t// A web font that loads late changes each value's height.\n\t\t\tif (document.fonts) document.fonts.ready.then(function () { rowsOf().forEach(reveal); });\n\t\t\t// A blank row to add, from the first: what it tests and its\n\t\t\t// values cleared, and no Retired attribute offered.\n\t\t\tvar blank = rowsOf()[0].cloneNode(true);\n\t\t\tblank.querySelectorAll('[data-testid=\"input-error\"]').forEach(function (n) { n.remove(); });\n\t\t\tblank.querySelectorAll(\"option[data-retired]\").forEach(function (o) { o.remove(); });\n\t\t\tvar next = rowsOf().reduce(function (max, row) {\n\t\t\t\treturn Math.max(max, parseInt(attributeOf(row).name.replace(/^rules\\[(\\d+)\\].*$/, \"$1\"), 10) + 1);\n\t\t\t}, 0);\n\t\t\tvar add = form.querySelector('button[name=\"do\"][value=\"add-rule\"]');\n\t\t\tfunction addRule() {\n\t\t\t\tvar row = blank.cloneNode(true);\n\t\t\t\tvar i = next++;\n\t\t\t\tattributeOf(row).name = \"rules[\" + i + \"].attribute\";\n\t\t\t\tattributeOf(row).value = \"\";\n\t\t\t\trow.querySelector('[data-testid=\"rule-op\"]').name = \"rules[\" + i + \"].op\";\n\t\t\t\trow.querySelector('button[name=\"remove-rule\"]').value = String(i);\n\t\t\t\tvar rows = rowsOf();\n\t\t\t\tvar last = rows[rows.length - 1];\n\t\t\t\tif (last) last.after(row); else add.closest(\"div\").before(row);\n\t\t\t\tnarrowOps(row);\n\t\t\t\trow.querySelector('[data-testid=\"rule-op\"]').selectedIndex = 0;\n\t\t\t\tfill(row);\n\t\t\t\tattributeOf(row).focus();\n\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t}\n\t\t\tform.addEventListener(\"change\", function (e) {\n\t\t\t\tvar row = e.target.closest(\"[data-rule]\");\n\t\t\t\tif (!row) return;\n\t\t\t\tif (e.target.matches('[data-testid=\"rule-attribute\"]')) {\n\t\t\t\t\tnarrowOps(row);\n\t\t\t\t\tfill(row);\n\t\t\t\t\tsetKind(row);\n\t\t\t\t} else if (e.target.matches('[data-testid=\"rule-op\"]')) {\n\t\t\t\t\tsetKind(row);\n\t\t\t\t}\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tif (e.target.closest('button[name=\"do\"][value=\"add-rule\"]')) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\taddRule();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest('button[name=\"remove-rule\"]');\n\t\t\t\tif (!remove) return;\n\t\t\t\te.preventDefault();\n\t\t\t\tvar row = remove.closest(\"[data-rule]\");\n\t\t\t\tvar rows = rowsOf();\n\t\t\t\tvar after = rows[rows.indexOf(row) + 1];\n\t\t\t\trow.remove();\n\t\t\t\tif (after) attributeOf(after).focus(); else add.focus();\n\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t});\n\t\t\tform.querySelectorAll(\"[data-goal-picker] .rb-no-js select\").forEach(function (select) {\n\t\t\t\tselect.disabled = true;\n\t\t\t});\n\t\t\tform.addEventListener(\"keydown\", function (e) {\n\t\t\t\tif (e.key === \"Enter\" && e.target.matches(\"[data-goal-search]\")) e.preventDefault();\n\t\t\t});\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar picker = e.target.closest(\"[data-goal-picker]\");\n\t\t\t\tif (!picker) return;\n\t\t\t\tvar pick = e.target.closest(\"[data-pick]\");\n\t\t\t\tif (pick) {\n\t\t\t\t\tvar result = pick.closest(\"li\");\n\t\t\t\t\tpicker.querySelector(\".rb-chips\").appendChild(result.querySelector(\"template\").content.firstElementChild.cloneNode(true));\n\t\t\t\t\tresult.remove();\n\t\t\t\t\tvar search = picker.querySelector(\"[data-goal-search]\");\n\t\t\t\t\tsearch.value = \"\";\n\t\t\t\t\tsearch.focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\tvar remove = e.target.closest(\"[data-remove-chip]\");\n\t\t\t\tif (remove) {\n\t\t\t\t\tremove.closest(\"li\").remove();\n\t\t\t\t\tpicker.querySelector(\"[data-goal-search]\").focus();\n\t\t\t\t\tinputs.dispatchEvent(new Event(\"change\"));\n\t\t\t\t}\n\t\t\t});\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1688,116 +1701,116 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var75 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var75 == nil {
-			templ_7745c5c3_Var75 = templ.NopComponent
+		templ_7745c5c3_Var76 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var76 == nil {
+			templ_7745c5c3_Var76 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "<li data-testid=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var76 string
-		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chip")
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 529, Col: 33}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "\" class=\"rb-chip\"><input type=\"hidden\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 146, "<li data-testid=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var77 string
-		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
+		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chip")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 530, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 529, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "\" class=\"rb-chip\"><input type=\"hidden\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var78 string
-		templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
+		templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 530, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 530, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "\"> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 148, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var79 string
-		templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
+		templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 531, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 530, Col: 61}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var79))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var79)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "</span> <label class=\"rb-no-js small\"><input type=\"checkbox\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 149, "\"> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var80 string
-		templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.ResolveAttributeValue(removeChip(list))
+		templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 532, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 531, Col: 17}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "</span> <label class=\"rb-no-js small\"><input type=\"checkbox\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var81 string
-		templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
+		templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue(removeChip(list))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 532, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 532, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "\"> Remove</label> <button type=\"button\" class=\"btn rb-remove rb-js-only\" data-remove-chip aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 151, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var82 string
-		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 533, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 532, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var82)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, "\"> Remove</label> <button type=\"button\" class=\"btn rb-remove rb-js-only\" data-remove-chip aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var83 string
 		templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 533, Col: 136}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 533, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var83)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "\">×</button></li>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "\" title=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var84 string
+		templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 533, Col: 136}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var84)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "\">×</button></li>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1825,12 +1838,12 @@ func reportBuilderStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var84 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var84 == nil {
-			templ_7745c5c3_Var84 = templ.NopComponent
+		templ_7745c5c3_Var85 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var85 == nil {
+			templ_7745c5c3_Var85 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "<style>\n\t\t.rb-layout{width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:24px}\n\t\t.rb-form{display:contents}\n\t\t.rb-inputs{display:contents}\n\t\t.rb-rules,.rb-picked,.rb-rail{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t.rb-rail{order:1;display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rail p{margin:0}\n\t\t.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0;min-height:40px;padding:4px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box}\n\t\t.rb-match-list>li:first-child{border-top:1px solid var(--color-border)}\n\t\t.rb-match-title{flex:1;min-width:0;color:var(--color-ink);font-weight:500}\n\t\t.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.rb-form legend{font-weight:600;padding:0 0 8px}\n\t\t.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}\n\t\t.rb-segments label{position:relative;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}\n\t\t@supports selector(:has(*)){\n\t\t\t.rb-segments input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.rb-segments label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}\n\t\t\t.rb-segments label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}\n\t\t\t.rb-form:has(input[name=mode][value=picked]:checked) .rb-rules{display:none}\n\t\t\t.rb-form:has(input[name=mode][value=rules]:checked) .rb-picked{display:none}\n\t\t}\n\t\t.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.rb-chips:empty{display:none}\n\t\t.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:0 0 0 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.rb-remove{width:40px;padding:0;border-color:var(--color-border-strong);font-size:20px;font-weight:400;line-height:1}\n\t\t.rb-chip .rb-remove{border-radius:999px}\n\t\t@media (pointer:coarse){.rb-remove{min-width:44px}}\n\t\t.rb-form select[multiple]{width:100%;min-height:8em}\n\t\t.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}\n\t\t.rb-values{flex:1 1 240px}\n\t\t.rb-form .rb-values{display:block}\n\t\t.rb-form .rb-values[hidden]{display:none}\n\t\t.rb-value-list{display:flex;flex-direction:column;max-height:14em;overflow:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:4px 8px;box-sizing:border-box}\n\t\t.rb-form .rb-value-group{gap:0;padding:4px 0}\n\t\t.rb-form .rb-value-group>legend{font-size:var(--text-secondary);color:var(--color-ink-2);padding:0 0 4px}\n\t\t.rb-value{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}\n\t\t@media (pointer:coarse){.rb-value{min-height:44px}}\n\t\t.rb-input-error{display:block;flex-basis:100%;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}\n\t\t.rb-problems p,.rb-problems ul{margin:0}\n\t\t.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}\n\t\t.rb-fields fieldset{margin-top:12px}\n\t\t.rb-actions{order:2;display:flex;gap:8px;flex-wrap:wrap}\n\t\t.rb-form:not(.rb-js) .rb-js-only{display:none}\n\t\t.rb-form:not(.rb-js) .rb-chip{padding:4px 12px}\n\t\t.rb-form.rb-js .rb-no-js{display:none}\n\t\t.rb-picker input[type=search]{width:100%}\n\t\t.rb-picker>.help{align-self:flex-start}\n\t\t.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "<style>\n\t\t.rb-layout{width:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:24px}\n\t\t.rb-form{display:contents}\n\t\t.rb-inputs{display:contents}\n\t\t.rb-rules,.rb-picked,.rb-rail{border-top:1px solid var(--color-border);padding-top:24px}\n\t\t.rb-rail{order:1;display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rail p{margin:0}\n\t\t.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0;min-height:40px;padding:4px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box}\n\t\t.rb-match-list>li:first-child{border-top:1px solid var(--color-border)}\n\t\t.rb-match-title{flex:1;min-width:0;color:var(--color-ink);font-weight:500}\n\t\t.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.rb-form legend{font-weight:600;padding:0 0 8px}\n\t\t.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}\n\t\t.rb-segments label{position:relative;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}\n\t\t@supports selector(:has(*)){\n\t\t\t.rb-segments input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.rb-segments label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}\n\t\t\t.rb-segments label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}\n\t\t\t.rb-form:has(input[name=mode][value=picked]:checked) .rb-rules{display:none}\n\t\t\t.rb-form:has(input[name=mode][value=rules]:checked) .rb-picked{display:none}\n\t\t}\n\t\t.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.rb-chips:empty{display:none}\n\t\t.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:0 0 0 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.rb-remove{width:40px;padding:0;border-color:var(--color-border-strong);font-size:20px;font-weight:400;line-height:1}\n\t\t.rb-chip .rb-remove{border-radius:999px}\n\t\t@media (pointer:coarse){.rb-remove{min-width:44px}}\n\t\t.rb-form select[multiple]{width:100%;min-height:8em}\n\t\t.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}\n\t\t.rb-values{flex:1 1 240px}\n\t\t.rb-form .rb-values{display:block}\n\t\t.rb-form .rb-values[hidden]{display:none}\n\t\t.rb-value-list{display:flex;flex-direction:column;max-height:14em;overflow:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:4px 8px;box-sizing:border-box}\n\t\t.rb-form .rb-value-group{gap:0;padding:4px 0}\n\t\t.rb-form .rb-value-group>legend{font-size:var(--text-secondary);color:var(--color-ink-2);padding:0 0 4px}\n\t\t.rb-value{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}\n\t\t@media (pointer:coarse){.rb-value{min-height:44px}}\n\t\t.rb-input-error{display:block;flex-basis:100%;font-size:var(--text-secondary);color:var(--color-danger-ink)}\n\t\t.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}\n\t\t.rb-problems p,.rb-problems ul{margin:0}\n\t\t.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}\n\t\t.rb-fields fieldset{margin-top:12px}\n\t\t.rb-actions{order:2;display:flex;gap:8px;flex-wrap:wrap}\n\t\t.rb-form:not(.rb-js) .rb-js-only{display:none}\n\t\t.rb-form:not(.rb-js) .rb-chip{padding:4px 12px}\n\t\t.rb-form.rb-js .rb-no-js{display:none}\n\t\t.rb-picker input[type=search]{width:100%}\n\t\t.rb-picker>.help{align-self:flex-start}\n\t\t.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

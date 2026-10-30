@@ -271,7 +271,7 @@ templ reportBuilderError(v reportBuilderView, input string) {
 const alsoIncludeHelp = "Goals to add by hand, even if they don't meet the rules."
 
 // leaveOutHelp says what the builder's Leave out list does.
-const leaveOutHelp = "Goals to drop, even if they meet the rules."
+const leaveOutHelp = "Goals the rules select that this Report drops."
 
 // reportGoalPicker picks Goals at any level for one of the builder's lists,
 // list naming it. Each Goal in the list is a chip holding its id; script
@@ -299,7 +299,7 @@ templ reportGoalPicker(v reportBuilderView, list, legend, help string, chosen []
 			<input
 				type="search"
 				name={ goalSearchInput(list) }
-				placeholder="Search any Goal by title"
+				placeholder={ goalSearchPlaceholder(list) }
 				autocomplete="off"
 				aria-label={ "Search Goals: " + legend }
 				aria-controls={ list + "-results" }
