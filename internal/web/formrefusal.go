@@ -402,6 +402,15 @@ func (f formRefusal) typed(input string) string {
 	return f.Input.Get(input)
 }
 
+// shownOr is what the refused form posted as input, or shown, what the form
+// shows unrefused, when it posted none, as a disabled select posts none.
+func (f formRefusal) shownOr(input, shown string) string {
+	if typed, ok := f.Input[input]; ok && len(typed) > 0 {
+		return typed[0]
+	}
+	return shown
+}
+
 // errorID is the id of input's reason on the page: unique to the form, its
 // record, and the input.
 func (f formRefusal) errorID(input string) string {

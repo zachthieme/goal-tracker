@@ -1,7 +1,9 @@
 package web
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -156,7 +158,9 @@ func openByID(items []domain.ActionItem) map[int64]domain.ActionItem {
 }
 
 // handleAddComment comments on a Goal's block in a published Report and comes
-// back to it; the Goal's Owner is emailed.
+// back to it; the Goal's Owner is emailed. Refused for what was typed, it
+// comes back open there, unless the publication doesn't cover the Goal
+// (commentForm).
 func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pub, ok := s.publication(w, r)
 	if !ok {
@@ -168,14 +172,17 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, curren
 	}
 	goalID, _ := strconv.ParseInt(r.FormValue("goal"), 10, 64)
 	if _, err := s.svc.AddComment(r.Context(), current.ID, pub.ID, goalID, r.FormValue("body")); err != nil {
-		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: publicationPath(pub)})
+		form := commentForm(fmt.Sprintf("%s#goal-%d", publicationPath(pub), goalID), "comment-form", goalID).
+			offeredWhen(func(context.Context) (bool, error) { return pub.Covers(goalID), nil })
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: publicationPath(pub), Form: form})
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), goalID), http.StatusSeeOther)
 }
 
 // handleAddGoalComment comments on a Goal itself and comes back to its
-// Comments; the Goal's Owner is emailed.
+// Comments; the Goal's Owner is emailed. Refused for what was typed, it comes
+// back open there (commentForm).
 func (s *Server) handleAddGoalComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -187,10 +194,32 @@ func (s *Server) handleAddGoalComment(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	if _, err := s.svc.AddGoalComment(r.Context(), current.ID, id, r.FormValue("body")); err != nil {
-		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: goalPath(id)})
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: goalPath(id),
+			Form: commentForm(goalCommentsPath(id), "goal-comment-form", 0).offeredWhen(s.goalOffersComments(id))})
 		return
 	}
 	http.Redirect(w, r, goalCommentsPath(id), http.StatusSeeOther)
+}
+
+// goalOffersComments reports whether the Goal goalID's page is there to
+// offer its comment and reply forms: a Goal that isn't has none.
+func (s *Server) goalOffersComments(goalID int64) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
+		_, err := s.svc.ViewGoal(ctx, goalID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, nil
+		}
+		return err == nil, err
+	}
+}
+
+// commentForm is a comment or reply form, form (its test ID), about the
+// record id, on the page at back, fragment kept: refused for what was typed,
+// it comes back open there, holding the body posted and the reason beside it
+// (onPage). Anything else, or a refusal too long to carry, is the refusal
+// page (#700).
+func commentForm(back, form string, id int64) *formOnPage {
+	return onPage(back, form, id, []string{"body"}).besideInput("body")
 }
 
 // goalCommentsPath is the Goal page's Comments block.
@@ -200,6 +229,7 @@ func goalCommentsPath(goalID int64) string {
 
 // handleReplyToComment replies in a comment's thread and comes back to it: on
 // the Goal page for a thread on the Goal itself, or else the publication.
+// Refused for what was typed, it comes back open there (replyPage).
 func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -212,7 +242,8 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 	}
 	reply, err := s.svc.ReplyToComment(r.Context(), current.ID, id, r.FormValue("body"))
 	if err != nil {
-		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: s.commentPagePath(r, id)})
+		back, form := s.replyPage(r.Context(), id)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't comment", Back: back, Form: form})
 		return
 	}
 	if reply.PublicationID == 0 {
@@ -328,23 +359,26 @@ func (s *Server) handleReassignActionItem(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
-// commentPagePath is the page the Comment id is on, for a refusal to link
-// Back to: the Goal page for one on the Goal itself, else its publication's
-// page, or Home when it can't be read. A refused reply returns no Comment, so
-// it is read again.
-func (s *Server) commentPagePath(r *http.Request, id int64) string {
-	c, err := s.svc.GetComment(r.Context(), id)
+// replyPage is the page the Comment id is on, for a refused reply to it to
+// link Back to, and the reply form there, which the refusal of what was typed
+// comes back open in, under its thread's first comment (commentForm): the
+// Goal page for a thread on the Goal itself, else its publication's page.
+// When the Comment can't be read, Back is Home and there is no form. A
+// refused reply returns no Comment, so it is read again.
+func (s *Server) replyPage(ctx context.Context, id int64) (string, refusedForm) {
+	c, err := s.svc.GetComment(ctx, id)
 	if err != nil {
-		return "/home"
+		return "/home", nil
 	}
+	thread := cmp.Or(c.ThreadID, c.ID)
 	if c.PublicationID == 0 {
-		return goalPath(c.GoalID)
+		return goalPath(c.GoalID), commentForm(goalCommentsPath(c.GoalID), "reply-form", thread)
 	}
-	pub, err := s.svc.GetPublication(r.Context(), c.PublicationID)
+	pub, err := s.svc.GetPublication(ctx, c.PublicationID)
 	if err != nil {
-		return "/home"
+		return "/home", nil
 	}
-	return publicationPath(pub)
+	return publicationPath(pub), commentForm(fmt.Sprintf("%s#goal-%d", publicationPath(pub), c.GoalID), "reply-form", thread)
 }
 
 // actionItemPagePath is the page a refused close or reassign of the Action
@@ -385,9 +419,14 @@ func refusalNamesComment(ctx context.Context, commentID int64) bool {
 }
 
 // refusalNamesThread reports whether the page's refusal, not yet taken, is of
-// the form making a comment in threads an Action Item (refusalNamesComment).
+// a thread in threads: its reply form, or the form making a comment in it an
+// Action Item (refusalNamesComment).
 func refusalNamesThread(ctx context.Context, threads []domain.Thread) bool {
+	refusal, ok := formRefusalUntaken(ctx)
 	for _, t := range threads {
+		if ok && refusal.Form == "reply-form" && refusal.ID == t.Comment.ID {
+			return true
+		}
 		if refusalNamesComment(ctx, t.Comment.ID) {
 			return true
 		}

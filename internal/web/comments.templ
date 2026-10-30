@@ -52,13 +52,11 @@ templ goalDiscussion(goalID int64, d discussion) {
 							for _, reply := range t.Replies {
 								@comment(reply, d, true)
 							}
-							<details data-testid="reply-toggle">
+							{{ refused, open := formRefusalFor(ctx, "reply-form", t.Comment.ID) }}
+							<details data-testid="reply-toggle" open?={ open }>
 								<summary class="small">Reply</summary>
 								<form data-testid="reply-form" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
-									<label>
-										Reply
-										<input type="text" name="body" required/>
-									</label>
+									@commentBodyField("Reply", refused)
 									<button type="submit" class="btn sm">Reply</button>
 								</form>
 							</details>
@@ -68,14 +66,12 @@ templ goalDiscussion(goalID int64, d discussion) {
 			} else {
 				<span data-testid="comment-count" class="small muted">No comments</span>
 			}
-			<details data-testid="comment-toggle">
+			{{ refused, open := formRefusalFor(ctx, "comment-form", goalID) }}
+			<details data-testid="comment-toggle" open?={ open }>
 				<summary class="btn sm">Comment</summary>
 				<form data-testid="comment-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/comments") }>
 					<input type="hidden" name="goal" value={ fmt.Sprintf("%d", goalID) }/>
-					<label>
-						Comment
-						<input type="text" name="body" required/>
-					</label>
+					@commentBodyField("Comment", refused)
 					<button type="submit" class="btn primary sm">Comment</button>
 				</form>
 			</details>
@@ -101,23 +97,19 @@ templ goalComments(current *domain.Account, v goalView) {
 				for _, reply := range t.Replies {
 					@comment(reply, d, true)
 				}
-				<details data-testid="reply-toggle">
+				{{ refused, open := formRefusalFor(ctx, "reply-form", t.Comment.ID) }}
+				<details data-testid="reply-toggle" open?={ open }>
 					<summary class="small">Reply</summary>
 					<form data-testid="reply-form" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
-						<label>
-							Reply
-							<input type="text" name="body" required/>
-						</label>
+						@commentBodyField("Reply", refused)
 						<button type="submit" class="btn sm">Reply</button>
 					</form>
 				</details>
 			</div>
 		}
+		{{ refused, _ := formRefusalFor(ctx, "goal-comment-form", 0) }}
 		<form data-testid="goal-comment-form" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/comments", v.Goal.ID)) }>
-			<label>
-				Comment
-				<input type="text" name="body" required/>
-			</label>
+			@commentBodyField("Comment", refused)
 			<button type="submit" class="btn sm">Comment</button>
 		</form>
 	</section>
@@ -147,6 +139,25 @@ templ comment(c domain.Comment, d discussion, reply bool) {
 			</form>
 		</details>
 	}
+}
+
+// commentBodyField is a comment or reply form's text, under caption. When
+// the form was just refused, it holds what was posted, with the reason beside
+// it (#700).
+templ commentBodyField(caption string, refused formRefusal) {
+	<label>
+		{ caption }
+		<input
+			type="text"
+			name="body"
+			required
+			if refused.Form != "" {
+				value={ refused.typed("body") }
+			}
+			{ refused.controlAttrs("body")... }
+		/>
+		@actionItemFieldError(refused, "body")
+	</label>
 }
 
 // commentCount counts the comments in a Goal's threads, replies included.

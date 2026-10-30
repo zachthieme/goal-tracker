@@ -74,9 +74,12 @@ func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
 	}
 
 	resp = postForm(t, reader, pubURL+"/comments", url.Values{"goal": {strconv.FormatInt(g.ID, 10)}, "body": {" "}})
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("blank comment: status %d, want 422", resp.StatusCode)
+	refused := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusOK || textOf(findByTestID(t, refused, "form-error")) != "A comment cannot be blank." {
+		t.Errorf("blank comment: status %d, want the publication saying why:\n%s", resp.StatusCode, renderNode(refused))
+	}
+	if threads, err := h.Service.ListThreads(context.Background(), pub.ID); err != nil || len(threads) != 1 {
+		t.Errorf("after a blank comment the publication has %d threads (err %v), want the one", len(threads), err)
 	}
 }
 
@@ -656,8 +659,9 @@ func TestSmokeCommentAndReplyOnTheGoalPageOverHTTP(t *testing.T) {
 	}
 }
 
-// A comment on a Goal refused by the domain is a plain error status, as on a
-// Report: blank is 422, an unknown or non-numeric Goal 404.
+// A comment on a Goal refused by the domain answers as on a Report: blank
+// comes back to the Goal's Comments (TestARefusedCommentComesBackToItsFormOverHTTP),
+// an unknown or non-numeric Goal is 404.
 func TestGoalCommentRefusalsOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -671,7 +675,7 @@ func TestGoalCommentRefusalsOverHTTP(t *testing.T) {
 		name, path, body string
 		want             int
 	}{
-		{"blank", fmt.Sprintf("/goals/%d/comments", g.ID), "  ", http.StatusUnprocessableEntity},
+		{"blank", fmt.Sprintf("/goals/%d/comments", g.ID), "  ", http.StatusSeeOther},
 		{"unknown Goal", fmt.Sprintf("/goals/%d/comments", g.ID+100), "Why?", http.StatusNotFound},
 		{"non-numeric id", "/goals/eu/comments", "Why?", http.StatusNotFound},
 	} {
@@ -710,13 +714,13 @@ func TestReplyToAReportCommentReturnsToThePublication(t *testing.T) {
 	}
 }
 
-// A refused Comment answers with the refusal page, headed Can't comment, and
-// an Action Item refused for who is asking with one headed by what was
-// refused, Can't add, close or reassign Action Item (#660). Each is at its
+// An Action Item refused for who is asking answers with the refusal page
+// headed by what was refused, Can't add, close or reassign Action Item
+// (#660); a refused comment or reply comes back to its form
+// (TestARefusedCommentComesBackToItsFormOverHTTP). Each is at its
 // refusal's status, linking Back to the page the form posted as its return,
-// when that is a page of the app's own, or else the page the Comment or
-// Action Item is on: the Goal page for one on the Goal, the publication's
-// page for one on a publication (#573).
+// when that is a page of the app's own, or else the publication the Action
+// Item was raised on (#573).
 func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -727,14 +731,6 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(author, def)
-	onPub, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
-	if err != nil {
-		t.Fatalf("AddComment: %v", err)
-	}
-	onGoal, err := h.Service.AddGoalComment(context.Background(), author.ID, g.ID, "Who is the vendor?")
-	if err != nil {
-		t.Fatalf("AddGoalComment: %v", err)
-	}
 	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
 	})
@@ -743,7 +739,6 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 	}
 	ts := newServer(t, h)
 	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
-	goalPath := fmt.Sprintf("/goals/%d", g.ID)
 	draftPath := fmt.Sprintf("/reports/%d", def.ID)
 
 	for _, c := range []struct {
@@ -752,18 +747,10 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 		status                int
 		heading, reason, back string
 	}{
-		{"a blank comment on a publication", "owner@example.com", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(g.ID)}, "body": {" "}},
-			http.StatusUnprocessableEntity, "Can't comment", "A comment cannot be blank.", pubPath},
 		{"an Action Item raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"owner@example.com"}, "due": {"2026-02-01"}},
 			http.StatusForbidden, "Can't add Action Item", "Only the Report's author raises Action Items.", pubPath},
 		{"an Action Item for an unknown email raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"}},
 			http.StatusForbidden, "Can't add Action Item", "Only the Report's author raises Action Items.", pubPath},
-		{"a blank comment on the Goal", "owner@example.com", goalPath + "/comments", url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "Can't comment", "A comment cannot be blank.", goalPath},
-		{"a blank reply on the Goal", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onGoal.ID), url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "Can't comment", "A reply cannot be blank.", goalPath},
-		{"a blank reply on a publication", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onPub.ID), url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "Can't comment", "A reply cannot be blank.", pubPath},
 		{"a close by someone not its owner, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {"Done."}, "return": {draftPath}},
 			http.StatusForbidden, "Can't close Action Item", "Only the Action Item's owner closes it.", draftPath},
 		{"a reassign by someone who may not, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/reassign", item.ID), url.Values{"owner": {"other@example.com"}, "return": {draftPath}},
@@ -1153,5 +1140,177 @@ func TestARefusalWhoseFormIsGoneLeavesThePagePlainOverHTTP(t *testing.T) {
 	}
 	if got := attrOf(findByTestID(t, open[0], "close-action-item"), "action"); got != closePath(kept) {
 		t.Errorf("the open Close is %q, want the later refusal's %q", got, closePath(kept))
+	}
+}
+
+// A comment or reply refused for what was typed, a blank one, comes back to
+// the page it was posted from, redirected after the post, with its form open
+// and every disclosure around it: a reply under its own comment, its thread
+// open, and a comment on its Goal's discussion. The form holds what was typed
+// and says why beside it, once: a reload shows the page plainly (#700).
+func TestARefusedCommentComesBackToItsFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	eu := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	v2 := h.ActiveGoal(owner, "Ship v2", "Win back churned accounts.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, v2.ID}})
+	pub := h.PublishReport(author, def)
+	var onPub, onGoal []domain.Comment
+	for _, g := range []domain.Goal{eu, eu, v2} {
+		c, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
+		if err != nil {
+			t.Fatalf("AddComment: %v", err)
+		}
+		onPub = append(onPub, c)
+		if c, err = h.Service.AddGoalComment(context.Background(), author.ID, eu.ID, "Who is the vendor?"); err != nil {
+			t.Fatalf("AddGoalComment: %v", err)
+		}
+		onGoal = append(onGoal, c)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	goalPath := fmt.Sprintf("/goals/%d", eu.ID)
+	replies := func(c domain.Comment) string { return fmt.Sprintf("/comments/%d/replies", c.ID) }
+
+	for _, c := range []struct {
+		name string
+		// posted is where the form posts, sent what it sends, and back where
+		// its refusal comes back to.
+		posted string
+		sent   url.Values
+		back   string
+		// form is the form's test ID, and reason why it was refused.
+		form, reason string
+	}{
+		{"a comment on the Goal", goalPath + "/comments", url.Values{"body": {"   "}}, goalPath + "#comments",
+			"goal-comment-form", "A comment cannot be blank."},
+		{"a comment on a publication's Goal", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(v2.ID)}, "body": {"  "}}, fmt.Sprintf("%s#goal-%d", pubPath, v2.ID),
+			"comment-form", "A comment cannot be blank."},
+		{"a reply on the Goal", replies(onGoal[1]), url.Values{"body": {" "}}, goalPath + "#comments",
+			"reply-form", "A reply cannot be blank."},
+		{"a reply on a publication", replies(onPub[1]), url.Values{"body": {" "}}, fmt.Sprintf("%s#goal-%d", pubPath, eu.ID),
+			"reply-form", "A reply cannot be blank."},
+	} {
+		postRefusedBack(t, client, ts.URL+c.posted, c.sent, c.back)
+		page := getPage(t, client, ts.URL+pagePathOf(c.back))
+		form := refusedCommentForm(t, page, c.form, c.posted, c.sent.Get("goal"))
+		for _, d := range detailsAroundAll(form) {
+			if !hasAttr(d, "open") {
+				t.Errorf("%s: the form sits in a closed %q:\n%s", c.name, attrOf(d, "data-testid"), renderNode(d))
+			}
+		}
+		body := formField(t, form, "body")
+		if body.Value != c.sent.Get("body") || attrOf(body.Node, "aria-invalid") != "true" || body.Description != c.reason {
+			t.Errorf("%s: body holds %q, aria-invalid %q, described %q; want %q kept, invalid, saying %q",
+				c.name, body.Value, attrOf(body.Node, "aria-invalid"), body.Description, c.sent.Get("body"), c.reason)
+		}
+		if errors := findAllByTestID(page, "form-error"); len(errors) != 1 {
+			t.Errorf("%s: page has %d form errors, want 1", c.name, len(errors))
+		}
+
+		reload := getPage(t, client, ts.URL+pagePathOf(c.back))
+		form = refusedCommentForm(t, reload, c.form, c.posted, c.sent.Get("goal"))
+		if hasTestID(reload, "form-error") || hasAttr(formField(t, form, "body").Node, "aria-invalid") {
+			t.Errorf("%s: a reload still shows the refusal:\n%s", c.name, renderNode(form))
+		}
+		for _, d := range detailsAroundAll(form) {
+			if hasAttr(d, "open") {
+				t.Errorf("%s: a reload shows the form's %q open", c.name, attrOf(d, "data-testid"))
+			}
+		}
+	}
+}
+
+// refusedCommentForm is the one form on page with test ID form posting to
+// action, on the Goal goal when that isn't "", failing the test when there
+// isn't exactly one.
+func refusedCommentForm(t *testing.T, page *html.Node, form, action, goal string) *html.Node {
+	t.Helper()
+	forms := findAll(page, func(n *html.Node) bool {
+		return n.Data == "form" && attrOf(n, "data-testid") == form && attrOf(n, "action") == action &&
+			(goal == "" || slices.ContainsFunc(formFields(n, "goal"), func(f pageField) bool { return f.Value == goal }))
+	})
+	if len(forms) != 1 {
+		t.Fatalf("page has %d %s forms posting to %s, want 1:\n%s", len(forms), form, action, renderNode(page))
+	}
+	return forms[0]
+}
+
+// detailsAroundAll are every <details> around n, nearest first.
+func detailsAroundAll(n *html.Node) []*html.Node {
+	var out []*html.Node
+	for p := range n.Ancestors() {
+		if p.Type == html.ElementNode && p.Data == "details" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// pagePathOf is the address p without its fragment, as a browser asks for it.
+func pagePathOf(p string) string {
+	p, _, _ = strings.Cut(p, "#")
+	return p
+}
+
+// A refused comment or reply that can't come back to its form answers with
+// the refusal page, headed Can't comment, at 422, linking Back to the page
+// the Goal or Comment is on, and sets no refusal: one too long to carry, a
+// comment on a Goal the publication doesn't cover,
+// which has no form there, and a reply to a comment that isn't there (#700).
+func TestARefusedCommentWithNoFormToComeBackToAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	eu := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	uncovered := h.ActiveGoal(owner, "Ship v2", "Win back churned accounts.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	pub := h.PublishReport(author, def)
+	onPub, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, eu.ID, "Why did the vendor slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	onGoal, err := h.Service.AddGoalComment(context.Background(), author.ID, eu.ID, "Who is the vendor?")
+	if err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "owner@example.com"))
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	goalPath := fmt.Sprintf("/goals/%d", eu.ID)
+	tooLong := strings.Repeat(" ", 4000)
+
+	for _, c := range []struct {
+		name, posted string
+		sent         url.Values
+		reason, back string
+	}{
+		{"a comment on the Goal too long to carry", goalPath + "/comments", url.Values{"body": {tooLong}}, "A comment cannot be blank.", goalPath},
+		{"a comment on a publication too long to carry", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(eu.ID)}, "body": {tooLong}}, "A comment cannot be blank.", pubPath},
+		{"a reply on the Goal too long to carry", fmt.Sprintf("/comments/%d/replies", onGoal.ID), url.Values{"body": {tooLong}}, "A reply cannot be blank.", goalPath},
+		{"a reply on a publication too long to carry", fmt.Sprintf("/comments/%d/replies", onPub.ID), url.Values{"body": {tooLong}}, "A reply cannot be blank.", pubPath},
+		{"a comment on a Goal the publication doesn't cover", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(uncovered.ID)}, "body": {"Why?"}},
+			fmt.Sprintf("Goal %d is not in this publication.", uncovered.ID), pubPath},
+		{"a blank comment on a Goal that isn't there", "/goals/99999/comments", url.Values{"body": {" "}}, "A comment cannot be blank.", "/goals/99999"},
+		{"a blank reply to a comment that isn't there", "/comments/99999/replies", url.Values{"body": {" "}}, "A reply cannot be blank.", "/home"},
+	} {
+		resp := postForm(t, client, ts.URL+c.posted, c.sent)
+		defer func() { _ = resp.Body.Close() }()
+		page := parsePage(t, readBody(t, resp))
+		if resp.StatusCode != http.StatusUnprocessableEntity || resp.Header.Get("Location") != "" {
+			t.Errorf("%s: status %d to %q, want 422 and no redirect", c.name, resp.StatusCode, resp.Header.Get("Location"))
+		}
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "gt_refused" {
+				t.Errorf("%s: the refusal set the gt_refused cookie %q", c.name, cookie.Value)
+			}
+		}
+		assertRefusalPage(t, page, "Can't comment", c.reason, c.back)
 	}
 }
