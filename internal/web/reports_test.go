@@ -2498,7 +2498,7 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	rules = findByTestID(t, getPage(t, client, ts.URL+"/reports/new"), "report-rules")
 	pillarKey := fmt.Sprintf("dimension:%d", pillar.ID)
 	option := func(value string) *nethtml.Node {
-		if found := findAll(rules, func(n *nethtml.Node) bool { return n.Data == "option" && attrOf(n, "value") == value }); len(found) > 0 {
+		if found := findAll(rules, func(n *nethtml.Node) bool { return (n.Data == "option" || n.Data == "input") && attrOf(n, "value") == value }); len(found) > 0 {
 			return found[0]
 		}
 		return nil
@@ -2509,10 +2509,12 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 }
 
 // reportRuleChoices is everything the builder's rules offer to pick, each
-// option and each group of them by its label, run together.
+// option, each rule value and each group of them by its label, run together.
 func reportRuleChoices(rules *nethtml.Node) string {
 	var offered []string
-	for _, n := range findAll(rules, func(n *nethtml.Node) bool { return n.Data == "option" || n.Data == "optgroup" }) {
+	for _, n := range findAll(rules, func(n *nethtml.Node) bool {
+		return n.Data == "option" || n.Data == "optgroup" || n.Data == "legend" || attrOf(n, "class") == "rb-value"
+	}) {
 		if n.Data == "optgroup" {
 			offered = append(offered, attrOf(n, "label"))
 		} else {
@@ -3640,13 +3642,18 @@ func reportBuilderTicks(builder *nethtml.Node, name, value string) bool {
 	return slices.ContainsFunc(formFields(builder, name), func(f pageField) bool { return f.Value == value && f.Checked })
 }
 
-// reportBuilderSelected is the option under root with this value that is
-// chosen, or nil.
+// reportBuilderSelected is what under root with this value is chosen, a
+// selected option or the label of a ticked rule value, or nil.
 func reportBuilderSelected(root *nethtml.Node, value string) *nethtml.Node {
 	if opts := findAll(root, func(n *nethtml.Node) bool {
 		return n.Data == "option" && attrOf(n, "value") == value && hasAttr(n, "selected")
 	}); len(opts) > 0 {
 		return opts[0]
+	}
+	if ticked := findAll(root, func(n *nethtml.Node) bool {
+		return n.Data == "input" && attrOf(n, "value") == value && hasAttr(n, "checked")
+	}); len(ticked) > 0 {
+		return ticked[0].Parent
 	}
 	return nil
 }

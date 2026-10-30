@@ -76,6 +76,7 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 						for i, row := range v.rows() {
 							@reportRuleRowInputs(v, i, row)
 						}
+						@reportRuleValueTemplates(v.Attributes)
 						@reportBuilderError(v, domain.ReportInputRules)
 						if v.StartNote != "" {
 							<p data-testid="rules-start-note" class="small muted">{ v.StartNote }</p>
@@ -176,21 +177,23 @@ templ reportMatchesRail(m reportMatches) {
 	</aside>
 }
 
-// reportRuleRowInputs is the i-th rule row: what it tests, its operator, and
-// the values it tests for, one group per attribute, which script swaps for
-// the chosen attribute's values alone. A Top-level row tests no values, so it offers only "is
-// Top-level" and "is not Top-level", but still carries every attribute's
-// values, hidden by script, so switching it to another attribute offers that
-// attribute's. Before script runs, a style hides a Top-level row's values, so
-// without script it offers only the two operators. The × submits the form
-// without the row.
+// reportRuleRowInputs is the i-th rule row: what it tests, its operator, the
+// values it tests for, and its ×. A row testing an attribute shows only that
+// attribute's values: radios under "is", which takes one, and checkboxes
+// under "is any of" and "is not". A row testing nothing yet shows every
+// attribute's values as checkboxes, each attribute's under its label, so
+// without script a value can be chosen with the attribute; script empties
+// it, and fills a row's values from reportRuleValueTemplates as its
+// attribute changes. A Top-level row tests no values, so it offers only "is
+// Top-level" and "is not Top-level". The × submits the form without the
+// row; with script it removes the row in place.
 templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
-	<div data-testid="report-rule" class="rb-rule" data-rule data-top-level?={ row.Attribute == domain.RuleTopLevel }>
+	<div data-testid="report-rule" class="rb-rule" data-rule>
 		<select data-testid="rule-attribute" name={ ruleRowInput(i, "attribute") } aria-label="What the rule tests">
 			<option value="">Choose…</option>
 			for _, a := range v.Attributes {
 				if row.offers(a) {
-					<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+					<option value={ a.Key } selected?={ a.Key == row.Attribute } data-retired?={ a.Retired }>{ a.Label }</option>
 				}
 			}
 		</select>
@@ -199,20 +202,62 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 				<option value={ op[0] } selected?={ op[0] == row.Op }>{ op[1] }</option>
 			}
 		</select>
-		<select data-testid="rule-values" name={ ruleRowInput(i, "value") } multiple aria-label="Values">
-			for _, a := range v.Attributes {
-				if values := row.offeredValues(a); len(values) > 0 && row.offers(a) {
-					<optgroup label={ a.Label } data-attribute={ a.Key }>
-						for _, val := range values {
-							<option value={ val.Value } selected?={ slices.Contains(row.Values, val.Value) }>{ val.Label }</option>
+		{{ groups := row.valueGroups(v.Attributes) }}
+		<fieldset data-testid="rule-values" class="rb-values" hidden?={ len(groups) == 0 }>
+			<legend class="sr-only">Values</legend>
+			<div class="rb-value-list" data-rule-values>
+				if row.Attribute != "" {
+					for _, g := range groups {
+						for _, val := range g.Values {
+							@reportRuleValue(ruleRowInput(i, "value"), row.valueInputType(), val, slices.Contains(row.Values, val.Value))
 						}
-					</optgroup>
+					}
+				} else {
+					for _, g := range groups {
+						<fieldset data-testid="rule-value-group" class="rb-value-group">
+							<legend>{ g.Label }</legend>
+							for _, val := range g.Values {
+								@reportRuleValue(ruleRowInput(i, "value"), row.valueInputType(), val, slices.Contains(row.Values, val.Value))
+							}
+						</fieldset>
+					}
 				}
-			}
-		</select>
+			</div>
+		</fieldset>
 		<button type="submit" name={ inputRemoveRule } value={ fmt.Sprint(i) } class="btn rb-remove" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
 		@reportBuilderError(v, domain.RuleInput(i))
 	</div>
+}
+
+// reportRuleValue is one value a rule row can test for, as a radio or a
+// checkbox (kind) named name, labelled with the value; a template's carries
+// no name, as script gives it its row's.
+templ reportRuleValue(name, kind string, val ruleValue, checked bool) {
+	<label class="rb-value">
+		if name != "" {
+			<input type={ kind } name={ name } value={ val.Value } checked?={ checked }/>
+		} else {
+			<input type={ kind } value={ val.Value }/>
+		}
+		<span>{ val.Label }</span>
+	</label>
+}
+
+// reportRuleValueTemplates are, outside every rule row, the values script
+// fills a row with when its attribute changes: one inert <template> per
+// attribute a new row may test, holding the values it offers one. A Retired
+// attribute has none: only a row that already tests it offers it, and script
+// keeps that row's own.
+templ reportRuleValueTemplates(attributes []ruleAttribute) {
+	for _, a := range attributes {
+		if values := (reportRuleRow{}).offeredValues(a); !a.Retired && len(values) > 0 {
+			<template data-rule-values-for={ a.Key }>
+				for _, val := range values {
+					@reportRuleValue("", "checkbox", val, false)
+				}
+			</template>
+		}
+	}
 }
 
 // reportBuilderError is why input was refused, beside it, if it was.
@@ -312,10 +357,11 @@ templ reportGoalSearchResults(list string, matches []domain.Goal, needsRule bool
 }
 
 // reportBuilderScript turns the builder to script: each rule row offers only
-// its attribute's values and operators, and shows its first selected value on
-// load, each picker searches in place of its
-// no-script select, adding a chip when a result is picked and removing one at
-// its ×, and either refreshes the rail.
+// its attribute's operators and values, filled from reportRuleValueTemplates
+// as the attribute changes, as radios under "is" and checkboxes otherwise;
+// + Add rule adds a blank row in place and × removes one; each picker
+// searches in place of its no-script select, adding a chip when a result is
+// picked and removing one at its ×; and each refreshes the rail.
 templ reportBuilderScript() {
 	<script>
 		(function () {
@@ -328,46 +374,111 @@ templ reportBuilderScript() {
 				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]],
 				org: [["is", "is in the org of"], ["is any of", "is in the org of any of"], ["is not", "is not in the org of"]]
 			};
-			function narrow(row) {
-				var attribute = row.querySelector('[data-testid="rule-attribute"]').value;
+			function attributeOf(row) { return row.querySelector('[data-testid="rule-attribute"]'); }
+			function listOf(row) { return row.querySelector("[data-rule-values]"); }
+			function narrowOps(row) {
+				var attribute = attributeOf(row).value;
 				var op = row.querySelector('[data-testid="rule-op"]');
-				var values = row.querySelector('[data-testid="rule-values"]');
-				var wanted = ops[attribute] || ops.values;
 				var chosen = op.value;
 				op.textContent = "";
-				wanted.forEach(function (o) {
+				(ops[attribute] || ops.values).forEach(function (o) {
 					op.add(new Option(o[1], o[0], false, o[0] === chosen));
 				});
-				if (!values) return;
-				values.hidden = attribute === "top-level" || attribute === "";
-				// The list holds only the attribute's own values, as plain
-				// options: hiding the others isn't enough, since a phone's
-				// picker shows a hidden option.
-				if (!values.groups) values.groups = Array.from(values.querySelectorAll("optgroup"));
-				var picked = Array.from(values.selectedOptions, function (o) { return o.value; });
-				values.textContent = "";
-				values.groups.forEach(function (group) {
-					if (group.getAttribute("data-attribute") !== attribute) return;
-					group.querySelectorAll("option").forEach(function (o) {
-						values.add(new Option(o.text, o.value, false, picked.indexOf(o.value) >= 0));
-					});
+			}
+			// setKind makes the row's values radios under "is", keeping only
+			// the first chosen, and checkboxes otherwise, keeping every one.
+			function setKind(row) {
+				var radio = row.querySelector('[data-testid="rule-op"]').value === "is";
+				var values = Array.from(listOf(row).querySelectorAll("input"));
+				var chosen = values.map(function (input) { return input.checked; });
+				var kept = false;
+				values.forEach(function (input, i) {
+					input.type = radio ? "radio" : "checkbox";
+					input.checked = chosen[i] && !(radio && kept);
+					if (input.checked) kept = true;
 				});
 			}
-			// reveal scrolls a row's values to its first selected one, top of
-			// the list, moving only the list: left to itself, the browser sets
-			// it on the list's bottom edge, where it can sit half out of view.
-			function reveal(row) {
-				var values = row.querySelector('[data-testid="rule-values"]');
-				var first = values && values.selectedOptions[0];
-				if (!first || values.hidden) return;
-				values.scrollTop += first.getBoundingClientRect().top - values.getBoundingClientRect().top - values.clientTop;
+			// fill gives the row its attribute's values alone: those it was
+			// rendered with when it tests that attribute again, so a Retired
+			// value it holds stays, or else its attribute's template's.
+			function fill(row) {
+				var attribute = attributeOf(row).value;
+				var list = listOf(row);
+				var name = attributeOf(row).name.replace(/\.attribute$/, ".value");
+				var source = null;
+				if (attribute && attribute === row.renderedAttribute) {
+					source = row.renderedValues;
+				} else if (attribute) {
+					var template = form.querySelector('template[data-rule-values-for="' + attribute + '"]');
+					source = template && template.content;
+				}
+				list.textContent = "";
+				if (source) list.appendChild(source.cloneNode(true));
+				list.querySelectorAll("input").forEach(function (input) { input.name = name; });
+				list.closest('[data-testid="rule-values"]').hidden = !list.querySelector("input");
 			}
-			form.querySelectorAll("[data-rule]").forEach(narrow);
-			form.querySelectorAll("[data-rule]").forEach(reveal);
-			// A web font that loads late changes each option's height.
-			if (document.fonts) document.fonts.ready.then(function () { form.querySelectorAll("[data-rule]").forEach(reveal); });
+			function rowsOf() { return Array.from(form.querySelectorAll("[data-rule]")); }
+			rowsOf().forEach(function (row) {
+				narrowOps(row);
+				var attribute = attributeOf(row).value;
+				if (attribute) {
+					row.renderedAttribute = attribute;
+					row.renderedValues = document.createDocumentFragment();
+					Array.from(listOf(row).children).forEach(function (n) { row.renderedValues.appendChild(n.cloneNode(true)); });
+				}
+				fill(row);
+			});
+			// A blank row to add, from the first: what it tests and its
+			// values cleared, and no Retired attribute offered.
+			var blank = rowsOf()[0].cloneNode(true);
+			blank.querySelectorAll('[data-testid="input-error"]').forEach(function (n) { n.remove(); });
+			blank.querySelectorAll("option[data-retired]").forEach(function (o) { o.remove(); });
+			var next = rowsOf().reduce(function (max, row) {
+				return Math.max(max, parseInt(attributeOf(row).name.replace(/^rules\[(\d+)\].*$/, "$1"), 10) + 1);
+			}, 0);
+			var add = form.querySelector('button[name="do"][value="add-rule"]');
+			function addRule() {
+				var row = blank.cloneNode(true);
+				var i = next++;
+				attributeOf(row).name = "rules[" + i + "].attribute";
+				attributeOf(row).value = "";
+				row.querySelector('[data-testid="rule-op"]').name = "rules[" + i + "].op";
+				row.querySelector('button[name="remove-rule"]').value = String(i);
+				var rows = rowsOf();
+				var last = rows[rows.length - 1];
+				if (last) last.after(row); else add.closest("div").before(row);
+				narrowOps(row);
+				row.querySelector('[data-testid="rule-op"]').selectedIndex = 0;
+				fill(row);
+				attributeOf(row).focus();
+				inputs.dispatchEvent(new Event("change"));
+			}
 			form.addEventListener("change", function (e) {
-				if (e.target.matches('[data-testid="rule-attribute"]')) narrow(e.target.closest("[data-rule]"));
+				var row = e.target.closest("[data-rule]");
+				if (!row) return;
+				if (e.target.matches('[data-testid="rule-attribute"]')) {
+					narrowOps(row);
+					fill(row);
+					setKind(row);
+				} else if (e.target.matches('[data-testid="rule-op"]')) {
+					setKind(row);
+				}
+			});
+			form.addEventListener("click", function (e) {
+				if (e.target.closest('button[name="do"][value="add-rule"]')) {
+					e.preventDefault();
+					addRule();
+					return;
+				}
+				var remove = e.target.closest('button[name="remove-rule"]');
+				if (!remove) return;
+				e.preventDefault();
+				var row = remove.closest("[data-rule]");
+				var rows = rowsOf();
+				var after = rows[rows.indexOf(row) + 1];
+				row.remove();
+				if (after) attributeOf(after).focus(); else add.focus();
+				inputs.dispatchEvent(new Event("change"));
 			});
 			form.querySelectorAll("[data-goal-picker] .rb-no-js select").forEach(function (select) {
 				select.disabled = true;
@@ -448,7 +559,14 @@ templ reportBuilderStyles() {
 		.rb-form select[multiple]{width:100%;min-height:8em}
 		.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}
 		.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
-		.rb-rule select[multiple]{flex:1 1 240px;width:auto}
+		.rb-values{flex:1 1 240px;min-width:0;max-height:14em;overflow:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:4px 8px;box-sizing:border-box}
+		.rb-form .rb-values{display:block}
+		.rb-form .rb-values[hidden]{display:none}
+		.rb-value-list{display:flex;flex-direction:column}
+		.rb-form .rb-value-group{gap:0;padding:4px 0}
+		.rb-form .rb-value-group>legend{font-size:var(--text-secondary);color:var(--color-ink-2);padding:0 0 4px}
+		.rb-value{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}
+		@media (pointer:coarse){.rb-value{min-height:44px}}
 		.rb-input-error{display:block;flex-basis:100%;font-size:var(--text-secondary);color:var(--color-danger-ink)}
 		.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}
 		.rb-problems p,.rb-problems ul{margin:0}
@@ -458,7 +576,6 @@ templ reportBuilderStyles() {
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 		.rb-form:not(.rb-js) .rb-chip{padding:4px 12px}
 		.rb-form.rb-js .rb-no-js{display:none}
-		.rb-form:not(.rb-js) [data-top-level] [data-testid="rule-values"]{display:none}
 		.rb-picker input[type=search]{width:100%}
 		.rb-picker>.help{align-self:flex-start}
 		.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}

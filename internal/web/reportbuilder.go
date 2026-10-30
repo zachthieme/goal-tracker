@@ -138,6 +138,34 @@ func (row reportRuleRow) offeredValues(a ruleAttribute) []ruleValue {
 	return out
 }
 
+// valueGroups are the attributes, each with only its values the row offers,
+// whose values the row shows: the one it tests, or every one it offers when
+// it tests none yet. An attribute with no value to offer, such as Top-level,
+// is left out.
+func (row reportRuleRow) valueGroups(attributes []ruleAttribute) []ruleAttribute {
+	var out []ruleAttribute
+	for _, a := range attributes {
+		if !row.offers(a) || (row.Attribute != "" && a.Key != row.Attribute) {
+			continue
+		}
+		if values := row.offeredValues(a); len(values) > 0 {
+			a.Values = values
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// valueInputType is how the row's values are chosen: as radios when it tests
+// an attribute "is" one value, the operator a row starts with, and as
+// checkboxes for "is any of" and "is not", or before it tests anything.
+func (row reportRuleRow) valueInputType() string {
+	if row.Attribute != "" && (row.Op == domain.RuleIs || row.Op == "") {
+		return "radio"
+	}
+	return "checkbox"
+}
+
 // The builder's Goal lists, each posted once per Goal in it.
 const (
 	inputPicked  = "picked"
