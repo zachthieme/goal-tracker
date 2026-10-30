@@ -592,10 +592,6 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	if err != nil {
 		return err
 	}
-	dims, err := s.svc.ListDimensions(r.Context())
-	if err != nil {
-		return err
-	}
 	fields, err := s.svc.ListFields(r.Context())
 	if err != nil {
 		return err
@@ -606,20 +602,15 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
-	managers, err := s.svc.ReportRuleManagers(r.Context())
+	var rules []domain.ReportRule
+	for _, row := range v.Rules {
+		rules = append(rules, row.rule())
+	}
+	attributes, err := s.svc.ReportRuleAttributes(r.Context(), goals, rules)
 	if err != nil {
 		return err
 	}
-	owners := distinctOwners(goals)
-	ownerPeople, err := s.withRuleNamedPeople(r, v.Rules, domain.RuleOwner, owners)
-	if err != nil {
-		return err
-	}
-	orgPeople, err := s.withRuleNamedPeople(r, v.Rules, domain.RuleOrg, append(slices.Clone(owners), managers...))
-	if err != nil {
-		return err
-	}
-	v.Attributes = ruleAttributes(dims, ownerPeople, orgPeople, len(managers) > 0)
+	v.Attributes = builderRuleAttributes(attributes)
 	sel, err := s.selectByReportRules(r, *v)
 	if err != nil {
 		return err
@@ -633,90 +624,23 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	return err
 }
 
-// withRuleNamedPeople is people, one each in first-seen order, then anyone a
-// row testing attribute (domain.RuleOwner or domain.RuleOrg) already names who
-// isn't among them, so a saved rule keeps its people however the Goals'
-// Owners or the directory have changed. The Owner rule offers the Owners so;
-// the Org rule the Owners, then each Manager who isn't one.
-func (s *Server) withRuleNamedPeople(r *http.Request, rows []reportRuleRow, attribute string, people []domain.Account) ([]domain.Account, error) {
-	var out []domain.Account
-	add := func(a domain.Account) {
-		if !slices.ContainsFunc(out, func(p domain.Account) bool { return p.ID == a.ID }) {
-			out = append(out, a)
+// builderRuleAttributes are the domain's rule attributes as the builder's
+// form posts them: each keyed by dimensionAttribute for a Dimension, or else
+// by its attribute, and each value posting that key and the domain's value
+// joined by "=".
+func builderRuleAttributes(attributes []domain.RuleAttribute) []ruleAttribute {
+	out := make([]ruleAttribute, 0, len(attributes))
+	for _, a := range attributes {
+		key := a.Attribute
+		if a.Attribute == domain.RuleDimension {
+			key = dimensionAttribute(a.DimensionID)
 		}
-	}
-	for _, p := range people {
-		add(p)
-	}
-	for _, row := range rows {
-		if row.Attribute != attribute {
-			continue
+		attr := ruleAttribute{Key: key, Label: a.Label, Retired: a.Retired}
+		for _, v := range a.Values {
+			attr.Values = append(attr.Values, ruleValue{Value: key + "=" + v.Value, Label: v.Label, Retired: v.Retired})
 		}
-		for _, value := range row.rule().Values {
-			id, err := strconv.ParseInt(value, 10, 64)
-			if err != nil {
-				continue
-			}
-			a, err := s.svc.Account(r.Context(), id)
-			if errors.Is(err, domain.ErrNotFound) {
-				continue
-			}
-			if err != nil {
-				return nil, err
-			}
-			add(a)
-		}
+		out = append(out, attr)
 	}
-	return out, nil
-}
-
-// ruleAttributes are what a rule can test: each Dimension and its values,
-// then Owner, the Owner's org, Lifecycle, Health and Top-level. A Retired
-// Dimension or value is marked, as only a saved rule that already tests it
-// still offers it; so is the Owner's org when no one has a Manager (anyManager
-// false), as an Org is then only its person. Fields are not among them: they
-// describe a Goal and never select it (ADR 0005).
-func ruleAttributes(dims []domain.Dimension, owners, orgPeople []domain.Account, anyManager bool) []ruleAttribute {
-	var out []ruleAttribute
-	attribute := func(key, label string, values [][2]string) {
-		a := ruleAttribute{Key: key, Label: label}
-		for _, v := range values {
-			a.Values = append(a.Values, ruleValue{Value: key + "=" + v[0], Label: v[1]})
-		}
-		out = append(out, a)
-	}
-	for _, d := range dims {
-		var values [][2]string
-		for _, v := range d.Values {
-			values = append(values, [2]string{strconv.FormatInt(v.ID, 10), v.Value})
-		}
-		attribute(dimensionAttribute(d.ID), d.Name, values)
-		a := &out[len(out)-1]
-		a.Retired = d.Retired
-		for i, v := range d.Values {
-			a.Values[i].Retired = d.Retired || v.Retired
-		}
-	}
-	people := func(accounts []domain.Account) [][2]string {
-		var out [][2]string
-		for _, a := range accounts {
-			out = append(out, [2]string{strconv.FormatInt(a.ID, 10), a.Label()})
-		}
-		return out
-	}
-	attribute(domain.RuleOwner, "Owner", people(owners))
-	attribute(domain.RuleOrg, "Owner's org", people(orgPeople))
-	out[len(out)-1].Retired = !anyManager
-	var lifecycles, healths [][2]string
-	for _, l := range domain.Lifecycles() {
-		lifecycles = append(lifecycles, [2]string{l, l})
-	}
-	for _, h := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
-		healths = append(healths, [2]string{h, h})
-	}
-	attribute(domain.RuleLifecycle, "Lifecycle", lifecycles)
-	attribute(domain.RuleHealth, "Health", healths)
-	attribute(domain.RuleTopLevel, "Top-level", nil)
 	return out
 }
 
