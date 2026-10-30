@@ -449,3 +449,28 @@ func TestByPublishingNeedRanksWhatNeedsPublishingFirst(t *testing.T) {
 		t.Errorf("ranked %q, want %q", got, want)
 	}
 }
+
+// A Report's counts are what Publish… says it will freeze: its Goals,
+// exception blocks and one-line Goals alike, its exceptions, and the
+// Highlights its narrative picks across every section. The Highlights it
+// offers to pick, and the narrative's own notes, are not counted.
+func TestReportCountsItsGoalsExceptionsAndPickedHighlights(t *testing.T) {
+	t.Parallel()
+
+	goal := func(id int64) domain.Goal { return domain.Goal{ID: id, Title: fmt.Sprintf("Goal %d", id)} }
+	picked := func(n int) []domain.NarrativeHighlight { return make([]domain.NarrativeHighlight, n) }
+	r := domain.Report{
+		Exceptions: []domain.ReportBlock{{Goal: goal(1)}, {Goal: goal(2)}},
+		Lines:      []domain.SelectedGoal{{Goal: goal(3)}, {Goal: goal(4)}, {Goal: goal(5)}},
+		Highlights: picked(7),
+		Narrative: []domain.NarrativeSection{
+			{Kind: domain.HighlightInsight, Highlights: picked(1)},
+			{Kind: domain.HighlightAccomplishment, Notes: []string{"Shipped."}, Highlights: picked(2)},
+			{Kind: domain.HighlightMiss, Notes: []string{"Slipped a week."}},
+		},
+	}
+
+	if got, want := r.Counts(), (domain.ReportCounts{Goals: 5, Exceptions: 2, Highlights: 3}); got != want {
+		t.Errorf("Counts = %+v, want %+v", got, want)
+	}
+}

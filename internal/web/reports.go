@@ -307,12 +307,9 @@ func newBaselineChip(r domain.Report, chosen, published bool, now time.Time, loc
 // in the draft, its exceptions, the Highlights picked into its saved
 // narrative, and the baseline as the chip labels it.
 func publishSummary(r domain.Report, chip baselineChip) string {
-	highlights := 0
-	for _, s := range r.Narrative {
-		highlights += len(s.Highlights)
-	}
+	c := r.Counts()
 	return fmt.Sprintf("%s · %s · %s · changes since %s. Readers can comment on the frozen copy.",
-		plural(len(r.Exceptions)+len(r.Lines), "Goal"), plural(len(r.Exceptions), "exception"), plural(highlights, "Highlight"), chip.Label)
+		plural(c.Goals, "Goal"), plural(c.Exceptions, "exception"), plural(c.Highlights, "Highlight"), chip.Label)
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next

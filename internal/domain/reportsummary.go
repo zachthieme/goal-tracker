@@ -98,6 +98,24 @@ func (r Report) HealthCounts() HealthCounts {
 	return c
 }
 
+// ReportCounts are what a Report holds, as Publish… says it will freeze:
+// its Goals, how many of them are exceptions, and how many Highlights its
+// narrative picks.
+type ReportCounts struct {
+	Goals, Exceptions, Highlights int
+}
+
+// Counts counts r's selected Goals, exceptions first, its exceptions, and the
+// Highlights picked into each section of its narrative. Like HealthCounts it
+// reads only r.
+func (r Report) Counts() ReportCounts {
+	c := ReportCounts{Goals: len(r.selected()), Exceptions: len(r.Exceptions)}
+	for _, s := range r.Narrative {
+		c.Highlights += len(s.Highlights)
+	}
+	return c
+}
+
 // ReportSummaries summarises every saved Report Definition, ordered by name,
 // each drafted for its counts.
 func (s *Service) ReportSummaries(ctx context.Context) ([]ReportSummary, error) {
@@ -131,7 +149,7 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 // needn't draft it again.
 func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary, error) {
 	def := r.Definition
-	sum := ReportSummary{Definition: def, Goals: len(r.selected()), Health: r.HealthCounts()}
+	sum := ReportSummary{Definition: def, Goals: r.Counts().Goals, Health: r.HealthCounts()}
 	if r.Previous.ID != 0 {
 		pub, err := s.GetPublication(ctx, r.Previous.ID)
 		if err != nil {
