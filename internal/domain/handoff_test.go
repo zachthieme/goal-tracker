@@ -626,6 +626,9 @@ func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
 	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
 		t.Fatalf("history = %+v, want the one cancelled Handoff", history)
 	}
+	if by := history[0].CancelledBy; by == nil || by.ID != boss.ID {
+		t.Errorf("CancelledBy = %+v, want the Admin who marked Pat Departed", by)
+	}
 	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("accept cancelled Handoff err = %v, want ErrValidation", err)
 	}
@@ -961,6 +964,9 @@ func TestReassignCancelsThePendingHandoff(t *testing.T) {
 	if got := history[0]; got.ID != ho.ID || got.Status != domain.HandoffCancelled || got.From.ID != sam.ID || got.To.ID != pat.ID {
 		t.Errorf("history[0] = %+v, want Sam's Handoff to Pat cancelled", got)
 	}
+	if by := history[0].CancelledBy; by == nil || by.ID != boss.ID {
+		t.Errorf("history[0].CancelledBy = %+v, want the Admin who reassigned the Goal", by)
+	}
 	if got := history[1]; got.Status != domain.HandoffReassigned || got.From.ID != sam.ID || got.To.ID != cal.ID {
 		t.Errorf("history[1] = %+v, want the Reassign from Sam to Cal", got)
 	}
@@ -1263,5 +1269,196 @@ func TestHandoffByEmailRefusesAMissingGoal(t *testing.T) {
 	}
 	if _, err := h.Service.ReassignGoalByEmail(ctx, admin.ID, 9999, "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ReassignGoalByEmail on a missing Goal = %v, want ErrNotFound", err)
+	}
+}
+
+// The Owner who started a Handoff cancels it: it is kept in the Goal's
+// ownership history as cancelled, by them, ownership and Delegates stay as
+// they were, and a new Handoff of the Goal may then be started (CONTEXT.md:
+// Handoff).
+func TestTheOwnerWhoStartedAHandoffCancelsIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	dee := h.SignIn("dee@example.com")
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dee, goal.ID)
+	ho := h.StartHandoff(sam, goal.ID, pat)
+
+	cancelled, err := h.Service.CancelHandoff(ctx, ho.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("CancelHandoff: %v", err)
+	}
+	if cancelled.Status != domain.HandoffCancelled {
+		t.Errorf("Status = %q, want %q", cancelled.Status, domain.HandoffCancelled)
+	}
+
+	history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
+		t.Fatalf("history = %+v, want the one cancelled Handoff", history)
+	}
+	if by := history[0].CancelledBy; by == nil || by.ID != sam.ID {
+		t.Errorf("CancelledBy = %+v, want Sam", by)
+	}
+	if g, _ := h.Service.ViewGoal(ctx, goal.ID); g.Owner.ID != sam.ID {
+		t.Errorf("Owner = %d, want Sam (%d)", g.Owner.ID, sam.ID)
+	}
+	if delegates, err := h.Service.ListDelegates(ctx, goal.ID); err != nil || len(delegates) != 1 || delegates[0].ID != dee.ID {
+		t.Errorf("Delegates = %+v, %v; want Dee alone", delegates, err)
+	}
+	if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 0 {
+		t.Errorf("pending for Pat after the cancel = %+v, want none", pending)
+	}
+
+	h.StartHandoff(sam, goal.ID, mel)
+}
+
+// An Admin cancels a Handoff the Owner started, and is recorded as who
+// cancelled it. Its proposed new Owner and anyone else may not, and the
+// Handoff stays pending when they try.
+func TestAnAdminCancelsAHandoffAndNoOneElseDoes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	eve := h.SignIn("eve@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := h.StartHandoff(sam, goal.ID, pat)
+
+	for name, actor := range map[string]domain.Account{"the proposed new Owner": pat, "a stranger": eve} {
+		_, err := h.Service.CancelHandoff(ctx, ho.ID, actor.ID)
+		if !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("CancelHandoff by %s: err = %v, want ErrNotAuthorized", name, err)
+		} else if got, want := domain.Reason(err), "only the person who started a Handoff or an Admin may cancel it"; got != want {
+			t.Errorf("CancelHandoff by %s: Reason = %q, want %q", name, got, want)
+		}
+	}
+	if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 1 {
+		t.Fatalf("pending for Pat after the refusals = %+v, want the one Handoff", pending)
+	}
+
+	if _, err := h.Service.CancelHandoff(ctx, ho.ID, boss.ID); err != nil {
+		t.Fatalf("CancelHandoff by the Admin: %v", err)
+	}
+	history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+	if err != nil || len(history) != 1 || history[0].Status != domain.HandoffCancelled {
+		t.Fatalf("OwnershipHistory = %+v, %v; want the one cancelled Handoff", history, err)
+	}
+	if by := history[0].CancelledBy; by == nil || by.ID != boss.ID {
+		t.Errorf("CancelledBy = %+v, want the Admin", by)
+	}
+}
+
+// Cancelling a Handoff that is no longer pending is refused saying how it was
+// decided, as deciding it again is; one that doesn't exist is not found.
+func TestCancellingADecidedHandoffSaysHowItWasDecided(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+
+	accepted := h.StartHandoff(sam, h.CreateGoal(sam, "Accepted", "why").ID, pat)
+	if _, err := h.Service.AcceptHandoff(ctx, accepted.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+	rejected := h.StartHandoff(sam, h.CreateGoal(sam, "Rejected", "why").ID, pat)
+	if _, err := h.Service.RejectHandoff(ctx, rejected.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+	cancelled := h.StartHandoff(sam, h.CreateGoal(sam, "Cancelled", "why").ID, pat)
+	if _, err := h.Service.CancelHandoff(ctx, cancelled.ID, sam.ID); err != nil {
+		t.Fatalf("CancelHandoff: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name      string
+		handoffID int64
+		reason    string
+	}{
+		{"accepted", accepted.ID, "this Handoff was already accepted"},
+		{"rejected", rejected.ID, "this Handoff was already rejected"},
+		{"cancelled", cancelled.ID, "this Handoff was cancelled"},
+	} {
+		_, err := h.Service.CancelHandoff(ctx, tc.handoffID, sam.ID)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s: err = %v, want ErrValidation", tc.name, err)
+		} else if got := domain.Reason(err); got != tc.reason {
+			t.Errorf("%s: Reason = %q, want %q", tc.name, got, tc.reason)
+		}
+	}
+	if _, err := h.Service.CancelHandoff(ctx, 4242, sam.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("CancelHandoff of no Handoff: err = %v, want ErrNotFound", err)
+	}
+}
+
+// A second Handoff of a Goal while one is pending is refused, naming whom the
+// pending one is to and how to clear it.
+func TestASecondHandoffNamesThePendingOne(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.StartHandoff(sam, goal.ID, pat)
+
+	_, err := h.Service.StartHandoff(context.Background(), domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: mel.ID, ActorID: sam.ID})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("second StartHandoff: err = %v, want ErrValidation", err)
+	}
+	if got, want := domain.Reason(err), "a Handoff to Pat Lee is already pending; cancel it to start another"; got != want {
+		t.Errorf("Reason = %q, want %q", got, want)
+	}
+}
+
+// StartedHandoffs lists the pending Handoffs a person started, oldest first:
+// none someone else started, and none decided.
+func TestStartedHandoffsAreThePendingOnesThePersonStarted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	mel := h.SignIn("mel@example.com")
+	first := h.StartHandoff(sam, h.CreateGoal(sam, "First", "why").ID, pat)
+	second := h.StartHandoff(sam, h.CreateGoal(sam, "Second", "why").ID, mel)
+	h.StartHandoff(mel, h.CreateGoal(mel, "Mel's", "why").ID, pat)
+	accepted := h.StartHandoff(sam, h.CreateGoal(sam, "Accepted", "why").ID, pat)
+	if _, err := h.Service.AcceptHandoff(ctx, accepted.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+	cancelled := h.StartHandoff(sam, h.CreateGoal(sam, "Cancelled", "why").ID, pat)
+	if _, err := h.Service.CancelHandoff(ctx, cancelled.ID, sam.ID); err != nil {
+		t.Fatalf("CancelHandoff: %v", err)
+	}
+
+	started, err := h.Service.StartedHandoffs(ctx, sam.ID)
+	if err != nil {
+		t.Fatalf("StartedHandoffs: %v", err)
+	}
+	var got []string
+	for _, ho := range started {
+		got = append(got, fmt.Sprintf("%d %s → %s", ho.ID, ho.Goal.Title, ho.To.Email))
+	}
+	want := []string{
+		fmt.Sprintf("%d First → pat@example.com", first.ID),
+		fmt.Sprintf("%d Second → mel@example.com", second.ID),
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("StartedHandoffs = %q, want %q", got, want)
 	}
 }

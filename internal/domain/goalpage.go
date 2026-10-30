@@ -80,6 +80,9 @@ type GoalPage struct {
 	// earliest first.
 	PriorDueDates  []time.Time
 	MilestoneChurn int
+	// PendingHandoff is its pending Handoff, from its ownership history
+	// (OwnershipHistory), nil when it has none.
+	PendingHandoff *Handoff
 	Signals        GoalSignals
 	Freshness      Freshness
 	Required       []RequiredValue
@@ -154,6 +157,9 @@ type GoalPermissions struct {
 	// (StartHandoff); Reassign: an Admin, once it is Ownerless (ReassignGoal).
 	HandOff  bool
 	Reassign bool
+	// CancelHandoff: whoever started its pending Handoff or an Admin
+	// (CancelHandoff), false when it has none. Only the Goal page sets it.
+	CancelHandoff bool
 	// MarkOwnerDeparted and MarkOwnerReturned: an Admin, whichever its Owner
 	// isn't yet (MarkDeparted, MarkReturned); MarkTopLevel: an Admin, to mark
 	// or unmark it (MarkTopLevel).
@@ -435,7 +441,8 @@ func (s *Service) readGoalPageValues(ctx context.Context, p *GoalPage) error {
 }
 
 // readGoalPageHistory reads the rest of what p.Goal's History and discussion
-// list, each in its own query, returning what only its History lists.
+// list, each in its own query, returning what only its History lists, and
+// finds its pending Handoff in the ownership history it read.
 func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) (goalEventSources, error) {
 	id := p.Goal.ID
 	var src goalEventSources
@@ -462,7 +469,19 @@ func (s *Service) readGoalPageHistory(ctx context.Context, p *GoalPage) (goalEve
 			return goalEventSources{}, fmt.Errorf("load %s: %w", read.what, err)
 		}
 	}
+	p.PendingHandoff = pendingHandoffOf(src.Ownership)
 	return src, nil
+}
+
+// pendingHandoffOf is the pending Handoff among a Goal's ownership history,
+// nil when none is.
+func pendingHandoffOf(history []Handoff) *Handoff {
+	for i := range history {
+		if history[i].Status == HandoffPending {
+			return &history[i]
+		}
+	}
+	return nil
 }
 
 // goalPageAccounts reads at once the viewer and everyone else the page names
@@ -572,12 +591,12 @@ func (s *Service) deriveGoalPage(p *GoalPage) noChangeVerdict {
 	return noChange
 }
 
-// permitGoalPage decides what p's viewer, actorID, may do on its Goal and
-// which of its links they may remove, by the rule each command evaluates
-// (goalrules.go), judged from what the page read; lists which of the Parent
-// suggestions are open ones they see; and, for one who may check in, reads
-// the pending Draft Highlights only they see and gives them noChange's
-// refusal of a No change on it.
+// permitGoalPage decides what p's viewer, actorID, may do on its Goal and its
+// pending Handoff, and which of its links they may remove, by the rule each
+// command evaluates (goalrules.go), judged from what the page read; lists
+// which of the Parent suggestions are open ones they see; and, for one who
+// may check in, reads the pending Draft Highlights only they see and gives
+// them noChange's refusal of a No change on it.
 func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64, account func(id int64) (Account, error), noChange noChangeVerdict, suggestions []ParentSuggestion) error {
 	g := p.Goal
 	viewer, err := account(actorID)
@@ -607,6 +626,9 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 	}
 	p.CanCheckin = permits(checkinAuthorRuleRefusal(actor, g))
 	perms := goalPermissionsFor(actor, g, &noChange, permits)
+	if ho := p.PendingHandoff; ho != nil {
+		perms.CancelHandoff = permits(handoffCancelRefusal(actor, ho.InitiatedBy.ID))
+	}
 	removable := make(map[int64]bool, len(p.Parents)+len(p.Children))
 	for _, l := range p.Parents {
 		removable[l.LinkID] = permits(linkRemoveRefusal(actor, l.Goal, g))

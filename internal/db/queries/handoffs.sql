@@ -14,14 +14,23 @@ SELECT * FROM handoffs WHERE goal_id = ? AND status = 'pending' LIMIT 1;
 -- commands deciding it together only one changes it.
 UPDATE handoffs SET status = ? WHERE id = ? AND status = 'pending';
 
+-- name: CancelPendingHandoff :execrows
+-- Cancels one pending Handoff, recording who cancelled it, only if it is
+-- still pending, so of two commands deciding it together only one changes it.
+UPDATE handoffs SET status = 'cancelled', cancelled_by = @cancelled_by
+WHERE id = @id AND status = 'pending';
+
 -- name: ListHandoffsForGoal :many
 -- A Goal's ownership history: every Handoff and Admin Reassign, oldest first,
--- with the from, to, and initiating Accounts resolved for display.
-SELECT sqlc.embed(handoffs), sqlc.embed(from_acct), sqlc.embed(to_acct), sqlc.embed(initiator)
+-- with the from, to, and initiating Accounts resolved for display, and the
+-- canceller's, NULL when no one is recorded as having cancelled it.
+SELECT sqlc.embed(handoffs), sqlc.embed(from_acct), sqlc.embed(to_acct), sqlc.embed(initiator),
+       canceller.id AS canceller_id, canceller.name AS canceller_name, canceller.email AS canceller_email
 FROM handoffs
 JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
 JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
 JOIN accounts initiator ON initiator.id = handoffs.initiated_by
+LEFT JOIN accounts canceller ON canceller.id = handoffs.cancelled_by
 WHERE handoffs.goal_id = @goal_id
 ORDER BY handoffs.created_at, handoffs.id;
 
@@ -36,14 +45,28 @@ JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
 WHERE handoffs.to_owner = @to_owner AND handoffs.status = 'pending'
 ORDER BY handoffs.created_at, handoffs.id;
 
+-- name: ListPendingHandoffsStartedBy :many
+-- Pending Handoffs a person started, awaiting the proposed new Owner, oldest
+-- first, with the Goal and both the current and proposed Owners resolved for
+-- display.
+SELECT sqlc.embed(handoffs), sqlc.embed(goal), sqlc.embed(from_acct), sqlc.embed(to_acct)
+FROM handoffs
+JOIN goals goal ON goal.id = handoffs.goal_id
+JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
+JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
+WHERE handoffs.initiated_by = @initiated_by AND handoffs.status = 'pending'
+ORDER BY handoffs.created_at, handoffs.id;
+
 -- name: SetGoalOwner :exec
 -- Move a Goal to a new Owner: used when a Handoff is accepted and when an Admin
 -- reassigns an Ownerless Goal.
 UPDATE goals SET owner_id = ? WHERE id = ?;
 
 -- name: CancelPendingHandoffsTo :exec
--- Cancel every pending Handoff to a person who has left the org.
-UPDATE handoffs SET status = 'cancelled' WHERE to_owner = ? AND status = 'pending';
+-- Cancel every pending Handoff to a person who has left the org, recording
+-- the Admin who marked them Departed as who cancelled it.
+UPDATE handoffs SET status = 'cancelled', cancelled_by = @cancelled_by
+WHERE to_owner = @to_owner AND status = 'pending';
 
 -- name: SetAccountDeparted :exec
 -- Record that a person has left the org, so their Goals become Ownerless.

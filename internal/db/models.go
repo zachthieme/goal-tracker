@@ -218,6 +218,7 @@ type Handoff struct {
 	Status      string
 	InitiatedBy int64
 	CreatedAt   string
+	CancelledBy *int64
 }
 
 type Highlight struct {

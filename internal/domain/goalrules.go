@@ -440,6 +440,25 @@ func handoffRefusal(a goalActor, g Goal) error {
 	return nil
 }
 
+// handoffCancelRefusal is CancelHandoff's rule for a Handoff initiatedBy
+// started: that person or an Admin, who hasn't Departed (CONTEXT.md:
+// Handoff). The Goal page asks it of the Goal's pending Handoff.
+func handoffCancelRefusal(a goalActor, initiatedBy int64) error {
+	const act = "cancel a Handoff"
+	if err := departedActorRefusal(a, act); err != nil {
+		return err
+	}
+	if a.id == initiatedBy {
+		return nil
+	}
+	if err := goalAdminRefusal(a); errors.Is(err, ErrNotAuthorized) {
+		return Refuse(ErrNotAuthorized, "only the person who started a Handoff or an Admin may cancel it")
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
 // reassignRefusal is ReassignGoal's rule: an Admin, once g is Ownerless.
 func reassignRefusal(a goalActor, g Goal) error {
 	if err := goalAdminRefusal(a); err != nil {

@@ -202,9 +202,10 @@ func (s *Service) SetName(ctx context.Context, accountID int64, name string) err
 
 // MarkDeparted records that the person behind accountID has left the company, so the
 // Goals they still own become Ownerless (CONTEXT.md: Ownerless), and, in the
-// same transaction, cancels every pending Handoff to them and ends every session
-// they have (EndSessions), so marking them returned later doesn't sign a browser
-// from before the departure back in. Pending Handoffs they started as Owner stay
+// same transaction, cancels every pending Handoff to them, recording the Admin
+// as who cancelled it, and ends every session they have (EndSessions), so
+// marking them returned later doesn't sign a browser from before the departure
+// back in. Pending Handoffs they started as Owner stay
 // pending, so the new Owner can still accept them. Only an Admin may do this,
 // and only of someone who hasn't Departed already (markDepartedRefusal);
 // actorID identifies the acting Account. An accountID naming no Account is
@@ -227,7 +228,7 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 		}); err != nil {
 			return fmt.Errorf("mark departed: %w", err)
 		}
-		if err := tx.queries.CancelPendingHandoffsTo(ctx, accountID); err != nil {
+		if err := tx.queries.CancelPendingHandoffsTo(ctx, db.CancelPendingHandoffsToParams{CancelledBy: &actorID, ToOwner: accountID}); err != nil {
 			return fmt.Errorf("cancel handoffs: %w", err)
 		}
 		return tx.EndSessions(ctx, accountID)
