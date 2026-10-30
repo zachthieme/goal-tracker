@@ -31,6 +31,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		return
 	}
 	view.Toast = s.undoToast(w, r, current)
+	r = takeActionItemRefusal(w, r)
 	view.Open = goalForm(r.URL.Query().Get("open"))
 	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))

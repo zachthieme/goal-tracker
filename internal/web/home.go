@@ -17,6 +17,7 @@ import (
 // handleHome is the signed-in person's week: the Goals they should check in
 // on, and what else is waiting on them.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	r = takeActionItemRefusal(w, r)
 	v, err := s.loadHome(r.Context(), current.ID)
 	if err == nil {
 		v.NoChangeRefused, err = s.refusedNoChanges(r.Context(), v.Due)

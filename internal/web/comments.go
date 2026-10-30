@@ -244,21 +244,27 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	var unparsed formProblems
-	due := unparsed.date("due", r.FormValue("due"), "")
-	if err := unparsed.err(); err != nil {
-		s.writeCommentError(w, r, publicationPath(pub), err)
-		return
-	}
 	commentID, _ := strconv.ParseInt(r.FormValue("comment"), 10, 64)
+	refused := func(err error) {
+		form := "action-item-form"
+		if commentID != 0 {
+			form = "comment-action-item-form"
+		}
+		s.refuseActionItem(w, r, form, commentID, "Can't add Action Item", publicationPath(pub), err)
+	}
+	var unparsed formProblems
+	due := unparsed.date(domain.InputActionItemDue, r.FormValue("due"), "")
 	var goalID int64
 	if v := r.FormValue("goal"); v != "" {
 		id, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			s.writeCommentError(w, r, publicationPath(pub), domain.Refuse(domain.ErrValidation, "the Goal must be a Goal's id"))
-			return
+			unparsed.add(domain.InputActionItemGoal, "the Goal must be a Goal's id")
 		}
 		goalID = id
+	}
+	if err := unparsed.err(); err != nil {
+		refused(err)
+		return
 	}
 	if _, err := s.svc.RaiseActionItemByEmail(r.Context(), current.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID,
@@ -267,7 +273,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		Text:          r.FormValue("text"),
 		DueDate:       due,
 	}, r.FormValue("owner")); err != nil {
-		s.writeCommentError(w, r, publicationPath(pub), err)
+		refused(err)
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub)+"#action-items", http.StatusSeeOther)
@@ -287,7 +293,7 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 	}
 	item, err := s.svc.CloseActionItem(r.Context(), current.ID, id, r.FormValue("note"))
 	if err != nil {
-		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
+		s.refuseActionItem(w, r, "close-action-item", id, "Can't close Action Item", s.actionItemPagePath(r, id), err)
 		return
 	}
 	back := returnTo(r, fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID))
@@ -309,16 +315,17 @@ func (s *Server) handleReassignActionItem(w http.ResponseWriter, r *http.Request
 	}
 	item, err := s.svc.ReassignActionItemByEmail(r.Context(), current.ID, id, r.FormValue("owner"))
 	if err != nil {
-		s.writeCommentError(w, r, s.actionItemPagePath(r, id), err)
+		s.refuseActionItem(w, r, "reassign-action-item", id, "Can't reassign Action Item", s.actionItemPagePath(r, id), err)
 		return
 	}
 	back := returnTo(r, fmt.Sprintf("/reports/%d/publications/%d", item.DefinitionID, item.PublicationID))
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
-// writeCommentError answers a domain refusal from a discussion — a comment on
-// a Goal or a Report, or an Action Item — with the refusal page, linking Back
-// to back, the page it was on; a missing record is the Not found page.
+// writeCommentError answers a refused comment or reply, on a Goal or a
+// Report, with the refusal page, headed Can't comment, linking Back to back,
+// the page it was on; a missing record is the Not found page. A refused
+// Action Item is refuseActionItem's.
 func (s *Server) writeCommentError(w http.ResponseWriter, r *http.Request, back string, err error) {
 	s.refuse(w, r, "Can't comment", back, err)
 }

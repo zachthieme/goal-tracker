@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
@@ -219,19 +221,19 @@ func TestDirectActionItemNamesAGoalOverHTTP(t *testing.T) {
 		t.Errorf("raised Action Items %q, want the one about Launch in EU", item)
 	}
 
-	resp = postForm(t, client, pubURL+"/action-items", url.Values{
+	postRefusedBack(t, client, pubURL+"/action-items", url.Values{
 		"text": {"Book the EU legal review."}, "goal": {"Launch in EU"}, "owner": {"author@example.com"}, "due": {"2026-02-01"},
-	})
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("a goal that isn't a number: status %d, want 422", resp.StatusCode)
+	}, strings.TrimPrefix(pubURL, ts.URL))
+	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 1 {
+		t.Errorf("Action Items = %+v (%v), want only the one about Launch in EU", items, err)
 	}
 }
 
-// An Action Item due on a day that isn't a date is refused on the refusal
-// page, 422, quoting what was typed, with a way Back to the publication, and
-// no Action Item is raised.
-func TestActionItemDueDateThatIsntADateIsRefusedOverHTTP(t *testing.T) {
+// An Action Item due on a day that isn't a date, about a Goal that isn't a
+// Goal's id, comes back to the publication's form with both reasons, each
+// beside its field, quoting what was typed, and what else was typed kept; no
+// Action Item is raised (#660).
+func TestActionItemDueAndGoalThatDontParseComeBackToTheirFieldsOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -243,15 +245,21 @@ func TestActionItemDueDateThatIsntADateIsRefusedOverHTTP(t *testing.T) {
 	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
 	client := signInClient(t, ts.URL, "author@example.com")
 
-	resp := postForm(t, client, ts.URL+pubPath+"/action-items", url.Values{
-		"text": {"Book the EU legal review."}, "owner": {"author@example.com"}, "due": {"someday"},
-	})
-	defer func() { _ = resp.Body.Close() }()
-	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("status = %d, want 422", resp.StatusCode)
+	postRefusedBack(t, client, ts.URL+pubPath+"/action-items", url.Values{
+		"text": {"Book the EU legal review."}, "owner": {"author@example.com"}, "due": {"someday"}, "goal": {"Launch in EU"},
+	}, pubPath)
+
+	form := findByTestID(t, getPage(t, client, ts.URL+pubPath), "action-item-form")
+	for name, want := range map[string]string{"due": `"someday" isn't a date.`, "goal": "The Goal must be a Goal's id."} {
+		if f := formField(t, form, name); attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
+			t.Errorf("%s is aria-invalid %q, described %q; want it invalid, described %q", name, attrOf(f.Node, "aria-invalid"), f.Description, want)
+		}
 	}
-	assertRefusalPage(t, parsePage(t, body), "Can't comment", `"someday" isn't a date.`, pubPath)
+	for name, want := range map[string]string{"text": "Book the EU legal review.", "owner": "author@example.com"} {
+		if got := formField(t, form, name).Value; got != want {
+			t.Errorf("%s holds %q, want %q as posted", name, got, want)
+		}
+	}
 	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 0 {
 		t.Errorf("Action Items = %+v (%v), want none raised", items, err)
 	}
@@ -475,11 +483,7 @@ func TestAuthorReassignsAnActionItemOverHTTP(t *testing.T) {
 		t.Errorf("the reassigned item doesn't say who had it before, after its owner; row:\n%s", row)
 	}
 
-	resp = postForm(t, authorClient, reassignURL, url.Values{"owner": {"nobody@example.com"}, "return": {pubPath}})
-	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Errorf("reassigned to an unknown email: status %d, want 422", resp.StatusCode)
-	}
+	postRefusedBack(t, authorClient, reassignURL, url.Values{"owner": {"nobody@example.com"}, "return": {pubPath}}, pubPath)
 	resp = postForm(t, authorClient, fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID+100), url.Values{"owner": {"owner@example.com"}})
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound {
@@ -706,11 +710,13 @@ func TestReplyToAReportCommentReturnsToThePublication(t *testing.T) {
 	}
 }
 
-// A refused Comment or Action Item answers with the refusal page, headed
-// Can't comment, at its refusal's status, linking Back to the page the form
-// posted as its return, when that is a page of the app's own, or else the
-// page the Comment or Action Item is on: the Goal page for one on the Goal,
-// the publication's page for one on a publication (#573).
+// A refused Comment answers with the refusal page, headed Can't comment, and
+// an Action Item refused for who is asking with one headed by what was
+// refused, Can't add, close or reassign Action Item (#660). Each is at its
+// refusal's status, linking Back to the page the form posted as its return,
+// when that is a page of the app's own, or else the page the Comment or
+// Action Item is on: the Goal page for one on the Goal, the publication's
+// page for one on a publication (#573).
 func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -741,31 +747,27 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 	draftPath := fmt.Sprintf("/reports/%d", def.ID)
 
 	for _, c := range []struct {
-		name, who, path string
-		form            url.Values
-		status          int
-		reason, back    string
+		name, who, path       string
+		form                  url.Values
+		status                int
+		heading, reason, back string
 	}{
 		{"a blank comment on a publication", "owner@example.com", pubPath + "/comments", url.Values{"goal": {fmt.Sprint(g.ID)}, "body": {" "}},
-			http.StatusUnprocessableEntity, "A comment cannot be blank.", pubPath},
+			http.StatusUnprocessableEntity, "Can't comment", "A comment cannot be blank.", pubPath},
 		{"an Action Item raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"owner@example.com"}, "due": {"2026-02-01"}},
-			http.StatusForbidden, "Only the Report's author raises Action Items.", pubPath},
+			http.StatusForbidden, "Can't add Action Item", "Only the Report's author raises Action Items.", pubPath},
 		{"an Action Item for an unknown email raised by someone not the author", "owner@example.com", pubPath + "/action-items", url.Values{"text": {"Sneaky"}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"}},
-			http.StatusForbidden, "Only the Report's author raises Action Items.", pubPath},
+			http.StatusForbidden, "Can't add Action Item", "Only the Report's author raises Action Items.", pubPath},
 		{"a blank comment on the Goal", "owner@example.com", goalPath + "/comments", url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "A comment cannot be blank.", goalPath},
+			http.StatusUnprocessableEntity, "Can't comment", "A comment cannot be blank.", goalPath},
 		{"a blank reply on the Goal", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onGoal.ID), url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "A reply cannot be blank.", goalPath},
+			http.StatusUnprocessableEntity, "Can't comment", "A reply cannot be blank.", goalPath},
 		{"a blank reply on a publication", "owner@example.com", fmt.Sprintf("/comments/%d/replies", onPub.ID), url.Values{"body": {" "}},
-			http.StatusUnprocessableEntity, "A reply cannot be blank.", pubPath},
+			http.StatusUnprocessableEntity, "Can't comment", "A reply cannot be blank.", pubPath},
 		{"a close by someone not its owner, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {"Done."}, "return": {draftPath}},
-			http.StatusForbidden, "Only the Action Item's owner closes it.", draftPath},
-		{"a close with no note", "owner@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {""}},
-			http.StatusUnprocessableEntity, "Closing an Action Item needs a note.", pubPath},
-		{"a close returning off the site", "owner@example.com", fmt.Sprintf("/action-items/%d/close", item.ID), url.Values{"note": {""}, "return": {"//evil.example"}},
-			http.StatusUnprocessableEntity, "Closing an Action Item needs a note.", pubPath},
+			http.StatusForbidden, "Can't close Action Item", "Only the Action Item's owner closes it.", draftPath},
 		{"a reassign by someone who may not, from the draft", "other@example.com", fmt.Sprintf("/action-items/%d/reassign", item.ID), url.Values{"owner": {"other@example.com"}, "return": {draftPath}},
-			http.StatusForbidden, "Only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item.", draftPath},
+			http.StatusForbidden, "Can't reassign Action Item", "Only the Report's creator, a Report Delegate or its publisher, an Admin, or the creator's Manager reassigns an Action Item.", draftPath},
 	} {
 		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()
@@ -773,7 +775,7 @@ func TestARefusedDiscussionActionAnswersWithTheRefusalPage(t *testing.T) {
 		if resp.StatusCode != c.status {
 			t.Errorf("%s: status %d, want %d", c.name, resp.StatusCode, c.status)
 		}
-		assertRefusalPage(t, page, "Can't comment", c.reason, c.back)
+		assertRefusalPage(t, page, c.heading, c.reason, c.back)
 	}
 	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 1 {
 		t.Errorf("publication's Action Items %+v (err %v), want only the one raised before", items, err)
@@ -801,5 +803,81 @@ func TestADiscussionActionOnAMissingRecordIsNotFound(t *testing.T) {
 		if !hasTestID(page, "not-found") {
 			t.Errorf("%s: not the Not found page:\n%s", path, renderNode(page))
 		}
+	}
+}
+
+// postRefusedBack posts form to rawURL as client, without following the
+// answer, and fails the test unless it is a 303 to back.
+func postRefusedBack(t *testing.T, client *http.Client, rawURL string, form url.Values, back string) {
+	t.Helper()
+	resp := postForm(t, noRedirects(client), rawURL, form)
+	defer func() { _ = resp.Body.Close() }()
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
+		t.Fatalf("POST %s: status %d to %q, want 303 to %q", rawURL, resp.StatusCode, resp.Header.Get("Location"), back)
+	}
+}
+
+// detailsAround is the <details> nearest around n, or nil.
+func detailsAround(n *html.Node) *html.Node {
+	for p := range n.Ancestors() {
+		if p.Type == html.ElementNode && p.Data == "details" {
+			return p
+		}
+	}
+	return nil
+}
+
+// openDetails are the <details> under root, by test ID or none, shown open.
+func openDetails(root *html.Node, testID string) []*html.Node {
+	return findAll(root, func(n *html.Node) bool {
+		return n.Data == "details" && attrOf(n, "data-testid") == testID && hasAttr(n, "open")
+	})
+}
+
+// Adding an Action Item for an email no one has comes back to the
+// publication with its form open, holding what was typed, and the reason
+// beside Owner; a reload shows the page plainly, and nothing is raised (#660).
+func TestARefusedAddActionItemComesBackToItsFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	posted := url.Values{
+		"text": {"Book the EU legal review."}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"}, "goal": {strconv.FormatInt(g.ID, 10)},
+	}
+	postRefusedBack(t, client, ts.URL+pubPath+"/action-items", posted, pubPath)
+
+	page := getPage(t, client, ts.URL+pubPath)
+	if !hasTestID(page, "report-name") || hasTestID(page, "refusal") {
+		t.Fatalf("not the publication page:\n%s", renderNode(page))
+	}
+	form := findByTestID(t, page, "action-item-form")
+	if d := detailsAround(form); d == nil || !hasAttr(d, "open") {
+		t.Errorf("the Add Action Item form isn't open:\n%s", renderNode(form))
+	}
+	for _, name := range []string{"text", "owner", "due", "goal"} {
+		if got := formField(t, form, name).Value; got != posted.Get(name) {
+			t.Errorf("%s holds %q, want %q as posted", name, got, posted.Get(name))
+		}
+	}
+	owner := formField(t, form, "owner")
+	if attrOf(owner.Node, "aria-invalid") != "true" || !strings.HasPrefix(owner.Description, `No account with email "nobody@example.com"`) {
+		t.Errorf("owner is aria-invalid %q, described %q; want it invalid, saying no account has the email", attrOf(owner.Node, "aria-invalid"), owner.Description)
+	}
+
+	page = getPage(t, client, ts.URL+pubPath)
+	if d := detailsAround(findByTestID(t, page, "action-item-form")); d == nil || hasAttr(d, "open") || hasTestID(page, "form-error") {
+		t.Errorf("a reload still shows the refused form open, or its error:\n%s", renderNode(page))
+	}
+	if items, err := h.Service.PublicationActionItems(context.Background(), pub.ID); err != nil || len(items) != 0 {
+		t.Errorf("Action Items = %+v (%v), want none raised", items, err)
 	}
 }
