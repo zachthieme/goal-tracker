@@ -666,6 +666,34 @@ and so on).
   `personInBrackets`, which keeps the "(" with the Name (`.person-nobreak`,
   `white-space:nowrap`), so a narrow window never leaves "(" ending a line;
   the Name itself and the email it shows can still wrap.
+- **Person picker (`personPicker`, `.person-picker`, in `people.templ`):**
+  every form that chooses a person — a Goal's and a Report's Delegates, Hand
+  off, Reassign, and an Action Item's Owner and New owner — chooses them with
+  it, and the field posts their email under the form's own name.
+  1. **What it searches:** typing part of a Name or an email, 300ms after the
+     last key, asks `GET /people/search`, which matches either, ignoring
+     case, and answers at most 10 people by Name.
+  2. **A result** is a row button showing the person's Name and then their
+     email, muted at 13px, so people who share a Name are told apart.
+     Picking one puts their email in the field. "No one matches." when no
+     one does.
+  3. **Departed people are never offered:** a Departed person can't act
+     (CONTEXT.md: Departed).
+  4. **The dropdown** (`.person-results`) hangs under the input, over what
+     follows, as wide as the picker and no wider than the window: a
+     `--color-surface` list with a 1px `--color-border` edge and
+     `--radius-md`. Each row (`.person-result`) is full width with 8px
+     padding, takes `--color-surface-hover` on hover and keyboard focus, as
+     the Goal picker's results do, is 44px tall on a touch screen, and wraps
+     a long email rather than scrolling sideways.
+  5. **Keys:** ArrowDown steps from the input into the results and ArrowUp
+     back; Escape hides them. Focus leaving the picker, or a click outside
+     it, hides them too, so they never cover the buttons below. The results
+     aren't in the Tab order, so Tab leaves the picker.
+  6. **Without script** it is a plain required email input, captioned as its
+     form captions it; a typed email still submits with script too. An email
+     no one has is refused as "No account with email "x" — check the address
+     or pick from the list."
 - **Avatars (`.avatar`):** a circle with a person's initials (`initials` in
   `layout.templ`), hidden from assistive technology, beside their Name, which
   stays the control that shows their email. It is 24px on the sidebar's
@@ -1278,8 +1306,8 @@ and so on).
     Admin; the title and the Why it matters as they stand, with a **Save**)
     and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
     departed and Mark returned in the rail under the Owner row. Delegates in
-    their row: the current people with **Remove**, and an email input to add
-    one. Link to a parent Goal under Contributes to: **Parent Goal**, the
+    their row: the current people with **Remove**, and the person picker
+    (`personPicker`) to add one. Link to a parent Goal under Contributes to: **Parent Goal**, the
     one-pick Goal picker (`goalPicker`) under a visible legend, its search
     focused, of the Goals this one could contribute to, whose results show
     each one's Health badge, title and Owner, and a pick as one chip, a
@@ -1940,8 +1968,9 @@ and so on).
     each its person, a `badge lc` "departed" on a Departed one, and for the
     creator and Admins a quiet small **Remove** at the right; "No Report
     Delegates yet." when there are none. Then the "What is a Report
-    Delegate?" help disclosure, and for the creator and Admins an add form: an
-    email field ("Delegate email") and a secondary small **Add Delegate**,
+    Delegate?" help disclosure, and for the creator and Admins an add form:
+    the person picker (`personPicker`, captioned "Report Delegate email" for
+    a screen reader) and a secondary small **Add Delegate**,
     wrapping 8px apart. A refused email comes back on the page, 422, in an
     `alert r` above the form, the email kept in its field. Everyone sees the
     list; a Report Delegate gets neither form, as only the creator and Admins
@@ -2064,7 +2093,8 @@ and so on).
     publication, as rows: an open one with Close and Reassign, a closed one
     "**[Closed Nov 9, 2026]** — <note>", or "None yet." The Report's author
     also gets a secondary small **Add Action Item**, opening an inline form
-    of Action Item, Owner (email), Due and About. Refused on a field, it
+    of Action Item, Owner (the person picker, `personPicker`), Due and
+    About. Refused on a field, it
     comes back to the publication with its form open, as Close and Reassign
     do (§ Close and Reassign).
 - **Close and Reassign (`closeActionItemForm`, `reassignActionItemForm`,
@@ -2073,16 +2103,17 @@ and so on).
   secondary small button inline beside the item. Opened, it takes the row's
   full width and shows its form: labelled fields that wrap 8px apart, each
   label a 13px, 600 caption over its input, aligned on the inputs' bottom
-  edge. Close asks for a "Closing note" and Reassign a "New owner" email,
-  each with a primary small submit, and the form comes back to the page it
-  was on. Home and the Goal page carry their own copy of the
+  edge. Close asks for a "Closing note" and Reassign a "New owner", by the
+  person picker (`personPicker`), each with a primary small submit, and the
+  form comes back to the page it was on. Home and the Goal page carry their own copy of the
   `.rp-inline-form` rules.
   - **Refused:** a Close, Reassign, Add Action Item or Make action item
     refused on a field comes back to the page it was on (Home, the Goal page,
     the draft or the publication), redirected after the post. That form is
     open there, holding what was typed, and each reason sits beside its
     field: an alert (`.alert.r`, `form-error`) inside the field's label after
-    its control, which is `aria-invalid` and described by it, the first
+    its control, or for an Owner or New owner right after its person picker,
+    so the results still drop down straight under the input; the control is `aria-invalid` and described by it, the first
     refused field taking focus. Only the first copy of the form on the page
     opens, and a reload shows the page plainly. A refusal by who you are, or
     of a form that's gone (an item closed since), shows the refusal page,

@@ -314,7 +314,7 @@ tr[aria-selected=true] td{background:var(--color-primary-light)}
  * reason under it. */
 .person-picker{position:relative}
 .person-field{display:flex;flex-direction:column;gap:4px}
-.person-results{position:absolute;left:0;right:0;top:100%;z-index:20;max-width:calc(100vw - 32px);margin:4px 0 0;padding:4px;list-style:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--shadow-pop);box-sizing:border-box}
+.person-results{position:absolute;left:0;right:0;top:100%;z-index:20;max-width:calc(100vw - 32px);margin:4px 0 0;padding:4px;list-style:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-sizing:border-box}
 .person-result{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit;font-weight:400;overflow-wrap:anywhere}
 .person-result:hover,.person-result:focus-visible{background:var(--color-surface-hover)}
 .hint{font-size:var(--text-secondary);color:var(--color-ink-muted);font-weight:400}

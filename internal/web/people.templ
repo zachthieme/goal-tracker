@@ -14,7 +14,7 @@ templ personSearchResults(matches []domain.Account) {
 	}
 	for _, a := range matches {
 		<li data-testid="person-result">
-			<button type="button" class="person-result" data-pick-person data-email={ a.Email }>
+			<button type="button" class="person-result" tabindex="-1" data-pick-person data-email={ a.Email }>
 				<span>{ a.Label() }</span>
 				<span class="muted small">{ a.Email }</span>
 			</button>
@@ -73,6 +73,12 @@ templ personPickerScript() {
 				list.hidden = true;
 				list.innerHTML = "";
 			}
+			// forget drops any search input is waiting on, so its answer, if
+			// one comes, isn't shown.
+			function forget(input) {
+				clearTimeout(input.personTimer);
+				input.personAsked = (input.personAsked || 0) + 1;
+			}
 			function upgrade() {
 				document.querySelectorAll(pickerSelector).forEach(function (input) {
 					var list = resultsOf(input);
@@ -95,8 +101,8 @@ templ personPickerScript() {
 				if (!input.matches || !input.matches(pickerSelector)) return;
 				var list = resultsOf(input);
 				if (!list) return;
-				clearTimeout(input.personTimer);
-				var asked = input.personAsked = (input.personAsked || 0) + 1;
+				forget(input);
+				var asked = input.personAsked;
 				var q = input.value.trim();
 				if (!q) {
 					hide(list);
@@ -106,7 +112,9 @@ templ personPickerScript() {
 					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
 						.then(function (r) { return r.ok ? r.text() : ""; })
 						.then(function (html) {
-							if (asked !== input.personAsked) return;
+							// Only the latest answer, and only while the person is
+							// still in the picker.
+							if (asked !== input.personAsked || !list.parentNode.contains(document.activeElement)) return;
 							list.innerHTML = html;
 							list.hidden = html.trim() === "";
 						});
@@ -122,8 +130,7 @@ templ personPickerScript() {
 				var picker = b && b.closest(".person-picker");
 				if (picker) {
 					var input = picker.querySelector(pickerSelector);
-					clearTimeout(input.personTimer);
-					input.personAsked = (input.personAsked || 0) + 1;
+					forget(input);
 					input.value = b.getAttribute("data-email");
 					hide(b.closest(".person-results"));
 					input.focus();
@@ -142,6 +149,7 @@ templ personPickerScript() {
 				var at = results.indexOf(e.target);
 				if (e.key === "Escape" && !list.hidden) {
 					e.preventDefault();
+					forget(input);
 					hide(list);
 					input.focus();
 				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
@@ -155,7 +163,9 @@ templ personPickerScript() {
 			document.addEventListener("focusout", function (e) {
 				var picker = e.target.closest && e.target.closest(".person-picker");
 				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var input = picker.querySelector(pickerSelector);
 				var list = picker.querySelector(".person-results");
+				if (input) forget(input);
 				if (list && !list.hidden) hide(list);
 			});
 		})();
