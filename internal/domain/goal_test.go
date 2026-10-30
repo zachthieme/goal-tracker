@@ -613,6 +613,36 @@ func TestCreateGoalByNoAccountIsRefusedAsNoOwner(t *testing.T) {
 	}
 }
 
+// A Departed person creating a Goal for themselves is refused for having
+// Departed, since they can't act, and no Goal is kept (#650; CONTEXT.md:
+// Departed).
+func TestCreateGoalByADepartedPersonIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.MarkDeparted(admin, sam)
+	ctx := context.Background()
+
+	_, err := h.Service.CreateGoal(ctx, sam.ID, domain.CreateGoalInput{
+		Title: "Ship v2", WhyItMatters: "Customers wait too long for v2.", OwnerID: sam.ID,
+	})
+	if !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Fatalf("err = %v, want ErrNotAuthorized", err)
+	}
+	if want := "a Departed person can't create a Goal"; domain.Reason(err) != want {
+		t.Errorf("message = %q, want %q", domain.Reason(err), want)
+	}
+	goals, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 0 {
+		t.Errorf("goals after the refused create = %d, want none", len(goals))
+	}
+}
+
 func TestSetCadenceRefusesMoreThanNinetyDays(t *testing.T) {
 	t.Parallel()
 
