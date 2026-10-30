@@ -1565,7 +1565,11 @@ and so on).
     Back to Green by's "Last time" hint). The Health radios are hidden, so
     while they are invalid each Health choice takes the edge instead: a 1px
     `--color-danger-ink` ring outside its own border (`box-shadow`), the
-    width an invalid textarea's edge has, until a Health is picked. When a
+    width an invalid textarea's edge has, until a Health is picked. The
+    Lifecycle radios are native, and a native radio shows no border, so
+    while they are invalid and none is picked each takes the same 1px
+    `--color-danger-ink` ring (`box-shadow`, round as the radio), until a
+    Lifecycle is picked. When a
     Green is submitted while a Metric is off target, an `.alert.y` notice at
     the form's top says so with a **See below** link to a warning after the
     optional sections (`.checkin-off-target`, `role="alert"`, on

@@ -1175,6 +1175,42 @@ func TestCheckinMissingHealthEdgesItsChoicesStyles(t *testing.T) {
 	}
 }
 
+// A refused Lifecycle choice is edged (ticket #707). Its radios are native, and
+// a native radio shows no border, so the shared invalid border can't mark them:
+// while none is picked, each invalid radio takes a 1px ring in the danger ink,
+// round as the radio is, the edge the Health choices take. Picking one drops
+// it.
+func TestCheckinRefusedLifecycleEdgesItsChoicesStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen}, "status": {"Fine."}, "lifecycle": {domain.LifecycleProposed},
+	})
+
+	radios := formFields(parsePage(t, page), "lifecycle")
+	if len(radios) == 0 {
+		t.Fatal("the refused form has no Lifecycle radios")
+	}
+	for _, r := range radios {
+		label := r.Node.Parent
+		if r.Type != "radio" || attrOf(r.Node, "aria-invalid") != "true" || label == nil || label.Data != "label" ||
+			label.Parent == nil || !slices.Contains(strings.Fields(attrOf(label.Parent, "class")), "lifecycle-choices") {
+			t.Errorf("Lifecycle choice %q isn't an invalid radio in a .lifecycle-choices label", r.Label)
+		}
+	}
+	styles := between(t, page, ".checkin-page{", "</style>")
+	const sel = ".lifecycle-choices:not(:has(input:checked)) input[aria-invalid=true]"
+	decls, ok := ruleFor(styles, sel)
+	if !ok || !strings.Contains(decls, "box-shadow:0 0 0 1px var(--color-danger-ink)") || !strings.Contains(decls, "border-radius:50%") {
+		t.Errorf("%s{%s} doesn't ring the radio 1px in var(--color-danger-ink), round", sel, decls)
+	}
+}
+
 // From 1280px wide the draft header holds one row whatever the save status
 // says (ticket #455). It doesn't wrap. The save status doesn't break; it keeps
 // room for Unsaved changes, so the header doesn't shift as it changes, and
