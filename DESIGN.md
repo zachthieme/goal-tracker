@@ -1570,7 +1570,9 @@ and so on).
     while they are invalid and none is picked each Lifecycle choice takes a
     1px `--color-danger-ink` outline set off 2px with `--radius-sm` corners
     (on the choice, since Chromium draws an edge on the radio itself
-    square), until a Lifecycle is picked. When a
+    square), until a Lifecycle is picked. Each Lifecycle choice keeps 4px of
+    inline padding at all times, so the outline clears its radio and its
+    text and the choices don't move as it comes and goes. When a
     Green is submitted while a Metric is off target, an `.alert.y` notice at
     the form's top says so with a **See below** link to a warning after the
     optional sections (`.checkin-off-target`, `role="alert"`, on

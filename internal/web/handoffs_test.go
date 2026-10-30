@@ -401,7 +401,8 @@ func TestHandoffAndReassignTheGoalPageDoesNotOfferAnswerTheRefusalPage(t *testin
 // A Depart or Return that is refused answers the refusal page, linking Back to
 // Home: 403 for someone who isn't an Admin, and 422 for an Admin's that can't
 // be done to that person. A path that names no Account, whether it isn't a
-// number or is one no Account has, is the Not found page.
+// number or is one no Account has, is the Not found page, whoever asks: the
+// Account is looked up before who is acting (ticket #704).
 func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -441,6 +442,7 @@ func TestRefusedDepartAndReturnAnswerTheRefusalPage(t *testing.T) {
 	for _, action := range []string{"depart", "return"} {
 		assertNotFoundPageFor(t, bossClient, http.MethodPost, ts.URL+"/accounts/sam/"+action, "/home")
 		assertNotFoundPageFor(t, bossClient, http.MethodPost, ts.URL+"/accounts/999999/"+action, "/home")
+		assertNotFoundPageFor(t, pat, http.MethodPost, ts.URL+"/accounts/999999/"+action, "/home")
 	}
 	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || acc.Departed {
 		t.Errorf("Sam after a refused Depart = %+v, %v; want still present", acc, err)
