@@ -939,6 +939,110 @@ func TestJudgeDefinitionAgreesWithTheCommand(t *testing.T) {
 	})
 }
 
+// A value typed for a Retired Dimension counts for nothing on the checklist,
+// even where the Dimension was required, and the command refuses it: a
+// Retired Fixed Dimension with the Fixed refusal, since the definition form
+// never adds to a Fixed list, and a Retired Extendable one with the Retired
+// refusal, from CreateDefinedGoal and DefineGoal alike (#649).
+func TestDefiningAGoalRefusesAValueTypedForARetiredDimension(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// dimension makes the Dimension, as admin, that is made required and
+		// then Retired.
+		dimension func(h *testsupport.Harness, admin domain.Account) domain.Dimension
+		// refused is the problem the command gives under the typed value's
+		// input.
+		refused string
+	}{
+		{
+			name: "a Retired Fixed Dimension",
+			dimension: func(h *testsupport.Harness, admin domain.Account) domain.Dimension {
+				return h.CreateDimension(admin, "Region", "EMEA")
+			},
+			refused: "Region is a Fixed list, so a value can't be added to it here",
+		},
+		{
+			name: "a Retired Extendable Dimension",
+			dimension: func(h *testsupport.Harness, admin domain.Account) domain.Dimension {
+				return h.CreateExtendableDimension(admin, "Region", "EMEA")
+			},
+			refused: "Region is retired, so its values can't be newly assigned",
+		},
+	}
+	for _, tt := range tests {
+		for _, command := range []string{"CreateDefinedGoal", "DefineGoal"} {
+			t.Run(tt.name+", by "+command, func(t *testing.T) {
+				t.Parallel()
+
+				h := testsupport.New(t, "admin@example.com")
+				ctx := context.Background()
+				admin := h.SignIn("admin@example.com")
+				owner := h.SignIn("sam@example.com")
+				dim := tt.dimension(h, admin)
+				h.SetDimensionRequired(admin, dim, true)
+				if err := h.Service.RetireDimension(ctx, admin.ID, dim.ID); err != nil {
+					t.Fatalf("RetireDimension: %v", err)
+				}
+				in := domain.DefinedGoalInput{
+					Title:        "Ship v2",
+					WhyItMatters: "Customers wait too long for v2.",
+					OwnerID:      owner.ID,
+					Kind:         domain.GoalDated,
+					DeliveryDate: futureDate,
+					Milestones:   []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate.AddDate(0, 0, -30)}},
+					NewValues:    map[int64]string{dim.ID: "APAC"},
+					Activate:     true,
+				}
+
+				dims, err := h.Service.ListDimensions(ctx)
+				if err != nil {
+					t.Fatalf("ListDimensions: %v", err)
+				}
+				var judged []string
+				for _, r := range domain.JudgeDefinition(in, domain.SavedDefinition{}, dims, nil) {
+					judged = append(judged, string(r.Rule))
+				}
+				wantJudged := []string{
+					string(domain.ActivationWhyItMatters), string(domain.ActivationOwner),
+					string(domain.ActivationKind), string(domain.ActivationMilestoneOrMetric),
+				}
+				if !slices.Equal(judged, wantJudged) {
+					t.Errorf("judged requirements = %q, want %q, with nothing for Region", judged, wantJudged)
+				}
+
+				var g domain.Goal
+				if command == "DefineGoal" {
+					g = h.CreateGoal(owner, in.Title, in.WhyItMatters)
+					_, err = h.Service.DefineGoal(ctx, owner.ID, g.ID, in)
+				} else {
+					_, err = h.Service.CreateDefinedGoal(ctx, in)
+				}
+				if !errors.Is(err, domain.ErrValidation) {
+					t.Fatalf("err = %v, want ErrValidation", err)
+				}
+				var got []string
+				for _, p := range domain.InputErrors(err) {
+					got = append(got, p.Input+": "+p.Message)
+				}
+				if want := []string{domain.NewValueInput(dim.ID) + ": " + tt.refused}; !slices.Equal(got, want) {
+					t.Errorf("%s's problems = %q, want %q", command, got, want)
+				}
+				if command == "DefineGoal" {
+					if got, err := h.Service.ViewGoal(ctx, g.ID); err != nil {
+						t.Fatalf("ViewGoal: %v", err)
+					} else if got.Lifecycle != domain.LifecycleProposed {
+						t.Errorf("Lifecycle = %q, want it left %q", got.Lifecycle, domain.LifecycleProposed)
+					}
+				} else if goals, _ := h.Service.ListGoals(ctx); len(goals) != 0 {
+					t.Errorf("Goals = %+v, want none saved", goals)
+				}
+			})
+		}
+	}
+}
+
 // savedDefinitionOf is what the saved Goal goalID has that defining it keeps
 // or adds to.
 func savedDefinitionOf(t *testing.T, h *testsupport.Harness, goalID int64) domain.SavedDefinition {

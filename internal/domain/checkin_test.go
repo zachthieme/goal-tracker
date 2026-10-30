@@ -1687,15 +1687,19 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 }
 
 // A refused Check-in names every input problem it can find at once, each
-// under its own input, in the order the form shows them (#669).
+// under its own input, in the order the form shows them, a missing
+// explanation of a Health differing from the Rolled-up Health among them
+// (#669).
 func TestCheckinRefusalNamesEveryInputProblemAtOnce(t *testing.T) {
 	t.Parallel()
 
 	type problem struct{ input, message string }
 	cases := []struct {
 		name string
-		in   func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput
-		want []problem
+		// arrange, when set, makes what the Goal has before the Check-in.
+		arrange func(h *testsupport.Harness, sam domain.Account, goal domain.Goal)
+		in      func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput
+		want    []problem
 	}{
 		{
 			name: "a Yellow with no Plan and no Back to Green by date",
@@ -1717,6 +1721,30 @@ func TestCheckinRefusalNamesEveryInputProblemAtOnce(t *testing.T) {
 				{domain.CheckinInputPathToGreen, "a Red Goal needs a Plan"},
 			},
 		},
+		{
+			name: "a Yellow with no status and no Plan",
+			in: func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthYellow, Status: " ", PathTargetDate: pathDate}
+			},
+			want: []problem{
+				{domain.CheckinInputStatus, "a Check-in needs a status"},
+				{domain.CheckinInputPathToGreen, "a Yellow Goal needs a Plan"},
+			},
+		},
+		{
+			name: "a Green over a Red child with no status and no explanation",
+			arrange: func(h *testsupport.Harness, sam domain.Account, goal domain.Goal) {
+				child := h.ActiveChildOf(sam, goal, "Migrate displays", "Old displays fail often.")
+				h.Checkin(sam, child.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+			},
+			in: func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: " "}
+			},
+			want: []problem{
+				{domain.CheckinInputStatus, "a Check-in needs a status"},
+				{domain.CheckinInputExplanation, "this Health differs from the Rolled-up Health (Red); explain why"},
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1725,6 +1753,9 @@ func TestCheckinRefusalNamesEveryInputProblemAtOnce(t *testing.T) {
 			h := testsupport.New(t)
 			sam := h.SignIn("sam@example.com")
 			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			if tc.arrange != nil {
+				tc.arrange(h, sam, goal)
+			}
 
 			_, err := h.Service.SubmitCheckin(context.Background(), tc.in(sam, goal))
 			if !errors.Is(err, domain.ErrValidation) {

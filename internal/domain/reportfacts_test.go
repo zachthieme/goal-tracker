@@ -499,8 +499,10 @@ var reportFactValueOfKind = map[domain.ReportFactKind]domain.ReportFactValue{
 }
 
 // Each kind of fact holds a value of its own type, which names that kind;
-// every fact a publication and a block list holds one, and a fact holding
-// none is of no kind.
+// every fact a publication and a block list holds the type its place in the
+// list says, and a fact holding none is of no kind. The type each fact should
+// hold comes from its place, not from the value it holds, whose own kind would
+// agree with a fact holding another kind's value.
 func TestReportFactsHoldAValueOfTheirKindsType(t *testing.T) {
 	t.Parallel()
 
@@ -518,33 +520,74 @@ func TestReportFactsHoldAValueOfTheirKindsType(t *testing.T) {
 		t.Errorf("a fact holding no value is of kind %q, want none", kind)
 	}
 
-	green := domain.ReportBlock{Goal: domain.Goal{Title: "Cut churn", Owner: factsBoss}, Health: domain.HealthGreen}
-	lists := [][]domain.ReportFact{
-		domain.PublicationFacts(factsReport(), factsBoss, factsAsOf, "Team: Growth"),
-		factsBlock().Facts(factsAsOf),
-		green.Facts(factsAsOf),
-	}
-	seen := map[domain.ReportFactKind]bool{}
-	var check func([]domain.ReportFact)
-	check = func(facts []domain.ReportFact) {
-		for _, f := range facts {
-			if f.Value == nil {
-				t.Errorf("fact %q holds no value: %q", f.Label, factOutline(facts))
-				continue
-			}
-			seen[f.Kind()] = true
-			if want := reflect.TypeOf(reportFactValueOfKind[f.Kind()]); reflect.TypeOf(f.Value) != want {
-				t.Errorf("%q fact holds a %T, want a %v", f.Kind(), f.Value, want)
-			}
-			if ex, ok := f.Value.(domain.ReportExceptionsFact); ok {
-				for _, b := range ex.Blocks {
-					check(b.Facts)
-				}
-			}
+	publication := domain.PublicationFacts(factsReport(), factsBoss, factsAsOf, "Team: Growth")
+	var exceptions []domain.ReportBlockFacts
+	for _, f := range publication {
+		if ex, ok := f.Value.(domain.ReportExceptionsFact); ok {
+			exceptions = append(exceptions, ex.Blocks...)
 		}
 	}
-	for _, facts := range lists {
-		check(facts)
+	if len(exceptions) != 1 {
+		t.Fatalf("the publication holds %d exception blocks, want 1", len(exceptions))
+	}
+	green := domain.ReportBlock{Goal: domain.Goal{Title: "Cut churn", Owner: factsBoss}, Health: domain.HealthGreen}
+	headAndWhy := []domain.ReportFactValue{domain.ReportBlockHeadFact{}, domain.ReportWhyItMattersFact{}}
+	lists := []struct {
+		name  string
+		facts []domain.ReportFact
+		want  []domain.ReportFactValue
+	}{
+		{
+			name:  "the publication",
+			facts: publication,
+			want: []domain.ReportFactValue{
+				domain.ReportBylineFact{},
+				domain.ReportSelectionFact{},
+				domain.ReportHealthCountsFact{},
+				domain.ReportMovementFact{},
+				domain.ReportActionItemsFact{},
+				domain.ReportIntroductionFact{},
+				domain.ReportNarrativeFact{},
+				domain.ReportExceptionsFact{},
+				domain.ReportOnTrackFact{},
+				domain.ReportMembershipChangesFact{},
+			},
+		},
+		{name: "the publication's exception block", facts: exceptions[0].Facts, want: headAndWhy},
+		{
+			name:  "an exception block",
+			facts: factsBlock().Facts(factsAsOf),
+			want: []domain.ReportFactValue{
+				domain.ReportBlockHeadFact{},
+				domain.ReportChangedFact{},
+				domain.ReportScheduleConflictFact{},
+				domain.ReportContributesToFact{},
+				domain.ReportFieldsFact{},
+				domain.ReportWhyItMattersFact{},
+				domain.ReportStatusFact{},
+				domain.ReportPathToGreenFact{},
+				domain.ReportAskForHelpFact{},
+				domain.ReportMilestonesFact{},
+				domain.ReportMetricsFact{},
+				domain.ReportRolledUpFact{},
+				domain.ReportSupportedByFact{},
+				domain.ReportExplanationFact{},
+			},
+		},
+		{name: "a Green block", facts: green.Facts(factsAsOf), want: headAndWhy},
+	}
+	seen := map[domain.ReportFactKind]bool{}
+	for _, l := range lists {
+		if len(l.facts) != len(l.want) {
+			t.Errorf("%s holds %d facts, want %d: %q", l.name, len(l.facts), len(l.want), factOutline(l.facts))
+			continue
+		}
+		for i, f := range l.facts {
+			seen[l.want[i].Kind()] = true
+			if reflect.TypeOf(f.Value) != reflect.TypeOf(l.want[i]) {
+				t.Errorf("%s's fact %d, %q, holds a %T, want a %T", l.name, i, f.Label, f.Value, l.want[i])
+			}
+		}
 	}
 	for _, kind := range domain.AllFactKinds {
 		if !seen[kind] {
