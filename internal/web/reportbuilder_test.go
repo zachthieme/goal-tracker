@@ -2390,3 +2390,65 @@ func ruleRowValues(row *nethtml.Node, i int) (labels []string, kind string, chos
 	}
 	return labels, kind, chosen
 }
+
+// reportBuilderGoldenFixture is a company whose builder offers every kind of
+// rule attribute and value: Goals owned by Priya and Sam, under Morgan, and by
+// the Admin; Nora and Otto, who own none; a Team Dimension with a Retired
+// value and a Retired Region Dimension; and a Budget Field. Its definition
+// tests the Team, an Owner rule naming Nora and an Org rule naming Otto, so
+// its edit page offers the people its rules name though they own no Goal.
+type reportBuilderGoldenFixture struct {
+	def domain.ReportDefinition
+}
+
+func seedReportBuilderGoldenFixture(t *testing.T, h *testsupport.Harness) reportBuilderGoldenFixture {
+	t.Helper()
+	ctx := context.Background()
+	admin := h.SignInNamed("admin@example.com", "Ada Admin")
+	morgan := h.SignInNamed("morgan@example.com", "Morgan Wu")
+	priya := h.SignInNamed("priya@example.com", "Priya Raman")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	nora := h.SignInNamed("nora@example.com", "Nora Quinn")
+	otto := h.SignInNamed("otto@example.com", "Otto Berg")
+	h.SetManager(priya, morgan)
+	h.SetManager(sam, morgan)
+	team := h.CreateDimension(admin, "Team", "Platform", "Growth", "Legacy")
+	region := h.CreateDimension(admin, "Region", "EMEA", "Americas")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "USD")
+	platform := h.ActiveGoal(priya, "Ship the platform", "It matters.")
+	h.AssignGoalValue(platform, team.Values[0])
+	h.ActiveGoal(sam, "Grow signups", "It matters.")
+	h.CreateGoal(admin, "Plan the offsite", "It matters.")
+	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{
+		Name: "Platform review",
+		Mode: domain.ReportModeRules,
+		Rules: []domain.ReportRule{
+			{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIsAnyOf, Values: []string{
+				strconv.FormatInt(team.Values[0].ID, 10), strconv.FormatInt(team.Values[2].ID, 10),
+			}},
+			{Attribute: domain.RuleOwner, Op: domain.RuleIsAnyOf, Values: []string{strconv.FormatInt(priya.ID, 10), strconv.FormatInt(nora.ID, 10)}},
+			{Attribute: domain.RuleOrg, Op: domain.RuleIsNot, Values: []string{strconv.FormatInt(otto.ID, 10)}},
+		},
+	})
+	if err := h.Service.RetireDimensionValue(ctx, admin.ID, team.Values[2].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	if err := h.Service.RetireDimension(ctx, admin.ID, region.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	return reportBuilderGoldenFixture{def: def}
+}
+
+// The builder, new and editing a definition whose rules name people who own
+// no Goal, renders as it did before the domain took over its rule attributes
+// and operators (#652).
+func TestReportBuilderRendersAsGolden(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, "admin@example.com")
+	fx := seedReportBuilderGoldenFixture(t, h)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "admin@example.com")
+
+	assertGolden(t, "report-builder-new.golden.html", getBody(t, client, ts.URL+"/reports/new"))
+	assertGolden(t, "report-builder-edit.golden.html", getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(fx.def.ID, 10)+"/edit"))
+}

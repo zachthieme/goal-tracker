@@ -1,0 +1,280 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>New report · Goal Tracker</title><link rel="stylesheet" href="/static/app.css"/><script src="/static/htmx.min.js"></script><script>
+		document.addEventListener("click", function (e) {
+			var b = e.target.closest && e.target.closest("button.disclose");
+			if (!b) return;
+			var id = b.getAttribute("aria-controls");
+			var target = id ? document.getElementById(id) : b.nextElementSibling;
+			if (!id && !target) {
+				var p = b.closest(".person");
+				target = p && p.querySelector(".person-email");
+			}
+			if (!target) return;
+			var open = b.getAttribute("aria-expanded") !== "true";
+			b.setAttribute("aria-expanded", open ? "true" : "false");
+			target.hidden = !open;
+		});
+	</script><script>
+		(function () {
+			var pickerSelector = "input[data-person-picker]";
+			var lastID = 0;
+			function resultsOf(input) {
+				var p = input.closest(".person-picker");
+				return p && p.querySelector(".person-results");
+			}
+			function hide(list) {
+				list.hidden = true;
+				list.innerHTML = "";
+			}
+			// forget drops any search input is waiting on, so its answer, if
+			// one comes, isn't shown.
+			function forget(input) {
+				clearTimeout(input.personTimer);
+				input.personAsked = (input.personAsked || 0) + 1;
+			}
+			function upgrade() {
+				document.querySelectorAll(pickerSelector).forEach(function (input) {
+					var list = resultsOf(input);
+					if (!list || input.hasAttribute("aria-controls")) return;
+					if (!list.id) {
+						do { lastID++; } while (document.getElementById("person-results-" + lastID));
+						list.id = "person-results-" + lastID;
+					}
+					input.type = "text";
+					input.placeholder = "Name or email";
+					input.autocomplete = "off";
+					input.setAttribute("aria-autocomplete", "list");
+					input.setAttribute("aria-controls", list.id);
+				});
+			}
+			document.addEventListener("DOMContentLoaded", upgrade);
+			document.addEventListener("htmx:load", upgrade);
+			document.addEventListener("input", function (e) {
+				var input = e.target;
+				if (!input.matches || !input.matches(pickerSelector)) return;
+				var list = resultsOf(input);
+				if (!list) return;
+				forget(input);
+				var asked = input.personAsked;
+				var q = input.value.trim();
+				if (!q) {
+					hide(list);
+					return;
+				}
+				input.personTimer = setTimeout(function () {
+					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+						.then(function (r) { return r.ok ? r.text() : ""; })
+						.then(function (html) {
+							// Only the latest answer, and only while the person is
+							// still in the picker.
+							if (asked !== input.personAsked || !list.parentNode.contains(document.activeElement)) return;
+							list.innerHTML = html;
+							list.hidden = html.trim() === "";
+						});
+				}, 300);
+			});
+			// Keep focus in the input while a result is pressed, so the
+			// focusout below doesn't hide the results before the click.
+			document.addEventListener("mousedown", function (e) {
+				if (e.target.closest && e.target.closest(".person-results")) e.preventDefault();
+			});
+			document.addEventListener("click", function (e) {
+				var b = e.target.closest && e.target.closest("[data-pick-person]");
+				var picker = b && b.closest(".person-picker");
+				if (picker) {
+					var input = picker.querySelector(pickerSelector);
+					forget(input);
+					input.value = b.getAttribute("data-email");
+					hide(b.closest(".person-results"));
+					input.focus();
+				}
+				document.querySelectorAll(".person-results:not([hidden])").forEach(function (list) {
+					if (!list.parentNode.contains(e.target)) hide(list);
+				});
+			});
+			document.addEventListener("keydown", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (!input || !list) return;
+				var results = Array.prototype.slice.call(list.querySelectorAll("[data-pick-person]"));
+				var at = results.indexOf(e.target);
+				if (e.key === "Escape" && !list.hidden) {
+					e.preventDefault();
+					forget(input);
+					hide(list);
+					input.focus();
+				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
+					e.preventDefault();
+					results[Math.min(at + 1, results.length - 1)].focus();
+				} else if (e.key === "ArrowUp" && at >= 0) {
+					e.preventDefault();
+					(at === 0 ? input : results[at - 1]).focus();
+				}
+			});
+			document.addEventListener("focusout", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (input) forget(input);
+				if (list && !list.hidden) hide(list);
+			});
+		})();
+	</script></head><body><div><header><a href="/home"><span aria-hidden="true"></span>Goal Tracker</a><details><summary>Menu</summary></details><div><form method="get" action="/goals" role="search"><label for="sb-search-q">Search Goals</label> <input id="sb-search-q" type="search" name="q" placeholder="Search"/></form><nav aria-label="Main"><a data-testid="nav-home" href="/home"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 7.5 8 3l5.5 4.5V13.5H10v-4H6v4H2.5z"></path></svg>Home</a><a data-testid="nav-goals" href="/goals"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5"></circle> <circle cx="8" cy="8" r="2"></circle></svg>Goals</a><a data-testid="nav-follow-ups" href="/follow-ups"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 14.5v-12M3.5 3h8.5l-1.75 3L12 9H3.5"></path></svg>Follow-ups</a><a aria-current="page" data-testid="nav-reports" href="/reports"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5.5L12 4v10.5H4zM9.5 1.5V4H12M6 8h4M6 11h4"></path></svg>Reports</a><a data-testid="nav-admin" href="/admin"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5 13 3.5v4c0 3-2.2 5.3-5 7-2.8-1.7-5-4-5-7v-4z"></path></svg>Admin</a></nav><details data-testid="person-menu"><summary><span aria-hidden="true">AA</span> <span><span title="admin@example.com">Ada Admin</span></span></summary><div><p data-testid="current-user">Signed in as <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span> (Admin)</p><form data-testid="theme-menu" method="post" action="/theme" aria-label="Theme"><p aria-hidden="true">Theme</p><input type="hidden" name="return" value="/reports/new"/> <button data-testid="theme-system" type="submit" name="theme" value="system" aria-current="true">System</button><button data-testid="theme-light" type="submit" name="theme" value="light">Light</button><button data-testid="theme-dark" type="submit" name="theme" value="dark">Dark</button></form><form method="post" action="/signout"><button type="submit">Sign out</button></form></div></details></div></header><div><header><nav aria-label="Breadcrumb"><a href="/reports">Reports</a> <span aria-hidden="true">›</span> <span aria-current="page">New</span></nav></header><main><div><h1>New report</h1><form data-testid="report-builder" method="post" action="/reports/new"><button type="submit" tabindex="-1" aria-hidden="true">Save report</button> <div data-testid="report-builder-inputs" hx-post="/reports/new/matches" hx-include="closest form" hx-trigger="change[target.type!=&#39;search&#39;], input[target.type!=&#39;search&#39;] delay:400ms" hx-target="#report-matches" hx-swap="outerHTML" hx-sync="this:replace"><label><span>Name</span> <input type="text" name="name" value="" required=""/></label> <label><span>Introduction</span> <textarea name="introduction"></textarea></label><fieldset data-testid="report-mode"><legend>What&#39;s in this report</legend><div><label><input type="radio" name="mode" value="rules" checked=""/>Goals matching rules</label> <label><input type="radio" name="mode" value="picked"/>Goals I pick</label></div></fieldset><section data-testid="report-rules"><h2>Rules <span>— a Goal must meet every rule, and any of a rule&#39;s values</span></h2><div data-testid="report-rule" data-rule=""><select data-testid="rule-attribute" name="rules[0].attribute" aria-label="What the rule tests"><option value="">Choose…</option> <option value="dimension:1">Team</option><option value="owner" selected="">Owner</option><option value="org">Owner&#39;s org</option><option value="lifecycle">Lifecycle</option><option value="health">Health</option><option value="top-level">Top-level</option></select> <select data-testid="rule-op" name="rules[0].op" aria-label="Operator"><option value="is" selected="">is</option><option value="is any of">is any of</option><option value="is not">is not</option></select><fieldset data-testid="rule-values"><legend>Values</legend><div data-rule-values=""><label><input type="radio" name="rules[0].value" value="owner=1" checked=""/> <span>Ada Admin</span></label><label><input type="radio" name="rules[0].value" value="owner=4"/> <span>Sam Lee</span></label><label><input type="radio" name="rules[0].value" value="owner=3"/> <span>Priya Raman</span></label></div></fieldset><button type="submit" name="remove-rule" value="0" formnovalidate="" aria-label="Remove rule" title="Remove rule">×</button></div><template data-rule-values-for="dimension:1"><label><input type="checkbox" value="dimension:1=1"/> <span>Platform</span></label><label><input type="checkbox" value="dimension:1=2"/> <span>Growth</span></label></template><template data-rule-values-for="owner"><label><input type="checkbox" value="owner=1"/> <span>Ada Admin</span></label><label><input type="checkbox" value="owner=4"/> <span>Sam Lee</span></label><label><input type="checkbox" value="owner=3"/> <span>Priya Raman</span></label></template><template data-rule-values-for="org"><label><input type="checkbox" value="org=1"/> <span>Ada Admin</span></label><label><input type="checkbox" value="org=4"/> <span>Sam Lee</span></label><label><input type="checkbox" value="org=3"/> <span>Priya Raman</span></label><label><input type="checkbox" value="org=2"/> <span>Morgan Wu</span></label></template><template data-rule-values-for="lifecycle"><label><input type="checkbox" value="lifecycle=Proposed"/> <span>Proposed</span></label><label><input type="checkbox" value="lifecycle=Active"/> <span>Active</span></label><label><input type="checkbox" value="lifecycle=On Hold"/> <span>On Hold</span></label><label><input type="checkbox" value="lifecycle=Done"/> <span>Done</span></label><label><input type="checkbox" value="lifecycle=Cancelled"/> <span>Cancelled</span></label></template><template data-rule-values-for="health"><label><input type="checkbox" value="health=Green"/> <span>Green</span></label><label><input type="checkbox" value="health=Yellow"/> <span>Yellow</span></label><label><input type="checkbox" value="health=Red"/> <span>Red</span></label></template><p data-testid="rules-start-note">Started with your own Goals. Change or remove it.</p><div><button type="submit" name="do" value="add-rule" formnovalidate="">+ Add rule</button></div><p data-testid="rules-hint">A rule can check a Dimension value, the Owner or whose org they&#39;re in, the Lifecycle, the Health, or whether the Goal is Top-level. To let Owners opt their own Goals in, an Admin can add a Dimension such as &#34;In report&#34;; you still decide with Leave out.</p><fieldset data-testid="include-picker" data-goal-picker="include"><legend>Also include</legend> <button type="button" aria-expanded="false" aria-controls="include-help" title="Goals to add by hand, even if they don&#39;t meet the rules.">What does Also include do?</button><p id="include-help" hidden="">Goals to add by hand, even if they don&#39;t meet the rules.</p><ul data-testid="include-chips" id="include-chips"></ul><div><input type="search" name="include-q" placeholder="Search any Goal by title" autocomplete="off" aria-label="Search Goals: Also include" aria-controls="include-results" hx-get="/reports/goals/search?list=include" hx-trigger="input changed delay:300ms, search" hx-target="#include-results" hx-swap="innerHTML" hx-sync="this:replace" hx-include="closest form" data-goal-search=""/><ul data-testid="include-results" id="include-results" aria-live="polite"></ul></div><label><span>Pick Goals <span>— hold Ctrl or ⌘ for several</span></span> <select data-testid="include-select" name="include" multiple=""><option value="2">Grow signups</option><option value="1">Ship the platform</option></select> </label></fieldset><fieldset data-testid="exclude-picker" data-goal-picker="exclude"><legend>Leave out</legend> <button type="button" aria-expanded="false" aria-controls="exclude-help" title="Goals to drop, even if they meet the rules.">What does Leave out do?</button><p id="exclude-help" hidden="">Goals to drop, even if they meet the rules.</p><ul data-testid="exclude-chips" id="exclude-chips"></ul><div><input type="search" name="exclude-q" placeholder="Search any Goal by title" autocomplete="off" aria-label="Search Goals: Leave out" aria-controls="exclude-results" hx-get="/reports/goals/search?list=exclude" hx-trigger="input changed delay:300ms, search" hx-target="#exclude-results" hx-swap="innerHTML" hx-sync="this:replace" hx-include="closest form" data-goal-search=""/><ul data-testid="exclude-results" id="exclude-results" aria-live="polite"></ul></div><label><span>Pick Goals <span>— hold Ctrl or ⌘ for several</span></span> <select data-testid="exclude-select" name="exclude" multiple=""><option value="3">Plan the offsite</option></select> </label></fieldset></section><section data-testid="report-picked"><fieldset data-testid="picked-picker" data-goal-picker="picked"><legend>Goals I pick</legend> <ul data-testid="picked-chips" id="picked-chips"></ul><div><input type="search" name="picked-q" placeholder="Search any Goal by title" autocomplete="off" aria-label="Search Goals: Goals I pick" aria-controls="picked-results" hx-get="/reports/goals/search?list=picked" hx-trigger="input changed delay:300ms, search" hx-target="#picked-results" hx-swap="innerHTML" hx-sync="this:replace" hx-include="closest form" data-goal-search=""/><ul data-testid="picked-results" id="picked-results" aria-live="polite"></ul></div><label><span>Pick Goals <span>— hold Ctrl or ⌘ for several</span></span> <select data-testid="picked-select" name="picked" multiple=""><option value="3">Plan the offsite</option><option value="2">Grow signups</option><option value="1">Ship the platform</option></select> </label></fieldset></section><details data-testid="report-fields-to-show"><summary>+ Fields to show</summary><fieldset data-testid="report-field-choice"><legend>Fields <span>— shown beside each Goal that has a value</span></legend> <label><input type="checkbox" name="field" value="1"/> Budget</label></fieldset></details></div><div><button type="submit">Save report</button> <button type="submit" name="do" value="show-matches" formnovalidate="">Show matches</button></div></form><aside data-testid="report-matches" id="report-matches" aria-live="polite"><h2 data-testid="matches-count">Matches 1 Goal</h2><ul><li data-testid="match"><span data-testid="match-badge">Proposed</span> <span>Plan the offsite</span> </li></ul><p>A flat list, not a tree. Whether one Goal feeds another doesn&#39;t decide what&#39;s in the report.</p></aside></div><script>
+		(function () {
+			var form = document.querySelector('[data-testid="report-builder"]');
+			if (!form) return;
+			var inputs = form.querySelector('[data-testid="report-builder-inputs"]');
+			form.classList.add("rb-js");
+			var ops = {
+				values: [["is", "is"], ["is any of", "is any of"], ["is not", "is not"]],
+				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]],
+				org: [["is", "is in the org of"], ["is any of", "is in the org of any of"], ["is not", "is not in the org of"]]
+			};
+			function attributeOf(row) { return row.querySelector('[data-testid="rule-attribute"]'); }
+			function listOf(row) { return row.querySelector("[data-rule-values]"); }
+			function narrowOps(row) {
+				var attribute = attributeOf(row).value;
+				var op = row.querySelector('[data-testid="rule-op"]');
+				var chosen = op.value;
+				op.textContent = "";
+				(ops[attribute] || ops.values).forEach(function (o) {
+					op.add(new Option(o[1], o[0], false, o[0] === chosen));
+				});
+			}
+			// setKind makes the row's values radios under "is", keeping only
+			// the first chosen, and checkboxes otherwise, keeping every one.
+			function setKind(row) {
+				var radio = row.querySelector('[data-testid="rule-op"]').value === "is";
+				var values = Array.from(listOf(row).querySelectorAll("input"));
+				var chosen = values.map(function (input) { return input.checked; });
+				// Every type first: a ticked box turned radio unticks the
+				// group's radio before it.
+				values.forEach(function (input) { input.type = radio ? "radio" : "checkbox"; });
+				var first = chosen.indexOf(true);
+				values.forEach(function (input, i) { input.checked = radio ? i === first : chosen[i]; });
+			}
+			// fill gives the row its attribute's values alone: those it was
+			// rendered with when it tests that attribute again, so a Retired
+			// value it holds stays, or else its attribute's template's.
+			function fill(row) {
+				var attribute = attributeOf(row).value;
+				var list = listOf(row);
+				var name = attributeOf(row).name.replace(/\.attribute$/, ".value");
+				var source = null;
+				if (attribute && attribute === row.renderedAttribute) {
+					source = row.renderedValues;
+				} else if (attribute) {
+					var template = form.querySelector('template[data-rule-values-for="' + attribute + '"]');
+					source = template && template.content;
+				}
+				list.textContent = "";
+				if (source) list.appendChild(source.cloneNode(true));
+				list.querySelectorAll("input").forEach(function (input) { input.name = name; });
+				list.closest('[data-testid="rule-values"]').hidden = !list.querySelector("input");
+			}
+			function rowsOf() { return Array.from(form.querySelectorAll("[data-rule]")); }
+			// reveal scrolls a row's values to its first chosen one, top of
+			// the list, moving only the list, so a long list such as the
+			// Owners opens on what the row tests.
+			function reveal(row) {
+				var list = listOf(row);
+				var first = list.querySelector("input:checked");
+				if (!first) return;
+				list.scrollTop += first.closest("label").getBoundingClientRect().top - list.getBoundingClientRect().top - list.clientTop;
+			}
+			rowsOf().forEach(function (row) {
+				narrowOps(row);
+				var attribute = attributeOf(row).value;
+				if (attribute) {
+					row.renderedAttribute = attribute;
+					row.renderedValues = document.createDocumentFragment();
+					Array.from(listOf(row).children).forEach(function (n) { row.renderedValues.appendChild(n.cloneNode(true)); });
+				}
+				fill(row);
+				reveal(row);
+			});
+			// A web font that loads late changes each value's height.
+			if (document.fonts) document.fonts.ready.then(function () { rowsOf().forEach(reveal); });
+			// A blank row to add, from the first: what it tests and its
+			// values cleared, and no Retired attribute offered.
+			var blank = rowsOf()[0].cloneNode(true);
+			blank.querySelectorAll('[data-testid="input-error"]').forEach(function (n) { n.remove(); });
+			blank.querySelectorAll("option[data-retired]").forEach(function (o) { o.remove(); });
+			var next = rowsOf().reduce(function (max, row) {
+				return Math.max(max, parseInt(attributeOf(row).name.replace(/^rules\[(\d+)\].*$/, "$1"), 10) + 1);
+			}, 0);
+			var add = form.querySelector('button[name="do"][value="add-rule"]');
+			function addRule() {
+				var row = blank.cloneNode(true);
+				var i = next++;
+				attributeOf(row).name = "rules[" + i + "].attribute";
+				attributeOf(row).value = "";
+				row.querySelector('[data-testid="rule-op"]').name = "rules[" + i + "].op";
+				row.querySelector('button[name="remove-rule"]').value = String(i);
+				var rows = rowsOf();
+				var last = rows[rows.length - 1];
+				if (last) last.after(row); else add.closest("div").before(row);
+				narrowOps(row);
+				row.querySelector('[data-testid="rule-op"]').selectedIndex = 0;
+				fill(row);
+				attributeOf(row).focus();
+				inputs.dispatchEvent(new Event("change"));
+			}
+			form.addEventListener("change", function (e) {
+				var row = e.target.closest("[data-rule]");
+				if (!row) return;
+				if (e.target.matches('[data-testid="rule-attribute"]')) {
+					narrowOps(row);
+					fill(row);
+					setKind(row);
+				} else if (e.target.matches('[data-testid="rule-op"]')) {
+					setKind(row);
+				}
+			});
+			form.addEventListener("click", function (e) {
+				if (e.target.closest('button[name="do"][value="add-rule"]')) {
+					e.preventDefault();
+					addRule();
+					return;
+				}
+				var remove = e.target.closest('button[name="remove-rule"]');
+				if (!remove) return;
+				e.preventDefault();
+				var row = remove.closest("[data-rule]");
+				var rows = rowsOf();
+				var after = rows[rows.indexOf(row) + 1];
+				row.remove();
+				if (after) attributeOf(after).focus(); else add.focus();
+				inputs.dispatchEvent(new Event("change"));
+			});
+			form.querySelectorAll("[data-goal-picker] .rb-no-js select").forEach(function (select) {
+				select.disabled = true;
+			});
+			form.addEventListener("keydown", function (e) {
+				if (e.key === "Enter" && e.target.matches("[data-goal-search]")) e.preventDefault();
+			});
+			form.addEventListener("click", function (e) {
+				var picker = e.target.closest("[data-goal-picker]");
+				if (!picker) return;
+				var pick = e.target.closest("[data-pick]");
+				if (pick) {
+					var result = pick.closest("li");
+					picker.querySelector(".rb-chips").appendChild(result.querySelector("template").content.firstElementChild.cloneNode(true));
+					result.remove();
+					var search = picker.querySelector("[data-goal-search]");
+					search.value = "";
+					search.focus();
+					inputs.dispatchEvent(new Event("change"));
+					return;
+				}
+				var remove = e.target.closest("[data-remove-chip]");
+				if (remove) {
+					remove.closest("li").remove();
+					picker.querySelector("[data-goal-search]").focus();
+					inputs.dispatchEvent(new Event("change"));
+				}
+			});
+		})();
+	</script></main></div></div></body></html>

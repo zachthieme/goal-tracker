@@ -5606,3 +5606,83 @@ func TestReportPageAndMarkdownExportShowTheSameFacts(t *testing.T) {
 		}
 	}
 }
+
+// reportsGoldenFixture is four Report Definitions, each in a different place
+// on the Reports list: Annual never published; Weekly published twice, its
+// narrative curated between, with a Report Delegate, and its Goals changed
+// since, one turning Red and one with a Highlight to pick; and Monthly and Quarterly published,
+// Quarterly first, with no changes since.
+type reportsGoldenFixture struct {
+	weekly    domain.ReportDefinition
+	highlight int64
+}
+
+func seedReportsGoldenFixture(t *testing.T, h *testsupport.Harness) reportsGoldenFixture {
+	t.Helper()
+	ctx := context.Background()
+	admin := h.SignInNamed("admin@example.com", "Ada Admin")
+	priya := h.SignInNamed("priya@example.com", "Priya Raman")
+	eu := h.ActiveGoal(priya, "Launch in EU", "Expand the market.")
+	signups := h.ActiveGoal(priya, "Grow signups", "It matters.")
+	hire := h.ActiveGoal(admin, "Hire a lead", "It matters.")
+	h.Checkin(admin, hire.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(priya, signups.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+
+	quarterly := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "Quarterly", Mode: domain.ReportModePicked, Picked: []int64{hire.ID}})
+	h.Clock.Advance(time.Hour)
+	h.PublishReport(admin, quarterly)
+	h.Clock.Advance(time.Hour)
+	weekly := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "Weekly", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, signups.ID}})
+	h.AddReportDelegate(admin, priya, weekly)
+	h.Clock.Advance(time.Hour)
+	h.PublishReport(admin, weekly)
+	h.Clock.Advance(time.Hour)
+	if err := h.Service.CurateNarrative(ctx, admin.ID, weekly.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	h.PublishReport(priya, weekly)
+	h.Clock.Advance(time.Hour)
+	monthly := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "Monthly", Mode: domain.ReportModePicked, Picked: []int64{hire.ID}})
+	h.PublishReport(admin, monthly)
+	h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{
+		Name:  "Annual",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleLifecycle, Op: domain.RuleIs, Values: []string{domain.LifecycleActive}}},
+	})
+	h.Clock.Advance(time.Hour)
+	h.CheckinWithHighlight(priya, eu.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.Checkin(priya, signups.ID, domain.HealthRed, "Signups stalled.", "Rerun the campaign.", h.Clock.Now().AddDate(0, 0, 7))
+	h.Clock.Advance(24 * time.Hour)
+	return reportsGoldenFixture{weekly: weekly, highlight: draftHighlightID(t, h, weekly, "Signed the first EU customer.")}
+}
+
+// The Reports list, a draft's History of publications and Report log
+// entries, and the answer to Save narrative render as they did before the
+// domain took over the History merge, the list's order and Publish…'s counts
+// (#652).
+func TestReportsListDraftHistoryAndNarrativeSavedRenderAsGolden(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t, "admin@example.com")
+	fx := seedReportsGoldenFixture(t, h)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "admin@example.com")
+	weeklyURL := ts.URL + "/reports/" + strconv.FormatInt(fx.weekly.ID, 10)
+
+	assertGolden(t, "reports-list.golden.html", getBody(t, client, ts.URL+"/reports"))
+	assertGolden(t, "report-draft-history.golden.html", getBody(t, client, weeklyURL))
+	signed := strconv.FormatInt(fx.highlight, 10)
+	resp, body := postHX(t, client, weeklyURL+"/narrative", url.Values{
+		"include-" + signed:                      {"on"},
+		"pick-" + signed:                         {domain.HighlightAccomplishment},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save narrative: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	}
+	assertGolden(t, "report-narrative-saved.golden.html", body)
+}
