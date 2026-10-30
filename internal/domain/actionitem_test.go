@@ -1095,3 +1095,108 @@ func TestOpenActionItemsToChaseListOverdueFirstThenSoonestDue(t *testing.T) {
 		t.Errorf("org = %q, want %q", got, wantOrg)
 	}
 }
+
+// Each refusal of a raise, close or reassign that is about one field names
+// it, so a form can show the reason beside that field; one about the whole
+// form names none. Each says what it always has (#660).
+func TestActionItemRefusalsNameTheirInput(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t, "admin@example.com")
+	ctx := context.Background()
+	admin := w.h.SignIn("admin@example.com")
+	gone := w.h.SignIn("gone@example.com")
+	if err := w.h.Service.MarkDeparted(ctx, admin.ID, gone.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	elsewhere := w.h.ActiveGoal(w.owner, "Hire a CFO", "Get the books in order.")
+	onGoal, err := w.h.Service.AddGoalComment(ctx, w.owner.ID, w.goal.ID, "Who is the vendor?")
+	if err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	onPub, err := w.h.Service.AddComment(ctx, w.owner.ID, w.pub.ID, w.goal.ID, "Why did the vendor slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	closed := w.raise(t, w.pub, "Translate the site.")
+	if _, err := w.h.Service.CloseActionItem(ctx, w.owner.ID, closed.ID, "Done in-house."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	due := w.h.Clock.Now().AddDate(0, 0, 7)
+	raise := func(in domain.RaiseActionItemInput) error {
+		in.PublicationID = w.pub.ID
+		_, err := w.h.Service.RaiseActionItem(ctx, w.creator.ID, in)
+		return err
+	}
+
+	for _, c := range []struct {
+		name, input, message string
+		try                  func() error
+	}{
+		{"no description", domain.InputActionItemText, "an Action Item needs a description", func() error {
+			return raise(domain.RaiseActionItemInput{OwnerID: w.owner.ID, DueDate: due})
+		}},
+		{"no due date", domain.InputActionItemDue, "an Action Item needs a due date", func() error {
+			return raise(domain.RaiseActionItemInput{Text: "x", OwnerID: w.owner.ID})
+		}},
+		{"no owner", domain.InputActionItemOwner, "an Action Item needs an owner", func() error {
+			return raise(domain.RaiseActionItemInput{Text: "x", DueDate: due})
+		}},
+		{"a Departed owner", domain.InputActionItemOwner, "gone@example.com has left the company", func() error {
+			return raise(domain.RaiseActionItemInput{Text: "x", OwnerID: gone.ID, DueDate: due})
+		}},
+		{"an owner by an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com"`, func() error {
+			_, err := w.h.Service.RaiseActionItemByEmail(ctx, w.creator.ID, domain.RaiseActionItemInput{PublicationID: w.pub.ID, Text: "x", DueDate: due}, "nobody@example.com")
+			return err
+		}},
+		{"a Goal the publication doesn't cover", domain.InputActionItemGoal, fmt.Sprintf("goal %d is not in this publication", elsewhere.ID), func() error {
+			return raise(domain.RaiseActionItemInput{GoalID: elsewhere.ID, Text: "x", OwnerID: w.owner.ID, DueDate: due})
+		}},
+		{"a close with no note", domain.InputClosingNote, "closing an Action Item needs a note", func() error {
+			_, err := w.h.Service.CloseActionItem(ctx, w.owner.ID, w.item.ID, " ")
+			return err
+		}},
+		{"a reassign to no one", domain.InputActionItemOwner, "an Action Item needs an owner", func() error {
+			_, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, w.item.ID, 99999)
+			return err
+		}},
+		{"a reassign to a Departed person", domain.InputActionItemOwner, "gone@example.com has left the company", func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "gone@example.com")
+			return err
+		}},
+		{"a reassign to its owner", domain.InputActionItemOwner, "owner@example.com already owns this Action Item", func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "owner@example.com")
+			return err
+		}},
+		{"a reassign to an email with no account", domain.InputActionItemOwner, `no account with email "nobody@example.com"`, func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "nobody@example.com")
+			return err
+		}},
+		{"a comment on the Goal itself", "", fmt.Sprintf("comment %d is not on this publication", onGoal.ID), func() error {
+			return raise(domain.RaiseActionItemInput{CommentID: onGoal.ID, OwnerID: w.owner.ID, DueDate: due})
+		}},
+		{"a comment's item about another Goal", "", "an Action Item raised from a comment is about the comment's Goal", func() error {
+			return raise(domain.RaiseActionItemInput{CommentID: onPub.ID, GoalID: elsewhere.ID, OwnerID: w.owner.ID, DueDate: due})
+		}},
+		{"a closed item", "", "the Action Item is already closed", func() error {
+			_, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, closed.ID, w.other.ID)
+			return err
+		}},
+	} {
+		err := c.try()
+		if !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != c.message {
+			t.Errorf("%s: err %v, want ErrValidation saying %q", c.name, err, c.message)
+		}
+		var named []string
+		for _, p := range domain.InputErrors(err) {
+			named = append(named, p.Input+": "+p.Message)
+		}
+		var want []string
+		if c.input != "" {
+			want = []string{c.input + ": " + c.message}
+		}
+		if !slices.Equal(named, want) {
+			t.Errorf("%s: names inputs %q, want %q", c.name, named, want)
+		}
+	}
+}
