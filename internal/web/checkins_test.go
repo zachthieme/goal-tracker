@@ -4114,8 +4114,9 @@ func checkinSubmitBar(t *testing.T, form *html.Node) *html.Node {
 }
 
 // The Check-in form ends with its submit bar: a summary the script fills,
-// empty from the server, then Cancel and Submit check-in, and no field. The
-// hidden default submit is still the form's first, so Enter submits the
+// empty from the server, then Back to Goal and Submit check-in, and no field.
+// No link in the form reads Cancel, a word the Lifecycle choice keeps for
+// cancelling the Goal (#680). The hidden default submit is still the form's first, so Enter submits the
 // Check-in (ticket #367).
 func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
 	t.Parallel()
@@ -4135,8 +4136,13 @@ func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
 	if summary.FirstChild != nil {
 		t.Errorf("the summary isn't empty from the server: %s", renderNode(summary))
 	}
-	if cancel := linkTo(bar, fmt.Sprintf("/goals/%d", goal.ID)); cancel == nil || textOf(cancel) != "Cancel" {
-		t.Errorf("the submit bar has no Cancel back to the Goal: %q", textOf(bar))
+	if back := linkTo(bar, fmt.Sprintf("/goals/%d", goal.ID)); back == nil || textOf(back) != "Back to Goal" {
+		t.Errorf("the submit bar has no Back to Goal link to the Goal: %q", textOf(bar))
+	}
+	// "Cancel" on the Check-in page means only the Lifecycle choice that
+	// cancels the Goal (#680).
+	if cancels := findAll(form, func(n *html.Node) bool { return n.Data == "a" && textOf(n) == "Cancel" }); len(cancels) > 0 {
+		t.Errorf("the Check-in form still has a link named Cancel: %s", renderNode(cancels[0]))
 	}
 	if submit := buttonNamed(bar, "Submit check-in"); submit == nil || attrOf(submit, "type") != "submit" || hasAttr(submit, "name") {
 		t.Errorf("the submit bar has no plain Submit check-in: %s", renderNode(bar))
