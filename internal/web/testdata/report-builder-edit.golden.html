@@ -221,6 +221,22 @@
 				fill(row);
 				attributeOf(row).focus();
 				inputs.dispatchEvent(new Event("change"));
+				searchAgain();
+			}
+			// searchAgain searches each open Also include and Leave out
+			// result list again, as what they offer follows the rules, and
+			// closes one whose box is empty. A closed list sends nothing.
+			function searchAgain() {
+				form.querySelectorAll('[data-goal-picker="include"], [data-goal-picker="exclude"]').forEach(function (picker) {
+					var results = picker.querySelector(".rb-results");
+					if (!results.firstElementChild) return;
+					var search = picker.querySelector("[data-goal-search]");
+					if (search.value.trim() === "") {
+						results.textContent = "";
+						return;
+					}
+					search.dispatchEvent(new Event("search"));
+				});
 			}
 			form.addEventListener("change", function (e) {
 				var row = e.target.closest("[data-rule]");
@@ -232,6 +248,7 @@
 				} else if (e.target.matches('[data-testid="rule-op"]')) {
 					setKind(row);
 				}
+				searchAgain();
 			});
 			form.addEventListener("click", function (e) {
 				if (e.target.closest('button[name="do"][value="add-rule"]')) {
@@ -248,6 +265,7 @@
 				row.remove();
 				if (after) attributeOf(after).focus(); else add.focus();
 				inputs.dispatchEvent(new Event("change"));
+				searchAgain();
 			});
 			form.querySelectorAll("[data-goal-picker] .rb-no-js select").forEach(function (select) {
 				select.disabled = true;

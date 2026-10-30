@@ -361,7 +361,8 @@ templ reportGoalSearchResults(list string, matches []domain.Goal, needsRule bool
 // as the attribute changes, as radios under "is" and checkboxes otherwise;
 // + Add rule adds a blank row in place and × removes one; each picker
 // searches in place of its no-script select, adding a chip when a result is
-// picked and removing one at its ×; and each refreshes the rail.
+// picked and removing one at its ×; and each refreshes the rail. A rule
+// change also searches an open Also include or Leave out list again.
 templ reportBuilderScript() {
 	<script>
 		(function () {
@@ -463,6 +464,22 @@ templ reportBuilderScript() {
 				fill(row);
 				attributeOf(row).focus();
 				inputs.dispatchEvent(new Event("change"));
+				searchAgain();
+			}
+			// searchAgain searches each open Also include and Leave out
+			// result list again, as what they offer follows the rules, and
+			// closes one whose box is empty. A closed list sends nothing.
+			function searchAgain() {
+				form.querySelectorAll('[data-goal-picker="include"], [data-goal-picker="exclude"]').forEach(function (picker) {
+					var results = picker.querySelector(".rb-results");
+					if (!results.firstElementChild) return;
+					var search = picker.querySelector("[data-goal-search]");
+					if (search.value.trim() === "") {
+						results.textContent = "";
+						return;
+					}
+					search.dispatchEvent(new Event("search"));
+				});
 			}
 			form.addEventListener("change", function (e) {
 				var row = e.target.closest("[data-rule]");
@@ -474,6 +491,7 @@ templ reportBuilderScript() {
 				} else if (e.target.matches('[data-testid="rule-op"]')) {
 					setKind(row);
 				}
+				searchAgain();
 			});
 			form.addEventListener("click", function (e) {
 				if (e.target.closest('button[name="do"][value="add-rule"]')) {
@@ -490,6 +508,7 @@ templ reportBuilderScript() {
 				row.remove();
 				if (after) attributeOf(after).focus(); else add.focus();
 				inputs.dispatchEvent(new Event("change"));
+				searchAgain();
 			});
 			form.querySelectorAll("[data-goal-picker] .rb-no-js select").forEach(function (select) {
 				select.disabled = true;
