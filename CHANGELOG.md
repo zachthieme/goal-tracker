@@ -13,6 +13,21 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 30, 2026
+
+**Improvements:**
+- [internal] An Undo toast now asks the domain whether its Undo would be accepted, by the restore's own rule for the viewer, their token and the record, instead of restating who may undo it in the web layer. One `CanUndo…` method per kind of Undo sits beside its restore, and a domain test per kind checks the toast is offered exactly when the restore accepts. The four places the two could disagree only showed up in a race or with a hand-made cookie (#651).
+- [user] At phone width the Goals Table fades the edge it can scroll toward, so the columns off screen to either side are no longer hidden without a cue (#686).
+
+**Bug fixes:**
+- [user] The Report builder's refusals now say what to do in plain words, without "Report Definition": a blank name asks you to "Give the report a name.", a rules report with no rule (even one left at "Choose…") says "Add a rule: choose what it tests, such as a Team, and a value.", Goals I pick with none picked says "Pick at least one Goal.", a rule with no value says "Choose a value for this rule.", and a Goal that's gone says "A Goal in this list no longer exists; remove it and save again." instead of its id (#671).
+
+**Architecture:**
+- [internal] Creating a Goal names who creates it, and the domain checks one rule for it: a person creates Goals only for themselves, unless they are the Admin running an import. The web, Goal definition and importer callers no longer hold that rule themselves (#650).
+
+**Code quality:**
+- [internal] `WithinTx` binds a transaction by copying the whole Service and setting only its own three fields, so a field added to Service can no longer silently reset to zero inside a transaction; a reflection test checks the copy field by field (#653).
+
 ### Collected changes — October 28, 2026
 
 **New features:**
