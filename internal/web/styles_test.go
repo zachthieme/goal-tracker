@@ -314,9 +314,9 @@ func TestCheckinPageSectionsAreNotBoxed(t *testing.T) {
 	}
 }
 
-// The submit bar, its summary, Cancel and Submit check-in carry the classes
-// its rules select, quiet Cancel beside a primary Submit check-in; the old
-// checkin-submit row is gone (ticket #367).
+// The submit bar, its summary, Back to Goal and Submit check-in carry the
+// classes its rules select, a quiet Back to Goal beside a primary Submit
+// check-in; the old checkin-submit row is gone (ticket #367).
 func TestCheckinSubmitBarClasses(t *testing.T) {
 	t.Parallel()
 
@@ -333,8 +333,8 @@ func TestCheckinSubmitBarClasses(t *testing.T) {
 	if summary := tagAround(t, bar, `data-testid="checkin-summary"`); attr(summary, "class") != "checkin-summary" {
 		t.Errorf("the summary = %s, want class checkin-summary", summary)
 	}
-	if !strings.Contains(bar, fmt.Sprintf(`<a class="btn quiet" href="/goals/%d">Cancel</a>`, goal.ID)) {
-		t.Errorf("the submit bar has no quiet Cancel back to the Goal:\n%s", bar)
+	if !strings.Contains(bar, fmt.Sprintf(`<a class="btn quiet" href="/goals/%d">Back to Goal</a>`, goal.ID)) {
+		t.Errorf("the submit bar has no quiet Back to Goal link:\n%s", bar)
 	}
 	if !strings.Contains(bar, `<button type="submit" class="btn primary">Submit check-in</button>`) {
 		t.Errorf("the submit bar has no primary Submit check-in:\n%s", bar)
@@ -347,7 +347,7 @@ func TestCheckinSubmitBarClasses(t *testing.T) {
 // The submit bar sticks just above the bottom of the window while the form runs
 // past it, a floating surface (DESIGN.md § System: Surfaces are for what
 // floats): bordered, rounded and cast by --shadow-pop, and the page keeps a
-// field it scrolls to clear of it. At 600px and below Cancel hides, the
+// field it scrolls to clear of it. At 600px and below Back to Goal hides, the
 // summary shrinks and Submit check-in grows to a thumb's size (ticket #367).
 func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
 	t.Parallel()

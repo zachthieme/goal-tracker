@@ -148,8 +148,8 @@ Check-in page's submit bar: its summary showing the Health picked, Path to
 Green, the Metrics read, a Highlight written, dates changed and a Lifecycle
 change as each is filled in, and again after a refused submit; Submit
 check-in staying in the window at 1280×800 while the bar sits below the last
-optional section at the page's end; and at 390px, Cancel hidden and nothing
-past the window's edge.
+optional section at the page's end; and at 390px, Back to Goal hidden and
+nothing past the window's edge.
 [`highlight-editor.spec.ts`](highlight-editor.spec.ts) checks the Check-in
 form's Highlight editor with script on: the + Insight, + Accomplishment
 and + Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor

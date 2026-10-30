@@ -1486,7 +1486,7 @@ func checkinFormRefused(v checkinView, refusal string) checkinFormData {
 // Path to Green asks for a reason for moving its back-to-Green date only once
 // the date is later than the latest Check-in's (see pathReasonShown). The form
 // ends with its submit bar, which sticks to the window's bottom while the form
-// runs past it: Cancel and Submit check-in beside a summary of what the
+// runs past it: Back to Goal and Submit check-in beside a summary of what the
 // Check-in will record, empty until checkinSummaryScript fills it.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
@@ -2252,7 +2252,7 @@ func checkinForm(d checkinFormData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "\">Cancel</a> <button type=\"submit\" class=\"btn primary\">Submit check-in</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, "\">Back to Goal</a> <button type=\"submit\" class=\"btn primary\">Submit check-in</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

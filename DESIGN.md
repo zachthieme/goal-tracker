@@ -1476,9 +1476,9 @@ and so on).
     Active), "Path to Green" while Yellow or Red has a Plan, "2 Metrics" read,
     "1 Highlight" written or kept, "dates changed", and the Lifecycle change
     ("→ Done"). Script fills it and keeps it up to date; without script the bar
-    holds only the buttons. On the right, a quiet **Cancel** back to the Goal
-    and **Submit check-in**, primary and 44px tall. At 600px and below Cancel
-    hides (the page header goes back to the Goal), the summary drops to 13px
+    holds only the buttons. On the right, a quiet **Back to Goal** link to the
+    Goal and **Submit check-in**, primary and 44px tall. At 600px and below
+    Back to Goal hides (the page header goes back to the Goal), the summary drops to 13px
     and Submit check-in grows to 48px.
   - **A Done or Cancelled Goal** gets the header line and the rail, and in
     place of the add bar and the form, "A Done Goal takes no Check-ins."

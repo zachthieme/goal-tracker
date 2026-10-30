@@ -1,7 +1,7 @@
-// The Check-in page's submit bar (#367): Cancel and Submit check-in stick to
-// the bottom of the window while the form runs past it, beside a summary of
-// what the Check-in will record as the form stands, which script fills and
-// keeps up to date. At 390px the bar drops Cancel.
+// The Check-in page's submit bar (#367): Back to Goal and Submit check-in
+// stick to the bottom of the window while the form runs past it, beside a
+// summary of what the Check-in will record as the form stands, which script
+// fills and keeps up to date. At 390px the bar drops Back to Goal.
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, requirePick, signIn, test } from "./fixtures";
@@ -121,7 +121,7 @@ test("(g) at 1280×800 Submit check-in stays in the window, and the bar ends the
   );
 });
 
-test("(h) at 390×800 the bar drops Cancel and fits the window", async ({ page }) => {
+test("(h) at 390×800 the bar drops Back to Goal and fits the window", async ({ page }) => {
   const width = 390;
   await page.setViewportSize({ width, height: 800 });
   const form = await openCheckin(page);
@@ -131,7 +131,7 @@ test("(h) at 390×800 the bar drops Cancel and fits the window", async ({ page }
   await expect(summaryOf(form)).toHaveText("Yellow · Path to Green · 1 Metric");
 
   const bar = form.getByTestId("checkin-submit-bar");
-  await expect(bar.getByRole("link", { name: "Cancel" })).toBeHidden();
+  await expect(bar.getByRole("link", { name: "Back to Goal" })).toBeHidden();
   await expect(bar.getByRole("button", { name: "Submit check-in" })).toBeInViewport();
   const outside = await page.evaluate((width) => {
     return [...document.querySelectorAll("main *")]
