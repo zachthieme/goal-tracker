@@ -634,6 +634,115 @@ func TestSaveReportDefinitionRefusals(t *testing.T) {
 	}
 }
 
+// Two rules no Goal can meet both are refused beside the later one: "is" or
+// "is any of" with no value in common on an attribute a Goal holds one value
+// of (Owner, Health, a one-value Dimension), and "is" with "is not" Top-level.
+// Every other pair saves: overlapping values, a several-value Dimension, two
+// Dimensions, Lifecycle, the Owner's org, and an "is not" (CONTEXT.md: Report
+// rule).
+func TestSaveReportDefinitionRefusesRulesNoGoalCanMeetBoth(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	ann := h.SignInNamed("ann@example.com", "Ann Avery")
+	bob := h.SignInNamed("bob@example.com", "Bob Byrne")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth", "Payments")
+	platform, growth, payments := team.Values[0], team.Values[1], team.Values[2]
+	pillar := h.CreateDimension(boss, "Pillar", "Revenue")
+	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "Globex")
+	acme, globex := customer.Values[0], customer.Values[1]
+	topLevel := func(op string) domain.ReportRule { return domain.ReportRule{Attribute: domain.RuleTopLevel, Op: op} }
+	orgRule := func(op string, accounts ...domain.Account) domain.ReportRule {
+		rule := ownerRule(op, accounts...)
+		rule.Attribute = domain.RuleOrg
+		return rule
+	}
+
+	for _, c := range []struct {
+		name    string
+		rules   []domain.ReportRule
+		message string
+	}{
+		{"Team is one and is any of others", []domain.ReportRule{dimensionRule(team, domain.RuleIs, platform), dimensionRule(team, domain.RuleIsAnyOf, growth, payments)},
+			`A Goal has one Team, so none can be both Platform and Growth or Payments. To include either, put them in one rule with "is any of".`},
+		{"Owner is one and is another", []domain.ReportRule{ownerRule(domain.RuleIs, ann), ownerRule(domain.RuleIs, bob)},
+			`A Goal has one Owner, so none can be both Ann Avery and Bob Byrne. To include either, put them in one rule with "is any of".`},
+		{"Health is Red and is Green", []domain.ReportRule{namedRule(domain.RuleHealth, domain.RuleIs, domain.HealthRed), namedRule(domain.RuleHealth, domain.RuleIs, domain.HealthGreen)},
+			`A Goal has one Health, so none can be both Red and Green. To include either, put them in one rule with "is any of".`},
+		{"is Top-level and is not", []domain.ReportRule{topLevel(domain.RuleIs), topLevel(domain.RuleIsNot)},
+			"A Goal can't be both Top-level and not Top-level."},
+	} {
+		_, err := h.Service.SaveReportDefinition(context.Background(), boss.ID, domain.SaveReportDefinitionInput{Name: c.name, Mode: domain.ReportModeRules, Rules: c.rules})
+		problems := domain.InputErrors(err)
+		if !errors.Is(err, domain.ErrValidation) || len(problems) != 1 || problems[0].Input != "rules[1]" {
+			t.Errorf("%s: err = %v (inputs %v), want one InputError naming rules[1]", c.name, err, inputNames(problems))
+			continue
+		}
+		if got := problems[0].Message; got != c.message {
+			t.Errorf("%s: message = %q, want %q", c.name, got, c.message)
+		}
+	}
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("ListReportDefinitions: %v", err)
+	}
+	if len(defs) != 0 {
+		t.Errorf("refused definitions were saved: %+v", defs)
+	}
+
+	for _, c := range []struct {
+		name  string
+		rules []domain.ReportRule
+	}{
+		{"overlapping Team values", []domain.ReportRule{dimensionRule(team, domain.RuleIsAnyOf, platform, growth), dimensionRule(team, domain.RuleIsAnyOf, growth, payments)}},
+		{"a repeated rule", []domain.ReportRule{dimensionRule(team, domain.RuleIs, platform), dimensionRule(team, domain.RuleIs, platform)}},
+		{"a several-value Dimension", []domain.ReportRule{dimensionRule(customer, domain.RuleIs, acme), dimensionRule(customer, domain.RuleIs, globex)}},
+		{"two one-value Dimensions", []domain.ReportRule{dimensionRule(team, domain.RuleIs, platform), dimensionRule(pillar, domain.RuleIs, pillar.Values[0])}},
+		{"Lifecycle is Active and is Done", []domain.ReportRule{namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive), namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleDone)}},
+		{"two orgs of different people", []domain.ReportRule{orgRule(domain.RuleIsAnyOf, ann), orgRule(domain.RuleIsAnyOf, bob)}},
+		{"is any of and is not", []domain.ReportRule{dimensionRule(team, domain.RuleIsAnyOf, platform, growth), dimensionRule(team, domain.RuleIsNot, growth)}},
+		{"Owner is and is not", []domain.ReportRule{ownerRule(domain.RuleIs, ann), ownerRule(domain.RuleIsNot, bob)}},
+		{"Top-level twice", []domain.ReportRule{topLevel(domain.RuleIs), topLevel(domain.RuleIs)}},
+	} {
+		if _, err := h.Service.SaveReportDefinition(context.Background(), boss.ID, domain.SaveReportDefinitionInput{Name: c.name, Mode: domain.ReportModeRules, Rules: c.rules}); err != nil {
+			t.Errorf("%s: SaveReportDefinition = %v, want it saved", c.name, err)
+		}
+	}
+}
+
+// Each rule is refused for at most one clash, with the first earlier rule
+// it can't hold beside, and a rule already refused clashes with none.
+func TestSaveReportDefinitionRefusesEachClashOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth", "Payments")
+	platform, growth, payments := team.Values[0], team.Values[1], team.Values[2]
+
+	_, err := h.Service.SaveReportDefinition(context.Background(), boss.ID, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		dimensionRule(team, domain.RuleIs, platform),
+		dimensionRule(team, domain.RuleIs, growth, payments),
+		dimensionRule(team, domain.RuleIs, growth),
+		dimensionRule(team, domain.RuleIs, payments),
+	}})
+	problems := domain.InputErrors(err)
+	got := inputNames(problems)
+	if want := []string{"rules[1]", "rules[2]", "rules[3]"}; !slices.Equal(got, want) {
+		t.Fatalf("refused inputs = %v, want %v", got, want)
+	}
+	if problems[0].Message != `"is" takes exactly one value` {
+		t.Errorf("rules[1] message = %q, want only its own refusal", problems[0].Message)
+	}
+	if want := "none can be both Platform and Growth."; !strings.Contains(problems[1].Message, want) {
+		t.Errorf("rules[2] message = %q, want it against rules[0]: %q", problems[1].Message, want)
+	}
+	if want := "none can be both Platform and Payments."; !strings.Contains(problems[2].Message, want) {
+		t.Errorf("rules[3] message = %q, want it against the first earlier rule only: %q", problems[2].Message, want)
+	}
+}
+
 // The Org rule is stored as "org"; "chain", its name before the rename, is no
 // rule attribute and saving one is refused like any unknown attribute
 // (CONTEXT.md: Org).

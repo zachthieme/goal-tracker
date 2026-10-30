@@ -336,6 +336,7 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 		if len(in.Rules) == 0 {
 			problems = append(problems, inputError(ReportInputRules, "add a rule: choose what it tests, such as a Team, and a value"))
 		}
+		var accepted []int
 		for i, rule := range in.Rules {
 			problem, err := s.validateReportRule(ctx, rule)
 			if err != nil {
@@ -343,7 +344,19 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 			}
 			if problem != "" {
 				problems = append(problems, inputError(RuleInput(i), "%s", problem))
+				continue
 			}
+			for _, earlier := range accepted {
+				clash, err := s.reportRulesClash(ctx, in.Rules[earlier], rule)
+				if err != nil {
+					return err
+				}
+				if clash != "" {
+					problems = append(problems, inputError(RuleInput(i), "%s", clash))
+					break
+				}
+			}
+			accepted = append(accepted, i)
 		}
 		if len(in.Picked) > 0 {
 			problems = append(problems, inputError(ReportInputPicked, "a report of Goals matching rules has no picked Goals"))
@@ -491,6 +504,90 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 		}
 	}
 	return "", nil
+}
+
+// reportRulesClash says why no Goal can meet both of the rules earlier and
+// later, each one validateReportRule accepted, or is "" when some Goal can:
+// "is" or "is any of" with no value in common on an attribute a Goal holds
+// one value of (Owner, Health, or a Dimension whose Selection is one, read as
+// it is now), or "is Top-level" with "is not Top-level". Any other pair that
+// no Goal meets is left to the Matches rail; Lifecycle isn't single-valued
+// here, as a Lifecycle rule selects by its changes too (meetsRulesGiven).
+func (s *Service) reportRulesClash(ctx context.Context, earlier, later ReportRule) (string, error) {
+	if earlier.Attribute != later.Attribute || earlier.DimensionID != later.DimensionID {
+		return "", nil
+	}
+	if later.Attribute == RuleTopLevel {
+		if earlier.Op != later.Op {
+			return "A Goal can't be both Top-level and not Top-level.", nil
+		}
+		return "", nil
+	}
+	if earlier.Op == RuleIsNot || later.Op == RuleIsNot {
+		return "", nil
+	}
+	if slices.ContainsFunc(earlier.Values, func(v string) bool { return slices.Contains(later.Values, v) }) {
+		return "", nil
+	}
+	var kind string
+	var label func(string) (string, error)
+	switch later.Attribute {
+	case RuleDimension:
+		dim, err := s.queries.GetDimension(ctx, later.DimensionID)
+		if err != nil {
+			return "", fmt.Errorf("look up dimension: %w", err)
+		}
+		if dim.Selection != SelectionOne {
+			return "", nil
+		}
+		kind = dim.Name
+		label = func(v string) (string, error) {
+			id, _ := strconv.ParseInt(v, 10, 64)
+			val, err := s.queries.GetDimensionValue(ctx, id)
+			if err != nil {
+				return "", fmt.Errorf("look up dimension value: %w", err)
+			}
+			return val.Value, nil
+		}
+	case RuleOwner:
+		kind = "Owner"
+		label = func(v string) (string, error) {
+			id, _ := strconv.ParseInt(v, 10, 64)
+			a, err := s.Account(ctx, id)
+			if err != nil {
+				return "", fmt.Errorf("look up rule owner: %w", err)
+			}
+			return a.Label(), nil
+		}
+	case RuleHealth:
+		kind = "Health"
+		label = func(v string) (string, error) { return v, nil }
+	default:
+		return "", nil
+	}
+	values := func(rule ReportRule) (string, error) {
+		var labels []string
+		for _, v := range dedupeIDs(rule.Values) {
+			l, err := label(v)
+			if err != nil {
+				return "", err
+			}
+			labels = append(labels, l)
+		}
+		if len(labels) == 1 {
+			return labels[0], nil
+		}
+		return strings.Join(labels[:len(labels)-1], ", ") + " or " + labels[len(labels)-1], nil
+	}
+	a, err := values(earlier)
+	if err != nil {
+		return "", err
+	}
+	b, err := values(later)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`A Goal has one %s, so none can be both %s and %s. To include either, put them in one rule with "is any of".`, kind, a, b), nil
 }
 
 // validateReportFields refuses a chosen Field that doesn't exist or is
