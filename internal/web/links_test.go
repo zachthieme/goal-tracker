@@ -996,8 +996,9 @@ func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
 	}
 }
 
-// The rail's "+ Add" under Contributes to is named Contribute to a Goal, and
-// opens the form headed Contribute to a Goal (#681).
+// The rail's "+ Add" under Contributes to is named Add a Goal it contributes
+// to, keeping its visible text in its name (WCAG 2.5.3), and opens the form
+// headed Contribute to a Goal (#681).
 func TestContributeToAGoalIsNamedInTheGlossarysWords(t *testing.T) {
 	t.Parallel()
 
@@ -1008,8 +1009,8 @@ func TestContributeToAGoalIsNamedInTheGlossarysWords(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	add := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "open-parent-link")
-	if name := attrOf(add, "aria-label"); name != "Contribute to a Goal" || textOf(add) != "+ Add" {
-		t.Errorf("the rail's link reads %q named %q, want + Add named Contribute to a Goal", textOf(add), name)
+	if name := attrOf(add, "aria-label"); name != "Add a Goal it contributes to" || textOf(add) != "+ Add" {
+		t.Errorf("the rail's link reads %q named %q, want + Add named Add a Goal it contributes to", textOf(add), name)
 	}
 	page := getPage(t, client, ts.URL+attrOf(add, "href"))
 	open := findAll(page, func(n *html.Node) bool { return attrOf(n, "data-open-form") == "parent-link" })

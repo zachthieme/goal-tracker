@@ -3693,7 +3693,7 @@ func goalRail(v goalView) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = groupHead(v, formParentLink, "+ Add", "Contribute to a Goal").Render(templ.WithChildren(ctx, templ_7745c5c3_Var151), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = groupHead(v, formParentLink, "+ Add", "Add a Goal it contributes to").Render(templ.WithChildren(ctx, templ_7745c5c3_Var151), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

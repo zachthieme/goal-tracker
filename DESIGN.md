@@ -1311,8 +1311,9 @@ and so on).
     and Top-level, in the head under the lead. Hand off, Reassign, Mark owner
     departed and Mark returned in the rail under the Owner row. Delegates in
     their row: the current people with **Remove**, and the person picker
-    (`personPicker`) to add one. Contribute to a Goal (the form's heading,
-    and the name of the rail's **+ Add**) under Contributes to: **Contributes
+    (`personPicker`) to add one. Contribute to a Goal (the form's heading;
+    the rail's **+ Add** that opens it is named "Add a Goal it contributes
+    to", keeping its text in its name) under Contributes to: **Contributes
     to**, the one-pick Goal picker (`goalPicker`) under a visible legend, its search
     focused, of the Goals this one could contribute to, whose results show
     each one's Health badge, title and Owner, and a pick as one chip, a
