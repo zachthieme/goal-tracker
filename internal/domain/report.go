@@ -132,11 +132,11 @@ type SaveReportDefinitionInput struct {
 type SelectedGoal struct {
 	Goal   Goal
 	Health string
-	Fields []FieldValue `json:",omitempty"`
+	Fields []FieldValue
 	// Via is how the Goal came into the selection: SelectedByRules,
 	// SelectedByAlsoInclude or SelectedByPicking. It isn't frozen with a
 	// publication.
-	Via string `json:"-"`
+	Via string
 }
 
 // The ways a Goal comes into a Report Definition's selection: a rules

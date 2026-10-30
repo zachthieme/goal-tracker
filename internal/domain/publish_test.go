@@ -2,7 +2,6 @@ package domain_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -14,18 +13,20 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// Publishing freezes the Report as it reads now, and later edits to its Goals —
-// a new Check-in, a revised Why it matters, a slipped date — never change the
-// published snapshot (CONTEXT.md: Report Definition).
+// Publishing freezes the Report's facts as they read now, and later edits to
+// its Goals — a new title, a new Check-in, a revised Why it matters, a slipped
+// date, a new Name for its Owner — never change the publication (CONTEXT.md:
+// Report Definition).
 func TestPublishedReportNeverChanges(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	ada := h.SignInNamed("ada@example.com", "Ada Okafor")
+	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
 	settle(h)
-	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	h.Checkin(ada, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	pub, err := h.Service.PublishReport(ctx, boss.ID, def.ID, time.Time{})
@@ -35,31 +36,75 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 	if !pub.PublishedAt.Equal(h.Clock.Now()) || pub.PublishedBy.ID != boss.ID {
 		t.Errorf("published at %v by %d, want now by %d", pub.PublishedAt, pub.PublishedBy.ID, boss.ID)
 	}
-	if len(pub.Report.Exceptions) != 1 || pub.Report.Exceptions[0].Health != domain.HealthYellow ||
-		pub.Report.Exceptions[0].Status != "Vendor is late." {
-		t.Fatalf("snapshot exceptions %+v, want the Yellow Goal's block", pub.Report.Exceptions)
+	block := publishedBlock(t, h, pub, g.ID)
+	if head := factOfKind(t, block, domain.ReportFactBlockHead).Head; head.Health != domain.HealthYellow || head.Title != "Launch in EU" ||
+		head.Owner.Label() != "Ada Okafor" || factOfKind(t, block, domain.ReportFactStatus).Text != "Vendor is late." {
+		t.Fatalf("published block %v, want the Yellow Goal's", factOutline(block))
 	}
 
 	h.Clock.Advance(day)
+	if _, err := h.Service.EditTitle(ctx, g.ID, "Launch in the EU", ada.ID); err != nil {
+		t.Fatalf("EditTitle: %v", err)
+	}
 	// Two weeks out from a day later moves the back-to-Green date later.
-	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
-	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "EU shoppers can't pay in euros.", boss.ID); err != nil {
+	h.CheckinMovingPath(ada, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
+	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "EU shoppers can't pay in euros.", ada.ID); err != nil {
 		t.Fatalf("EditWhyItMatters: %v", err)
 	}
-	slipDelivery(h, boss, g, g.DeliveryDate.AddDate(0, 1, 0))
+	slipDelivery(h, ada, g, g.DeliveryDate.AddDate(0, 1, 0))
+	if err := h.Service.SetName(ctx, ada.ID, "Ada Mensah"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
 
 	got, err := h.Service.GetPublication(ctx, pub.ID)
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
 	if !reflect.DeepEqual(got, pub) {
-		t.Errorf("published snapshot changed after the Goal was edited\n got %+v\nwant %+v", got, pub)
+		t.Errorf("publication changed after the Goal was edited\n got %+v\nwant %+v", got, pub)
 	}
-	b := got.Report.Exceptions[0]
-	if b.Health != domain.HealthYellow || b.Goal.WhyItMatters != "Expand the market." || len(b.PriorDueDates) != 0 {
-		t.Errorf("snapshot reads Health %q, Why it matters %q, prior dates %v; want the Goal as published",
-			b.Health, b.Goal.WhyItMatters, b.PriorDueDates)
+	block = publishedBlock(t, h, got, g.ID)
+	head := factOfKind(t, block, domain.ReportFactBlockHead).Head
+	if head.Health != domain.HealthYellow || head.Title != "Launch in EU" || head.Owner.Label() != "Ada Okafor" || len(head.PriorDue) != 0 ||
+		factOfKind(t, block, domain.ReportFactWhyItMatters).Text != "Expand the market." {
+		t.Errorf("publication reads %+v, Why it matters %q; want the Goal as published",
+			head, factOfKind(t, block, domain.ReportFactWhyItMatters).Text)
 	}
+}
+
+// publishedBlock is the facts of pub's exception block of the Goal goalID,
+// failing the test when it has none.
+func publishedBlock(t *testing.T, h *testsupport.Harness, pub domain.Publication, goalID int64) []domain.ReportFact {
+	t.Helper()
+	for _, b := range h.PublicationFact(pub, domain.ReportFactExceptions).Blocks {
+		if b.GoalID == goalID {
+			return b.Facts
+		}
+	}
+	t.Fatalf("publication %d has no exception block of Goal %d", pub.ID, goalID)
+	return nil
+}
+
+// publishedBlockIDs are the Goals of pub's exception blocks, in order.
+func publishedBlockIDs(pub domain.Publication) []int64 {
+	var ids []int64
+	for _, f := range pub.Facts {
+		for _, b := range f.Blocks {
+			ids = append(ids, b.GoalID)
+		}
+	}
+	return ids
+}
+
+// publishedLineIDs are pub's one-line Goals, On track, in order.
+func publishedLineIDs(pub domain.Publication) []int64 {
+	var ids []int64
+	for _, f := range pub.Facts {
+		for _, sg := range f.Lines {
+			ids = append(ids, sg.Goal.ID)
+		}
+	}
+	return ids
 }
 
 // The next publication of a Report Definition reads its changes against the
@@ -85,10 +130,10 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	}})
 
 	first := publish(t, h, boss, def, time.Time{})
-	if first.Report.Previous.ID != 0 {
-		t.Errorf("first publication compares against publication %d, want none", first.Report.Previous.ID)
+	if since := h.PublicationFact(first, domain.ReportFactByline).Byline.Since; since.Words != "" {
+		t.Errorf("first publication compares against %+v, want no publication", since)
 	}
-	if got, want := blockIDs(first.Report), []int64{early.ID}; !sameSet(got, want) {
+	if got, want := publishedBlockIDs(first), []int64{early.ID}; !sameSet(got, want) {
 		t.Errorf("first publication's exceptions %v, want %v (created since 30 days ago)", got, want)
 	}
 
@@ -102,17 +147,23 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 		t.Fatalf("DraftReport: %v", err)
 	}
 	second := publish(t, h, boss, def, time.Time{})
-	for name, r := range map[string]domain.Report{"draft": draft, "second publication": second.Report} {
-		if r.Previous.ID != first.ID || !r.Previous.PublishedAt.Equal(first.PublishedAt) {
-			t.Errorf("%s compares against %+v, want the first publication (%d at %v)", name, r.Previous, first.ID, first.PublishedAt)
-		}
-		if want := time.Date(2026, 2, 11, 0, 0, 0, 0, time.UTC); !r.Baseline.Equal(want) {
-			t.Errorf("%s baseline %v, want the first publication's date %v", name, r.Baseline, want)
-		}
-		if got, want := blockIDs(r), []int64{late.ID}; !sameSet(got, want) {
+	if draft.Previous.ID != first.ID || !draft.Previous.PublishedAt.Equal(first.PublishedAt) {
+		t.Errorf("draft compares against %+v, want the first publication (%d at %v)", draft.Previous, first.ID, first.PublishedAt)
+	}
+	if want := time.Date(2026, 2, 11, 0, 0, 0, 0, time.UTC); !draft.Baseline.Equal(want) {
+		t.Errorf("draft baseline %v, want the first publication's date %v", draft.Baseline, want)
+	}
+	if since := h.PublicationFact(second, domain.ReportFactByline).Byline.Since; since.Words != domain.ReportPreviousPublication || !since.At.Equal(first.PublishedAt) {
+		t.Errorf("second publication compares against %+v, want the first publication, at %v", since, first.PublishedAt)
+	}
+	for name, ids := range map[string][2][]int64{
+		"draft":              {blockIDs(draft), lineIDs(draft)},
+		"second publication": {publishedBlockIDs(second), publishedLineIDs(second)},
+	} {
+		if got, want := ids[0], []int64{late.ID}; !sameSet(got, want) {
 			t.Errorf("%s exceptions %v, want %v (created since the first publication)", name, got, want)
 		}
-		if got, want := lineIDs(r), []int64{root.ID, early.ID}; !sameSet(got, want) {
+		if got, want := ids[1], []int64{root.ID, early.ID}; !sameSet(got, want) {
 			t.Errorf("%s one-line Goals %v, want %v", name, got, want)
 		}
 	}
@@ -121,11 +172,10 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	// the previous publication.
 	chosen := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	third := publish(t, h, boss, def, chosen)
-	if third.Report.Previous.ID != 0 || !third.Report.Baseline.Equal(chosen) {
-		t.Errorf("with a chosen baseline, compares against %+v from %v; want no publication, from %v",
-			third.Report.Previous, third.Report.Baseline, chosen)
+	if since := h.PublicationFact(third, domain.ReportFactByline).Byline.Since; since.Words != "" || !since.At.Equal(chosen) {
+		t.Errorf("with a chosen baseline, compares against %+v; want no publication, from %v", since, chosen)
 	}
-	if got, want := blockIDs(third.Report), []int64{early.ID, late.ID}; !sameSet(got, want) {
+	if got, want := publishedBlockIDs(third), []int64{early.ID, late.ID}; !sameSet(got, want) {
 		t.Errorf("with a chosen baseline, exceptions %v, want %v", got, want)
 	}
 }
@@ -202,7 +252,7 @@ func TestPublicationFreezesTheOwnersName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	owners := publishedOwners(got.Report)
+	owners := publishedOwners(t, h, got)
 	if len(owners) != 1 || owners[0].Label() != "Ada Okafor" {
 		t.Errorf("published Owners %+v, want Ada Okafor as published", owners)
 	}
@@ -229,47 +279,24 @@ func TestPublicationFreezesAnUnnamedOwnerAsShown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	owners := publishedOwners(got.Report)
+	owners := publishedOwners(t, h, got)
 	if len(owners) != 1 || owners[0].Label() != "sam" || owners[0].LongLabel() != "sam (sam@example.com)" {
 		t.Errorf("published Owners %+v, want sam as published", owners)
 	}
 }
 
-// A snapshot published before Accounts had Names still renders, showing each
-// person by email as it always did.
-func TestSnapshotFromBeforeNamesShowsEmails(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Lines":[{"Goal":{"ID":1,"Title":"Launch in EU",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","IsAdmin":true,"Departed":false}},"Health":""}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-Names snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	owners := publishedOwners(got.Report)
-	if len(owners) != 1 || owners[0].Label() != "boss@example.com" || owners[0].LongLabel() != "boss@example.com" {
-		t.Errorf("pre-Names snapshot Owners %+v, want boss@example.com", owners)
-	}
-}
-
-// publishedOwners is every selected Goal's Owner in a Report, exceptions first.
-func publishedOwners(r domain.Report) []domain.Account {
+// publishedOwners is every selected Goal's Owner in a publication, exceptions
+// first.
+func publishedOwners(t *testing.T, h *testsupport.Harness, pub domain.Publication) []domain.Account {
+	t.Helper()
 	var out []domain.Account
-	for _, b := range r.Exceptions {
-		out = append(out, b.Goal.Owner)
+	for _, id := range publishedBlockIDs(pub) {
+		out = append(out, factOfKind(t, publishedBlock(t, h, pub, id), domain.ReportFactBlockHead).Head.Owner)
 	}
-	for _, sg := range r.Lines {
-		out = append(out, sg.Goal.Owner)
+	for _, f := range pub.Facts {
+		for _, sg := range f.Lines {
+			out = append(out, sg.Goal.Owner)
+		}
 	}
 	return out
 }
@@ -346,115 +373,6 @@ func TestPublicationFreezesAnUnnamedPublisherAsShown(t *testing.T) {
 	}
 }
 
-// A Publication from before publishers were frozen shows a publisher who
-// appears in its snapshot exactly as the snapshot froze them, even after a
-// rename.
-func TestUnfrozenPublisherShowsAsFrozenInTheSnapshot(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "ceo@example.com")
-	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
-	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(ceo, def)
-	unfreezePublisher(t, h, pub)
-
-	if err := h.Service.SetName(context.Background(), ceo.ID, "Dana Renamed"); err != nil {
-		t.Fatalf("SetName: %v", err)
-	}
-
-	for name, got := range readPublication(t, h, def, pub.ID) {
-		if got.PublishedBy.ID != ceo.ID || got.PublishedBy.LongLabel() != "Dana Whitfield (ceo@example.com)" {
-			t.Errorf("%s: published by %+v, want Dana Whitfield as the snapshot froze them", name, got.PublishedBy)
-		}
-	}
-}
-
-// unfreezePublisher rewrites pub's stored snapshot as it was before publishers
-// were frozen: the Report alone.
-func unfreezePublisher(t *testing.T, h *testsupport.Harness, pub domain.Publication) {
-	t.Helper()
-	var stored string
-	if err := h.DB.QueryRow(`SELECT snapshot FROM report_publications WHERE id = ?`, pub.ID).Scan(&stored); err != nil {
-		t.Fatalf("read the snapshot: %v", err)
-	}
-	var snap map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(stored), &snap); err != nil {
-		t.Fatalf("decode the snapshot: %v", err)
-	}
-	if _, ok := snap["PublishedBy"]; !ok {
-		t.Fatalf("snapshot %s has no frozen publisher to remove", stored)
-	}
-	delete(snap, "PublishedBy")
-	before, err := json.Marshal(snap)
-	if err != nil {
-		t.Fatalf("encode the snapshot: %v", err)
-	}
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, string(before), pub.ID); err != nil {
-		t.Fatalf("write the snapshot: %v", err)
-	}
-}
-
-// A snapshot published before Accounts had Names shows its publisher by email,
-// as it shows its other people, whether or not the publisher appears in it.
-func TestSnapshotFromBeforeNamesShowsThePublisherByEmail(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		name  string
-		owner string
-	}{
-		{"publisher owns a Goal", "boss@example.com"},
-		{"publisher owns nothing", "ada.okafor@example.com"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h := testsupport.New(t, "boss@example.com")
-			boss := h.SignInNamed("boss@example.com", "Bo Sterling")
-			owner := h.SignInNamed(tc.owner, "Someone Named")
-			g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-			pub := h.PublishReport(boss, def)
-			before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
-				`"Owner":{"ID":%d,"Email":%q,"IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, owner.ID, owner.Email)
-			if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-				t.Fatalf("write a pre-Names snapshot: %v", err)
-			}
-
-			for name, got := range readPublication(t, h, def, pub.ID) {
-				if got.PublishedBy.ID != boss.ID || got.PublishedBy.Label() != "boss@example.com" ||
-					got.PublishedBy.LongLabel() != "boss@example.com" {
-					t.Errorf("%s: published by %+v, want boss@example.com", name, got.PublishedBy)
-				}
-			}
-		})
-	}
-}
-
-// A Publication from before publishers were frozen, published after Names,
-// whose publisher appears nowhere in its snapshot, shows the publisher as
-// their Account reads now: there is nothing frozen to show instead.
-func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignInNamed("boss@example.com", "Bo Sterling")
-	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
-	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	unfreezePublisher(t, h, pub)
-
-	if err := h.Service.SetName(context.Background(), boss.ID, "Bo Renamed"); err != nil {
-		t.Fatalf("SetName: %v", err)
-	}
-
-	for name, got := range readPublication(t, h, def, pub.ID) {
-		if got.PublishedBy.ID != boss.ID || got.PublishedBy.LongLabel() != "Bo Renamed (boss@example.com)" {
-			t.Errorf("%s: published by %+v, want Bo Renamed from their Account", name, got.PublishedBy)
-		}
-	}
-}
-
 // A publication freezes the Field names, units and values it showed beside
 // each Goal: editing the value, renaming the Field, changing its unit or
 // retiring it later doesn't change the published Report (ticket #78).
@@ -485,8 +403,8 @@ func TestPublicationFreezesChosenFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	fields := got.Report.Exceptions[0].Fields
-	if len(fields) != 1 || fields[0].Field.Name != "Budget" || fields[0].Field.Unit != "$" || fields[0].Value != "120" || fields[0].Field.Retired {
+	fields := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactFields).Fields
+	if len(fields) != 1 || fields[0].Field.Name != "Budget" || fields[0].Field.Unit != "$" || fields[0].Value != "120" {
 		t.Errorf("published Fields %+v, want Budget 120 $ as published", fields)
 	}
 }
@@ -509,7 +427,8 @@ func TestPublicationFreezesMembershipChanges(t *testing.T) {
 	h.Clock.Advance(day)
 	listGoal(t, h, def, "include", included)
 	pub := h.PublishReport(boss, def)
-	if got, want := byGoal(t, pub.Report.MembershipChanges), map[int64]string{included.ID: "Added: " + domain.MembershipPickedByHand}; !reflect.DeepEqual(got, want) {
+	changes := h.PublicationFact(pub, domain.ReportFactMembershipChanges).MembershipChanges
+	if got, want := byGoal(t, changes), map[int64]string{included.ID: "Added: " + domain.MembershipPickedByHand}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("published membership changes %v, want %v", got, want)
 	}
 
@@ -520,40 +439,8 @@ func TestPublicationFreezesMembershipChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if !reflect.DeepEqual(got.Report.MembershipChanges, pub.Report.MembershipChanges) {
-		t.Errorf("membership changes after editing the definition %+v, want as published %+v",
-			got.Report.MembershipChanges, pub.Report.MembershipChanges)
-	}
-}
-
-// A snapshot frozen when a narrative section held at most one of the author's
-// notes, as Text, keeps it: it reads as that section's only note.
-func TestSnapshotFromBeforeSeveralNotesKeepsItsNote(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[` +
-		`{"Kind":"Insight","Text":"Pricing drives churn.","Highlights":null},` +
-		`{"Kind":"Miss","Text":"","Highlights":[{"Highlight":{"ID":1,"Kind":"Miss","Note":"Lost two big accounts."},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Miss"}]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-several-notes snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	n := got.Report.Narrative
-	if len(n) != 2 || n[0].Kind != domain.HighlightInsight || !slices.Equal(n[0].Notes, []string{"Pricing drives churn."}) {
-		t.Errorf("pre-several-notes snapshot narrative %+v, want Insights with its one note", n)
-	}
-	if len(n) == 2 && (len(n[1].Notes) != 0 || len(n[1].Highlights) != 1) {
-		t.Errorf("pre-several-notes Misses %+v, want no notes and its Highlight", n[1])
+	if after := h.PublicationFact(got, domain.ReportFactMembershipChanges).MembershipChanges; !reflect.DeepEqual(after, changes) {
+		t.Errorf("membership changes after editing the definition %+v, want as published %+v", after, changes)
 	}
 }
 
@@ -578,7 +465,7 @@ func TestPublicationFreezesWhatChangedAndItsOrder(t *testing.T) {
 	checkinHealth(h, boss, later, domain.HealthGreen)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{standing.ID, turned.ID, later.ID}})
 	pub := h.PublishReport(boss, def)
-	if got, want := blockIDs(pub.Report), []int64{turned.ID, standing.ID}; !slices.Equal(got, want) {
+	if got, want := publishedBlockIDs(pub), []int64{turned.ID, standing.ID}; !slices.Equal(got, want) {
 		t.Fatalf("published exceptions %v, want %v", got, want)
 	}
 
@@ -596,81 +483,17 @@ func TestPublicationFreezesWhatChangedAndItsOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if ids, want := blockIDs(got.Report), []int64{turned.ID, standing.ID}; !slices.Equal(ids, want) {
+	if ids, want := publishedBlockIDs(got), []int64{turned.ID, standing.ID}; !slices.Equal(ids, want) {
 		t.Errorf("publication's exceptions %v after the Check-in, want as published %v", ids, want)
 	}
-	if b := got.Report.Exceptions[0]; !slices.Equal(b.Changes, []string{"Turned Red"}) {
-		t.Errorf("publication's first block changes %q, want [Turned Red]", b.Changes)
+	if changes := factOfKind(t, publishedBlock(t, h, got, turned.ID), domain.ReportFactChanged).Changes; !slices.Equal(changes, []string{"Turned Red"}) {
+		t.Errorf("publication's first block changes %q, want [Turned Red]", changes)
 	}
-	if b := got.Report.Exceptions[1]; len(b.Changes) != 0 {
-		t.Errorf("publication's standing block changes %q, want none", b.Changes)
+	if slices.ContainsFunc(publishedBlock(t, h, got, standing.ID), isFact(domain.ReportFactChanged)) {
+		t.Errorf("publication's standing block lists changes, want none")
 	}
-	if got.Report.Movement == nil || *got.Report.Movement != (domain.ReportMovement{TurnedRed: 1}) {
-		t.Errorf("publication's movement %+v, want 1 turned Red", got.Report.Movement)
-	}
-}
-
-// A snapshot frozen before Reports said what changed on each block, or
-// counted what moved, reads with neither.
-func TestSnapshotFromBeforeChangesHasNone(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
-		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","PriorHealth":"Green","Badges":null}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-changes snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	if len(got.Report.Exceptions) != 1 || len(got.Report.Exceptions[0].Changes) != 0 {
-		t.Errorf("pre-changes snapshot exceptions %+v, want one block saying no changes", got.Report.Exceptions)
-	}
-	if got.Report.Movement != nil {
-		t.Errorf("pre-changes snapshot movement %+v, want none", got.Report.Movement)
-	}
-}
-
-// A snapshot frozen before Reports named Schedule conflicts reads with none,
-// and its blocks list no Schedule conflict fact.
-func TestSnapshotFromBeforeScheduleConflictsHasNone(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
-		`{"Goal":{"ID":1,"Title":"Launch in EU","DeliveryDate":"2026-11-03T00:00:00Z"},"Health":"Green","Changes":["Back to Green"],"Badges":null}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-conflicts snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	if len(got.Report.Exceptions) != 1 {
-		t.Fatalf("pre-conflicts snapshot exceptions %+v, want its one block", got.Report.Exceptions)
-	}
-	b := got.Report.Exceptions[0]
-	if len(b.ScheduleConflicts) != 0 {
-		t.Errorf("pre-conflicts block's Schedule conflicts %+v, want none", b.ScheduleConflicts)
-	}
-	for _, f := range b.Facts(got.PublishedAt) {
-		if f.Kind == domain.ReportFactScheduleConflict {
-			t.Errorf("pre-conflicts block lists a Schedule conflict fact %+v", f)
-		}
+	if parts := h.PublicationFact(got, domain.ReportFactMovement).Movement.Parts; !slices.Equal(parts, []string{"1 turned Red"}) {
+		t.Errorf("publication's movement %q, want 1 turned Red", parts)
 	}
 }
 
@@ -708,9 +531,10 @@ func TestPublicationFreezesItsScheduleConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	cs := linkedBlock(t, got.Report, child).ScheduleConflicts
-	if len(cs) != 1 || cs[0].GoalID != parent.ID || !cs[0].Due.Equal(parentDue) || !cs[0].OwnDue.Equal(childDue) {
-		t.Errorf("publication's Schedule conflicts %+v, want the one with Open in Iberia, due %s after it, as published", cs, childDue)
+	groups := factOfKind(t, publishedBlock(t, h, got, child.ID), domain.ReportFactScheduleConflict).ScheduleConflictGroups
+	if len(groups) != 1 || groups[0].Words != domain.ReportConflictParentEarlier || len(groups[0].Conflicts) != 1 ||
+		groups[0].Conflicts[0].GoalID != parent.ID || !groups[0].Conflicts[0].Due.Equal(parentDue) {
+		t.Errorf("publication's Schedule conflicts %+v, want the one with Open in Iberia, due %s, as published", groups, parentDue)
 	}
 }
 
@@ -731,15 +555,15 @@ func TestPublicationFreezesItsSelection(t *testing.T) {
 		Rules: []domain.ReportRule{ownerRule(domain.RuleIs, boss), namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive)},
 	})
 	pub := h.PublishReport(boss, def)
-	if got, want := pub.Scope, "Owner: Dana Okafor · Active"; got != want {
+	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Text, "Owner: Dana Okafor · Active"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
 	}
 	got, err := h.Service.GetPublication(ctx, pub.ID)
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if want := "Owner: Dana Okafor · Active"; got.Scope != want {
-		t.Errorf("reloaded selection %q, want %q", got.Scope, want)
+	if want := "Owner: Dana Okafor · Active"; h.PublicationFact(got, domain.ReportFactSelection).Text != want {
+		t.Errorf("reloaded selection %q, want %q", h.PublicationFact(got, domain.ReportFactSelection).Text, want)
 	}
 
 	h.Clock.Advance(day)
@@ -755,18 +579,17 @@ func TestPublicationFreezesItsSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if want := "Owner: Dana Okafor · Active"; got.Scope != want {
-		t.Errorf("selection after editing the rules %q, want as published %q", got.Scope, want)
+	if sel, want := h.PublicationFact(got, domain.ReportFactSelection).Text, "Owner: Dana Okafor · Active"; sel != want {
+		t.Errorf("selection after editing the rules %q, want as published %q", sel, want)
 	}
-	if next, want := h.PublishReport(boss, updated), "On Hold"; next.Scope != want {
-		t.Errorf("next publication's selection %q, want %q", next.Scope, want)
+	if next, want := h.PublicationFact(h.PublishReport(boss, updated), domain.ReportFactSelection).Text, "On Hold"; next != want {
+		t.Errorf("next publication's selection %q, want %q", next, want)
 	}
 }
 
 // A publication's selection counts only the Also include and Leave out Goals
 // that changed what it selected: one the rules match anyway isn't added, and
-// one the rules don't match isn't left out. Only the words are frozen, not
-// the counts they were drafted from.
+// one the rules don't match isn't left out.
 func TestPublicationSelectionCountsOnlyOverridesThatChangeIt(t *testing.T) {
 	t.Parallel()
 
@@ -785,16 +608,8 @@ func TestPublicationSelectionCountsOnlyOverridesThatChangeIt(t *testing.T) {
 		Exclude: []int64{leftOut.ID, unmatched.ID},
 	})
 	pub := h.PublishReport(boss, def)
-	if got, want := pub.Scope, "Owner: Dana Okafor · 1 added, 1 left out"; got != want {
+	if got, want := h.PublicationFact(pub, domain.ReportFactSelection).Text, "Owner: Dana Okafor · 1 added, 1 left out"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
-	}
-	var counts int
-	if err := h.DB.QueryRow(`SELECT count(*) FROM report_publications p, json_tree(p.snapshot) t
-		WHERE p.id = ? AND t.key IN ('Added', 'LeftOut', 'Via')`, pub.ID).Scan(&counts); err != nil {
-		t.Fatalf("read the snapshot: %v", err)
-	}
-	if counts != 0 {
-		t.Errorf("snapshot froze %d of the counts or ways in, want none", counts)
 	}
 }
 
@@ -807,34 +622,8 @@ func TestPickedPublicationFreezesItsSelection(t *testing.T) {
 	one := h.ActiveGoal(boss, "One", "why")
 	two := h.ActiveGoal(boss, "Two", "why")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{one.ID, two.ID}})
-	if got, want := h.PublishReport(boss, def).Scope, "2 Goals picked by hand"; got != want {
+	if got, want := h.PublicationFact(h.PublishReport(boss, def), domain.ReportFactSelection).Text, "2 Goals picked by hand"; got != want {
 		t.Errorf("published selection %q, want %q", got, want)
-	}
-}
-
-// A snapshot frozen before selections were has no selection.
-func TestSnapshotFromBeforeSelectionsHasNone(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, pub.ID); err != nil {
-		t.Fatalf("write a pre-selection snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	if got.Scope != "" {
-		t.Errorf("pre-selection snapshot's selection %q, want none", got.Scope)
-	}
-	if got.Report.Definition.Name != "MBR" {
-		t.Errorf("pre-selection snapshot's Report %q, want it kept", got.Report.Definition.Name)
 	}
 }
 
@@ -856,20 +645,20 @@ func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	b := linkedBlock(t, got.Report, s.Referral)
-	if want := []domain.LinkedGoal{
+	b := publishedBlock(t, h, got, s.Referral.ID)
+	if behind, want := factOfKind(t, b, domain.ReportFactSupportedBy).Goals, []domain.LinkedGoal{
 		linked(s.Alpha, domain.HealthRed, true),
 		linked(s.Beta, domain.HealthRed, false),
 		linked(s.Gamma, domain.HealthYellow, false),
 		linked(s.Epsilon, domain.HealthGreen, true),
-	}; !slices.Equal(b.Behind, want) {
-		t.Errorf("published Behind = %+v, want %+v as it read when published", b.Behind, want)
+	}; !slices.Equal(behind, want) {
+		t.Errorf("published Supported by = %+v, want %+v as it read when published", behind, want)
 	}
-	if want := []domain.LinkedGoal{linked(s.Growth, domain.HealthRed, true)}; !slices.Equal(b.ContributesTo, want) {
-		t.Errorf("published ContributesTo = %+v, want %+v", b.ContributesTo, want)
+	if to, want := factOfKind(t, b, domain.ReportFactContributesTo).Goals, []domain.LinkedGoal{linked(s.Growth, domain.HealthRed, true)}; !slices.Equal(to, want) {
+		t.Errorf("published Contributes to = %+v, want %+v", to, want)
 	}
-	if b.RolledUp.RedChildren != 2 || b.RolledUp.YellowChildren != 1 {
-		t.Errorf("published RolledUp = %+v, want 2 Red and 1 Yellow as when published", b.RolledUp)
+	if count := factOfKind(t, b, domain.ReportFactRolledUp).RolledUp.Count; count != "2 of 5 Red · 1 Yellow" {
+		t.Errorf("published Rolled-up count %q, want 2 Red and 1 Yellow as when published", count)
 	}
 
 	draft, err := h.Service.DraftReport(ctx, s.Definition, time.Time{})
@@ -881,35 +670,9 @@ func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
 	}
 }
 
-// A snapshot frozen before Reports counted Red and Yellow children or named
-// linked Goals still loads: its blocks name none, and count only their Check-in
-// overdue children (#246).
-func TestSnapshotFromBeforeLinkedGoalsCountsOnlyCheckinOverdue(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	s := h.LinkedGoalsReport(boss)
-	pub := h.PublishReport(boss, s.Definition)
-	h.FreezeBeforeLinkedGoals(pub, s.Referral)
-
-	got, err := h.Service.GetPublication(context.Background(), pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	for _, b := range got.Report.Exceptions {
-		if b.Behind != nil || b.ContributesTo != nil {
-			t.Errorf("%q names Behind %+v and ContributesTo %+v, want none", b.Goal.Title, b.Behind, b.ContributesTo)
-		}
-	}
-	if got := linkedBlock(t, got.Report, s.Referral).RolledUp.CountLine(); got != "1 of 3 overdue" {
-		t.Errorf("CountLine() = %q, want %q", got, "1 of 3 overdue")
-	}
-}
-
 // A publication freezes an exception block's Ask for help as it stood: the
-// Owner unmarking it and the addressee being renamed later leave the snapshot
-// asking of the old Name, while a fresh draft no longer asks.
+// Owner unmarking it and the addressee being renamed later leave the
+// publication asking of the old Name, while a fresh draft no longer asks.
 func TestPublicationFreezesAnAskForHelp(t *testing.T) {
 	t.Parallel()
 
@@ -934,11 +697,8 @@ func TestPublicationFreezesAnAskForHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if len(got.Report.Exceptions) != 1 {
-		t.Fatalf("published %d exception blocks, want 1", len(got.Report.Exceptions))
-	}
-	if b := got.Report.Exceptions[0]; !b.AsksForHelp || b.AskAddressee == nil || b.AskAddressee.Label() != "Mia Chen" {
-		t.Errorf("published block AsksForHelp %v of %+v, want an ask of Mia Chen as published", b.AsksForHelp, b.AskAddressee)
+	if ask := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactAskForHelp).Ask; ask.Addressee == nil || ask.Addressee.Label() != "Mia Chen" {
+		t.Errorf("published block asks %+v, want an ask of Mia Chen as published", ask)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
@@ -949,9 +709,11 @@ func TestPublicationFreezesAnAskForHelp(t *testing.T) {
 	}
 }
 
-// A publication keeps the timezone each block's Goal was judged in when it was
-// published, so clearing the Owner's Timezone later doesn't move its marks
-// (CONTEXT.md: Timezone), while a fresh draft reads the Owner as they are now.
+// A publication marks each block as judged in its Goal's timezone when it was
+// published: published when the back-to-Green date has passed in Asia/Tokyo
+// but not yet in UTC, its Path to Green is Overdue, and clearing the Owner's
+// Timezone later doesn't move the mark (CONTEXT.md: Timezone), while a fresh
+// draft reads the Owner as they are now.
 func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	t.Parallel()
 
@@ -961,9 +723,16 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	kenji := h.SignIn("kenji@example.com")
 	h.SetTimezone(kenji, "Asia/Tokyo")
 	g := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
-	h.Checkin(kenji, g.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	now := h.Clock.Now()
+	backToGreen := time.Date(now.Year(), now.Month(), now.Day()+3, 0, 0, 0, 0, time.UTC)
+	h.Checkin(kenji, g.ID, domain.HealthRed, "Blocked.", "Escalate.", backToGreen)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	// 16:00 UTC on the date is 01:00 the next day in Tokyo.
+	h.Clock.Set(backToGreen.Add(16 * time.Hour))
 	pub := h.PublishReport(boss, def)
+	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).PathToGreen; !path.Overdue {
+		t.Fatalf("published Path to Green %+v, want Overdue, its date passed in Tokyo", path)
+	}
 
 	h.SetTimezone(kenji, "")
 
@@ -971,8 +740,8 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if len(got.Report.Exceptions) != 1 || got.Report.Exceptions[0].Timezone != "Asia/Tokyo" {
-		t.Errorf("published blocks %+v, want one with Timezone Asia/Tokyo as published", got.Report.Exceptions)
+	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).PathToGreen; !path.Overdue {
+		t.Errorf("published Path to Green %+v after the Owner's Timezone was cleared, want still Overdue, as published", path)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
@@ -980,6 +749,9 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 	}
 	if len(draft.Exceptions) != 1 || draft.Exceptions[0].Timezone != "UTC" {
 		t.Errorf("a fresh draft's blocks %+v, want one with Timezone UTC, the company's", draft.Exceptions)
+	}
+	if b := draft.Exceptions[0]; domain.PathToGreenOverdueAt(b, h.Clock.Now()) {
+		t.Errorf("a fresh draft's Path to Green is Overdue, want not yet, its date not passed in UTC")
 	}
 }
 
@@ -996,8 +768,8 @@ func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
 	checkinHealth(h, boss, g, domain.HealthRed)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	if len(pub.Report.Exceptions) != 1 || pub.Report.Exceptions[0].RunOffGreenWeeks != 1 {
-		t.Fatalf("published blocks %+v, want one 1 week off Green", pub.Report.Exceptions)
+	if head := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactBlockHead).Head; head.RunOffGreen != "1 wk" {
+		t.Fatalf("published head %+v, want 1 week off Green", head)
 	}
 
 	h.Clock.Advance(14 * day)
@@ -1007,8 +779,8 @@ func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if len(got.Report.Exceptions) != 1 || got.Report.Exceptions[0].RunOffGreenWeeks != 1 {
-		t.Errorf("publication's blocks %+v, want one still 1 week off Green, as published", got.Report.Exceptions)
+	if head := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactBlockHead).Head; head.RunOffGreen != "1 wk" {
+		t.Errorf("publication's head %+v, want still 1 week off Green, as published", head)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
@@ -1016,33 +788,6 @@ func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
 	}
 	if len(draft.Exceptions) != 1 || draft.Exceptions[0].RunOffGreenWeeks != 3 {
 		t.Errorf("a fresh draft's blocks %+v, want one 3 weeks off Green", draft.Exceptions)
-	}
-}
-
-// A snapshot frozen before Reports showed the Run off Green loads its blocks
-// with none.
-func TestSnapshotFromBeforeTheRunOffGreenHasNone(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	checkinHealth(h, boss, g, domain.HealthRed)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
-		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","Badges":null,"PriorDueDates":null}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-run-off-green snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	if b := got.Report.Exceptions; len(b) != 1 || b[0].Health != domain.HealthRed || b[0].RunOffGreenWeeks != 0 {
-		t.Errorf("pre-run-off-green blocks %+v, want one Red block with no Run off Green", b)
 	}
 }
 
@@ -1062,8 +807,8 @@ func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	published := []time.Time{date(2026, 3, 6)}
-	if b := pub.Report.Exceptions; len(b) != 1 || !slices.EqualFunc(b[0].PriorPathTargetDates, published, time.Time.Equal) {
-		t.Fatalf("published blocks %+v, want one slipped from %v", b, published)
+	if path := factOfKind(t, publishedBlock(t, h, pub, g.ID), domain.ReportFactPathToGreen).PathToGreen; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
+		t.Fatalf("published Path to Green %+v, want one slipped from %v", path, published)
 	}
 
 	h.Clock.Advance(day)
@@ -1073,8 +818,8 @@ func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if b := got.Report.Exceptions; len(b) != 1 || !slices.EqualFunc(b[0].PriorPathTargetDates, published, time.Time.Equal) {
-		t.Errorf("publication's blocks %+v, want one still slipped from %v, as published", b, published)
+	if path := factOfKind(t, publishedBlock(t, h, got, g.ID), domain.ReportFactPathToGreen).PathToGreen; !slices.EqualFunc(path.PriorDates, published, time.Time.Equal) {
+		t.Errorf("publication's Path to Green %+v, want one still slipped from %v, as published", path, published)
 	}
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
@@ -1082,36 +827,6 @@ func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
 	}
 	if want := []time.Time{date(2026, 3, 6), date(2026, 3, 13)}; len(draft.Exceptions) != 1 || !slices.EqualFunc(draft.Exceptions[0].PriorPathTargetDates, want, time.Time.Equal) {
 		t.Errorf("a fresh draft's blocks %+v, want one slipped from %v", draft.Exceptions, want)
-	}
-}
-
-// A snapshot frozen before Reports showed back-to-Green slips loads its blocks
-// with none.
-func TestSnapshotFromBeforeBackToGreenSlipsHasNone(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", date(2026, 3, 6))
-	h.Clock.Advance(day)
-	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 3, 13), "Counsel starts later.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
-		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","Badges":null,"PriorDueDates":null,` +
-		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-back-to-Green-slips snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	if b := got.Report.Exceptions; len(b) != 1 || !b[0].PathTargetDate.Equal(date(2026, 3, 13)) || len(b[0].PriorPathTargetDates) != 0 {
-		t.Errorf("pre-back-to-Green-slips blocks %+v, want one back to Green by 2026-03-13 with no prior dates", b)
 	}
 }
 
@@ -1262,8 +977,8 @@ func TestPublishRefusesWhenTheDefinitionIsEditedDuringTheDraft(t *testing.T) {
 
 	// Published again, it reads as the Definition does now.
 	pub := publish(t, h, dana, def, time.Time{})
-	if pub.Report.Definition.Name != "Quarterly review" {
-		t.Errorf("publication titled %q, want the edited title %q", pub.Report.Definition.Name, "Quarterly review")
+	if pub.Name != "Quarterly review" {
+		t.Errorf("publication titled %q, want the edited title %q", pub.Name, "Quarterly review")
 	}
 }
 

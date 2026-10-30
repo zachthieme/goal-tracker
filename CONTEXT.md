@@ -192,7 +192,7 @@ A document generated from Check-ins for a chosen set of Goals, at whatever caden
 _Avoid_: MBR (a Report may be used as one), review, rollup
 
 **Report Definition**:
-A saved, reusable selection of Goals for a Report, made either by Report rules or by hand-picking Goals, never by following Contributes to links. Each publication freezes a snapshot, and the next publication marks what changed since the previous one, including Goals that entered or left the Report. A Goal that was Done or Cancelled before a Report's baseline leaves it, however it was selected, so finished work is reported once. Anyone signed in may create one. Only its creator, its Report Delegates and Admins may change it, curate its narrative or publish it; every change is kept in its Report log. It has a creator, not an Owner, and nothing changes hands when the creator leaves.
+A saved, reusable selection of Goals for a Report, made either by Report rules or by hand-picking Goals, never by following Contributes to links. Each publication freezes its facts as they read when published, words and links included; later changes to its Goals, or to how Reports word a fact, never change how it reads. The next publication marks what changed since the previous one, including Goals that entered or left the Report. A Goal that was Done or Cancelled before a Report's baseline leaves it, however it was selected, so finished work is reported once. Anyone signed in may create one. Only its creator, its Report Delegates and Admins may change it, curate its narrative or publish it; every change is kept in its Report log. It has a creator, not an Owner, and nothing changes hands when the creator leaves.
 _Avoid_: template, saved view, dashboard
 
 **Report Delegate**:

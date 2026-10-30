@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -34,6 +35,11 @@ func factOfKind(t *testing.T, facts []domain.ReportFact, kind domain.ReportFactK
 	return found[0]
 }
 
+// isFact matches a fact of kind, for slices.ContainsFunc and its kin.
+func isFact(kind domain.ReportFactKind) func(domain.ReportFact) bool {
+	return func(f domain.ReportFact) bool { return f.Kind == kind }
+}
+
 var (
 	factsBoss  = domain.Account{ID: 1, Email: "boss@example.com", Name: "Bo Ss"}
 	factsAda   = domain.Account{ID: 2, Email: "ada@example.com", Name: "Ada Okafor"}
@@ -41,27 +47,21 @@ var (
 	factsLater = time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)
 )
 
-// factsPublication is a publication holding one of each of its Report's own
-// parts, read against its previous publication.
-func factsPublication() domain.Publication {
-	return domain.Publication{
-		ID:          9,
-		PublishedBy: factsBoss,
-		PublishedAt: factsAsOf,
-		Scope:       "Team: Growth",
-		Report: domain.Report{
-			Definition:  domain.ReportDefinition{Name: "Growth MBR", Introduction: "Where Growth stands."},
-			Baseline:    time.Date(2026, 2, 10, 0, 0, 0, 0, time.UTC),
-			Previous:    domain.PreviousPublication{ID: 8, PublishedAt: time.Date(2026, 2, 10, 16, 0, 0, 0, time.UTC)},
-			ActionItems: []domain.ActionItem{{Text: "Call legal", Owner: factsAda, DueDate: factsLater}},
-			Narrative:   []domain.NarrativeSection{{Kind: domain.HighlightInsight, Notes: []string{"Churn is seasonal."}}},
-			Exceptions:  []domain.ReportBlock{{Goal: domain.Goal{Title: "Launch in EU", Owner: factsBoss}, Health: domain.HealthRed}},
-			Lines:       []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: factsAda}, Health: domain.HealthGreen}},
-			MembershipChanges: []domain.MembershipChange{
-				{Goal: domain.Goal{Title: "Hire a PM"}, Direction: domain.MembershipAdded, Reason: domain.MembershipPickedByHand},
-			},
-			Movement: &domain.ReportMovement{TurnedRed: 1},
+// factsReport is a Report holding one of each of its own parts, read against
+// its previous publication.
+func factsReport() domain.Report {
+	return domain.Report{
+		Definition:  domain.ReportDefinition{Name: "Growth MBR", Introduction: "Where Growth stands."},
+		Baseline:    time.Date(2026, 2, 10, 0, 0, 0, 0, time.UTC),
+		Previous:    domain.PreviousPublication{ID: 8, PublishedAt: time.Date(2026, 2, 10, 16, 0, 0, 0, time.UTC)},
+		ActionItems: []domain.ActionItem{{Text: "Call legal", Owner: factsAda, DueDate: factsLater}},
+		Narrative:   []domain.NarrativeSection{{Kind: domain.HighlightInsight, Notes: []string{"Churn is seasonal."}}},
+		Exceptions:  []domain.ReportBlock{{Goal: domain.Goal{ID: 4, Title: "Launch in EU", Owner: factsBoss}, Health: domain.HealthRed}},
+		Lines:       []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: factsAda}, Health: domain.HealthGreen}},
+		MembershipChanges: []domain.MembershipChange{
+			{Goal: domain.Goal{Title: "Hire a PM"}, Direction: domain.MembershipAdded, Reason: domain.MembershipPickedByHand},
 		},
+		Movement: &domain.ReportMovement{TurnedRed: 1},
 	}
 }
 
@@ -72,7 +72,7 @@ func factsPublication() domain.Publication {
 func TestPublicationFactsListTheReportsPartsInOrder(t *testing.T) {
 	t.Parallel()
 
-	got := factOutline(factsPublication().Facts())
+	got := factOutline(domain.PublicationFacts(factsReport(), factsBoss, factsAsOf, "Team: Growth"))
 	want := []string{
 		"byline: Published",
 		"selection: Selection",
@@ -86,7 +86,7 @@ func TestPublicationFactsListTheReportsPartsInOrder(t *testing.T) {
 		"membership changes: Goals that entered or left this report",
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("Publication.Facts() =\n%q\nwant\n%q", got, want)
+		t.Errorf("PublicationFacts() =\n%q\nwant\n%q", got, want)
 	}
 }
 
@@ -95,28 +95,28 @@ func TestPublicationFactsListTheReportsPartsInOrder(t *testing.T) {
 func TestPublicationFactsSayWhatChangesAreReadSince(t *testing.T) {
 	t.Parallel()
 
-	pub := factsPublication()
-	facts := pub.Facts()
+	r := factsReport()
+	facts := domain.PublicationFacts(r, factsBoss, factsAsOf, "")
 	byline := factOfKind(t, facts, domain.ReportFactByline).Byline
 	if byline.PublishedBy != factsBoss || !byline.PublishedAt.Equal(factsAsOf) {
 		t.Errorf("byline = %+v, want published by boss at %v", byline, factsAsOf)
 	}
-	if got := byline.Since.Words(); got != "the previous publication" {
+	if got := byline.Since.Words; got != "the previous publication" {
 		t.Errorf("byline since words = %q, want the previous publication", got)
 	}
-	if got, want := byline.Since.At, pub.Report.Previous.PublishedAt; !got.Equal(want) {
+	if got, want := byline.Since.At, r.Previous.PublishedAt; !got.Equal(want) {
 		t.Errorf("byline since at = %v, want the previous publication's %v", got, want)
 	}
 	movement := factOfKind(t, facts, domain.ReportFactMovement).Movement
-	if movement.Since.Words() != "the previous publication" || !slices.Equal(movement.Parts, []string{"1 turned Red"}) {
+	if movement.Since.Words != "the previous publication" || !slices.Equal(movement.Parts, []string{"1 turned Red"}) {
 		t.Errorf("movement = %+v, want 1 turned Red since the previous publication", movement)
 	}
 
-	pub.Report.Previous = domain.PreviousPublication{}
-	facts = pub.Facts()
+	r.Previous = domain.PreviousPublication{}
+	facts = domain.PublicationFacts(r, factsBoss, factsAsOf, "")
 	since := factOfKind(t, facts, domain.ReportFactByline).Byline.Since
-	if since.Words() != "" || !since.At.Equal(pub.Report.Baseline) {
-		t.Errorf("byline since = %+v (words %q), want the baseline date and no words", since, since.Words())
+	if since.Words != "" || !since.At.Equal(r.Baseline) {
+		t.Errorf("byline since = %+v, want the baseline date and no words", since)
 	}
 	if got := factOfKind(t, facts, domain.ReportFactMovement).Movement.Since; got != since {
 		t.Errorf("movement since = %+v, want the byline's %+v", got, since)
@@ -129,17 +129,48 @@ func TestPublicationFactsSayWhatChangesAreReadSince(t *testing.T) {
 func TestReportFactsLeaveOutWhatTheReportLacks(t *testing.T) {
 	t.Parallel()
 
-	pub := domain.Publication{PublishedBy: factsBoss, PublishedAt: factsAsOf, Report: domain.Report{Baseline: factsAsOf}}
-	if got, want := factOutline(pub.Facts()), []string{"byline: Published"}; !slices.Equal(got, want) {
-		t.Errorf("Publication.Facts() of an empty Report = %q, want %q", got, want)
+	facts := domain.PublicationFacts(domain.Report{Baseline: factsAsOf}, factsBoss, factsAsOf, "")
+	if got, want := factOutline(facts), []string{"byline: Published"}; !slices.Equal(got, want) {
+		t.Errorf("PublicationFacts() of an empty Report = %q, want %q", got, want)
 	}
 
 	r := domain.Report{Lines: []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn"}, Health: domain.HealthGreen}}}
-	if got, want := factOutline(r.Facts()), []string{"health counts: Health", "on track: On track"}; !slices.Equal(got, want) {
+	if got, want := factOutline(r.Facts(factsAsOf)), []string{"health counts: Health", "on track: On track"}; !slices.Equal(got, want) {
 		t.Errorf("Report.Facts() of one one-line Goal = %q, want %q", got, want)
 	}
-	if got := factOfKind(t, r.Facts(), domain.ReportFactHealthCounts).HealthCounts; got.Green != 1 {
+	if got := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactHealthCounts).HealthCounts; got.Green != 1 {
 		t.Errorf("health counts = %+v, want 1 Green", got)
+	}
+}
+
+// The exceptions fact carries each block as its own facts, read as of the
+// instant the Report's facts are, with the id of its Goal.
+func TestReportFactsCarryEachBlockAsItsFacts(t *testing.T) {
+	t.Parallel()
+
+	r := factsReport()
+	r.Exceptions = []domain.ReportBlock{factsBlock()}
+	blocks := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactExceptions).Blocks
+	if len(blocks) != 1 || blocks[0].GoalID != 4 {
+		t.Fatalf("blocks = %+v, want the one block, of Goal 4", blocks)
+	}
+	if got, want := blocks[0].Facts, r.Exceptions[0].Facts(factsAsOf); !reflect.DeepEqual(got, want) {
+		t.Errorf("block facts =\n%+v\nwant ReportBlock.Facts(asOf)\n%+v", got, want)
+	}
+	later := factOfKind(t, r.Facts(r.Exceptions[0].PathTargetDate), domain.ReportFactExceptions).Blocks[0].Facts
+	if factOfKind(t, later, domain.ReportFactPathToGreen).PathToGreen.Overdue {
+		t.Errorf("block read as of its back-to-Green date is Overdue, want its facts read as of the Report's instant")
+	}
+}
+
+// The narrative fact carries each section under its heading, in words.
+func TestReportFactsHeadEachNarrativeSection(t *testing.T) {
+	t.Parallel()
+
+	got := factOfKind(t, factsReport().Facts(factsAsOf), domain.ReportFactNarrative).Narrative
+	want := []domain.ReportNarrativeSection{{Heading: "Insights", Notes: []string{"Churn is seasonal."}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("narrative = %+v, want %+v", got, want)
 	}
 }
 
@@ -174,7 +205,7 @@ func factsBlock() domain.ReportBlock {
 		},
 		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 3, YellowChildren: 1},
 		ScheduleConflicts: []domain.ReportScheduleConflict{
-			{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), OwnDue: factsLater},
+			{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)},
 		},
 		ContributesTo: []domain.LinkedGoal{{GoalID: 5, Title: "Grow revenue", Health: domain.HealthYellow, InReport: true}},
 		Behind:        []domain.LinkedGoal{{GoalID: 6, Title: "Alpha ledger", Health: domain.HealthYellow}},
@@ -210,21 +241,23 @@ func TestReportBlockFactsListTheBlockInOrder(t *testing.T) {
 	}
 }
 
-// A block's Schedule conflict fact carries each conflict as the block holds
-// it, as the child first, then as the parent; a block in none has no such
-// fact.
+// A block's Schedule conflict fact carries its conflicts grouped by side
+// (ReportScheduleConflictGroups), each group with the word its Goals read
+// before their delivery dates, "due"; a block in none has no such fact.
 func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
 	t.Parallel()
 
 	b := factsBlock()
-	asParent := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Lisbon office", Owner: factsBoss, Due: factsLater.AddDate(0, 1, 0), OwnDue: factsLater}
+	asParent := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Lisbon office", Owner: factsBoss, Due: factsLater.AddDate(0, 1, 0)}
 	b.ScheduleConflicts = append(b.ScheduleConflicts, asParent)
-	got := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactScheduleConflict).ScheduleConflicts
-	if !slices.EqualFunc(got, b.ScheduleConflicts, func(x, y domain.ReportScheduleConflict) bool {
-		return x.AsParent == y.AsParent && x.GoalID == y.GoalID && x.Title == y.Title && x.Owner == y.Owner &&
-			x.Due.Equal(y.Due) && x.OwnDue.Equal(y.OwnDue)
-	}) {
-		t.Errorf("Schedule conflict fact = %+v, want %+v", got, b.ScheduleConflicts)
+	got := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactScheduleConflict).ScheduleConflictGroups
+	if want := domain.ReportScheduleConflictGroups(b.ScheduleConflicts); !reflect.DeepEqual(got, want) || len(got) != 2 {
+		t.Errorf("Schedule conflict fact = %+v, want the two sides %+v", got, want)
+	}
+	for _, g := range got {
+		if g.DueWords != "due" {
+			t.Errorf("group %q reads %q before a date, want due", g.Words, g.DueWords)
+		}
 	}
 
 	b.ScheduleConflicts = nil
@@ -240,9 +273,9 @@ func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
 func TestReportScheduleConflictGroupsSplitTheConflictsBySide(t *testing.T) {
 	t.Parallel()
 
-	iberia := domain.ReportScheduleConflict{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC), OwnDue: factsLater}
-	lisbon := domain.ReportScheduleConflict{GoalID: 9, Title: "Lisbon office", Owner: factsAda, Due: time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC), OwnDue: factsLater}
-	network := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Wire the network", Owner: factsAda, Due: factsLater.AddDate(0, 1, 0), OwnDue: factsLater}
+	iberia := domain.ReportScheduleConflict{GoalID: 7, Title: "Open in Iberia", Owner: factsBoss, Due: time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)}
+	lisbon := domain.ReportScheduleConflict{GoalID: 9, Title: "Lisbon office", Owner: factsAda, Due: time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)}
+	network := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Wire the network", Owner: factsAda, Due: factsLater.AddDate(0, 1, 0)}
 	outline := func(groups []domain.ReportScheduleConflictGroup) []string {
 		var out []string
 		for _, g := range groups {
@@ -315,8 +348,8 @@ func TestReportBlockFactsMarkAnOverduePathToGreen(t *testing.T) {
 		!slices.Equal(path.PriorDates, b.PriorPathTargetDates) || path.Slips != 2 {
 		t.Errorf("path = %+v, want Hire counsel. by %v, slipped twice, Overdue", path, b.PathTargetDate)
 	}
-	if path.ByWords() != "back to Green by" || path.OverdueWords() != "Overdue" {
-		t.Errorf("path reads %q and %q, want back to Green by and Overdue", path.ByWords(), path.OverdueWords())
+	if path.ByWords != "back to Green by" || path.OverdueWords != "Overdue" {
+		t.Errorf("path reads %q and %q, want back to Green by and Overdue", path.ByWords, path.OverdueWords)
 	}
 	if path := factOfKind(t, b.Facts(b.PathTargetDate), domain.ReportFactPathToGreen).PathToGreen; path.Overdue {
 		t.Errorf("path as of its own date = %+v, want not Overdue", path)
@@ -348,13 +381,13 @@ func TestReportBlockFactsSayWhomItAsksForHelp(t *testing.T) {
 
 	b := factsBlock()
 	ask := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Ask
-	if ask.Addressee != nil || ask.Words() != "no one above the Owner" {
-		t.Errorf("ask = %+v reading %q, want no one above the Owner", ask, ask.Words())
+	if ask.Addressee != nil || ask.Words != "no one above the Owner" {
+		t.Errorf("ask = %+v, want no one above the Owner", ask)
 	}
 	b.AskAddressee = &factsAda
 	ask = factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Ask
-	if ask.Addressee == nil || *ask.Addressee != factsAda || ask.Words() != "" {
-		t.Errorf("ask = %+v reading %q, want of Ada and no words", ask, ask.Words())
+	if ask.Addressee == nil || *ask.Addressee != factsAda || ask.Words != "" {
+		t.Errorf("ask = %+v, want of Ada and no words", ask)
 	}
 }
 
@@ -384,12 +417,12 @@ func TestReportBlockFactsMarkMilestonesAndReadMetrics(t *testing.T) {
 	var readings []string
 	for _, m := range factOfKind(t, facts, domain.ReportFactMetrics).Metrics {
 		readings = append(readings, m.Reading(func(f float64) string { return "n" }))
+		if m.AgainstWords != "against a target of" {
+			t.Errorf("%s reads %q its target, want against a target of", m.Metric.Name, m.AgainstWords)
+		}
 	}
 	if want := []string{"no reading yet", "n"}; !slices.Equal(readings, want) {
 		t.Errorf("readings = %q, want %q", readings, want)
-	}
-	if got := domain.ReportAgainstATargetOf; got != "against a target of" {
-		t.Errorf("a Metric reads %q its target, want against a target of", got)
 	}
 }
 

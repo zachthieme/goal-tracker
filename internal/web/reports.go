@@ -160,9 +160,8 @@ type draftHistoryEntry struct {
 // draftHistory merges a Report Definition's publications, pubs, with its
 // Report log, log, both newest first, into its draft's History, newest
 // first. A publication stands for its Report log entry, which can't link,
-// so the log's Published entries are left out; a publication from before
-// the Report log has none to leave out. A publication made at the same
-// moment as a log entry comes first.
+// so the log's Published entries are left out. A publication made at the
+// same moment as a log entry comes first.
 func draftHistory(pubs []domain.Publication, log []domain.ReportLogEntry) []draftHistoryEntry {
 	out := make([]draftHistoryEntry, 0, len(pubs)+len(log))
 	for len(pubs) > 0 || len(log) > 0 {
@@ -709,7 +708,7 @@ func (s *Server) handlePrintPublication(w http.ResponseWriter, r *http.Request, 
 }
 
 // handleExportMarkdown downloads a published Report as Markdown, with the same
-// content as its snapshot.
+// content as its publication page.
 func (s *Server) handleExportMarkdown(w http.ResponseWriter, r *http.Request, _ domain.Account) {
 	pub, ok := s.publication(w, r)
 	if !ok {

@@ -1316,39 +1316,6 @@ func TestRefusedAddAnotherWithoutScriptDraftsOnceOverHTTP(t *testing.T) {
 	}
 }
 
-// A publication frozen when a section held at most one of the author's notes
-// still shows it, as its own paragraph before the Highlights picked into the
-// section (ticket #187).
-func TestPublicationFromBeforeSeveralNotesShowsItsNoteOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[{"Kind":"Accomplishment","Text":"EU is open for business.",` +
-		`"Highlights":[{"Highlight":{"ID":1,"Kind":"Accomplishment","Note":"Signed the first EU customer.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Accomplishment"}]}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-several-notes snapshot: %v", err)
-	}
-
-	ts := newServer(t, h)
-	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
-	narrative := findByTestID(t, page, "report-narrative")
-	if got := narrativeParagraphs(narrative); !slices.Equal(got, []string{"EU is open for business."}) {
-		t.Errorf("published notes %q, want the one note frozen before: %s", got, renderNode(narrative))
-	}
-	notes := findAllByTestID(narrative, "narrative-text")
-	picked := findAll(narrative, func(n *nethtml.Node) bool {
-		return attrOf(n, "data-testid") == "narrative-highlight" && strings.Contains(textOf(n), "Signed the first EU customer.")
-	})
-	if len(notes) == 0 || len(picked) == 0 || !precedes(notes[0], picked[0]) {
-		t.Errorf("the note does not come before the picked Highlight: %s", renderNode(narrative))
-	}
-}
-
 // draftHighlightID is the ID of the Highlight with this note in the Report
 // Definition's draft.
 func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDefinition, note string) int64 {
@@ -2142,33 +2109,6 @@ func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 	}
 }
 
-// A publication frozen before Milestones read mark, date, name shows them in
-// that form: the snapshot already holds all the mark needs.
-func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
-		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
-		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null},` +
-		`{"Milestone":{"ID":3,"Name":"Launch","TargetDate":"2026-04-01T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":null}]}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
-
-	ts := newServer(t, h)
-	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
-	want := []string{"Overdue Dec 20, 2025 Dec 1, 2025 Beta", "New Mar 1, 2026 GA", "Apr 1, 2026 Launch"}
-	if got := textsOf(findAllByTestID(findByTestID(t, page, "report-exception"), "report-milestone")); !slices.Equal(got, want) {
-		t.Errorf("Milestones read\n %q\nwant\n %q", got, want)
-	}
-}
-
 // The draft is one page: its main column is the Report as readers get it,
 // headed by the Report's name, then a muted line saying what the definition
 // selects, how many Goals that is and what it reads changes against, then the
@@ -2446,8 +2386,7 @@ func reportPageMentions(root *nethtml.Node, s string) bool {
 }
 
 // A publication shows each Owner by the Name they had when it was published,
-// whatever their Name is now; one published before Accounts had Names still
-// shows its people by email.
+// whatever their Name is now.
 func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2457,14 +2396,8 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	renamed := h.PublishReport(boss, def)
-	old := h.PublishReport(boss, def)
 	if _, err := h.DB.ExecContext(t.Context(), `UPDATE accounts SET name = 'Ada Mensah' WHERE id = ?`, ada.ID); err != nil {
 		t.Fatalf("rename Ada: %v", err)
-	}
-	before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
-		`"Owner":{"ID":%d,"Email":"ada.okafor@example.com","IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, ada.ID)
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
-		t.Fatalf("write a pre-Names snapshot: %v", err)
 	}
 
 	ts := newServer(t, h)
@@ -2475,12 +2408,6 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 
 	if page := getPage(t, client, pubURL(renamed)); !reportShowsPerson(page, "ada.okafor@example.com", "Ada Okafor") || reportPageMentions(page, "Ada Mensah") {
 		t.Errorf("publication does not show Ada as published; body:\n%s", renderNode(page))
-	}
-	if row := findByTestID(t, getPage(t, client, pubURL(old)), "selected-owner"); !reportShowsPerson(row, "ada.okafor@example.com", "ada.okafor@example.com") {
-		t.Errorf("pre-Names Owner reads %s, want the email", renderNode(row))
-	}
-	if printed := getPage(t, client, pubURL(old)+"/print"); reportTextsReading(printed, "ada.okafor@example.com") == 0 || reportPageMentions(printed, "(ada.okafor@example.com)") {
-		t.Errorf("pre-Names print page does not show Ada by email alone; body:\n%s", renderNode(printed))
 	}
 }
 
@@ -2906,40 +2833,6 @@ func TestDraftHistoryMergesPublicationsWithTheReportLogOverHTTP(t *testing.T) {
 		if path := fmt.Sprintf("/reports/%d/publications/%d", def.ID, p.ID); linkTo(entries[i], path) == nil {
 			t.Errorf("History's entry %q doesn't link to its publication %s", textOf(entries[i]), path)
 		}
-	}
-}
-
-// A publication made before the Report log was kept has no entry in it, and
-// still shows on the draft's History, linking to it.
-func TestDraftHistoryShowsAPublicationFromBeforeTheReportLogOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	h.Clock.Advance(time.Hour)
-	pub := h.PublishBeforeTheReportLog(boss, def)
-	h.Clock.Advance(time.Hour)
-	if _, err := h.Service.UpdateReportDefinition(context.Background(), boss.ID, def.ID, domain.SaveReportDefinitionInput{
-		Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID},
-	}); err != nil {
-		t.Fatalf("UpdateReportDefinition: %v", err)
-	}
-	ts := newServer(t, h)
-
-	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
-	entries := findAllByTestID(findByTestID(t, page, "report-history"), "report-history-entry")
-	want := []string{
-		"Title: MBR → EU MBR Jan 2, 2026, 17:04 · boss",
-		"Published Jan 2, 2026, 16:04 · boss",
-		"Created Jan 2, 2026, 15:04 · boss",
-	}
-	if got := textsOf(entries); !slices.Equal(got, want) {
-		t.Fatalf("History reads %q, want %q", got, want)
-	}
-	if path := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID); linkTo(entries[1], path) == nil {
-		t.Errorf("the publication from before the Report log doesn't link to %s: %s", path, renderNode(entries[1]))
 	}
 }
 
@@ -4141,8 +4034,7 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 
 // A Red exception block shows its Run off Green beside its Health, before the
 // Health it was at the baseline ("Red · 2 wks · was Green"), on the draft, the
-// publication and its print page; a publication from before Reports showed it
-// has none (CONTEXT.md: Run off Green).
+// publication and its print page (CONTEXT.md: Run off Green).
 func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4159,12 +4051,6 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	old := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked."}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
 	h.Clock.Advance(14 * 24 * time.Hour)
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0), "Unblocking takes longer still.")
 
@@ -4187,15 +4073,9 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 			t.Errorf("%s does not show the Run off Green before the earlier Health; block:\n%s", name, renderNode(block))
 		}
 	}
-	block := reportBlockOf(t, getPage(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, old.ID)), g)
-	if !strings.Contains(textOf(block), "Blocked.") || hasTestID(block, "report-run-off-green") {
-		t.Errorf("a publication from before the Run off Green does not render as published; block:\n%s", renderNode(block))
-	}
 }
 
-// A publication freezes a Goal's earlier Health with the rest of its block, and
-// one published before Reports marked a change of Health still renders, with
-// no earlier Health to show.
+// A publication freezes a Goal's earlier Health with the rest of its block.
 func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4204,19 +4084,13 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	before := h.PublishReport(boss, def)
+	h.PublishReport(boss, def)
 	h.Clock.Advance(24 * time.Hour)
 	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 1, 0))
 	marked := h.PublishReport(boss, def)
 	h.Clock.Advance(24 * time.Hour)
 	// A month out from a day later moves the back-to-Green date later.
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find another.", h.Clock.Now().AddDate(0, 1, 0), "Another vendor takes longer.")
-
-	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Yellow","Status":"Vendor is late."}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, before.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -4225,10 +4099,6 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	}
 	if got := textsOf(findAllByTestID(reportBlockOf(t, publication(marked), g), "report-prior-health")); !slices.Equal(got, []string{"· was Green"}) {
 		t.Errorf("the publication's earlier Health reads %q, want the Green it was when published", got)
-	}
-	block := reportBlockOf(t, publication(before), g)
-	if !strings.Contains(textOf(block), "Vendor is late.") || hasTestID(block, "report-prior-health") {
-		t.Errorf("the older publication does not render its block as published; block:\n%s", renderNode(block))
 	}
 }
 
@@ -4372,38 +4242,9 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	}
 }
 
-// A publication from before Reports said what moved and what changed renders
-// with neither line.
-func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","PriorHealth":"Green","Status":"Vendor is gone."}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, pub.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
-	for name, page := range map[string]*nethtml.Node{"publication": getPage(t, client, pubURL), "Print page": getPage(t, client, pubURL+"/print")} {
-		if hasTestID(page, "report-movement") || hasTestID(page, "report-changes") {
-			t.Errorf("the older %s shows a movement or a changes line it never had", name)
-		}
-		if !strings.Contains(textOf(reportBlockOf(t, page, g)), "Vendor is gone.") {
-			t.Errorf("the older %s does not render its block as published", name)
-		}
-	}
-}
-
 // A publication's page and its print page say how it selected its Goals, as
-// it read when published, under the published line; one frozen before
-// selections were says nothing about it, and nor does the draft.
+// it read when published, under the published line; the draft says nothing
+// about it.
 func TestPublicationSaysHowItSelects(t *testing.T) {
 	t.Parallel()
 
@@ -4419,10 +4260,6 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 		},
 	})
 	pub := h.PublishReport(boss, def)
-	old := h.PublishReport(boss, def)
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, old.ID); err != nil {
-		t.Fatalf("write a pre-selection snapshot: %v", err)
-	}
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -4452,14 +4289,8 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 			t.Errorf("%s shows the movement line before the selection line", name)
 		}
 	}
-	for name, url := range map[string]string{
-		"old publication page": pubPath(old),
-		"old print page":       pubPath(old) + "/print",
-		"draft":                ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10),
-	} {
-		if hasTestID(getPage(t, client, url), "report-selection") {
-			t.Errorf("%s has a selection line", name)
-		}
+	if hasTestID(getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), "report-selection") {
+		t.Errorf("the draft has a selection line")
 	}
 }
 
@@ -4688,32 +4519,6 @@ func TestReportScheduleConflictOwnerKeepsTheirOpenBracketOverHTTP(t *testing.T) 
 	}
 }
 
-// A publication frozen before Reports counted Red and Yellow children or
-// named linked Goals reads as it did: its Rolled-up Health counts only the
-// Check-in overdue children, and it names no other Goal (#246).
-func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	s := h.LinkedGoalsReport(boss)
-	pub := h.PublishReport(boss, s.Definition)
-	h.FreezeBeforeLinkedGoals(pub, s.Referral)
-
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	page := getPage(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
-	referral := reportBlockOf(t, page, s.Referral)
-	if got := textsOf(findAllByTestID(referral, "report-rollup")); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
-		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 overdue", got)
-	}
-	for _, testID := range []string{"report-behind-it", "report-contributes-to"} {
-		if hasTestID(page, testID) {
-			t.Errorf("publication from before linked Goals shows %s; body:\n%s", testID, renderNode(page))
-		}
-	}
-}
-
 // A block whose only child has no Health yet has no Rolled-up Health to count,
 // so it shows no Rolled-up Health row, only its Supported by, under its label
 // (#246, #475).
@@ -4908,8 +4713,7 @@ func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
 // A back-to-Green date that slipped within the Run off Green reads on an
 // exception block as a Milestone's slipped date does: the current date, the
 // one it last slipped from struck through, and the count once it slipped more
-// than once. The draft, the publication and its print page all show it, and a
-// publication from before Reports showed it renders as published.
+// than once. The draft, the publication and its print page all show it.
 func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -5017,77 +4821,12 @@ func TestReportBlockStrikesNoBackToGreenDateEqualToItsOwnOverHTTP(t *testing.T) 
 	}
 }
 
-// A publication frozen with a back-to-Green date equal to the last date it
-// slipped from renders under the rule of today, not of when it was frozen: the
-// most recent prior date that differs is struck through, and the count kept.
-func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffersOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	frozen := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
-		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-06-16T00:00:00Z",` +
-		`"PriorPathTargetDates":["2026-06-09T00:00:00Z","2026-06-16T00:00:00Z"]}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, frozen, pub.ID); err != nil {
-		t.Fatalf("write a frozen snapshot: %v", err)
-	}
-
-	ts := newServer(t, h)
-	block := reportBlockOf(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
-	path := findByTestID(t, block, "report-path-to-green")
-	if got, want := struckThrough(path), []string{"Jun 9, 2026"}; !slices.Equal(got, want) {
-		t.Errorf("the publication strikes through %q, want %q; path:\n%s", got, want, renderNode(path))
-	}
-	if got, want := textsOf(findAllByTestID(path, "report-back-to-green-slips")), []string{"2 slips"}; !slices.Equal(got, want) {
-		t.Errorf("the publication counts the slips as %q, want %q; path:\n%s", got, want, renderNode(path))
-	}
-	if want := "by Jun 16, 2026 Jun 9, 2026 · 2 slips)"; !strings.Contains(runningText(path), want) {
-		t.Errorf("the path doesn't read %s: %q", want, runningText(path))
-	}
-}
-
 // slippedBackToGreenTexts is s as the texts of the elements that show it: none for "".
 func slippedBackToGreenTexts(s string) []string {
 	if s == "" {
 		return nil
 	}
 	return []string{s}
-}
-
-// A publication frozen before Reports struck the back-to-Green date through
-// shows its date as published, with nothing struck through.
-func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC))
-	h.Clock.Advance(24 * time.Hour)
-	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), "Counsel starts later.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
-		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
-	if _, err := h.DB.ExecContext(t.Context(), `UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
-
-	ts := newServer(t, h)
-	block := reportBlockOf(t, getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
-	path := findByTestID(t, block, "report-path-to-green")
-	if got, want := textsOf(findAllByTestID(block, "report-path-to-green")), []string{"Path to Green: Hire counsel. (back to Green by Mar 13, 2026)"}; !slices.Equal(got, want) {
-		t.Errorf("an older publication's Path to Green reads %q, want %q", got, want)
-	}
-	if struck := struckThrough(path); len(struck) != 0 {
-		t.Errorf("an older publication strikes a back-to-Green date through, %q; path:\n%s", struck, renderNode(path))
-	}
 }
 
 // reportsActionItemRowsIn returns the rows of one group of the Reports
@@ -5681,8 +5420,8 @@ func reportFactParityPublication() domain.Publication {
 		},
 		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, ActiveChildren: 7, YellowChildren: 2},
 		ScheduleConflicts: []domain.ReportScheduleConflict{
-			{GoalID: 19, Title: "Staff the Lisbon desk", Owner: planner, Due: day(6, 1), OwnDue: day(6, 30)},
-			{AsParent: true, GoalID: 20, Title: "Wire the Lisbon network", Owner: wirer, Due: day(7, 15), OwnDue: day(6, 30)},
+			{GoalID: 19, Title: "Staff the Lisbon desk", Owner: planner, Due: day(6, 1)},
+			{AsParent: true, GoalID: 20, Title: "Wire the Lisbon network", Owner: wirer, Due: day(7, 15)},
 		},
 		ContributesTo: []domain.LinkedGoal{{GoalID: 12, Title: "Open in Iberia", Health: domain.HealthRed, InReport: true}},
 		Behind:        []domain.LinkedGoal{{GoalID: 13, Title: "Fit out the Lisbon floor", Health: domain.HealthYellow}},
@@ -5694,34 +5433,34 @@ func reportFactParityPublication() domain.Publication {
 		Health:      domain.HealthRed,
 		AsksForHelp: true, AskAddressee: &helper,
 	}
-	return domain.Publication{
-		ID: 7, DefinitionID: 3, PublishedBy: publisher,
-		PublishedAt: time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC),
-		Scope:       "Team: Southern Europe",
-		Report: domain.Report{
-			Definition:  domain.ReportDefinition{ID: 3, Name: "Iberia MBR", Introduction: "A month of leases and hiring."},
-			Baseline:    day(2, 10),
-			Previous:    domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 2, 10, 16, 0, 0, 0, time.UTC)},
-			ActionItems: []domain.ActionItem{{ID: 1, Text: "Chase the landlord", Owner: chaser, DueDate: day(3, 20)}},
-			Narrative: []domain.NarrativeSection{{
-				Kind:  domain.HighlightInsight,
-				Notes: []string{"Leases move slower in spring."},
-				Highlights: []domain.NarrativeHighlight{{
-					Highlight: domain.Highlight{Note: "Found a second site.", Owner: writer, Kind: domain.HighlightInsight},
-					GoalID:    14, GoalTitle: "Scout Porto", Section: domain.HighlightInsight,
-				}},
+	r := domain.Report{
+		Definition:  domain.ReportDefinition{ID: 3, Name: "Iberia MBR", Introduction: "A month of leases and hiring."},
+		Baseline:    day(2, 10),
+		Previous:    domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 2, 10, 16, 0, 0, 0, time.UTC)},
+		ActionItems: []domain.ActionItem{{ID: 1, Text: "Chase the landlord", Owner: chaser, DueDate: day(3, 20)}},
+		Narrative: []domain.NarrativeSection{{
+			Kind:  domain.HighlightInsight,
+			Notes: []string{"Leases move slower in spring."},
+			Highlights: []domain.NarrativeHighlight{{
+				Highlight: domain.Highlight{Note: "Found a second site.", Owner: writer, Kind: domain.HighlightInsight},
+				GoalID:    14, GoalTitle: "Scout Porto", Section: domain.HighlightInsight,
 			}},
-			Exceptions: []domain.ReportBlock{launch, iberia},
-			Lines: []domain.SelectedGoal{
-				{Goal: domain.Goal{ID: 15, Title: "Translate the handbook", Owner: liner}, Health: domain.HealthGreen},
-				{Goal: domain.Goal{ID: 16, Title: "Renew the visas", Owner: liner}, Health: domain.HealthGreen},
-				{Goal: domain.Goal{ID: 17, Title: "Book the movers", Owner: liner}, Health: domain.HealthGreen},
-			},
-			MembershipChanges: []domain.MembershipChange{
-				{Goal: domain.Goal{ID: 18, Title: "Close the Madrid desk"}, Direction: domain.MembershipLeft, Reason: domain.MembershipRemovedByHand},
-			},
-			Movement: &domain.ReportMovement{TurnedRed: 1, New: 2},
+		}},
+		Exceptions: []domain.ReportBlock{launch, iberia},
+		Lines: []domain.SelectedGoal{
+			{Goal: domain.Goal{ID: 15, Title: "Translate the handbook", Owner: liner}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{ID: 16, Title: "Renew the visas", Owner: liner}, Health: domain.HealthGreen},
+			{Goal: domain.Goal{ID: 17, Title: "Book the movers", Owner: liner}, Health: domain.HealthGreen},
 		},
+		MembershipChanges: []domain.MembershipChange{
+			{Goal: domain.Goal{ID: 18, Title: "Close the Madrid desk"}, Direction: domain.MembershipLeft, Reason: domain.MembershipRemovedByHand},
+		},
+		Movement: &domain.ReportMovement{TurnedRed: 1, New: 2},
+	}
+	at := time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC)
+	return domain.Publication{
+		ID: 7, DefinitionID: 3, Name: r.Definition.Name, PublishedBy: publisher, PublishedAt: at,
+		Facts: domain.PublicationFacts(r, publisher, at, "Team: Southern Europe"),
 	}
 }
 
@@ -5739,7 +5478,7 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 	}
 	switch f.Kind {
 	case domain.ReportFactByline:
-		out = append(out, f.Byline.PublishedBy.Label(), f.Byline.Since.Words())
+		out = append(out, f.Byline.PublishedBy.Label(), f.Byline.Since.Words)
 	case domain.ReportFactSelection, domain.ReportFactIntroduction, domain.ReportFactWhyItMatters,
 		domain.ReportFactStatus, domain.ReportFactExplanation:
 		out = append(out, f.Text)
@@ -5749,7 +5488,7 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 			fmt.Sprintf("%d %s", h.Red, domain.HealthRed), fmt.Sprintf("%d %s", h.Yellow, domain.HealthYellow),
 			fmt.Sprintf("%d %s", h.Green, domain.HealthGreen), fmt.Sprintf("%d %s", h.CheckinOverdue, domain.BadgeCheckinOverdue))
 	case domain.ReportFactMovement:
-		out = append(out, f.Movement.Since.Words())
+		out = append(out, f.Movement.Since.Words)
 		out = append(out, f.Movement.Parts...)
 	case domain.ReportFactActionItems:
 		for _, item := range f.ActionItems {
@@ -5757,7 +5496,7 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 		}
 	case domain.ReportFactNarrative:
 		for _, sec := range f.Narrative {
-			out = append(out, sec.Heading())
+			out = append(out, sec.Heading)
 			out = append(out, sec.Notes...)
 			for _, nh := range sec.Highlights {
 				out = append(out, nh.Highlight.Note, nh.Highlight.Owner.Label(), nh.GoalTitle)
@@ -5780,10 +5519,10 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 	case domain.ReportFactChanged:
 		out = append(out, f.Changes...)
 	case domain.ReportFactScheduleConflict:
-		for _, g := range domain.ReportScheduleConflictGroups(f.ScheduleConflicts) {
+		for _, g := range f.ScheduleConflictGroups {
 			out = append(out, g.Words)
 			for _, c := range g.Conflicts {
-				out = append(out, c.Title, c.Owner.Label(), domain.ReportConflictOtherDue)
+				out = append(out, c.Title, c.Owner.Label(), g.DueWords)
 			}
 		}
 	case domain.ReportFactContributesTo, domain.ReportFactSupportedBy:
@@ -5794,15 +5533,15 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 		}
 	case domain.ReportFactPathToGreen:
 		p := f.PathToGreen
-		out = append(out, p.Plan, p.ByWords(), domain.SlipsWords(p.Slips))
+		out = append(out, p.Plan, p.ByWords, domain.SlipsWords(p.Slips))
 		if p.Overdue {
-			out = append(out, p.OverdueWords())
+			out = append(out, p.OverdueWords)
 		}
 	case domain.ReportFactAskForHelp:
 		if f.Ask.Addressee != nil {
 			out = append(out, f.Ask.Addressee.Label())
 		} else {
-			out = append(out, f.Ask.Words())
+			out = append(out, f.Ask.Words)
 		}
 	case domain.ReportFactMilestones:
 		for _, m := range f.Milestones {
@@ -5810,7 +5549,7 @@ func reportFactParityTexts(t *testing.T, f domain.ReportFact) []string {
 		}
 	case domain.ReportFactMetrics:
 		for _, m := range f.Metrics {
-			out = append(out, m.Metric.Name, m.Reading(num), domain.ReportAgainstATargetOf, num(m.Metric.Target), m.Metric.Unit)
+			out = append(out, m.Metric.Name, m.Reading(num), m.AgainstWords, num(m.Metric.Target), m.Metric.Unit)
 		}
 	case domain.ReportFactRolledUp:
 		out = append(out, f.RolledUp.Health, f.RolledUp.Count)
@@ -5844,11 +5583,11 @@ func TestReportPageAndMarkdownExportShowTheSameFacts(t *testing.T) {
 			}
 		}
 	}
-	for _, f := range pub.Facts() {
+	for _, f := range pub.Facts {
 		check("", f)
-		for _, b := range f.Exceptions {
-			for _, bf := range b.Facts(pub.PublishedAt) {
-				check(" of "+b.Goal.Title, bf)
+		for _, b := range f.Blocks {
+			for _, bf := range b.Facts {
+				check(fmt.Sprintf(" of block %d", b.GoalID), bf)
 			}
 		}
 	}

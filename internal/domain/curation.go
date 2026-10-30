@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -34,25 +33,6 @@ type NarrativeSection struct {
 	// Notes are the author's own notes in the section, in the order entered.
 	Notes      []string
 	Highlights []NarrativeHighlight
-}
-
-// UnmarshalJSON reads a NarrativeSection frozen in a Publication's snapshot. A
-// snapshot from before a section held several notes has at most one, as Text;
-// it reads as the section's only note, so the publication shows it as before.
-func (n *NarrativeSection) UnmarshalJSON(data []byte) error {
-	type frozen NarrativeSection // without this method, so decoding doesn't recurse
-	var f struct {
-		frozen
-		Text string
-	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		return err
-	}
-	*n = NarrativeSection(f.frozen)
-	if f.Text != "" && n.Notes == nil {
-		n.Notes = []string{f.Text}
-	}
-	return nil
 }
 
 // Heading is the section's title as a Report shows it.
@@ -99,7 +79,7 @@ type CurateNarrativeInput struct {
 // ignored. Only the Definition's creator, a Report Delegate or an Admin may
 // curate it (ErrNotAuthorized); actorID is who is curating, whom the Report
 // log records with what changed. Re-saving the same narrative changes nothing. Publishing
-// freezes the narrative with the snapshot and starts the next one empty.
+// freezes the narrative with the publication and starts the next one empty.
 func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in CurateNarrativeInput) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
 		def, err := tx.GetReportDefinition(ctx, defID)

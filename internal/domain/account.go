@@ -3,7 +3,6 @@ package domain
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -82,34 +81,12 @@ func (a Account) Label() string {
 
 // LongLabel is the person as introduced where there is no hover — an export or
 // an email body: their Label with their email, "Ada Okafor
-// (ada.okafor@example.com)". A person a snapshot from before Names shows by
-// email (see Account.UnmarshalJSON) reads as the email alone.
+// (ada.okafor@example.com)", or the email alone when their Label is it.
 func (a Account) LongLabel() string {
 	if label := a.Label(); label != a.Email {
 		return label + " (" + a.Email + ")"
 	}
 	return a.Email
-}
-
-// UnmarshalJSON reads an Account frozen in a Publication's snapshot, which
-// records each person's Name as it was when published. A snapshot from before
-// Accounts had Names has no Name at all; its people are shown by email, as they
-// were then.
-func (a *Account) UnmarshalJSON(data []byte) error {
-	type frozen Account // without this method, so decoding doesn't recurse
-	var f struct {
-		frozen
-		Name *string
-	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		return err
-	}
-	*a = Account(f.frozen)
-	a.Name = a.Email
-	if f.Name != nil {
-		a.Name = *f.Name
-	}
-	return nil
 }
 
 // Mentions shows people in a document without hover: the first mention of each

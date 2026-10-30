@@ -54,7 +54,7 @@ func (s *Service) membershipChanges(ctx context.Context, r Report, since func(ti
 	def := r.Definition
 	var out []MembershipChange
 	for _, g := range r.goals() {
-		if pub.Report.covers(g.ID) {
+		if pub.Covers(g.ID) {
 			continue
 		}
 		reason := MembershipNowMatches
@@ -64,7 +64,7 @@ func (s *Service) membershipChanges(ctx context.Context, r Report, since func(ti
 		out = append(out, MembershipChange{Goal: g, Direction: MembershipAdded, Reason: reason})
 	}
 	var leftIDs []int64
-	for _, was := range pub.Report.goals() {
+	for _, was := range pub.Goals() {
 		if !r.covers(was.ID) {
 			leftIDs = append(leftIDs, was.ID)
 		}

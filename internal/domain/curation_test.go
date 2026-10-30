@@ -102,6 +102,19 @@ func section(r domain.Report, kind string) (domain.NarrativeSection, bool) {
 	return domain.NarrativeSection{}, false
 }
 
+// publishedSection is the section of kind in pub's narrative, as frozen.
+func publishedSection(pub domain.Publication, kind string) (domain.ReportNarrativeSection, bool) {
+	heading := domain.NarrativeSection{Kind: kind}.Heading()
+	for _, f := range pub.Facts {
+		for _, s := range f.Narrative {
+			if s.Heading == heading {
+				return s, true
+			}
+		}
+	}
+	return domain.ReportNarrativeSection{}, false
+}
+
 // highlightID returns the id of the Report's in-scope Highlight with the given
 // note, failing the test when there is none.
 func highlightID(t *testing.T, r domain.Report, note string) int64 {
@@ -293,16 +306,14 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	}
 
 	pub := publish(t, h, boss, def, time.Time{})
-	wins, ok := section(pub.Report, domain.HighlightAccomplishment)
-	if !ok || len(pub.Report.Narrative) != 1 || !slices.Equal(wins.Notes, []string{"EU is open for business.", "Invoices come next."}) ||
+	narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Narrative
+	wins, ok := publishedSection(pub, domain.HighlightAccomplishment)
+	if !ok || len(narrative) != 1 || !slices.Equal(wins.Notes, []string{"EU is open for business.", "Invoices come next."}) ||
 		!slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
-		t.Fatalf("published narrative %+v, want the curated Accomplishments", pub.Report.Narrative)
+		t.Fatalf("published narrative %+v, want the curated Accomplishments", narrative)
 	}
 	if got := wins.Highlights[0].Highlight.Owner.Email; got != alice.Email {
 		t.Errorf("published Highlight credits %s, want the Goal's Owner %s", got, alice.Email)
-	}
-	if len(pub.Report.Highlights) != 0 {
-		t.Errorf("snapshot keeps %d uncurated Highlights, want none", len(pub.Report.Highlights))
 	}
 
 	// The next publication's narrative starts empty.
@@ -328,8 +339,8 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if !reflect.DeepEqual(got.Report.Narrative, pub.Report.Narrative) {
-		t.Errorf("published narrative changed after re-curating\n got %+v\nwant %+v", got.Report.Narrative, pub.Report.Narrative)
+	if g := h.PublicationFact(got, domain.ReportFactNarrative).Narrative; !reflect.DeepEqual(g, narrative) {
+		t.Errorf("published narrative changed after re-curating\n got %+v\nwant %+v", g, narrative)
 	}
 }
 
@@ -364,10 +375,10 @@ func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
 	}
 
 	pub := publish(t, h, boss, def, time.Time{})
-	if len(pub.Report.Narrative) != 1 {
-		t.Fatalf("published narrative %+v, want only the Misses", pub.Report.Narrative)
+	if narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Narrative; len(narrative) != 1 {
+		t.Fatalf("published narrative %+v, want only the Misses", narrative)
 	}
-	misses, ok := section(pub.Report, domain.HighlightMiss)
+	misses, ok := publishedSection(pub, domain.HighlightMiss)
 	if !ok || !slices.Equal(highlightNotes(misses.Highlights), []string{"Lost the second customer."}) {
 		t.Fatalf("published Misses %+v, want only the Highlight pulled", misses)
 	}

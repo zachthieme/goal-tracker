@@ -18,15 +18,14 @@ import (
 // (CONTEXT.md: Check-in overdue).
 // RedChildren and YellowChildren count the ActiveChildren whose latest
 // Check-in is Red or Yellow, for the count a Report shows beside the color
-// ("2 of 6 Red · 1 Yellow"); a snapshot frozen before Reports counted them has
-// neither.
+// ("2 of 6 Red · 1 Yellow").
 type RolledUpHealth struct {
 	Health                 string
 	Present                bool
 	CheckinOverdueChildren int
 	ActiveChildren         int
-	RedChildren            int `json:",omitempty"`
-	YellowChildren         int `json:",omitempty"`
+	RedChildren            int
+	YellowChildren         int
 }
 
 // CountLine says what sets the Rolled-up Health: how many of its Active

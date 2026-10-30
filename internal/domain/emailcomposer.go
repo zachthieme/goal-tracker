@@ -116,7 +116,7 @@ func (c EmailComposer) CommentAlerts(cm Comment, goal Goal, pub *Publication, ot
 		body = fmt.Sprintf("%s %s the Goal %q:\n\n%s\n\nRead and reply at %s\n",
 			cm.Author.LongLabel(), verb, goal.Title, cm.Body, c.links.GoalComments(goal.ID))
 	} else {
-		report := pub.Report.Definition.Name
+		report := pub.Name
 		subject = fmt.Sprintf("%s on %s in %s", kind, goal.Title, report)
 		body = fmt.Sprintf("%s %s the Goal %q in the Report %s, published %s:\n\n%s\n\nRead and reply at %s\n",
 			cm.Author.LongLabel(), verb, goal.Title, report,

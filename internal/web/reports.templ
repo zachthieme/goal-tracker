@@ -190,7 +190,7 @@ templ reportHealthBar(h domain.HealthCounts) {
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ reportDraftPage(current *domain.Account, v reportDraftView) {
-	{{ r, facts, m := v.Report, v.Report.Facts(), v.Management }}
+	{{ r, facts, m := v.Report, v.Report.Facts(v.AsOf), v.Management }}
 	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, v.Chip, v.Panel, m, v.Status)) {
 		@reportStyles()
 		<div class="rp-draft-page">
@@ -204,16 +204,16 @@ templ reportDraftPage(current *domain.Account, v reportDraftView) {
 						@reportIntroduction(f)
 					}
 				}
-				@healthSummary(r)
+				@healthSummary(r.HealthCounts())
 				@reportLead(facts)
 				// A div, not a section: .rp-body section's 12px gap would
 				// otherwise space the Report's sections closer than on a
 				// publication.
 				<div data-testid="report-snapshot" class="rp-body">
 					if m.Manage {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.AsOf, v.Discussion, &v.Form)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.Discussion, &v.Form)
 					} else {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), v.AsOf, v.Discussion, nil)
+						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), v.Discussion, nil)
 					}
 				</div>
 			</div>
@@ -237,7 +237,7 @@ func draftMeta(r domain.Report, panel goalsPanel) string {
 		parts = append(parts, panel.Scope)
 	}
 	since := "changes since " + showDateYear(r.Baseline)
-	if words := r.Since().Words(); words != "" {
+	if words := r.Since().Words; words != "" {
 		since = "changes since " + words + ", " + showDateYear(r.Baseline)
 	}
 	return strings.Join(append(parts, plural(len(r.Exceptions)+len(r.Lines), "Goal"), since), " · ")
@@ -635,23 +635,23 @@ templ editDefinitionLink(edit, class string) {
 	}
 }
 
-// publicationPage shows a published Report exactly as it was frozen: who
-// published it and when, what it read its changes against, and how it
-// selected its Goals as it read then. Its Download menu takes it away as
+// publicationPage shows a published Report exactly as it was frozen, from its
+// facts as published: who published it and when, what it read its changes
+// against, and how it selected its Goals as it read then. Its Download menu takes it away as
 // Markdown or a PDF (a PDF file when pdfFile, else the page to print to PDF).
 // Readers discuss it in place: comments on each Goal's block, and the Action
 // Items raised on it (ticket #19). Its header strip holds the breadcrumb and
 // Download at the right; the Report reads in a centred column below.
 templ publicationPage(current *domain.Account, p domain.Publication, d discussion, pdfFile bool) {
-	@framedLayout(p.Report.Definition.Name, current, publicationHeader(p, d.Loc, pdfFile)) {
+	@framedLayout(p.Name, current, publicationHeader(p, d.Loc, pdfFile)) {
 		@reportStyles()
 		<div class="rp-read">
 			<header class="rp-head">
-				<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-				@publishedLine(p.Facts(), d.Loc)
-				@publicationSelection(p.Facts())
+				<h1 data-testid="report-name">{ p.Name }</h1>
+				@publishedLine(p.Facts, d.Loc)
+				@publicationSelection(p.Facts)
 			</header>
-			@reportContent(p.Report, p.PublishedAt, d)
+			@reportContent(p.Facts, d)
 			@publicationActionItems(d)
 		</div>
 	}
@@ -666,7 +666,7 @@ templ publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) 
 		<nav class="ph-title" data-testid="report-breadcrumb" aria-label="Breadcrumb">
 			<a class="ph-parent" href="/reports">Reports</a>
 			<span class="ph-sep" aria-hidden="true">›</span>
-			<a class="ph-parent rp-crumb" href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Report.Definition.Name }</a>
+			<a class="ph-parent rp-crumb" href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Name }</a>
 			<span class="ph-sep" aria-hidden="true">›</span>
 			<span class="rp-crumb" aria-current="page">{ showDayOfYear(p.PublishedAt, loc) }</span>
 		</nav>
@@ -688,7 +688,7 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ p.Report.Definition.Name } · { showTimeYear(p.PublishedAt, loc) }</title>
+			<title>{ p.Name } · { showTimeYear(p.PublishedAt, loc) }</title>
 			<style>
 				/* Goal Tracker · design-system: DESIGN.md § Print variant */
 				/* The serif the print page reads in, served by the app from
@@ -808,12 +808,12 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 				{ " " }
 				<a href={ templ.SafeURL(publicationPath(p)) }>Back to the publication</a>
 			</p>
-			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-			@publishedLine(p.Facts(), loc)
-			@publicationSelection(p.Facts())
-			@reportLead(p.Report.Facts())
+			<h1 data-testid="report-name">{ p.Name }</h1>
+			@publishedLine(p.Facts, loc)
+			@publicationSelection(p.Facts)
+			@reportLead(p.Facts)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report.Facts(), p.PublishedAt, discussion{Loc: loc, Print: true}, nil)
+				@reportBody(p.Facts, discussion{Loc: loc, Print: true}, nil)
 			</section>
 		</body>
 	</html>
@@ -821,19 +821,29 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 
 // reportContent is what a reader of a published Report sees: the Health
 // summary, the line counting what moved since the baseline, then the Report's
-// body, each part as its facts list it (domain.Report.Facts). The Health
+// body, each part as its facts list it (domain.PublicationFacts). The Health
 // summary shows whether or not they count its Goals by Health: a Report that
 // selects none shows its zeros.
-templ reportContent(r domain.Report, asOf time.Time, d discussion) {
-	{{ facts := r.Facts() }}
-	@healthSummary(r)
+templ reportContent(facts []domain.ReportFact, d discussion) {
+	@healthSummary(reportHealthCounts(facts))
 	@reportLead(facts)
 	<section data-testid="report-snapshot" class="rp-body">
-		@reportBody(facts, asOf, d, nil)
+		@reportBody(facts, d, nil)
 	</section>
 }
 
-// healthSummary shows how many of the Report's selected Goals have each Health
+// reportHealthCounts are the Health counts a Report's facts hold, zeros when
+// they hold none.
+func reportHealthCounts(facts []domain.ReportFact) domain.HealthCounts {
+	for _, f := range facts {
+		if f.Kind == domain.ReportFactHealthCounts {
+			return f.HealthCounts
+		}
+	}
+	return domain.HealthCounts{}
+}
+
+// healthSummary shows how many of a Report's selected Goals have each Health
 // — Red, Yellow, Green — and how many are Check-in overdue (healthTiles), so a
 // reader sees the shape of the Report's Goals before reading a block. It is one
 // row headed "Health", each count with its word beside it, so it reads to someone who doesn't know the
@@ -841,10 +851,10 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 // "·" between two pairs leads the pair after it, hanging into the gap
 // before it, so a line never ends on one and one that starts a line is
 // clipped; it is aria-hidden, so a screen reader doesn't read it.
-templ healthSummary(r domain.Report) {
+templ healthSummary(c domain.HealthCounts) {
 	<section data-testid="health-summary" class="rp-summary">
 		<span class="label">Health</span>
-		for i, t := range healthTiles(r) {
+		for i, t := range healthTiles(c) {
 			<span class="rp-summary-pair">
 				if i > 0 {
 					<span class="muted rp-summary-sep" aria-hidden="true">·</span>
@@ -870,8 +880,7 @@ templ reportLead(facts []domain.ReportFact) {
 
 // reportMovement is the line counting the Goals that moved since the Report's
 // baseline, its previous publication or a date ("Since the previous
-// publication: 2 turned Red · 1 back to Green"). A Report frozen before
-// Reports counted it has none to show.
+// publication: 2 turned Red · 1 back to Green").
 templ reportMovement(f domain.ReportFact) {
 	<p data-testid="report-movement">
 		if parts := f.Movement.Parts; len(parts) > 0 {
@@ -885,14 +894,14 @@ templ reportMovement(f domain.ReportFact) {
 // reportSince is what a Report reads changes against, as the movement line
 // names it: "the previous publication", or its baseline date.
 func reportSince(s domain.ReportSince) string {
-	if words := s.Words(); words != "" {
-		return words
+	if s.Words != "" {
+		return s.Words
 	}
 	return showDateYear(s.At)
 }
 
 // publishedLine says who published a Report and when, and what it read its
-// changes against, from its byline fact (domain.Publication.Facts), its times
+// changes against, from its byline fact (domain.PublicationFacts), its times
 // in the company's timezone (loc).
 templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
 	for _, f := range facts {
@@ -900,7 +909,7 @@ templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
 			<p data-testid="report-published" class="muted">
 				{ f.Label + " " + showTimeYear(f.Byline.PublishedAt, loc) + " by " }
 				@person(f.Byline.PublishedBy)
-				if words := f.Byline.Since.Words(); words != "" {
+				if words := f.Byline.Since.Words; words != "" {
 					{ " · changes since " + words + ", " }{ showTimeYear(f.Byline.Since.At, loc) }
 				} else {
 					{ " · changes since " }{ showDateYear(f.Byline.Since.At) }
@@ -912,8 +921,7 @@ templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
 
 // publicationSelection says how a published Report selected its Goals, as it
 // read when published ("Selection: Owner is in the org of Dana Okafor ·
-// Active"), from its Selection fact. A publication frozen before selections
-// were has none to show.
+// Active"), from its Selection fact, when it has one.
 templ publicationSelection(facts []domain.ReportFact) {
 	for _, f := range facts {
 		if f.Kind == domain.ReportFactSelection {
@@ -929,10 +937,10 @@ templ publicationSelection(facts []domain.ReportFact) {
 // Report). The draft reads the same parts, its introduction under its name;
 // for a reader who may manage it, compose is the form composing its narrative
 // in place, which stands before its Goals.
-templ reportBody(facts []domain.ReportFact, asOf time.Time, d discussion, compose *narrativeForm) {
+templ reportBody(facts []domain.ReportFact, d discussion, compose *narrativeForm) {
 	{{ story, goals := splitReportGoals(facts) }}
 	for _, f := range story {
-		@reportFact(f, asOf, d)
+		@reportFact(f, d)
 	}
 	if compose != nil {
 		@narrativeCuration(*compose)
@@ -941,7 +949,7 @@ templ reportBody(facts []domain.ReportFact, asOf time.Time, d discussion, compos
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
 	for _, f := range goals {
-		@reportFact(f, asOf, d)
+		@reportFact(f, d)
 	}
 }
 
@@ -976,10 +984,10 @@ func withoutReportFacts(facts []domain.ReportFact, kinds ...domain.ReportFactKin
 
 // reportFact is one fact of a Report's body. Each exception is counted under
 // the heading, most urgent first, an entry with the full MBR block opening
-// with what changed on it since the baseline, its Path to Green judged overdue
-// as of asOf; every Goal On track is one table row with its Health, title,
-// Owner, and due date. On a publication, each Goal carries its discussion.
-templ reportFact(f domain.ReportFact, asOf time.Time, d discussion) {
+// with what changed on it since the baseline, from its own facts; every Goal
+// On track is one table row with its Health, title, Owner, and due date. On a
+// publication, each Goal carries its discussion.
+templ reportFact(f domain.ReportFact, d discussion) {
 	switch f.Kind {
 		case domain.ReportFactActionItems:
 			@reportActionItems(f.ActionItems, d)
@@ -989,9 +997,9 @@ templ reportFact(f domain.ReportFact, asOf time.Time, d discussion) {
 			@reportNarrative(f.Narrative)
 		case domain.ReportFactExceptions:
 			<section data-testid="needs-attention" class="rp-exceptions">
-				<h2>{ f.Label }{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(f.Exceptions)) }</span></h2>
-				for _, b := range f.Exceptions {
-					@reportBlock(b, asOf, d)
+				<h2>{ f.Label }{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(f.Blocks)) }</span></h2>
+				for _, b := range f.Blocks {
+					@reportBlock(b, d)
 				}
 			</section>
 		case domain.ReportFactOnTrack:
@@ -1227,12 +1235,12 @@ templ curationHighlight(c curationChoice) {
 // (a label on the print page): the author's notes, each its own paragraph, and
 // then the Highlights they picked, each crediting the Goal's Owner. Sections
 // with neither are left out, and an empty narrative is left out whole.
-templ reportNarrative(narrative []domain.NarrativeSection) {
+templ reportNarrative(narrative []domain.ReportNarrativeSection) {
 	if len(narrative) > 0 {
 		<section data-testid="report-narrative" class="rp-narrative">
 			<h2>Narrative</h2>
 			for _, sec := range narrative {
-				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
+				<h3 data-testid="narrative-section" class="label">{ sec.Heading }</h3>
 				for _, note := range sec.Notes {
 					<p data-testid="narrative-text">{ note }</p>
 				}
@@ -1273,23 +1281,23 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // back-to-Green date followed by the date it last slipped from in the Run off
 // Green struck through and the count of slips once more than one (" · 3
 // slips"), as drafted (see reportBackToGreenPrior), and marked Overdue when its
-// target date passed before asOf, and after it an Ask for help open when the
-// Report was drafted; then labelled rows of Milestones, each marked as of asOf
+// target date had passed, and after it an Ask for help open when the Report
+// was drafted; then labelled rows of Milestones, each with its mark
 // (its name set off by " · " from its date's slip count when that shows),
 // Metrics against target, and the Rolled-up Health with how many children are
 // Red, Yellow and Check-in overdue ("2 of 6 Red · 1 Yellow · 1 overdue"), the
 // Goals behind it, and the Owner's explanation when the block shows it. Each row's label sits
-// in a column beside it (DESIGN.md § A publication). It reads asOf in the zone
-// the block's Goal was judged in when drafted (see
-// domain.ReportBlock.Timezone). Each Goal it names links to its place in the
+// in a column beside it (DESIGN.md § A publication). Its marks and Overdue
+// are its facts', judged when they were drafted or published in the zone its
+// Goal was judged in (see domain.ReportBlock.Facts). Each Goal it names links to its place in the
 // Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
 // A Yellow or Red Health reads with its Run off Green as drafted, and one that
 // changed since the baseline with what it was after that ("Yellow · 2 wks · was
 // Green"). The Fields the definition chose sit under the head, beside the Goal.
 // On a publication it ends with the Goal's discussion.
-templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
-	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
-		for _, run := range reportBlockRuns(b.Facts(asOf)) {
+templ reportBlock(b domain.ReportBlockFacts, d discussion) {
+	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.GoalID) }>
+		for _, run := range reportBlockRuns(b.Facts) {
 			switch run.layout {
 				case reportBlockAbout, reportBlockDetail:
 					<dl class="rp-facts">
@@ -1298,7 +1306,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 						}
 					</dl>
 				case reportBlockPath:
-					if tint := pathTintClass(b.Health); tint != "" {
+					if tint := pathTintClass(reportBlockHealth(b)); tint != "" {
 						<div data-testid="report-path-box" class={ "rp-tint", tint, templ.KV("overdue", reportPathOverdue(run.facts)) }>
 							for _, f := range run.facts {
 								@reportBlockFact(f, d)
@@ -1315,8 +1323,18 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					}
 			}
 		}
-		@goalDiscussion(b.Goal.ID, d)
+		@goalDiscussion(b.GoalID, d)
 	</article>
+}
+
+// reportBlockHealth is an exception block's Health, from its head fact.
+func reportBlockHealth(b domain.ReportBlockFacts) string {
+	for _, f := range b.Facts {
+		if f.Kind == domain.ReportFactBlockHead {
+			return f.Head.Health
+		}
+	}
+	return ""
 }
 
 // How an exception block's page lays out a run of its facts: the head and the
@@ -1387,7 +1405,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 		case domain.ReportFactScheduleConflict:
 			<p data-testid="report-schedule-conflicts" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
-				for i, g := range domain.ReportScheduleConflictGroups(f.ScheduleConflicts) {
+				for i, g := range f.ScheduleConflictGroups {
 					if i > 0 {
 						{ "; " }
 					}
@@ -1414,9 +1432,9 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 		case domain.ReportFactPathToGreen:
 			{{ path := f.PathToGreen }}
 			<p data-testid="report-path-to-green">
-				<strong class="rp-tint-label">{ f.Label + ":" }</strong> { path.Plan } ({ path.ByWords() } { showDateYear(path.By) }@reportBackToGreenPrior(path))
+				<strong class="rp-tint-label">{ f.Label + ":" }</strong> { path.Plan } ({ path.ByWords } { showDateYear(path.By) }@reportBackToGreenPrior(path))
 				if path.Overdue {
-					{ " " }<strong data-testid="path-overdue" class="badge r">{ path.OverdueWords() }</strong>
+					{ " " }<strong data-testid="path-overdue" class="badge r">{ path.OverdueWords }</strong>
 				}
 			</p>
 		case domain.ReportFactAskForHelp:
@@ -1425,7 +1443,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 				if f.Ask.Addressee != nil {
 					{ " of " }@person(*f.Ask.Addressee)
 				} else {
-					{ " · " + f.Ask.Words() }
+					{ " · " + f.Ask.Words }
 				}
 			</p>
 		case domain.ReportFactMilestones:
@@ -1470,7 +1488,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 							<li data-testid="report-metric">
 								{ m.Metric.Name }:
 								{ m.Reading(fmtNum) }
-								{ " " + domain.ReportAgainstATargetOf + " " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
+								{ " " + m.AgainstWords + " " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
 								{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
 							</li>
 						}
@@ -1611,17 +1629,18 @@ templ reportScheduleConflictGroup(g domain.ReportScheduleConflictGroup) {
 		{ g.Words }
 		for _, c := range g.Conflicts {
 			{ " · " }
-			@reportScheduleConflict(c)
+			@reportScheduleConflict(c, g.DueWords)
 		}
 	</span>
 }
 
 // reportScheduleConflict is one Goal at the other end of a Schedule conflict
 // an exception block's Goal is in, wherever it is, linked, with its Owner and
-// delivery date: "Wire the network (Sam Lee), due Dec 1, 2026".
-templ reportScheduleConflict(c domain.ReportScheduleConflict) {
+// delivery date, led by dueWords: "Wire the network (Sam Lee), due Dec 1,
+// 2026".
+templ reportScheduleConflict(c domain.ReportScheduleConflict, dueWords string) {
 	<span data-testid="report-schedule-conflict">
-		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " " }@personInBrackets(c.Owner), { domain.ReportConflictOtherDue + " " + showDateYear(c.Due) }
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.GoalID)) }>{ c.Title }</a>{ " " }@personInBrackets(c.Owner), { dueWords + " " + showDateYear(c.Due) }
 	</span>
 }
 
@@ -1739,10 +1758,9 @@ type healthTile struct {
 	count             int
 }
 
-// healthTiles lays out a Report's Health counts (domain.Report.HealthCounts)
-// as its Health summary shows them: Red, Yellow, Green, then Check-in overdue.
-func healthTiles(r domain.Report) []healthTile {
-	c := r.HealthCounts()
+// healthTiles lays out a Report's Health counts (domain.HealthCounts) as its
+// Health summary shows them: Red, Yellow, Green, then Check-in overdue.
+func healthTiles(c domain.HealthCounts) []healthTile {
 	return []healthTile{
 		{"red", domain.HealthRed, "r", c.Red},
 		{"yellow", domain.HealthYellow, "y", c.Yellow},

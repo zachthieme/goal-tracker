@@ -47,7 +47,7 @@ func TestMembershipChangesOfARulesDefinition(t *testing.T) {
 		Include: []int64{takenOut.ID},
 	})
 	pub := h.PublishReport(boss, def)
-	if got, want := append(blockIDs(pub.Report), lineIDs(pub.Report)...), []int64{stays.ID, leftOut.ID, noLongerMatches.ID, takenOut.ID, finished.ID}; !sameSet(got, want) {
+	if got, want := publishedGoalIDs(pub), []int64{stays.ID, leftOut.ID, noLongerMatches.ID, takenOut.ID, finished.ID}; !sameSet(got, want) {
 		t.Fatalf("published %v, want %v", got, want)
 	}
 	h.Clock.Advance(day)
@@ -188,4 +188,14 @@ func assertMembershipChanges(t *testing.T, got, want map[int64]string) {
 			t.Errorf("Goal %d: unexpected membership change %q", id, g)
 		}
 	}
+}
+
+// publishedGoalIDs are the IDs of the Goals pub holds (Publication.Goals): its
+// exception blocks', then its Goals On track.
+func publishedGoalIDs(pub domain.Publication) []int64 {
+	var ids []int64
+	for _, g := range pub.Goals() {
+		ids = append(ids, g.ID)
+	}
+	return ids
 }

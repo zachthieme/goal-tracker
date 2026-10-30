@@ -1919,8 +1919,7 @@ and so on).
     Definition's publications merged with the rest of its Report log:
     - **A publication:** a marker filled with the accent, `--color-primary`
       (`.rp-mark-published`); "Published", linking to its publication; then a
-      small muted "<date, time> · <Name>", with its year. A publication from
-      before the Report log was kept shows the same.
+      small muted "<date, time> · <Name>", with its year.
     - **Any other Report log entry:** a plain `--color-ink-muted` marker;
       what changed in words ("Title: EU MBR → EU monthly review", "Rule
       added: Owner is in the org of Priya", "Report Delegate added: Dana",

@@ -182,8 +182,8 @@ func TestReportShowsTheChildsScheduleConflictWithAParentOutsideIt(t *testing.T) 
 	c := b.ScheduleConflicts[0]
 	if c.AsParent || c.GoalID != parent.ID || c.Title != "Open in Iberia" ||
 		c.Owner.ID != pat.ID || c.Owner.Label() != "Pat Parker" || c.Owner.Email != "pat@example.com" ||
-		!c.Due.Equal(parentDue) || !c.OwnDue.Equal(childDue) {
-		t.Errorf("conflict %+v, want as the child, after Open in Iberia (Pat Parker), due %s, its own date %s", c, parentDue, childDue)
+		!c.Due.Equal(parentDue) {
+		t.Errorf("conflict %+v, want as the child, after Open in Iberia (Pat Parker), due %s", c, parentDue)
 	}
 }
 
@@ -218,8 +218,8 @@ func TestReportShowsTheParentsScheduleConflictWithALateChildOutsideIt(t *testing
 	}
 	if c := cs[0]; !c.AsParent || c.GoalID != late.ID || c.Title != "Lisbon office" ||
 		c.Owner.ID != sam.ID || c.Owner.Label() != "Sam Lee" ||
-		!c.Due.Equal(childDue) || !c.OwnDue.Equal(parentDue) {
-		t.Errorf("conflict %+v, want as the parent of Lisbon office (Sam Lee), due %s, after its own %s", c, childDue, parentDue)
+		!c.Due.Equal(childDue) {
+		t.Errorf("conflict %+v, want as the parent of Lisbon office (Sam Lee), due %s", c, childDue)
 	}
 }
 

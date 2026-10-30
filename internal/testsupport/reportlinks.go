@@ -1,8 +1,6 @@
 package testsupport
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -65,31 +63,4 @@ func (h *Harness) checkinLinkedGoal(author domain.Account, goal domain.Goal, hea
 		return
 	}
 	h.Checkin(author, goal.ID, health, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
-}
-
-// FreezeBeforeLinkedGoals rewrites pub's snapshot as one frozen before
-// Reports counted Red and Yellow children or named linked Goals (#246): every
-// exception block loses RedChildren, YellowChildren, ContributesTo and Behind,
-// and overdue's block is left with the Rolled-up Health "Red · 1 of 3 overdue".
-func (h *Harness) FreezeBeforeLinkedGoals(pub domain.Publication, overdue domain.Goal) {
-	h.T.Helper()
-	var paths []string
-	overdueAt := -1
-	for i, b := range pub.Report.Exceptions {
-		for _, key := range []string{"RolledUp.RedChildren", "RolledUp.YellowChildren", "ContributesTo", "Behind"} {
-			paths = append(paths, fmt.Sprintf("'$.Exceptions[%d].%s'", i, key))
-		}
-		if b.Goal.ID == overdue.ID {
-			overdueAt = i
-		}
-	}
-	if overdueAt < 0 {
-		h.T.Fatalf("FreezeBeforeLinkedGoals: %q has no exception block", overdue.Title)
-	}
-	q := fmt.Sprintf(`UPDATE report_publications SET snapshot = json_set(json_remove(snapshot, %s), '$.Exceptions[%d].RolledUp', json(?)) WHERE id = ?`,
-		strings.Join(paths, ", "), overdueAt)
-	rolledUp := `{"Health":"Red","Present":true,"CheckinOverdueChildren":1,"ActiveChildren":3}`
-	if _, err := h.DB.ExecContext(h.T.Context(), q, rolledUp, pub.ID); err != nil {
-		h.T.Fatalf("FreezeBeforeLinkedGoals: %v", err)
-	}
 }

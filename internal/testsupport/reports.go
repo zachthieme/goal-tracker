@@ -1,7 +1,6 @@
 package testsupport
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -30,29 +29,17 @@ func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinitio
 	return pub
 }
 
-// PublishBeforeTheReportLog publishes def's draft as actor now, as a
-// publication made before the Report log was kept: it has no Report log entry,
-// and its snapshot names no publisher. It fails the test on error.
-func (h *Harness) PublishBeforeTheReportLog(actor domain.Account, def domain.ReportDefinition) domain.Publication {
+// PublicationFact is pub's first fact of the given kind, failing the test
+// when pub has none. It is how a test reads what a publication froze.
+func (h *Harness) PublicationFact(pub domain.Publication, kind domain.ReportFactKind) domain.ReportFact {
 	h.T.Helper()
-	ctx := h.T.Context()
-	report, err := h.Service.DraftReport(ctx, def, time.Time{})
-	if err != nil {
-		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
+	for _, f := range pub.Facts {
+		if f.Kind == kind {
+			return f
+		}
 	}
-	frozen, err := json.Marshal(report)
-	if err != nil {
-		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
-	}
-	if _, err := h.DB.ExecContext(h.T.Context(), `INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot) VALUES (?, ?, ?, ?)`,
-		def.ID, actor.ID, h.Clock.Now().Format(time.RFC3339Nano), string(frozen)); err != nil {
-		h.T.Fatalf("PublishBeforeTheReportLog: %v", err)
-	}
-	pubs, err := h.Service.ListPublications(ctx, def.ID)
-	if err != nil || len(pubs) == 0 {
-		h.T.Fatalf("PublishBeforeTheReportLog: ListPublications = %d publications, %v", len(pubs), err)
-	}
-	return pubs[0]
+	h.T.Fatalf("PublicationFact: publication %d has no %q fact", pub.ID, kind)
+	return domain.ReportFact{}
 }
 
 // AddReportDelegate authorizes delegate to change, curate and publish def,
