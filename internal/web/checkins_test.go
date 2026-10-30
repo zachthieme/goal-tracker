@@ -942,7 +942,7 @@ func TestCheckinRefusalShowsEveryProblemBesideItsField(t *testing.T) {
 			name: "no Health and no status",
 			form: url.Values{},
 			want: map[string]string{
-				"health": `Health must be "Green", "Yellow", or "Red".`,
+				"health": "Pick how it's going: Green, Yellow or Red.",
 				"status": "A Check-in needs a status.",
 			},
 		},
@@ -1691,7 +1691,7 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 		"status": {"On track."},
 	})
 	// Health is a radio group; its error follows the last radio.
-	if msg := fieldError(t, parsePage(t, body), "health"); !strings.Contains(msg, "Health must be") {
+	if msg := fieldError(t, parsePage(t, body), "health"); msg != "Pick how it's going: Green, Yellow or Red." {
 		t.Errorf("Health field's error = %q, want the Health one", msg)
 	}
 }
@@ -4080,8 +4080,9 @@ func TestLatestStatusShowsASlippedBackToGreenDate(t *testing.T) {
 }
 
 // A No change is refused once the back-to-Green date has passed: the Check-in
-// page says why in place of the button, and a No change posted anyway lands on
-// the form with the reason (CONTEXT.md: Check-in).
+// page says why in place of the button, naming the date as the form labels it,
+// and a No change posted anyway lands on the form with the reason (CONTEXT.md:
+// Check-in; #695).
 func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T) {
 	t.Parallel()
 
@@ -4097,7 +4098,7 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 	if hasTestID(c, "no-change-checkin") {
 		t.Errorf("the card offers a No change that would be refused: %q", textOf(c))
 	}
-	const want = "The back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health."
+	const want = "The Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health."
 	if got := textsOf(findAllByTestID(c, "no-change-unavailable")); !slices.Equal(got, []string{want}) {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}

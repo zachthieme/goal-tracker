@@ -1137,6 +1137,44 @@ func TestCheckinHealthChoicesShowTheirColours(t *testing.T) {
 	}
 }
 
+// A Check-in refused for a missing Health edges each Health choice in the
+// danger ink, 1px as an invalid textarea is, while its hidden radio is invalid
+// and until a Health is picked; the edge sits outside the choice's own border,
+// so the picked choice's edge and the focus ring still show (#695).
+func TestCheckinMissingHealthEdgesItsChoicesStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{"status": {"Fine."}})
+
+	radios := formFields(parsePage(t, page), "health")
+	if len(radios) != 3 {
+		t.Fatalf("the form has %d Health radios, want 3", len(radios))
+	}
+	for _, r := range radios {
+		label := r.Node.Parent
+		if attrOf(r.Node, "aria-invalid") != "true" || label == nil || label.Data != "label" ||
+			!slices.Contains(strings.Fields(attrOf(label, "class")), "badge") ||
+			label.Parent == nil || !slices.Contains(strings.Fields(attrOf(label.Parent, "class")), "health-toggle") {
+			t.Errorf("Health radio %q isn't an invalid radio in a .health-toggle label.badge", attrOf(r.Node, "value"))
+		}
+	}
+	styles := between(t, page, ".checkin-page{", "</style>")
+	const sel = ".health-toggle:not(:has(input:checked)) label.badge:has(input[aria-invalid=true])"
+	if decls, ok := ruleFor(styles, sel); !ok || !strings.Contains(decls, "box-shadow:0 0 0 1px var(--color-danger-ink)") {
+		t.Errorf("%s{%s} doesn't edge the choice 1px in var(--color-danger-ink)", sel, decls)
+	}
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if !strings.Contains(css, "textarea[aria-invalid=true],select[aria-invalid=true]{border-color:var(--color-danger-ink)}") ||
+		!strings.Contains(css, "textarea,select{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid") {
+		t.Errorf("an invalid textarea is no longer edged 1px in var(--color-danger-ink); match the Health choices' edge to it")
+	}
+}
+
 // From 1280px wide the draft header holds one row whatever the save status
 // says (ticket #455). It doesn't wrap. The save status doesn't break; it keeps
 // room for Unsaved changes, so the header doesn't shift as it changes, and

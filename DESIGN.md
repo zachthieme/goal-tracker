@@ -1549,7 +1549,10 @@ and so on).
     field by its label ("A Path to Green needs a Back to Green by date."). The
     field is marked `aria-invalid="true"`, which draws its edge in
     `--color-danger-ink`, and its `aria-describedby` names the error (after
-    Back to Green by's "Last time" hint). When a
+    Back to Green by's "Last time" hint). The Health radios are hidden, so
+    while they are invalid each Health choice takes the edge instead: a 1px
+    `--color-danger-ink` ring outside its own border (`box-shadow`), the
+    width an invalid textarea's edge has, until a Health is picked. When a
     Green is submitted while a Metric is off target, an `.alert.y` notice at
     the form's top says so with a **See below** link to a warning after the
     optional sections (`.checkin-off-target`, `role="alert"`, on

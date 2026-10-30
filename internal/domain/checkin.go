@@ -715,7 +715,7 @@ func noChangeRefusalOf(facts noChangeFacts) (string, error) {
 	// timezone, whatever the Health: the Owner must submit a Check-in with a
 	// new date and reason, or update the Health (CONTEXT.md: Check-in).
 	if facts.pathToGreenOverdue {
-		return "", Refuse(ErrValidation, "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health")
+		return "", Refuse(ErrValidation, "the Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health")
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that, as a page says beside the Metrics.
@@ -747,7 +747,7 @@ func rollupExplanation(rollup RolledUpHealth, health, explanation string) (strin
 func checkinInputProblems(health, status, path string, pathTargetDate time.Time) []*InputError {
 	var problems []*InputError
 	if !validHealth(health) {
-		problems = append(problems, inputError(CheckinInputHealth, "Health must be %q, %q, or %q", HealthGreen, HealthYellow, HealthRed))
+		problems = append(problems, inputError(CheckinInputHealth, "pick how it's going: %s, %s or %s", HealthGreen, HealthYellow, HealthRed))
 	}
 	if status == "" {
 		problems = append(problems, inputError(CheckinInputStatus, "a Check-in needs a status"))

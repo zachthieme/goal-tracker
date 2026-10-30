@@ -810,7 +810,7 @@ func TestNoChangeRefusalsByGoal(t *testing.T) {
 		noCheckin.ID:          "there is no previous Check-in to repeat",
 		onHold.ID:             "only an Active Goal takes a No change",
 		milestoneOverdue.ID:   `milestone "Pilot" overdue (due 2026-01-20), rules out no change`,
-		pathOverdue.ID:        "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health",
+		pathOverdue.ID:        "the Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health",
 		unexplained.ID:        "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
 		redChild.ID:           "",
 		unexplainedOverdue.ID: "this Health differs from the Rolled-up Health (Red); explain why — submit a Check-in to explain",
@@ -1449,7 +1449,7 @@ func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
 			h.Checkin(sam, goal.ID, health, "Behind.", "Add a second reviewer.", h.Clock.Now().AddDate(0, 0, 3))
 
 			h.Clock.Advance(5 * 24 * time.Hour)
-			const want = "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health"
+			const want = "the Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health"
 			refusal := h.Service.NoChangeRefusal(context.Background(), goal.ID)
 			_, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
 			if !errors.Is(err, domain.ErrValidation) {
@@ -1470,7 +1470,7 @@ func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
 
 // Each refusal of a Check-in names the input it is about, as the Check-in form
 // names it, so the form can show it there whatever the message says; the
-// refusal is still an ErrValidation, and reads as it always has.
+// refusal is still an ErrValidation.
 func TestCheckinRefusalNamesItsInput(t *testing.T) {
 	t.Parallel()
 
@@ -1488,7 +1488,14 @@ func TestCheckinRefusalNamesItsInput(t *testing.T) {
 			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
 				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: "Blue", Status: "Fine."}, domain.CheckinInputHealth
 			},
-			message: `Health must be "Green", "Yellow", or "Red"`,
+			message: "pick how it's going: Green, Yellow or Red",
+		},
+		{
+			name: "no Health",
+			refused: func(_ *testsupport.Harness, sam domain.Account, goal domain.Goal) (domain.SubmitCheckinInput, string) {
+				return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Status: "Fine."}, domain.CheckinInputHealth
+			},
+			message: "pick how it's going: Green, Yellow or Red",
 		},
 		{
 			name: "no status",
