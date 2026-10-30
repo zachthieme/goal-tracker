@@ -448,7 +448,7 @@ const draftHistoryShown = 20
 // draftHistoryShown show up front and the rest behind Show all. Anyone who
 // can open the Report reads it; nobody can change it (CONTEXT.md: Report log).
 // Saving the narrative swaps it in out of band (oob), with the save's entry.
-templ reportHistory(r domain.Report, history []draftHistoryEntry, loc *time.Location, oob bool) {
+templ reportHistory(r domain.Report, history []domain.ReportHistoryEntry, loc *time.Location, oob bool) {
 	<section
 		data-testid="report-history"
 		id="report-history"
@@ -484,11 +484,11 @@ templ reportHistory(r domain.Report, history []draftHistoryEntry, loc *time.Loca
 // draftHistoryItem is one History entry: "Published", linking to its
 // publication, on an accent marker, or a Report log entry's Detail on a plain
 // one; then when, with its year, and who.
-templ draftHistoryItem(e draftHistoryEntry, loc *time.Location) {
+templ draftHistoryItem(e domain.ReportHistoryEntry, loc *time.Location) {
 	<li data-testid="report-history-entry">
-		if e.Publication != "" {
+		if e.Publication != nil {
 			<span class="rp-mark rp-mark-published" aria-hidden="true"></span>
-			<a href={ templ.SafeURL(e.Publication) }>{ e.Detail }</a>
+			<a href={ templ.SafeURL(publicationPath(*e.Publication)) }>{ e.Detail }</a>
 		} else {
 			<span class="rp-mark" aria-hidden="true"></span>
 			<span>{ e.Detail }</span>
@@ -537,7 +537,7 @@ templ saveStatus(text string, oob bool) {
 // timezone, loc.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ narrativeSaved(form narrativeForm, history []draftHistoryEntry, loc *time.Location) {
+templ narrativeSaved(form narrativeForm, history []domain.ReportHistoryEntry, loc *time.Location) {
 	@narrativeCuration(form)
 	@saveStatus(narrativeSavedStatus, true)
 	@publishSummaryText(form.Report, form.Chip, true)

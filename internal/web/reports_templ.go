@@ -1210,7 +1210,7 @@ const draftHistoryShown = 20
 // draftHistoryShown show up front and the rest behind Show all. Anyone who
 // can open the Report reads it; nobody can change it (CONTEXT.md: Report log).
 // Saving the narrative swaps it in out of band (oob), with the save's entry.
-func reportHistory(r domain.Report, history []draftHistoryEntry, loc *time.Location, oob bool) templ.Component {
+func reportHistory(r domain.Report, history []domain.ReportHistoryEntry, loc *time.Location, oob bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1308,7 +1308,7 @@ func reportHistory(r domain.Report, history []draftHistoryEntry, loc *time.Locat
 // draftHistoryItem is one History entry: "Published", linking to its
 // publication, on an accent marker, or a Report log entry's Detail on a plain
 // one; then when, with its year, and who.
-func draftHistoryItem(e draftHistoryEntry, loc *time.Location) templ.Component {
+func draftHistoryItem(e domain.ReportHistoryEntry, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1333,15 +1333,15 @@ func draftHistoryItem(e draftHistoryEntry, loc *time.Location) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if e.Publication != "" {
+		if e.Publication != nil {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span class=\"rp-mark rp-mark-published\" aria-hidden=\"true\"></span> <a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var50 templ.SafeURL
-			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(e.Publication))
+			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(publicationPath(*e.Publication)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 491, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 491, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1354,7 +1354,7 @@ func draftHistoryItem(e draftHistoryEntry, loc *time.Location) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(e.Detail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 491, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 491, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1486,7 +1486,7 @@ func saveStatus(text string, oob bool) templ.Component {
 // timezone, loc.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-func narrativeSaved(form narrativeForm, history []draftHistoryEntry, loc *time.Location) templ.Component {
+func narrativeSaved(form narrativeForm, history []domain.ReportHistoryEntry, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
