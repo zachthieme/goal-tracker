@@ -1493,19 +1493,15 @@ templ goalIncomplete(missing []string) {
 
 // milestoneList is a Goal's Milestones as a table of mark, date with the date
 // it last slipped from struck through, and name (CONTEXT.md: Milestone, Date
-// Slip), headed by the Goal's slip count and Milestone Churn. A Milestone with
-// no mark leaves its Status blank, so those marked stand out. editable gives
-// the Owner of a Proposed Goal an edit form on each; once Active, Milestones
-// change in a Check-in.
+// Slip), headed by milestoneSlipLine. A Milestone with no mark leaves its
+// Status blank, so those marked stand out. editable gives the Owner of a
+// Proposed Goal an edit form on each; once Active, Milestones change in a
+// Check-in.
 templ milestoneList(v goalView, editable bool) {
-	<p class="muted small">
-		<span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span> slips
-		·
-		<span data-testid="goal-milestone-churn">{ fmt.Sprintf("%d", v.MilestoneChurn) }</span> added or removed since Active
-	</p>
 	if len(v.Milestones) == 0 {
 		<p data-testid="no-milestones" class="muted">No Milestones yet.</p>
 	} else {
+		@milestoneSlipLine(v)
 		<div class="table-scroll">
 		<table>
 			<thead>
@@ -1586,6 +1582,27 @@ func milestoneMarkClass(mark string) string {
 		return "y"
 	}
 	return "lc"
+}
+
+// milestoneSlipLine heads a Goal's Milestones, once it has been Active, with
+// how many times their dates slipped and its Milestone Churn: "1 slip · 2
+// added or removed since Active" (CONTEXT.md: Date Slip, Milestone Churn).
+// Delivery-date and back-to-Green slips aren't counted. A Goal never Active
+// has neither, so it shows none.
+templ milestoneSlipLine(v goalView) {
+	if !v.Goal.ActivatedAt.IsZero() {
+		<p class="muted small">
+			{{ slips := v.milestoneSlipCount() }}
+			<span data-testid="goal-slip-count">{ fmt.Sprintf("%d", slips) }</span>
+			if slips == 1 {
+				slip
+			} else {
+				slips
+			}
+			·
+			<span data-testid="goal-milestone-churn">{ fmt.Sprintf("%d", v.MilestoneChurn) }</span> added or removed since Active
+		</p>
+	}
 }
 
 // milestoneDates renders a Milestone's date as slippedDates does, its count

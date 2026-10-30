@@ -2243,6 +2243,134 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	}
 }
 
+// The Milestones' slip count counts only the Goal's Milestone date slips, not
+// its delivery-date slips, and its word agrees with the number: one Check-in
+// slipping both the delivery date and Beta reads "1 slip", a second slipping
+// Beta again "2 slips" (CONTEXT.md: Date Slip).
+func TestGoalPageMilestoneSlipCountCountsOnlyMilestoneSlipsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("ListMilestones = %v, %v", ms, err)
+	}
+	beta := ms[0]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+
+	for _, tc := range []struct {
+		form      url.Values
+		slips     string
+		countLine string
+	}{
+		{url.Values{
+			"health":               {domain.HealthYellow},
+			"status":               {"Launch and Beta both move."},
+			"path_to_green":        {"Swap vendors."},
+			"path_target_date":     {"2026-06-15"},
+			"delivery_date":        {goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")},
+			"delivery_date_reason": {"Vendor API delayed two weeks."},
+			fmt.Sprintf("milestone_date_%d", beta.ID):        {beta.TargetDate.AddDate(0, 0, 7).Format("2006-01-02")},
+			fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"Design review moved."},
+		}, "1", "1 slip · 0 added or removed since Active"},
+		{url.Values{
+			"health":           {domain.HealthYellow},
+			"status":           {"Beta moves again."},
+			"path_to_green":    {"Swap vendors."},
+			"path_target_date": {"2026-06-15"},
+			fmt.Sprintf("milestone_date_%d", beta.ID):        {beta.TargetDate.AddDate(0, 0, 14).Format("2006-01-02")},
+			fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"Design review moved again."},
+		}, "2", "2 slips · 0 added or removed since Active"},
+	} {
+		if status := postFormStatus(t, client, checkinURL, tc.form); status != http.StatusOK {
+			t.Fatalf("Check-in %q: status %d", tc.form.Get("status"), status)
+		}
+		section := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "goal-milestones")
+		slips := findByTestID(t, section, "goal-slip-count")
+		if got := textOf(slips); got != tc.slips {
+			t.Errorf("after %q the Milestones' slip count reads %q, want %s", tc.form.Get("status"), got, tc.slips)
+		}
+		if got := textOf(slips.Parent); got != tc.countLine {
+			t.Errorf("after %q the Milestones are headed %q, want %q", tc.form.Get("status"), got, tc.countLine)
+		}
+	}
+}
+
+// An Active Goal with no Milestones, such as an Ongoing one, shows "No
+// Milestones yet." alone: no slip count or Milestone Churn, whatever Date
+// Slips its back-to-Green date has.
+func TestGoalPageWithNoMilestonesShowsNoSlipCountOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Keep the lights on", "Uptime is table stakes.")
+	ctx := t.Context()
+	if _, err := h.Service.MarkGoalOngoing(ctx, sam.ID, goal.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, sam.ID, domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Uptime", Unit: "%", Direction: domain.MetricUp, Baseline: 99, Target: 99.9,
+		TargetDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	goal, err := h.Service.ActivateGoal(ctx, sam.ID, goal.ID)
+	if err != nil {
+		t.Fatalf("ActivateGoal: %v", err)
+	}
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Paging is noisy.", "Tune alerts.", testsupport.Epoch.AddDate(0, 1, 0))
+	h.CheckinMovingPath(sam, goal.ID, domain.HealthYellow, "Still noisy.", "Tune alerts.", testsupport.Epoch.AddDate(0, 2, 0), "On-call rotation changed.")
+	if slips, _ := h.Service.ListDateSlips(ctx, goal.ID); len(slips) == 0 {
+		t.Fatalf("recorded no Date Slips, want the back-to-Green date's")
+	}
+	ts := newServer(t, h)
+
+	section := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)), "goal-milestones")
+	if got := textOf(findByTestID(t, section, "no-milestones")); got != "No Milestones yet." {
+		t.Errorf("an Active Goal with no Milestones reads %q, want No Milestones yet.", got)
+	}
+	for _, testID := range []string{"goal-slip-count", "goal-milestone-churn"} {
+		if hasTestID(section, testID) {
+			t.Errorf("an Active Goal with no Milestones shows %s: %s", testID, renderNode(section))
+		}
+	}
+}
+
+// A Proposed Goal's Milestones are listed with no slip count or Milestone
+// Churn: both count only what happens once Active, so nothing on it says
+// "since Active" (CONTEXT.md: Milestone Churn).
+func TestProposedGoalPageShowsNoSlipCountOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AddMilestoneAsAuthor(t.Context(), sam.ID, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Beta", TargetDate: time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	ts := newServer(t, h)
+
+	section := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)), "goal-milestones")
+	if got := goalMilestoneRowsIn(section); len(got) != 1 || !strings.HasPrefix(got[0], "Apr 2 Beta") {
+		t.Errorf("a Proposed Goal's Milestone rows read %q, want Beta's", got)
+	}
+	for _, testID := range []string{"goal-slip-count", "goal-milestone-churn"} {
+		if hasTestID(section, testID) {
+			t.Errorf("a Proposed Goal shows %s: %s", testID, renderNode(section))
+		}
+	}
+	if strings.Contains(textOf(section), "since Active") {
+		t.Errorf("a Proposed Goal's Milestones say since Active: %q", textOf(section))
+	}
+}
+
 // The Goal page marks a Milestone overdue by today's date in the Goal's
 // Owner's Timezone, as the No change it offers beside the mark is judged
 // (CONTEXT.md: Timezone): with the company on UTC, late on Beta's date in the
@@ -2310,18 +2438,22 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
+	// churn is the card's Milestone Churn, or "" where it shows none.
 	churn := func(card *nethtml.Node) string {
+		if !hasTestID(card, "goal-milestone-churn") {
+			return ""
+		}
 		return textOf(findByTestID(t, card, "goal-milestone-churn"))
 	}
 	// Only an addition while Active is Milestone Churn (CONTEXT.md: Milestone
-	// Churn).
+	// Churn), so a Goal never Active shows none.
 	for _, tc := range []struct {
 		who                     string
 		goal                    domain.Goal
 		churnBefore, churnAfter string
 	}{
-		{"sam@example.com", proposed, "0", "0"},
-		{"dana@example.com", proposed, "0", "0"},
+		{"sam@example.com", proposed, "", ""},
+		{"dana@example.com", proposed, "", ""},
 		{"sam@example.com", active, "0", "1"},
 		{"dana@example.com", active, "1", "2"},
 		{"sam@example.com", onHold, "0", "0"},
