@@ -1,0 +1,21 @@
+package web
+
+import "github.com/zachthieme/goal-tracker/internal/domain"
+
+// personSearchResults are the person picker's matches, each a button holding
+// the email it picks. It shows the person's Label and then their email: a
+// picker can't nest person's disclosure, and the email tells apart people who
+// share a Name, as the Scope select's LongLabel does.
+templ personSearchResults(matches []domain.Account) {
+	if len(matches) == 0 {
+		<li data-testid="person-no-results" class="muted small">No one matches.</li>
+	}
+	for _, a := range matches {
+		<li data-testid="person-result">
+			<button type="button" class="person-result" data-pick-person data-email={ a.Email }>
+				<span>{ a.Label() }</span>
+				<span class="muted small">{ a.Email }</span>
+			</button>
+		</li>
+	}
+}
