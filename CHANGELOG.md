@@ -23,6 +23,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] The Report builder's refusals now say what to do in plain words, without "Report Definition": a blank name asks you to "Give the report a name.", a rules report with no rule (even one left at "Choose…") says "Add a rule: choose what it tests, such as a Team, and a value.", Goals I pick with none picked says "Pick at least one Goal.", a rule with no value says "Choose a value for this rule.", and a Goal that's gone says "A Goal in this list no longer exists; remove it and save again." instead of its id (#671).
+- [user] For an Admin, the Dimensions, Fields, Import Goals and Definition log pages now mark Admin current in the sidebar and lead their header with an "Admin ›" link back to the Admin page (#683).
 
 **Architecture:**
 - [internal] Creating a Goal names who creates it, and the domain checks one rule for it: a person creates Goals only for themselves, unless they are the Admin running an import. The web, Goal definition and importer callers no longer hold that rule themselves (#650).
