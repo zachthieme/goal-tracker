@@ -1679,10 +1679,10 @@ and so on).
     no underline or box, since it can't change here, over a muted small
     "Rename it on the Goal page" link to the Goal page with Edit title and Why
     it matters open. Why it matters takes the focus, and the activate button
-    reads **Activate Goal**, as the Goal page's Define card calls it. The Goal's own Milestones
-    and Metrics are a read-only list at the top of How you'll know, and
-    Contributes to lists the Goals already asked, a Pending one "waiting on
-    <Owner>".
+    reads **Activate Goal**, as the Goal page's Define card calls it. The
+    Goal's own Milestones and Metrics are a read-only list at the top of How
+    you'll know, and Contributes to lists the Goals already asked, a Pending
+    one "waiting on <Owner>".
   - **At 960px and below** the rail follows the column as its last section,
     under a hairline, and doesn't stick. At 600px and below the Kind tiles
     stack, the cadence is a 2×2 grid, and an editor's fields go one to a row.
