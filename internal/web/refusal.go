@@ -7,10 +7,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// cycleRefusal is a cycle's refusal as a person reads it: ErrCycle's own text
-// names the two Goals by ID.
-const cycleRefusal = "Linking these Goals would make a cycle: the parent already contributes to the child."
-
 // refuseOptions are what refuse says of what isn't a refusal of its own
 // kind: a thing that isn't there, or a failure. An empty sentence leaves it to
 // the Not found page, or the plain 500.
@@ -51,7 +47,7 @@ func (s *Server) refuse(w http.ResponseWriter, r *http.Request, heading, back st
 	var reason string
 	switch {
 	case errors.Is(err, domain.ErrCycle):
-		status, reason = http.StatusConflict, cycleRefusal
+		status, reason = http.StatusConflict, sentence(domain.Reason(err))
 	case errors.Is(err, domain.ErrValidation):
 		status, reason = http.StatusUnprocessableEntity, sentence(domain.Reason(err))
 	case errors.Is(err, domain.ErrNotAuthorized):

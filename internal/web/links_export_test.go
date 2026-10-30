@@ -18,6 +18,7 @@ func (s *Server) HandleRefusedLinkCycleForTest(pattern string) {
 		if !ok {
 			return
 		}
-		s.renderRefusedForm(w, r, goalID, current, formParentLink, http.StatusConflict, errLinkWouldCycle)
+		s.renderRefusedForm(w, r, goalID, current, formParentLink, http.StatusConflict,
+			domain.Refuse(domain.ErrCycle, "linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”"))
 	}))
 }

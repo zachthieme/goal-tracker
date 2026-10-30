@@ -259,6 +259,35 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	}
 }
 
+// Suggesting as a parent a Goal that already contributes to the Goal is
+// refused 409, with the form saying so in the sentence every cycle's refusal
+// uses, naming both Goals by title, and records nothing (#645).
+func TestSuggestingAParentThatWouldMakeACycleSaysSo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	below := h.ActiveChildOf(sam, goal, "Reduce outages", "Outages cost trust.")
+
+	client := signInClient(t, ts.URL, "kim@example.com")
+	resp := postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(below.ID)}})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusConflict {
+		t.Errorf("status = %d, want 409", resp.StatusCode)
+	}
+	want := "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”."
+	if got := textOf(findByTestID(t, page, "form-error")); got != want {
+		t.Errorf("form-error = %q, want %q", got, want)
+	}
+	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 0 {
+		t.Errorf("the Goal has %d suggestions, want none", len(all))
+	}
+}
+
 // Suggest pressed with no parent picked suggests nothing: the form comes back,
 // 422, with the reason beside the picker, which marks its controls refused,
 // the note as typed and still nothing picked (#656).

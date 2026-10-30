@@ -49,8 +49,8 @@ func TestARefusalIsOnePageSayingWhyWithItsStatus(t *testing.T) {
 		notFound bool
 		logged   bool
 	}{
-		{name: "a cycle", err: fmt.Errorf("link 3 to 4: %w", domain.ErrCycle), status: http.StatusConflict,
-			reason: "Linking these Goals would make a cycle: the parent already contributes to the child."},
+		{name: "a cycle", err: domain.Refuse(domain.ErrCycle, "linking these Goals would make a cycle: “Cut costs” already contributes to “Renegotiate contracts”"), status: http.StatusConflict,
+			reason: "Linking these Goals would make a cycle: “Cut costs” already contributes to “Renegotiate contracts”."},
 		{name: "a validation", err: domain.Refuse(domain.ErrValidation, "this link request has already been accepted"), status: http.StatusUnprocessableEntity,
 			reason: "This link request has already been accepted."},
 		{name: "someone else's action", err: domain.Refuse(domain.ErrNotAuthorized, "only the parent's Owner may accept a link"), status: http.StatusForbidden,

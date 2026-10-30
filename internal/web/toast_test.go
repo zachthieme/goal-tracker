@@ -468,7 +468,7 @@ func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
 			defer func() { _ = resp.Body.Close() }()
-			assertUndoRefused(t, resp, http.StatusConflict, "Linking these Goals would make a cycle: the parent already contributes to the child.", tc.back(t, h))
+			assertUndoRefused(t, resp, http.StatusConflict, "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by an Undo that would make a cycle")
 			}

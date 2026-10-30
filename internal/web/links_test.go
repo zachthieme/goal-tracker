@@ -737,7 +737,7 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
+	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", "/home")
 	for _, id := range []int64{parent.ID, child.ID} {
 		if reason := textOf(findByTestID(t, page, "refused-reason")); strings.Contains(reason, fmt.Sprint(id)) {
 			t.Errorf("refused-reason %q names Goal %d by its ID", reason, id)
@@ -749,7 +749,8 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 }
 
 // A link request refused for making a cycle says so in the form, in the
-// sentence Suggest a parent uses, naming no Goal by its ID (#546).
+// sentence every cycle's refusal uses, naming the Goals by title, not ID
+// (#546, #645).
 func TestALinkRequestThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	t.Parallel()
 
@@ -775,7 +776,7 @@ func TestALinkRequestThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
 	got := textOf(findByTestID(t, page, "form-error"))
-	if want := "That Goal already contributes to this one, so linking them would make a cycle."; got != want {
+	if want := "Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”."; got != want {
 		t.Errorf("form-error = %q, want %q", got, want)
 	}
 	for _, id := range []int64{parent.ID, child.ID} {
@@ -953,7 +954,7 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("refused Accept on Home: status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
+	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: “Cut costs” already contributes to “Renegotiate contracts”.", "/home")
 
 	third := h.CreateGoal(sam, "Replace cabling", "Cables fray.")
 	noReturn := h.RequestLink(sam, third, parent, "")
@@ -1066,9 +1067,9 @@ func TestARefusedLinkRequestKeepsItsStatusWhenTheFormIsNotOffered(t *testing.T) 
 		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", true, "input-error"},
 		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false, ""},
 		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
-			"That Goal already contributes to this one, so linking them would make a cycle.", true, "form-error"},
+			"Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", true, "form-error"},
 		{"cycle, not offered", "pat@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,
-			"Linking these Goals would make a cycle: the parent already contributes to the child.", false, ""},
+			"Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", false, ""},
 	} {
 		resp := postForm(t, signInClient(t, ts.URL, c.who), ts.URL+c.path, c.form)
 		defer func() { _ = resp.Body.Close() }()

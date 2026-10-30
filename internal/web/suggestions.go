@@ -51,7 +51,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	case errors.Is(err, domain.ErrCycle):
-		s.renderSuggestParent(w, r, current, goalID, http.StatusConflict, errLinkWouldCycle)
+		s.renderSuggestParent(w, r, current, goalID, http.StatusConflict, err)
 	case errors.Is(err, domain.ErrValidation):
 		s.renderSuggestParent(w, r, current, goalID, http.StatusUnprocessableEntity, err)
 	case errors.Is(err, domain.ErrNotAuthorized):

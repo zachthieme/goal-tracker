@@ -806,12 +806,16 @@ func TestDefineGoalRequestsOnlyNewParentsAndRefusesACycle(t *testing.T) {
 	in := definition(g)
 	in.ParentIDs = []int64{child.ID}
 	_, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
-	var inputs []string
+	var inputs, messages []string
 	for _, p := range domain.InputErrors(err) {
 		inputs = append(inputs, p.Input)
+		messages = append(messages, p.Message)
 	}
 	if !slices.Equal(inputs, []string{id("parent:", child.ID)}) {
 		t.Errorf("err = %v, want the cycle refused under %s", err, id("parent:", child.ID))
+	}
+	if want := "linking these Goals would make a cycle: “Fix search” already contributes to “Ship v2”"; !slices.Equal(messages, []string{want}) {
+		t.Errorf("the cycle's input errors say %q, want %q", messages, want)
 	}
 
 	in.ParentIDs = []int64{accepted.ID, pending.ID, fresh.ID}
