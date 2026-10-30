@@ -760,13 +760,13 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for _, op := range ruleOps(row.Attribute) {
+		for _, op := range domain.RuleOperators(row.rule().Attribute) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
-			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(op[0])
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(op.Op)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 202, Col: 25}
 			}
@@ -778,7 +778,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if op[0] == row.Op {
+			if op.Op == row.Op {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -789,9 +789,9 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(op[1])
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(op.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 202, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 202, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {

@@ -1,0 +1,231 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>Weekly · Goal Tracker</title><link rel="stylesheet" href="/static/app.css"/><script src="/static/htmx.min.js"></script><script>
+		document.addEventListener("click", function (e) {
+			var b = e.target.closest && e.target.closest("button.disclose");
+			if (!b) return;
+			var id = b.getAttribute("aria-controls");
+			var target = id ? document.getElementById(id) : b.nextElementSibling;
+			if (!id && !target) {
+				var p = b.closest(".person");
+				target = p && p.querySelector(".person-email");
+			}
+			if (!target) return;
+			var open = b.getAttribute("aria-expanded") !== "true";
+			b.setAttribute("aria-expanded", open ? "true" : "false");
+			target.hidden = !open;
+		});
+	</script><script>
+		(function () {
+			var pickerSelector = "input[data-person-picker]";
+			var lastID = 0;
+			function resultsOf(input) {
+				var p = input.closest(".person-picker");
+				return p && p.querySelector(".person-results");
+			}
+			function hide(list) {
+				list.hidden = true;
+				list.innerHTML = "";
+			}
+			// forget drops any search input is waiting on, so its answer, if
+			// one comes, isn't shown.
+			function forget(input) {
+				clearTimeout(input.personTimer);
+				input.personAsked = (input.personAsked || 0) + 1;
+			}
+			function upgrade() {
+				document.querySelectorAll(pickerSelector).forEach(function (input) {
+					var list = resultsOf(input);
+					if (!list || input.hasAttribute("aria-controls")) return;
+					if (!list.id) {
+						do { lastID++; } while (document.getElementById("person-results-" + lastID));
+						list.id = "person-results-" + lastID;
+					}
+					input.type = "text";
+					input.placeholder = "Name or email";
+					input.autocomplete = "off";
+					input.setAttribute("aria-autocomplete", "list");
+					input.setAttribute("aria-controls", list.id);
+				});
+			}
+			document.addEventListener("DOMContentLoaded", upgrade);
+			document.addEventListener("htmx:load", upgrade);
+			document.addEventListener("input", function (e) {
+				var input = e.target;
+				if (!input.matches || !input.matches(pickerSelector)) return;
+				var list = resultsOf(input);
+				if (!list) return;
+				forget(input);
+				var asked = input.personAsked;
+				var q = input.value.trim();
+				if (!q) {
+					hide(list);
+					return;
+				}
+				input.personTimer = setTimeout(function () {
+					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+						.then(function (r) { return r.ok ? r.text() : ""; })
+						.then(function (html) {
+							// Only the latest answer, and only while the person is
+							// still in the picker.
+							if (asked !== input.personAsked || !list.parentNode.contains(document.activeElement)) return;
+							list.innerHTML = html;
+							list.hidden = html.trim() === "";
+						});
+				}, 300);
+			});
+			// Keep focus in the input while a result is pressed, so the
+			// focusout below doesn't hide the results before the click.
+			document.addEventListener("mousedown", function (e) {
+				if (e.target.closest && e.target.closest(".person-results")) e.preventDefault();
+			});
+			document.addEventListener("click", function (e) {
+				var b = e.target.closest && e.target.closest("[data-pick-person]");
+				var picker = b && b.closest(".person-picker");
+				if (picker) {
+					var input = picker.querySelector(pickerSelector);
+					forget(input);
+					input.value = b.getAttribute("data-email");
+					hide(b.closest(".person-results"));
+					input.focus();
+				}
+				document.querySelectorAll(".person-results:not([hidden])").forEach(function (list) {
+					if (!list.parentNode.contains(e.target)) hide(list);
+				});
+			});
+			document.addEventListener("keydown", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (!input || !list) return;
+				var results = Array.prototype.slice.call(list.querySelectorAll("[data-pick-person]"));
+				var at = results.indexOf(e.target);
+				if (e.key === "Escape" && !list.hidden) {
+					e.preventDefault();
+					forget(input);
+					hide(list);
+					input.focus();
+				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
+					e.preventDefault();
+					results[Math.min(at + 1, results.length - 1)].focus();
+				} else if (e.key === "ArrowUp" && at >= 0) {
+					e.preventDefault();
+					(at === 0 ? input : results[at - 1]).focus();
+				}
+			});
+			document.addEventListener("focusout", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (input) forget(input);
+				if (list && !list.hidden) hide(list);
+			});
+		})();
+	</script></head><body><div><header><a href="/home"><span aria-hidden="true"></span>Goal Tracker</a><a href="/home"><span>Home </span><span>1</span></a> <details><summary>Menu</summary></details><div><form method="get" action="/goals" role="search"><label for="sb-search-q">Search Goals</label> <input id="sb-search-q" type="search" name="q" placeholder="Search"/></form><nav aria-label="Main"><a data-testid="nav-home" href="/home"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 7.5 8 3l5.5 4.5V13.5H10v-4H6v4H2.5z"></path></svg>Home<span>1</span></a><a data-testid="nav-goals" href="/goals"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5"></circle> <circle cx="8" cy="8" r="2"></circle></svg>Goals</a><a data-testid="nav-follow-ups" href="/follow-ups"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 14.5v-12M3.5 3h8.5l-1.75 3L12 9H3.5"></path></svg>Follow-ups<span>1</span></a><a aria-current="page" data-testid="nav-reports" href="/reports"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5.5L12 4v10.5H4zM9.5 1.5V4H12M6 8h4M6 11h4"></path></svg>Reports</a><a data-testid="nav-admin" href="/admin"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5 13 3.5v4c0 3-2.2 5.3-5 7-2.8-1.7-5-4-5-7v-4z"></path></svg>Admin</a></nav><details data-testid="person-menu"><summary><span aria-hidden="true">AA</span> <span><span title="admin@example.com">Ada Admin</span></span></summary><div><p data-testid="current-user">Signed in as <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span> (Admin)</p><form data-testid="theme-menu" method="post" action="/theme" aria-label="Theme"><p aria-hidden="true">Theme</p><input type="hidden" name="return" value="/reports/2"/> <button data-testid="theme-system" type="submit" name="theme" value="system" aria-current="true">System</button><button data-testid="theme-light" type="submit" name="theme" value="light">Light</button><button data-testid="theme-dark" type="submit" name="theme" value="dark">Dark</button></form><form method="post" action="/signout"><button type="submit">Sign out</button></form></div></details></div></header><div><header data-testid="draft-header"><div><nav data-testid="report-breadcrumb" aria-label="Breadcrumb"><a href="/reports">Reports</a> <span aria-hidden="true">›</span> <span aria-current="page">Weekly</span> <span>Draft</span></nav><span data-testid="save-status" id="save-status"><span>Saving…</span> <span data-testid="save-result" id="save-result"></span></span></div><details data-testid="baseline-chip"><summary><span>Changes since <strong data-testid="baseline-label">last publication · Jan 2, 2026</strong></span> <span aria-hidden="true">▾</span></summary><ul><li><a data-testid="baseline-last-publication" href="/reports/2">Last publication</a></li><li><a data-testid="baseline-30-days" href="/reports/2?baseline=2025-12-04">30 days ago</a></li><li><details data-testid="baseline-pick"><summary>Pick a date…</summary><form data-testid="report-baseline" method="get" action="/reports/2"><label>Changes since <input type="date" name="baseline" value="2026-01-02"/></label> <button type="submit">Apply</button></form></details></li></ul></details><div><a data-testid="edit-definition" href="/reports/2/edit">Edit definition</a><details data-testid="publish-confirm"><summary>Publish…</summary><div><div><h2>Publish Weekly?</h2><p data-testid="publish-summary" id="publish-summary">2 Goals · 1 exception · 0 Highlights · changes since last publication · Jan 2, 2026. Readers can comment on the frozen copy.</p><p data-testid="publish-unsaved" role="status" hidden=""><strong>Your narrative changes will be saved first.</strong></p><p data-testid="publish-not-saved" role="alert" hidden=""></p></div><div><a data-testid="publish-cancel" href="/reports/2">Cancel</a><form data-testid="report-publish" method="post" action="/reports/2/publications"><button type="submit">Publish</button></form></div></div></details></div></header><main><div><div data-testid="report-draft"><header><h1 data-testid="report-name">Weekly</h1><p data-testid="report-meta">2 Goals picked by hand · 2 Goals · changes since the previous publication, Jan 2, 2026</p></header><section data-testid="health-summary"><span>Health</span> <span><span title="Red" aria-hidden="true"><span></span></span> <span><span data-testid="health-count-red">1</span> Red</span></span><span><span aria-hidden="true">·</span> <span title="Yellow" aria-hidden="true"><span></span></span> <span><span data-testid="health-count-yellow">0</span> Yellow</span></span><span><span aria-hidden="true">·</span> <span title="Green" aria-hidden="true"><span></span></span> <span><span data-testid="health-count-green">1</span> Green</span></span><span><span aria-hidden="true">·</span> <span title="Check-in overdue" aria-hidden="true"><span></span></span> <span><span data-testid="health-count-checkin-overdue">0</span> Check-in overdue</span></span></section><p data-testid="report-movement"><strong>Since the previous publication:</strong> 1 turned Red</p><div data-testid="report-snapshot"><section data-testid="report-curation" id="report-curation"><div><h2>Narrative</h2><span>Highlights since Jan 2, 2026 · <span data-testid="curation-count" id="curation-count">0 of 1 in</span></span></div><form data-testid="narrative-curation" id="narrative-curation" method="post" autocomplete="off" action="/reports/2/narrative" hx-on:htmx:response-error="document.getElementById(&#39;save-result&#39;).textContent = &#39;Not saved&#39;" hx-on:htmx:send-error="document.getElementById(&#39;save-result&#39;).textContent = &#39;Not saved&#39;"><div data-testid="compose-section-Insight"><details data-testid="section-text-Insight"><summary data-testid="section-text-summary"><span>Insights</span> <span>+ Add note</span></summary> <label><span>Insights, note 1</span> <textarea name="text-Insight"></textarea></label> <button type="submit" name="add_note" value="Insight" formnovalidate="" hx-post="/reports/2/narrative" hx-target="#report-curation" hx-swap="outerHTML">Add another</button></details></div><div data-testid="compose-section-Accomplishment"><details data-testid="section-text-Accomplishment"><summary data-testid="section-text-summary"><span>Accomplishments</span> <span>+ Add note</span></summary> <label><span>Accomplishments, note 1</span> <textarea name="text-Accomplishment"></textarea></label> <button type="submit" name="add_note" value="Accomplishment" formnovalidate="" hx-post="/reports/2/narrative" hx-target="#report-curation" hx-swap="outerHTML">Add another</button></details><ul><li data-testid="curation-highlight"><input type="hidden" name="offered" value="1"/> <label><input type="checkbox" name="include-1" value="on"/> <span>Signed the first EU customer.</span></label><p><span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span> ·  <a href="/goals/1">Launch in EU</a> <span> · Accomplishment</span></p><fieldset><legend>Section</legend> <label><input type="radio" name="pick-1" value="Insight"/> <span>Insight</span></label><label><input type="radio" name="pick-1" value="Accomplishment" checked=""/> <span>Accomplishment</span></label><label><input type="radio" name="pick-1" value="Miss"/> <span>Miss</span></label></fieldset></li></ul></div><div data-testid="compose-section-Miss"><details data-testid="section-text-Miss"><summary data-testid="section-text-summary"><span>Misses</span> <span>+ Add note</span></summary> <label><span>Misses, note 1</span> <textarea name="text-Miss"></textarea></label> <button type="submit" name="add_note" value="Miss" formnovalidate="" hx-post="/reports/2/narrative" hx-target="#report-curation" hx-swap="outerHTML">Add another</button></details></div><button type="submit" hx-post="/reports/2/narrative" hx-target="#report-curation" hx-swap="outerHTML" hx-sync="closest form:replace" hx-indicator="#save-status">Save narrative</button></form></section><section data-testid="needs-attention"><h2>Exceptions <span data-testid="needs-attention-count">1</span></h2><article data-testid="report-exception" id="goal-2"><div><span>  <span data-testid="report-health" title="Red"><span></span><span>Red</span></span> <span data-testid="report-run-off-green">· 1 wk</span> <span data-testid="report-prior-health">· was Green</span></span><div><h3><a href="/goals/2">Grow signups</a></h3><p><span data-testid="report-owner"><span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span></span>  · Active  · due  <span data-testid="report-due"><span>Jul 2, 2026</span></span></p></div></div><p data-testid="report-changes"><strong>Changed:</strong>   <span data-testid="report-change">Turned Red</span></p><dl><div><dt>Why it matters</dt><dd data-testid="report-why-it-matters">It matters.</dd></div><div><dt>Status</dt><dd data-testid="report-status">Signups stalled.</dd></div></dl><div data-testid="report-path-box"><p data-testid="report-path-to-green"><strong>Path to Green:</strong> Rerun the campaign. (back to Green by Jan 9, 2026) </p></div><dl><div><dt>Milestones</dt><dd><ul data-testid="report-milestones"><li data-testid="report-milestone"><span><span>Apr 2, 2026</span> </span>   Beta </li></ul></dd></div></dl></article></section><section data-testid="on-track-section"><h2>On track</h2><div><table data-testid="on-track"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr></thead> <tbody><tr data-testid="selected-goal" id="goal-1"><td>  <span data-testid="selected-health" title="Green"><span></span><span>Green</span></span> </td><td><a href="/goals/1">Launch in EU</a></td><td data-testid="selected-owner"><span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span></td><td><span data-testid="selected-due">Jul 2, 2026</span></td></tr></tbody></table></div></section></div></div><aside data-testid="draft-side"><section data-testid="report-delegates"><h2>Delegates</h2><ul data-testid="report-delegate-list"><li data-testid="report-delegate"><span><span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span></span> <form method="post" action="/reports/2/delegates/remove"><input type="hidden" name="account" value="2"/> <button data-testid="remove-report-delegate" type="submit">Remove</button></form></li></ul><button type="button" aria-expanded="false" aria-controls="report-delegate-help" title="Someone its creator or an Admin authorizes to change this Report, curate its narrative and publish it. Only its creator and Admins add and remove them.">What is a Report Delegate?</button><p id="report-delegate-help" hidden="">Someone its creator or an Admin authorizes to change this Report, curate its narrative and publish it. Only its creator and Admins add and remove them.</p> <form data-testid="add-report-delegate" method="post" action="/reports/2/delegates"><div><label><span>Report Delegate email</span> <input type="email" name="email" value="" placeholder="Email" required="" data-person-picker=""/></label><ul data-testid="person-results" aria-live="polite" hidden=""></ul></div><button type="submit">Add Delegate</button></form></section><section data-testid="report-history" id="report-history"><h2>History</h2><ol><li data-testid="report-history-draft"><span aria-hidden="true"></span> <span>Draft</span> <span>changes since Jan 2, 2026</span></li><li data-testid="report-history-entry"><span aria-hidden="true"></span> <a href="/reports/2/publications/3">Published</a> <span>Jan 2, 2026, 21:04 · <span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span></span></li><li data-testid="report-history-entry"><span aria-hidden="true"></span> <span>Narrative: Misses notes changed</span> <span>Jan 2, 2026, 20:04 · <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span></span></li><li data-testid="report-history-entry"><span aria-hidden="true"></span> <a href="/reports/2/publications/2">Published</a> <span>Jan 2, 2026, 19:04 · <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span></span></li><li data-testid="report-history-entry"><span aria-hidden="true"></span> <span>Report Delegate added: Priya Raman</span> <span>Jan 2, 2026, 18:04 · <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span></span></li><li data-testid="report-history-entry"><span aria-hidden="true"></span> <span>Created</span> <span>Jan 2, 2026, 18:04 · <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span></span></li></ol></section></aside></div><script>
+		(function () {
+			// edits counts the author's changes; sent is the count when the
+			// Narrative section last posted. publishing is true while Save and
+			// publish waits on its save, and saving is that save's request.
+			var edits = 0, sent = 0, stale = false, publishing = false, saving = null;
+			document.addEventListener("input", changed);
+			document.addEventListener("change", changed);
+			// toggle doesn't bubble, so Publish… opening is caught on its way down.
+			document.addEventListener("toggle", heed, true);
+			document.addEventListener("htmx:afterSettle", heed);
+			document.addEventListener("htmx:beforeRequest", function (e) {
+				if (!fromNarrative(e)) return;
+				sent = edits;
+				if (publishing && !saving) saving = e.detail.xhr;
+			});
+			document.addEventListener("htmx:beforeSwap", function (e) {
+				stale = fromNarrative(e) && edits !== sent;
+				if (stale) e.detail.swapOverride = "none";
+			});
+			document.addEventListener("submit", saveThenPublish, true);
+			// A swapped-out save answers from an ancestor still on the page,
+			// so its request, not where it came from, says whose it is.
+			document.addEventListener("htmx:afterRequest", function (e) {
+				if (stale) {
+					stale = false;
+					markUnsaved();
+				}
+				if (saving && e.detail.xhr === saving) published(e.detail.successful);
+			});
+			window.addEventListener("beforeunload", function (e) {
+				if (!unsaved()) return;
+				e.preventDefault();
+				e.returnValue = "";
+			});
+			heed();
+
+			function fromNarrative(e) {
+				return e.detail.elt instanceof Element && !!e.detail.elt.closest("#report-curation");
+			}
+			function unsaved() {
+				var status = document.getElementById("save-status");
+				return !!status && status.hasAttribute("data-unsaved");
+			}
+			function changed(e) {
+				if (!(e.target instanceof Element) || !e.target.closest("#narrative-curation")) return;
+				edits++;
+				var form = document.getElementById("narrative-curation"), count = document.getElementById("curation-count");
+				if (count) {
+					var boxes = form.querySelectorAll('input[name^="include-"]');
+					count.textContent = form.querySelectorAll('input[name^="include-"]:checked').length + " of " + boxes.length + " in";
+				}
+				markUnsaved();
+			}
+			function markUnsaved() {
+				var status = document.getElementById("save-status");
+				if (!status) return;
+				status.setAttribute("data-unsaved", "");
+				document.getElementById("save-result").textContent = "Unsaved changes";
+				heed();
+			}
+			function heed() {
+				var publish = document.querySelector('[data-testid="publish-confirm"]');
+				if (!publish) return;
+				var pending = unsaved(), notSaved = publish.querySelector('[data-testid="publish-not-saved"]');
+				if (!pending) notSaved.hidden = true;
+				publish.querySelector('[data-testid="publish-unsaved"]').hidden = !pending || !notSaved.hidden;
+				publish.querySelector('[data-testid="report-publish"] button').textContent = pending ? "Save and publish" : "Publish";
+			}
+			function saveThenPublish(e) {
+				var form = e.target, save = document.querySelector("#narrative-curation .rp-save-narrative");
+				if (!(form instanceof Element) || form.getAttribute("data-testid") !== "report-publish" || !unsaved() || !save) return;
+				e.preventDefault();
+				if (publishing) return;
+				publishing = true;
+				form.querySelector("button").disabled = true;
+				document.querySelector('[data-testid="publish-not-saved"]').hidden = true;
+				heed();
+				save.click();
+			}
+			// published submits the publish form once the save, ok when it got
+			// an answer to swap in, left the status unmarked; otherwise it says
+			// why. A dropped request answers before its send-error marks the
+			// status Not saved, so ok, not the status, says it wasn't saved.
+			function published(ok) {
+				publishing = false;
+				saving = null;
+				var form = document.querySelector('[data-testid="report-publish"]');
+				form.querySelector("button").disabled = false;
+				if (!unsaved()) {
+					form.submit();
+					return;
+				}
+				var result = document.getElementById("save-result").textContent, refusal = "Not saved: ";
+				if (!ok) {
+					tell("The narrative wasn't saved.");
+				} else if (result.indexOf(refusal) === 0) {
+					tell("The narrative wasn't saved: " + result.slice(refusal.length));
+				}
+			}
+			function tell(text) {
+				var notSaved = document.querySelector('[data-testid="publish-not-saved"]');
+				notSaved.textContent = text;
+				notSaved.hidden = false;
+				heed();
+			}
+		})();
+	</script></main></div></div></body></html>

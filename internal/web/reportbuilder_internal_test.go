@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -36,5 +37,33 @@ func TestBuilderListsARefusalNamingNoInputAtTheTop(t *testing.T) {
 	}
 	if strings.Contains(top, "the report a name") || !strings.Contains(rest, "the report a name") {
 		t.Errorf("the name's refusal isn't beside the name alone:\n%s", form)
+	}
+}
+
+// The builder's script offers each rule row the operators the domain words
+// for its attribute: its operator table holds, under each key, the whole list
+// RuleOperators gives. The table stays literal in the script so the page
+// renders as it did; this test keeps the two from drifting apart. It reads the
+// script's source, as a parser can't see inside JavaScript.
+func TestBuilderScriptOffersTheDomainsRuleOperators(t *testing.T) {
+	t.Parallel()
+
+	var script strings.Builder
+	if err := reportBuilderScript().Render(t.Context(), &script); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, tc := range []struct{ key, attribute string }{
+		{"values", domain.RuleOwner},
+		{`"top-level"`, domain.RuleTopLevel},
+		{"org", domain.RuleOrg},
+	} {
+		var ops []string
+		for _, op := range domain.RuleOperators(tc.attribute) {
+			ops = append(ops, fmt.Sprintf("[%q, %q]", op.Op, op.Label))
+		}
+		want := tc.key + ": [" + strings.Join(ops, ", ") + "]"
+		if !strings.Contains(script.String(), want) {
+			t.Errorf("the builder's script has no operator table entry %s:\n%s", want, script.String())
+		}
 	}
 }

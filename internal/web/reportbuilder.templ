@@ -198,8 +198,8 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 			}
 		</select>
 		<select data-testid="rule-op" name={ ruleRowInput(i, "op") } aria-label="Operator">
-			for _, op := range ruleOps(row.Attribute) {
-				<option value={ op[0] } selected?={ op[0] == row.Op }>{ op[1] }</option>
+			for _, op := range domain.RuleOperators(row.rule().Attribute) {
+				<option value={ op.Op } selected?={ op.Op == row.Op }>{ op.Label }</option>
 			}
 		</select>
 		{{ groups := row.valueGroups(v.Attributes) }}

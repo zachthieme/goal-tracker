@@ -99,7 +99,7 @@ type reportDraftView struct {
 	Chip       baselineChip
 	Panel      goalsPanel
 	Management reportManagement
-	History    []draftHistoryEntry
+	History    []domain.ReportHistoryEntry
 	Form       narrativeForm
 	Status     string
 }
@@ -123,7 +123,7 @@ func (s *Server) reportDraftView(r *http.Request, current domain.Account, def do
 		Chip:       chip,
 		Panel:      draftGoalsPanel(def, p.Scope, m),
 		Management: m,
-		History:    draftHistory(p.Publications, p.Log),
+		History:    domain.ReportHistory(p.Publications, p.Log),
 		Form:       savedNarrativeForm(p.Report, chip),
 	}, nil
 }
@@ -143,43 +143,6 @@ func (s *Server) loadReportDraftView(w http.ResponseWriter, r *http.Request, cur
 		return reportDraftView{}, false
 	}
 	return v, true
-}
-
-// draftHistoryEntry is one of a Report draft's History entries after the
-// Draft: a publication, linking to it at Publication, or another change in
-// the Report log, with no link (DESIGN.md § A Report's draft page).
-type draftHistoryEntry struct {
-	// Detail is what happened: "Published", or the log entry's Detail.
-	Detail string
-	By     domain.Account
-	At     time.Time
-	// Publication is the publication's path, and "" for a log entry.
-	Publication string
-}
-
-// draftHistory merges a Report Definition's publications, pubs, with its
-// Report log, log, both newest first, into its draft's History, newest
-// first. A publication stands for its Report log entry, which can't link,
-// so the log's Published entries are left out. A publication made at the
-// same moment as a log entry comes first.
-func draftHistory(pubs []domain.Publication, log []domain.ReportLogEntry) []draftHistoryEntry {
-	out := make([]draftHistoryEntry, 0, len(pubs)+len(log))
-	for len(pubs) > 0 || len(log) > 0 {
-		if len(log) > 0 && log[0].Kind == domain.ReportLogPublished {
-			log = log[1:]
-			continue
-		}
-		if len(pubs) > 0 && (len(log) == 0 || !log[0].CreatedAt.After(pubs[0].PublishedAt)) {
-			p := pubs[0]
-			out = append(out, draftHistoryEntry{Detail: "Published", By: p.PublishedBy, At: p.PublishedAt, Publication: publicationPath(p)})
-			pubs = pubs[1:]
-			continue
-		}
-		e := log[0]
-		out = append(out, draftHistoryEntry{Detail: e.Detail, By: e.Actor, At: e.CreatedAt})
-		log = log[1:]
-	}
-	return out
 }
 
 // reportManagement is what a Report's draft page lets its reader do to the
@@ -344,12 +307,9 @@ func newBaselineChip(r domain.Report, chosen, published bool, now time.Time, loc
 // in the draft, its exceptions, the Highlights picked into its saved
 // narrative, and the baseline as the chip labels it.
 func publishSummary(r domain.Report, chip baselineChip) string {
-	highlights := 0
-	for _, s := range r.Narrative {
-		highlights += len(s.Highlights)
-	}
+	c := r.Counts()
 	return fmt.Sprintf("%s · %s · %s · changes since %s. Readers can comment on the frozen copy.",
-		plural(len(r.Exceptions)+len(r.Lines), "Goal"), plural(len(r.Exceptions), "exception"), plural(highlights, "Highlight"), chip.Label)
+		plural(c.Goals, "Goal"), plural(c.Exceptions, "exception"), plural(c.Highlights, "Highlight"), chip.Label)
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next
@@ -505,7 +465,7 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, narrativeSaved(savedNarrativeForm(report, chip), draftHistory(pubs, log), s.svc.Timezone()))
+	render(w, r, http.StatusOK, narrativeSaved(savedNarrativeForm(report, chip), domain.ReportHistory(pubs, log), s.svc.Timezone()))
 }
 
 // renderNarrativeFormAgain answers Add another, saving nothing: the compose
@@ -834,7 +794,7 @@ func (s *Server) reportsList(r *http.Request, current domain.Account) (reportsLi
 	if err != nil {
 		return reportsListData{}, err
 	}
-	slices.SortFunc(sums, byPublishingNeed)
+	slices.SortFunc(sums, domain.ByPublishingNeed)
 	yours, org, err := s.svc.OpenActionItemsToChase(r.Context(), current.ID)
 	if err != nil {
 		return reportsListData{}, err
@@ -842,38 +802,9 @@ func (s *Server) reportsList(r *http.Request, current domain.Account) (reportsLi
 	return reportsListData{Reports: sums, Loc: s.svc.Timezone(), YourActionItems: yours, OrgActionItems: org, PDFFile: s.pdf != nil}, nil
 }
 
-// byPublishingNeed orders the status table: never-published reports first,
-// then those with changes, most first, then the rest by when they were last
-// published, oldest first. Ties go by name.
-func byPublishingNeed(a, b domain.ReportSummary) int {
-	rank := func(s domain.ReportSummary) int {
-		switch {
-		case s.LastPublication == nil:
-			return 0
-		case *s.Changes > 0:
-			return 1
-		}
-		return 2
-	}
-	if c := cmp.Compare(rank(a), rank(b)); c != 0 {
-		return c
-	}
-	switch rank(a) {
-	case 1:
-		if c := cmp.Compare(*b.Changes, *a.Changes); c != 0 {
-			return c
-		}
-	case 2:
-		if c := a.LastPublication.PublishedAt.Compare(b.LastPublication.PublishedAt); c != 0 {
-			return c
-		}
-	}
-	return cmp.Compare(a.Definition.Name, b.Definition.Name)
-}
-
-// distinctOwners returns the Goals' Owners, one each, in first-seen order — the
-// candidates an Owner rule offers, without reaching into the accounts area for
-// a full account list.
+// distinctOwners returns the Goals' Owners, one each, in first-seen order, so
+// a new Report Definition can start with the author's own Goals when they own
+// any (newReportStartingRule).
 func distinctOwners(goals []domain.Goal) []domain.Account {
 	seen := make(map[int64]bool, len(goals))
 	out := make([]domain.Account, 0, len(goals))

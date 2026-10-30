@@ -410,3 +410,67 @@ func reportSummary(t *testing.T, h *testsupport.Harness, def domain.ReportDefini
 	}
 	return sum
 }
+
+// The Reports list puts first what most needs publishing: never-published
+// Reports, then those with changes, most first, then the rest by when they
+// were last published, oldest first. Ties within each go by name.
+func TestByPublishingNeedRanksWhatNeedsPublishingFirst(t *testing.T) {
+	t.Parallel()
+
+	never := func(name string) domain.ReportSummary {
+		return domain.ReportSummary{Definition: domain.ReportDefinition{Name: name}}
+	}
+	published := func(name string, day, changes int) domain.ReportSummary {
+		return domain.ReportSummary{
+			Definition:      domain.ReportDefinition{Name: name},
+			LastPublication: &domain.Publication{PublishedAt: time.Date(2026, 3, day, 9, 0, 0, 0, time.UTC)},
+			Changes:         &changes,
+		}
+	}
+	sums := []domain.ReportSummary{
+		published("Zeta", 1, 0),
+		published("Gamma", 1, 2),
+		never("Beta"),
+		published("Eta", 3, 0),
+		published("Epsilon", 3, 2),
+		published("Theta", 1, 0),
+		published("Delta", 2, 5),
+		never("Alpha"),
+	}
+
+	slices.SortFunc(sums, domain.ByPublishingNeed)
+
+	var got []string
+	for _, s := range sums {
+		got = append(got, s.Definition.Name)
+	}
+	want := []string{"Alpha", "Beta", "Delta", "Epsilon", "Gamma", "Theta", "Zeta", "Eta"}
+	if !slices.Equal(got, want) {
+		t.Errorf("ranked %q, want %q", got, want)
+	}
+}
+
+// A Report's counts are what Publish… says it will freeze: its Goals,
+// exception blocks and one-line Goals alike, its exceptions, and the
+// Highlights its narrative picks across every section. The Highlights it
+// offers to pick, and the narrative's own notes, are not counted.
+func TestReportCountsItsGoalsExceptionsAndPickedHighlights(t *testing.T) {
+	t.Parallel()
+
+	goal := func(id int64) domain.Goal { return domain.Goal{ID: id, Title: fmt.Sprintf("Goal %d", id)} }
+	picked := func(n int) []domain.NarrativeHighlight { return make([]domain.NarrativeHighlight, n) }
+	r := domain.Report{
+		Exceptions: []domain.ReportBlock{{Goal: goal(1)}, {Goal: goal(2)}},
+		Lines:      []domain.SelectedGoal{{Goal: goal(3)}, {Goal: goal(4)}, {Goal: goal(5)}},
+		Highlights: picked(7),
+		Narrative: []domain.NarrativeSection{
+			{Kind: domain.HighlightInsight, Highlights: picked(1)},
+			{Kind: domain.HighlightAccomplishment, Notes: []string{"Shipped."}, Highlights: picked(2)},
+			{Kind: domain.HighlightMiss, Notes: []string{"Slipped a week."}},
+		},
+	}
+
+	if got, want := r.Counts(), (domain.ReportCounts{Goals: 5, Exceptions: 2, Highlights: 3}); got != want {
+		t.Errorf("Counts = %+v, want %+v", got, want)
+	}
+}

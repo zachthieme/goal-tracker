@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -29,6 +30,36 @@ type ReportSummary struct {
 	// Platform or Identity · Active · 1 added, 1 left out" or "5 Goals picked
 	// by hand".
 	Scope string
+}
+
+// ByPublishingNeed orders ReportSummaries as the Reports list's status table
+// does: never-published Reports first, then those with changes, most first,
+// then the rest by when they were last published, oldest first. Ties go by
+// name.
+func ByPublishingNeed(a, b ReportSummary) int {
+	rank := func(s ReportSummary) int {
+		switch {
+		case s.LastPublication == nil:
+			return 0
+		case *s.Changes > 0:
+			return 1
+		}
+		return 2
+	}
+	if c := cmp.Compare(rank(a), rank(b)); c != 0 {
+		return c
+	}
+	switch rank(a) {
+	case 1:
+		if c := cmp.Compare(*b.Changes, *a.Changes); c != 0 {
+			return c
+		}
+	case 2:
+		if c := a.LastPublication.PublishedAt.Compare(b.LastPublication.PublishedAt); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(a.Definition.Name, b.Definition.Name)
 }
 
 // HealthCounts are how many of a Report's Goals have each Owner-set Health,
@@ -67,6 +98,24 @@ func (r Report) HealthCounts() HealthCounts {
 	return c
 }
 
+// ReportCounts are what a Report holds, as Publish… says it will freeze:
+// its Goals, how many of them are exceptions, and how many Highlights its
+// narrative picks.
+type ReportCounts struct {
+	Goals, Exceptions, Highlights int
+}
+
+// Counts counts r's selected Goals, exceptions first, its exceptions, and the
+// Highlights picked into each section of its narrative. Like HealthCounts it
+// reads only r.
+func (r Report) Counts() ReportCounts {
+	c := ReportCounts{Goals: len(r.selected()), Exceptions: len(r.Exceptions)}
+	for _, s := range r.Narrative {
+		c.Highlights += len(s.Highlights)
+	}
+	return c
+}
+
 // ReportSummaries summarises every saved Report Definition, ordered by name,
 // each drafted for its counts.
 func (s *Service) ReportSummaries(ctx context.Context) ([]ReportSummary, error) {
@@ -100,7 +149,7 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 // needn't draft it again.
 func (s *Service) SummarizeReport(ctx context.Context, r Report) (ReportSummary, error) {
 	def := r.Definition
-	sum := ReportSummary{Definition: def, Goals: len(r.selected()), Health: r.HealthCounts()}
+	sum := ReportSummary{Definition: def, Goals: r.Counts().Goals, Health: r.HealthCounts()}
 	if r.Previous.ID != 0 {
 		pub, err := s.GetPublication(ctx, r.Previous.ID)
 		if err != nil {
