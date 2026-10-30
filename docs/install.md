@@ -87,7 +87,7 @@ in the `/data` volume (`GOAL_TRACKER_DB` is `/data/goal-tracker.db`):
 docker run -d --name goal-tracker --restart unless-stopped -p 127.0.0.1:8080:8080 \
   -v goal-tracker-data:/data \
   -v /etc/goal-tracker/people.csv:/etc/goal-tracker/people.csv:ro \
-  --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.2.1
+  --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.3.0
 ```
 
 To build the image yourself instead, run `docker build -t goal-tracker .` in

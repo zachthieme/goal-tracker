@@ -99,6 +99,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `Service.RequireCheckinAuthor` and `Service.RequireGoalValueSetter`, which only tests called, are gone. Their tests now check who writes a Goal's Check-ins through `SubmitCheckin` and who sets its values through `SetGoalDimensionValues`, and the `ValueSettableGoals` agreement test checks against `GoalPermissions.SetValues` (#689).
 - [internal] Delete the unused `acceptReject` buttons, left behind when the Pending links page was removed (#696).
 
+**Documentation:**
+- [ops] docs/install.md's `docker run` example pulls the v0.3.0 image.
+
 ### Collected changes — October 28, 2026
 
 **New features:**
