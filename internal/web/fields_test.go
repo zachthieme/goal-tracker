@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -394,9 +393,10 @@ func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
 	}
 }
 
-// Defining a Field named like a Dimension, in another case, is refused saying
-// the Dimension has the name, and defines nothing: Dimensions and Fields share
-// one namespace.
+// Defining a Field named like a Dimension, in another case, comes back to
+// the Fields page with Define a Field open, saying the Dimension has the name
+// above it and holding what was typed and chosen; a reload shows it closed,
+// and nothing is defined: Dimensions and Fields share one namespace (#702).
 func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -406,10 +406,25 @@ func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp := postForm(t, client, ts.URL+"/fields", url.Values{"name": {"PILLAR"}, "type": {domain.FieldShortText}})
-	defer func() { _ = resp.Body.Close() }()
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Pillar is already a Dimension's name") {
-		t.Errorf("define PILLAR: status %d, body %q; want 422 naming the Dimension", resp.StatusCode, body)
+	postRefusedBack(t, client, ts.URL+"/fields", url.Values{"name": {"PILLAR"}, "type": {domain.FieldDate}, "unit": {"days"}}, "/fields")
+	page := getPage(t, client, ts.URL+"/fields")
+	form := findByTestID(t, page, "create-field")
+	if d := detailsAround(form); d == nil || !hasAttr(d, "open") {
+		t.Fatalf("Define a Field isn't open:\n%s", renderNode(page))
+	}
+	if got := textOf(findByTestID(t, form, "form-error")); got != "Pillar is already a Dimension's name." {
+		t.Errorf("Define a Field says %q, want Pillar is already a Dimension's name.", got)
+	}
+	if name, unit := formField(t, form, "name").Value, formField(t, form, "unit").Value; name != "PILLAR" || unit != "days" {
+		t.Errorf("Name holds %q and Unit %q, want PILLAR and days as typed", name, unit)
+	}
+	if got := checkedRadio(form, "type"); got != "a date" {
+		t.Errorf("It holds %q, want a date as chosen", got)
+	}
+
+	page = getPage(t, client, ts.URL+"/fields")
+	if d := detailsAround(findByTestID(t, page, "create-field")); d == nil || hasAttr(d, "open") || hasTestID(page, "form-error") {
+		t.Errorf("a reload still shows Define a Field open, or its reason:\n%s", renderNode(page))
 	}
 	if fields, err := h.Service.ListFields(context.Background()); err != nil || len(fields) != 0 {
 		t.Errorf("Fields = %+v (%v), want none", fields, err)
@@ -558,7 +573,9 @@ func TestADateFieldShowsInTheDateFormat(t *testing.T) {
 // A refused Field change answers with the refusal page, headed Can't change
 // Field and linking Back to the Fields page, at its refusal's status: one
 // that isn't there is 422, as the domain refuses it for its input, and
-// someone not an Admin is 403 (#573).
+// someone not an Admin is 403 (#573). A button with nothing typed, such as
+// Retire, answers so, and so does Define a Field refused with more typed than
+// can be carried back to it (#702).
 func TestARefusedFieldChangeAnswersWithTheRefusalPage(t *testing.T) {
 	t.Parallel()
 
@@ -570,13 +587,16 @@ func TestARefusedFieldChangeAnswersWithTheRefusalPage(t *testing.T) {
 
 	for _, c := range []struct {
 		name, who, path string
+		posted          url.Values
 		status          int
 		reason          string
 	}{
-		{"a Field that isn't there", "boss@example.com", "/fields/99999/retire", http.StatusUnprocessableEntity, "Field does not exist."},
-		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/fields/%d/retire", budget.ID), http.StatusForbidden, "Only an Admin may do this."},
+		{"a Field that isn't there", "boss@example.com", "/fields/99999/retire", url.Values{}, http.StatusUnprocessableEntity, "Field does not exist."},
+		{"someone not an Admin", "sam@example.com", fmt.Sprintf("/fields/%d/retire", budget.ID), url.Values{}, http.StatusForbidden, "Only an Admin may do this."},
+		{"a definition too long to carry", "boss@example.com", "/fields", url.Values{"name": {strings.Repeat("Budget ", 500)}, "type": {"money"}},
+			http.StatusUnprocessableEntity, "A Field holds a number, a short text, a long text or a date."},
 	} {
-		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, url.Values{})
+		resp := postForm(t, noRedirects(signInClient(t, ts.URL, c.who)), ts.URL+c.path, c.posted)
 		defer func() { _ = resp.Body.Close() }()
 		page := parsePage(t, readBody(t, resp))
 		if resp.StatusCode != c.status {

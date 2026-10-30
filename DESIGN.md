@@ -2259,6 +2259,17 @@ and so on).
     several values" as an `h2`, with a list linking each Goal that carries
     several, behind a 2px `--color-danger-ink` rule down its left, announced as
     an alert.
+  - **Refused in place:** a Define a Dimension, Add value or Rename refused
+    for what was typed comes back to the Dimensions page, redirected after the
+    post: Define a Dimension open at the top, or the Dimension's Edit open at
+    its row, holding what was typed and chosen. Define a Dimension says why in
+    one alert (`.alert.r`, `form-error`) under its heading; Add value and
+    Rename say it in one on a line of its own under their input and button
+    (the `.dm-row` wraps), the input `aria-invalid`, described by it, and
+    focused. A reload shows the page plainly. A button with nothing
+    typed (the switches, ↑ and ↓, Retire, Restore, Sort, Merge), a form the
+    page no longer offers, or a refusal too long to carry back shows the
+    refusal page, headed "Can't change Dimension".
 - **Fields page (`fieldsPage` in `fields.templ`):** laid out as Dimensions
   is. "Fields" is the header strip's title, under "Admin ›" for an Admin,
   over a muted intro line. For an
@@ -2268,7 +2279,11 @@ and so on).
   hairlines: its Name as an `h3` ("retired" once Retired), a muted type line
   ("Number in $ · Required"), and for an Admin **Make it required** (or
   optional) and **Retire this Field** (or **Restore this Field**). With no
-  Fields, a muted "No Fields yet."
+  Fields, a muted "No Fields yet." A Define a Field refused for what was
+  typed comes back to the page open, holding what was typed and chosen, saying
+  why in one alert (`.alert.r`, `form-error`) under its heading, as Define a
+  Dimension does; a reload shows it closed. Its row's buttons, with nothing
+  typed, show the refusal page, headed "Can't change Field".
 - **Import Goals page (`importsPage` in `imports.templ`):** "Import Goals" is
   the header strip's title, under "Admin ›" for an Admin, over a muted line:
   "Load Goals from a spreadsheet (CSV or XLSX), one Goal per row." Anyone but
