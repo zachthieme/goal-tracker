@@ -1176,10 +1176,11 @@ func TestCheckinMissingHealthEdgesItsChoicesStyles(t *testing.T) {
 }
 
 // A refused Lifecycle choice is edged (ticket #707). Its radios are native, and
-// a native radio shows no border, so the shared invalid border can't mark them:
-// while none is picked, each invalid radio takes a 1px ring in the danger ink,
-// round as the radio is, the edge the Health choices take. Picking one drops
-// it.
+// a native radio shows no border, so the shared invalid border can't mark them;
+// nor can a ring on the radio, which Chromium draws square whatever its
+// border-radius. So while none is picked, each choice with an invalid radio
+// takes a 1px outline in the danger ink, the width of the Health choices'
+// edge, set off 2px with rounded corners. Picking one drops it.
 func TestCheckinRefusedLifecycleEdgesItsChoicesStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1204,10 +1205,10 @@ func TestCheckinRefusedLifecycleEdgesItsChoicesStyles(t *testing.T) {
 		}
 	}
 	styles := between(t, page, ".checkin-page{", "</style>")
-	const sel = ".lifecycle-choices:not(:has(input:checked)) input[aria-invalid=true]"
+	const sel = ".lifecycle-choices:not(:has(input:checked)) label:has(input[aria-invalid=true])"
 	decls, ok := ruleFor(styles, sel)
-	if !ok || !strings.Contains(decls, "box-shadow:0 0 0 1px var(--color-danger-ink)") || !strings.Contains(decls, "border-radius:50%") {
-		t.Errorf("%s{%s} doesn't ring the radio 1px in var(--color-danger-ink), round", sel, decls)
+	if !ok || !strings.Contains(decls, "outline:1px solid var(--color-danger-ink)") || !strings.Contains(decls, "outline-offset:2px") {
+		t.Errorf("%s{%s} doesn't edge the choice 1px in var(--color-danger-ink), set off 2px", sel, decls)
 	}
 }
 
