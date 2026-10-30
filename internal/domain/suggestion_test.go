@@ -134,7 +134,7 @@ func TestSuggestParentRefusals(t *testing.T) {
 		{"already Pending", goal, pending, domain.ErrValidation, ""},
 		{"already suggested", goal, suggested, domain.ErrValidation, "Pat Lee"},
 		{"itself", goal, goal, domain.ErrValidation, ""},
-		{"a cycle", goal, below, domain.ErrCycle, ""},
+		{"a cycle", goal, below, domain.ErrCycle, "“Below the Goal” already contributes to “Migrate displays”"},
 		{"an On Hold parent", goal, onHold, domain.ErrValidation, ""},
 		{"a Done parent", goal, done, domain.ErrValidation, ""},
 		{"a Cancelled parent", goal, cancelled, domain.ErrValidation, ""},

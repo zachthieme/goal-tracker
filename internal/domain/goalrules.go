@@ -104,8 +104,9 @@ func (s *Service) openGoalCommand(ctx context.Context, actorID, goalID int64, ru
 // Lifecycle: its Owner or a Delegate the Owner has authorized; anyone else is
 // refused (CONTEXT.md: Delegate; acceptance: Non-Delegates can't submit
 // Check-ins). A Departed person can't act, so is refused whichever they are
-// (CONTEXT.md: Departed).
-func checkinAuthorRuleRefusal(a goalActor, g Goal) error {
+// (CONTEXT.md: Departed). Its refusal says who may act, as the command
+// asking names it.
+func checkinAuthorRuleRefusal(a goalActor, g Goal, act string) error {
 	acc, ok, err := a.account()
 	if err != nil {
 		return err
@@ -114,7 +115,7 @@ func checkinAuthorRuleRefusal(a goalActor, g Goal) error {
 		return Refuse(ErrNotAuthorized, "the author does not exist")
 	}
 	if acc.Departed {
-		return Refuse(ErrNotAuthorized, "a Departed person can't submit a Check-in")
+		return departedRefusal(act)
 	}
 	if acc.ID == g.Owner.ID {
 		return nil
@@ -122,10 +123,14 @@ func checkinAuthorRuleRefusal(a goalActor, g Goal) error {
 	if ok, err := a.delegate(); err != nil {
 		return err
 	} else if !ok {
-		return Refuse(ErrNotAuthorized, "only the Owner or a Delegate may submit a Check-in")
+		return Refuse(ErrNotAuthorized, "only the Owner or a Delegate may %s", act)
 	}
 	return nil
 }
+
+// submitCheckinAct is submitting a Check-in, as checkinAuthorRuleRefusal
+// names it.
+const submitCheckinAct = "submit a Check-in"
 
 // milestoneEditorRefusal refuses a anyone but those who may change g's
 // Milestones: its Owner or a Delegate, by the rule for who writes its
@@ -134,11 +139,7 @@ func milestoneEditorRefusal(a goalActor, g Goal) error {
 	if a.importer {
 		return nil
 	}
-	err := checkinAuthorRuleRefusal(a, g)
-	if errors.Is(err, ErrNotAuthorized) {
-		return errMilestonesOwnerOrDelegateOnly
-	}
-	return err
+	return checkinAuthorRuleRefusal(a, g, "change this Goal's Milestones")
 }
 
 // milestoneEditRefusal is EditMilestone's rule for a on one of g's
@@ -265,7 +266,7 @@ func goalOwnerOrAdminRefusal(a goalActor, g Goal, act string) error {
 // allows, while g takes Check-ins (LifecycleTakesCheckins). The Lifecycles a
 // Check-in may then move g to are LifecycleChangesFrom's.
 func checkInRefusal(a goalActor, g Goal) error {
-	if err := checkinAuthorRuleRefusal(a, g); err != nil {
+	if err := checkinAuthorRuleRefusal(a, g, submitCheckinAct); err != nil {
 		return err
 	}
 	if !LifecycleTakesCheckins(g.Lifecycle) {
@@ -278,7 +279,7 @@ func checkInRefusal(a goalActor, g Goal) error {
 // checkinAuthorRuleRefusal allows, while g is Active. Whether one would then
 // be recorded is the No change verdict's (judgeNoChange).
 func noChangeCheckinRefusal(a goalActor, g Goal) error {
-	if err := checkinAuthorRuleRefusal(a, g); err != nil {
+	if err := checkinAuthorRuleRefusal(a, g, submitCheckinAct); err != nil {
 		return err
 	}
 	if g.Lifecycle != LifecycleActive {
@@ -304,12 +305,7 @@ func milestoneAdditionRefusal(a goalActor, g Goal) error {
 // Check-ins, by checkinAuthorRuleRefusal: who may log, see, edit or delete its
 // pending Draft Highlights.
 func draftHighlighterRefusal(a goalActor, g Goal) error {
-	if err := checkinAuthorRuleRefusal(a, g); errors.Is(err, ErrNotAuthorized) {
-		return Refuse(ErrNotAuthorized, "only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights")
-	} else if err != nil {
-		return err
-	}
-	return nil
+	return checkinAuthorRuleRefusal(a, g, "log, see, edit or delete this Goal's Draft Highlights")
 }
 
 // logDraftHighlightRefusal is LogDraftHighlight's rule: those
@@ -326,9 +322,9 @@ func logDraftHighlightRefusal(a goalActor, g Goal) error {
 // Fields: its Owner, one of its Delegates or an Admin, in any Lifecycle
 // (CONTEXT.md: Delegate). Whether they are a Delegate, then an Admin, is
 // asked only when it decides. A Departed person, whichever they are, can't
-// act (CONTEXT.md: Departed).
-func goalValueSetterRefusal(a goalActor, g Goal) error {
-	const act = "set a Goal's Dimension values"
+// act (CONTEXT.md: Departed). Its refusal says who may act, as the setting
+// command names it.
+func goalValueSetterRefusal(a goalActor, g Goal, act string) error {
 	if a.id == g.Owner.ID {
 		if g.Ownerless {
 			return departedRefusal(act)
@@ -344,12 +340,16 @@ func goalValueSetterRefusal(a goalActor, g Goal) error {
 		return nil
 	}
 	if err := goalAdminRefusal(a); errors.Is(err, ErrNotAuthorized) {
-		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Dimension values")
+		return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may %s", act)
 	} else if err != nil {
 		return err
 	}
 	return nil
 }
+
+// setDimensionValuesAct is setting a Goal's Dimension values, as
+// goalValueSetterRefusal names it.
+const setDimensionValuesAct = "set a Goal's Dimension values"
 
 // metricEditRefusal is the rule for adding and editing g's Metrics
 // (AddMetric, EditMetric): its Owner alone, in any Lifecycle.

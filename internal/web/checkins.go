@@ -63,8 +63,8 @@ func (s *Server) checkinView(ctx context.Context, goalID int64, current domain.A
 
 // loadCheckinView is checkinView for a request that shows or posts the
 // Check-in form: a missing Goal gets the not-found page, and anyone who may
-// not check in on it 403, before anything they sent is read (#528, #560).
-// It reports whether the request may go on.
+// not check in on it 403 saying why the rule refused them, before anything
+// they sent is read (#528, #560). It reports whether the request may go on.
 func (s *Server) loadCheckinView(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account) (checkinView, bool) {
 	view, err := s.checkinView(r.Context(), goalID, current)
 	if err != nil {
@@ -75,17 +75,11 @@ func (s *Server) loadCheckinView(w http.ResponseWriter, r *http.Request, goalID 
 		s.serverError(w, r, "could not load goal", err)
 		return checkinView{}, false
 	}
-	if !view.CanCheckin {
-		s.refuse(w, r, "Can't check in", goalPath(goalID), checkinForbidden(view.Goal))
+	if view.CheckinRefusal != nil {
+		s.refuse(w, r, "Can't check in", goalPath(goalID), view.CheckinRefusal)
 		return checkinView{}, false
 	}
 	return view, true
-}
-
-// checkinForbidden is the refusal for someone who may not check in on goal,
-// whether they opened its Check-in form or clicked No change.
-func checkinForbidden(goal domain.Goal) error {
-	return domain.Refuse(domain.ErrNotAuthorized, "only the Goal's Owner or a Delegate may check in on %s", goal.Title)
 }
 
 // noChangeSentence is why a No change would be refused, refusal, as a page
@@ -448,29 +442,32 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 	s.confirmNoChange(w, r, goalID)
 }
 
-// renderNoChangeRefusal shows why a No change couldn't be recorded. A refusal
-// that means "write a full Check-in" (no previous Check-in, a Goal that isn't
-// Active, a Health the roll-up or an overdue Milestone now rules out) lands the
-// reader on the Goal's Check-in page with the reason as the form's error, a
-// sentence reading as the No change card gives it: htmx gets the page with the
-// Check-in page's URL pushed (answerPushedPage), a plain post gets it at 422.
-// Anything else is refused (refuse), with Back to the Goal: a Goal that
-// doesn't exist gets the Not found page, one the reader may not check in on
-// 403, and a failure a logged 500.
+// renderNoChangeRefusal shows why a No change couldn't be recorded. One the
+// reader may not make is refused (refuse) at 403 with the reason the rule gave,
+// and Back to the Goal, without loading the Check-in page. A refusal that means
+// "write a full Check-in" (no previous Check-in, a Goal that isn't Active, a
+// Health the roll-up or an overdue Milestone now rules out), an
+// ErrValidation, is the only one that loads the page: it lands the reader on
+// the Goal's Check-in page with the reason as the form's error, a sentence
+// reading as the No change card gives it: htmx gets the page with the Check-in
+// page's URL pushed (answerPushedPage), a plain post gets it at 422. If the
+// page then refuses the reader, that refusal is given as it is, and a page
+// that can't be loaded is a logged 500. Anything else is refused too: a Goal
+// that doesn't exist gets the Not found page, and a failure a logged 500.
 func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
-	// The Goal is loaded first: the domain checks the Lifecycle before who may
-	// check in, so a validation error alone doesn't mean the reader may.
+	if !errors.Is(err, domain.ErrValidation) {
+		s.refuse(w, r, "Can't check in", goalPath(goalID), err, refuseFailureSaying("The No change couldn't be recorded. Try again."))
+		return
+	}
 	view, viewErr := s.checkinView(r.Context(), goalID, current)
 	switch {
 	case viewErr != nil:
 		s.refuse(w, r, "Can't check in", goalPath(goalID), viewErr, refuseFailureSaying("The Goal couldn't be loaded, so nothing was recorded. Try again."))
-	case errors.Is(err, domain.ErrNotAuthorized), !view.CanCheckin:
-		s.refuse(w, r, "Can't check in", goalPath(goalID), checkinForbidden(view.Goal))
-	case errors.Is(err, domain.ErrValidation):
+	case view.CheckinRefusal != nil:
+		s.refuse(w, r, "Can't check in", goalPath(goalID), view.CheckinRefusal)
+	default:
 		page := checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err))))
 		answerPushedPage(w, r, http.StatusUnprocessableEntity, page, "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
-	default:
-		s.refuse(w, r, "Can't check in", goalPath(goalID), err, refuseFailureSaying("The No change couldn't be recorded. Try again."))
 	}
 }
 

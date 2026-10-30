@@ -8,21 +8,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// errLinkWouldCycle is a link refused for making a cycle, as a form beside it
-// says it: ErrCycle's own text names the two Goals by ID. It is an ErrCycle,
-// so where no form is offered beside it, the refusal page answers it as one.
-var errLinkWouldCycle error = linkWouldCycleError{}
-
-// linkWouldCycleError is errLinkWouldCycle's type: its text is the form's
-// sentence, and errors.Is matches it to domain.ErrCycle.
-type linkWouldCycleError struct{}
-
-func (linkWouldCycleError) Error() string {
-	return "that Goal already contributes to this one, so linking them would make a cycle"
-}
-
-func (linkWouldCycleError) Unwrap() error { return domain.ErrCycle }
-
 // errNoParentLinked refuses a link request that picks no parent, which the
 // Goal page's form says beside its picker.
 var errNoParentLinked = domain.Refuse(domain.ErrValidation, "a parent Goal is required")
@@ -51,7 +36,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	})
 	switch {
 	case errors.Is(err, domain.ErrCycle):
-		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, errLinkWouldCycle)
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, err)
 	case errors.Is(err, domain.ErrValidation):
 		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
 	case err != nil:

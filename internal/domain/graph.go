@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"fmt"
 )
 
 // Graph traversal over the "contributes to" edges lives behind the domain
@@ -59,18 +58,24 @@ func (s *Service) traverse(
 	return out, nil
 }
 
-// ensureNoCycle returns ErrCycle if accepting a link from childID to parentID
-// would make the graph cyclic — that is, if parentID already contributes,
-// directly or transitively, to childID (ADR-0001).
+// ensureNoCycle refuses with ErrCycle if accepting a link from childID to
+// parentID would make the graph cyclic — that is, if parentID already
+// contributes, directly or transitively, to childID (ADR-0001). Its refusal
+// names both Goals by title, read only when it refuses.
 func (s *Service) ensureNoCycle(ctx context.Context, childID, parentID int64) error {
 	reaches, err := s.contributesTo(ctx, parentID, childID)
+	if err != nil || !reaches {
+		return err
+	}
+	parent, err := s.loadGoal(ctx, parentID)
 	if err != nil {
 		return err
 	}
-	if reaches {
-		return fmt.Errorf("%w: %d already contributes to %d", ErrCycle, parentID, childID)
+	child, err := s.loadGoal(ctx, childID)
+	if err != nil {
+		return err
 	}
-	return nil
+	return Refuse(ErrCycle, "linking these Goals would make a cycle: “%s” already contributes to “%s”", parent.Title, child.Title)
 }
 
 // contributesTo reports whether fromID contributes, directly or transitively, to

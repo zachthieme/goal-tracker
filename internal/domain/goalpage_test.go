@@ -40,7 +40,8 @@ func TestGoalPageRefusesAGoalViewGoalRefuses(t *testing.T) {
 
 // The Goal page's loader offers each viewer what the separate permission
 // rules allow: the Owner and a Delegate may check in and set values, an
-// Admin may only set values, and a reader with no rights may do neither; only
+// Admin may only set values, and a reader with no rights or a Departed
+// Delegate may do neither, each given the reason they may not check in; only
 // those who may check in see the pending Draft Highlights.
 func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 	t.Parallel()
@@ -49,33 +50,37 @@ func TestGoalPagePermitsWhatTheRulesAllow(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	morgan := h.SignIn("morgan@example.com")
 	rita := h.SignIn("rita@example.com")
+	gone := h.SignIn("gone@example.com")
 	admin := h.SignIn("admin@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.AddDelegate(sam, morgan, g.ID)
+	h.AddDelegate(sam, gone, g.ID)
+	h.MarkDeparted(admin, gone)
 	if _, err := h.Service.LogDraftHighlight(ctx, domain.LogDraftHighlightInput{
 		GoalID: g.ID, AuthorID: morgan.ID, Kind: domain.HighlightInsight, Note: "Search is slow on mobile.",
 	}); err != nil {
 		t.Fatalf("LogDraftHighlight: %v", err)
 	}
 
+	const notTheirs = "only the Owner or a Delegate may submit a Check-in"
 	for _, v := range []struct {
 		name                   string
 		viewer                 domain.Account
-		checkIn, setValues     bool
+		checkinRefusal         string
+		setValues              bool
 		draftHighlightsVisible int
 	}{
-		{"the Owner", sam, true, true, 1},
-		{"a Delegate", morgan, true, true, 1},
-		{"an Admin", admin, false, true, 0},
-		{"a reader", rita, false, false, 0},
+		{"the Owner", sam, "", true, 1},
+		{"a Delegate", morgan, "", true, 1},
+		{"a Departed Delegate", gone, "a Departed person can't submit a Check-in", false, 0},
+		{"an Admin", admin, notTheirs, true, 0},
+		{"a reader", rita, notTheirs, false, 0},
 	} {
 		p, err := h.Service.GoalPage(ctx, v.viewer.ID, g.ID)
 		if err != nil {
 			t.Fatalf("GoalPage for %s: %v", v.name, err)
 		}
-		if p.CanCheckin != v.checkIn {
-			t.Errorf("CanCheckin for %s = %t, want %t", v.name, p.CanCheckin, v.checkIn)
-		}
+		assertCheckinRefusal(t, v.name, p.CheckinRefusal, v.checkinRefusal)
 		if p.Permissions.SetValues != v.setValues {
 			t.Errorf("Permissions.SetValues for %s = %t, want %t", v.name, p.Permissions.SetValues, v.setValues)
 		}
@@ -632,9 +637,7 @@ func TestGoalPagePermitsNothingToAViewerWithNoAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GoalPage for a viewer with no Account: %v", err)
 	}
-	if p.CanCheckin {
-		t.Errorf("CanCheckin for a viewer with no Account = true, want false")
-	}
+	assertCheckinRefusal(t, "a viewer with no Account", p.CheckinRefusal, "the author does not exist")
 	if !reflect.DeepEqual(p.Permissions, domain.GoalPermissions{}) {
 		t.Errorf("Permissions for a viewer with no Account = %+v, want none", p.Permissions)
 	}

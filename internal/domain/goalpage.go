@@ -43,16 +43,17 @@ type GoalPage struct {
 	Readings   map[int64][]MetricReading
 	Highlights []Highlight
 	// DraftHighlights are its pending Draft Highlights
-	// (PendingDraftHighlights), read only when CanCheckin, for only its Owner
-	// and Delegates may see them.
+	// (PendingDraftHighlights), read only when CheckinRefusal is nil, for only
+	// its Owner and Delegates may see them.
 	DraftHighlights []DraftHighlight
 	Delegates       []Account
-	// Viewer is the Account the page is read for. CanCheckin says whether they
-	// may write the Goal's Check-ins (RequireCheckinAuthor), whatever its
-	// Lifecycle, and Permissions what they may do with it now.
-	Viewer      Account
-	CanCheckin  bool
-	Permissions GoalPermissions
+	// Viewer is the Account the page is read for. CheckinRefusal is why they
+	// may not write the Goal's Check-ins (RequireCheckinAuthor), whatever its
+	// Lifecycle, as the rule refuses them, nil when they may; Permissions are
+	// what they may do with it now.
+	Viewer         Account
+	CheckinRefusal error
+	Permissions    GoalPermissions
 	// NoChangeRefusal is why a No change would be refused (NoChangeRefusal),
 	// judged from what the page read, given only when the viewer may check in
 	// on the Active Goal and it has a Check-in to repeat; nil when one would
@@ -124,7 +125,7 @@ type GoalPermissions struct {
 	// CheckinPermissions: what they may do with its Check-ins.
 	CheckinPermissions
 	// WritesCheckins: they write its Check-ins, whatever its Lifecycle
-	// (RequireCheckinAuthor), as GoalPage.CanCheckin says.
+	// (RequireCheckinAuthor), as a nil GoalPage.CheckinRefusal says.
 	WritesCheckins bool
 	// AddMilestone: those who write its Check-ins, until it is Done or Cancelled
 	// (AddMilestoneAsAuthor); EditMilestones: the same people, while it is
@@ -211,11 +212,11 @@ func permitCheckins(actor goalActor, g Goal, noChange *noChangeVerdict, permits 
 func goalPermissionsFor(actor goalActor, g Goal, noChange *noChangeVerdict, permits func(refusal error) bool) GoalPermissions {
 	return GoalPermissions{
 		CheckinPermissions:       permitCheckins(actor, g, noChange, permits),
-		WritesCheckins:           permits(checkinAuthorRuleRefusal(actor, g)),
+		WritesCheckins:           permits(checkinAuthorRuleRefusal(actor, g, submitCheckinAct)),
 		AddMilestone:             permits(milestoneAdditionRefusal(actor, g)),
 		EditMilestones:           permits(milestoneEditRefusal(actor, g, MilestonePlanned)),
 		LogDraftHighlight:        permits(logDraftHighlightRefusal(actor, g)),
-		SetValues:                permits(goalValueSetterRefusal(actor, g)),
+		SetValues:                permits(goalValueSetterRefusal(actor, g, setDimensionValuesAct)),
 		ManageDelegates:          permits(goalOwnerRefusal(actor, g, "authorize a Delegate")),
 		LinkParent:               permits(goalOwnerRefusal(actor, g, "link it to a parent")),
 		EditMetrics:              permits(metricEditRefusal(actor, g)),
@@ -624,7 +625,11 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 		}
 		return ok
 	}
-	p.CanCheckin = permits(checkinAuthorRuleRefusal(actor, g))
+	checkinRefusal, err := goalPageRefusal(checkinAuthorRuleRefusal(actor, g, submitCheckinAct))
+	if err != nil {
+		return err
+	}
+	p.CheckinRefusal = checkinRefusal
 	perms := goalPermissionsFor(actor, g, &noChange, permits)
 	if ho := p.PendingHandoff; ho != nil {
 		perms.CancelHandoff = permits(handoffCancelRefusal(actor, ho.InitiatedBy.ID))
@@ -648,7 +653,7 @@ func (s *Service) permitGoalPage(ctx context.Context, p *GoalPage, actorID int64
 			p.OpenSuggestions = append(p.OpenSuggestions, sg)
 		}
 	}
-	if !p.CanCheckin {
+	if p.CheckinRefusal != nil {
 		return nil
 	}
 	if p.DraftHighlights, err = s.pendingDraftHighlights(ctx, g.ID); err != nil {
@@ -671,6 +676,18 @@ func goalPagePermits(refusal error) (bool, error) {
 		return false, nil
 	}
 	return false, refusal
+}
+
+// goalPageRefusal reads a refusal from one of the Goal rules as a page keeps
+// it: nil for none, the refusal itself for ErrNotAuthorized or ErrValidation,
+// as goalPagePermits reads them, and any other error as the load's failure.
+func goalPageRefusal(refusal error) (kept, failed error) {
+	if ok, err := goalPagePermits(refusal); err != nil {
+		return nil, err
+	} else if !ok {
+		return refusal, nil
+	}
+	return nil, nil
 }
 
 // goalsOf are the Goals of links, in order.

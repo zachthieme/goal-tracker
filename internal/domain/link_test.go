@@ -243,6 +243,9 @@ func TestRequestLinkRejectsAnImmediateCycle(t *testing.T) {
 	if !errors.Is(err, domain.ErrCycle) {
 		t.Errorf("err = %v, want ErrCycle", err)
 	}
+	if got, want := domain.Reason(err), "linking these Goals would make a cycle: “A” already contributes to “B”"; got != want {
+		t.Errorf("the refusal says %q, want %q", got, want)
+	}
 }
 
 // A cycle that only appears after the request was made — because another link

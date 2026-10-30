@@ -27,8 +27,9 @@ func TestCheckinPageRefusesAMissingGoal(t *testing.T) {
 
 // The Check-in page's loader lets check in whoever SubmitCheckin would let
 // write a Check-in: the Goal's Owner and a Delegate, but not an Admin, a
-// reader with no rights, a Departed Delegate or a viewer with no Account. Only
-// those who may check in see the pending Draft Highlights.
+// reader with no rights, a Departed Delegate or a viewer with no Account, each
+// of whom it gives the reason the rule refuses them. Only those who may check
+// in see the pending Draft Highlights.
 func TestCheckinPagePermitsTheCheckinAuthorsOnly(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -51,23 +52,21 @@ func TestCheckinPagePermitsTheCheckinAuthorsOnly(t *testing.T) {
 	for _, v := range []struct {
 		name    string
 		viewer  int64
-		checkIn bool
+		refusal string
 	}{
-		{"the Owner", sam.ID, true},
-		{"a Delegate", morgan.ID, true},
-		{"a Departed Delegate", gone.ID, false},
-		{"an Admin", admin.ID, false},
-		{"a reader", rita.ID, false},
-		{"a viewer with no Account", sam.ID + 1000, false},
+		{"the Owner", sam.ID, ""},
+		{"a Delegate", morgan.ID, ""},
+		{"a Departed Delegate", gone.ID, "a Departed person can't submit a Check-in"},
+		{"an Admin", admin.ID, "only the Owner or a Delegate may submit a Check-in"},
+		{"a reader", rita.ID, "only the Owner or a Delegate may submit a Check-in"},
+		{"a viewer with no Account", sam.ID + 1000, "the author does not exist"},
 	} {
 		p, err := h.Service.CheckinPage(ctx, v.viewer, g.ID)
 		if err != nil {
 			t.Fatalf("CheckinPage for %s: %v", v.name, err)
 		}
-		if p.CanCheckin != v.checkIn {
-			t.Errorf("CanCheckin for %s = %t, want %t", v.name, p.CanCheckin, v.checkIn)
-		}
-		if want := map[bool]int{true: 1}[v.checkIn]; len(p.DraftHighlights) != want {
+		assertCheckinRefusal(t, v.name, p.CheckinRefusal, v.refusal)
+		if want := map[bool]int{true: 1}[v.refusal == ""]; len(p.DraftHighlights) != want {
 			t.Errorf("%s sees %d Draft Highlights, want %d", v.name, len(p.DraftHighlights), want)
 		}
 		if p.Goal.Title != "Ship search" {
@@ -157,11 +156,27 @@ func TestCheckinPageAgreesWithTheGoalPage(t *testing.T) {
 		sameAsGoalPage(t, "Ask", cp.Ask, gp.Ask)
 		sameAsGoalPage(t, "AskAddressee", cp.AskAddressee, gp.AskAddressee)
 		sameAsGoalPage(t, "DraftHighlights", cp.DraftHighlights, gp.DraftHighlights)
-		sameAsGoalPage(t, "CanCheckin", cp.CanCheckin, gp.CanCheckin)
+		sameAsGoalPage(t, "CheckinRefusal", cp.CheckinRefusal, gp.CheckinRefusal)
 		sameAsGoalPage(t, "Permissions", cp.Permissions, gp.Permissions.CheckinPermissions)
 		sameAsGoalPage(t, "NoChangeRefusal", cp.NoChangeRefusal, gp.NoChangeRefusal)
 		sameAsGoalPage(t, "Now", cp.Now, gp.Now)
 		sameAsGoalPage(t, "Timezone", cp.Timezone, gp.Timezone)
+	}
+}
+
+// assertCheckinRefusal fails the test unless got, a page's CheckinRefusal
+// for who, is nil when want is "", and otherwise an ErrNotAuthorized saying
+// want.
+func assertCheckinRefusal(t *testing.T, who string, got error, want string) {
+	t.Helper()
+	switch {
+	case want == "" && got != nil:
+		t.Errorf("CheckinRefusal for %s = %v, want none", who, got)
+	case want == "":
+	case !errors.Is(got, domain.ErrNotAuthorized):
+		t.Errorf("CheckinRefusal for %s = %v, want ErrNotAuthorized", who, got)
+	case domain.Reason(got) != want:
+		t.Errorf("CheckinRefusal for %s says %q, want %q", who, domain.Reason(got), want)
 	}
 }
 

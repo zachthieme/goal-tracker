@@ -314,7 +314,7 @@ func (s *Service) checkRedefinedGoal(ctx context.Context, current Goal, in Defin
 			continue
 		}
 		if err := s.ensureNoCycle(ctx, current.ID, parentID); errors.Is(err, ErrCycle) {
-			problems = append(problems, inputError(ParentInput(parentID), "that Goal already contributes to this one, so this one can't contribute to it"))
+			problems = append(problems, inputError(ParentInput(parentID), "%s", Reason(err)))
 		} else if err != nil {
 			return nil, err
 		}

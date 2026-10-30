@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -172,9 +171,7 @@ func OfferedFields(fields []Field) []Field {
 // Goal's Owner, a Delegate or an Admin may (CONTEXT.md: Delegate).
 func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int64, value string) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
-			return Refuse(ErrNotAuthorized, "only the Owner, a Delegate or an Admin may set a Goal's Fields")
-		} else if err != nil {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID, "set a Goal's Fields"); err != nil {
 			return err
 		}
 		row, err := tx.queries.GetField(ctx, fieldID)

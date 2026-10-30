@@ -280,10 +280,6 @@ type AddMilestoneInput struct {
 	Unparsed []*InputError
 }
 
-// errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
-// Owner or a Delegate who tries to change its Milestones.
-var errMilestonesOwnerOrDelegateOnly = Refuse(ErrNotAuthorized, "only the Owner or a Delegate may change this Goal's Milestones")
-
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
 // Goal page, a definition or an import, as authorID: only its Owner or a
 // Delegate may, or the Admin whose import created it, and only while the Goal

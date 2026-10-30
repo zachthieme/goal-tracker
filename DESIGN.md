@@ -1543,9 +1543,10 @@ and so on).
     place of the add bar and the form, "A Done Goal takes no Check-ins."
   - **A Check-in that can't be reached, or a refused No change:** the
     refusal page (`refuse`), headed "Can't check in", with **Back** to the
-    Goal page: 403 when only the Goal's Owner or a Delegate may check in, or
-    a 500 saying nothing was recorded. A Goal that doesn't exist gets the Not
-    found page (404).
+    Goal page: 403 giving the reason the rule refused the reader ("Only the
+    Owner or a Delegate may submit a Check-in.", or "A Departed person can't
+    submit a Check-in."), or a 500 saying nothing was recorded. A Goal that
+    doesn't exist gets the Not found page (404).
 - **Check-in page's column (`.checkin-context`):** a rail of context for
   checking in, behind a 1px `--color-border` left edge with 24px inside it,
   in 13px text and with no boxes. It has three sections in order, 20px apart,

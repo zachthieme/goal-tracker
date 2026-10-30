@@ -68,13 +68,7 @@ func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []Val
 				continue
 			}
 			checked[e.GoalID] = true
-			if err := tx.requireGoalValueSetter(ctx, actorID, e.GoalID); errors.Is(err, ErrNotAuthorized) {
-				goal, err := tx.queries.GetGoal(ctx, e.GoalID)
-				if err != nil {
-					return fmt.Errorf("load goal: %w", err)
-				}
-				return Refuse(ErrNotAuthorized, "only its Owner, a Delegate or an Admin may set the values of %s", goal.Goal.Title)
-			} else if err != nil {
+			if _, err := tx.openGoalCommand(ctx, actorID, e.GoalID, goalValuesEditRefusal, nil); err != nil {
 				return err
 			}
 		}
@@ -100,6 +94,12 @@ func (s *Service) EditGoalValues(ctx context.Context, actorID int64, edits []Val
 		return nil
 	})
 	return err
+}
+
+// goalValuesEditRefusal is EditGoalValues' rule for a on g: the value-setter
+// rule, naming g in its refusal.
+func goalValuesEditRefusal(a goalActor, g Goal) error {
+	return goalValueSetterRefusal(a, g, "set the values of "+g.Title)
 }
 
 // applyValueEdit sets one cell's value on its Goal, whose setter the caller

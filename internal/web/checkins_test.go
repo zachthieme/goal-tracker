@@ -2470,7 +2470,7 @@ func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("hx=%v: status = %d, want 403", hx, resp.StatusCode)
 		}
-		assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Ship search.", fmt.Sprintf("/goals/%d", goal.ID))
+		assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Owner or a Delegate may submit a Check-in.", fmt.Sprintf("/goals/%d", goal.ID))
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a forbidden No change recorded a Check-in: history has %d, want 1", len(history))
@@ -2520,7 +2520,7 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("forbidden: status = %d, want 403", resp.StatusCode)
 	}
-	assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Ship search.", fmt.Sprintf("/goals/%d", goal.ID))
+	assertRefusalPage(t, parsePage(t, page), "Can't check in", "Only the Owner or a Delegate may submit a Check-in.", fmt.Sprintf("/goals/%d", goal.ID))
 
 	resp, page = postNoChange(t, samClient, ts.URL+"/goals/9999/checkins/no-change", true)
 	if resp.StatusCode != http.StatusNotFound {
@@ -4843,7 +4843,7 @@ func TestACheckinBySomeoneWhoMayNotCheckInAnswersWithTheRefusalPage(t *testing.T
 		if status != http.StatusForbidden {
 			t.Errorf("%s: status %d, want 403", tc.name, status)
 		}
-		assertRefusalPage(t, parsePage(t, body), "Can't check in", "Only the Goal's Owner or a Delegate may check in on Reduce outages.", fmt.Sprintf("/goals/%d", goal.ID))
+		assertRefusalPage(t, parsePage(t, body), "Can't check in", "Only the Owner or a Delegate may submit a Check-in.", fmt.Sprintf("/goals/%d", goal.ID))
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("a refused Check-in recorded %d Check-ins, want none", len(history))

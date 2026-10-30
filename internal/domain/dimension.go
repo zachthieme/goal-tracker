@@ -715,7 +715,7 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	return s.WithinTx(ctx, func(tx *Service) error {
-		if err := tx.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
+		if err := tx.requireGoalValueSetter(ctx, actorID, goalID, setDimensionValuesAct); err != nil {
 			return err
 		}
 		val, err := tx.queries.GetDimensionValue(ctx, valueID)
@@ -785,10 +785,12 @@ func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name str
 }
 
 // requireGoalValueSetter refuses anyone but the Goal's Owner, one of its
-// Delegates, or an Admin, by goalValueSetterRefusal (CONTEXT.md: Delegate); a
-// missing Goal is ErrNotFound.
-func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
-	_, err := s.openGoalCommand(ctx, actorID, goalID, goalValueSetterRefusal, nil)
+// Delegates, or an Admin, by goalValueSetterRefusal (CONTEXT.md: Delegate),
+// saying who may act; a missing Goal is ErrNotFound.
+func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64, act string) error {
+	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+		return goalValueSetterRefusal(a, g, act)
+	}, nil)
 	return err
 }
 
@@ -817,7 +819,7 @@ func (s *Service) ValueSettableGoals(ctx context.Context, actor Account, goals [
 			id:       actor.ID,
 			account:  func() (Account, bool, error) { return actor, true, nil },
 			delegate: func() (bool, error) { return isDelegate(g.ID) },
-		}, g)
+		}, g, setDimensionValuesAct)
 		switch {
 		case refusal == nil:
 			settable[g.ID] = true

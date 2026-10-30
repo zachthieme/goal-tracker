@@ -57,7 +57,9 @@ func (s *Service) recordImportedGoal(goalID int64) {
 // refused with ErrNotAuthorized, and a missing Goal is ErrNotFound. The Goal
 // page asks it before offering the Check-in form.
 func (s *Service) RequireCheckinAuthor(ctx context.Context, actorID, goalID int64) error {
-	_, err := s.openGoalCommand(ctx, actorID, goalID, checkinAuthorRuleRefusal, nil)
+	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
+		return checkinAuthorRuleRefusal(a, g, submitCheckinAct)
+	}, nil)
 	return err
 }
 
@@ -67,5 +69,5 @@ func (s *Service) RequireCheckinAuthor(ctx context.Context, actorID, goalID int6
 // missing Goal is ErrNotFound. The Goal page asks it before offering their
 // forms.
 func (s *Service) RequireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
-	return s.requireGoalValueSetter(ctx, actorID, goalID)
+	return s.requireGoalValueSetter(ctx, actorID, goalID, setDimensionValuesAct)
 }

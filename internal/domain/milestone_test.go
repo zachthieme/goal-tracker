@@ -620,17 +620,21 @@ func TestAddMilestoneAsAuthorRefusesAnyoneElse(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	for name, actor := range map[string]domain.Account{
-		"a stranger":          h.SignIn("pat@example.com"),
-		"an Admin":            admin,
-		"a Departed Delegate": dana,
+	const notTheirs = "only the Owner or a Delegate may change this Goal's Milestones"
+	for name, c := range map[string]struct {
+		actor domain.Account
+		want  string
+	}{
+		"a stranger":          {h.SignIn("pat@example.com"), notTheirs},
+		"an Admin":            {admin, notTheirs},
+		"a Departed Delegate": {dana, "a Departed person can't change this Goal's Milestones"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := h.Service.AddMilestoneAsAuthor(context.Background(), actor.ID, domain.AddMilestoneInput{
+			_, err := h.Service.AddMilestoneAsAuthor(context.Background(), c.actor.ID, domain.AddMilestoneInput{
 				GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate,
 			})
-			if !errors.Is(err, domain.ErrNotAuthorized) || !strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
-				t.Errorf("err = %v, want the Owner or Delegate refusal", err)
+			if !errors.Is(err, domain.ErrNotAuthorized) || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("err = %v, want %q", err, c.want)
 			}
 		})
 	}
