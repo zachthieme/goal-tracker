@@ -13,8 +13,9 @@ import (
 // page shown straight after it. It is scoped to that page's path and cleared
 // the moment the page reads it, so the toast is shown once: a reload or a later
 // visit finds nothing (#83). It carries the change's one-time Undo token for
-// the toast to post; the domain checks the token, and what has happened
-// since, when the Undo is posted (#106).
+// the toast to post. The domain decides whether the toast offers the Undo, by
+// the restore's own rule for the viewer, the token and the record, and checks
+// what has happened since only when the Undo is posted (#106, #651).
 const undoCookie = "gt_undo"
 
 // undoField is the hidden input a toast's Undo posts its token in.
@@ -32,10 +33,12 @@ type undoKind struct {
 	route string
 	// fallback is the page an Undo returns to when it posts no return.
 	fallback string
-	// message reads record id through the domain and is the toast's sentence
-	// for current on the page r asks for, or "" when it isn't current's to
-	// undo now, so the page shows no toast.
-	message func(s *Server, r *http.Request, current domain.Account, id int64) string
+	// message is the toast's sentence for current's Undo of record id with
+	// token on the page r asks for, or "" when it isn't shown there, so the
+	// page shows no toast. The domain decides whether current may still undo
+	// it, by the restore's own rule; what has happened since is checked only
+	// when the Undo is posted.
+	message func(s *Server, r *http.Request, current domain.Account, id int64, token string) string
 	// undo restores record id for current with the toast's token.
 	undo func(s *Server, r *http.Request, current domain.Account, id int64, token string) error
 }
@@ -46,9 +49,12 @@ var (
 		tag:      "link-removal",
 		route:    "/link-removals/{id}/undo",
 		fallback: "/home",
-		message: func(s *Server, r *http.Request, current domain.Account, id int64) string {
+		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
+			if ok, err := s.svc.CanUndoLinkRemoval(r.Context(), current.ID, id, token); err != nil || !ok {
+				return ""
+			}
 			removal, err := s.svc.LinkRemoval(r.Context(), id)
-			if err != nil || removal.Restored || removal.RemovedBy != current.ID {
+			if err != nil {
 				return ""
 			}
 			if goalID, ok := undoPageGoalID(r); !ok || (removal.Child.ID != goalID && removal.Parent.ID != goalID) {
@@ -65,9 +71,12 @@ var (
 		tag:      "link-rejection",
 		route:    "/link-rejections/{id}/undo",
 		fallback: "/links",
-		message: func(s *Server, r *http.Request, current domain.Account, id int64) string {
+		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
+			if ok, err := s.svc.CanUndoLinkRejection(r.Context(), current.ID, id, token); err != nil || !ok {
+				return ""
+			}
 			rejection, err := s.svc.LinkRejection(r.Context(), id)
-			if err != nil || rejection.Restored || rejection.RejectedBy != current.ID {
+			if err != nil {
 				return ""
 			}
 			return fmt.Sprintf("Request rejected: %s won't contribute to %s.", rejection.Child.Title, rejection.Parent.Title)
@@ -81,9 +90,12 @@ var (
 		tag:      "handoff-rejection",
 		route:    "/handoffs/{id}/restore",
 		fallback: "/handoffs",
-		message: func(s *Server, r *http.Request, current domain.Account, id int64) string {
+		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
+			if ok, err := s.svc.CanUndoHandoffRejection(r.Context(), current.ID, id, token); err != nil || !ok {
+				return ""
+			}
 			ho, err := s.svc.Handoff(r.Context(), id)
-			if err != nil || ho.Status != domain.HandoffRejected || ho.To.ID != current.ID {
+			if err != nil {
 				return ""
 			}
 			return fmt.Sprintf("Handoff rejected: %s stays with %s.", ho.Goal.Title, ho.From.Label())
@@ -98,9 +110,12 @@ var (
 		tag:      "parent-suggestion-decline",
 		route:    "/parent-suggestions/{id}/undo-decline",
 		fallback: "/home",
-		message: func(s *Server, r *http.Request, current domain.Account, id int64) string {
+		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
+			if ok, err := s.svc.CanUndoParentSuggestionDecline(r.Context(), current.ID, id, token); err != nil || !ok {
+				return ""
+			}
 			p, err := s.svc.ParentSuggestion(r.Context(), id)
-			if err != nil || p.Status != domain.SuggestionDeclined || p.Goal.Owner.ID != current.ID {
+			if err != nil {
 				return ""
 			}
 			if goalID, ok := undoPageGoalID(r); ok && p.Goal.ID != goalID {
@@ -112,15 +127,16 @@ var (
 			return s.svc.UndoDeclineParentSuggestion(r.Context(), current.ID, id, token)
 		},
 	}
-	// undoValueRetire shows only to an Admin, and only while the value is
-	// still Retired. The Retired value's own Restore button needs none of its
-	// checks (handleRestoreDimensionValue).
+	// undoValueRetire shows to whoever the domain says may still undo the
+	// retirement, by the restore's own rule; what has happened since is
+	// checked only when the Undo is posted. The Retired value's own Restore
+	// button needs none of its checks (handleRestoreDimensionValue).
 	undoValueRetire = undoKind{
 		tag:      "value-retire",
 		route:    "/dimension-values/{id}/undo-retire",
 		fallback: "/dimensions",
-		message: func(s *Server, r *http.Request, current domain.Account, id int64) string {
-			if !current.IsAdmin {
+		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
+			if ok, err := s.svc.CanUndoValueRetirement(r.Context(), current.ID, id, token); err != nil || !ok {
 				return ""
 			}
 			dims, err := s.svc.ListDimensions(r.Context())
@@ -129,7 +145,7 @@ var (
 			}
 			for _, d := range dims {
 				for _, v := range d.Values {
-					if v.ID == id && v.Retired {
+					if v.ID == id {
 						return fmt.Sprintf("Retired %s from %s.", v.Value, d.Name)
 					}
 				}
@@ -186,7 +202,7 @@ func (s *Server) undoToast(w http.ResponseWriter, r *http.Request, current domai
 		if kind.tag != offer.kind {
 			continue
 		}
-		msg := kind.message(s, r, current, offer.id)
+		msg := kind.message(s, r, current, offer.id, offer.token)
 		if msg == "" {
 			return nil
 		}

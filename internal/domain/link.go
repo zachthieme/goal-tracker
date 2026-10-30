@@ -322,11 +322,8 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 		}
 		return Link{}, fmt.Errorf("look up link rejection: %w", err)
 	}
-	if rejection.RejectedBy != actorID {
-		return Link{}, Refuse(ErrNotAuthorized, "only the person who rejected a request may undo it")
-	}
-	if rejection.RestoredAt != nil {
-		return Link{}, Refuse(ErrValidation, "this rejection has already been undone")
+	if err := linkRejectionUndoRefusal(rejection, actorID); err != nil {
+		return Link{}, err
 	}
 	if _, err := s.spendUndo(ctx, token, undoLinkRejection, rejectionID, actorID); err != nil {
 		return Link{}, err
@@ -369,6 +366,39 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 		return Link{}, err
 	}
 	return s.loadLink(ctx, linkID)
+}
+
+// linkRejectionUndoRefusal is the rule for who may still undo rejection,
+// which RestoreLinkRequest and CanUndoLinkRejection both ask: actorID rejected
+// the request, and the rejection isn't undone.
+func linkRejectionUndoRefusal(rejection db.RejectedLinkRequest, actorID int64) error {
+	if rejection.RejectedBy != actorID {
+		return Refuse(ErrNotAuthorized, "only the person who rejected a request may undo it")
+	}
+	if rejection.RestoredAt != nil {
+		return Refuse(ErrValidation, "this rejection has already been undone")
+	}
+	return nil
+}
+
+// CanUndoLinkRejection says whether actorID may still undo rejection
+// rejectionID with token, by RestoreLinkRequest's own rule: for the viewer,
+// the token and the rejection itself. It doesn't answer for what has happened
+// since to the link's two Goals, which RestoreLinkRequest checks only when the
+// Undo is posted. A rejection that doesn't exist is ErrNotFound.
+func (s *Service) CanUndoLinkRejection(ctx context.Context, actorID, rejectionID int64, token string) (bool, error) {
+	rejection, err := s.queries.GetRejectedLinkRequest(ctx, rejectionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("%w: link rejection %d", ErrNotFound, rejectionID)
+		}
+		return false, fmt.Errorf("look up link rejection: %w", err)
+	}
+	refusal := linkRejectionUndoRefusal(rejection, actorID)
+	if refusal == nil {
+		_, refusal = s.peekUndo(ctx, token, undoLinkRejection, rejectionID, actorID)
+	}
+	return goalPagePermits(refusal)
 }
 
 // LinkRejection returns the record of a rejected request, with both Goals
@@ -527,22 +557,8 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 		}
 		return Link{}, fmt.Errorf("look up link removal: %w", err)
 	}
-	if removal.RemovedBy != actorID {
-		return Link{}, Refuse(ErrNotAuthorized, "only the person who removed a link may undo it")
-	}
-	if removal.RestoredAt != nil {
-		return Link{}, Refuse(ErrValidation, "this removal has already been undone")
-	}
-	child, err := s.queries.GetGoal(ctx, removal.ChildID)
-	if err != nil {
-		return Link{}, fmt.Errorf("look up child goal: %w", err)
-	}
-	parent, err := s.queries.GetGoal(ctx, removal.ParentID)
-	if err != nil {
-		return Link{}, fmt.Errorf("look up parent goal: %w", err)
-	}
-	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-		return Link{}, Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may undo removing the link")
+	if err := s.linkRemovalUndoRefusal(ctx, removal, actorID); err != nil {
+		return Link{}, err
 	}
 	if _, err := s.spendUndo(ctx, token, undoLinkRemoval, removalID, actorID); err != nil {
 		return Link{}, err
@@ -588,6 +604,50 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 		return Link{}, err
 	}
 	return s.loadLink(ctx, linkID)
+}
+
+// linkRemovalUndoRefusal is the rule for who may still undo removal, which
+// RestoreLink and CanUndoLinkRemoval both ask: actorID removed the link, the
+// removal isn't undone, and they still own the child or the parent.
+func (s *Service) linkRemovalUndoRefusal(ctx context.Context, removal db.LinkRemoval, actorID int64) error {
+	if removal.RemovedBy != actorID {
+		return Refuse(ErrNotAuthorized, "only the person who removed a link may undo it")
+	}
+	if removal.RestoredAt != nil {
+		return Refuse(ErrValidation, "this removal has already been undone")
+	}
+	child, err := s.queries.GetGoal(ctx, removal.ChildID)
+	if err != nil {
+		return fmt.Errorf("look up child goal: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, removal.ParentID)
+	if err != nil {
+		return fmt.Errorf("look up parent goal: %w", err)
+	}
+	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
+		return Refuse(ErrNotAuthorized, "only an Owner of the linked Goals may undo removing the link")
+	}
+	return nil
+}
+
+// CanUndoLinkRemoval says whether actorID may still undo removal removalID
+// with token, by RestoreLink's own rule: for the viewer, the token and the
+// removal itself. It doesn't answer for what has happened since to the link's
+// two Goals, which RestoreLink checks only when the Undo is posted. A removal
+// that doesn't exist is ErrNotFound.
+func (s *Service) CanUndoLinkRemoval(ctx context.Context, actorID, removalID int64, token string) (bool, error) {
+	removal, err := s.queries.GetLinkRemoval(ctx, removalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("%w: link removal %d", ErrNotFound, removalID)
+		}
+		return false, fmt.Errorf("look up link removal: %w", err)
+	}
+	refusal := s.linkRemovalUndoRefusal(ctx, removal, actorID)
+	if refusal == nil {
+		_, refusal = s.peekUndo(ctx, token, undoLinkRemoval, removalID, actorID)
+	}
+	return goalPagePermits(refusal)
 }
 
 // undoneLink is a link an Undo brings back, as restoreUndoneLink makes it:

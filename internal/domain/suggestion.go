@@ -184,8 +184,8 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 	if err != nil {
 		return err
 	}
-	if p.Status != SuggestionDeclined {
-		return Refuse(ErrValidation, "this suggestion is no longer declined")
+	if err := suggestionDeclineUndoRefusal(p); err != nil {
+		return err
 	}
 	if _, err := s.spendUndo(ctx, token, undoSuggestionDecline, suggestionID, actorID); err != nil {
 		return err
@@ -226,6 +226,36 @@ func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, sugg
 		}
 		return nil
 	})
+}
+
+// suggestionDeclineUndoRefusal is the rule for undoing the decline of p, which
+// UndoDeclineParentSuggestion and CanUndoParentSuggestionDecline both ask: p
+// is still declined. Who may is the token's alone, since p doesn't keep who
+// declined it.
+func suggestionDeclineUndoRefusal(p ParentSuggestion) error {
+	if p.Status != SuggestionDeclined {
+		return Refuse(ErrValidation, "this suggestion is no longer declined")
+	}
+	return nil
+}
+
+// CanUndoParentSuggestionDecline says whether actorID may still undo
+// declining suggestion suggestionID with token, by
+// UndoDeclineParentSuggestion's own rule: for the viewer, the token and the
+// suggestion itself. It doesn't answer for what has happened since to the
+// Goal, its parent or their link, which UndoDeclineParentSuggestion checks
+// only when the Undo is posted. A suggestion that doesn't exist is
+// ErrNotFound.
+func (s *Service) CanUndoParentSuggestionDecline(ctx context.Context, actorID, suggestionID int64, token string) (bool, error) {
+	p, err := s.ParentSuggestion(ctx, suggestionID)
+	if err != nil {
+		return false, err
+	}
+	refusal := suggestionDeclineUndoRefusal(p)
+	if refusal == nil {
+		_, refusal = s.peekUndo(ctx, token, undoSuggestionDecline, suggestionID, actorID)
+	}
+	return goalPagePermits(refusal)
 }
 
 // WithdrawParentSuggestion withdraws an open suggestion on behalf of actorID,
