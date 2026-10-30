@@ -559,8 +559,9 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, goa
 // those chosen and those typed in as new, by SetGoalDimensionValues' rules
 // (checkGoalDimensionValues) in each Dimension given values, under their
 // inputs, refusing a value or Dimension that doesn't exist. A value in carried
-// may be kept though it is Retired, or in a Retired Dimension. Whether the
-// Owner is an Admin, who alone may add to a Fixed list, is asked at most once.
+// may be kept though it is Retired, or in a Retired Dimension. A value typed
+// for a Fixed Dimension is refused, from any Owner, Admins included: the
+// definition form adds only to an Extendable list (#688).
 // The problems come in the form's order: the chosen values', in in.ValueIDs'
 // order, then the typed values', by Dimension ID, then the refusals of several
 // values in a Dimension that takes one.
@@ -598,18 +599,24 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, c
 		}
 		input := NewValueInput(dimID)
 		order[input] = len(order)
-		if _, err := s.queries.GetDimension(ctx, dimID); errors.Is(err, sql.ErrNoRows) {
+		row, err := s.queries.GetDimension(ctx, dimID)
+		if errors.Is(err, sql.ErrNoRows) {
 			typed = append(typed, inputError(input, "that Dimension does not exist"))
 			continue
 		} else if err != nil {
 			return nil, fmt.Errorf("look up dimension: %w", err)
 		}
+		if dim := dimensionFromRow(row); !dim.Extendable() {
+			typed = append(typed, inputError(input, "%s is a Fixed list, so a value can't be added to it here", dim.Name))
+			continue
+		}
 		editIn(dimID).NewValue = name
 	}
-	isAdmin := s.adminJudge(ctx, in.OwnerID)
+	// No Owner adds to a Fixed list here, so none is asked to be an Admin.
+	noAdmin := func() (bool, error) { return false, nil }
 	var oneValueByDimension [][]*InputError
 	for _, dimID := range dimIDs {
-		found, err := s.checkGoalDimensionValues(ctx, *edits[dimID], carried, isAdmin)
+		found, err := s.checkGoalDimensionValues(ctx, *edits[dimID], carried, noAdmin)
 		if err != nil {
 			return nil, err
 		}
