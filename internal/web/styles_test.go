@@ -459,9 +459,10 @@ func TestCheckinPageContextClasses(t *testing.T) {
 	}
 }
 
-// The column sticks beside the form on a wide screen as a quiet rail, and on
-// a phone drops Last time and Dates, which the form's ghost text already
-// covers (ticket #366), leaving Contributed to by with no rule above it.
+// The column sticks beside the form on a wide screen as a quiet rail. On a
+// phone it drops Dates (ticket #366) but keeps Last time, as the form's fields
+// start empty (#657), and Contributed to by keeps its rule under Last time;
+// a rail with neither is hidden.
 func TestCheckinPageContextStyles(t *testing.T) {
 	t.Parallel()
 
@@ -501,14 +502,27 @@ func TestCheckinPageContextStyles(t *testing.T) {
 	// Each phone rule's selector outranks the base rule it overrides
 	// (.checkin-context>section, 0,1,1; ...>section+section, 0,2,1), so it
 	// wins (#370).
-	for _, sel := range []string{".checkin-context>.checkin-context-last", ".checkin-context>.checkin-context-dates"} {
-		if rule, ok := ruleFor(phone, sel); !ok || !strings.Contains(rule, "display:none") {
-			t.Errorf("at 600px %s{%s} isn't hidden", sel, rule)
+	if rule, ok := ruleFor(phone, ".checkin-context>.checkin-context-dates"); !ok || !strings.Contains(rule, "display:none") {
+		t.Errorf("at 600px .checkin-context>.checkin-context-dates{%s} isn't hidden", rule)
+	}
+	if rule, ok := ruleFor(phone, ".checkin-context:not(:has(.checkin-context-last)):not(:has(.checkin-context-children))"); !ok || !strings.Contains(rule, "display:none") {
+		t.Errorf("at 600px a rail with neither Last time nor children isn't hidden: {%s}", rule)
+	}
+	for _, block := range mediaBlocks(styles, "@media (max-width:600px)") {
+		for _, sel := range []string{
+			".checkin-context>.checkin-context-last",
+			".checkin-context:not(:has(.checkin-context-children))",
+			".checkin-context>section.checkin-context-children",
+		} {
+			if rule, ok := ruleFor(block, sel); ok {
+				t.Errorf("at 600px %s{%s} still hides Last time or drops the children's rule", sel, rule)
+			}
 		}
 	}
-	if rule, ok := ruleFor(phone, ".checkin-context>section.checkin-context-children"); !ok ||
-		!strings.Contains(rule, "border-top:none") || !strings.Contains(rule, "padding-top:0") {
-		t.Errorf("at 600px .checkin-context>section.checkin-context-children{%s} keeps its top rule", rule)
+	// Under Last time, Contributed to by keeps the hairline every section after
+	// the first has.
+	if rule, ok := ruleFor(styles, ".checkin-context>section+section"); !ok || !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
+		t.Errorf(".checkin-context>section+section{%s} isn't ruled off from the section above", rule)
 	}
 }
 

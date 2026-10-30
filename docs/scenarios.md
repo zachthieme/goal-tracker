@@ -128,9 +128,9 @@ the price of scenarios 1 and 2, so it has to stay low.
 2. Three Goals haven't changed. She presses **No change** on each. One click
    records a Check-in repeating last week's values, and the row leaves the list.
 3. The fourth moved. She presses **Check in**. Her Health is already picked
-   from her latest Check-in, and the empty Status, Path to Green and reading
-   fields show last week's answers as ghost text. She types this week's Status
-   and the reading that moved, and submits.
+   from her latest Check-in, and the Status, Path to Green and reading fields
+   start empty, with last week's Check-in beside the form. She types this
+   week's Status and the reading that moved, and submits.
 4. During the week she had logged a Draft Highlight on that Goal. The form
    offers it, ticked to keep, and it becomes one of this Check-in's Highlights,
    which Elena may later pull into her Report.

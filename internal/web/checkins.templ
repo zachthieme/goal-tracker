@@ -11,9 +11,9 @@ import (
 )
 
 // checkinFormData is the state the Check-in form renders from: the Goal it posts
-// to, the Health picked and the status and Path to Green as typed, the previous
-// Check-in's answers shown as ghost text, and an optional validation error shown
-// next to the field it is about.
+// to, the Health picked and the status and Path to Green as typed, what the
+// previous Check-in said that the form refers to, and an optional validation
+// error shown next to the field it is about.
 type checkinFormData struct {
 	GoalID         int64
 	Health         string
@@ -46,8 +46,9 @@ type checkinFormData struct {
 	// it; a fresh form's are empty.
 	Metrics  []domain.Metric
 	Readings map[int64]string
-	// Previous is what the Goal's latest Check-in said, shown as ghost text in
-	// the fields that start empty; nothing in it is submitted.
+	// Previous is what the Goal's latest Check-in said that the form refers
+	// to: the Back to Green by date its hint shows and a later date is checked
+	// against, and each Metric's latest reading; nothing in it is submitted.
 	Previous checkinPreviousAnswers
 	// DraftHighlights are the rows offered from the Goal's pending Draft
 	// Highlights, oldest first, as typed (CONTEXT.md: Draft Highlight); they
@@ -154,26 +155,20 @@ type highlightFormData struct {
 	LoggedBy string
 }
 
-// checkinPreviousAnswers are the Goal's latest Check-in's status, Path to Green,
-// target date and explanation, and each Metric's latest reading keyed by Metric
-// ID, as the form shows them. A field with no previous value is empty.
+// checkinPreviousAnswers are the Goal's latest Check-in's Back to Green by
+// date and each Metric's latest reading keyed by Metric ID, as the form refers
+// to them. One with no previous value is empty.
 type checkinPreviousAnswers struct {
-	Status         string
-	PathToGreen    string
 	PathTargetDate string
-	Explanation    string
 	Readings       map[int64]string
 }
 
-// checkinPreviousFrom gathers the answers to show as ghost text from the Goal's
-// latest Check-in, nil when there is none, and its Metrics' readings over time.
+// checkinPreviousFrom gathers what the form refers to from the Goal's latest
+// Check-in, nil when there is none, and its Metrics' readings over time.
 func checkinPreviousFrom(latest *domain.Checkin, trends []metricTrend) checkinPreviousAnswers {
 	var p checkinPreviousAnswers
 	if latest != nil {
-		p.Status = latest.Status
-		p.PathToGreen = latest.PathToGreen
 		p.PathTargetDate = fmtDate(latest.PathTargetDate)
-		p.Explanation = latest.Explanation
 	}
 	p.Readings = make(map[int64]string, len(trends))
 	for _, t := range trends {
@@ -182,15 +177,6 @@ func checkinPreviousFrom(latest *domain.Checkin, trends []metricTrend) checkinPr
 		}
 	}
 	return p
-}
-
-// checkinGhostText shows previous as a field's placeholder, or no placeholder
-// when there is no previous value.
-func checkinGhostText(previous string) templ.Attributes {
-	if previous == "" {
-		return nil
-	}
-	return templ.Attributes{"placeholder": previous}
 }
 
 // pathTargetLastID names the hint beside the Back to Green by input that shows
@@ -504,9 +490,8 @@ func (d lifecycleFormData) summary() string {
 
 // checkinFormFromLatest starts the Check-in form from a Goal's latest Check-in:
 // its Health picked, Green when there is none, and the status, Path to Green,
-// explanation and readings empty, with the latest Check-in's answers and each
-// Metric's latest reading shown as ghost text, so a full Check-in is written
-// fresh (CONTEXT.md: Check-in). Its "Ask for help" box starts ticked
+// explanation and readings empty, with no ghost text, so a full Check-in is
+// written fresh and a field left empty looks empty (CONTEXT.md: Check-in). Its "Ask for help" box starts ticked
 // while the Goal's ask is open, so closing it is a deliberate act. It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
 // date and Planned Milestones so the Owner can move or close them. While a
@@ -548,7 +533,7 @@ func checkinFormFromLatest(v checkinView) checkinFormData {
 // withContext is d, a Check-in form as typed or as it starts, with the
 // context the Check-in page's loader read for it: the Goal's Metrics, its
 // Rolled-up Health and Run off Green, whom an ask would go to, the latest
-// Check-in's answers and each Metric's latest reading as ghost text, and the
+// Check-in's Back to Green by date and each Metric's latest reading, and the
 // clock its dates show against. Every path that renders the form fills it so.
 func (v checkinView) withContext(d checkinFormData) checkinFormData {
 	d.Metrics = v.Metrics
@@ -703,16 +688,16 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // Check in under the Goal's title, which links back to the Goal; then a line
 // saying which week it is, the Goal's cadence and its last Check-in, and, at
 // its right, the one-click No change when there is a previous Check-in to
-// repeat; then the form, a column of plain sections, showing the latest
-// Check-in's answers as ghost text. Where a No change would be refused, the
+// repeat; then the form, a column of plain sections, its fields starting
+// empty. Where a No change would be refused, the
 // line says why in place of its button. A refusal in the form's error, such
 // as why a No change couldn't be recorded, shows at the top of the form, and
 // the line then leaves the reason to it. Beside the form, or after it on a
 // narrow screen (#674), a quiet rail gives the context for checking in: what
 // the latest Check-in said, the Goal's children (the Goal page's "Contributed
 // to by" list, read-only, so the Owner sees which set the Rolled-up Health),
-// and the Goal's dates (checkinContextDates). On a phone it keeps only the
-// children, as the form's ghost text already shows the latest answers. The
+// and the Goal's dates (checkinContextDates). On a phone it drops the dates
+// and keeps what the latest Check-in said and the children. The
 // rail is the page's last child, so it is read and tabbed to after the form;
 // above 900px the grid places it to the form's right.
 //
@@ -915,7 +900,7 @@ templ checkinForm(d checkinFormData) {
 			@checkinFieldError(d.Errors, domain.CheckinInputHealth)
 			<label>
 				What changed since the last check-in?
-				<textarea name="status" required { checkinGhostText(d.Previous.Status)... } { d.Errors.attrs(domain.CheckinInputStatus)... }>{ d.Status }</textarea>
+				<textarea name="status" required { d.Errors.attrs(domain.CheckinInputStatus)... }>{ d.Status }</textarea>
 			</label>
 			@checkinFieldError(d.Errors, domain.CheckinInputStatus)
 			if d.RolledUp.Present {
@@ -929,7 +914,7 @@ templ checkinForm(d checkinFormData) {
 					</p>
 					<label data-rolled-up={ d.RolledUp.Health }>
 						<span>Explain the difference from Rolled-up Health <span class="hint">Required while it differs from the Rolled-up Health</span></span>
-						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... } { d.Errors.attrs(domain.CheckinInputExplanation)... }>{ d.Explanation }</textarea>
+						<textarea name="explanation" data-testid="checkin-explanation" { d.Errors.attrs(domain.CheckinInputExplanation)... }>{ d.Explanation }</textarea>
 					</label>
 					@checkinFieldError(d.Errors, domain.CheckinInputExplanation)
 					@checkinExplanationScript()
@@ -948,7 +933,7 @@ templ checkinForm(d checkinFormData) {
 			</legend>
 			<label>
 				Plan
-				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... } { d.Errors.attrs(domain.CheckinInputPathToGreen)... }>{ d.PathToGreen }</textarea>
+				<textarea name="path_to_green" { d.Errors.attrs(domain.CheckinInputPathToGreen)... }>{ d.PathToGreen }</textarea>
 			</label>
 			@checkinFieldError(d.Errors, domain.CheckinInputPathToGreen)
 			<div class="checkin-path-target">
@@ -1005,7 +990,6 @@ templ checkinForm(d checkinFormData) {
 								step="any"
 								name={ readingField(m.ID) }
 								value={ d.reading(m.ID) }
-								{ checkinGhostText(d.Previous.Readings[m.ID])... }
 								{ d.Errors.attrs(readingField(m.ID))... }
 							/>
 						</label>
@@ -1381,7 +1365,7 @@ templ checkinStyles() {
 			.checkin-last-status{color:var(--color-ink-2);overflow-wrap:anywhere}
 			.checkin-context-dates p{color:var(--color-ink-2)}
 			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;align-self:stretch;max-height:none;overflow-y:visible;padding:24px 0 0;border-left:0;border-top:1px solid var(--color-border)}}
-			@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
+			@media (max-width:600px){.checkin-context>.checkin-context-dates{display:none}.checkin-context:not(:has(.checkin-context-last)):not(:has(.checkin-context-children)){display:none}}
 			@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}
 			.checkin-form{display:flex;flex-direction:column;gap:24px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}

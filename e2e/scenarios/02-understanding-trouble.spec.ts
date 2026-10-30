@@ -247,8 +247,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await checkIn(page, goal.id, {
         health,
         status: "Steady week; notes in the Highlights.",
-        // The form shows last week's Path to Green only as ghost text, so a
-        // Yellow Check-in writes its own.
+        // The form starts Path to Green empty, so a Yellow Check-in writes
+        // its own.
         ...(health === "Yellow"
           ? { pathToGreen: "Same plan as last week.", backToGreen: addDays(appToday(), 28) }
           : {}),

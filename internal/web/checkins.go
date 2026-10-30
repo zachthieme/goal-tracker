@@ -11,8 +11,8 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleCheckinPage shows the Check-in form on its own page, with the Goal's
-// latest Check-in's answers as ghost text. Only whoever may write a Check-in —
+// handleCheckinPage shows the Check-in form on its own page, its fields
+// starting empty. Only whoever may write a Check-in —
 // the Owner or a Delegate — may open it (CONTEXT.md: Check-in, Delegate).
 func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
@@ -515,8 +515,8 @@ func plainReasonShown(err error, shown displayDates) string {
 // (answerSwap); a plain post gets the whole Check-in page, view, around it at 422 (#587). The form keeps the
 // context the Check-in page's loader read for it (checkinView.withContext):
 // the Goal's Rolled-up Health beside the Owner's Health (ADR-0003), its Run
-// off Green for the Path to Green's heading, the latest Check-in's answers as
-// ghost text, and whom an ask would go to.
+// off Green for the Path to Green's heading, the latest Check-in's Back to
+// Green by date, and whom an ask would go to.
 func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
 	if isHTMX(r) {
 		answerSwap(w, r, checkinForm(data))

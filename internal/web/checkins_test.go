@@ -706,10 +706,9 @@ func TestCheckinReadingOfNaNIsRefused(t *testing.T) {
 	}
 }
 
-// The Check-in form shows each Metric's latest reading as ghost text in its
-// empty reading input (ticket #29, #284); a Metric with no readings yet shows
-// none.
-func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
+// The Check-in form starts each Metric's reading input empty, with no ghost
+// text, whether or not the Metric was read before (#657).
+func TestCheckinFormStartsReadingsEmpty(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -752,12 +751,12 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 
 	readings := findByTestID(t, getPage(t, samClient, goalURL+"/checkin"), "checkin-readings")
 	signupsField := formField(t, readings, fmt.Sprintf("reading_%d", signups.ID))
-	if signupsField.Value != "" || signupsField.Placeholder != "135.5" {
-		t.Errorf("Signups reading = %q with ghost text %q, want it empty with its latest value, 135.5, as ghost text", signupsField.Value, signupsField.Placeholder)
+	if signupsField.Value != "" || hasAttr(signupsField.Node, "placeholder") {
+		t.Errorf("Signups reading = %q with ghost text %q, want it empty with no ghost text", signupsField.Value, signupsField.Placeholder)
 	}
 	referralsField := formField(t, readings, fmt.Sprintf("reading_%d", referrals.ID))
 	if referralsField.Value != "" || hasAttr(referralsField.Node, "placeholder") {
-		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text; got %q with ghost text %q", referralsField.Value, referralsField.Placeholder)
+		t.Errorf("Referrals reading = %q with ghost text %q, want it empty with no ghost text", referralsField.Value, referralsField.Placeholder)
 	}
 
 	// Each Metric's row shows its unit, baseline, target and target date, its
@@ -2372,8 +2371,8 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
 	assertNoChangeRefusalOnForm(t, page, "differs from the Rolled-up Health (Red)")
-	if status := formField(t, parsePage(t, page), "status"); status.Value != "" || status.Placeholder != "On track." {
-		t.Errorf("status = %q with ghost text %q, want empty with the last Check-in's as ghost text", status.Value, status.Placeholder)
+	if status := formField(t, parsePage(t, page), "status"); status.Value != "" || hasAttr(status.Node, "placeholder") {
+		t.Errorf("status = %q with ghost text %q, want it empty with no ghost text", status.Value, status.Placeholder)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), parent.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
@@ -3049,11 +3048,12 @@ func TestNoChangeCheckinLeavesDraftHighlightsPendingOverHTTP(t *testing.T) {
 	}
 }
 
-// The Check-in form starts its text, number and date fields empty, showing the
-// latest Check-in's answers and each Metric's latest reading as ghost text, so
-// a full Check-in is written fresh; Health stays picked from the latest
-// Check-in (ticket #284).
-func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
+// The Check-in form starts its text, number and date fields empty, with none
+// of the latest Check-in's answers or readings as ghost text, so a field left
+// empty looks empty and a full Check-in is written fresh (#284, #657). Back to
+// Green by keeps its labelled "Last time" hint; Health stays picked from the
+// latest Check-in.
+func TestCheckinFormStartsEmptyWithoutGhostText(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3063,7 +3063,7 @@ func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
 	parent := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
 	child := h.ActiveChildOf(sam, parent, "Load tests", "Know the limits.")
 	h.Checkin(sam, child.ID, domain.HealthGreen, "Done for this quarter.", "", time.Time{})
-	rps := addCheckinGhostMetric(t, h, parent, "Peak requests")
+	rps := addCheckinFormMetric(t, h, parent, "Peak requests")
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 		GoalID:         parent.ID,
 		AuthorID:       sam.ID,
@@ -3079,25 +3079,14 @@ func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
 
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
 	form := findByTestID(t, page, "checkin-form")
-	for name, want := range map[string]string{
-		"status":        "Vendor sign-off is slower than expected.",
-		"path_to_green": "Escalate to the vendor.",
-		"explanation":   "The load tests miss the vendor risk.",
-	} {
+	for _, name := range []string{"status", "path_to_green", "explanation", fmt.Sprintf("reading_%d", rps.ID)} {
 		field := formField(t, form, name)
 		if field.Value != "" {
 			t.Errorf("%s starts as %q, want empty", name, field.Value)
 		}
-		if field.Placeholder != want {
-			t.Errorf("%s placeholder = %q, want %q", name, field.Placeholder, want)
+		if hasAttr(field.Node, "placeholder") {
+			t.Errorf("%s shows ghost text %q, want none", name, field.Placeholder)
 		}
-	}
-	reading := formField(t, form, fmt.Sprintf("reading_%d", rps.ID))
-	if reading.Value != "" {
-		t.Errorf("reading starts as %q, want empty", reading.Value)
-	}
-	if reading.Placeholder != "1250.5" {
-		t.Errorf("reading placeholder = %q, want 1250.5", reading.Placeholder)
 	}
 	date := formField(t, form, "path_target_date")
 	if date.Value != "" {
@@ -3114,9 +3103,9 @@ func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
 	}
 }
 
-// A first Check-in has nothing to show as ghost text: its fields carry no
-// placeholder and no "Last time" hint, and it starts on Green.
-func TestCheckinFormWithoutPreviousCheckinShowsNoGhostText(t *testing.T) {
+// A first Check-in has no "Last time" hint beside Back to Green by, no ghost
+// text, and starts on Green.
+func TestCheckinFormWithoutPreviousCheckin(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3126,7 +3115,7 @@ func TestCheckinFormWithoutPreviousCheckinShowsNoGhostText(t *testing.T) {
 	parent := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
 	child := h.ActiveChildOf(sam, parent, "Load tests", "Know the limits.")
 	h.Checkin(sam, child.ID, domain.HealthGreen, "Done for this quarter.", "", time.Time{})
-	addCheckinGhostMetric(t, h, parent, "Peak requests")
+	addCheckinFormMetric(t, h, parent, "Peak requests")
 
 	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
 	form := findByTestID(t, page, "checkin-form")
@@ -3150,9 +3139,9 @@ func TestCheckinFormWithoutPreviousCheckinShowsNoGhostText(t *testing.T) {
 }
 
 // A refused Check-in, and Add another, come back with what was typed kept and
-// the latest Check-in's answers still shown as ghost text, over htmx and as a
-// plain post.
-func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
+// still no ghost text in the fields left empty, over htmx and as a plain post
+// (#657).
+func TestCheckinReRenderKeepsTypedWithoutGhostText(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3160,7 +3149,7 @@ func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
-	rps := addCheckinGhostMetric(t, h, goal, "Peak requests")
+	rps := addCheckinFormMetric(t, h, goal, "Peak requests")
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 		GoalID:         goal.ID,
 		AuthorID:       sam.ID,
@@ -3209,14 +3198,14 @@ func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
 		if status.Value != "The vendor went quiet." {
 			t.Errorf("%s: status re-rendered as %q, want what was typed", how, status.Value)
 		}
-		if status.Placeholder != "Vendor sign-off is slower than expected." {
-			t.Errorf("%s: status placeholder = %q, want the latest Check-in's", how, status.Placeholder)
+		if hasAttr(status.Node, "placeholder") {
+			t.Errorf("%s: status shows ghost text %q, want none", how, status.Placeholder)
 		}
-		if got := formField(t, form, "path_to_green").Placeholder; got != "Escalate to the vendor." {
-			t.Errorf("%s: Path to Green placeholder = %q, want the latest Check-in's", how, got)
+		if plan := formField(t, form, "path_to_green"); plan.Value != "" || hasAttr(plan.Node, "placeholder") {
+			t.Errorf("%s: Path to Green = %q with ghost text %q, want it empty with none", how, plan.Value, plan.Placeholder)
 		}
-		if reading := formField(t, form, fmt.Sprintf("reading_%d", rps.ID)); reading.Value != "900" || reading.Placeholder != "1250.5" {
-			t.Errorf("%s: reading = %q with ghost text %q, want 900 with 1250.5", how, reading.Value, reading.Placeholder)
+		if reading := formField(t, form, fmt.Sprintf("reading_%d", rps.ID)); reading.Value != "900" || hasAttr(reading.Node, "placeholder") {
+			t.Errorf("%s: reading = %q with ghost text %q, want 900 with none", how, reading.Value, reading.Placeholder)
 		}
 		if got := textsOf(findAllByTestID(form, "checkin-path-target-last")); !slices.Equal(got, []string{"Last time: Jun 15"}) {
 			t.Errorf("%s: Back to Green by hint = %q, want [Last time: Jun 15]", how, got)
@@ -3227,10 +3216,11 @@ func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
 	}
 }
 
-// Ghost text is never submitted: a Check-in sent with the status left empty is
-// refused though the last Check-in had one, and a reading left blank records
-// no reading though the Metric was read before.
-func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
+// Nothing from the last Check-in is submitted for a field left empty: a
+// Check-in sent with the status left empty is refused though the last
+// Check-in had one, and a reading left blank records no reading though the
+// Metric was read before.
+func TestCheckinEmptyFieldsSubmitNothingFromLastTime(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -3238,7 +3228,7 @@ func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
-	rps := addCheckinGhostMetric(t, h, goal, "Peak requests")
+	rps := addCheckinFormMetric(t, h, goal, "Peak requests")
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 		GoalID:   goal.ID,
 		AuthorID: sam.ID,
@@ -3285,8 +3275,8 @@ func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
 	}
 }
 
-// addCheckinGhostMetric adds a Metric to goal, failing the test on error.
-func addCheckinGhostMetric(t *testing.T, h *testsupport.Harness, goal domain.Goal, name string) domain.Metric {
+// addCheckinFormMetric adds a Metric to goal, failing the test on error.
+func addCheckinFormMetric(t *testing.T, h *testsupport.Harness, goal domain.Goal, name string) domain.Metric {
 	t.Helper()
 	m, err := h.Service.AddMetric(context.Background(), goal.Owner.ID, domain.AddMetricInput{
 		GoalID:     goal.ID,
@@ -4794,7 +4784,7 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 
 // A submit that fails the form's own reading, such as a back-to-Green date that
 // isn't a date, is still refused with 403 to someone who may not check in: they
-// don't get the form back, ghost text and all (#560).
+// don't get the form back, the Goal's Metrics and all (#560).
 func TestCheckinParseFailureByNonAuthorIsForbidden(t *testing.T) {
 	t.Parallel()
 

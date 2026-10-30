@@ -161,26 +161,28 @@ test.describe("on the due template", () => {
     const newStatus = "Cold start p90 down after the lazy-init change; beta looks good.";
     const newReading = latest.reading === "3" ? "4" : "3";
 
-    await test.step("3.5 Check in shows last week as ghost text, offers the Draft, and keeps it as a Highlight", async () => {
+    await test.step("3.5 Check in starts its fields empty, offers the Draft, and keeps it as a Highlight", async () => {
       await page.goto("/home");
       await dueRow(page, metric).getByRole("link", { name: "Check in" }).click();
       await expect(page).toHaveURL(new RegExp(`/goals/${metric.id}/checkin$`));
       const form = page.getByTestId("checkin-form");
 
-      // It worked if: her Health didn't have to be picked again, and last
-      // week's answers are in view as ghost text, none of them sent unless
-      // she types it. The Status and reading start empty.
+      // It worked if: her Health didn't have to be picked again, and the
+      // Status, reading and Path to Green start empty and look it, with no
+      // ghost text of last week's answers (#657).
       await expect(form.getByRole("radio", { name: latest.health })).toBeChecked();
       const status = form.getByRole("textbox", { name: /^What changed since the last check-in/ });
       await expect(status).toHaveValue("");
-      await expect(status).toHaveAttribute("placeholder", latest.status);
+      await expect(status).not.toHaveAttribute("placeholder");
       const reading = form.getByTestId("checkin-readings").getByRole("spinbutton");
       await expect(reading).toHaveValue("");
-      await expect(reading).toHaveAttribute("placeholder", latest.reading);
+      await expect(reading).not.toHaveAttribute("placeholder");
+      // Last week's Status is in view beside the form, not in the field.
+      await expect(page.getByTestId("checkin-last-status")).toHaveText(latest.status);
       const path = form.getByTestId("path-to-green-field");
       if (latest.health !== "Green") {
         await expect(path.getByLabel("Plan")).toHaveValue("");
-        await expect(path.getByLabel("Plan")).toHaveAttribute("placeholder", latest.pathToGreen);
+        await expect(path.getByLabel("Plan")).not.toHaveAttribute("placeholder");
         await expect(path.getByLabel("Back to Green by")).toHaveValue("");
         await expect(path.getByTestId("checkin-path-target-last")).toHaveText(/^Last time: [A-Z][a-z]{2} \d{1,2}$/);
       }
