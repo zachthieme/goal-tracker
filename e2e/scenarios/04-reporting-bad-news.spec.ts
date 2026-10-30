@@ -189,10 +189,11 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await page.goto(`/goals/${project.id}/checkin`);
     const form = page.getByTestId("checkin-form");
     await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
-    // Last week's plan shows only as ghost text, so she writes it again.
+    // The Plan starts empty, with no ghost text, so she writes it again.
     const path = form.getByTestId("path-to-green-field");
     const plan = "Escalate with the vendor and ship behind a flag.";
-    await expect(path.getByLabel("Plan")).toHaveAttribute("placeholder", plan);
+    await expect(path.getByLabel("Plan")).toHaveValue("");
+    await expect(path.getByLabel("Plan")).not.toHaveAttribute("placeholder");
     await path.getByLabel("Plan").fill(plan);
     await path.getByLabel("Back to Green by").fill(addDays(today, -2));
     await giveBackToGreenReason(path, "Still waiting on the vendor.");

@@ -33,8 +33,8 @@ func (l AppLinks) GoalComments(goalID int64) string {
 	return l.Goal(goalID) + "#comments"
 }
 
-// Checkin links to a Goal's Check-in page, which shows the latest Check-in's
-// answers as ghost text; openDates opens its dates, for a Schedule conflict.
+// Checkin links to a Goal's Check-in page, beside which the latest Check-in's
+// answers show; openDates opens its dates, for a Schedule conflict.
 func (l AppLinks) Checkin(goalID int64, openDates bool) string {
 	link := l.Goal(goalID) + "/checkin"
 	if openDates {

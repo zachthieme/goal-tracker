@@ -38,7 +38,7 @@ func (s *Service) QueueWeeklyEmails(ctx context.Context, slot time.Time) error {
 // weeklyReminders composes an email to each Owner and Delegate of the Active
 // Goals whose Check-in is due — it would be overdue before next week's
 // reminder — or that are Check-in overdue already, each linking to its
-// Check-in page, which shows the last Check-in's answers as ghost text. It
+// Check-in page, beside which the last Check-in's answers show. It
 // also lists every open Action Item the person owns, overdue first, so the
 // owner of one is emailed even with no Check-in due. Someone with no Check-in
 // due and no open Action Item gets no email, and nobody who has left the

@@ -1470,8 +1470,7 @@ and so on).
     Sections sit 24px apart, each after the first opening with a 1px
     `--color-border` hairline and 24px above its heading; the heading sits
     16px above the fields, and fields sit 16px apart. Field labels are 13px,
-    600 `--color-ink`, hints 13px in `--color-ink-muted`. A field that starts
-    empty shows what the last Check-in said as ghost text.
+    600 `--color-ink`, hints 13px in `--color-ink-muted`.
   - **How is it going?:** the three Health choices (`.health-toggle`) share
     the full width, 12px apart, each 44px tall with `--radius-md` (their look
     is in § Deviations 6). Then "What changed since the last check-in?", then
@@ -1559,8 +1558,9 @@ and so on).
   the form in the page, so at 900px and below the rail follows the form: it
   loses its left edge, opens with a hairline 24px above its content, and
   doesn't stick. At 600px and below it
-  drops Last time and Dates, which the form's ghost text already covers, so
-  only Contributed to by stays, and a Goal with no children shows no rail.
+  drops Dates and keeps Last time, when there is a previous Check-in, and
+  Contributed to by, when the Goal has children, which keeps its hairline
+  under Last time. A rail with neither shows nothing.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.

@@ -259,17 +259,16 @@ test("at 390px the Check-in page fits", async ({ page, manifest }) => {
   await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
   await expect(form.getByTestId("path-to-green-field")).toBeVisible();
   await expect(form.getByTestId("checkin-readings")).toBeVisible();
-  // The context column keeps only Contributed to by, which the form's ghost
-  // text doesn't cover (#366, #370).
+  // The context column drops Dates (#366) but keeps Last time, as the form's
+  // fields start empty (#657), and Contributed to by, ruled off under it.
   const context = page.getByTestId("checkin-context");
-  for (const id of ["checkin-last-time", "checkin-context-dates"]) {
-    await expect(context.getByTestId(id), `${id} is on the page`).toBeAttached();
-    await expect(context.getByTestId(id), `${id} is hidden`).toBeHidden();
-  }
+  const dates = context.getByTestId("checkin-context-dates");
+  await expect(dates, "Dates is on the page").toBeAttached();
+  await expect(dates, "Dates is hidden").toBeHidden();
+  await expect(context.getByTestId("checkin-last-time")).toBeVisible();
   const children = context.getByTestId("checkin-children");
   await expect(children).toBeVisible();
-  await expect(children).toHaveCSS("border-top-style", "none");
-  await expect(children).toHaveCSS("padding-top", "0px");
+  await expect(children).toHaveCSS("border-top-style", "solid");
   // How is it going? comes before Contributed to by (#674).
   const formBox = (await box(form))!;
   const contextBox = (await box(context))!;
