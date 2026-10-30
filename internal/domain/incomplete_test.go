@@ -284,3 +284,29 @@ func TestRequiredValuesNameTheirDimensionOrField(t *testing.T) {
 		t.Errorf("RequiredValues = %+v, want %+v", got, want)
 	}
 }
+
+// Something is required only while a Dimension or Field an Admin marked
+// required isn't Retired, so the Goal list offers its Incomplete filter only
+// then (CONTEXT.md: Incomplete, Retired).
+func TestAnyRequiredCountsOnlyLiveRequiredDimensionsAndFields(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		dims   []domain.Dimension
+		fields []domain.Field
+		want   bool
+	}{
+		{"nothing", nil, nil, false},
+		{"nothing required", []domain.Dimension{{Name: "Pillar"}}, []domain.Field{{Name: "Budget"}}, false},
+		{"a Retired required Dimension", []domain.Dimension{{Name: "Pillar", Required: true, Retired: true}}, nil, false},
+		{"a Retired required Field", nil, []domain.Field{{Name: "Budget", Required: true, Retired: true}}, false},
+		{"a required Dimension", []domain.Dimension{{Name: "Pillar"}, {Name: "Team", Required: true}}, nil, true},
+		{"a required Field", nil, []domain.Field{{Name: "Budget", Required: true}}, true},
+	}
+	for _, tc := range cases {
+		if got := domain.AnyRequired(tc.dims, tc.fields); got != tc.want {
+			t.Errorf("%s: AnyRequired = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

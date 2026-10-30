@@ -80,8 +80,11 @@ type goalsListData struct {
 	Org        pageOrgScope
 	Dimensions []domain.Dimension
 	Selected   map[int64]bool
-	GroupID    int64
-	Groups     []goalRowGroup
+	// AnyRequired is whether some Dimension or Field not Retired is required,
+	// so a Goal can be Incomplete and the Incomplete filter is offered.
+	AnyRequired bool
+	GroupID     int64
+	Groups      []goalRowGroup
 	// HealthGroups is the list layout's default grouping, by Health, when no
 	// Dimension groups it.
 	HealthGroups []goalHealthGroup
@@ -153,7 +156,7 @@ type goalFilter struct {
 	// Lifecycle.
 	Lifecycle string
 	// Incomplete keeps the Incomplete Goals (?incomplete=1; CONTEXT.md:
-	// Incomplete).
+	// Incomplete). goalsListView unsets it when nothing is required.
 	Incomplete bool
 }
 
@@ -343,7 +346,17 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	for _, v := range org.Values {
 		selected[v.ID] = true
 	}
+	fields, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return goalsListData{}, err
+	}
+	anyRequired := domain.AnyRequired(all, fields)
 	filter := readGoalFilter(r.URL.Query())
+	if !anyRequired {
+		// With nothing required no Goal is Incomplete, so a stale
+		// ?incomplete=1 would only empty the list: it's ignored.
+		filter.Incomplete = false
+	}
 
 	goals = slices.DeleteFunc(goals, func(gv domain.GoalWithValues) bool { return !org.Keeps(gv) })
 	rows, err := s.loadGoalRows(ctx, goals)
@@ -354,13 +367,14 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	sortGoalRows(rows)
 
 	view := goalsListData{
-		Rows:       rows,
-		Filter:     filter,
-		Org:        org,
-		Dimensions: dims,
-		Selected:   selected,
-		Query:      r.URL.Query(),
-		Dates:      s.displayDates(),
+		Rows:        rows,
+		Filter:      filter,
+		Org:         org,
+		Dimensions:  dims,
+		Selected:    selected,
+		AnyRequired: anyRequired,
+		Query:       r.URL.Query(),
+		Dates:       s.displayDates(),
 	}
 	if view.Query.Get("layout") == layoutTable {
 		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r), current)

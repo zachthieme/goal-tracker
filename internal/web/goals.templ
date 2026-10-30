@@ -56,10 +56,12 @@ templ goalsHeader(view goalsListData) {
 }
 
 // goalFilters is the filter bar, one row of chips — the Scope, Health,
-// Lifecycle, Incomplete, "+ Filter" for More filters' Dimension filters, and
-// Group by — with the search at its right and Clear after the chips, all
-// submitted as a GET so the chosen slice lives in the URL. The chips are the
-// real selects, checkbox and <details>. The markup runs in the order they are
+// Lifecycle, Missing required values (the Incomplete filter, shown only when
+// some Dimension or Field not Retired is required, since only then can a Goal
+// be Incomplete), "+ Filter" for More filters' Dimension filters, and Group
+// by — with the search at its right and Clear after the chips, all submitted
+// as a GET so the chosen slice lives in the URL. The chips are the real
+// selects, checkbox and <details>. The markup runs in the order they are
 // drawn, so Tab follows the row and then the Dimension filters More filters'
 // panel opens below it (#404).
 //
@@ -112,10 +114,12 @@ templ goalFilters(view goalsListData) {
 					}
 				</select>
 			</label>
-			<label class="filter-chip">
-				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
-				Incomplete
-			</label>
+			if view.AnyRequired {
+				<label class="filter-chip">
+					<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
+					Missing required values
+				</label>
+			}
 			if len(view.Dimensions) > 0 {
 				<details data-testid="more-filters" class="gl-more-toggle" open?={ view.moreFiltersSet() }>
 					<summary aria-controls="goal-more-filters" title="More filters"><span aria-hidden="true">+</span> Filter</summary>

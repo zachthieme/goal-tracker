@@ -1704,6 +1704,7 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.SetDimensionRequired(boss, pillar, true)
 	h.CreateGoal(sam, "Grow revenue", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -1807,6 +1808,7 @@ func TestGoalListFilterChangeUnderHTMXKeepsClearInStep(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.SetDimensionRequired(boss, pillar, true)
 	h.CreateGoal(sam, "Grow revenue", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -1900,7 +1902,7 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
-	h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.SetDimensionRequired(boss, h.CreateDimension(boss, "Pillar", "Growth", "Reliability"), true)
 	h.CreateGoal(sam, "Grow revenue", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -1955,6 +1957,7 @@ func TestGoalFilterBarTabOrderFollowsItsDrawnOrder(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.SetDimensionRequired(boss, pillar, true)
 	h.CreateGoal(sam, "Grow revenue", "It matters.")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -5571,6 +5574,89 @@ func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
 			t.Errorf("table layout, incomplete=1: %s listed %v, want %v", g.Title, listed, want)
 		}
 	}
+}
+
+// With no Dimension or Field required, no Goal can be Incomplete, so the Goal
+// list doesn't offer its Incomplete filter, and a ?incomplete=1 left in the
+// address does nothing: the list is the bare list, with no Clear and no "No
+// Goals match." (#663).
+func TestGoalListIgnoresIncompleteFilterWhenNothingIsRequired(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "USD")
+	goals := []domain.Goal{h.ActiveGoal(sam, "Grow revenue", "It matters."), h.CreateGoal(sam, "Cut costs", "It matters.")}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	bare := getPage(t, client, ts.URL+"/goals")
+	if hasTestID(bare, "goal-incomplete-filter") {
+		t.Errorf("the Incomplete filter is offered with nothing required:\n%s", renderNode(findByTestID(t, bare, "goal-filter-bar")))
+	}
+	stale := getPage(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := goalRowTitlesIn(goalListRowsIn(stale), goals...), goalRowTitlesIn(goalListRowsIn(bare), goals...); len(want) != 2 || !slices.Equal(got, want) {
+		t.Errorf("incomplete=1 with nothing required: rows = %q, want the bare list's %q", got, want)
+	}
+	if hasTestID(stale, "goal-filters-clear") {
+		t.Errorf("incomplete=1 with nothing required offers Clear:\n%s", renderNode(findByTestID(t, stale, "goal-filter-bar")))
+	}
+	if hasTestID(stale, "no-goals") {
+		t.Errorf("incomplete=1 with nothing required says %q", textOf(findByTestID(t, stale, "no-goals")))
+	}
+}
+
+// The Goal list offers its Incomplete filter, the chip "Missing required
+// values", while a Dimension or a Field is required and not Retired (#663).
+func TestGoalListOffersIncompleteFilterOnlyWhileSomethingIsRequired(t *testing.T) {
+	t.Parallel()
+
+	offered := func(t *testing.T, client *http.Client, base string) bool {
+		t.Helper()
+		page := getPage(t, client, base+"/goals")
+		if !hasTestID(page, "goal-incomplete-filter") {
+			return false
+		}
+		if chip := findByTestID(t, page, "goal-incomplete-filter").Parent; textOf(chip) != "Missing required values" {
+			t.Errorf("the Incomplete filter's chip reads %q, want %q", textOf(chip), "Missing required values")
+		}
+		return true
+	}
+
+	t.Run("a required Dimension", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t, "boss@example.com")
+		boss := h.SignIn("boss@example.com")
+		pillar := h.CreateDimension(boss, "Pillar", "Growth")
+		h.SetDimensionRequired(boss, pillar, true)
+		ts := newServer(t, h)
+		client := signInClient(t, ts.URL, "boss@example.com")
+
+		if !offered(t, client, ts.URL) {
+			t.Errorf("the Incomplete filter isn't offered with Pillar required")
+		}
+		if err := h.Service.RetireDimension(t.Context(), boss.ID, pillar.ID); err != nil {
+			t.Fatalf("RetireDimension: %v", err)
+		}
+		if offered(t, client, ts.URL) {
+			t.Errorf("the Incomplete filter is offered once the required Pillar is Retired")
+		}
+	})
+	t.Run("only a required Field", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t, "boss@example.com")
+		boss := h.SignIn("boss@example.com")
+		h.CreateDimension(boss, "Pillar", "Growth")
+		h.SetFieldRequired(boss, h.CreateField(boss, "Budget", domain.FieldNumber, "USD"), true)
+		ts := newServer(t, h)
+		client := signInClient(t, ts.URL, "boss@example.com")
+
+		if !offered(t, client, ts.URL) {
+			t.Errorf("the Incomplete filter isn't offered with Budget required")
+		}
+	})
 }
 
 // A download that would include a value containing a semicolon, named so
