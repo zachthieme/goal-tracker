@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -66,10 +65,6 @@ type delegatedGoal struct {
 // and what was sent in it (goalPageForm); anything else is the refusal page,
 // headed heading and linking Back to the Goal (answerRefused).
 func (s *Server) answerDelegateCommand(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, heading string, err error) {
-	if errors.Is(err, domain.ErrCycle) { // #701
-		s.serverError(w, r, "could not update delegates", err)
-		return
-	}
 	if err != nil {
 		s.answerRefused(w, r, refused{Err: err, Heading: heading, Back: goalPath(goalID), Form: s.goalPageForm(goalID, current, formDelegates)})
 		return
