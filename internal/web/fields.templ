@@ -16,7 +16,8 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 // optional again, from its row (CONTEXT.md: Incomplete), and retires it
 // there; a Retired Field stays listed, flagged retired, with a button to
 // restore it and neither the Required mark nor its control, which come back
-// with the setting it had once it is restored (CONTEXT.md: Retired). It sits in
+// with the setting it had once it is restored (CONTEXT.md: Retired). Define a
+// Field just refused comes back open, as it was left, saying why. It sits in
 // the flat frame: its title in the page header, and the rest plain sections
 // (DESIGN.md § Fields page).
 //
@@ -27,24 +28,29 @@ templ fieldsPage(current *domain.Account, fields []domain.Field) {
 		@fieldsStyles()
 		<p class="muted">The values typed directly on a Goal to describe it. A Field never filters, groups or adds up Goals.</p>
 		if admin {
-			<details>
+			{{ refused, open := formRefusalFor(ctx, "create-field", 0) }}
+			{{ fieldType := refusedChoice(refused, "type", domain.FieldNumber) }}
+			<details open?={ open }>
 				<summary class="btn primary">Define a Field</summary>
 				<form data-testid="create-field" class="fd-new" method="post" action="/fields">
 					<h2>Define a Field</h2>
+					if refused.Reason != "" {
+						<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
+					}
 					<label class="field">
 						<span>Name</span>
-						<input type="text" name="name" required/>
+						<input type="text" name="name" value={ refused.typed("name") } required/>
 					</label>
 					<fieldset class="fd-types">
 						<legend>It holds <span class="hint">— this can't change later</span></legend>
-						<label><input type="radio" name="type" value={ domain.FieldNumber } checked/> a number</label>
-						<label><input type="radio" name="type" value={ domain.FieldShortText }/> a short text</label>
-						<label><input type="radio" name="type" value={ domain.FieldLongText }/> a long text</label>
-						<label><input type="radio" name="type" value={ domain.FieldDate }/> a date</label>
+						<label><input type="radio" name="type" value={ domain.FieldNumber } checked?={ fieldType == domain.FieldNumber }/> a number</label>
+						<label><input type="radio" name="type" value={ domain.FieldShortText } checked?={ fieldType == domain.FieldShortText }/> a short text</label>
+						<label><input type="radio" name="type" value={ domain.FieldLongText } checked?={ fieldType == domain.FieldLongText }/> a long text</label>
+						<label><input type="radio" name="type" value={ domain.FieldDate } checked?={ fieldType == domain.FieldDate }/> a date</label>
 					</fieldset>
 					<label class="field">
 						<span>Unit <span class="hint">— optional, numbers only (e.g. $, FTE)</span></span>
-						<input type="text" name="unit"/>
+						<input type="text" name="unit" value={ refused.typed("unit") }/>
 					</label>
 					<div>
 						<button type="submit" class="btn primary">Create Field</button>

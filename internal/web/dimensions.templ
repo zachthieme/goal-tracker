@@ -19,7 +19,9 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // Fixed and an Extendable list, and to add, rename, and retire values
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
 // Retired Dimension stays listed, flagged retired, without the Required mark
-// or its control (CONTEXT.md: Retired). refusal, when
+// or its control (CONTEXT.md: Retired). A form just refused for what was
+// typed — Define a Dimension, or Add value or a rename behind Edit — comes
+// back open, as it was left, saying why. refusal, when
 // set, names the Goals that kept a Dimension from switching to one value;
 // toast, when set, offers Undo for the value just retired. It sits in the flat
 // frame: its title in the page header, and the rest plain sections (DESIGN.md
@@ -36,27 +38,33 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 		}
 		@toastNotice(toast)
 		if admin {
-			<details data-testid="create-dimension">
+			{{ refused, open := formRefusalFor(ctx, "create-dimension", 0) }}
+			{{ selection := refusedChoice(refused, "selection", domain.SelectionOne) }}
+			{{ list := refusedChoice(refused, "list", domain.ListFixed) }}
+			<details data-testid="create-dimension" open?={ open }>
 				<summary class="btn primary">Define a Dimension</summary>
 				<form class="dm-new dm-form" method="post" action="/dimensions">
 					<h2>Define a Dimension</h2>
+					if refused.Reason != "" {
+						<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
+					}
 					<label class="field">
 						<span>Name</span>
-						<input type="text" name="name" required/>
+						<input type="text" name="name" value={ refused.typed("name") } required/>
 					</label>
 					<label class="field">
 						<span>Values <span class="hint">— comma-separated</span></span>
-						<input type="text" name="values" required/>
+						<input type="text" name="values" value={ refused.typed("values") } required/>
 					</label>
 					<fieldset class="dm-selection">
 						<legend>Each Goal takes</legend>
-						<label><input type="radio" name="selection" value={ domain.SelectionOne } checked/> one value</label>
-						<label><input type="radio" name="selection" value={ domain.SelectionSeveral }/> several values</label>
+						<label><input type="radio" name="selection" value={ domain.SelectionOne } checked?={ selection == domain.SelectionOne }/> one value</label>
+						<label><input type="radio" name="selection" value={ domain.SelectionSeveral } checked?={ selection == domain.SelectionSeveral }/> several values</label>
 					</fieldset>
 					<fieldset class="dm-selection">
 						<legend>Its list is</legend>
-						<label><input type="radio" name="list" value={ domain.ListFixed } checked/> Fixed — only Admins add values</label>
-						<label><input type="radio" name="list" value={ domain.ListExtendable }/> Extendable — anyone setting a Goal's value can add one</label>
+						<label><input type="radio" name="list" value={ domain.ListFixed } checked?={ list == domain.ListFixed }/> Fixed — only Admins add values</label>
+						<label><input type="radio" name="list" value={ domain.ListExtendable } checked?={ list == domain.ListExtendable }/> Extendable — anyone setting a Goal's value can add one</label>
 					</fieldset>
 					<div>
 						<button type="submit" class="btn primary">Create Dimension</button>
@@ -69,7 +77,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 				<li data-testid="no-dimensions" class="dm-item muted">No Dimensions yet.</li>
 			}
 			for _, d := range dims {
-				<li data-testid="dimension" class="dm-item">
+				<li data-testid="dimension" class="dm-item" id={ fmt.Sprintf("dimension-%d", d.ID) }>
 					<h3>
 						{ d.Name }
 						if d.Retired {
@@ -139,7 +147,7 @@ templ dimensionValues(d domain.Dimension) {
 // follows offers Undo; retiring the Dimension and Merge ask for confirmation
 // first.
 templ dimensionEdit(d domain.Dimension) {
-	<details class="dm-edit">
+	<details class="dm-edit" data-testid="dimension-edit" open?={ refusalOpensDimensionEdit(ctx, d) }>
 		<summary class="btn sm">Edit</summary>
 		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/selection", d.ID)) }>
 			if d.TakesSeveral() {
@@ -172,7 +180,7 @@ templ dimensionEdit(d domain.Dimension) {
 		}
 		<ul class="dm-rows">
 			for _, v := range d.Values {
-				<li>
+				<li id={ fmt.Sprintf("dimension-value-%d", v.ID) }>
 					@moveValue(v, domain.MoveUp, "↑")
 					@moveValue(v, domain.MoveDown, "↓")
 					if v.Retired {
@@ -181,9 +189,15 @@ templ dimensionEdit(d domain.Dimension) {
 							<button type="submit" class="btn sm">Restore</button>
 						</form>
 					} else {
-						<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) }>
-							<input type="text" name="value" value={ v.Value } aria-label={ "Rename " + v.Value } required/>
+						{{ refused, open := formRefusalFor(ctx, "rename-dimension-value", v.ID) }}
+						{{ name := v.Value }}
+						if open {
+							{{ name = refused.typed("value") }}
+						}
+						<form data-testid="rename-dimension-value" class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) }>
+							<input type="text" name="value" value={ name } aria-label={ "Rename " + v.Value } required { refused.controlAttrs("value")... }/>
 							<button type="submit" class="btn sm">Rename</button>
+							@dimensionFormError(refused, "value")
 						</form>
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) }>
 							<button type="submit" class="btn danger sm">Retire</button>
@@ -198,9 +212,11 @@ templ dimensionEdit(d domain.Dimension) {
 		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/sort", d.ID)) }>
 			<button type="submit" class="btn sm">Sort alphabetically</button>
 		</form>
-		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
-			<input type="text" name="value" placeholder="New value" aria-label="Add a value" required/>
+		{{ refused, _ := formRefusalFor(ctx, "add-dimension-value", d.ID) }}
+		<form data-testid="add-dimension-value" class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
+			<input type="text" name="value" value={ refused.typed("value") } placeholder="New value" aria-label="Add a value" required { refused.controlAttrs("value")... }/>
 			<button type="submit" class="btn sm">Add value</button>
+			@dimensionFormError(refused, "value")
 		</form>
 		if d.Retired {
 			<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/restore", d.ID)) }>
@@ -212,6 +228,14 @@ templ dimensionEdit(d domain.Dimension) {
 			</form>
 		}
 	</details>
+}
+
+// dimensionFormError is why the just-refused form's input was refused,
+// beside its control, which names it; nothing when it wasn't.
+templ dimensionFormError(refused formRefusal, input string) {
+	if reason := refused.Problems[input]; reason != "" {
+		<span data-testid="form-error" class="alert r" role="alert" id={ refused.errorID(input) }>{ reason }</span>
+	}
 }
 
 // moveValue is the button that moves v one place up or down its Dimension's
@@ -255,7 +279,8 @@ templ dimensionsStyles() {
 		.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
 		.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 		.dm-rows form{margin:0}
-		.dm-row{display:flex;gap:8px;align-items:center;margin:0}
+		.dm-row{display:flex;gap:8px;align-items:center;margin:0;flex-wrap:wrap}
+		.dm-row>.alert{flex-basis:100%}
 		.dm-selection{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}
 		.dm-selection legend{padding:0;margin-bottom:4px}
 	</style>
