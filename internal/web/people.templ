@@ -6,6 +6,8 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // the email it picks. It shows the person's Label and then their email: a
 // picker can't nest person's disclosure, and the email tells apart people who
 // share a Name, as the Scope select's LongLabel does.
+//
+//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ personSearchResults(matches []domain.Account) {
 	if len(matches) == 0 {
 		<li data-testid="person-no-results" class="muted small">No one matches.</li>
