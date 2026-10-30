@@ -63,7 +63,7 @@ func TestReportBlocksCarryTheirExceptionReasonsIntoAPublication(t *testing.T) {
 	}
 
 	pub := h.PublishReport(boss, def)
-	frozen := h.PublicationFact(pub, domain.ReportFactExceptions).Blocks
+	frozen := h.PublicationFact(pub, domain.ReportFactExceptions).Value.(domain.ReportExceptionsFact).Blocks
 	if len(frozen) != len(r.Exceptions) {
 		t.Fatalf("publication froze %d blocks, want the draft's %d", len(frozen), len(r.Exceptions))
 	}

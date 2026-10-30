@@ -200,8 +200,8 @@ templ reportDraftPage(current *domain.Account, v reportDraftView) {
 					<p data-testid="report-meta" class="muted">{ draftMeta(r, v.Panel) }</p>
 				</header>
 				for _, f := range facts {
-					if f.Kind == domain.ReportFactIntroduction {
-						@reportIntroduction(f)
+					if intro, ok := f.Value.(domain.ReportIntroductionFact); ok {
+						@reportIntroduction(intro)
 					}
 				}
 				@healthSummary(r.HealthCounts())
@@ -836,8 +836,8 @@ templ reportContent(facts []domain.ReportFact, d discussion) {
 // they hold none.
 func reportHealthCounts(facts []domain.ReportFact) domain.HealthCounts {
 	for _, f := range facts {
-		if f.Kind == domain.ReportFactHealthCounts {
-			return f.HealthCounts
+		if counts, ok := f.Value.(domain.ReportHealthCountsFact); ok {
+			return counts.Counts
 		}
 	}
 	return domain.HealthCounts{}
@@ -872,8 +872,8 @@ templ healthSummary(c domain.HealthCounts) {
 // having none.
 templ reportLead(facts []domain.ReportFact) {
 	for _, f := range facts {
-		if f.Kind == domain.ReportFactMovement {
-			@reportMovement(f)
+		if movement, ok := f.Value.(domain.ReportMovementFact); ok {
+			@reportMovement(f.Label, movement.Line)
 		}
 	}
 }
@@ -881,12 +881,12 @@ templ reportLead(facts []domain.ReportFact) {
 // reportMovement is the line counting the Goals that moved since the Report's
 // baseline, its previous publication or a date ("Since the previous
 // publication: 2 turned Red · 1 back to Green").
-templ reportMovement(f domain.ReportFact) {
+templ reportMovement(label string, m domain.ReportMovementLine) {
 	<p data-testid="report-movement">
-		if parts := f.Movement.Parts; len(parts) > 0 {
-			<strong>{ f.Label + " " + reportSince(f.Movement.Since) + ":" }</strong>{ " " + strings.Join(parts, " · ") }
+		if parts := m.Parts; len(parts) > 0 {
+			<strong>{ label + " " + reportSince(m.Since) + ":" }</strong>{ " " + strings.Join(parts, " · ") }
 		} else {
-			{ "No movement since " + reportSince(f.Movement.Since) + "." }
+			{ "No movement since " + reportSince(m.Since) + "." }
 		}
 	</p>
 }
@@ -905,14 +905,15 @@ func reportSince(s domain.ReportSince) string {
 // in the company's timezone (loc).
 templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
 	for _, f := range facts {
-		if f.Kind == domain.ReportFactByline {
+		if byline, ok := f.Value.(domain.ReportBylineFact); ok {
+			{{ b := byline.Byline }}
 			<p data-testid="report-published" class="muted">
-				{ f.Label + " " + showTimeYear(f.Byline.PublishedAt, loc) + " by " }
-				@person(f.Byline.PublishedBy)
-				if words := f.Byline.Since.Words; words != "" {
-					{ " · changes since " + words + ", " }{ showTimeYear(f.Byline.Since.At, loc) }
+				{ f.Label + " " + showTimeYear(b.PublishedAt, loc) + " by " }
+				@person(b.PublishedBy)
+				if words := b.Since.Words; words != "" {
+					{ " · changes since " + words + ", " }{ showTimeYear(b.Since.At, loc) }
 				} else {
-					{ " · changes since " }{ showDateYear(f.Byline.Since.At) }
+					{ " · changes since " }{ showDateYear(b.Since.At) }
 				}
 			</p>
 		}
@@ -924,8 +925,8 @@ templ publishedLine(facts []domain.ReportFact, loc *time.Location) {
 // Active"), from its Selection fact, when it has one.
 templ publicationSelection(facts []domain.ReportFact) {
 	for _, f := range facts {
-		if f.Kind == domain.ReportFactSelection {
-			<p data-testid="report-selection" class="muted">{ f.Label + ": " + f.Text }</p>
+		if selection, ok := f.Value.(domain.ReportSelectionFact); ok {
+			<p data-testid="report-selection" class="muted">{ f.Label + ": " + selection.Text }</p>
 		}
 	}
 }
@@ -960,7 +961,7 @@ var reportGoalFacts = []domain.ReportFactKind{domain.ReportFactExceptions, domai
 // Goals and those about them.
 func splitReportGoals(facts []domain.ReportFact) (story, goals []domain.ReportFact) {
 	for _, f := range facts {
-		if slices.Contains(reportGoalFacts, f.Kind) {
+		if slices.Contains(reportGoalFacts, f.Kind()) {
 			goals = append(goals, f)
 		} else {
 			story = append(story, f)
@@ -973,13 +974,13 @@ func splitReportGoals(facts []domain.ReportFact) (story, goals []domain.ReportFa
 // exceptions or On track.
 func reportSelectsGoals(facts []domain.ReportFact) bool {
 	return slices.ContainsFunc(facts, func(f domain.ReportFact) bool {
-		return f.Kind == domain.ReportFactExceptions || f.Kind == domain.ReportFactOnTrack
+		return f.Kind() == domain.ReportFactExceptions || f.Kind() == domain.ReportFactOnTrack
 	})
 }
 
 // withoutReportFacts is facts without those of the given kinds.
 func withoutReportFacts(facts []domain.ReportFact, kinds ...domain.ReportFactKind) []domain.ReportFact {
-	return slices.DeleteFunc(slices.Clone(facts), func(f domain.ReportFact) bool { return slices.Contains(kinds, f.Kind) })
+	return slices.DeleteFunc(slices.Clone(facts), func(f domain.ReportFact) bool { return slices.Contains(kinds, f.Kind()) })
 }
 
 // reportFact is one fact of a Report's body. Each exception is counted under
@@ -988,44 +989,44 @@ func withoutReportFacts(facts []domain.ReportFact, kinds ...domain.ReportFactKin
 // On track is one table row with its Health, title, Owner, and due date. On a
 // publication, each Goal carries its discussion.
 templ reportFact(f domain.ReportFact, d discussion) {
-	switch f.Kind {
-		case domain.ReportFactActionItems:
-			@reportActionItems(f.ActionItems, d)
-		case domain.ReportFactIntroduction:
-			@reportIntroduction(f)
-		case domain.ReportFactNarrative:
-			@reportNarrative(f.Narrative)
-		case domain.ReportFactExceptions:
+	switch v := f.Value.(type) {
+		case domain.ReportActionItemsFact:
+			@reportActionItems(v.Items, d)
+		case domain.ReportIntroductionFact:
+			@reportIntroduction(v)
+		case domain.ReportNarrativeFact:
+			@reportNarrative(v.Sections)
+		case domain.ReportExceptionsFact:
 			<section data-testid="needs-attention" class="rp-exceptions">
-				<h2>{ f.Label }{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(f.Blocks)) }</span></h2>
-				for _, b := range f.Blocks {
+				<h2>{ f.Label }{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(v.Blocks)) }</span></h2>
+				for _, b := range v.Blocks {
 					@reportBlock(b, d)
 				}
 			</section>
-		case domain.ReportFactOnTrack:
-			@reportOnTrack(f, d)
-		case domain.ReportFactMembershipChanges:
-			@membershipChanges(f)
+		case domain.ReportOnTrackFact:
+			@reportOnTrack(f.Label, v, d)
+		case domain.ReportMembershipChangesFact:
+			@membershipChanges(f.Label, v)
 	}
 }
 
 // reportIntroduction is the Report Definition's Introduction, read-only; it is
 // edited only with the definition.
-templ reportIntroduction(f domain.ReportFact) {
-	<p data-testid="report-introduction" class="rp-intro">{ f.Text }</p>
+templ reportIntroduction(intro domain.ReportIntroductionFact) {
+	<p data-testid="report-introduction" class="rp-intro">{ intro.Text }</p>
 }
 
 // reportOnTrack is the table of a Report's Goals On track, one row each.
-templ reportOnTrack(f domain.ReportFact, d discussion) {
+templ reportOnTrack(label string, onTrack domain.ReportOnTrackFact, d discussion) {
 	<section data-testid="on-track-section">
-		<h2>{ f.Label }</h2>
+		<h2>{ label }</h2>
 		<div class="rp-scroll">
 			<table data-testid="on-track" class="rp-track">
 				<thead>
 					<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
 				</thead>
 				<tbody>
-					for _, sg := range f.Lines {
+					for _, sg := range onTrack.Lines {
 						<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
 							<td class="rp-track-health">
 								@reportHealthBadge("selected-health", sg.Health, d)
@@ -1062,16 +1063,16 @@ templ reportOnTrack(f domain.ReportFact, d discussion) {
 // membershipChanges lists the Goals that entered or left the Report since its
 // Definition's latest publication, each linking to the Goal, with Added or
 // Left and why.
-templ membershipChanges(f domain.ReportFact) {
+templ membershipChanges(label string, changes domain.ReportMembershipChangesFact) {
 	<section data-testid="membership-changes">
-		<h2>{ f.Label }</h2>
+		<h2>{ label }</h2>
 		<div class="rp-scroll">
 			<table>
 				<thead>
 					<tr><th>Goal</th><th>Change</th><th>Why</th></tr>
 				</thead>
 				<tbody>
-					for _, c := range f.MembershipChanges {
+					for _, c := range changes.Changes {
 						<tr data-testid="membership-change" id={ fmt.Sprintf("membership-%d", c.Goal.ID) }>
 							<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.Goal.ID)) }>{ c.Goal.Title }</a></td>
 							<td data-testid="membership-direction">{ c.Direction }</td>
@@ -1330,8 +1331,8 @@ templ reportBlock(b domain.ReportBlockFacts, d discussion) {
 // reportBlockHealth is an exception block's Health, from its head fact.
 func reportBlockHealth(b domain.ReportBlockFacts) string {
 	for _, f := range b.Facts {
-		if f.Kind == domain.ReportFactBlockHead {
-			return f.Head.Health
+		if head, ok := f.Value.(domain.ReportBlockHeadFact); ok {
+			return head.Head.Health
 		}
 	}
 	return ""
@@ -1361,7 +1362,7 @@ func reportBlockRuns(facts []domain.ReportFact) []reportBlockRun {
 	var runs []reportBlockRun
 	for _, f := range facts {
 		layout := reportBlockLoose
-		switch f.Kind {
+		switch f.Kind() {
 		case domain.ReportFactWhyItMatters, domain.ReportFactStatus:
 			layout = reportBlockAbout
 		case domain.ReportFactPathToGreen, domain.ReportFactAskForHelp:
@@ -1383,75 +1384,76 @@ func reportBlockRuns(facts []domain.ReportFact) []reportBlockRun {
 // Path to Green.
 func reportPathOverdue(facts []domain.ReportFact) bool {
 	return slices.ContainsFunc(facts, func(f domain.ReportFact) bool {
-		return f.Kind == domain.ReportFactPathToGreen && f.PathToGreen.Overdue
+		path, ok := f.Value.(domain.ReportPathToGreenFact)
+		return ok && path.Path.Overdue
 	})
 }
 
 // reportBlockFact is one of an exception block's facts, under its label.
 templ reportBlockFact(f domain.ReportFact, d discussion) {
-	switch f.Kind {
-		case domain.ReportFactBlockHead:
-			@reportBlockHead(f.Head, d)
-		case domain.ReportFactChanged:
+	switch v := f.Value.(type) {
+		case domain.ReportBlockHeadFact:
+			@reportBlockHead(v.Head, d)
+		case domain.ReportChangedFact:
 			<p data-testid="report-changes" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
-				for i, c := range f.Changes {
+				for i, c := range v.Changes {
 					if i > 0 {
 						{ " · " }
 					}
 					<span data-testid="report-change">{ c }</span>
 				}
 			</p>
-		case domain.ReportFactScheduleConflict:
+		case domain.ReportScheduleConflictFact:
 			<p data-testid="report-schedule-conflicts" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
-				for i, g := range f.ScheduleConflictGroups {
+				for i, g := range v.Groups {
 					if i > 0 {
 						{ "; " }
 					}
 					@reportScheduleConflictGroup(g)
 				}
 			</p>
-		case domain.ReportFactContributesTo:
+		case domain.ReportContributesToFact:
 			<p data-testid="report-contributes-to" class="small">
 				<strong>{ f.Label + ":" }</strong>{ " " }
-				@linkedGoals(f.Goals, d)
+				@linkedGoals(v.Goals, d)
 			</p>
-		case domain.ReportFactFields:
-			@reportFields(f.Fields, d.dates())
-		case domain.ReportFactWhyItMatters:
+		case domain.ReportFieldsFact:
+			@reportFields(v.Values, d.dates())
+		case domain.ReportWhyItMattersFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
-				<dd data-testid="report-why-it-matters">{ f.Text }</dd>
+				<dd data-testid="report-why-it-matters">{ v.Text }</dd>
 			</div>
-		case domain.ReportFactStatus:
+		case domain.ReportStatusFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
-				<dd data-testid="report-status">{ f.Text }</dd>
+				<dd data-testid="report-status">{ v.Text }</dd>
 			</div>
-		case domain.ReportFactPathToGreen:
-			{{ path := f.PathToGreen }}
+		case domain.ReportPathToGreenFact:
+			{{ path := v.Path }}
 			<p data-testid="report-path-to-green">
 				<strong class="rp-tint-label">{ f.Label + ":" }</strong> { path.Plan } ({ path.ByWords } { showDateYear(path.By) }@reportBackToGreenPrior(path))
 				if path.Overdue {
 					{ " " }<strong data-testid="path-overdue" class="badge r">{ path.OverdueWords }</strong>
 				}
 			</p>
-		case domain.ReportFactAskForHelp:
+		case domain.ReportAskForHelpFact:
 			<p data-testid="report-ask-for-help">
 				<strong>{ f.Label }</strong>
-				if f.Ask.Addressee != nil {
-					{ " of " }@person(*f.Ask.Addressee)
+				if v.Ask.Addressee != nil {
+					{ " of " }@person(*v.Ask.Addressee)
 				} else {
-					{ " · " + f.Ask.Words }
+					{ " · " + v.Ask.Words }
 				}
 			</p>
-		case domain.ReportFactMilestones:
+		case domain.ReportMilestonesFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
 				<dd>
 					<ul data-testid="report-milestones">
-						for _, m := range f.Milestones {
+						for _, m := range v.Marks {
 							<li data-testid="report-milestone">
 								if m.Mark != domain.MilestoneMarkNone {
 									@milestoneMarkBadge(m.Mark)
@@ -1479,12 +1481,12 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 					</ul>
 				</dd>
 			</div>
-		case domain.ReportFactMetrics:
+		case domain.ReportMetricsFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
 				<dd>
 					<ul data-testid="report-metrics">
-						for _, m := range f.Metrics {
+						for _, m := range v.Metrics {
 							<li data-testid="report-metric">
 								{ m.Metric.Name }:
 								{ m.Reading(fmtNum) }
@@ -1495,32 +1497,32 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 					</ul>
 				</dd>
 			</div>
-		case domain.ReportFactRolledUp:
+		case domain.ReportRolledUpFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
 				<dd data-testid="report-rollup">
-					if f.RolledUp.Present {
-						@reportHealthBadge("rollup-health", f.RolledUp.Health, d)
-						if f.RolledUp.Count != "" {
+					if v.RolledUp.Present {
+						@reportHealthBadge("rollup-health", v.RolledUp.Health, d)
+						if v.RolledUp.Count != "" {
 							{ "· " }
 						}
 					}
-					if f.RolledUp.Count != "" {
-						<span data-testid="report-rollup-count">{ f.RolledUp.Count }</span>
+					if v.RolledUp.Count != "" {
+						<span data-testid="report-rollup-count">{ v.RolledUp.Count }</span>
 					}
 				</dd>
 			</div>
-		case domain.ReportFactSupportedBy:
+		case domain.ReportSupportedByFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
 				<dd data-testid="report-behind-it">
-					@linkedGoals(f.Goals, d)
+					@linkedGoals(v.Goals, d)
 				</dd>
 			</div>
-		case domain.ReportFactExplanation:
+		case domain.ReportExplanationFact:
 			<div>
 				<dt class="label">{ f.Label }</dt>
-				<dd data-testid="report-health-explanation">{ f.Text }</dd>
+				<dd data-testid="report-health-explanation">{ v.Text }</dd>
 			</div>
 	}
 }

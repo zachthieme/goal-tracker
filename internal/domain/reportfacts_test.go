@@ -14,7 +14,7 @@ import (
 func factOutline(facts []domain.ReportFact) []string {
 	out := make([]string, 0, len(facts))
 	for _, f := range facts {
-		out = append(out, string(f.Kind)+": "+f.Label)
+		out = append(out, string(f.Kind())+": "+f.Label)
 	}
 	return out
 }
@@ -25,7 +25,7 @@ func factOfKind(t *testing.T, facts []domain.ReportFact, kind domain.ReportFactK
 	t.Helper()
 	var found []domain.ReportFact
 	for _, f := range facts {
-		if f.Kind == kind {
+		if f.Kind() == kind {
 			found = append(found, f)
 		}
 	}
@@ -37,7 +37,7 @@ func factOfKind(t *testing.T, facts []domain.ReportFact, kind domain.ReportFactK
 
 // isFact matches a fact of kind, for slices.ContainsFunc and its kin.
 func isFact(kind domain.ReportFactKind) func(domain.ReportFact) bool {
-	return func(f domain.ReportFact) bool { return f.Kind == kind }
+	return func(f domain.ReportFact) bool { return f.Kind() == kind }
 }
 
 var (
@@ -97,7 +97,7 @@ func TestPublicationFactsSayWhatChangesAreReadSince(t *testing.T) {
 
 	r := factsReport()
 	facts := domain.PublicationFacts(r, factsBoss, factsAsOf, "")
-	byline := factOfKind(t, facts, domain.ReportFactByline).Byline
+	byline := factOfKind(t, facts, domain.ReportFactByline).Value.(domain.ReportBylineFact).Byline
 	if byline.PublishedBy != factsBoss || !byline.PublishedAt.Equal(factsAsOf) {
 		t.Errorf("byline = %+v, want published by boss at %v", byline, factsAsOf)
 	}
@@ -107,18 +107,18 @@ func TestPublicationFactsSayWhatChangesAreReadSince(t *testing.T) {
 	if got, want := byline.Since.At, r.Previous.PublishedAt; !got.Equal(want) {
 		t.Errorf("byline since at = %v, want the previous publication's %v", got, want)
 	}
-	movement := factOfKind(t, facts, domain.ReportFactMovement).Movement
+	movement := factOfKind(t, facts, domain.ReportFactMovement).Value.(domain.ReportMovementFact).Line
 	if movement.Since.Words != "the previous publication" || !slices.Equal(movement.Parts, []string{"1 turned Red"}) {
 		t.Errorf("movement = %+v, want 1 turned Red since the previous publication", movement)
 	}
 
 	r.Previous = domain.PreviousPublication{}
 	facts = domain.PublicationFacts(r, factsBoss, factsAsOf, "")
-	since := factOfKind(t, facts, domain.ReportFactByline).Byline.Since
+	since := factOfKind(t, facts, domain.ReportFactByline).Value.(domain.ReportBylineFact).Byline.Since
 	if since.Words != "" || !since.At.Equal(r.Baseline) {
 		t.Errorf("byline since = %+v, want the baseline date and no words", since)
 	}
-	if got := factOfKind(t, facts, domain.ReportFactMovement).Movement.Since; got != since {
+	if got := factOfKind(t, facts, domain.ReportFactMovement).Value.(domain.ReportMovementFact).Line.Since; got != since {
 		t.Errorf("movement since = %+v, want the byline's %+v", got, since)
 	}
 }
@@ -138,7 +138,7 @@ func TestReportFactsLeaveOutWhatTheReportLacks(t *testing.T) {
 	if got, want := factOutline(r.Facts(factsAsOf)), []string{"health counts: Health", "on track: On track"}; !slices.Equal(got, want) {
 		t.Errorf("Report.Facts() of one one-line Goal = %q, want %q", got, want)
 	}
-	if got := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactHealthCounts).HealthCounts; got.Green != 1 {
+	if got := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactHealthCounts).Value.(domain.ReportHealthCountsFact).Counts; got.Green != 1 {
 		t.Errorf("health counts = %+v, want 1 Green", got)
 	}
 }
@@ -150,15 +150,15 @@ func TestReportFactsCarryEachBlockAsItsFacts(t *testing.T) {
 
 	r := factsReport()
 	r.Exceptions = []domain.ReportBlock{factsBlock()}
-	blocks := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactExceptions).Blocks
+	blocks := factOfKind(t, r.Facts(factsAsOf), domain.ReportFactExceptions).Value.(domain.ReportExceptionsFact).Blocks
 	if len(blocks) != 1 || blocks[0].GoalID != 4 {
 		t.Fatalf("blocks = %+v, want the one block, of Goal 4", blocks)
 	}
 	if got, want := blocks[0].Facts, r.Exceptions[0].Facts(factsAsOf); !reflect.DeepEqual(got, want) {
 		t.Errorf("block facts =\n%+v\nwant ReportBlock.Facts(asOf)\n%+v", got, want)
 	}
-	later := factOfKind(t, r.Facts(r.Exceptions[0].PathTargetDate), domain.ReportFactExceptions).Blocks[0].Facts
-	if factOfKind(t, later, domain.ReportFactPathToGreen).PathToGreen.Overdue {
+	later := factOfKind(t, r.Facts(r.Exceptions[0].PathTargetDate), domain.ReportFactExceptions).Value.(domain.ReportExceptionsFact).Blocks[0].Facts
+	if factOfKind(t, later, domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path.Overdue {
 		t.Errorf("block read as of its back-to-Green date is Overdue, want its facts read as of the Report's instant")
 	}
 }
@@ -167,7 +167,7 @@ func TestReportFactsCarryEachBlockAsItsFacts(t *testing.T) {
 func TestReportFactsHeadEachNarrativeSection(t *testing.T) {
 	t.Parallel()
 
-	got := factOfKind(t, factsReport().Facts(factsAsOf), domain.ReportFactNarrative).Narrative
+	got := factOfKind(t, factsReport().Facts(factsAsOf), domain.ReportFactNarrative).Value.(domain.ReportNarrativeFact).Sections
 	want := []domain.ReportNarrativeSection{{Heading: "Insights", Notes: []string{"Churn is seasonal."}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("narrative = %+v, want %+v", got, want)
@@ -250,7 +250,7 @@ func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
 	b := factsBlock()
 	asParent := domain.ReportScheduleConflict{AsParent: true, GoalID: 8, Title: "Lisbon office", Owner: factsBoss, Due: factsLater.AddDate(0, 1, 0)}
 	b.ScheduleConflicts = append(b.ScheduleConflicts, asParent)
-	got := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactScheduleConflict).ScheduleConflictGroups
+	got := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactScheduleConflict).Value.(domain.ReportScheduleConflictFact).Groups
 	if want := domain.ReportScheduleConflictGroups(b.ScheduleConflicts); !reflect.DeepEqual(got, want) || len(got) != 2 {
 		t.Errorf("Schedule conflict fact = %+v, want the two sides %+v", got, want)
 	}
@@ -262,7 +262,7 @@ func TestReportBlockFactsNameEachScheduleConflict(t *testing.T) {
 
 	b.ScheduleConflicts = nil
 	for _, f := range b.Facts(factsAsOf) {
-		if f.Kind == domain.ReportFactScheduleConflict {
+		if f.Kind() == domain.ReportFactScheduleConflict {
 			t.Errorf("a block in no Schedule conflict lists %+v", f)
 		}
 	}
@@ -313,7 +313,7 @@ func TestReportBlockFactsHeadReadsTheHealthFirst(t *testing.T) {
 	t.Parallel()
 
 	b := factsBlock()
-	head := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactBlockHead).Head
+	head := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head
 	want := domain.ReportBlockHead{
 		GoalID: 4, Health: domain.HealthRed, RunOffGreen: "3 wks", WasHealth: "was Green",
 		Title: "Launch in EU", Owner: factsBoss, Lifecycle: domain.LifecycleActive,
@@ -324,7 +324,7 @@ func TestReportBlockFactsHeadReadsTheHealthFirst(t *testing.T) {
 	}
 
 	b.PriorHealth, b.RunOffGreenWeeks = "", 0
-	if head := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactBlockHead).Head; head.WasHealth != "" || head.RunOffGreen != "" {
+	if head := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactBlockHead).Value.(domain.ReportBlockHeadFact).Head; head.WasHealth != "" || head.RunOffGreen != "" {
 		t.Errorf("head of an unchanged block = %+v, want no earlier Health and no Run off Green", head)
 	}
 }
@@ -343,7 +343,7 @@ func TestReportBlockFactsMarkAnOverduePathToGreen(t *testing.T) {
 	t.Parallel()
 
 	b := factsBlock()
-	path := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactPathToGreen).PathToGreen
+	path := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path
 	if path.Plan != "Hire counsel." || !path.By.Equal(b.PathTargetDate) || !path.Overdue ||
 		!slices.Equal(path.PriorDates, b.PriorPathTargetDates) || path.Slips != 2 {
 		t.Errorf("path = %+v, want Hire counsel. by %v, slipped twice, Overdue", path, b.PathTargetDate)
@@ -351,7 +351,7 @@ func TestReportBlockFactsMarkAnOverduePathToGreen(t *testing.T) {
 	if path.ByWords != "back to Green by" || path.OverdueWords != "Overdue" {
 		t.Errorf("path reads %q and %q, want back to Green by and Overdue", path.ByWords, path.OverdueWords)
 	}
-	if path := factOfKind(t, b.Facts(b.PathTargetDate), domain.ReportFactPathToGreen).PathToGreen; path.Overdue {
+	if path := factOfKind(t, b.Facts(b.PathTargetDate), domain.ReportFactPathToGreen).Value.(domain.ReportPathToGreenFact).Path; path.Overdue {
 		t.Errorf("path as of its own date = %+v, want not Overdue", path)
 	}
 }
@@ -380,12 +380,12 @@ func TestReportBlockFactsSayWhomItAsksForHelp(t *testing.T) {
 	t.Parallel()
 
 	b := factsBlock()
-	ask := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Ask
+	ask := factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Value.(domain.ReportAskForHelpFact).Ask
 	if ask.Addressee != nil || ask.Words != "no one above the Owner" {
 		t.Errorf("ask = %+v, want no one above the Owner", ask)
 	}
 	b.AskAddressee = &factsAda
-	ask = factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Ask
+	ask = factOfKind(t, b.Facts(factsAsOf), domain.ReportFactAskForHelp).Value.(domain.ReportAskForHelpFact).Ask
 	if ask.Addressee == nil || *ask.Addressee != factsAda || ask.Words != "" {
 		t.Errorf("ask = %+v, want of Ada and no words", ask)
 	}
@@ -399,23 +399,23 @@ func TestReportBlockFactsMarkMilestonesAndReadMetrics(t *testing.T) {
 	b := factsBlock()
 	facts := b.Facts(factsAsOf)
 	var marks []string
-	for _, m := range factOfKind(t, facts, domain.ReportFactMilestones).Milestones {
+	for _, m := range factOfKind(t, facts, domain.ReportFactMilestones).Value.(domain.ReportMilestonesFact).Marks {
 		marks = append(marks, m.Mark)
 	}
 	if want := []string{domain.MilestoneMarkOverdue, domain.MilestoneMarkNew}; !slices.Equal(marks, want) {
 		t.Errorf("marks = %q, want %q", marks, want)
 	}
 	asOf := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
-	if m := factOfKind(t, b.Facts(asOf), domain.ReportFactMilestones).Milestones[0]; m.Mark != domain.MilestoneMarkNone {
+	if m := factOfKind(t, b.Facts(asOf), domain.ReportFactMilestones).Value.(domain.ReportMilestonesFact).Marks[0]; m.Mark != domain.MilestoneMarkNone {
 		t.Errorf("Beta's mark on its own date = %q, want none", m.Mark)
 	}
 	b.Timezone = "Pacific/Kiritimati" // UTC+14: Mar 1 noon UTC is Mar 2 there
-	if m := factOfKind(t, b.Facts(asOf), domain.ReportFactMilestones).Milestones[0]; m.Mark != domain.MilestoneMarkOverdue {
+	if m := factOfKind(t, b.Facts(asOf), domain.ReportFactMilestones).Value.(domain.ReportMilestonesFact).Marks[0]; m.Mark != domain.MilestoneMarkOverdue {
 		t.Errorf("Beta's mark the day after its date in its zone = %q, want Overdue", m.Mark)
 	}
 
 	var readings []string
-	for _, m := range factOfKind(t, facts, domain.ReportFactMetrics).Metrics {
+	for _, m := range factOfKind(t, facts, domain.ReportFactMetrics).Value.(domain.ReportMetricsFact).Metrics {
 		readings = append(readings, m.Reading(func(f float64) string { return "n" }))
 		if m.AgainstWords != "against a target of" {
 			t.Errorf("%s reads %q its target, want against a target of", m.Metric.Name, m.AgainstWords)
@@ -433,18 +433,122 @@ func TestReportBlockFactsCarryTheRolledUpHealthAndExplanation(t *testing.T) {
 
 	b := factsBlock()
 	facts := b.Facts(factsAsOf)
-	rolled := factOfKind(t, facts, domain.ReportFactRolledUp).RolledUp
+	rolled := factOfKind(t, facts, domain.ReportFactRolledUp).Value.(domain.ReportRolledUpFact).RolledUp
 	if want := (domain.ReportRolledUp{Health: domain.HealthYellow, Present: true, Count: "1 of 3 Yellow"}); rolled != want {
 		t.Errorf("rolled up = %+v, want %+v", rolled, want)
 	}
-	if got := factOfKind(t, facts, domain.ReportFactExplanation).Text; got != "A child is recovering." {
+	if got := factOfKind(t, facts, domain.ReportFactExplanation).Value.(domain.ReportExplanationFact).Text; got != "A child is recovering." {
 		t.Errorf("explanation = %q", got)
 	}
 
 	b.RolledUp = domain.RolledUpHealth{}
 	for _, f := range b.Facts(factsAsOf) {
-		if f.Kind == domain.ReportFactExplanation || f.Kind == domain.ReportFactRolledUp {
-			t.Errorf("block with no Rolled-up Health lists %q", f.Kind)
+		if f.Kind() == domain.ReportFactExplanation || f.Kind() == domain.ReportFactRolledUp {
+			t.Errorf("block with no Rolled-up Health lists %q", f.Kind())
+		}
+	}
+}
+
+// A block with no Rolled-up Health, nothing set and no count line, still lists
+// the Goals behind it, Supported by, and no Rolled-up Health beside them.
+func TestReportBlockFactsListSupportedByWithoutARolledUpHealth(t *testing.T) {
+	t.Parallel()
+
+	b := domain.ReportBlock{
+		Goal:   domain.Goal{ID: 4, Title: "Growth", Owner: factsBoss, Lifecycle: domain.LifecycleActive},
+		Health: domain.HealthRed,
+		Behind: []domain.LinkedGoal{{GoalID: 6, Title: "Referral program"}},
+	}
+	facts := b.Facts(factsAsOf)
+	if slices.ContainsFunc(facts, isFact(domain.ReportFactRolledUp)) {
+		t.Errorf("block with no Rolled-up Health lists one: %q", factOutline(facts))
+	}
+	behind := factOfKind(t, facts, domain.ReportFactSupportedBy)
+	if goals := behind.Value.(domain.ReportSupportedByFact).Goals; behind.Label != "Supported by" || !reflect.DeepEqual(goals, b.Behind) {
+		t.Errorf("Supported by = %q %+v, want Supported by %+v", behind.Label, goals, b.Behind)
+	}
+}
+
+// reportFactValueOfKind is, for each kind of fact, a value of the type that
+// kind's facts hold.
+var reportFactValueOfKind = map[domain.ReportFactKind]domain.ReportFactValue{
+	domain.ReportFactByline:            domain.ReportBylineFact{},
+	domain.ReportFactSelection:         domain.ReportSelectionFact{},
+	domain.ReportFactHealthCounts:      domain.ReportHealthCountsFact{},
+	domain.ReportFactMovement:          domain.ReportMovementFact{},
+	domain.ReportFactActionItems:       domain.ReportActionItemsFact{},
+	domain.ReportFactIntroduction:      domain.ReportIntroductionFact{},
+	domain.ReportFactNarrative:         domain.ReportNarrativeFact{},
+	domain.ReportFactExceptions:        domain.ReportExceptionsFact{},
+	domain.ReportFactOnTrack:           domain.ReportOnTrackFact{},
+	domain.ReportFactMembershipChanges: domain.ReportMembershipChangesFact{},
+	domain.ReportFactBlockHead:         domain.ReportBlockHeadFact{},
+	domain.ReportFactChanged:           domain.ReportChangedFact{},
+	domain.ReportFactScheduleConflict:  domain.ReportScheduleConflictFact{},
+	domain.ReportFactContributesTo:     domain.ReportContributesToFact{},
+	domain.ReportFactFields:            domain.ReportFieldsFact{},
+	domain.ReportFactWhyItMatters:      domain.ReportWhyItMattersFact{},
+	domain.ReportFactStatus:            domain.ReportStatusFact{},
+	domain.ReportFactPathToGreen:       domain.ReportPathToGreenFact{},
+	domain.ReportFactAskForHelp:        domain.ReportAskForHelpFact{},
+	domain.ReportFactMilestones:        domain.ReportMilestonesFact{},
+	domain.ReportFactMetrics:           domain.ReportMetricsFact{},
+	domain.ReportFactRolledUp:          domain.ReportRolledUpFact{},
+	domain.ReportFactSupportedBy:       domain.ReportSupportedByFact{},
+	domain.ReportFactExplanation:       domain.ReportExplanationFact{},
+}
+
+// Each kind of fact holds a value of its own type, which names that kind;
+// every fact a publication and a block list holds one, and a fact holding
+// none is of no kind.
+func TestReportFactsHoldAValueOfTheirKindsType(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range domain.AllFactKinds {
+		v, ok := reportFactValueOfKind[kind]
+		if !ok {
+			t.Errorf("no value type listed for %q", kind)
+			continue
+		}
+		if v.Kind() != kind {
+			t.Errorf("%T is of kind %q, want %q", v, v.Kind(), kind)
+		}
+	}
+	if kind := (domain.ReportFact{}).Kind(); kind != "" {
+		t.Errorf("a fact holding no value is of kind %q, want none", kind)
+	}
+
+	green := domain.ReportBlock{Goal: domain.Goal{Title: "Cut churn", Owner: factsBoss}, Health: domain.HealthGreen}
+	lists := [][]domain.ReportFact{
+		domain.PublicationFacts(factsReport(), factsBoss, factsAsOf, "Team: Growth"),
+		factsBlock().Facts(factsAsOf),
+		green.Facts(factsAsOf),
+	}
+	seen := map[domain.ReportFactKind]bool{}
+	var check func([]domain.ReportFact)
+	check = func(facts []domain.ReportFact) {
+		for _, f := range facts {
+			if f.Value == nil {
+				t.Errorf("fact %q holds no value: %q", f.Label, factOutline(facts))
+				continue
+			}
+			seen[f.Kind()] = true
+			if want := reflect.TypeOf(reportFactValueOfKind[f.Kind()]); reflect.TypeOf(f.Value) != want {
+				t.Errorf("%q fact holds a %T, want a %v", f.Kind(), f.Value, want)
+			}
+			if ex, ok := f.Value.(domain.ReportExceptionsFact); ok {
+				for _, b := range ex.Blocks {
+					check(b.Facts)
+				}
+			}
+		}
+	}
+	for _, facts := range lists {
+		check(facts)
+	}
+	for _, kind := range domain.AllFactKinds {
+		if !seen[kind] {
+			t.Errorf("the test's facts hold no %q fact", kind)
 		}
 	}
 }

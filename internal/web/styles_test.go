@@ -1761,7 +1761,7 @@ func TestPublicationSplitsExceptionsFromOnTrackStyles(t *testing.T) {
 // that Health's tint, Ask for help with it; nothing else in a block is tinted,
 // and a Green Goal's block, or one only Check-in overdue, has no tinted box, on
 // the draft and the publication alike (#475,
-// TestReportBlockTintsOnlyAPathToGreenOverHTTP). The tints' colours are
+// TestReportBlockTintsOnlyAPathToGreen). The tints' colours are
 // TestReportBlockLabelColumnAndPathTintStyles.
 func TestReportBlockTintsOnlyAPathToGreenStyles(t *testing.T) {
 	t.Parallel()
@@ -1994,7 +1994,7 @@ func TestReportsListRowsStackAtPhoneWidthStyles(t *testing.T) {
 // 1280px, a Report card's head keeps its order: the badges drop under the
 // Health and title, left-aligned, rather than squeezing the title into a
 // narrow column beside them, and no rule reorders the head, on screen or on
-// the print page (#229, #453, TestReportCardHeadLeadsWithItsHealthOverHTTP).
+// the print page (#229, #453, TestReportCardHeadLeadsWithItsHealth).
 func TestReportCardHeadLeadsWithItsHealthStyles(t *testing.T) {
 	t.Parallel()
 
@@ -2176,7 +2176,7 @@ func TestPrintPageColoursOverdueMarksStyles(t *testing.T) {
 // matters and Status in a label column, and the Path to Green in a box tinted
 // in its Goal's Health, Red or Yellow, kept when printed. An overdue Path to
 // Green keeps its Health's tint, so an overdue Yellow one prints Yellow, not
-// Red (#478, TestPrintPageLaysOutTheGoalBlockAsOnScreenOverHTTP).
+// Red (#478, TestPrintPageLaysOutTheGoalBlockAsOnScreen).
 func TestPrintPageLaysOutTheGoalBlockAsOnScreenStyles(t *testing.T) {
 	t.Parallel()
 

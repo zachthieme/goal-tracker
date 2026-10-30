@@ -189,7 +189,7 @@ func TestReportOrgRuleFollowsAManagerChange(t *testing.T) {
 		t.Errorf("after the Manager changes, the draft selects %v, want %v", got, want)
 	}
 	second := h.PublishReport(org.vp, def)
-	assertMembershipChanges(t, byGoal(t, h.PublicationFact(second, domain.ReportFactMembershipChanges).MembershipChanges), map[int64]string{
+	assertMembershipChanges(t, byGoal(t, h.PublicationFact(second, domain.ReportFactMembershipChanges).Value.(domain.ReportMembershipChangesFact).Changes), map[int64]string{
 		org.goalOf[org.ida.ID].ID: "Added: " + domain.MembershipNowMatches,
 		org.goalOf[org.ian.ID].ID: "Left: " + domain.MembershipNoLongerMatches,
 	})

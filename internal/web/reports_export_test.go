@@ -23,3 +23,14 @@ func RenderPublicationContent(p domain.Publication, loc *time.Location) string {
 	}
 	return b.String()
 }
+
+// RenderPublicationPrint renders a publication's Print page as
+// handlePrintPublication does, without hover, so each person's first mention
+// reads Name (email), its times in loc, for the web_test package's tests.
+func RenderPublicationPrint(p domain.Publication, loc *time.Location) string {
+	var b strings.Builder
+	if err := publicationPrintPage(p, loc).Render(withoutHover(context.Background()), &b); err != nil {
+		panic(err)
+	}
+	return b.String()
+}

@@ -106,7 +106,8 @@ func section(r domain.Report, kind string) (domain.NarrativeSection, bool) {
 func publishedSection(pub domain.Publication, kind string) (domain.ReportNarrativeSection, bool) {
 	heading := domain.NarrativeSection{Kind: kind}.Heading()
 	for _, f := range pub.Facts {
-		for _, s := range f.Narrative {
+		narrative, _ := f.Value.(domain.ReportNarrativeFact)
+		for _, s := range narrative.Sections {
 			if s.Heading == heading {
 				return s, true
 			}
@@ -306,7 +307,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	}
 
 	pub := publish(t, h, boss, def, time.Time{})
-	narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Narrative
+	narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Value.(domain.ReportNarrativeFact).Sections
 	wins, ok := publishedSection(pub, domain.HighlightAccomplishment)
 	if !ok || len(narrative) != 1 || !slices.Equal(wins.Notes, []string{"EU is open for business.", "Invoices come next."}) ||
 		!slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
@@ -339,7 +340,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if g := h.PublicationFact(got, domain.ReportFactNarrative).Narrative; !reflect.DeepEqual(g, narrative) {
+	if g := h.PublicationFact(got, domain.ReportFactNarrative).Value.(domain.ReportNarrativeFact).Sections; !reflect.DeepEqual(g, narrative) {
 		t.Errorf("published narrative changed after re-curating\n got %+v\nwant %+v", g, narrative)
 	}
 }
@@ -375,7 +376,7 @@ func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
 	}
 
 	pub := publish(t, h, boss, def, time.Time{})
-	if narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Narrative; len(narrative) != 1 {
+	if narrative := h.PublicationFact(pub, domain.ReportFactNarrative).Value.(domain.ReportNarrativeFact).Sections; len(narrative) != 1 {
 		t.Fatalf("published narrative %+v, want only the Misses", narrative)
 	}
 	misses, ok := publishedSection(pub, domain.HighlightMiss)
