@@ -16,7 +16,7 @@ func TestCreateGoalIsProposedAndOwned(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 
-	g, err := h.Service.CreateGoal(context.Background(), domain.CreateGoalInput{
+	g, err := h.Service.CreateGoal(context.Background(), owner.ID, domain.CreateGoalInput{
 		Title:        "Cut checkout latency",
 		WhyItMatters: "Shoppers abandon slow carts; faster checkout lifts conversion.",
 		OwnerID:      owner.ID,
@@ -56,7 +56,7 @@ func TestCreateGoalRequiresTitleAndWhyItMatters(t *testing.T) {
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := h.Service.CreateGoal(context.Background(), in); !errors.Is(err, domain.ErrValidation) {
+			if _, err := h.Service.CreateGoal(context.Background(), owner.ID, in); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("err = %v, want ErrValidation", err)
 			}
 		})
@@ -281,7 +281,7 @@ func TestCreateGoalKeepsNothingWhenItsFirstRevisionFails(t *testing.T) {
 	ctx := context.Background()
 	h.FailWrites(testsupport.Insert, "why_it_matters_revisions")
 
-	if _, err := h.Service.CreateGoal(ctx, domain.CreateGoalInput{
+	if _, err := h.Service.CreateGoal(ctx, owner.ID, domain.CreateGoalInput{
 		Title:        "Ship v2",
 		WhyItMatters: "Customers wait too long for v2.",
 		OwnerID:      owner.ID,
@@ -553,5 +553,62 @@ func TestTitleAndWhyItMattersEditsAdmitOnlyTheOwnerOrAnAdmin(t *testing.T) {
 		if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "Customers leave "+actor.Email, actor.ID); err != nil {
 			t.Errorf("%s editing Why it matters: %v", name, err)
 		}
+	}
+}
+
+// Only the Goal's Owner creates it, outside an Admin's import: anyone creating
+// a Goal for someone else, an Admin included, is refused with ErrNotAuthorized
+// and no Goal is kept.
+func TestCreateGoalForSomeoneElseIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	for name, actor := range map[string]domain.Account{
+		"another person":             pat,
+		"an Admin outside an import": admin,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := h.Service.CreateGoal(ctx, actor.ID, domain.CreateGoalInput{
+				Title: "Ship v2", WhyItMatters: "Customers wait too long for v2.", OwnerID: sam.ID,
+			})
+			if !errors.Is(err, domain.ErrNotAuthorized) {
+				t.Fatalf("err = %v, want ErrNotAuthorized", err)
+			}
+			if want := "only the Goal's Owner, or an Admin's import, may create it"; domain.Reason(err) != want {
+				t.Errorf("message = %q, want %q", domain.Reason(err), want)
+			}
+		})
+	}
+
+	goals, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 0 {
+		t.Errorf("goals after refused creates = %d, want none", len(goals))
+	}
+}
+
+// Someone with no Account creating a Goal for themselves is refused as an
+// Owner who doesn't exist.
+func TestCreateGoalByNoAccountIsRefusedAsNoOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	const nobody = 9999
+
+	_, err := h.Service.CreateGoal(context.Background(), nobody, domain.CreateGoalInput{
+		Title: "Ship v2", WhyItMatters: "Customers wait too long for v2.", OwnerID: nobody,
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if want := "owner does not exist"; domain.Reason(err) != want {
+		t.Errorf("message = %q, want %q", domain.Reason(err), want)
 	}
 }

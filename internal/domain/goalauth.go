@@ -24,10 +24,15 @@ func (s *Service) ForImportBy(ctx context.Context, adminID int64) (*Service, err
 	return &imp, nil
 }
 
+// importing says whether s runs an import for actorID.
+func (s *Service) importing(actorID int64) bool {
+	return s.goalImport != nil && s.goalImport.adminID == actorID
+}
+
 // importedBy says whether goalID was created by the import s runs for
 // actorID.
 func (s *Service) importedBy(actorID, goalID int64) bool {
-	return s.goalImport != nil && s.goalImport.adminID == actorID && s.goalImport.created[goalID]
+	return s.importing(actorID) && s.goalImport.created[goalID]
 }
 
 // requireImportingAdmin refuses anyone but the Admin running the import s runs

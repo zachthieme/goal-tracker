@@ -8,7 +8,7 @@ import (
 // It is a scenario builder for arranging Goals a test needs.
 func (h *Harness) CreateGoal(owner domain.Account, title, whyItMatters string) domain.Goal {
 	h.T.Helper()
-	g, err := h.Service.CreateGoal(h.T.Context(), domain.CreateGoalInput{
+	g, err := h.Service.CreateGoal(h.T.Context(), owner.ID, domain.CreateGoalInput{
 		Title:        title,
 		WhyItMatters: whyItMatters,
 		OwnerID:      owner.ID,

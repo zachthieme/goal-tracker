@@ -112,12 +112,17 @@ type CreateGoalInput struct {
 	OwnerID      int64
 }
 
-// CreateGoal creates a Proposed Goal owned by OwnerID. Title and Why it matters are
-// required (CONTEXT.md: Why it matters is required when the Goal is created).
-func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, error) {
+// CreateGoal creates a Proposed Goal owned by OwnerID, made by actorID. Who
+// may make it is goalCreationRefusal's rule: its Owner, or the Admin whose
+// import creates it (ForImportBy). Title and Why it matters are required
+// (CONTEXT.md: Why it matters is required when the Goal is created).
+func (s *Service) CreateGoal(ctx context.Context, actorID int64, in CreateGoalInput) (Goal, error) {
 	var row db.Goal
 	var owner db.Account
 	err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := goalCreationRefusal(tx.goalCreatorActor(ctx, actorID), in.OwnerID); err != nil {
+			return err
+		}
 		title := strings.TrimSpace(in.Title)
 		whyItMatters := strings.TrimSpace(in.WhyItMatters)
 		if title == "" {

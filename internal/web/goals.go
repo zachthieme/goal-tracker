@@ -15,7 +15,7 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	_, err := s.svc.CreateGoal(r.Context(), domain.CreateGoalInput{
+	_, err := s.svc.CreateGoal(r.Context(), current.ID, domain.CreateGoalInput{
 		Title:        r.FormValue("title"),
 		WhyItMatters: r.FormValue("why_it_matters"),
 		OwnerID:      current.ID,

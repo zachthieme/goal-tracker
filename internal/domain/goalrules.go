@@ -25,7 +25,8 @@ type goalActor struct {
 	// delegate says whether they are one of the Goal's Delegates.
 	delegate func() (bool, error)
 	// importer is true when they are the Admin whose import created the Goal,
-	// who makes its creation-time writes as its Owner would (ForImportBy).
+	// or is creating it, who makes its creation-time writes as its Owner
+	// would (ForImportBy).
 	importer bool
 }
 
@@ -47,6 +48,18 @@ func (s *Service) accountActor(ctx context.Context, actorID int64) goalActor {
 		id:       actorID,
 		account:  s.actorAccount(ctx, actorID),
 		delegate: func() (bool, error) { return false, nil },
+	}
+}
+
+// goalCreatorActor is actorID as goalCreationRefusal judges them, before the
+// Goal exists: by their Account, no Delegate, and its importer when s runs an
+// import for them, since that import is creating it.
+func (s *Service) goalCreatorActor(ctx context.Context, actorID int64) goalActor {
+	return goalActor{
+		id:       actorID,
+		account:  s.actorAccount(ctx, actorID),
+		delegate: func() (bool, error) { return false, nil },
+		importer: s.importing(actorID),
 	}
 }
 
@@ -164,6 +177,21 @@ func goalOwnerRefusal(a goalActor, g Goal, act string) error {
 		return departedRefusal(act)
 	}
 	return nil
+}
+
+// goalCreationRefusal is CreateGoal's rule for a creating a Goal owned by
+// ownerID: the Admin whose import creates it, for whoever the Owner is, a
+// Departed one included; otherwise only its Owner, who hasn't Departed. An
+// Admin outside an import is refused like anyone else. One with no Account is
+// left to CreateGoal, which refuses an Owner who doesn't exist.
+func goalCreationRefusal(a goalActor, ownerID int64) error {
+	if a.importer {
+		return nil
+	}
+	if a.id != ownerID {
+		return Refuse(ErrNotAuthorized, "only the Goal's Owner, or an Admin's import, may create it")
+	}
+	return departedActorRefusal(a, "create a Goal")
 }
 
 // departedRefusal refuses a Departed person act, since they can't act at all

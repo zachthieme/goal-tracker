@@ -31,7 +31,7 @@ func TestAnImportWritesOnlyTheGoalsItCreates(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		imported, err := imp.CreateGoal(ctx, domain.CreateGoalInput{Title: "Ship v2", WhyItMatters: "why", OwnerID: sam.ID})
+		imported, err := imp.CreateGoal(ctx, admin.ID, domain.CreateGoalInput{Title: "Ship v2", WhyItMatters: "why", OwnerID: sam.ID})
 		if err != nil {
 			return err
 		}
@@ -43,6 +43,43 @@ func TestAnImportWritesOnlyTheGoalsItCreates(t *testing.T) {
 		}
 		if _, err := tx.MarkGoalDated(ctx, admin.ID, imported.ID, due); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("the Admin outside the import: err = %v, want ErrNotAuthorized", err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+}
+
+// The Admin running an import creates Goals for other people, a Departed one
+// included, but anyone else on the import's Service creating a Goal for
+// someone else is refused.
+func TestAnImportCreatesGoalsForOthersOnlyByItsAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	olive := h.SignIn("olive@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.MarkDeparted(admin, olive)
+	ctx := context.Background()
+
+	err := h.Service.WithinTx(ctx, func(tx *domain.Service) error {
+		imp, err := tx.ForImportBy(ctx, admin.ID)
+		if err != nil {
+			return err
+		}
+		for name, owner := range map[string]domain.Account{"another person": sam, "a Departed person": olive} {
+			g, err := imp.CreateGoal(ctx, admin.ID, domain.CreateGoalInput{Title: "Ship v2", WhyItMatters: "why", OwnerID: owner.ID})
+			if err != nil {
+				t.Errorf("the importing Admin creating a Goal for %s: %v", name, err)
+			} else if g.Owner.ID != owner.ID {
+				t.Errorf("the Goal for %s is owned by %d, want %d", name, g.Owner.ID, owner.ID)
+			}
+		}
+		if _, err := imp.CreateGoal(ctx, pat.ID, domain.CreateGoalInput{Title: "Ship v3", WhyItMatters: "why", OwnerID: sam.ID}); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("someone else in the Admin's import: err = %v, want ErrNotAuthorized", err)
 		}
 		return nil
 	})
