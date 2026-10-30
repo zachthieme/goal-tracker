@@ -9,20 +9,47 @@ import (
 	"context"
 )
 
-const cancelPendingHandoffsTo = `-- name: CancelPendingHandoffsTo :exec
-UPDATE handoffs SET status = 'cancelled' WHERE to_owner = ? AND status = 'pending'
+const cancelPendingHandoff = `-- name: CancelPendingHandoff :execrows
+UPDATE handoffs SET status = 'cancelled', cancelled_by = ?1
+WHERE id = ?2 AND status = 'pending'
 `
 
-// Cancel every pending Handoff to a person who has left the org.
-func (q *Queries) CancelPendingHandoffsTo(ctx context.Context, toOwner int64) error {
-	_, err := q.db.ExecContext(ctx, cancelPendingHandoffsTo, toOwner)
+type CancelPendingHandoffParams struct {
+	CancelledBy *int64
+	ID          int64
+}
+
+// Cancels one pending Handoff, recording who cancelled it, only if it is
+// still pending, so of two commands deciding it together only one changes it.
+func (q *Queries) CancelPendingHandoff(ctx context.Context, arg CancelPendingHandoffParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, cancelPendingHandoff, arg.CancelledBy, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const cancelPendingHandoffsTo = `-- name: CancelPendingHandoffsTo :exec
+UPDATE handoffs SET status = 'cancelled', cancelled_by = ?1
+WHERE to_owner = ?2 AND status = 'pending'
+`
+
+type CancelPendingHandoffsToParams struct {
+	CancelledBy *int64
+	ToOwner     int64
+}
+
+// Cancel every pending Handoff to a person who has left the org, recording
+// the Admin who marked them Departed as who cancelled it.
+func (q *Queries) CancelPendingHandoffsTo(ctx context.Context, arg CancelPendingHandoffsToParams) error {
+	_, err := q.db.ExecContext(ctx, cancelPendingHandoffsTo, arg.CancelledBy, arg.ToOwner)
 	return err
 }
 
 const createHandoff = `-- name: CreateHandoff :one
 INSERT INTO handoffs (goal_id, from_owner, to_owner, status, initiated_by, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, goal_id, from_owner, to_owner, status, initiated_by, created_at
+RETURNING id, goal_id, from_owner, to_owner, status, initiated_by, created_at, cancelled_by
 `
 
 type CreateHandoffParams struct {
@@ -52,12 +79,13 @@ func (q *Queries) CreateHandoff(ctx context.Context, arg CreateHandoffParams) (H
 		&i.Status,
 		&i.InitiatedBy,
 		&i.CreatedAt,
+		&i.CancelledBy,
 	)
 	return i, err
 }
 
 const getHandoff = `-- name: GetHandoff :one
-SELECT id, goal_id, from_owner, to_owner, status, initiated_by, created_at FROM handoffs WHERE id = ? LIMIT 1
+SELECT id, goal_id, from_owner, to_owner, status, initiated_by, created_at, cancelled_by FROM handoffs WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetHandoff(ctx context.Context, id int64) (Handoff, error) {
@@ -71,12 +99,13 @@ func (q *Queries) GetHandoff(ctx context.Context, id int64) (Handoff, error) {
 		&i.Status,
 		&i.InitiatedBy,
 		&i.CreatedAt,
+		&i.CancelledBy,
 	)
 	return i, err
 }
 
 const getPendingHandoffForGoal = `-- name: GetPendingHandoffForGoal :one
-SELECT id, goal_id, from_owner, to_owner, status, initiated_by, created_at FROM handoffs WHERE goal_id = ? AND status = 'pending' LIMIT 1
+SELECT id, goal_id, from_owner, to_owner, status, initiated_by, created_at, cancelled_by FROM handoffs WHERE goal_id = ? AND status = 'pending' LIMIT 1
 `
 
 func (q *Queries) GetPendingHandoffForGoal(ctx context.Context, goalID int64) (Handoff, error) {
@@ -90,29 +119,36 @@ func (q *Queries) GetPendingHandoffForGoal(ctx context.Context, goalID int64) (H
 		&i.Status,
 		&i.InitiatedBy,
 		&i.CreatedAt,
+		&i.CancelledBy,
 	)
 	return i, err
 }
 
 const listHandoffsForGoal = `-- name: ListHandoffsForGoal :many
-SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, from_acct.oidc_subject, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone, to_acct.oidc_subject, initiator.id, initiator.email, initiator.is_admin, initiator.created_at, initiator.departed, initiator.name, initiator.manager_id, initiator.timezone, initiator.oidc_subject
+SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, handoffs.cancelled_by, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, from_acct.oidc_subject, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone, to_acct.oidc_subject, initiator.id, initiator.email, initiator.is_admin, initiator.created_at, initiator.departed, initiator.name, initiator.manager_id, initiator.timezone, initiator.oidc_subject,
+       canceller.id AS canceller_id, canceller.name AS canceller_name, canceller.email AS canceller_email
 FROM handoffs
 JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
 JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
 JOIN accounts initiator ON initiator.id = handoffs.initiated_by
+LEFT JOIN accounts canceller ON canceller.id = handoffs.cancelled_by
 WHERE handoffs.goal_id = ?1
 ORDER BY handoffs.created_at, handoffs.id
 `
 
 type ListHandoffsForGoalRow struct {
-	Handoff   Handoff
-	Account   Account
-	Account_2 Account
-	Account_3 Account
+	Handoff        Handoff
+	Account        Account
+	Account_2      Account
+	Account_3      Account
+	CancellerID    *int64
+	CancellerName  *string
+	CancellerEmail *string
 }
 
 // A Goal's ownership history: every Handoff and Admin Reassign, oldest first,
-// with the from, to, and initiating Accounts resolved for display.
+// with the from, to, and initiating Accounts resolved for display, and the
+// canceller's, NULL when no one is recorded as having cancelled it.
 func (q *Queries) ListHandoffsForGoal(ctx context.Context, goalID int64) ([]ListHandoffsForGoalRow, error) {
 	rows, err := q.db.QueryContext(ctx, listHandoffsForGoal, goalID)
 	if err != nil {
@@ -130,6 +166,7 @@ func (q *Queries) ListHandoffsForGoal(ctx context.Context, goalID int64) ([]List
 			&i.Handoff.Status,
 			&i.Handoff.InitiatedBy,
 			&i.Handoff.CreatedAt,
+			&i.Handoff.CancelledBy,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -157,6 +194,9 @@ func (q *Queries) ListHandoffsForGoal(ctx context.Context, goalID int64) ([]List
 			&i.Account_3.ManagerID,
 			&i.Account_3.Timezone,
 			&i.Account_3.OidcSubject,
+			&i.CancellerID,
+			&i.CancellerName,
+			&i.CancellerEmail,
 		); err != nil {
 			return nil, err
 		}
@@ -172,7 +212,7 @@ func (q *Queries) ListHandoffsForGoal(ctx context.Context, goalID int64) ([]List
 }
 
 const listPendingHandoffsForNewOwner = `-- name: ListPendingHandoffsForNewOwner :many
-SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, from_acct.oidc_subject, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone, to_acct.oidc_subject
+SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, handoffs.cancelled_by, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, from_acct.oidc_subject, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone, to_acct.oidc_subject
 FROM handoffs
 JOIN goals goal ON goal.id = handoffs.goal_id
 JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
@@ -207,6 +247,88 @@ func (q *Queries) ListPendingHandoffsForNewOwner(ctx context.Context, toOwner in
 			&i.Handoff.Status,
 			&i.Handoff.InitiatedBy,
 			&i.Handoff.CreatedAt,
+			&i.Handoff.CancelledBy,
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.WhyItMatters,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+			&i.Account.OidcSubject,
+			&i.Account_2.ID,
+			&i.Account_2.Email,
+			&i.Account_2.IsAdmin,
+			&i.Account_2.CreatedAt,
+			&i.Account_2.Departed,
+			&i.Account_2.Name,
+			&i.Account_2.ManagerID,
+			&i.Account_2.Timezone,
+			&i.Account_2.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingHandoffsStartedBy = `-- name: ListPendingHandoffsStartedBy :many
+SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, handoffs.cancelled_by, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, from_acct.oidc_subject, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone, to_acct.oidc_subject
+FROM handoffs
+JOIN goals goal ON goal.id = handoffs.goal_id
+JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
+JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
+WHERE handoffs.initiated_by = ?1 AND handoffs.status = 'pending'
+ORDER BY handoffs.created_at, handoffs.id
+`
+
+type ListPendingHandoffsStartedByRow struct {
+	Handoff   Handoff
+	Goal      Goal
+	Account   Account
+	Account_2 Account
+}
+
+// Pending Handoffs a person started, awaiting the proposed new Owner, oldest
+// first, with the Goal and both the current and proposed Owners resolved for
+// display.
+func (q *Queries) ListPendingHandoffsStartedBy(ctx context.Context, initiatedBy int64) ([]ListPendingHandoffsStartedByRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingHandoffsStartedBy, initiatedBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingHandoffsStartedByRow
+	for rows.Next() {
+		var i ListPendingHandoffsStartedByRow
+		if err := rows.Scan(
+			&i.Handoff.ID,
+			&i.Handoff.GoalID,
+			&i.Handoff.FromOwner,
+			&i.Handoff.ToOwner,
+			&i.Handoff.Status,
+			&i.Handoff.InitiatedBy,
+			&i.Handoff.CreatedAt,
+			&i.Handoff.CancelledBy,
 			&i.Goal.ID,
 			&i.Goal.Title,
 			&i.Goal.WhyItMatters,

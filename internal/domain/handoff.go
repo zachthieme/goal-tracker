@@ -22,6 +22,11 @@ type Handoff struct {
 	InitiatedBy Account
 	Status      string
 	CreatedAt   time.Time
+	// CancelledBy is who cancelled it: the person who started it, or the Admin
+	// who cancelled it, reassigned its Goal or marked its new Owner Departed.
+	// It is nil when it isn't cancelled, or was cancelled before who did was
+	// recorded.
+	CancelledBy *Account
 	// KeepableDelegates are the Goal's Delegates the new Owner chooses whether to
 	// keep on accepting (CONTEXT.md: Delegate): those who aren't Departed, other
 	// than the new Owner. Only PendingHandoffs resolves them.
@@ -98,8 +103,12 @@ func (s *Service) startHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, Refuse(ErrValidation, "the new Owner has left the company")
 	}
 
-	if _, err := s.queries.GetPendingHandoffForGoal(ctx, in.GoalID); err == nil {
-		return Handoff{}, Refuse(ErrValidation, "a Handoff for this Goal is already pending")
+	if pending, err := s.queries.GetPendingHandoffForGoal(ctx, in.GoalID); err == nil {
+		to, err := s.queries.GetAccount(ctx, pending.ToOwner)
+		if err != nil {
+			return Handoff{}, fmt.Errorf("look up pending handoff's new owner: %w", err)
+		}
+		return Handoff{}, Refuse(ErrValidation, "a Handoff to %s is already pending; cancel it to start another", accountFromRow(to).Label())
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Handoff{}, fmt.Errorf("look up pending handoff: %w", err)
 	}
@@ -357,6 +366,36 @@ func (s *Service) CanUndoHandoffRejection(ctx context.Context, actorID, handoffI
 	return goalPagePermits(refusal)
 }
 
+// CancelHandoff cancels a pending Handoff, keeping it with the outcome
+// cancelled and who cancelled it; ownership and Delegates stay as they were,
+// and no one is told. Only the person who started it or an Admin may
+// (handoffCancelRefusal), and only while it is pending: one already decided
+// is refused saying how, as deciding it again is. There is no Undo: the
+// Owner starts a new Handoff instead. The checks read inside the transaction
+// that cancels it, so a Handoff accepted meanwhile isn't also cancelled.
+func (s *Service) CancelHandoff(ctx context.Context, handoffID, actorID int64) (Handoff, error) {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.GetHandoff(ctx, handoffID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: handoff %d", ErrNotFound, handoffID)
+			}
+			return fmt.Errorf("look up handoff: %w", err)
+		}
+		if err := handoffCancelRefusal(tx.accountActor(ctx, actorID), row.InitiatedBy); err != nil {
+			return err
+		}
+		if err := handoffNotPendingRefusal(row); err != nil {
+			return err
+		}
+		return tx.cancelPendingHandoff(ctx, handoffID, actorID)
+	})
+	if err != nil {
+		return Handoff{}, err
+	}
+	return s.loadHandoff(ctx, handoffID)
+}
+
 // Handoff returns a Handoff with its Goal, both Owners, and its initiator
 // resolved, so a page can say what was decided and offer its Undo.
 func (s *Service) Handoff(ctx context.Context, handoffID int64) (Handoff, error) {
@@ -403,6 +442,29 @@ func (s *Service) PendingHandoffs(ctx context.Context, toOwnerID int64) ([]Hando
 	return out, nil
 }
 
+// StartedHandoffs returns the pending Handoffs initiatorID started, oldest
+// first, each awaiting its proposed new Owner, with its Goal and both Owners
+// resolved, so they can see what they are waiting on and cancel it.
+func (s *Service) StartedHandoffs(ctx context.Context, initiatorID int64) ([]Handoff, error) {
+	rows, err := s.queries.ListPendingHandoffsStartedBy(ctx, initiatorID)
+	if err != nil {
+		return nil, fmt.Errorf("list started handoffs: %w", err)
+	}
+	out := make([]Handoff, 0, len(rows))
+	for _, r := range rows {
+		createdAt, _ := time.Parse(timeFormat, r.Handoff.CreatedAt)
+		out = append(out, Handoff{
+			ID:        r.Handoff.ID,
+			Goal:      goalFromRow(r.Goal, r.Account), // Goal with its current (from) Owner
+			From:      accountFromRow(r.Account),      // from_acct
+			To:        accountFromRow(r.Account_2),    // to_acct
+			Status:    r.Handoff.Status,
+			CreatedAt: createdAt,
+		})
+	}
+	return out, nil
+}
+
 // OwnershipHistory returns every ownership change of a Goal, oldest first: each
 // Handoff with its outcome, and each Admin Reassign. The Goal itself is left
 // unresolved on each entry.
@@ -421,9 +483,23 @@ func (s *Service) OwnershipHistory(ctx context.Context, goalID int64) ([]Handoff
 			InitiatedBy: accountFromRow(r.Account_3), // initiator
 			Status:      r.Handoff.Status,
 			CreatedAt:   createdAt,
+			CancelledBy: cancellerOf(r),
 		})
 	}
 	return out, nil
+}
+
+// cancellerOf is who cancelled r's Handoff, from its canceller columns: nil
+// when none is recorded.
+func cancellerOf(r db.ListHandoffsForGoalRow) *Account {
+	if r.CancellerID == nil {
+		return nil
+	}
+	a := Account{ID: *r.CancellerID, Email: *r.CancellerEmail}
+	if r.CancellerName != nil {
+		a.Name = *r.CancellerName
+	}
+	return &a
 }
 
 // ReassignGoal moves an Ownerless Goal to a present Owner (CONTEXT.md: an Admin
@@ -465,7 +541,7 @@ func (s *Service) reassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 	pending, err := s.queries.GetPendingHandoffForGoal(ctx, goalID)
 	switch {
 	case err == nil:
-		if err := s.decidePendingHandoff(ctx, pending.ID, HandoffCancelled); err != nil {
+		if err := s.cancelPendingHandoff(ctx, pending.ID, actorID); err != nil {
 			return err
 		}
 	case !errors.Is(err, sql.ErrNoRows):
@@ -506,19 +582,29 @@ func (s *Service) handoffToDecide(ctx context.Context, handoffID, actorID int64,
 	if row.ToOwner != actorID {
 		return db.Handoff{}, Refuse(ErrNotAuthorized, "only the new Owner may %s a Handoff", decision)
 	}
-	switch row.Status {
+	if err := handoffNotPendingRefusal(row); err != nil {
+		return db.Handoff{}, err
+	}
+	return row, nil
+}
+
+// handoffNotPendingRefusal refuses deciding or cancelling handoff once it is
+// no longer pending, saying how it was decided, so a second click or an old
+// tab learns why; a pending one is nil.
+func handoffNotPendingRefusal(handoff db.Handoff) error {
+	switch handoff.Status {
 	case HandoffPending:
-		return row, nil
+		return nil
 	case HandoffAccepted:
-		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was already accepted")
+		return Refuse(ErrValidation, "this Handoff was already accepted")
 	case HandoffRejected:
-		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was already rejected")
+		return Refuse(ErrValidation, "this Handoff was already rejected")
 	case HandoffCancelled:
-		return db.Handoff{}, Refuse(ErrValidation, "this Handoff was cancelled")
+		return Refuse(ErrValidation, "this Handoff was cancelled")
 	case HandoffReassigned:
-		return db.Handoff{}, Refuse(ErrValidation, "this Goal was already reassigned by an Admin")
+		return Refuse(ErrValidation, "this Goal was already reassigned by an Admin")
 	default:
-		return db.Handoff{}, fmt.Errorf("handoff %d has unknown status %q", handoffID, row.Status)
+		return fmt.Errorf("handoff %d has unknown status %q", handoff.ID, handoff.Status)
 	}
 }
 
@@ -540,8 +626,26 @@ func (s *Service) decidePendingHandoff(ctx context.Context, handoffID int64, sta
 	return nil
 }
 
-// loadHandoff loads a Handoff with its Goal, both Owners, and its initiator
-// resolved.
+// cancelPendingHandoff cancels a Handoff on behalf of actorID, recorded as
+// who cancelled it, only while it is still pending. Each caller has read it
+// pending in the same transaction, so the n == 0 branch is a guard, as
+// decidePendingHandoff's is.
+func (s *Service) cancelPendingHandoff(ctx context.Context, handoffID, actorID int64) error {
+	n, err := s.queries.CancelPendingHandoff(ctx, db.CancelPendingHandoffParams{
+		CancelledBy: &actorID,
+		ID:          handoffID,
+	})
+	if err != nil {
+		return fmt.Errorf("cancel handoff: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("cancel handoff %d: it is no longer pending", handoffID)
+	}
+	return nil
+}
+
+// loadHandoff loads a Handoff with its Goal, both Owners, its initiator, and
+// whoever cancelled it resolved.
 func (s *Service) loadHandoff(ctx context.Context, handoffID int64) (Handoff, error) {
 	row, err := s.queries.GetHandoff(ctx, handoffID)
 	if err != nil {
@@ -563,6 +667,15 @@ func (s *Service) loadHandoff(ctx context.Context, handoffID int64) (Handoff, er
 	if err != nil {
 		return Handoff{}, fmt.Errorf("look up initiator: %w", err)
 	}
+	var canceller *Account
+	if row.CancelledBy != nil {
+		c, err := s.queries.GetAccount(ctx, *row.CancelledBy)
+		if err != nil {
+			return Handoff{}, fmt.Errorf("look up canceller: %w", err)
+		}
+		a := accountFromRow(c)
+		canceller = &a
+	}
 	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
 	return Handoff{
 		ID:          row.ID,
@@ -572,5 +685,6 @@ func (s *Service) loadHandoff(ctx context.Context, handoffID int64) (Handoff, er
 		InitiatedBy: accountFromRow(initiator),
 		Status:      row.Status,
 		CreatedAt:   createdAt,
+		CancelledBy: canceller,
 	}, nil
 }

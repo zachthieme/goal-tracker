@@ -24,14 +24,20 @@ func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, curr
 }
 
 // handlePendingHandoffs shows the current Account the Handoffs awaiting their
-// acceptance as the proposed new Owner.
+// acceptance as the proposed new Owner, and those they started that await
+// someone else's.
 func (s *Server) handlePendingHandoffs(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pending, err := s.svc.PendingHandoffs(r.Context(), current.ID)
 	if err != nil {
 		s.serverError(w, r, "could not list pending handoffs", err)
 		return
 	}
-	render(w, r, http.StatusOK, pendingHandoffsPage(&current, pending, s.undoToast(w, r, current)))
+	started, err := s.svc.StartedHandoffs(r.Context(), current.ID)
+	if err != nil {
+		s.serverError(w, r, "could not list started handoffs", err)
+		return
+	}
+	render(w, r, http.StatusOK, pendingHandoffsPage(&current, pending, started, s.undoToast(w, r, current)))
 }
 
 // handleAcceptHandoff accepts a pending Handoff; only the new Owner may. Each
@@ -76,6 +82,21 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	s.offerUndo(w, r, undoHandoffRejection, id, token, returnTo(r, "/handoffs"))
+}
+
+// handleCancelHandoff cancels a pending Handoff; only the person who started
+// it or an Admin may. It comes back to the page the cancel came from (its
+// return: the Goal, or else the pending page).
+func (s *Server) handleCancelHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := s.handoffIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.svc.CancelHandoff(r.Context(), id, current.ID); err != nil {
+		s.refuse(w, r, "Can't cancel Handoff", returnTo(r, "/handoffs"), err)
+		return
+	}
+	http.Redirect(w, r, returnTo(r, "/handoffs"), http.StatusSeeOther)
 }
 
 // handleDepartAccount marks the Account in the path as departed, making the Goals

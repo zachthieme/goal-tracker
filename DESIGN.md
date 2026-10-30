@@ -1230,7 +1230,14 @@ and so on).
     - **Lifecycle**;
     - **Kind:** Dated or Ongoing, as a help button, or "Not yet Dated or
       Ongoing";
-    - **Owner:** the person control at 500;
+    - **Owner:** the person control at 500. While the Goal has a pending
+      Handoff, a small muted line under the row reads "Handoff to <Name>
+      pending", for every viewer; for whoever started it and an Admin it ends
+      with a small quiet **Cancel handoff** (`btn quiet sm`, an inline form),
+      which cancels it at once and comes back to the Goal. Hand off stays in
+      the More menu meanwhile, and a second one is refused naming the pending
+      one, "A Handoff to <Name> is already pending; cancel it to start
+      another.";
     - **Delegates:** each Name on its own line beside the label, "departed"
       on a Departed Delegate, or a muted "No Delegates yet.", with a
       **Manage** link at the row's right, and "What is a Delegate?" under
@@ -1302,7 +1309,8 @@ and so on).
   last section (`#history`), open on load with no outer disclosure. It is a
   single list, newest first, of every Check-in, Why it matters revision,
   title change, ownership change (a Handoff with its outcome, or an Admin
-  Reassign), change to a Dimension value or Field, change to one of its
+  Reassign; a cancelled Handoff reads "<From> → <To> — cancelled by <Name>",
+  naming who cancelled it where that is recorded, then who started it), change to a Dimension value or Field, change to one of its
   "contributes to" links, Parent suggestion, Nudge, Milestone added outside a
   Check-in, Action Item about it raised, reassigned or closed, and Comment or
   reply about the Goal, made on the Goal itself or on a Report.
@@ -2251,10 +2259,10 @@ and so on).
     on an Active or On Hold Goal, or a muted "A Proposed Goal takes no
     Check-ins." naming any other Lifecycle. The row wraps on a narrow screen.
 - **Pending handoffs (`pendingHandoffsPage` and `pendingStyles` in
-  `handoffs.templ`):** the Handoffs waiting on the person's decision. The
-  page's name is the header strip's title, with no actions, and its one
-  section (`.pd-section`) is an `h2` over a muted sentence, then a row per
-  Handoff (`.pd-list`).
+  `handoffs.templ`):** the Handoffs waiting on the person's decision, then
+  those they started. The page's name is the header strip's title, with no
+  actions, and each section (`.pd-section`) is an `h2` over a muted
+  sentence, then a row per Handoff (`.pd-list`).
   - **A row (`.pd-row`):** at least 44px between hairlines, what is asked at
     the left and its decision at the right, wrapping under it on a narrow
     screen. **Accept** is a small primary button and **Reject** a small
@@ -2265,6 +2273,12 @@ and so on).
     <Name> wants to hand this Goal to you". When the Goal has Delegates who
     aren't Departed, Accept sits under "Delegates to keep", a box for each,
     checked. "No pending handoffs."
+  - **Handoffs you started:** shown only when the person started a Handoff
+    still pending. "Handoffs you started", "Waiting for the new Owner to
+    accept. Cancel one to keep the Goal where it is." A row reads "<Goal> —
+    waiting for <Name> to accept", with a small quiet **Cancel handoff**
+    that cancels it at once and comes back to the page. Home's Requests and
+    the sidebar count only the Handoffs to the person.
 - **Suggest a parent (`suggestParentPage` in `suggestions.templ`):** the form
   by which someone other than the Owner suggests a parent for a Goal, from
   the Goal page's More menu or a Follow-ups Fix. "Suggest a parent" is the

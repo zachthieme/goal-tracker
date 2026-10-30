@@ -189,8 +189,8 @@ var errRolledBack = errors.New("rolled back")
 // ErrValidation. A command no viewer was both offered and had accepted on some
 // Goal fails the test, since its refusals would then prove nothing of its
 // rule. Each Lifecycle a Check-in may move the Goal to is a command of its
-// own, and deciding a Parent suggestion is made where the Goal has an open
-// one.
+// own, deciding a Parent suggestion is made where the Goal has an open one,
+// and cancelling a Handoff where it has one pending.
 func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -253,6 +253,8 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 	h.MarkDeparted(admin, dana)
 	h.MarkDeparted(admin, olive)
 	h.MarkDeparted(admin, ada)
+	// The Active Goal has a pending Handoff, so its page offers to cancel it.
+	pendingHandoff := h.StartHandoff(sam, active.ID, pat)
 
 	commands := []goalCommand{
 		{"CheckIn", func(p domain.GoalPermissions) bool { return p.CheckIn }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
@@ -340,8 +342,21 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 			_, err := tx.EditTitleAndWhyItMatters(ctx, v.ID, g.ID, &title, g.WhyItMatters)
 			return err
 		}},
+		// Hand off stays offered while a Handoff is pending, which
+		// StartHandoff refuses until it is cancelled, so the Goal with one
+		// is skipped.
 		{"HandOff", func(p domain.GoalPermissions) bool { return p.HandOff }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
+			if g.ID == active.ID {
+				return errHandoffPending
+			}
 			_, err := tx.StartHandoff(ctx, domain.StartHandoffInput{GoalID: g.ID, ToOwnerID: nina.ID, ActorID: v.ID})
+			return err
+		}},
+		{"CancelHandoff", func(p domain.GoalPermissions) bool { return p.CancelHandoff }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
+			if g.ID != active.ID {
+				return errNoPendingHandoff
+			}
+			_, err := tx.CancelHandoff(ctx, pendingHandoff.ID, v.ID)
 			return err
 		}},
 		{"Reassign", func(p domain.GoalPermissions) bool { return p.Reassign }, func(tx *domain.Service, v domain.Account, g domain.Goal) error {
@@ -428,7 +443,7 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 				}); !errors.Is(err, errRolledBack) {
 					t.Fatalf("%s by %s on the %s Goal: the transaction ended %v", c.name, who.name, state, err)
 				}
-				if errors.Is(got, errNoOpenSuggestion) {
+				if errors.Is(got, errNoOpenSuggestion) || errors.Is(got, errHandoffPending) || errors.Is(got, errNoPendingHandoff) {
 					continue
 				}
 				refused := errors.Is(got, domain.ErrNotAuthorized) || errors.Is(got, domain.ErrValidation)
@@ -453,6 +468,14 @@ func TestGoalPageOffersExactlyWhatEachCommandAccepts(t *testing.T) {
 // errNoOpenSuggestion marks a parity run of deciding a Parent suggestion on a
 // Goal with none open, which has nothing to decide.
 var errNoOpenSuggestion = errors.New("no open suggestion")
+
+// errHandoffPending marks a parity run of starting a Handoff of a Goal that
+// has one pending, which StartHandoff refuses until it is cancelled.
+var errHandoffPending = errors.New("a Handoff is pending")
+
+// errNoPendingHandoff marks a parity run of cancelling a Handoff on a Goal
+// with none pending, which has nothing to cancel.
+var errNoPendingHandoff = errors.New("no pending handoff")
 
 // The Goal page lists the open Parent suggestions its viewer sees: every one
 // for the Owner, who decides them, and only their own, to withdraw, for

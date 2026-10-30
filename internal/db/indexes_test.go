@@ -20,6 +20,7 @@ var fkIndexAllowList = map[string]string{
 	"email_outbox.account_id":                 "never filtered on; only read with its row, for the outbox's log lines",
 	"goal_value_changes.dimension_id":         "never filtered on; only read with its row",
 	"goal_value_changes.field_id":             "never filtered on; only read with its row",
+	"handoffs.cancelled_by":                   "never filtered on; only read with its row",
 	"link_removals.parent_id":                 "only filtered with child_id, through idx_link_removals_pair",
 	"link_removals.requested_by":              "never filtered on; only read with its row",
 	"link_removals.removed_by":                "never filtered on; only read with its row",

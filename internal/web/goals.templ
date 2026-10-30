@@ -1012,6 +1012,7 @@ templ goalProperties(v goalView) {
 					</dd>
 				</div>
 			</dl>
+			@pendingHandoffLine(v)
 			@ownerForms(v)
 			@delegatesSection(v)
 		</div>
@@ -1236,6 +1237,23 @@ templ groupHead(v goalView, form goalForm, link, linkName string) {
 			<a data-testid={ "open-" + string(form) } class="small" href={ v.openURL(form) } aria-label={ linkName }>{ link }</a>
 		}
 	</div>
+}
+
+// pendingHandoffLine says, under the Goal's Owner, whom its pending Handoff is
+// to, for every viewer, with Cancel handoff for one who may cancel it (the
+// person who started it or an Admin), which comes back to the Goal. It shows
+// nothing when no Handoff is pending.
+templ pendingHandoffLine(v goalView) {
+	if ho := v.PendingHandoff; ho != nil {
+		<div data-testid="goal-pending-handoff" class="small muted">
+			{ "Handoff to " }
+			@person(ho.To)
+			{ "pending" }
+			if v.Permissions.CancelHandoff {
+				@cancelHandoffForm(*ho, goalPath(v.Goal.ID))
+			}
+		</div>
+	}
 }
 
 // ownerForms are the open-in-place forms about the Goal's Owner, under them in

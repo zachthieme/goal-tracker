@@ -256,7 +256,7 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	entries := ownershipEntries(t, bossClient, goalURL)
 	want := []struct{ to, outcome, at string }{
 		{shownAs("lee@example.com", "lee"), "accepted", "Jan 2, 17:04"},
-		{shownAs("pat@example.com", "pat"), "cancelled", "Jan 2, 16:04"},
+		{shownAs("pat@example.com", "pat"), "— cancelled by " + shownAs("boss@example.com", "boss"), "Jan 2, 16:04"},
 		{shownAs("mel@example.com", "mel"), "rejected", "Jan 2, 15:04"},
 	}
 	if len(entries) != len(want) {
@@ -847,7 +847,7 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 	entries := ownershipEntries(t, bossClient, goalURL)
 	want := []struct{ to, outcome string }{
 		{shownAs("cal@example.com", "cal"), "reassigned by an Admin"},
-		{shownAs("pat@example.com", "pat"), "cancelled"},
+		{shownAs("pat@example.com", "pat"), "— cancelled by " + shownAs("boss@example.com", "boss")},
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("History lists %d ownership changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))
@@ -902,7 +902,8 @@ func TestADecisionOnADecidedHandoffSaysHowItWasDecided(t *testing.T) {
 	}
 }
 
-// Accepting or rejecting a Handoff that doesn't exist is the Not found page.
+// Accepting, rejecting or cancelling a Handoff that doesn't exist is the Not
+// found page.
 func TestADecisionOnAMissingHandoffShowsNotFoundPage(t *testing.T) {
 	t.Parallel()
 
@@ -911,7 +912,7 @@ func TestADecisionOnAMissingHandoffShowsNotFoundPage(t *testing.T) {
 	h.SignIn("pat@example.com")
 	pat := signInClient(t, ts.URL, "pat@example.com")
 
-	for _, decision := range []string{"accept", "reject"} {
+	for _, decision := range []string{"accept", "reject", "cancel"} {
 		assertNotFoundPageFor(t, pat, http.MethodPost, fmt.Sprintf("%s/handoffs/999999/%s", ts.URL, decision), "/home")
 	}
 }
@@ -1212,5 +1213,194 @@ func TestAHandoffRejectedBeforeUndoTokensCantBeUndoneOverHTTP(t *testing.T) {
 	}
 	if pending, _ := h.Service.PendingHandoffs(context.Background(), patAcc.ID); len(pending) != 0 {
 		t.Errorf("pending = %+v, want none", pending)
+	}
+}
+
+// A Goal with a pending Handoff says so under its Owner, to every viewer:
+// "Handoff to <Name> pending". Whoever started it and an Admin are offered
+// Cancel handoff beside it; a reader and the proposed new Owner aren't. A
+// Goal with none pending says nothing of one.
+func TestTheGoalPageShowsItsPendingHandoff(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	h.SignIn("rita@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	quiet := h.CreateGoal(sam, "Expand to the EU", "Customers asked.")
+	h.StartHandoff(sam, goal.ID, pat)
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	for _, c := range []struct {
+		who, email string
+		cancels    bool
+	}{
+		{"the Owner who started it", "sam@example.com", true},
+		{"an Admin", "boss@example.com", true},
+		{"a reader", "rita@example.com", false},
+		{"the proposed new Owner", "pat@example.com", false},
+	} {
+		page := parsePage(t, getBody(t, signInClient(t, ts.URL, c.email), goalURL))
+		line := findByTestID(t, page, "goal-pending-handoff")
+		if got := textOf(line); !strings.HasPrefix(got, "Handoff to Pat Lee pending") {
+			t.Errorf("%s: the pending line reads %q, want it to start %q", c.who, got, "Handoff to Pat Lee pending")
+		}
+		if got := buttonNamed(line, "Cancel handoff") != nil; got != c.cancels {
+			t.Errorf("%s: offered Cancel handoff = %v, want %v", c.who, got, c.cancels)
+		}
+	}
+
+	page := parsePage(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, quiet.ID)))
+	if hasTestID(page, "goal-pending-handoff") {
+		t.Errorf("a Goal with no pending Handoff shows one:\n%s", textOf(findByTestID(t, page, "goal-pending-handoff")))
+	}
+}
+
+// Cancel handoff on the Goal page cancels it and comes back to the Goal, which
+// no longer shows it pending; its History names who cancelled it.
+func TestCancellingAHandoffFromTheGoalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignInNamed("sam@example.com", "Sam Ito")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := h.StartHandoff(sam, goal.ID, pat)
+	goalPath := fmt.Sprintf("/goals/%d", goal.ID)
+	goalURL := ts.URL + goalPath
+	client := signInClient(t, ts.URL, sam.Email)
+
+	line := findByTestID(t, parsePage(t, getBody(t, client, goalURL)), "goal-pending-handoff")
+	form := findAll(line, func(n *nethtml.Node) bool { return n.Data == "form" })
+	if len(form) != 1 || attrOf(form[0], "action") != fmt.Sprintf("/handoffs/%d/cancel", ho.ID) || !strings.Contains(attrOf(form[0], "class"), "inline-form") {
+		t.Fatalf("the pending line's forms = %d, want one inline form posting to /handoffs/%d/cancel:\n%s", len(form), ho.ID, renderNode(line))
+	}
+	if got := formField(t, form[0], "return").Value; got != goalPath {
+		t.Errorf("Cancel handoff returns to %q, want %q", got, goalPath)
+	}
+
+	resp := postForm(t, client, fmt.Sprintf("%s/handoffs/%d/cancel", ts.URL, ho.ID), url.Values{"return": {goalPath}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != goalPath {
+		t.Fatalf("cancel: status %d at %s, want 200 at the Goal page", resp.StatusCode, resp.Request.URL.Path)
+	}
+	if page := parsePage(t, readBody(t, resp)); hasTestID(page, "goal-pending-handoff") {
+		t.Errorf("the Goal page still shows the cancelled Handoff pending")
+	}
+	entries := ownershipEntries(t, client, goalURL)
+	if len(entries) != 1 || !strings.Contains(entries[0], "— cancelled by "+shownAs(sam.Email, "Sam Ito")) {
+		t.Errorf("History's ownership entries = %q, want the one Handoff cancelled by Sam", entries)
+	}
+}
+
+// Someone who may not cancel a Handoff, posting its Cancel anyway, gets the
+// refusal page saying who may, and the Handoff stays pending.
+func TestCancellingAHandoffByOneWhoMayNotAnswersTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.SignIn("rita@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := h.StartHandoff(sam, goal.ID, pat)
+
+	resp := postForm(t, signInClient(t, ts.URL, "rita@example.com"), fmt.Sprintf("%s/handoffs/%d/cancel", ts.URL, ho.ID), url.Values{})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("cancel by a reader: status %d, want 403", resp.StatusCode)
+	}
+	assertRefusalPage(t, parsePage(t, readBody(t, resp)), "Can't cancel Handoff", "Only the person who started a Handoff or an Admin may cancel it.", "/handoffs")
+	if pending, _ := h.Service.PendingHandoffs(t.Context(), pat.ID); len(pending) != 1 {
+		t.Errorf("pending for Pat after the refused cancel = %+v, want the one Handoff", pending)
+	}
+}
+
+// A second Hand off while one is pending comes back to the Goal page with the
+// form open, saying whom the pending one is to and how to clear it.
+func TestASecondHandOffSaysWhichHandoffIsPending(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.StartHandoff(sam, goal.ID, pat)
+
+	resp := postForm(t, signInClient(t, ts.URL, sam.Email), fmt.Sprintf("%s/goals/%d/handoff", ts.URL, goal.ID), url.Values{"to_email": {"mel@example.com"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("second Hand off: status %d, want 422", resp.StatusCode)
+	}
+	page := parsePage(t, readBody(t, resp))
+	form := findByTestID(t, page, "handoff-goal")
+	if form == nil {
+		t.Fatal("the Hand off form isn't open")
+	}
+	if got, want := textOf(findByTestID(t, page, "form-error")), "A Handoff to Pat Lee is already pending; cancel it to start another."; got != want {
+		t.Errorf("form-error = %q, want %q", got, want)
+	}
+	if buttonNamed(findByTestID(t, page, "goal-pending-handoff"), "Cancel handoff") == nil {
+		t.Error("the page doesn't offer Cancel handoff for the pending Handoff")
+	}
+}
+
+// Pending handoffs lists, after the Handoffs to the viewer, those they
+// started that wait on the new Owner, each linking its Goal and offering
+// Cancel handoff, which comes back to the page without it. Someone who
+// started none sees no such list.
+func TestPendingHandoffsListsTheHandoffsYouStarted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.StartHandoff(sam, goal.ID, pat)
+	samClient := signInClient(t, ts.URL, sam.Email)
+
+	page := parsePage(t, getBody(t, samClient, ts.URL+"/handoffs"))
+	list := findByTestID(t, page, "started-handoffs")
+	if heading := headingNamed(page, "Handoffs you started"); heading == nil {
+		t.Error("Pending handoffs has no Handoffs you started heading")
+	}
+	rows := findAllByTestID(list, "started-handoff")
+	if len(rows) != 1 {
+		t.Fatalf("started-handoffs lists %d rows, want 1:\n%s", len(rows), renderNode(list))
+	}
+	row := rows[0]
+	if got, want := textOf(row), "Reduce outages — waiting for Pat Lee to accept Cancel handoff"; got != want {
+		t.Errorf("the row reads %q, want %q", got, want)
+	}
+	if linkTo(row, fmt.Sprintf("/goals/%d", goal.ID)) == nil {
+		t.Errorf("the row doesn't link its Goal:\n%s", renderNode(row))
+	}
+	if buttonNamed(row, "Cancel handoff") == nil {
+		t.Fatalf("the row doesn't offer Cancel handoff:\n%s", renderNode(row))
+	}
+	form := findAll(row, func(n *nethtml.Node) bool { return n.Data == "form" })[0]
+	if got := formField(t, form, "return").Value; got != "/handoffs" {
+		t.Errorf("Cancel handoff returns to %q, want /handoffs", got)
+	}
+
+	resp := postForm(t, samClient, ts.URL+attrOf(form, "action"), url.Values{"return": {"/handoffs"}})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/handoffs" {
+		t.Fatalf("cancel: status %d at %s, want 200 at /handoffs", resp.StatusCode, resp.Request.URL.Path)
+	}
+	if hasTestID(parsePage(t, readBody(t, resp)), "started-handoff") {
+		t.Error("Pending handoffs still lists the cancelled Handoff")
+	}
+
+	if hasTestID(parsePage(t, getBody(t, signInClient(t, ts.URL, pat.Email), ts.URL+"/handoffs")), "started-handoffs") {
+		t.Error("Pending handoffs lists Handoffs you started for someone who started none")
 	}
 }

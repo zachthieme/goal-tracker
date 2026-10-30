@@ -60,6 +60,30 @@ func TestOnlyOneHandoffOfAGoalIsPending(t *testing.T) {
 	}
 }
 
+// Once migrated, a Handoff records who cancelled it in cancelled_by: an
+// Account, or NULL for one not cancelled or cancelled before it was recorded.
+func TestAHandoffRecordsWhoCancelledIt(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := openMigratedForFKCheck(t)
+	var notNull int
+	if err := sqlDB.QueryRowContext(t.Context(),
+		`SELECT "notnull" FROM pragma_table_info('handoffs') WHERE name = 'cancelled_by'`).Scan(&notNull); err != nil {
+		t.Fatalf("read handoffs.cancelled_by: %v", err)
+	}
+	if notNull != 0 {
+		t.Error("handoffs.cancelled_by is NOT NULL, want nullable")
+	}
+	var references string
+	if err := sqlDB.QueryRowContext(t.Context(),
+		`SELECT "table" || '.' || "to" FROM pragma_foreign_key_list('handoffs') WHERE "from" = 'cancelled_by'`).Scan(&references); err != nil {
+		t.Fatalf("read handoffs.cancelled_by's foreign key: %v", err)
+	}
+	if references != "accounts.id" {
+		t.Errorf("handoffs.cancelled_by references %s, want accounts.id", references)
+	}
+}
+
 // uniqueIndexCases are the duplicates the baseline's unique indexes refuse,
 // one per index. arrange adds the rows a duplicate points at, to a database
 // arranged by arrangeAccountsAndGoals; first is a row, duplicate repeats it,

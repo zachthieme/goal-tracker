@@ -9,13 +9,15 @@ import (
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
 // as the proposed new Owner, a row each with accept and reject actions; Accept
 // lists the Delegates to keep and Reject sends at once. A Handoff takes
-// effect only once accepted (CONTEXT.md: Handoff). toast, when set, offers Undo
+// effect only once accepted (CONTEXT.md: Handoff). started, when there are
+// any, are the pending Handoffs the current Account started, listed after
+// them with Cancel handoff each. toast, when set, offers Undo
 // for the Handoff just rejected. It sits in the flat frame: its title in the
 // page header, and the Handoffs a plain section of hairline rows (DESIGN.md §
 // Components: Sections).
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) {
+templ pendingHandoffsPage(current *domain.Account, pending, started []domain.Handoff, toast *toast) {
 	@framedLayout("Pending handoffs", current, pageHeader(pageHead{Title: "Pending handoffs"})) {
 		@pendingStyles()
 		<section class="pd-section">
@@ -46,6 +48,33 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toa
 				}
 			</ul>
 		</section>
+		if len(started) > 0 {
+			<section class="pd-section">
+				<div>
+					<h2>Handoffs you started</h2>
+					<p class="muted">Waiting for the new Owner to accept. Cancel one to keep the Goal where it is.</p>
+				</div>
+				<ul data-testid="started-handoffs" class="pd-list">
+					for _, ho := range started {
+						<li data-testid="started-handoff" class="pd-row">
+							<p class="pd-what">
+								<span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+									<span class="muted">
+										{ "— waiting for " }
+										@person(ho.To)
+										{ "to accept" }
+									</span>
+								</span>
+							</p>
+							<div class="pd-actions">
+								@cancelHandoffForm(ho, "/handoffs")
+							</div>
+						</li>
+					}
+				</ul>
+			</section>
+		}
 		@toastNotice(toast)
 	}
 }
@@ -73,6 +102,15 @@ templ handoffAcceptReject(ho domain.Handoff) {
 	</form>
 	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } class="inline-form">
 		<button type="submit" class="btn danger sm">Reject</button>
+	</form>
+}
+
+// cancelHandoffForm is a pending Handoff's Cancel handoff, a small inline form
+// that cancels it at once and comes back to back.
+templ cancelHandoffForm(ho domain.Handoff, back string) {
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/cancel", ho.ID)) } class="inline-form">
+		<input type="hidden" name="return" value={ back }/>
+		<button type="submit" class="btn quiet sm">Cancel handoff</button>
 	</form>
 }
 
