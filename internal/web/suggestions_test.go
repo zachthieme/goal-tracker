@@ -166,7 +166,8 @@ func TestSuggestAParentSearchFindsOnlySuggestableParents(t *testing.T) {
 // opening with nothing picked: its search, which takes the page's focus, and
 // without script a select starting on "Choose a Goal…", so pressing Suggest
 // untouched suggests no Goal that happened to sort first (#656). The page
-// names it Contributes to, never Parent Goal (#681).
+// names it Contributes to, never Parent Goal (#681), and its search in the
+// same words as its refusal, never "suggest as its parent" (#696).
 func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 	t.Parallel()
 
@@ -183,7 +184,13 @@ func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 	if strings.Contains(renderNode(page), "Parent Goal") {
 		t.Errorf("the Suggest a parent page says Parent Goal")
 	}
+	if strings.Contains(renderNode(page), "suggest as its parent") {
+		t.Errorf("the Suggest a parent page says suggest as its parent")
+	}
 	search := findAll(picker, func(n *nethtml.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
+	if want := "Search Goals for it to contribute to"; fieldLabel(search) != want {
+		t.Errorf("the picker's search is named %q, want %q", fieldLabel(search), want)
+	}
 	if want := fmt.Sprintf("/goals/search?goal=%d&for=suggestion", goal.ID); attrOf(search, "hx-get") != want {
 		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
 	}

@@ -147,7 +147,7 @@ func suggestParentPage(current *domain.Account, v suggestParentView) templ.Compo
 			templ_7745c5c3_Err = goalPicker(goalPickerView{
 				Single:      true,
 				SearchURL:   fmt.Sprintf("/goals/search?%s=%d&%s=%s", searchGoal, v.Goal.ID, searchFor, searchForSuggestion),
-				SearchLabel: "Search Goals to suggest as its parent",
+				SearchLabel: "Search Goals for it to contribute to",
 				Candidates:  v.Candidates,
 				Error:       v.PickerError,
 				Autofocus:   true,
