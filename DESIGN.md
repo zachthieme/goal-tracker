@@ -1481,8 +1481,15 @@ and so on).
     right-aligned numbers in tabular figures.
   - **Optional sections** follow under a hairline (§ Check-in form's optional
     sections).
-  - **Errors and Off target:** an error about the whole Check-in shows at the
-    form's top as an `.alert.r`, one about a field under that field. When a
+  - **Errors and Off target:** a refused Check-in shows every problem it has
+    at once. An error about the whole Check-in shows at the form's top as an
+    `.alert.r`; one about a field sits under that field
+    (`.checkin-input-error`, `checkinFieldError`), on its own line in 13px
+    `--color-danger-ink`, as the Goal form's input errors are, and names the
+    field by its label ("A Path to Green needs a Back to Green by date."). The
+    field is marked `aria-invalid="true"`, which draws its edge in
+    `--color-danger-ink`, and its `aria-describedby` names the error (after
+    Back to Green by's "Last time" hint). When a
     Green is submitted while a Metric is off target, an `.alert.y` notice at
     the form's top says so with a **See below** link to a warning after the
     optional sections (`.checkin-off-target`, `role="alert"`, on

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"strings"
 	"time"
 
@@ -46,7 +47,9 @@ type checkinPlan struct {
 }
 
 // judgeCheckin judges the Check-in in on a Goal from facts, refusing it for
-// the first rule it breaks or planning what it writes. Its rules, in order:
+// the first rule it breaks or planning what it writes; the Health, status,
+// Path to Green and explanation are refused together, every problem they
+// have at once, before any later rule is judged. Its rules, in order:
 // who may check in and move the Goal's Lifecycle, and how; the Health, status
 // and Path to Green, and the explanation a Health differing from the
 // Rolled-up Health needs; the readings, and a Done's final values; the
@@ -80,18 +83,28 @@ func judgeCheckin(in SubmitCheckinInput, facts checkinFacts) (checkinPlan, error
 	// the Goal Active sets one; the rest record just their status.
 	health := in.Health
 	if lifecycle.resultingLifecycle(g.Lifecycle) == LifecycleActive {
-		if err := validateCheckin(health, status, path, in.PathTargetDate); err != nil {
-			return checkinPlan{}, err
-		}
+		// Every problem with these inputs is refused at once, so the form
+		// shows each beside its field in one go (#669).
+		problems := checkinInputProblems(health, status, path, in.PathTargetDate)
 		// The Owner has to explain why their Health differs from the Rolled-up
 		// Health — the worst among the Goal's Active children (ADR-0003). When
 		// there is nothing to roll up, or the two match, no explanation is
-		// required and any stray one is dropped.
-		rollup, err := facts.rollup()
-		if err != nil {
-			return checkinPlan{}, err
+		// required and any stray one is dropped. A Health that isn't one has
+		// nothing to explain yet.
+		if validHealth(health) {
+			rollup, err := facts.rollup()
+			if err != nil {
+				return checkinPlan{}, err
+			}
+			if explanation, err = rollupExplanation(rollup, health, explanation); err != nil {
+				var ie *InputError
+				if !errors.As(err, &ie) {
+					return checkinPlan{}, err
+				}
+				problems = append(problems, ie)
+			}
 		}
-		if explanation, err = rollupExplanation(rollup, health, explanation); err != nil {
+		if err := joinInputErrors(problems); err != nil {
 			return checkinPlan{}, err
 		}
 	} else {
@@ -161,7 +174,9 @@ func judgeCheckin(in SubmitCheckinInput, facts checkinFacts) (checkinPlan, error
 	}
 
 	// Moving the back-to-Green date later than the latest Check-in had it is a
-	// Date Slip of that date (CONTEXT.md: Date Slip).
+	// Date Slip of that date (CONTEXT.md: Date Slip). Its reason is asked for
+	// only once the inputs refused together above are clear, as it reads the
+	// latest Check-in.
 	var pathSlip *slipPlan
 	pathTargetDate := ""
 	asksForHelp := int64(0)

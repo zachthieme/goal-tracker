@@ -27,7 +27,7 @@ import (
 // styles_test.go.
 
 // A Yellow Check-in submitted without a Path to Green comes back with the
-// validation error rendered in the form, next to the Path to Green field, so the
+// validation errors rendered in the form, next to the Path to Green fields, so the
 // Owner can fix it in place (htmx). This is the validation-error smoke test.
 func TestSmokeCheckinValidationErrorReachesForm(t *testing.T) {
 	t.Parallel()
@@ -51,8 +51,8 @@ func TestSmokeCheckinValidationErrorReachesForm(t *testing.T) {
 	if !hasTestID(doc, "checkin-form") {
 		t.Errorf("error response is not the re-rendered form; body:\n%s", body)
 	}
-	if msg := fieldError(t, doc, "path_target_date"); !strings.Contains(msg, "Path to Green") {
-		t.Errorf("the error = %q, want it to mention the Path to Green", msg)
+	if msg := fieldErrorAmong(t, doc, "path_to_green"); !strings.Contains(msg, "needs a Plan") {
+		t.Errorf("the Plan's error = %q, want it to ask for a Plan", msg)
 	}
 
 	// Nothing was recorded.
@@ -852,28 +852,45 @@ func formTopError(t *testing.T, doc *html.Node) string {
 // it is the first thing after from, reading on, before any label.
 func errorAfter(t *testing.T, doc, from *html.Node) string {
 	t.Helper()
-	errs := findAllByTestID(doc, "checkin-error")
-	if len(errs) != 1 {
+	if errs := findAllByTestID(doc, "checkin-error"); len(errs) != 1 {
 		t.Fatalf("form shows %d validation errors, want 1:\n%s", len(errs), renderNode(doc))
 	}
+	return errorNextTo(t, doc, from)
+}
+
+// fieldErrorAmong returns what the validation error beside the field named
+// name says, as fieldError does, on a form that may show several.
+func fieldErrorAmong(t *testing.T, doc *html.Node, name string) string {
+	t.Helper()
+	fields := formFields(doc, name)
+	if len(fields) == 0 {
+		t.Fatalf("form has no field %s:\n%s", name, renderNode(doc))
+	}
+	return errorNextTo(t, doc, fields[len(fields)-1].Node)
+}
+
+// errorNextTo returns what the first validation error after from says,
+// failing unless it comes before any label.
+func errorNextTo(t *testing.T, doc, from *html.Node) string {
+	t.Helper()
 	passed := false
 	for n := range doc.Descendants() {
 		switch {
 		case n == from:
 			passed = true
 		case !passed || n.Type != html.ElementNode:
-		case n == errs[0]:
+		case attrOf(n, "data-testid") == "checkin-error":
 			return textOf(n)
 		case n.Data == "label":
-			t.Fatalf("the error %q is not next to the field:\n%s", textOf(errs[0]), renderNode(doc))
+			t.Fatalf("no error is next to the field:\n%s", renderNode(doc))
 		}
 	}
-	t.Fatalf("the error %q comes before the field:\n%s", textOf(errs[0]), renderNode(doc))
+	t.Fatalf("no error comes after the field:\n%s", renderNode(doc))
 	return ""
 }
 
-// A Yellow Check-in without a Path to Green gets its error next to the Path to
-// Green fields.
+// A Yellow Check-in without a Path to Green gets each of its errors next to
+// its Path to Green field: the Plan's and the Back to Green by date's.
 func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
 	t.Parallel()
 
@@ -889,12 +906,127 @@ func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
 		"status": {"Slipping a little."},
 	})
 	doc := parsePage(t, body)
-	const want = "A Yellow Goal needs a Path to Green"
-	if msg := fieldError(t, doc, "path_target_date"); !strings.HasPrefix(msg, want) {
-		t.Errorf("Path to Green field's error = %q, want it to start %q", msg, want)
+	const want = "A Yellow Goal needs a Plan."
+	if msg := fieldErrorAmong(t, doc, "path_to_green"); msg != want {
+		t.Errorf("Plan's error = %q, want %q", msg, want)
+	}
+	const wantDate = "A Path to Green needs a Back to Green by date."
+	if msg := fieldErrorAmong(t, doc, "path_target_date"); msg != wantDate {
+		t.Errorf("Back to Green by's error = %q, want %q", msg, wantDate)
 	}
 	if strings.Contains(textOf(doc), "validation failed") {
 		t.Errorf("page shows the internal \"validation failed\" prefix; body:\n%s", body)
+	}
+}
+
+// A refused Check-in shows every problem it has at once, each beside its
+// field, which is marked invalid and described by its message (#669).
+func TestCheckinRefusalShowsEveryProblemBesideItsField(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []struct {
+		name string
+		form url.Values
+		// want is each refused field's message, by its name.
+		want map[string]string
+	}{
+		{
+			name: "a Yellow with no status, Plan or Back to Green by date",
+			form: url.Values{"health": {domain.HealthYellow}},
+			want: map[string]string{
+				"status":           "A Check-in needs a status.",
+				"path_to_green":    "A Yellow Goal needs a Plan.",
+				"path_target_date": "A Path to Green needs a Back to Green by date.",
+			},
+		},
+		{
+			name: "no Health and no status",
+			form: url.Values{},
+			want: map[string]string{
+				"health": `Health must be "Green", "Yellow", or "Red".`,
+				"status": "A Check-in needs a status.",
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), c.form)
+			form := findByTestID(t, parsePage(t, body), "checkin-form")
+			if errs := findAllByTestID(form, "checkin-error"); len(errs) != len(c.want) {
+				t.Errorf("form shows %d errors, want %d:\n%s", len(errs), len(c.want), renderNode(form))
+			}
+			for name, want := range c.want {
+				if msg := fieldErrorAmong(t, form, name); msg != want {
+					t.Errorf("%s's error = %q, want %q", name, msg, want)
+				}
+				for _, f := range formFields(form, name) {
+					if attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
+						t.Errorf("%s is aria-invalid %q, described %q; want it invalid, described %q", name, attrOf(f.Node, "aria-invalid"), f.Description, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// A Back to Green by date with a "Last time" hint is described by the hint
+// and, refused, by its error too (#669).
+func TestCheckinRefusedBackToGreenByIsDescribedByItsHintAndError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":        {domain.HealthRed},
+		"status":        {"Still blocked."},
+		"path_to_green": {"Escalate."},
+	})
+	date := formField(t, findByTestID(t, parsePage(t, body), "checkin-form"), "path_target_date")
+	const want = "Last time: Jun 15 A Path to Green needs a Back to Green by date."
+	if attrOf(date.Node, "aria-invalid") != "true" || date.Description != want {
+		t.Errorf("Back to Green by is aria-invalid %q, described %q; want it invalid, described %q", attrOf(date.Node, "aria-invalid"), date.Description, want)
+	}
+}
+
+// A Back to Green by date the form can't read is refused beside the date
+// input, under its own name, not the Plan's (#669).
+func TestCheckinUnreadableBackToGreenByIsRefusedBesideTheDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":           {domain.HealthYellow},
+		"status":           {"Waiting on the vendor."},
+		"path_to_green":    {"A second vendor."},
+		"path_target_date": {"not-a-date"},
+	})
+	form := findByTestID(t, parsePage(t, body), "checkin-form")
+	const want = `"not-a-date" isn't a date.`
+	if msg := fieldError(t, form, "path_target_date"); msg != want {
+		t.Errorf("Back to Green by's error = %q, want %q", msg, want)
+	}
+	if date := formField(t, form, "path_target_date"); attrOf(date.Node, "aria-invalid") != "true" || date.Description != want {
+		t.Errorf("Back to Green by is aria-invalid %q, described %q; want it invalid, described %q", attrOf(date.Node, "aria-invalid"), date.Description, want)
+	}
+	if plan := formField(t, form, "path_to_green"); hasAttr(plan.Node, "aria-invalid") {
+		t.Errorf("the Plan is marked invalid for the date's error")
 	}
 }
 
@@ -3764,7 +3896,7 @@ func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) 
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
 	doc := findByTestID(t, parsePage(t, readBody(t, resp)), "checkin-form")
-	const want = "Moving the back-to-Green date later needs a reason."
+	const want = "Moving Back to Green by later needs a reason."
 	if msg := fieldError(t, doc, "path_target_date_reason"); !strings.HasPrefix(msg, want) {
 		t.Errorf("reason field's error = %q, want it to read %q", msg, want)
 	}
@@ -3997,7 +4129,7 @@ func TestCheckinRefusedSubmitLeavesTheChildrenListAlone(t *testing.T) {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
 	doc := parsePage(t, body)
-	fieldError(t, doc, "status")
+	fieldErrorAmong(t, doc, "status")
 	if !hasTestID(doc, "checkin-form") {
 		t.Errorf("refused submit doesn't re-render the form; body:\n%s", body)
 	}
@@ -4192,7 +4324,7 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 		"status": {"Still slipping."},
 	})
 	doc := parsePage(t, body)
-	fieldError(t, doc, "path_target_date")
+	fieldErrorAmong(t, doc, "path_target_date")
 	if got := legend(doc); !strings.Contains(got, "1 wk off Green") {
 		t.Errorf("re-rendered Path to Green legend = %q, want it to keep 1 wk off Green", got)
 	}
@@ -4731,7 +4863,7 @@ func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
 			shows: func(t *testing.T, doc *html.Node) {
 				const want = `"not-a-date" isn't a date.`
 				if msg := fieldError(t, doc, "path_target_date"); msg != want {
-					t.Errorf("Path to Green field's error = %q, want %q", msg, want)
+					t.Errorf("Back to Green by's error = %q, want %q", msg, want)
 				}
 			},
 		},
@@ -4744,9 +4876,9 @@ func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
 				}
 			},
 			shows: func(t *testing.T, doc *html.Node) {
-				const want = "A Yellow Goal needs a Path to Green"
-				if msg := fieldError(t, doc, "path_target_date"); !strings.HasPrefix(msg, want) {
-					t.Errorf("Path to Green field's error = %q, want it to start %q", msg, want)
+				const want = "A Yellow Goal needs a Plan."
+				if msg := fieldErrorAmong(t, doc, "path_to_green"); msg != want {
+					t.Errorf("Plan's error = %q, want %q", msg, want)
 				}
 			},
 		},

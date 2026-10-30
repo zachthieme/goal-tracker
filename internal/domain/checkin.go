@@ -73,6 +73,7 @@ const (
 	CheckinInputHealth               = "health"
 	CheckinInputStatus               = "status"
 	CheckinInputPathToGreen          = "path_to_green"
+	CheckinInputPathTargetDate       = "path_target_date"
 	CheckinInputPathTargetDateReason = "path_target_date_reason"
 	CheckinInputExplanation          = "explanation"
 	CheckinInputLifecycle            = "lifecycle"
@@ -739,24 +740,27 @@ func rollupExplanation(rollup RolledUpHealth, health, explanation string) (strin
 	return "", nil
 }
 
-// validateCheckin enforces the rules shared by every Check-in: a valid Health, a
-// status, and — when Yellow or Red — a Path to Green with text and a target date.
-func validateCheckin(health, status, path string, pathTargetDate time.Time) error {
+// checkinInputProblems are the problems with the inputs every Check-in that
+// leaves its Goal Active has, every one in the order the form shows them: a
+// valid Health, a status, and — when Yellow or Red — a Plan and a Back to
+// Green by date.
+func checkinInputProblems(health, status, path string, pathTargetDate time.Time) []*InputError {
+	var problems []*InputError
 	if !validHealth(health) {
-		return inputError(CheckinInputHealth, "Health must be %q, %q, or %q", HealthGreen, HealthYellow, HealthRed)
+		problems = append(problems, inputError(CheckinInputHealth, "Health must be %q, %q, or %q", HealthGreen, HealthYellow, HealthRed))
 	}
 	if status == "" {
-		return inputError(CheckinInputStatus, "a Check-in needs a status")
+		problems = append(problems, inputError(CheckinInputStatus, "a Check-in needs a status"))
 	}
 	if needsPathToGreen(health) {
 		if path == "" {
-			return inputError(CheckinInputPathToGreen, "a %s Goal needs a Path to Green", health)
+			problems = append(problems, inputError(CheckinInputPathToGreen, "a %s Goal needs a Plan", health))
 		}
 		if pathTargetDate.IsZero() {
-			return inputError(CheckinInputPathToGreen, "a Path to Green needs a target date")
+			problems = append(problems, inputError(CheckinInputPathTargetDate, "a Path to Green needs a Back to Green by date"))
 		}
 	}
-	return nil
+	return problems
 }
 
 // createCheckin inserts an immutable Check-in row, stamped with the Service's
