@@ -10,7 +10,7 @@ import (
 
 // errNoParentLinked refuses a link request that picks no parent, which the
 // Goal page's form says beside its picker.
-var errNoParentLinked = domain.Refuse(domain.ErrValidation, "a parent Goal is required")
+var errNoParentLinked = domain.Refuse(domain.ErrValidation, "pick a Goal to contribute to")
 
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.

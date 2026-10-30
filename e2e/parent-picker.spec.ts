@@ -1,4 +1,4 @@
-// The Parent Goal picker (#656): the Goal page's Link to a parent Goal and the
+// The one-pick Goal picker (#656): the Goal page's Contribute to a Goal and the
 // Suggest a parent page pick the parent the way the define page's
 // Contributes to does, by a search whose results show each Goal's Health,
 // title and Owner, but one Goal at a time, and with nothing picked until the
@@ -28,23 +28,23 @@ async function titleOf(result: Locator): Promise<string> {
   return (await result.locator("button > span:not(.badge):not(.muted)").textContent()) ?? "";
 }
 
-test.describe("the Parent Goal picker", () => {
+test.describe("the one-pick Goal picker", () => {
   let goal: Goal;
 
   test.beforeEach(async ({ manifest }) => {
     goal = requirePick("quietGoal", manifest.quietGoal);
   });
 
-  test("Link to a parent Goal opens with nothing picked, picks one Goal, and requests the link", async ({ page }) => {
+  test("Contribute to a Goal opens with nothing picked, picks one Goal, and requests the link", async ({ page }) => {
     await signIn(page, goal.email);
     await page.goto(`/goals/${goal.id}?open=parent-link`);
     const form = page.getByTestId("request-link");
-    await expect(picker(page).locator("legend")).toHaveText("Parent Goal");
+    await expect(picker(page).locator("legend")).toHaveText("Contributes to");
     await expect(picker(page).getByTestId("parent-chip")).toHaveCount(0);
 
     await test.step("Request link with nothing picked is refused beside the picker", async () => {
       await form.getByRole("button", { name: "Request link" }).click();
-      await expect(picker(page).getByTestId("input-error")).toHaveText("A parent Goal is required.");
+      await expect(picker(page).getByTestId("input-error")).toHaveText("Pick a Goal to contribute to.");
       await expect(page.getByTestId("form-error")).toHaveCount(0);
       await expect(picker(page).getByTestId("parent-chip")).toHaveCount(0);
     });
@@ -91,7 +91,7 @@ test.describe("the Parent Goal picker", () => {
     await other.goto(`/goals/${goal.id}/suggest-parent`);
     await expect(picker(other).getByTestId("parent-chip")).toHaveCount(0);
     await other.getByTestId("suggest-parent").getByRole("button", { name: "Suggest" }).click();
-    await expect(picker(other).getByTestId("input-error")).toHaveText("Pick a parent Goal to suggest.");
+    await expect(picker(other).getByTestId("input-error")).toHaveText("Pick a Goal for it to contribute to.");
     await expect(other.getByTestId("form-error")).toHaveCount(0);
   });
 });

@@ -69,7 +69,7 @@ type goalView struct {
 	// address or a refused submit's refusal (refuseGoalForm), or "" for none.
 	// FormError is why that form's last submit was refused and FormInput what
 	// it sent, so it comes back as it was left.
-	// PickerError is why Link to a parent Goal's submit was refused for
+	// PickerError is why Contribute to a Goal's submit was refused for
 	// picking no parent, said beside its picker in place of FormError.
 	Open        goalForm
 	FormError   string
@@ -188,8 +188,8 @@ type goalAction struct {
 // actions lists the action menu's items the viewer may use, in menu order:
 // each opens its form in place, but some lead to pages of their own. Suggest a
 // parent, for anyone but the Owner of an Proposed or Active Goal, leads to its
-// form (CONTEXT.md: Parent suggestion); Add a child Goal, which anyone may
-// use, to the New goal form with this Goal picked as the parent; and the
+// form (CONTEXT.md: Parent suggestion); New contributing Goal, which anyone
+// may use, to the New goal form with this Goal picked as the parent; and the
 // Lifecycle changes, last, to the Check-in page with that change picked.
 func (v goalView) actions() []goalAction {
 	topLevel := "Mark Top-level"
@@ -209,9 +209,9 @@ func (v goalView) actions() []goalAction {
 		{"Edit title and Why it matters", formTitleWhyItMatters, ""},
 		{"Hand off", formHandoff, ""},
 		{"Add a delegate", formDelegates, ""},
-		{"Link to a parent Goal", formParentLink, ""},
+		{"Contribute to a Goal", formParentLink, ""},
 		{"Suggest a parent", "", suggest},
-		{"Add a child Goal", "", fmt.Sprintf("/goals/new?parent=%d", v.Goal.ID)},
+		{"New contributing Goal", "", fmt.Sprintf("/goals/new?parent=%d", v.Goal.ID)},
 		{"Edit Dimension values", formDimensions, ""},
 		{"Edit Fields", formFields, ""},
 		{topLevel, formTopLevel, ""},

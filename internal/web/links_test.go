@@ -961,10 +961,11 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	}
 }
 
-// The Goal page's Link to a parent Goal picks the parent with the Parent Goal
-// picker, opening with nothing picked: its search, the open form's focus,
+// The Goal page's Contribute to a Goal picks the parent with the one-pick
+// Goal picker, opening with nothing picked: its search, the open form's focus,
 // asks for the Goals the Goal could contribute to, which leave out those it
-// already does (#656).
+// already does (#656). The page names it Contributes to, never Parent Goal
+// (#681).
 func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
 	t.Parallel()
 
@@ -979,6 +980,9 @@ func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
 
 	page := getPage(t, client, goalPageURL(ts.URL, child)+"?open=parent-link")
 	picker := assertParentPickerOpensEmpty(t, findByTestID(t, page, "request-link"))
+	if strings.Contains(renderNode(page), "Parent Goal") {
+		t.Errorf("the Goal page at ?open=parent-link says Parent Goal")
+	}
 	search := findAll(picker, func(n *html.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
 	if want := fmt.Sprintf("/goals/search?goal=%d", child.ID); attrOf(search, "hx-get") != want {
 		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
@@ -989,6 +993,32 @@ func TestLinkToAParentGoalOpensWithNoParentPicked(t *testing.T) {
 	results := findAllByTestID(getPage(t, client, ts.URL+attrOf(search, "hx-get")+"&q=site"), "parent-result")
 	if len(results) != 1 || !strings.Contains(textOf(results[0]), free.Title) {
 		t.Errorf("the search found %q, want only %q", textsOf(results), free.Title)
+	}
+}
+
+// The rail's "+ Add" under Contributes to is named Contribute to a Goal, and
+// opens the form headed Contribute to a Goal (#681).
+func TestContributeToAGoalIsNamedInTheGlossarysWords(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Site speed", "Shoppers abandon slow pages.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	add := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, goal)), "open-parent-link")
+	if name := attrOf(add, "aria-label"); name != "Contribute to a Goal" || textOf(add) != "+ Add" {
+		t.Errorf("the rail's link reads %q named %q, want + Add named Contribute to a Goal", textOf(add), name)
+	}
+	page := getPage(t, client, ts.URL+attrOf(add, "href"))
+	open := findAll(page, func(n *html.Node) bool { return attrOf(n, "data-open-form") == "parent-link" })
+	if len(open) != 1 {
+		t.Fatalf("the rail's link opens %d parent-link forms, want 1", len(open))
+	}
+	heads := findAll(open[0], func(n *html.Node) bool { return n.Data == "h3" })
+	if len(heads) != 1 || textOf(heads[0]) != "Contribute to a Goal" || attrOf(open[0], "aria-label") != "Contribute to a Goal" {
+		t.Errorf("the open form is headed %q, named %q, want Contribute to a Goal", textsOf(heads), attrOf(open[0], "aria-label"))
 	}
 }
 
@@ -1018,7 +1048,7 @@ func TestRequestingALinkWithNoParentPickedIsRefusedBesideThePicker(t *testing.T)
 			t.Errorf("%s: the refusal is above the form, not beside the picker: %s", name, textOf(findByTestID(t, page, "form-error")))
 		}
 		form := findByTestID(t, page, "request-link")
-		assertPickerRefused(t, assertParentPickerOpensEmpty(t, form), "A parent Goal is required.")
+		assertPickerRefused(t, assertParentPickerOpensEmpty(t, form), "Pick a Goal to contribute to.")
 		if note := formField(t, form, "note").Value; note != "Because." {
 			t.Errorf("%s: the note comes back %q, want it as typed", name, note)
 		}
@@ -1058,8 +1088,8 @@ func TestARefusedLinkRequestRedirectsOrKeepsItsStatus(t *testing.T) {
 		// (input-error) or above the form (form-error).
 		shownIn string
 	}{
-		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, 0, "A parent Goal is required.", true, "input-error"},
-		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "A parent Goal is required.", false, ""},
+		{"missing parent, offered", "sam@example.com", back + "/links", url.Values{"parent_id": {""}}, 0, "Pick a Goal to contribute to.", true, "input-error"},
+		{"missing parent, not offered", "pat@example.com", back + "/links", url.Values{"parent_id": {""}}, http.StatusUnprocessableEntity, "Pick a Goal to contribute to.", false, ""},
 		{"cycle, offered", "sam@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, 0,
 			"Linking these Goals would make a cycle: “Reduce outages” already contributes to “Migrate displays”.", true, "form-error"},
 		{"cycle, not offered", "pat@example.com", fmt.Sprintf("/link-cycle-test/%d", child.ID), nil, http.StatusConflict,

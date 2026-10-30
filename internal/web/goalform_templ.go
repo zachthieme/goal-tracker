@@ -2206,9 +2206,9 @@ func goalFormWarningsScript() templ.Component {
 	})
 }
 
-// goalFormMore is the "More detail" section: Contributes to and Where it fits,
-// optional, each a one-line row that opens in place. A closed row's inputs
-// still post, so it works without script.
+// goalFormMore is the "More detail" section: Contributes to and Dimensions
+// and Fields, optional, each a one-line row that opens in place. A closed
+// row's inputs still post, so it works without script.
 func goalFormMore(v goalFormView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -2271,7 +2271,7 @@ func goalFormMore(v goalFormView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = goalFormMoreSummary("Where it fits", v.fitsNames(), "not set").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = goalFormMoreSummary("Dimensions and Fields", v.fitsNames(), "not set").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2552,7 +2552,7 @@ func goalFormParentsHintScript() templ.Component {
 	})
 }
 
-// goalFormFits is the Where it fits field: each Dimension still offered,
+// goalFormFits is the Dimensions and Fields field: each Dimension still offered,
 // a select when a Goal takes one of its values and checkboxes when it takes
 // several, with an input to add a value when it's Extendable, then an input of
 // each Field's type. Nothing here is needed to save, though its note names
@@ -2580,7 +2580,7 @@ func goalFormFits(v goalFormView) templ.Component {
 			templ_7745c5c3_Var104 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<fieldset data-testid=\"goal-form-fits\" class=\"gf-section\"><legend class=\"sr-only\">Where it fits</legend><p data-testid=\"goal-form-fits-note\" class=\"muted small\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<fieldset data-testid=\"goal-form-fits\" class=\"gf-section\"><legend class=\"sr-only\">Dimensions and Fields</legend><p data-testid=\"goal-form-fits-note\" class=\"muted small\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2627,7 +2627,7 @@ func goalFormFits(v goalFormView) templ.Component {
 	})
 }
 
-// fitsRequiredNote opens Where it fits' note: optional, when no Dimension or
+// fitsRequiredNote opens Dimensions and Fields' note: optional, when no Dimension or
 // Field is required, or else the required ones, named as the checklist names
 // them (domain.JudgeDefinition skips a Retired one), and the rest optional
 // when any are left.
@@ -2654,10 +2654,10 @@ func (v goalFormView) fitsRequiredNote() string {
 	return note
 }
 
-// goalFormDimension is one Dimension of Where it fits, each value chosen
-// posting its value_id: a select, None at first, when a Goal takes one value,
-// and a checkbox each when it takes several. A Retired value shows only when
-// it was posted.
+// goalFormDimension is one Dimension in Dimensions and Fields, each value
+// chosen posting its value_id: a select, None at first, when a Goal takes one
+// value, and a checkbox each when it takes several. A Retired value shows only
+// when it was posted.
 func goalFormDimension(v goalFormView, d domain.Dimension) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -3050,8 +3050,8 @@ func goalFormNewValue(v goalFormView, d domain.Dimension) templ.Component {
 	})
 }
 
-// goalFormField is one Field of Where it fits: an input of its type, as the
-// Goal page's fieldInput renders it, named for the Field.
+// goalFormField is one Field in Dimensions and Fields: an input of its type,
+// as the Goal page's fieldInput renders it, named for the Field.
 func goalFormField(v goalFormView, f domain.Field) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

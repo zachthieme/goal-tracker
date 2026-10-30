@@ -90,7 +90,7 @@ func TestFollowUpFixPicksAmongWhatTheRowOffers(t *testing.T) {
 			followUpFix{Label: "Open Goal", Href: "/goals/1"}},
 		{"an Unlinked Goal the viewer may link",
 			domain.FollowUpRow{Signals: []domain.FollowUpSignal{sig("unlinked"), conflict(launch, checksIn)}, Permissions: domain.GoalPermissions{LinkParent: true, SuggestParent: true}},
-			followUpFix{Label: "Link to a parent", Href: "/goals/1?open=parent-link"}},
+			followUpFix{Label: "Contribute to a Goal", Href: "/goals/1?open=parent-link"}},
 		{"a Schedule conflict the viewer may check in on",
 			domain.FollowUpRow{Signals: []domain.FollowUpSignal{conflict(launch, checksIn)}, Permissions: checksIn},
 			followUpFix{Label: "Check in", Href: "/goals/1/checkin?open=dates", Primary: true}},

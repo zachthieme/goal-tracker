@@ -3693,7 +3693,7 @@ func goalRail(v goalView) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = groupHead(v, formParentLink, "+ Add", "Add a parent Goal").Render(templ.WithChildren(ctx, templ_7745c5c3_Var151), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = groupHead(v, formParentLink, "+ Add", "Contribute to a Goal").Render(templ.WithChildren(ctx, templ_7745c5c3_Var151), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -5364,7 +5364,7 @@ func requestParentLink(v goalView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 438, "\" class=\"gp-form\"><fieldset data-testid=\"parent-picker\" class=\"gf-picker-field\"><legend>Parent Goal</legend>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 438, "\" class=\"gp-form\"><fieldset data-testid=\"parent-picker\" class=\"gf-picker-field\"><legend>Contributes to</legend>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -5398,7 +5398,7 @@ func requestParentLink(v goalView) templ.Component {
 				}
 				return nil
 			})
-			templ_7745c5c3_Err = openGoalForm(v, formParentLink, "Link to a parent Goal").Render(templ.WithChildren(ctx, templ_7745c5c3_Var225), templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = openGoalForm(v, formParentLink, "Contribute to a Goal").Render(templ.WithChildren(ctx, templ_7745c5c3_Var225), templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

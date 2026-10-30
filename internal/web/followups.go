@@ -453,7 +453,7 @@ type followUpFix struct {
 //     someone can check in on (CONTEXT.md: Nudge); once it has been nudged
 //     today, a disabled "Nudged today by" whoever did.
 //     Freshness outranks alignment, as 2 outranks 4;
-//  4. Link to a parent, for an Unlinked Goal the viewer may link (its Owner);
+//  4. Contribute to a Goal, for an Unlinked Goal the viewer may link (its Owner);
 //  5. For a Schedule conflict, see scheduleConflictFix: Check in, its dates
 //     open, on the viewer's own Goal in the conflict, or Nudge on the row's
 //     Goal for anyone else (CONTEXT.md: Schedule conflict, Nudge);
@@ -481,7 +481,7 @@ func (r followUpGoalRow) fix() followUpFix {
 		}
 	}
 	if _, unlinked := r.Signal(domain.FollowUpUnlinked); unlinked && r.Permissions.LinkParent {
-		return followUpFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
+		return followUpFix{Label: "Contribute to a Goal", Href: goal + "?open=parent-link"}
 	}
 	if f, ok := r.scheduleConflictFix(); ok {
 		return f

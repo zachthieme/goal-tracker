@@ -2797,8 +2797,8 @@ func TestNewGoalPageContributesToIsAMoreDetailRow(t *testing.T) {
 	}
 }
 
-// Where it fits is More detail's second row. With only optional Dimensions and
-// Fields it's closed, not set, offering to Set it; with a required one unset,
+// Dimensions and Fields is More detail's second row. With only optional
+// Dimensions and Fields it's closed, not set, offering to Set it; with a required one unset,
 // it opens by itself, since the checklist links into it. On the define page it
 // names the values the Goal carries, in page order (Channel, then Pillar),
 // offering to Change them.
@@ -2817,16 +2817,16 @@ func TestGoalFormWhereItFitsIsAMoreDetailRow(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	tag, summary := moreRow(t, getBody(t, client, ts.URL+"/goals/new"), "goal-form-fits-row")
-	if isOpen(tag) || summary != "Where it fits · not set Set" {
-		t.Errorf("with nothing required, the row is %s reading %q, want closed, Where it fits · not set Set", tag, summary)
+	if isOpen(tag) || summary != "Dimensions and Fields · not set Set" {
+		t.Errorf("with nothing required, the row is %s reading %q, want closed, Dimensions and Fields · not set Set", tag, summary)
 	}
-	if more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more"); !strings.Contains(more, `<legend class="sr-only">Where it fits</legend>`) {
-		t.Errorf("the Where it fits field's legend isn't visually hidden:\n%s", more)
+	if more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more"); !strings.Contains(more, `<legend class="sr-only">Dimensions and Fields</legend>`) {
+		t.Errorf("the Dimensions and Fields field's legend isn't visually hidden:\n%s", more)
 	}
 
 	tag, summary = moreRow(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "goal-form-fits-row")
-	if isOpen(tag) || summary != "Where it fits · Mobile, Growth, 25000 Change" {
-		t.Errorf("on the define page, the row is %s reading %q, want closed, Where it fits · Mobile, Growth, 25000 Change", tag, summary)
+	if isOpen(tag) || summary != "Dimensions and Fields · Mobile, Growth, 25000 Change" {
+		t.Errorf("on the define page, the row is %s reading %q, want closed, Dimensions and Fields · Mobile, Growth, 25000 Change", tag, summary)
 	}
 
 	h.SetDimensionRequired(boss, fits.team, true)

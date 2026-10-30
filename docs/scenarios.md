@@ -181,8 +181,7 @@ is nothing for trouble to be measured against.
 
 1. Priya presses **New goal**. One page, in sections: the Title and Why it matters,
    Delivery (Dated or Ongoing, date, cadence), How you'll know (Milestones,
-   Metrics), and More detail (Contributes to, Where it fits: Dimensions,
-   Fields).
+   Metrics), and More detail (Contributes to, Dimensions and Fields).
 2. A **Ready to activate** card stays beside the form and ticks off the
    minimum standard as she types: Why it matters; Dated with a delivery date and at
    least one Milestone or Metric, or Ongoing with at least one Metric; a value

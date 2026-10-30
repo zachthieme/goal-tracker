@@ -65,7 +65,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 
 // errNoParentSuggested refuses a Suggest a parent submit that picks no
 // parent, which the form says beside its picker.
-var errNoParentSuggested = errors.New("pick a parent Goal to suggest")
+var errNoParentSuggested = errors.New("pick a Goal for it to contribute to")
 
 // renderSuggestParent renders goalID's Suggest a parent form with status,
 // and, when refused is set, its reason, beside the picker when no parent was

@@ -116,10 +116,10 @@ func (s *Server) tableColumns(ctx context.Context, dims []domain.Dimension) ([]t
 	fields := domain.OfferedFields(all)
 	columns := []tableColumn{
 		{Key: "health", Label: "Health"},
-		{Key: "title", Label: "Title"},
+		{Key: "title", Label: "Goal"},
 		{Key: "owner", Label: "Owner"},
 		{Key: "lifecycle", Label: "Lifecycle"},
-		{Key: "due", Label: "Delivery date"},
+		{Key: "due", Label: "Due"},
 		{Key: "checkin", Label: "Last check-in"},
 	}
 	for i := range dims {

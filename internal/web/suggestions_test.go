@@ -162,10 +162,11 @@ func TestSuggestAParentSearchFindsOnlySuggestableParents(t *testing.T) {
 	}
 }
 
-// The Suggest a parent page picks the parent with the Parent Goal picker,
+// The Suggest a parent page picks the parent with the one-pick Goal picker,
 // opening with nothing picked: its search, which takes the page's focus, and
 // without script a select starting on "Choose a Goal…", so pressing Suggest
-// untouched suggests no Goal that happened to sort first (#656).
+// untouched suggests no Goal that happened to sort first (#656). The page
+// names it Contributes to, never Parent Goal (#681).
 func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 	t.Parallel()
 
@@ -179,6 +180,9 @@ func TestSuggestAParentPageOpensWithNoParentPicked(t *testing.T) {
 
 	page := getPage(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+suggestPath(goal))
 	picker := assertParentPickerOpensEmpty(t, findByTestID(t, page, "suggest-parent"))
+	if strings.Contains(renderNode(page), "Parent Goal") {
+		t.Errorf("the Suggest a parent page says Parent Goal")
+	}
 	search := findAll(picker, func(n *nethtml.Node) bool { return attrOf(n, "id") == "parent-search" })[0]
 	if want := fmt.Sprintf("/goals/search?goal=%d&for=suggestion", goal.ID); attrOf(search, "hx-get") != want {
 		t.Errorf("the picker searches %q, want %q", attrOf(search, "hx-get"), want)
@@ -318,7 +322,7 @@ func TestSuggestingWithNoParentPickedIsRefusedBesideThePicker(t *testing.T) {
 		}
 		form := findByTestID(t, page, "suggest-parent")
 		picker := assertParentPickerOpensEmpty(t, form)
-		assertPickerRefused(t, picker, "Pick a parent Goal to suggest.")
+		assertPickerRefused(t, picker, "Pick a Goal for it to contribute to.")
 		if note := formField(t, form, "note").Value; note != "outages start here" {
 			t.Errorf("%s: the note comes back %q, want it as typed", name, note)
 		}

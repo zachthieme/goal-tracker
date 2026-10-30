@@ -56,7 +56,8 @@ type goalFormView struct {
 	// other Goal, which the no-script select offers.
 	Parents    []parentChoice
 	Candidates []domain.Goal
-	// Dimensions and Fields are those still offered, for Where it fits.
+	// Dimensions and Fields are those still offered, for the Dimensions and
+	// Fields section.
 	// Chosen are the values ticked or selected, NewValues the value typed to
 	// add to each Extendable Dimension, and FieldValues what's typed in each
 	// Field, each by ID. Suggested says Chosen came from the parents rather
@@ -183,7 +184,7 @@ func (v goalFormView) contributesOpen() bool {
 	return v.refusedUnder(inputParentID, "parent:")
 }
 
-// fitsNames are what Where it fits' row names: in page order, each
+// fitsNames are what Dimensions and Fields' row names: in page order, each
 // Dimension's values chosen and the value typed to add to it, then each
 // Field's value typed.
 func (v goalFormView) fitsNames() []string {
@@ -206,7 +207,7 @@ func (v goalFormView) fitsNames() []string {
 	return names
 }
 
-// fitsOpen says Where it fits' row opens by itself: when a required Dimension
+// fitsOpen says Dimensions and Fields' row opens by itself: when a required Dimension
 // or Field in it isn't set, as the checklist links to it, or it holds a
 // refused input.
 func (v goalFormView) fitsOpen() bool {
@@ -452,7 +453,7 @@ func (s *Server) buildNewGoalForm(ctx context.Context, current domain.Account, f
 // gives the input its checklist judges, the form as saved when nothing is
 // posted, and what the Goal has saved that the input keeps or adds to. The
 // live checklist reads only the Goal's Milestones, Metrics and Field values,
-// and Where it fits.
+// and Dimensions and Fields.
 func (s *Server) buildDefineForm(ctx context.Context, current domain.Account, from goalFormFrom, v *goalFormView) (domain.DefinedGoalInput, domain.SavedDefinition, error) {
 	g := *from.Goal
 	in := from.In
@@ -868,7 +869,7 @@ func definitionForm(page domain.GoalDefinitionPage) (goalFormView, domain.Define
 // fillDefinition gives the define page's v, for current, the Goal it
 // finishes, what it shows of it read-only — its Milestones, Metrics and
 // parents, Accepted and Pending — the parents picked and the candidates left
-// over, and Where it fits, all out of page. The Title is always the Goal's,
+// over, and Dimensions and Fields, all out of page. The Title is always the Goal's,
 // which can't change here.
 func (s *Server) fillDefinition(current domain.Account, page domain.GoalDefinitionPage, v *goalFormView) {
 	g := page.Goal
@@ -1005,7 +1006,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		in.ParentIDs = append(in.ParentIDs, id)
 	}
 
-	// Where it fits assigns only what is posted: a value suggested from the
+	// Dimensions and Fields assigns only what is posted: a value suggested from the
 	// parents and unticked isn't.
 	v.Chosen = map[int64]bool{}
 	for _, value := range r.PostForm[inputValueID] {
@@ -1067,7 +1068,7 @@ func unsavedMeasure(editing []string) string {
 	return ""
 }
 
-// Where it fits posts each value chosen as value_id, the value typed to add to
+// Dimensions and Fields posts each value chosen as value_id, the value typed to add to
 // an Extendable Dimension as new_value:<dimension id> (domain.NewValueInput),
 // and each Field's as field:<field id> (domain.FieldInput).
 const (
@@ -1092,7 +1093,7 @@ func postedByID(form url.Values, prefix string) map[int64]string {
 	return byID
 }
 
-// choices are the values of d Where it fits offers: its live ones, and any
+// choices are the values of d that Dimensions and Fields offers: its live ones, and any
 // Retired one chosen, so a refused submit shows what was posted.
 func (v goalFormView) choices(d domain.Dimension) []domain.DimensionValue {
 	var out []domain.DimensionValue
