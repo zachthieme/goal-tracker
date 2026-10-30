@@ -3183,7 +3183,7 @@ func goalPageHeader(v goalView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if v.Permissions.NoChange {
-				templ_7745c5c3_Err = noChangeCheckinButton(g.ID, "No change", "btn quiet sm").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = noChangeCheckinButton(g.ID, "Check in: no change", "btn quiet sm").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

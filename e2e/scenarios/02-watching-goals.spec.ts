@@ -219,7 +219,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       await expect(page.getByRole("heading", { level: 1, name: g.title })).toBeVisible();
       const actions = page.getByTestId("goal-actions");
       await expect(actions.getByTestId("checkin-link")).toHaveCount(0);
-      await expect(actions.getByRole("button", { name: "No change" })).toHaveCount(0);
+      await expect(actions.getByRole("button", { name: "Check in: no change" })).toHaveCount(0);
       await expect(page.getByTestId("open-milestones")).toHaveCount(0);
       await expect(page.getByTestId("open-delegates")).toHaveCount(0);
 

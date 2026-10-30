@@ -91,7 +91,7 @@ test.describe("on the due template", () => {
         const status = ((await page.getByTestId("goal-status").textContent()) ?? "").trim();
 
         await page.goto("/home");
-        await dueRow(page, g).getByRole("button", { name: "No change" }).click();
+        await dueRow(page, g).getByRole("button", { name: "Check in: no change" }).click();
         await page.waitForURL(new RegExp(`/goals/${g.id}(/checkins/no-change)?$`));
         // A refused No change lands on the Check-in form with the reason;
         // weekOwners chose an Owner none of whose Goals should refuse one.
@@ -100,6 +100,10 @@ test.describe("on the due template", () => {
           throw new Error(`No change on "${g.title}" was refused: ${await refusal.innerText()}`);
         }
         await expect(page).toHaveURL(new RegExp(`/goals/${g.id}$`));
+        // A toast confirms it, dated today, with nothing to undo.
+        const toast = page.getByTestId("toast");
+        await expect(toast).toHaveText(`Checked in: no change, ${shownDay(appToday())}.`);
+        await expect(toast.getByRole("button")).toHaveCount(0);
 
         // The new entry repeats the previous Check-in, so History folds it
         // into a "No change" entry dated today by its one time element, with
@@ -235,6 +239,11 @@ test.describe("on the due template", () => {
 // newest first.
 function checkinEntries(page: Page) {
   return page.getByTestId("history-entry").and(page.locator('[data-kind="checkin"]'));
+}
+
+// shownDay is an ISO date as the app shows a day this year, e.g. "Oct 28".
+function shownDay(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 // today is a datetime prefix for a History entry's time written on the app's

@@ -20,7 +20,7 @@ for (const name of ["first", "second"]) {
     // that recent is the other test's, landed in this test's database.
     expect(await justCheckedIn(page, app.now()), "the Goal's latest entry isn't another test's Check-in").toBe(false);
 
-    await page.getByTestId("goal-actions").getByRole("button", { name: "No change" }).click();
+    await page.getByTestId("goal-actions").getByRole("button", { name: "Check in: no change" }).click();
 
     await expect(allChip(page)).toHaveAccessibleName(`All ${before + 1}`);
     // The Check-in it wrote is the Goal's latest, whatever the time of day.

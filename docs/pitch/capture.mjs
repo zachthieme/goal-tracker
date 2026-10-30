@@ -95,9 +95,9 @@ const pause = (ms) => page.waitForTimeout(ms);
 await signIn(page, owner);
 await pause(2500);
 const due = page.getByTestId("home-due-goal").filter({ hasText: checkinOverdueGoal });
-await due.getByRole("button", { name: "No change" }).hover();
+await due.getByRole("button", { name: "Check in: no change" }).hover();
 await pause(800);
-await due.getByRole("button", { name: "No change" }).click();
+await due.getByRole("button", { name: "Check in: no change" }).click();
 // No change lands on the Goal's page; a refusal lands on its Check-in form.
 await page.waitForURL(/\/goals\/\d+$/);
 await pause(2500);

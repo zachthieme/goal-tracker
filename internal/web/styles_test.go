@@ -897,7 +897,7 @@ func TestHomeDueRowLeadsWithItsHealthStyles(t *testing.T) {
 		t.Errorf("the row isn't a list item of Check-ins due's own:\n%s", renderNode(due))
 	}
 	assertHomeCarriesClass(t, "the row's meta line", findByTestID(t, row, "home-due-status"), "hm-meta")
-	for what, button := range map[string]*html.Node{"No change": buttonNamed(row, "No change"), "Check in": findByTestID(t, row, "home-due-checkin")} {
+	for what, button := range map[string]*html.Node{"No change": buttonNamed(row, "Check in: no change"), "Check in": findByTestID(t, row, "home-due-checkin")} {
 		if button == nil {
 			t.Errorf("the row has no %s:\n%s", what, renderNode(row))
 			continue
@@ -3733,7 +3733,7 @@ func TestGoalPageHeaderActionsOverHTTPStyles(t *testing.T) {
 	if link := findByTestID(t, actions, "checkin-link"); !flatFrameHasClass(link, "btn") || !flatFrameHasClass(link, "primary") {
 		t.Errorf("Check in is not a primary button: %s", renderNode(link))
 	}
-	noChange := buttonNamed(findByTestID(t, actions, "no-change-checkin"), "No change")
+	noChange := buttonNamed(findByTestID(t, actions, "no-change-checkin"), "Check in: no change")
 	if noChange == nil || !flatFrameHasClass(noChange, "btn") || !flatFrameHasClass(noChange, "quiet") {
 		t.Errorf("No change is not a quiet button: %s", renderNode(actions))
 	}

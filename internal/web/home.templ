@@ -264,7 +264,7 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 		<div class="hm-actions">
 			if noChange {
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } class="inline-form">
-					<button type="submit" class="btn sm">No change</button>
+					<button type="submit" class="btn sm">Check in: no change</button>
 				</form>
 			}
 			<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.Goal.ID)) }>Check in</a>
