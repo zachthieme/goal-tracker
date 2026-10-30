@@ -843,20 +843,6 @@ func (v reportBuilderView) rows() []reportRuleRow {
 	return v.Rules
 }
 
-// ruleOps are the operators a rule row offers, each with its label: "is
-// Top-level" and "is not Top-level" for a Top-level rule, which tests no
-// values, and "is in the org of" and the like for the Owner's org, so the
-// row reads as the rule does.
-func ruleOps(attribute string) [][2]string {
-	switch attribute {
-	case domain.RuleTopLevel:
-		return [][2]string{{domain.RuleIs, "is Top-level"}, {domain.RuleIsNot, "is not Top-level"}}
-	case domain.RuleOrg:
-		return [][2]string{{domain.RuleIs, "is in the org of"}, {domain.RuleIsAnyOf, "is in the org of any of"}, {domain.RuleIsNot, "is not in the org of"}}
-	}
-	return [][2]string{{domain.RuleIs, "is"}, {domain.RuleIsAnyOf, "is any of"}, {domain.RuleIsNot, "is not"}}
-}
-
 // ruleRowInput names part of the i-th rule row's inputs.
 func ruleRowInput(i int, part string) string {
 	return fmt.Sprintf("rules[%d].%s", i, part)
