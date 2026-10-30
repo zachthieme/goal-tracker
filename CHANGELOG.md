@@ -21,6 +21,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On the Reports list, a Report's Last published date now links to that publication (#685).
 - [user] A slipped date's slip count now says what it is: "Nov 18, 2026 ~~Nov 11, 2026~~ · 4 slips" in place of a bare "(4)", on a Report's exception blocks (its draft, publication, print page, PDF and Markdown export), the Goal page and Follow-ups. A Report's Milestone row sets its name off from the count with " · " (#684).
 - [user] The Reports list heads its Reports "All reports" in place of "Report Definitions", so it says "reports" as its title and New report do (#682).
+- [user] The Check-in form's link back to the Goal beside Submit check-in now reads "Back to Goal" rather than "Cancel", so "Cancel" on the Check-in page only ever means the Lifecycle choice that cancels the Goal (#680).
 
 **Bug fixes:**
 - [user] The Report builder's refusals now say what to do in plain words, without "Report Definition": a blank name asks you to "Give the report a name.", a rules report with no rule (even one left at "Choose…") says "Add a rule: choose what it tests, such as a Team, and a value.", Goals I pick with none picked says "Pick at least one Goal.", a rule with no value says "Choose a value for this rule.", and a Goal that's gone says "A Goal in this list no longer exists; remove it and save again." instead of its id (#671).
