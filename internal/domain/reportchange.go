@@ -1,11 +1,9 @@
 package domain
 
 import (
-	"cmp"
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -51,33 +49,13 @@ func (m ReportMovement) Parts() []string {
 }
 
 // reportMovement counts what moved on r since its baseline from its
-// exceptions, as every Goal that changed is one, and from its membership
-// changes when r reads against its previous publication, the publication they
-// are read against.
-func reportMovement(r Report, exceptions []reportException, since func(time.Time) bool) *ReportMovement {
+// exceptions' reasons, as every Goal that changed is one, and from its
+// membership changes when r reads against its previous publication, the
+// publication they are read against.
+func reportMovement(r Report, since func(time.Time) bool) *ReportMovement {
 	var m ReportMovement
-	for _, x := range exceptions {
-		b := x.block
-		switch {
-		case b.PriorHealth == "":
-		case b.Health == HealthRed:
-			m.TurnedRed++
-		case b.Health == HealthYellow && b.PriorHealth == HealthGreen:
-			m.TurnedYellow++
-		case b.Health == HealthYellow && b.PriorHealth == HealthRed:
-			m.ImprovedToYellow++
-		case b.Health == HealthGreen:
-			m.BackToGreen++
-		}
-		if x.slipped {
-			m.Slipped++
-		}
-		if x.movedLifecycle {
-			m.ChangedLifecycle++
-		}
-		if b.hasBadge(BadgeNew) {
-			m.New++
-		}
+	for _, b := range r.Exceptions {
+		countReportReasons(&m, b.Reasons)
 	}
 	if r.Previous.ID != 0 {
 		for _, c := range r.MembershipChanges {
@@ -92,71 +70,9 @@ func reportMovement(r Report, exceptions []reportException, since func(time.Time
 	return &m
 }
 
-// reportException is an exception block as DraftReport orders and counts it,
-// with what it reads of the Goal beside the block, out of the snapshot: whether
-// its Path to Green is overdue, its delivery date slipped, and it moved
-// Lifecycle since the baseline.
-type reportException struct {
-	block                                ReportBlock
-	pathOverdue, slipped, movedLifecycle bool
-}
-
-// sortReportExceptions puts the most urgent exceptions first, key by key, in
-// the Report's order (CONTEXT.md: Report): Ownerless first; then by Health
-// (HealthUrgencyRank); then a Path to Green overdue first; then Check-in
-// overdue first; then in a Schedule conflict first. Then those that changed
-// since the baseline come first, new trouble ahead of standing trouble; then
-// the soonest delivery date, with none
-// last; then by title, ignoring case, then by Goal id. The Follow-ups page
-// ranks otherwise (sortFollowUpRows): it puts Active Goals ahead of the rest
-// before any of these keys, and a Milestone overdue and then an overdue Action
-// Item between a Path to Green overdue and Check-in overdue, none of which a
-// Report ranks by; and a Report's ranking by Schedule conflict, change and
-// delivery date is its own.
-func sortReportExceptions(xs []reportException) {
-	slices.SortStableFunc(xs, func(a, b reportException) int {
-		ga, gb := a.block.Goal, b.block.Goal
-		if c := cmp.Compare(reportFlagRank(ga.Ownerless), reportFlagRank(gb.Ownerless)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(HealthUrgencyRank(a.block.Health), HealthUrgencyRank(b.block.Health)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(reportFlagRank(a.pathOverdue), reportFlagRank(b.pathOverdue)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeCheckinOverdue)), reportFlagRank(b.block.hasBadge(BadgeCheckinOverdue))); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(reportFlagRank(len(a.block.ScheduleConflicts) > 0), reportFlagRank(len(b.block.ScheduleConflicts) > 0)); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(reportFlagRank(a.block.changedSinceBaseline()), reportFlagRank(b.block.changedSinceBaseline())); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(reportFlagRank(!ga.DeliveryDate.IsZero()), reportFlagRank(!gb.DeliveryDate.IsZero())); c != 0 {
-			return c
-		}
-		if c := ga.DeliveryDate.Compare(gb.DeliveryDate); c != 0 {
-			return c
-		}
-		if c := cmp.Compare(strings.ToLower(ga.Title), strings.ToLower(gb.Title)); c != 0 {
-			return c
-		}
-		return cmp.Compare(ga.ID, gb.ID)
-	})
-}
-
-// reportFlagRank ranks a condition a Report puts first: 0 when it holds.
-func reportFlagRank(holds bool) int {
-	if holds {
-		return 0
-	}
-	return 1
-}
-
 // HealthUrgencyRank orders Health most urgent first: Red, Yellow, none, then
-// Green. The Follow-ups page and a Report both rank by it.
+// Green. The Follow-ups page ranks by it, and a Report's rank tiers order
+// Health alike (reportRankTiers).
 func HealthUrgencyRank(health string) int {
 	switch health {
 	case HealthRed:
@@ -169,30 +85,17 @@ func HealthUrgencyRank(health string) int {
 	return 2
 }
 
-// hasBadge reports whether the block carries badge.
-func (b ReportBlock) hasBadge(badge string) bool {
-	return slices.Contains(b.Badges, badge)
-}
-
-// changedSinceBaseline reports whether the block's Goal changed since the
-// baseline: it says what changed, or is new.
-func (b ReportBlock) changedSinceBaseline() bool {
-	return len(b.Changes) > 0 || b.hasBadge(BadgeNew)
-}
-
-// healthChange is the phrase for how a block's Health changed since the
-// baseline, from prior, its Health then, to now: "" when it didn't.
-func healthChange(prior, now string) string {
-	switch {
-	case prior == "":
-		return ""
-	case now == HealthRed:
+// healthChange is the phrase for an exception reason saying how a block's
+// Health changed since the baseline (reportHealthReason): "" for any other.
+func healthChange(reason ReportReason) string {
+	switch reason {
+	case ReportReasonTurnedRed:
 		return "Turned Red"
-	case now == HealthYellow && prior == HealthGreen:
+	case ReportReasonTurnedYellow:
 		return "Turned Yellow"
-	case now == HealthYellow && prior == HealthRed:
+	case ReportReasonImprovedToYellow:
 		return "Improved to Yellow"
-	case now == HealthGreen:
+	case ReportReasonBackToGreen:
 		return "Back to Green"
 	}
 	return ""
@@ -238,40 +141,33 @@ func (h goalHistory) milestonesSlipped(since func(time.Time) bool) int {
 	return len(ids)
 }
 
-// movedLifecycle reports whether the Goal of b, h, moved Lifecycle since the
-// baseline as a change in its own right: a Goal created since is only New,
-// though activating it moved it to Active.
-func (h goalHistory) movedLifecycle(b ReportBlock, since func(time.Time) bool) bool {
-	return h.lifecycleChanged(since) && !b.hasBadge(BadgeNew)
-}
-
-// reportChanges are the phrases for what changed on b's Goal, h, since the
-// baseline, in a fixed order: its Health; its Path to Green's date passing,
-// as fresh judged it, on or after the baseline date; its delivery date; its
-// Milestones' dates; and its Lifecycle. The New badge already says a Goal is
-// new, so no phrase repeats it.
-func (h goalHistory) reportChanges(b ReportBlock, since func(time.Time) bool, baseline time.Time, fresh Freshness) []string {
+// reportChanges are the phrases for what changed on a Goal since the
+// baseline, picked from j's reasons in their order: its Health; its Path to
+// Green's date passing on or after the baseline date; its delivery date; its
+// Milestones' dates; and its Lifecycle, now lifecycle. The New badge already
+// says a Goal is new, so no phrase repeats it, and a date slip says nothing
+// of its own.
+func (j reportJudgment) reportChanges(lifecycle string) []string {
 	var out []string
-	if c := healthChange(b.PriorHealth, b.Health); c != "" {
-		out = append(out, c)
-	}
-	if fresh.PathToGreenOverdue && !fresh.PathTargetDate.Before(baseline) {
-		out = append(out, "Path to Green date passed")
-	}
-	switch days := h.deliveryMoveDays(since); {
-	case days > 0:
-		out = append(out, "Delivery date moved "+changeDuration(days)+" later")
-	case days < 0:
-		out = append(out, "Delivery date moved "+changeDuration(-days)+" earlier")
-	}
-	switch n := h.milestonesSlipped(since); {
-	case n == 1:
-		out = append(out, "1 Milestone slipped")
-	case n > 1:
-		out = append(out, fmt.Sprintf("%d Milestones slipped", n))
-	}
-	if h.movedLifecycle(b, since) {
-		out = append(out, "Moved to "+b.Goal.Lifecycle)
+	for _, r := range j.reasons {
+		switch r {
+		case ReportReasonTurnedRed, ReportReasonTurnedYellow, ReportReasonImprovedToYellow, ReportReasonBackToGreen:
+			out = append(out, healthChange(r))
+		case ReportReasonPathToGreenDatePassed:
+			out = append(out, "Path to Green date passed")
+		case ReportReasonDeliveryLater:
+			out = append(out, "Delivery date moved "+changeDuration(j.deliveryMoveDays)+" later")
+		case ReportReasonDeliveryEarlier:
+			out = append(out, "Delivery date moved "+changeDuration(-j.deliveryMoveDays)+" earlier")
+		case ReportReasonMilestoneSlipped:
+			if j.milestonesSlipped == 1 {
+				out = append(out, "1 Milestone slipped")
+			} else {
+				out = append(out, fmt.Sprintf("%d Milestones slipped", j.milestonesSlipped))
+			}
+		case ReportReasonMovedLifecycle:
+			out = append(out, "Moved to "+lifecycle)
+		}
 	}
 	return out
 }

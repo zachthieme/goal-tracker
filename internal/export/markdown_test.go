@@ -540,8 +540,10 @@ func TestMarkdownCountsTheReportsGoalsByHealth(t *testing.T) {
 	block := func(health string, badges ...string) domain.ReportBlock {
 		return domain.ReportBlock{Goal: domain.Goal{Title: health + " Goal", Owner: boss, Lifecycle: domain.LifecycleActive}, Health: health, Badges: badges}
 	}
+	overdue := block(domain.HealthRed, domain.BadgeCheckinOverdue)
+	overdue.Reasons = []domain.ReportReason{domain.ReportReasonRed, domain.ReportReasonCheckinOverdue}
 	r := report(
-		[]domain.ReportBlock{block(domain.HealthRed, domain.BadgeCheckinOverdue), block(domain.HealthRed), block(domain.HealthYellow)},
+		[]domain.ReportBlock{overdue, block(domain.HealthRed), block(domain.HealthYellow)},
 		[]domain.SelectedGoal{
 			{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen},
 			{Goal: domain.Goal{Title: "Ship billing", Owner: boss}, Health: domain.HealthGreen},

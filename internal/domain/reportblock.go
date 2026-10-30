@@ -44,7 +44,7 @@ type Report struct {
 	// opens with.
 	Movement *ReportMovement
 	// changedGoalIDs are the selected Goals the draft judged changed since
-	// its baseline (goalHistory.changed), in selection order, kept so the
+	// its baseline (reportReasonsChanged), in selection order, kept so the
 	// Reports list counts its changes without reading them again.
 	changedGoalIDs []int64
 }
@@ -83,6 +83,11 @@ type ReportBlock struct {
 	// Badges flag what the reader must not miss, in the order BadgeNew,
 	// BadgeNewDate, BadgeCheckinOverdue, BadgeOwnerless, BadgeOnHold.
 	Badges []string
+	// Reasons are why the Report judged the Goal an exception
+	// (judgeReportGoal), in reportReasonOrder. They rank the block, count
+	// what moved and count it Check-in overdue, and a publication freezes
+	// them.
+	Reasons []ReportReason
 	// PriorDueDates are the delivery dates the Goal held before each of its
 	// Date Slips, earliest first, shown struck through ahead of its current
 	// date (~~10/15~~ 11/03).
@@ -252,7 +257,7 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	}
 	type exceptionGoal struct {
 		h         goalHistory
-		fresh     Freshness
+		judgment  reportJudgment
 		fields    []FieldValue
 		conflicts []ReportScheduleConflict
 	}
@@ -261,17 +266,16 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 		sg.Fields = fields[sg.Goal.ID]
 		h := histories[sg.Goal.ID]
 		r.Highlights = append(r.Highlights, scopedHighlights(sg.Goal, highlights[sg.Goal.ID], since)...)
-		fresh := freshness[sg.Goal.ID]
-		changed := h.changed(since)
-		if changed {
+		conflicts := reportScheduleConflicts(sg.Goal, parents[sg.Goal.ID], children[sg.Goal.ID])
+		j := judgeReportGoal(h, since, r.Baseline, freshness[sg.Goal.ID], len(conflicts) > 0)
+		if reportReasonsChanged(j.reasons) {
 			r.changedGoalIDs = append(r.changedGoalIDs, sg.Goal.ID)
 		}
-		conflicts := reportScheduleConflicts(sg.Goal, parents[sg.Goal.ID], children[sg.Goal.ID])
-		if !h.exception(changed, fresh, len(conflicts) > 0) {
+		if !reportReasonsMakeException(j.reasons) {
 			r.Lines = append(r.Lines, sg)
 			continue
 		}
-		pending = append(pending, exceptionGoal{h: h, fresh: fresh, fields: sg.Fields, conflicts: conflicts})
+		pending = append(pending, exceptionGoal{h: h, judgment: j, fields: sg.Fields, conflicts: conflicts})
 	}
 	exceptionIDs := make([]int64, 0, len(pending))
 	for _, p := range pending {
@@ -281,26 +285,16 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	if err != nil {
 		return Report{}, err
 	}
-	var exceptions []reportException
 	for _, p := range pending {
-		b, err := s.reportBlock(p.h, since, p.fresh, reads)
+		b, err := s.reportBlock(p.h, since, p.judgment, reads)
 		if err != nil {
 			return Report{}, err
 		}
 		b.Fields = p.fields
 		b.ScheduleConflicts = p.conflicts
-		b.Changes = p.h.reportChanges(b, since, r.Baseline, p.fresh)
-		exceptions = append(exceptions, reportException{
-			block:          b,
-			pathOverdue:    p.fresh.PathToGreenOverdue,
-			slipped:        p.h.deliveryMoveDays(since) > 0,
-			movedLifecycle: p.h.movedLifecycle(b, since),
-		})
+		r.Exceptions = append(r.Exceptions, b)
 	}
-	sortReportExceptions(exceptions)
-	for _, x := range exceptions {
-		r.Exceptions = append(r.Exceptions, x.block)
-	}
+	sortReportExceptions(r.Exceptions)
 	linkReportBlocks(&r, reads)
 	if err := narrate(&r); err != nil {
 		return Report{}, err
@@ -308,7 +302,7 @@ func (s *Service) draftReport(ctx context.Context, def ReportDefinition, baselin
 	if r.MembershipChanges, err = s.membershipChanges(ctx, r, since); err != nil {
 		return Report{}, err
 	}
-	r.Movement = reportMovement(r, exceptions, since)
+	r.Movement = reportMovement(r, since)
 	return r, nil
 }
 
@@ -395,9 +389,8 @@ func goalIDsOf(goals []Goal) []int64 {
 // goalHistory is what a Report reads about one Goal to judge it against the
 // baseline, and a Parent digest against the week's start: its Check-ins,
 // newest first, and its Date Slips, earliest first. It is the one reader of
-// a Goal's Check-ins against a moment: its Health then (healthBefore),
-// whether it changed since (changed), and how its Lifecycle moved
-// (lifecycleChanged).
+// a Goal's Check-ins against a moment: its Health then (healthBefore and
+// priorHealth), and how its Lifecycle moved (lifecycleChanged).
 type goalHistory struct {
 	goal     Goal
 	checkins []Checkin
@@ -437,26 +430,6 @@ func (h goalHistory) last() lastCheckin {
 	return lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 }
 
-// exception reports whether the Goal earns the full block: it is Red or Yellow,
-// Check-in overdue, Ownerless, or in a Schedule conflict, or changed, as
-// changed judged it since the baseline (CONTEXT.md: Report).
-func (h goalHistory) exception(changed bool, fresh Freshness, conflicted bool) bool {
-	return needsPathToGreen(h.latest().Health) ||
-		fresh.CheckinOverdue ||
-		h.goal.Ownerless ||
-		conflicted ||
-		changed
-}
-
-// changed reports whether, since the baseline, the Goal was created, slipped
-// a date, changed Lifecycle, or changed Health.
-func (h goalHistory) changed(since func(time.Time) bool) bool {
-	return since(h.goal.CreatedAt) ||
-		slices.ContainsFunc(h.slips, func(d DateSlip) bool { return since(d.CreatedAt) }) ||
-		h.lifecycleChanged(since) ||
-		h.priorHealth(since) != ""
-}
-
 // priorHealth is the Goal's Health at the baseline when its latest Check-in's
 // Health differs from it, and empty otherwise. Its Health at the baseline is
 // healthBefore's; a Goal with no Check-in by then had none, and neither Health
@@ -494,19 +467,21 @@ func (h goalHistory) lifecycleChanged(since func(time.Time) bool) bool {
 	})
 }
 
-// badges lists the block's badges in their fixed order.
-func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []string {
+// badges lists the block's badges in their fixed order: New, Check-in
+// overdue and Ownerless by the Goal's exception reasons, New Date and On Hold
+// by its history.
+func (h goalHistory) badges(since func(time.Time) bool, reasons []ReportReason) []string {
 	var out []string
-	if since(h.goal.CreatedAt) {
+	if slices.Contains(reasons, ReportReasonNew) {
 		out = append(out, BadgeNew)
 	}
 	if slices.ContainsFunc(h.slips, func(d DateSlip) bool { return d.OnDeliveryDate() && since(d.CreatedAt) }) {
 		out = append(out, BadgeNewDate)
 	}
-	if fresh.CheckinOverdue {
+	if slices.Contains(reasons, ReportReasonCheckinOverdue) {
 		out = append(out, BadgeCheckinOverdue)
 	}
-	if h.goal.Ownerless {
+	if slices.Contains(reasons, ReportReasonOwnerless) {
 		out = append(out, BadgeOwnerless)
 	}
 	if h.goal.Lifecycle == LifecycleOnHold {
@@ -573,16 +548,18 @@ func (s *Service) readBlocks(ctx context.Context, goalIDs []int64, parents, chil
 	return reads, nil
 }
 
-// reportBlock builds the full MBR block for an exception Goal from what
-// readBlocks read of it.
-func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, fresh Freshness, reads blockReads) (ReportBlock, error) {
+// reportBlock builds the full MBR block for an exception Goal, as j judged
+// it, from what readBlocks read of it.
+func (s *Service) reportBlock(h goalHistory, since func(time.Time) bool, j reportJudgment, reads blockReads) (ReportBlock, error) {
 	latest := h.latest()
 	b := ReportBlock{
 		Goal:             h.goal,
 		Health:           latest.Health,
 		PriorHealth:      h.priorHealth(since),
 		RunOffGreenWeeks: s.runOffGreen(h.goal, h.checkins).Weeks,
-		Badges:           h.badges(since, fresh),
+		Changes:          j.reportChanges(h.goal.Lifecycle),
+		Badges:           h.badges(since, j.reasons),
+		Reasons:          j.reasons,
 		PriorDueDates:    priorDatesOf(h.slips, 0),
 		Status:           latest.Status,
 		PathToGreen:      latest.PathToGreen,

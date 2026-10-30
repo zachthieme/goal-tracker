@@ -72,7 +72,7 @@ type HealthCounts struct {
 }
 
 // HealthCounts counts r's selected Goals by Health, and its Check-in overdue
-// ones by their badge, as drafted or frozen — only an exception block can be
+// ones by their exception reason, as drafted or frozen — only an exception block can be
 // Check-in overdue, since a Check-in overdue Goal is an exception. It reads
 // only r, so a publication counts as it was published, and every surface
 // counts alike.
@@ -91,7 +91,7 @@ func (r Report) HealthCounts() HealthCounts {
 		}
 	}
 	for _, b := range r.Exceptions {
-		if slices.Contains(b.Badges, BadgeCheckinOverdue) {
+		if slices.Contains(b.Reasons, ReportReasonCheckinOverdue) {
 			c.CheckinOverdue++
 		}
 	}
@@ -178,8 +178,8 @@ func (r Report) selected() []SelectedGoal {
 }
 
 // changedGoals counts the Goals r reads as changed since its baseline — those
-// it selects that its draft judged changed (created, slipped a date, changed
-// Lifecycle or changed Health since), and those that entered or left it —
+// it selects with an exception reason that counts as changed (created,
+// slipped a date, changed Lifecycle or changed Health since), and those that entered or left it —
 // each once. A standing condition, such as staying Red, is no change, and
 // neither is gaining a Milestone. It reads nothing beyond r.
 func changedGoals(r Report) int {
