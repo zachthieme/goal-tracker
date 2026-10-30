@@ -67,7 +67,10 @@ func recordTestFacts() []ReportFact {
 			Heading: "Insights", Notes: []string{"Churn is seasonal.", "Pricing helps."},
 			Highlights: []NarrativeHighlight{{Highlight: Highlight{Note: "Signed the first EU customer.", Owner: ada}, GoalID: 4, GoalTitle: "Launch in EU"}},
 		}}},
-		{Kind: ReportFactExceptions, Label: "Exceptions", Blocks: []ReportBlockFacts{{GoalID: 4, Facts: block}, {GoalID: 8, Facts: asksNoOne}}},
+		{Kind: ReportFactExceptions, Label: "Exceptions", Blocks: []ReportBlockFacts{
+			{GoalID: 4, Facts: block, Reasons: []ReportReason{ReportReasonRed, ReportReasonCheckinOverdue, ReportReasonTurnedRed}},
+			{GoalID: 8, Facts: asksNoOne},
+		}},
 		{Kind: ReportFactOnTrack, Label: "On track", Lines: []SelectedGoal{
 			{Goal: Goal{ID: 9, Title: "Cut churn", Owner: sam, DeliveryDate: day(5, 1)}, Health: HealthGreen, Fields: []FieldValue{{Field: Field{Name: "Region", Type: FieldShortText}, Value: "EMEA"}}},
 		}},

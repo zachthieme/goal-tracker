@@ -111,8 +111,9 @@ type recordNarrativeHighlight struct {
 }
 
 type recordBlock struct {
-	GoalID int64
-	Facts  []recordFact
+	GoalID  int64
+	Facts   []recordFact
+	Reasons []string `json:",omitempty"`
 }
 
 type recordLine struct {
@@ -425,11 +426,11 @@ func thawNarrativeSection(n recordNarrativeSection) ReportNarrativeSection {
 }
 
 func recordBlockOf(b ReportBlockFacts) recordBlock {
-	return recordBlock{GoalID: b.GoalID, Facts: recordFactsOf(b.Facts)}
+	return recordBlock{GoalID: b.GoalID, Facts: recordFactsOf(b.Facts), Reasons: mapRecord(b.Reasons, func(r ReportReason) string { return string(r) })}
 }
 
 func thawBlock(b recordBlock) ReportBlockFacts {
-	return ReportBlockFacts{GoalID: b.GoalID, Facts: thawFacts(b.Facts)}
+	return ReportBlockFacts{GoalID: b.GoalID, Facts: thawFacts(b.Facts), Reasons: mapRecord(b.Reasons, func(r string) ReportReason { return ReportReason(r) })}
 }
 
 func recordLineOf(sg SelectedGoal) recordLine {

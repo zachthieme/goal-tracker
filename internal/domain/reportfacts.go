@@ -213,10 +213,12 @@ type ReportNarrativeSection struct {
 }
 
 // ReportBlockFacts is one exception block as its facts list it
-// (ReportBlock.Facts), with the id of its Goal.
+// (ReportBlock.Facts), with the id of its Goal and the exception reasons the
+// Report judged it one for (ReportBlock.Reasons).
 type ReportBlockFacts struct {
-	GoalID int64
-	Facts  []ReportFact
+	GoalID  int64
+	Facts   []ReportFact
+	Reasons []ReportReason
 }
 
 // PublicationFacts lists the facts of r published by by at the instant at, in
@@ -264,7 +266,7 @@ func (r Report) Facts(asOf time.Time) []ReportFact {
 	if len(r.Exceptions) > 0 {
 		blocks := make([]ReportBlockFacts, 0, len(r.Exceptions))
 		for _, b := range r.Exceptions {
-			blocks = append(blocks, ReportBlockFacts{GoalID: b.Goal.ID, Facts: b.Facts(asOf)})
+			blocks = append(blocks, ReportBlockFacts{GoalID: b.Goal.ID, Facts: b.Facts(asOf), Reasons: b.Reasons})
 		}
 		facts = append(facts, ReportFact{Kind: ReportFactExceptions, Label: "Exceptions", Blocks: blocks})
 	}

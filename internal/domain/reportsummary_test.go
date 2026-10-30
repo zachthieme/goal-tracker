@@ -204,17 +204,17 @@ func TestReportSummaryOfANeverPublishedDefinition(t *testing.T) {
 
 // A Report counts its Goals by Health, exception blocks and one-line Goals
 // alike, those with none apart, and how many of its blocks are Check-in
-// overdue by their badge, as frozen — so a publication counts as it was
+// overdue by their exception reason, as frozen — so a publication counts as it was
 // published, and the page and the Markdown count alike.
 func TestReportHealthCountsItsGoalsByHealthAndItsCheckinOverdueBlocks(t *testing.T) {
 	t.Parallel()
 
 	r := domain.Report{
 		Exceptions: []domain.ReportBlock{
-			{Goal: domain.Goal{ID: 1}, Health: domain.HealthRed, Badges: []string{domain.BadgeCheckinOverdue}},
+			{Goal: domain.Goal{ID: 1}, Health: domain.HealthRed, Badges: []string{domain.BadgeCheckinOverdue}, Reasons: []domain.ReportReason{domain.ReportReasonRed, domain.ReportReasonCheckinOverdue}},
 			{Goal: domain.Goal{ID: 2}, Health: domain.HealthRed},
 			{Goal: domain.Goal{ID: 3}, Health: domain.HealthYellow, Badges: []string{domain.BadgeNew}},
-			{Goal: domain.Goal{ID: 4}, Health: domain.HealthGreen, Badges: []string{domain.BadgeNewDate, domain.BadgeCheckinOverdue}},
+			{Goal: domain.Goal{ID: 4}, Health: domain.HealthGreen, Badges: []string{domain.BadgeNewDate, domain.BadgeCheckinOverdue}, Reasons: []domain.ReportReason{domain.ReportReasonCheckinOverdue}},
 			{Goal: domain.Goal{ID: 5}, Badges: []string{domain.BadgeOwnerless}},
 		},
 		Lines: []domain.SelectedGoal{
