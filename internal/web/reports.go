@@ -802,9 +802,9 @@ func (s *Server) reportsList(r *http.Request, current domain.Account) (reportsLi
 	return reportsListData{Reports: sums, Loc: s.svc.Timezone(), YourActionItems: yours, OrgActionItems: org, PDFFile: s.pdf != nil}, nil
 }
 
-// distinctOwners returns the Goals' Owners, one each, in first-seen order — the
-// candidates an Owner rule offers, without reaching into the accounts area for
-// a full account list.
+// distinctOwners returns the Goals' Owners, one each, in first-seen order, so
+// a new Report Definition can start with the author's own Goals when they own
+// any (newReportStartingRule).
 func distinctOwners(goals []domain.Goal) []domain.Account {
 	seen := make(map[int64]bool, len(goals))
 	out := make([]domain.Account, 0, len(goals))
