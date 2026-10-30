@@ -12,14 +12,16 @@ import (
 // runs a dry run or a commit; the row-by-row report renders below the form
 // (ticket #22). A non-Admin sees only a note that imports are Admin-only. It
 // sits in the flat frame: its title in the page header, and its form and
-// report plain sections (DESIGN.md § Import Goals page).
+// report plain sections (DESIGN.md § Import Goals page). fileError, when set,
+// says beside the file input why the upload was refused for want of a file;
+// flash carries every other refusal.
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ importsPage(current *domain.Account, report *importer.Report, flash string) {
+templ importsPage(current *domain.Account, report *importer.Report, flash, fileError string) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@framedLayout("Import Goals", current, pageHeader(adminToolHead(current, "Import Goals"))) {
 		@importsStyles()
-		<p class="muted">Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>
+		<p class="muted">Load Goals from a spreadsheet (CSV or XLSX), one Goal per row.</p>
 		if !admin {
 			<p data-testid="import-forbidden" class="alert lc">Only an Admin may import Goals.</p>
 		} else {
@@ -29,11 +31,39 @@ templ importsPage(current *domain.Account, report *importer.Report, flash string
 			<form data-testid="import-form" class="im-form" method="post" action="/imports" enctype="multipart/form-data">
 				<label class="field">
 					<span>Spreadsheet <span class="hint">— CSV or XLSX</span></span>
-					<input type="file" name="file" accept=".csv,.xlsx" required/>
+					<input
+						type="file"
+						name="file"
+						accept=".csv,.xlsx"
+						if fileError != "" {
+							aria-invalid="true"
+							aria-describedby="file-error"
+						}
+					/>
+					if fileError != "" {
+						<span data-testid="import-file-error" id="file-error" class="im-input-error">{ fileError }</span>
+					}
 				</label>
 				<div class="im-actions">
 					<button type="submit" class="btn primary" name="action" value="dry-run">Dry run</button>
 					<button type="submit" class="btn" name="action" value="commit">Commit</button>
+				</div>
+				<div class="im-columns-wrap">
+					<h2 id="import-column-list-heading">Columns</h2>
+					<dl data-testid="import-column-list" class="im-columns" aria-labelledby="import-column-list-heading">
+						for _, col := range importer.Columns {
+							<div data-testid="import-column">
+								<dt>
+									{ col.Name }
+									if col.Required {
+										<span class="im-required">Required</span>
+									}
+								</dt>
+								<dd>{ col.Meaning }</dd>
+							</div>
+						}
+					</dl>
+					<a href="/imports/template">Download a CSV template</a>
 				</div>
 				<p data-testid="import-columns" class="hint">Beside the Goal's own columns, a column named for a Dimension or a Field sets it. A cell may list several values of a Dimension that takes several, separated by semicolons. A value not yet in an Extendable Dimension's list is added to it; in a Fixed one it is an error.</p>
 				<p data-testid="import-id-column" class="hint">A row with an ID, as in the Goal table's Download CSV, updates that Goal's Dimension values and Fields instead of creating a Goal; an empty cell clears the value, and its other columns are ignored.</p>
@@ -100,6 +130,13 @@ templ importsStyles() {
 	<style>
 		.im-form{display:flex;flex-direction:column;gap:16px;max-width:560px}
 		.im-actions{display:flex;gap:8px}
+		.im-columns-wrap{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+		.im-columns-wrap h2{margin:0}
+		.im-columns{margin:0;display:flex;flex-direction:column;gap:8px}
+		.im-columns dt{font-weight:600}
+		.im-columns dd{margin:0;color:var(--color-ink-2)}
+		.im-required{margin-left:6px;font-size:var(--text-secondary);font-weight:400;color:var(--color-ink-muted)}
+		.im-input-error{display:block;font-size:var(--text-secondary);color:var(--color-danger-ink)}
 		.im-report{display:flex;flex-direction:column;gap:12px}
 		.im-report table{border-top:1px solid var(--color-border)}
 		.im-report th{background:none;padding:8px 12px}

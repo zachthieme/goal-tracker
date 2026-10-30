@@ -12,11 +12,20 @@ import (
 )
 
 // idColumn heads the column that names the Goal a row updates (#81).
-const idColumn = "ID"
+var idColumn = Columns[0].Name
 
-// goalColumns are the import format's own columns, in the order the download
-// writes them; each Dimension and Field column follows them.
-var goalColumns = []string{"Title", "Owner", "Why it matters", "Kind", "Delivery Date", "Milestones", "Metrics", "Parents"}
+// goalColumns are the import format's own columns but the ID, in the order the
+// download writes them; each Dimension and Field column follows them.
+var goalColumns = columnNames(Columns[1:])
+
+// columnNames are the names of cols, in order.
+func columnNames(cols []Column) []string {
+	names := make([]string, 0, len(cols))
+	for _, c := range cols {
+		names = append(names, c.Name)
+	}
+	return names
+}
 
 // entrySeparator joins the entries of a cell holding several, the way the
 // import format writes them.

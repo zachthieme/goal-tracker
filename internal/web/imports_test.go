@@ -1,14 +1,17 @@
 package web_test
 
 import (
+	"bytes"
 	"context"
 	"html"
+	"mime/multipart"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/importer"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -394,5 +397,146 @@ func TestImportMissingRequiredColumnsFlashesThemOverHTTP(t *testing.T) {
 	}
 	if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
 		t.Errorf("ListGoals = %d Goals, %v after a refused import, want none", len(goals), err)
+	}
+}
+
+// Anyone signed in can download the import's CSV template: the header row of
+// the import format's own columns, as an attachment (#676).
+func TestImportTemplateDownloadsAsCSVOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	resp, err := ctxGet(t, admin, ts.URL+"/imports/template")
+	if err != nil {
+		t.Fatalf("GET /imports/template: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /imports/template: status %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "text/csv; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/csv; charset=utf-8", got)
+	}
+	if got := resp.Header.Get("Content-Disposition"); got != `attachment; filename="goal-import-template.csv"` {
+		t.Errorf("Content-Disposition = %q, want an attachment named goal-import-template.csv", got)
+	}
+	if want := "Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents\n"; body != want {
+		t.Errorf("template body = %q, want %q", body, want)
+	}
+}
+
+// An Admin's import page lists the import format's columns, marking the
+// required ones, and links to a CSV template, rather than pointing at a repo
+// file (#676).
+func TestImportPageListsTheColumnsAndLinksTheTemplateOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	page := getPage(t, admin, ts.URL+"/imports")
+	findByTestID(t, page, "import-column-list")
+	entries := findAllByTestID(page, "import-column")
+	if len(entries) != len(importer.Columns) {
+		t.Fatalf("page lists %d columns, want %d:\n%s", len(entries), len(importer.Columns), renderNode(page))
+	}
+	title, milestones := textOf(entries[1]), textOf(entries[6])
+	if !strings.Contains(title, "Title") || !strings.Contains(title, "Required") || !strings.Contains(title, "The Goal's title, unique within the file.") {
+		t.Errorf("Title entry = %q, want its name, Required and its meaning", title)
+	}
+	if !strings.Contains(milestones, "Milestones") || strings.Contains(milestones, "Required") {
+		t.Errorf("Milestones entry = %q, want its name and not Required", milestones)
+	}
+	text := textOf(page)
+	for _, gone := range []string{"docs/import-format.md", "pilot"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("import page still says %q:\n%s", gone, text)
+		}
+	}
+	link := linkTo(page, "/imports/template")
+	if link == nil {
+		t.Fatalf("import page has no link to /imports/template:\n%s", renderNode(page))
+	}
+	if got := textOf(link); got != "Download a CSV template" {
+		t.Errorf("template link reads %q, want %q", got, "Download a CSV template")
+	}
+}
+
+// The file input isn't required, so a submit with no file reaches the server,
+// which says so beside the input (#676).
+func TestImportFileInputIsNotRequiredOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	file := formField(t, getPage(t, admin, ts.URL+"/imports"), "file")
+	if hasAttr(file.Node, "required") {
+		t.Errorf("the file input is required, so a browser blocks a submit with no file before the server can say so")
+	}
+}
+
+// postImportWithoutFile posts the import form as multipart form data with the
+// given action and no file part, as a browser does when no file is chosen.
+func postImportWithoutFile(t *testing.T, client *http.Client, rawURL, action string) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if err := mw.WriteField("action", action); err != nil {
+		t.Fatalf("write action field: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	resp, err := ctxPost(t, client, rawURL, mw.FormDataContentType(), &buf)
+	if err != nil {
+		t.Fatalf("POST %s: %v", rawURL, err)
+	}
+	return resp
+}
+
+// A Dry run or Commit with no file chosen is refused, 422, with "Choose a file
+// to import." beside the file input rather than a flash at the top, and
+// nothing is imported (#676).
+func TestImportWithNoFileSaysSoBesideTheInputOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, action := range []string{"commit", "dry-run"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "admin@example.com")
+			ts := newServer(t, h)
+			admin := signInClient(t, ts.URL, "admin@example.com")
+
+			resp := postImportWithoutFile(t, admin, ts.URL+"/imports", action)
+			defer func() { _ = resp.Body.Close() }()
+			page := parsePage(t, readBody(t, resp))
+			if resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Errorf("status %d, want 422", resp.StatusCode)
+			}
+			if got := textOf(findByTestID(t, page, "import-file-error")); got != "Choose a file to import." {
+				t.Errorf("file error = %q, want %q", got, "Choose a file to import.")
+			}
+			file := formField(t, page, "file")
+			if got := attrOf(file.Node, "aria-invalid"); got != "true" {
+				t.Errorf("file input aria-invalid = %q, want true", got)
+			}
+			if got := attrOf(file.Node, "aria-describedby"); got != "file-error" {
+				t.Errorf("file input aria-describedby = %q, want file-error", got)
+			}
+			if hasTestID(page, "import-flash") {
+				t.Errorf("a missing file flashed at the top as well:\n%s", textOf(findByTestID(t, page, "import-flash")))
+			}
+			if goals, err := h.Service.ListGoals(context.Background()); err != nil || len(goals) != 0 {
+				t.Errorf("ListGoals = %d Goals, %v after an import with no file, want none", len(goals), err)
+			}
+		})
 	}
 }

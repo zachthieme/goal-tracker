@@ -95,6 +95,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /draft-highlights/{id}/delete", s.requireAuth(s.handleDeleteDraftHighlight))
 	s.mux.HandleFunc("GET /imports", s.requireAuth(s.handleImportForm))
 	s.mux.HandleFunc("POST /imports", s.requireAuth(s.handleRunImport))
+	s.mux.HandleFunc("GET /imports/template", s.requireAuth(s.handleImportTemplate))
 	s.mux.HandleFunc("GET /reports", s.requireAuth(s.handleReports))
 	s.mux.HandleFunc("GET /reports/new", s.requireAuth(s.handleNewReportForm))
 	s.mux.HandleFunc("POST /reports/new", s.requireAuth(s.handleNewReport))

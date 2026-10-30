@@ -3991,3 +3991,21 @@ func TestNameInBracketsKeepsItsOpenBracketStyles(t *testing.T) {
 		}
 	}
 }
+
+// The Import page's file input error sits on its own line in the danger ink,
+// as the Goal form's input errors do (#676).
+func TestImportFileErrorIsInTheDangerInkStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	page := getBody(t, admin, ts.URL+"/imports")
+
+	rule := cssRule(t, page, ".im-input-error")
+	for _, want := range []string{"display:block", "font-size:var(--text-secondary)", "color:var(--color-danger-ink)"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".im-input-error{%s} lacks %s", rule, want)
+		}
+	}
+}

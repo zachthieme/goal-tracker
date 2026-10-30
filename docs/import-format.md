@@ -39,7 +39,7 @@ the whole file.
 | `Owner`         | yes      | The Owner's email address. If no account exists for it yet, one is created (people named in the file get accounts). |
 | `Why it matters`       | yes      | The customer problem the Goal addresses (CONTEXT.md: Why it matters). |
 | `Kind`          | yes      | `Dated` or `Ongoing`. |
-| `Delivery Date` | for Dated | `YYYY-MM-DD`, or in XLSX a date cell (see below). Required when `Kind` is `Dated`; must be empty when `Kind` is `Ongoing`. |
+| `Delivery Date` | no       | `YYYY-MM-DD`, or in XLSX a date cell (see below). Required when `Kind` is `Dated`; must be empty when `Kind` is `Ongoing`. |
 | `Milestones`    | no       | Zero or more Milestones (see below). |
 | `Metrics`       | no       | Zero or more Metrics (see below). |
 | `Parents`       | no       | Zero or more parent Goal titles this Goal contributes to (see below). |
@@ -47,6 +47,16 @@ the whole file.
 | _Field name_    | no       | Any column whose header matches a Field. The cell holds the Goal's value in that Field (see below). |
 
 Imported Goals are created **Proposed**; they are not activated by the import.
+
+The Import Goals page (`/imports`) lists the import format's own columns, `ID`
+to `Parents`, from `importer.Columns` in `internal/importer/columns.go`, each
+with whether it's required and a one-line meaning, and offers a CSV template to
+download at `/imports/template`: just the header row, every one of those
+columns but `ID`. Uploaded unchanged, the template imports no rows. `Required`
+there means what it means in the table: the header must have the column, so
+`Delivery Date`'s cell is needed for a Dated Goal although the column isn't
+required. Rows in this table for those columns must match `Columns`: the same
+names, in the same order, required the same way.
 
 ### Dates in XLSX
 

@@ -261,12 +261,10 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 		}
 	}
 	var missing []string
-	for _, req := range []struct {
-		name string
-		idx  int
-	}{{"Title", lay.title}, {"Owner", lay.owner}, {"Why it matters", lay.whyItMatters}, {"Kind", lay.kind}} {
-		if req.idx < 0 {
-			missing = append(missing, req.name)
+	have := lay.goalColumns()
+	for _, c := range Columns {
+		if _, ok := have[c.Name]; c.Required && !ok {
+			missing = append(missing, c.Name)
 		}
 	}
 	if len(missing) > 0 {
