@@ -1684,6 +1684,33 @@ templ metricList(trends []metricTrend, editable bool, dates displayDates) {
 			}
 		</div>
 	}
+	if editable && len(trends) > 0 {
+		@metricEditDirectionScript()
+	}
+}
+
+// metricEditDirectionScript shows an Edit Metric form's Direction only while
+// its baseline and target hold equal numbers, the select disabled while
+// hidden, as the goal form's Metric editor does. Without script the field
+// always shows, and the server counts it only when they're equal.
+templ metricEditDirectionScript() {
+	<script>
+		(function () {
+			document.querySelectorAll("[data-metric-direction]").forEach(function (direction) {
+				var form = direction.closest("form");
+				show();
+				form.addEventListener("input", show);
+
+				function show() {
+					var b = form.elements.baseline.value.trim();
+					var t = form.elements.target.value.trim();
+					var equal = b !== "" && t !== "" && Number(b) === Number(t);
+					direction.hidden = !equal;
+					direction.querySelector("select").disabled = !equal;
+				}
+			});
+		})();
+	</script>
 }
 
 // metricSparkline draws a Metric's readings as a line, the latest point marked,
@@ -1740,6 +1767,8 @@ templ highlightList(highlights []domain.Highlight, dates displayDates) {
 }
 
 // metricFields is the shared set of Metric inputs, prefilled from m for editing.
+// The Direction counts only when the target equals the baseline; otherwise the
+// server takes it from them (metricDirection), as the goal form does.
 templ metricFields(m domain.Metric) {
 	<label>
 		Name
@@ -1750,19 +1779,19 @@ templ metricFields(m domain.Metric) {
 		<input type="text" name="unit" value={ m.Unit } required/>
 	</label>
 	<label>
-		Direction
-		<select name="direction">
-			<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
-			<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
-		</select>
-	</label>
-	<label>
 		Baseline
 		<input type="number" step="any" name="baseline" value={ fmtNum(m.Baseline) } required/>
 	</label>
 	<label>
 		Target
 		<input type="number" step="any" name="target" value={ fmtNum(m.Target) } required/>
+	</label>
+	<label data-metric-direction>
+		Direction <span class="hint">— when target equals baseline</span>
+		<select name="direction">
+			<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
+			<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
+		</select>
 	</label>
 	<label>
 		Target date
