@@ -12,6 +12,9 @@ import (
 // candidates, then why the pick was refused. One-pick (Single), it opens with
 // nothing picked, a pick replaces the chip there, and the no-script select
 // starts on "Choose a Goal…". Neither control is required: the server decides.
+// The search asks on every input, not only a changed one: htmx's changed
+// remembers the query a one-pick's clearing leaves behind, so typing it again
+// wouldn't ask.
 templ goalPicker(v goalPickerView) {
 	<div class="gf-picker" data-goal-picker data-single?={ v.Single }>
 		<ul data-testid="parent-chips" id="parent-chips" class="gf-chips">
@@ -31,7 +34,7 @@ templ goalPicker(v goalPickerView) {
 				aria-label={ v.SearchLabel }
 				aria-controls="parent-results"
 				hx-get={ v.SearchURL }
-				hx-trigger="input changed delay:300ms, search"
+				hx-trigger="input delay:300ms, search"
 				hx-target="#parent-results"
 				hx-swap="innerHTML"
 				hx-sync="this:replace"

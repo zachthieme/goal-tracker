@@ -20,6 +20,9 @@ import (
 // candidates, then why the pick was refused. One-pick (Single), it opens with
 // nothing picked, a pick replaces the chip there, and the no-script select
 // starts on "Choose a Goal…". Neither control is required: the server decides.
+// The search asks on every input, not only a changed one: htmx's changed
+// remembers the query a one-pick's clearing leaves behind, so typing it again
+// wouldn't ask.
 func goalPicker(v goalPickerView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -70,7 +73,7 @@ func goalPicker(v goalPickerView) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.SearchLabel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 31, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 34, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -83,13 +86,13 @@ func goalPicker(v goalPickerView) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.SearchURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 33, Col: 24}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 36, Col: 24}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-trigger=\"input changed delay:300ms, search\" hx-target=\"#parent-results\" hx-swap=\"innerHTML\" hx-sync=\"this:replace\" hx-include=\"#parent-chips [name='parent_id']\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-trigger=\"input delay:300ms, search\" hx-target=\"#parent-results\" hx-swap=\"innerHTML\" hx-sync=\"this:replace\" hx-include=\"#parent-chips [name='parent_id']\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -115,7 +118,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 46, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 49, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -128,7 +131,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 46, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 49, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -154,7 +157,7 @@ func goalPicker(v goalPickerView) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(c.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 49, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 52, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
@@ -167,7 +170,7 @@ func goalPicker(v goalPickerView) templ.Component {
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(c.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 49, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 52, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -190,7 +193,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 56, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 59, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -203,7 +206,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 56, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 59, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 			if templ_7745c5c3_Err != nil {
@@ -229,7 +232,7 @@ func goalPicker(v goalPickerView) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(c.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 58, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 61, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 				if templ_7745c5c3_Err != nil {
@@ -242,7 +245,7 @@ func goalPicker(v goalPickerView) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(c.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 58, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 61, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -266,7 +269,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID + "-error")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 64, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 67, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -279,7 +282,7 @@ func goalPicker(v goalPickerView) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(v.Error)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 64, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 67, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -361,7 +364,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ParentInput(p.Goal.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 85, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 88, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -379,7 +382,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.Asks)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 88, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 91, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 			if templ_7745c5c3_Err != nil {
@@ -397,7 +400,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputParentID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 91, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 94, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
@@ -410,7 +413,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(p.Goal.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 91, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 94, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
@@ -431,7 +434,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 93, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 96, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -444,7 +447,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + p.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 94, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 97, Col: 110}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
@@ -457,7 +460,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + p.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 94, Col: 145}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 97, Col: 145}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 		if templ_7745c5c3_Err != nil {
@@ -470,7 +473,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputRemoveParent)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 95, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 98, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 		if templ_7745c5c3_Err != nil {
@@ -483,7 +486,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(p.Goal.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 95, Col: 111}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 98, Col: 111}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -501,7 +504,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.ParentInput(p.Goal.ID) + "-error")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 97, Col: 80}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 100, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
@@ -514,7 +517,7 @@ func parentChip(p parentChoice, bad string) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 97, Col: 111}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 100, Col: 111}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -580,7 +583,7 @@ func goalSearchResults(matches []parentChoice) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 114, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 117, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -593,7 +596,7 @@ func goalSearchResults(matches []parentChoice) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Owner.Label())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 115, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 118, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -652,7 +655,7 @@ func parentBadge(p parentChoice) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(p.Goal.Lifecycle)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 130, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalpicker.templ`, Line: 133, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {

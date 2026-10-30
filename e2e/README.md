@@ -181,6 +181,15 @@ adding to a Goal's existing Milestone. With two refused editors open, it checks
 where focus goes after Cancel and Save, and that the Milestones label waits for
 a saved item.
 
+[`parent-picker.spec.ts`](parent-picker.spec.ts) checks the one-pick Parent
+Goal picker. As `quietGoal`'s Owner on its Goal page's Link to a parent Goal,
+it checks that Request link with nothing picked is refused beside the picker,
+that typing a letter lists Goals, each with its Health badge and Owner, that a
+pick shows one chip with its title and a second pick replaces it, and that
+Request link then lands on the Goal page with the form closed. As another
+account on the Goal's Suggest a parent page, it checks that Suggest with
+nothing picked is refused beside the picker.
+
 ## Conventions for the scenario specs
 
 - **One spec per scenario**, at `scenarios/<nn>-<slug>.spec.ts`. A helper only
