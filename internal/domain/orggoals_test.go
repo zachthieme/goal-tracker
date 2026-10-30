@@ -79,9 +79,10 @@ func TestOrgSignalsCountEachOrgUnderTheViewer(t *testing.T) {
 	}
 }
 
-// Only Active Goals Owned by someone under the viewer count: not the viewer's
-// own, which Your goals covers, not one On Hold, and not one Owned outside
-// the Org, even with a Delegate inside it (CONTEXT.md: Org).
+// Only Active Goals Owned in the viewer's Org count, as its Goal list's Org
+// scope keeps them: the viewer's own in Own and Total but no one's row, not
+// one On Hold, and not one Owned outside the Org, even with a Delegate inside
+// it (CONTEXT.md: Org).
 func TestOrgSignalsCountOnlyActiveGoalsOwnedUnderTheViewer(t *testing.T) {
 	t.Parallel()
 
@@ -101,11 +102,61 @@ func TestOrgSignalsCountOnlyActiveGoalsOwnedUnderTheViewer(t *testing.T) {
 	h.Clock.Advance(10 * 24 * time.Hour)
 
 	sig := orgSignals(t, h, viewer.ID)
-	if sig.Total.Any() {
-		t.Errorf("Total = %+v, want nothing flagged", sig.Total)
+	// The viewer's Red Goal is ten days without a Check-in, so Check-in
+	// overdue too.
+	if got, want := sig.Own, (domain.SignalCounts{Red: 1, CheckinOverdue: 1}); got != want {
+		t.Errorf("Own = %+v, want the viewer's Red Goal's %+v", got, want)
+	}
+	if got, want := sig.Total, (domain.SignalCounts{Red: 1, CheckinOverdue: 1}); got != want {
+		t.Errorf("Total = %+v, want the viewer's Red Goal's %+v", got, want)
 	}
 	if got := signalsFor(t, sig, a.ID); got.Any() {
 		t.Errorf("A's counts = %+v, want nothing flagged", got)
+	}
+}
+
+// The rows add up to the total: Total is Own plus every Under entry's counts,
+// with the viewer's own Goals and their reports' alike flagged.
+func TestOrgSignalsTotalIsOwnPlusUnder(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	viewer := h.SignIn("viewer@example.com")
+	a := h.SignIn("a@example.com")
+	b := h.SignIn("b@example.com")
+	c := h.SignIn("c@example.com")
+	h.SetManager(a, viewer)
+	h.SetManager(b, viewer)
+	h.SetManager(c, b)
+	far := h.Clock.Now().AddDate(0, 1, 0)
+	for _, g := range []struct {
+		owner  domain.Account
+		health string
+	}{
+		{viewer, domain.HealthYellow},
+		{viewer, domain.HealthRed},
+		{a, domain.HealthRed},
+		{b, domain.HealthYellow},
+		{c, domain.HealthRed},
+		{c, domain.HealthGreen},
+	} {
+		goal := h.ActiveGoal(g.owner, "A "+g.health+" goal", "It matters.")
+		h.Checkin(g.owner, goal.ID, g.health, "Status.", "Plan.", far)
+	}
+
+	sig := orgSignals(t, h, viewer.ID)
+	if got, want := sig.Total, (domain.SignalCounts{Red: 3, Yellow: 2}); got != want {
+		t.Errorf("Total = %+v, want %+v", got, want)
+	}
+	sum := sig.Own
+	for _, p := range sig.Under {
+		sum.Red += p.Counts.Red
+		sum.PathOverdue += p.Counts.PathOverdue
+		sum.CheckinOverdue += p.Counts.CheckinOverdue
+		sum.Yellow += p.Counts.Yellow
+	}
+	if sum != sig.Total {
+		t.Errorf("Own plus Under = %+v, want Total %+v; OrgSignals = %+v", sum, sig.Total, sig)
 	}
 }
 
@@ -169,7 +220,8 @@ func TestOrgSignalsKeepDepartedPeopleWhereTheyWere(t *testing.T) {
 
 // The directory's cycles are stored as given (ADR 0008): with the viewer's
 // Manager under them, the walk still ends, counts B's Goal once and the
-// viewer's own nowhere. Someone who manages themselves gets no entry.
+// viewer's own in Own, never in A's row though A is the viewer's Manager.
+// Someone who manages themselves gets no entry, their own Goals in Own.
 func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 	t.Parallel()
 
@@ -190,8 +242,11 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 	h.Checkin(b, red.ID, domain.HealthRed, "Blocked.", "Escalate.", far)
 
 	sig := orgSignals(t, h, viewer.ID)
-	if got, want := sig.Total, (domain.SignalCounts{Red: 1}); got != want {
+	if got, want := sig.Total, (domain.SignalCounts{Red: 2}); got != want {
 		t.Errorf("Total = %+v, want %+v", got, want)
+	}
+	if got, want := sig.Own, (domain.SignalCounts{Red: 1}); got != want {
+		t.Errorf("Own = %+v, want %+v", got, want)
 	}
 	if got, want := signalsFor(t, sig, b.ID), (domain.SignalCounts{Red: 1}); got != want {
 		t.Errorf("B's counts = %+v, want %+v", got, want)
@@ -207,8 +262,9 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 	h.SyncDirectory(domain.DirectoryPerson{Email: self.Email, ManagerEmail: self.Email})
 	selfGoal := h.ActiveGoal(self, "Write the memo", "Nobody knows the plan.")
 	h.Checkin(self, selfGoal.ID, domain.HealthRed, "Late.", "Block a day.", far)
-	if sig := orgSignals(t, h, self.ID); len(sig.Under) != 0 || sig.Total.Any() {
-		t.Errorf("a self-managed person's OrgSignals = %+v, want no entries and nothing counted", sig)
+	sig = orgSignals(t, h, self.ID)
+	if want := (domain.SignalCounts{Red: 1}); len(sig.Under) != 0 || sig.Total != want || sig.Own != want {
+		t.Errorf("a self-managed person's OrgSignals = %+v, want no entries and Total and Own %+v", sig, want)
 	}
 }
 

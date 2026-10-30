@@ -44,28 +44,38 @@ type PersonSignals struct {
 	Counts SignalCounts
 }
 
-// OrgSignals is what is in trouble in someone's Org, person by person: Total
-// counts the Goals Owned by everyone under them, and Under splits it among the
-// people directly under them, so Total is the sum of Under's counts. Under puts
-// the most Red first, then the most Path to Green overdue, the most Check-in
-// overdue and the most Yellow, then goes by Name; those with nothing flagged
-// come last.
+// OrgSignals is what is in trouble in someone's Org, person by person. Total
+// counts the Goals the Goal list's Org scope keeps for them, their own
+// included; Own counts the Goals they Own themselves, and Under splits the
+// rest among the people directly under them, so Total is the sum of Own and
+// Under's counts. Under puts the most Red first, then the most Path to Green
+// overdue, the most Check-in overdue and the most Yellow, then goes by Name;
+// those with nothing flagged come last.
 type OrgSignals struct {
 	Total SignalCounts
+	Own   SignalCounts
 	Under []PersonSignals
 }
 
 // OrgSignals counts the Red, Path to Green overdue, Check-in overdue and Yellow
-// Active Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md:
-// Org). A Goal is in the Org by its Owner alone, never its Delegates; an
-// Ownerless Goal stays where its Departed Owner was. Each person below personID
-// counts toward the person directly under personID through whom orgWalk
-// first reaches them, so a Manager cycle (ADR 0008) counts no one twice.
+// Active Goals Owned in personID's Org, theirs included, as the Org scope
+// GoalScope resolves for them keeps them (CONTEXT.md: Org). A Goal is in the
+// Org by its Owner alone, never its Delegates; an Ownerless Goal stays where
+// its Departed Owner was. personID's own Goals count in Own, and each person
+// below personID counts toward the person directly under personID through
+// whom orgWalk first reaches them, so a Manager cycle (ADR 0008) counts no
+// one twice and personID's Goals in no one's row.
 func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, error) {
 	accounts, err := s.orgWalkAccounts(ctx)
 	if err != nil {
 		return OrgSignals{}, err
 	}
+	of := Account{ID: personID}
+	if i := slices.IndexFunc(accounts, func(a Account) bool { return a.ID == personID }); i >= 0 {
+		of = accounts[i]
+	}
+	var scope GoalScope
+	scope.scopeToOrg(of, accounts)
 	var out OrgSignals
 	// row maps each person under personID to their entry in out.Under.
 	row := map[int64]int{}
@@ -85,15 +95,18 @@ func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, e
 	// no Freshness is judged: only the rules for the signals it counts.
 	now := s.clock.Now()
 	for _, r := range goals {
-		i, ok := row[r.Goal.OwnerID]
-		if !ok {
+		g := goalFromRow(r.Goal, r.Account)
+		if !scope.InScope(g) {
 			continue
 		}
-		g := goalFromRow(r.Goal, r.Account)
 		last := lastCheckinFromRow(r)
 		pathOverdue := pathToGreenPastTarget(g.Lifecycle, last.health, last.pathTargetDate, now, s.GoalTimezone(g))
 		checkinOverdue := s.checkinOverdueSince(g, last.at)
-		out.Under[i].Counts.add(r.CheckinHealth, pathOverdue, checkinOverdue)
+		if g.Owner.ID == personID {
+			out.Own.add(r.CheckinHealth, pathOverdue, checkinOverdue)
+		} else {
+			out.Under[row[g.Owner.ID]].Counts.add(r.CheckinHealth, pathOverdue, checkinOverdue)
+		}
 		out.Total.add(r.CheckinHealth, pathOverdue, checkinOverdue)
 	}
 	slices.SortFunc(out.Under, func(a, b PersonSignals) int {

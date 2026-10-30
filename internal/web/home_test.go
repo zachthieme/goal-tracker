@@ -217,8 +217,9 @@ func TestHomeIsOneSurfaceWithNoCard(t *testing.T) {
 
 // Home's outline reads Your week, then a section heading (h2) for each of
 // Needs you, My org and Your Yellow or Red goals, so no heading skips a level
-// (#386). Each heading has its count after its name: My org counts the people
-// it lists, and Your Yellow or Red goals its Goals (#391). How they look is
+// (#386). Each heading has its count after its name: My org counts the rows
+// it lists, the lead's own Red Goal's You row among them (#678), and Your
+// Yellow or Red goals its Goals (#391). How they look is
 // TestHomeSectionsAreHeadedH2Styles's.
 func TestHomeSectionsAreHeadedH2(t *testing.T) {
 	t.Parallel()
@@ -251,7 +252,7 @@ func TestHomeSectionsAreHeadedH2(t *testing.T) {
 	}
 
 	for testID, want := range map[string]string{
-		"home-org":       "My org 2",
+		"home-org":       "My org 3",
 		"home-not-green": "Your Yellow or Red goals 1",
 	} {
 		if heading := headingNamed(findByTestID(t, main, testID), want); heading == nil || heading.Data != "h2" {
@@ -1378,10 +1379,10 @@ func orgPersonLink(t *testing.T, row *html.Node) *html.Node {
 	return findByTestID(t, row, "home-org-person-link")
 }
 
-// In My org each person's row is one link to their Org on Goals: their
-// initials, their Name, then their counts, so no row repeats a "Their org on
-// Goals" link, and the total line is plain text, set apart from the rows'
-// pills and chips (#377, #391).
+// In My org each person's row is a link on the person to their Org on Goals,
+// their initials and their Name, with their counts after it as links of their
+// own, so no row repeats a "Their org on Goals" link, and the total line is
+// plain text, set apart from the rows' pills and chips (#377, #391, #678).
 func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	t.Parallel()
 
@@ -1399,15 +1400,15 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 		initials string
 		reads    string
 	}{
-		{f.ana, "A", "A Ana 1 Red 1 Path to Green overdue 1 Check-in overdue 1 Yellow"},
-		{f.ben, "B", "B Ben 1 Red"},
+		{f.ana, "A", "A Ana"},
+		{f.ben, "B", "B Ben"},
 	} {
 		link := orgPersonLink(t, rows[i])
 		if href := attrOf(link, "href"); href != fmt.Sprintf("/goals?org=%d", want.who.ID) {
 			t.Errorf("%s's row links to %q, want their org on Goals", want.who.Name, href)
 		}
 		if got := textOf(link); got != want.reads {
-			t.Errorf("%s's row link reads %q, want %q, their initials, Name and counts", want.who.Name, got, want.reads)
+			t.Errorf("%s's row link reads %q, want %q, their initials and Name", want.who.Name, got, want.reads)
 		}
 		lead := link.FirstChild
 		for lead != nil && lead.Type != html.ElementNode {
@@ -1416,9 +1417,13 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 		if lead == nil || textOf(lead) != want.initials || attrOf(lead, "aria-hidden") != "true" || !slices.Equal(homeClasses(lead), []string{"avatar", "hm-avatar"}) {
 			t.Errorf("%s's row doesn't lead with their initials:\n%s", want.who.Name, renderNode(link))
 		}
-		for _, count := range findAllByTestID(rows[i], "home-org-count") {
-			if !within(count, link) {
-				t.Errorf("%s's counts sit outside their row's link:\n%s", want.who.Name, renderNode(rows[i]))
+		counts := findAllByTestID(rows[i], "home-org-count")
+		if len(counts) == 0 {
+			t.Errorf("%s's row has no counts:\n%s", want.who.Name, renderNode(rows[i]))
+		}
+		for _, count := range counts {
+			if within(count, link) {
+				t.Errorf("%s's count %q sits within the link on their name:\n%s", want.who.Name, textOf(count), renderNode(rows[i]))
 			}
 		}
 	}
@@ -1432,6 +1437,111 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	}
 	if badges := findAll(total, func(n *html.Node) bool { return flatFrameHasClass(n, "badge") }); len(badges) != 0 {
 		t.Errorf("total line is chips, not text:\n%s", renderNode(total))
+	}
+}
+
+// My org counts the viewer's own Goals as the Goal list's My org scope does:
+// in the total, and in a You row leading the rows, its name link to the Goals
+// they own or help with. Its total's Yellow, followed, lists the same Goals
+// it counts (#678).
+func TestHomeMyOrgCountsTheViewersOwnGoalsInAYouRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+	own := h.ActiveGoal(f.lead, "Hire", "We need people.")
+	h.Checkin(f.lead, own.ID, domain.HealthYellow, "Few offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
+	client := signInClient(t, ts.URL, "lead@example.com")
+
+	card := homeOrgSection(t, getPage(t, client, ts.URL+"/home"))
+	total := findByTestID(t, card, "home-org-total")
+	if got, want := textOf(total), "2 Red · 1 Path to Green overdue · 1 Check-in overdue · 2 Yellow"; got != want {
+		t.Errorf("total line reads %q, want %q", got, want)
+	}
+	rows := homeOrgRowsIn(card)
+	if len(rows) != 3 {
+		t.Fatalf("My org has %d rows, want You, Ana's and Ben's:\n%s", len(rows), renderNode(card))
+	}
+	you := orgPersonLink(t, rows[0])
+	if got, want := textOf(you), "LL You"; got != want {
+		t.Errorf("the first row's name link reads %q, want %q, the lead's initials and You", got, want)
+	}
+	if href := attrOf(you, "href"); href != "/goals?org=mine" {
+		t.Errorf("the You row links to %q, want /goals?org=mine", href)
+	}
+	if got, want := homeOrgCountsIn(rows[0]), []string{"yellow: 1 Yellow"}; !slices.Equal(got, want) {
+		t.Errorf("the You row counts %v, want %v", got, want)
+	}
+	if heading := headingNamed(card, "My org 3"); heading == nil {
+		t.Errorf("My org's heading doesn't count its 3 rows, You among them:\n%s", renderNode(card))
+	}
+
+	var yellow *html.Node
+	for _, count := range findAllByTestID(total, "home-org-count") {
+		if attrOf(count, "data-kind") == "yellow" {
+			yellow = count
+		}
+	}
+	if yellow == nil {
+		t.Fatalf("total line has no Yellow count:\n%s", renderNode(total))
+	}
+	list := getPage(t, client, ts.URL+attrOf(yellow, "href"))
+	got := goalRowTitlesIn(goalListRowsIn(list), append(f.goals, own)...)
+	slices.Sort(got)
+	if want := []string{"Cut costs", "Hire"}; !slices.Equal(got, want) {
+		t.Errorf("the total's Yellow lists %q, want the 2 Yellow Goals %q", got, want)
+	}
+}
+
+// homeOrgCountHref is where a My org count of kind links for the scope org,
+// an Org's ?org= value: Goals filtered to its Health for Red and Yellow,
+// Follow-ups' Waiting on a Check-in group for the overdue ones (#678).
+func homeOrgCountHref(kind, org string) string {
+	switch kind {
+	case "red", "yellow":
+		return "/goals?org=" + org + "&health=" + kind
+	}
+	return "/follow-ups?org=" + org + "&group=owner"
+}
+
+// Each My org count links to the scope it counts, filtered to what it counts:
+// the total line's to the viewer's Org, a person's row's to theirs, and the
+// You row's to the viewer's own (#678).
+func TestHomeMyOrgCountsLinkToWhatTheyCount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+	own := h.ActiveGoal(f.lead, "Hire", "We need people.")
+	h.Checkin(f.lead, own.ID, domain.HealthYellow, "Few offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
+
+	card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	rows := homeOrgRowsIn(card)
+	if len(rows) != 3 {
+		t.Fatalf("My org has %d rows, want You, Ana's and Ben's:\n%s", len(rows), renderNode(card))
+	}
+	for _, scope := range []struct {
+		what string
+		root *html.Node
+		org  string
+	}{
+		{"the total line", findByTestID(t, card, "home-org-total"), strconv.FormatInt(f.lead.ID, 10)},
+		{"the You row", rows[0], "mine"},
+		{"Ana's row", rows[1], strconv.FormatInt(f.ana.ID, 10)},
+		{"Ben's row", rows[2], strconv.FormatInt(f.ben.ID, 10)},
+	} {
+		counts := findAllByTestID(scope.root, "home-org-count")
+		if len(counts) == 0 {
+			t.Errorf("%s has no counts:\n%s", scope.what, renderNode(scope.root))
+		}
+		for _, count := range counts {
+			href := homeOrgCountHref(attrOf(count, "data-kind"), scope.org)
+			if link := linkTo(count, href); link != count {
+				t.Errorf("%s's %q isn't a link to %s:\n%s", scope.what, textOf(count), href, renderNode(count))
+			}
+		}
 	}
 }
 
@@ -1551,8 +1661,9 @@ func TestHomeMyOrgCountsThoseAllClearInOneLine(t *testing.T) {
 	}
 }
 
-// With nothing flagged anywhere under the viewer, My org says so in one line,
-// with no total and no rows, and still links on to the Org's Goals and Follow-ups.
+// With nothing flagged anywhere in the viewer's Org, their own Goals included,
+// My org says so in one line, with no total and no rows, and still links on to
+// the Org's Goals and Follow-ups.
 func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 	t.Parallel()
 
@@ -1566,7 +1677,7 @@ func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 		h.Checkin(p, g.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 	}
 	own := h.ActiveGoal(lead, "Set strategy", "No direction.")
-	h.Checkin(lead, own.ID, domain.HealthRed, "Stuck.", "Offsite.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(lead, own.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	card := homeOrgSection(t, getPage(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 	allClear := findByTestID(t, card, "home-org-all-clear")

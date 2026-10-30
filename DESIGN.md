@@ -778,7 +778,7 @@ and so on).
     a muted 13px meta line (`.hm-meta`) on the same line while it fits and
     under it when it doesn't. The actions sit at the right, 8px apart, as
     30px buttons, and wrap under the row on a narrow column. Rows take no
-    hover fill, save My org's.
+    hover fill.
   - **A dated pill (`.badge.as-of`, Home's own rule):** a Check-in overdue
     Goal's Health is its last Check-in's, so its pill is marked stale: it
     keeps its Health's fill, ink and shape, edged in a 1px dashed line
@@ -839,38 +839,53 @@ and so on).
 - **Home's My org section (`homeOrgSection` in `home.templ`):** shown only to
   someone with anyone under them by Manager, so never before a directory sync
   (ADR 0008). It sits directly under Needs you, headed **My org** with the
-  number of people it lists, and counts what is in trouble in the person's
-  Org, leaving out the Goals they Own themselves, which Your goals covers. A
-  Goal is in the Org by its Owner, never its Delegates, and an Ownerless Goal
-  stays where its Departed Owner was. It lists people and counts, never
-  Goals:
-  - **Total line:** across everyone under the person, a plain body line in
+  number of rows it lists, and counts what is in trouble in the person's Org
+  as the Goal list's My org scope does, the Goals they Own themselves
+  included. A Goal is in the Org by its Owner, never its Delegates, and an
+  Ownerless Goal stays where its Departed Owner was. It lists people and
+  counts, never Goals:
+  - **Total line:** across the person's whole Org, a plain body line in
     `--color-ink-2`, one count per signal with anything in it, in the order
     Red · Path to Green overdue · Check-in overdue · Yellow ("2 Red · 1 Path
     to Green overdue · 3 Check-in overdue · 1 Yellow"). It is text, not
-    pills, so the totals stand apart from the per-person counts beneath. A
-    Goal counts under every signal it has, so the counts can add up to more
-    than the Goals behind them.
+    pills, so the totals stand apart from the per-person counts beneath; each
+    count is a plain link (below). A Goal counts under every signal it has, so
+    the counts can add up to more than the Goals behind them.
   - **Rows (`.hm-org-row`):** one per person directly under the viewer whose
-    Org has anything flagged. The whole row is one link, at least 44px, to
-    their Org on Goals (`/goals?org=<their ID>`): their initials in a 22px
-    avatar, their Name in 14px, 500 `--color-ink` (`personPlain`, email on
-    hover), a "departed" chip beside a Departed one, then their Org's counts
-    in the total line's order. Each reads as a count and a name ("1 Red"), so
-    it reads without colour: Red and Yellow as Health pills with their
-    shape (`.dot`) before the count, Path to Green
-    overdue and Check-in overdue as Check-in overdue chips. On hover the row
-    takes `--color-row-hover`. The most Red come first, then the most Path to
-    Green overdue, the most Check-in overdue and the most Yellow, then by
-    Name. Someone further down counts in the row of the person directly under
-    the viewer they're under, so the rows add up to the total.
+    Org has anything flagged, led by a **You** row for the Goals the viewer
+    Owns when those have anything flagged. A row is a link on the person plus
+    a link per count. The person's link, at least 44px, goes to their Org on
+    Goals (`/goals?org=<their ID>`): their initials in a 22px avatar, their
+    Name in 14px, 500 `--color-ink` (`personPlain`, email on hover), underlined
+    on hover, and a "departed" chip beside a Departed one. The You row's reads
+    "You" beside the viewer's initials and goes to `/goals?org=mine`. Their
+    Org's counts follow the link, in the total line's order. Each reads as a
+    count and a name ("1 Red"), so it reads without colour: Red and Yellow as
+    Health pills with their shape (`.dot`) before the count, Path to Green
+    overdue and Check-in overdue as Check-in overdue chips. A linked pill is
+    at least 24px tall (`.hm-list>li>a.badge`), over Home's 22px pills. The
+    most Red come first, then the most Path to Green overdue, the most
+    Check-in overdue and the most Yellow, then by Name. Someone further down
+    counts in the row of the person directly under the viewer they're under,
+    and the viewer's own Goals only in the You row, so the rows add up to the
+    total.
+  - **Count links:** each count links to the scope it counts, filtered to
+    what it counts: the total line's to the viewer's Org, a person's row's to
+    theirs, the You row's to `org=mine`. Red goes to
+    `/goals?org=<ID>&health=red` and Yellow to `/goals?org=<ID>&health=yellow`.
+    Path to Green overdue and Check-in overdue go to Follow-ups' Waiting on a
+    Check-in group (`/follow-ups?org=<ID>&group=owner`), as the Goal list has
+    no filter for them; that group also holds Milestone overdue Goals, which
+    My org doesn't count, so it can list a few more. `org=mine` also keeps the
+    Goals the viewer is a Delegate on, so the You row's lists can too.
   - **All clear:** the people directly under the viewer with nothing flagged
     share one muted line after the rows, "2 others all clear" ("1 other all
-    clear"), left out when there are none. With nothing flagged anywhere, the
-    section shows only one muted "Everyone in My org is all clear." line.
+    clear"), left out when there are none. With nothing flagged anywhere in
+    the Org, the viewer's own Goals included, the section shows only one
+    muted "Everyone in My org is all clear." line.
   - **Links:** the section ends with one line, **My org on Goals →** ·
-    **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages include the
-    person's own Goals.
+    **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages count the
+    same Goals as the section.
 
   The section adds nothing to Needs you or the sidebar's Home count.
 - **Health distribution bar (`.hm-bar`, `healthBar` in `home.templ`):** on
