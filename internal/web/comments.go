@@ -234,7 +234,8 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 // handleRaiseActionItem raises an Action Item on a published Report, from a
 // comment or directly, owned by the Account the owner field names by email.
 // One raised directly is about the Goal the goal field names, or the whole
-// Report when it is 0 or absent, as from the comment form.
+// Report when it is 0 or absent, as from the comment form. Refused, by a Due
+// or Goal that doesn't parse or by the domain, it is refuseActionItem's.
 func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pub, ok := s.publication(w, r)
 	if !ok {
@@ -280,7 +281,8 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 }
 
 // handleCloseActionItem closes an Action Item with a note and comes back to the
-// page it was closed from, or else the publication it was raised on.
+// page it was closed from, or else the publication it was raised on; refused,
+// it is refuseActionItem's.
 func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -302,7 +304,7 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 
 // handleReassignActionItem hands an open Action Item to the Account the owner
 // field names by email, and comes back to the page it was reassigned from, or
-// else the publication it was raised on.
+// else the publication it was raised on; refused, it is refuseActionItem's.
 func (s *Server) handleReassignActionItem(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -350,7 +352,7 @@ func (s *Server) commentPagePath(r *http.Request, id int64) string {
 }
 
 // actionItemPagePath is the page a refused close or reassign of the Action
-// Item id links Back to: the form's return, when it is a page of the app's
+// Item id comes back to: the form's return, when it is a page of the app's
 // own, or else the publication it was raised on, or Home when it can't be
 // read. A refused command returns no Action Item, so it is read again.
 func (s *Server) actionItemPagePath(r *http.Request, id int64) string {

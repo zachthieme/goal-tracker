@@ -881,3 +881,211 @@ func TestARefusedAddActionItemComesBackToItsFormOverHTTP(t *testing.T) {
 		t.Errorf("Action Items = %+v (%v), want none raised", items, err)
 	}
 }
+
+// A Close with a blank note comes back to the page it was posted from — Home,
+// the Goal page, the draft or the publication, or the publication when its
+// return isn't a page on this site — with that item's one Close open there,
+// and the reason beside its note. A reload shows it closed, and the item stays
+// open (#660).
+func TestARefusedCloseComesBackToItsFormOnEachPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: g.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	closePath := fmt.Sprintf("/action-items/%d/close", item.ID)
+
+	for _, c := range []struct{ name, posted, back string }{
+		{"Home", "/home", "/home"},
+		{"the Goal page", fmt.Sprintf("/goals/%d#action-items", g.ID), fmt.Sprintf("/goals/%d#action-items", g.ID)},
+		{"the draft", fmt.Sprintf("/reports/%d", def.ID), fmt.Sprintf("/reports/%d", def.ID)},
+		{"the publication", pubPath, pubPath},
+		{"a return off the site", "//evil.example", pubPath},
+	} {
+		postRefusedBack(t, client, ts.URL+closePath, url.Values{"note": {" "}, "return": {c.posted}}, c.back)
+		page := getPage(t, client, ts.URL+c.back)
+		open := openDetails(page, "close-toggle")
+		if len(open) != 1 {
+			t.Errorf("%s: %d Close toggles open, want 1:\n%s", c.name, len(open), renderNode(page))
+			continue
+		}
+		form := findByTestID(t, open[0], "close-action-item")
+		if attrOf(form, "action") != closePath {
+			t.Errorf("%s: the open Close is %q, want the item's %q", c.name, attrOf(form, "action"), closePath)
+		}
+		if note := formField(t, form, "note"); attrOf(note.Node, "aria-invalid") != "true" || note.Description != "Closing an Action Item needs a note." {
+			t.Errorf("%s: note is aria-invalid %q, described %q; want it invalid, needing a note", c.name, attrOf(note.Node, "aria-invalid"), note.Description)
+		}
+		if page := getPage(t, client, ts.URL+c.back); len(openDetails(page, "close-toggle")) != 0 || hasTestID(page, "form-error") {
+			t.Errorf("%s: a reload still shows the refused Close open, or its error", c.name)
+		}
+	}
+	if open, err := h.Service.OpenActionItems(context.Background(), def.ID); err != nil || len(open) != 1 {
+		t.Errorf("open Action Items %+v (err %v), want the item still open", open, err)
+	}
+}
+
+// Making a comment an Action Item for an email no one has comes back to the
+// publication with that comment's form open, in its open thread, holding the
+// owner typed and saying why beside it; no other comment's form opens (#660).
+func TestARefusedMakeActionItemComesBackToItsCommentOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	eu := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	v2 := h.ActiveGoal(author, "Ship v2", "Win back churned accounts.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, v2.ID}})
+	pub := h.PublishReport(author, def)
+	var comments []domain.Comment
+	for _, g := range []domain.Goal{eu, eu, v2} {
+		c, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
+		if err != nil {
+			t.Fatalf("AddComment: %v", err)
+		}
+		comments = append(comments, c)
+	}
+	refused := comments[1]
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	postRefusedBack(t, client, ts.URL+pubPath+"/action-items", url.Values{
+		"comment": {strconv.FormatInt(refused.ID, 10)}, "text": {""}, "owner": {"nobody@example.com"}, "due": {"2026-02-01"},
+	}, pubPath)
+
+	page := getPage(t, client, ts.URL+pubPath)
+	open := openDetails(page, "make-action-item")
+	if len(open) != 1 {
+		t.Fatalf("%d Make action item toggles open, want 1:\n%s", len(open), renderNode(page))
+	}
+	form := findByTestID(t, open[0], "comment-action-item-form")
+	if got := formField(t, form, "comment").Value; got != strconv.FormatInt(refused.ID, 10) {
+		t.Errorf("the open form makes comment %s an Action Item, want %d", got, refused.ID)
+	}
+	if thread := detailsAround(open[0]); thread == nil || !hasAttr(thread, "open") {
+		t.Errorf("the thread holding the comment isn't open")
+	}
+	owner := formField(t, form, "owner")
+	if owner.Value != "nobody@example.com" || attrOf(owner.Node, "aria-invalid") != "true" || !strings.HasPrefix(owner.Description, `No account with email "nobody@example.com"`) {
+		t.Errorf("owner holds %q, aria-invalid %q, described %q; want it kept, invalid, saying no account has it", owner.Value, attrOf(owner.Node, "aria-invalid"), owner.Description)
+	}
+	if errors := findAllByTestID(page, "form-error"); len(errors) != 1 {
+		t.Errorf("page has %d form errors, want 1", len(errors))
+	}
+}
+
+// Reassigning an Action Item to an email no one has comes back to the draft
+// or the publication it was posted from, with its Reassign open, holding the
+// owner typed and saying why beside it (#660).
+func TestARefusedReassignComesBackToItsFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "author@example.com")
+	reassignPath := fmt.Sprintf("/action-items/%d/reassign", item.ID)
+
+	for _, back := range []string{fmt.Sprintf("/reports/%d", def.ID), fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)} {
+		postRefusedBack(t, client, ts.URL+reassignPath, url.Values{"owner": {"nobody@example.com"}, "return": {back}}, back)
+		page := getPage(t, client, ts.URL+back)
+		open := openDetails(page, "reassign-toggle")
+		if len(open) != 1 {
+			t.Errorf("%s: %d Reassign toggles open, want 1:\n%s", back, len(open), renderNode(page))
+			continue
+		}
+		newOwner := formField(t, findByTestID(t, open[0], "reassign-action-item"), "owner")
+		if newOwner.Value != "nobody@example.com" || attrOf(newOwner.Node, "aria-invalid") != "true" || !strings.HasPrefix(newOwner.Description, `No account with email "nobody@example.com"`) {
+			t.Errorf("%s: owner holds %q, aria-invalid %q, described %q; want it kept, invalid, saying no account has it", back, newOwner.Value, attrOf(newOwner.Node, "aria-invalid"), newOwner.Description)
+		}
+	}
+}
+
+// A Reassign of an item closed since it was shown is refused as a whole: the
+// refusal page, headed Can't reassign Action Item, with Back to the page it
+// came from, and no redirect (#660).
+func TestAReassignOfAnItemClosedSinceAnswersWithTheRefusalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	h.SignIn("other@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	if _, err := h.Service.CloseActionItem(context.Background(), owner.ID, item.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	draftPath := fmt.Sprintf("/reports/%d", def.ID)
+
+	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "author@example.com")), fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID),
+		url.Values{"owner": {"other@example.com"}, "return": {draftPath}})
+	defer func() { _ = resp.Body.Close() }()
+	page := parsePage(t, readBody(t, resp))
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status %d, want 422", resp.StatusCode)
+	}
+	assertRefusalPage(t, page, "Can't reassign Action Item", "The Action Item is already closed.", draftPath)
+}
+
+// A refusal sent back to a Report's draft is the draft's alone: its
+// publication's page, whose address the draft's holds, neither shows nor
+// clears it (#660).
+func TestARefusalStaysOnThePageItWasSentBackToOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Get a second quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+	draftPath := fmt.Sprintf("/reports/%d", def.ID)
+
+	postRefusedBack(t, client, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{"note": {" "}, "return": {draftPath}}, draftPath)
+	if page := getPage(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)); len(openDetails(page, "close-toggle")) != 0 {
+		t.Errorf("the publication took the draft's refusal:\n%s", renderNode(page))
+	}
+	if page := getPage(t, client, ts.URL+draftPath); len(openDetails(page, "close-toggle")) != 1 {
+		t.Errorf("the draft doesn't show its refused Close open:\n%s", renderNode(page))
+	}
+}
