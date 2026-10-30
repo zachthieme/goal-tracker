@@ -942,7 +942,7 @@ func TestCheckinRefusalShowsEveryProblemBesideItsField(t *testing.T) {
 			name: "no Health and no status",
 			form: url.Values{},
 			want: map[string]string{
-				"health": `Health must be "Green", "Yellow", or "Red".`,
+				"health": "Pick how it's going: Green, Yellow or Red.",
 				"status": "A Check-in needs a status.",
 			},
 		},
@@ -2441,6 +2441,31 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), parent.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// A No change refused once the Back to Green by date has passed names that
+// date as the form labels it, on the card and as the form's top error (#695).
+func TestNoChangePassedBackToGreenRefusalUsesTheFormsWords(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Behind.", "Add a second reviewer.", h.Clock.Now().AddDate(0, 0, 3))
+	h.Clock.Advance(5 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const want = "The Back to Green by date has passed: submit a Check-in with a new date and reason, or update the Health."
+
+	card := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "no-change-card")
+	if got := textOf(findByTestID(t, card, "no-change-unavailable")); got != want {
+		t.Errorf("the card's reason = %q, want %q", got, want)
+	}
+	resp, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	defer func() { _ = resp.Body.Close() }()
+	if got := formTopError(t, parsePage(t, refused)); got != want {
+		t.Errorf("the form's error = %q, want %q", got, want)
 	}
 }
 

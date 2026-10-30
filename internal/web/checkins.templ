@@ -164,7 +164,8 @@ type checkinPreviousAnswers struct {
 }
 
 // checkinPreviousFrom gathers what the form refers to from the Goal's latest
-// Check-in, nil when there is none, and its Metrics' readings over time.
+// Check-in, when there is one, and its Metrics' readings over time. With no
+// latest Check-in its PathTargetDate is empty.
 func checkinPreviousFrom(latest *domain.Checkin, trends []metricTrend) checkinPreviousAnswers {
 	var p checkinPreviousAnswers
 	if latest != nil {
@@ -1327,7 +1328,9 @@ var checkinStylesOnce = templ.NewOnceHandle()
 // checkinStyles lays out the Check-in form. The Path to Green hides while Green
 // is picked, by CSS alone, unless it holds a validation error, and the
 // off-target warning and its notice hide while Green isn't; their fields stay
-// in the form either way, so the server's validation is what decides.
+// in the form either way, so the server's validation is what decides. A
+// refused missing Health edges each Health choice in the danger ink, as its
+// radio is hidden, until one is picked.
 templ checkinStyles() {
 	@checkinStylesOnce.Once() {
 		<style>
@@ -1389,6 +1392,7 @@ templ checkinStyles() {
 			.health-toggle label.y{color:var(--health-y-ink)}
 			.health-toggle label.g{color:var(--health-g-ink)}
 			.health-toggle label.badge:has(input:checked){border-color:currentColor}
+			.health-toggle:not(:has(input:checked)) label.badge:has(input[aria-invalid=true]){box-shadow:0 0 0 1px var(--color-danger-ink)}
 			.health-toggle label.r:not(:has(input:checked)){background:var(--health-r-tint)}
 			.health-toggle label.y:not(:has(input:checked)){background:var(--health-y-tint)}
 			.health-toggle label.g:not(:has(input:checked)){background:var(--health-g-tint)}
