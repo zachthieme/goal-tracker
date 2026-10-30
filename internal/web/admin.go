@@ -197,8 +197,8 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 
 // handleRemoveAdmin takes the Admin role from the Account in the path, then
 // brings the Admin back to the Admins section. No Admin can take it from
-// themselves (CONTEXT.md: Admin); an Account that doesn't exist is not found.
-// Only an Admin may.
+// themselves (CONTEXT.md: Admin); an id that isn't one, or names no Account,
+// is the Not found page. Only an Admin may.
 func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	const notAdmin = "only an Admin may remove an Admin"
 	if !current.IsAdmin {
@@ -220,14 +220,6 @@ func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
-	if errors.Is(err, domain.ErrValidation) {
-		// Deliberately not answerRefused's 422: removing yourself is
-		// refused above, so the one refusal left is an id that is no
-		// one's Account, and the Account in the path is not found, as an
-		// id that isn't one is (TestAdminCantRemoveTheirOwnAdminRole).
-		s.notFound(w, r)
-		return
-	}
 	if errors.Is(err, domain.ErrNotAuthorized) {
 		// They stopped being an Admin since the check above.
 		err = domain.Refuse(domain.ErrNotAuthorized, notAdmin)

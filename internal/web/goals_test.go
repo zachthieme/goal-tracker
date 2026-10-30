@@ -6787,8 +6787,8 @@ const (
 // says why on the refusal page instead, as does a form posting no input,
 // which has nothing to come back with. Someone the command refuses
 // (NotAuthorized) gets the refusal page at 403, and the page offers them no
-// way to open the form; a Goal that isn't there (NotFound) is the Not found
-// page.
+// way to open the form; a Goal, or an Account marked departed or returned,
+// that isn't there (NotFound) is the Not found page.
 func TestGoalPageFormsAnswerEachRefusalKindOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -6865,10 +6865,10 @@ func TestGoalPageFormsAnswerEachRefusalKindOverHTTP(t *testing.T) {
 			answer: goalPageRefusalInPlace, reason: "A Goal needs a title.", field: "why_it_matters", typed: "Outages cost us customers."},
 		{kind: "Validation, on a form the page no longer offers", form: "milestones", who: "sam", goal: done, action: path(done.ID, "/milestones"), sent: milestone,
 			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't change Goal", reason: "A Done Goal's Milestones can't change.", back: path(done.ID, "")},
-		{kind: "Validation, posting no input", form: "depart", who: "ada", goal: goal, action: account(missing, "/depart"),
-			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark departed", reason: "Account does not exist.", back: "/home"},
-		{kind: "Validation, posting no input", form: "return", who: "ada", goal: orphan, action: account(missing, "/return"),
-			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark returned", reason: "Account does not exist.", back: "/home"},
+		{kind: "Validation, posting no input", form: "depart", who: "ada", goal: orphan, action: account(kim.ID, "/depart"),
+			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark departed", reason: "Kim has already left the company.", back: "/home"},
+		{kind: "Validation, posting no input", form: "return", who: "ada", goal: goal, action: account(sam.ID, "/return"),
+			answer: goalPageRefusalPage, status: http.StatusUnprocessableEntity, heading: "Can't mark returned", reason: "Sam hasn't left the company.", back: "/home"},
 
 		{kind: "NotAuthorized", form: "handoff", who: "pat", goal: goal, action: path(goal.ID, "/handoff"), sent: handoff,
 			answer: goalPageRefusalPage, status: http.StatusForbidden, heading: "Can't hand off Goal", reason: "Only the Goal's Owner or an Admin may start a Handoff.", back: path(goal.ID, "")},
@@ -6907,6 +6907,8 @@ func TestGoalPageFormsAnswerEachRefusalKindOverHTTP(t *testing.T) {
 		{kind: "NotFound", form: "fields", who: "sam", action: path(missing, "/fields"), sent: fields, answer: goalPageRefusalNotFound},
 		{kind: "NotFound", form: "draft-highlight", who: "sam", action: path(missing, "/draft-highlights"), sent: highlight, answer: goalPageRefusalNotFound},
 		{kind: "NotFound", form: "title-why-it-matters", who: "sam", action: path(missing, "/why-it-matters"), sent: titleAndWhy, answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "depart", who: "ada", action: account(missing, "/depart"), answer: goalPageRefusalNotFound},
+		{kind: "NotFound", form: "return", who: "ada", action: account(missing, "/return"), answer: goalPageRefusalNotFound},
 	} {
 		name := tc.kind + ": " + tc.form
 		client := clients[tc.who]

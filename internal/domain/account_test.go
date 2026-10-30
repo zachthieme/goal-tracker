@@ -164,8 +164,8 @@ func TestMarkDepartedRefusesAnActorWithNoAccount(t *testing.T) {
 }
 
 // MarkDeparted and MarkReturned look the person up before asking who is
-// acting, so an account id that names no Account is refused "account does not
-// exist" whoever asks, a non-Admin included, and nothing changes.
+// acting, so an account id that names no Account is ErrNotFound whoever asks,
+// an Admin or a non-Admin, and nothing changes.
 func TestMarkDepartedAndReturnedRefuseAMissingAccountWhoeverAsks(t *testing.T) {
 	t.Parallel()
 
@@ -179,9 +179,10 @@ func TestMarkDepartedAndReturnedRefuseAMissingAccountWhoeverAsks(t *testing.T) {
 		"MarkDeparted": func(actorID, accountID int64) error { return h.Service.MarkDeparted(ctx, actorID, accountID) },
 		"MarkReturned": func(actorID, accountID int64) error { return h.Service.MarkReturned(ctx, actorID, accountID) },
 	} {
-		err := mark(pat.ID, nobody)
-		if !errors.Is(err, domain.ErrValidation) || domain.Reason(err) != "account does not exist" {
-			t.Errorf("%s by a non-Admin of no Account: err %v, want ErrValidation \"account does not exist\"", name, err)
+		for asker, actor := range map[string]domain.Account{"an Admin": boss, "a non-Admin": pat} {
+			if err := mark(actor.ID, nobody); !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("%s by %s of no Account: err %v, want ErrNotFound", name, asker, err)
+			}
 		}
 	}
 	departed, err := h.Service.DepartedAccounts(ctx)
@@ -703,7 +704,8 @@ func TestRemoveAdminTakesTheRoleFromAnotherAdmin(t *testing.T) {
 }
 
 // No Admin can take the role from themselves, so there is always at least one
-// (CONTEXT.md: Admin); nor from an Account that doesn't exist.
+// (CONTEXT.md: Admin): that is ErrValidation. An account id naming no Account
+// is ErrNotFound, and neither refusal changes who is an Admin.
 func TestRemoveAdminRefusesYourselfAndAnUnknownAccount(t *testing.T) {
 	t.Parallel()
 
@@ -717,8 +719,11 @@ func TestRemoveAdminRefusesYourselfAndAnUnknownAccount(t *testing.T) {
 	if want := []string{"boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
 		t.Errorf("Admins after removing yourself = %q, want %q", adminEmails(t, h), want)
 	}
-	if err := h.Service.RemoveAdmin(ctx, boss.ID, boss.ID+1000); !errors.Is(err, domain.ErrValidation) {
-		t.Errorf("RemoveAdmin of an unknown account: err = %v, want ErrValidation", err)
+	if err := h.Service.RemoveAdmin(ctx, boss.ID, boss.ID+1000); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RemoveAdmin of an unknown account: err = %v, want ErrNotFound", err)
+	}
+	if want := []string{"boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins after removing an unknown account = %q, want %q", adminEmails(t, h), want)
 	}
 }
 
