@@ -24,6 +24,25 @@ func onSection(ctx context.Context, href string) bool {
 	return path == href || strings.HasPrefix(path, href+"/")
 }
 
+// adminToolPaths are the pages the Admin page's tools open, which for an
+// Admin sit under Admin: the sidebar marks Admin current on them, as a page
+// under Goals marks Goals.
+var adminToolPaths = []string{"/dimensions", "/fields", "/imports", "/definition-log"}
+
+// onAdminSection reports whether the request is on the Admin page or at or
+// below one of the Admin tools' pages.
+func onAdminSection(ctx context.Context) bool {
+	if onSection(ctx, "/admin") {
+		return true
+	}
+	for _, href := range adminToolPaths {
+		if onSection(ctx, href) {
+			return true
+		}
+	}
+	return false
+}
+
 type sidebarKey struct{}
 
 // sidebarReader reads what the sidebar shows for the signed-in person the
@@ -231,7 +250,7 @@ templ sidebar(current domain.Account) {
 				@navItem("/follow-ups", "nav-follow-ups", "Follow-ups", followUps(ctx), "count")
 				@navItem("/reports", "nav-reports", "Reports", 0, "count")
 				if current.IsAdmin {
-					@navItem("/admin", "nav-admin", "Admin", 0, "count")
+					@navLink("/admin", "nav-admin", "Admin", 0, "count", onAdminSection(ctx))
 				}
 			</nav>
 			if people := orgPeople(ctx); len(people) > 0 {
@@ -274,7 +293,13 @@ templ sidebar(current domain.Account) {
 // zero. countClass styles the count: Home's needs-you pill, or every other
 // item's plain one.
 templ navItem(href, testID, label string, count int, countClass string) {
-	if onSection(ctx, href) {
+	@navLink(href, testID, label, count, countClass, onSection(ctx, href))
+}
+
+// navLink is a sidebar link drawn as navItem draws it, marked current when on
+// holds: for Admin, whose section takes in the Admin tools' pages too.
+templ navLink(href, testID, label string, count int, countClass string, on bool) {
+	if on {
 		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>
 			@navIcon(href)
 			@navItemLabel(label)

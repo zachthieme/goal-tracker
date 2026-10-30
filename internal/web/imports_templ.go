@@ -103,7 +103,7 @@ func importsPage(current *domain.Account, report *importer.Report, flash string)
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = framedLayout("Import Goals", current, pageHeader(pageHead{Title: "Import Goals"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Import Goals", current, pageHeader(adminToolHead(current, "Import Goals"))).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

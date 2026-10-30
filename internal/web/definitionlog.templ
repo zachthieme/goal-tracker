@@ -16,7 +16,7 @@ import (
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, olderHref string, dates displayDates) {
-	@framedLayout("Definition log", current, pageHeader(pageHead{Title: "Definition log"})) {
+	@framedLayout("Definition log", current, pageHeader(adminToolHead(current, "Definition log"))) {
 		@definitionLogStyles()
 		<p class="muted">
 			if scope.Name != "" {

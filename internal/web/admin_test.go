@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -162,6 +163,126 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 		}
 		if strings.Contains(page, `data-testid="nav-admin"`) != (who == "Admin") {
 			t.Errorf("the %s's nav has the Admin item: %v", who, who != "Admin")
+		}
+	}
+}
+
+// For an Admin, the pages the Admin page's tools open mark Admin current in
+// the sidebar, as a page under Goals marks Goals, and no other item.
+func TestAdminToolPagesMarkAdminCurrent(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	ada := signInClient(t, ts.URL, "ada@example.com")
+
+	for _, path := range []string{"/dimensions", "/fields", "/imports", "/definition-log"} {
+		assertAdminCurrent(t, path, getPage(t, ada, ts.URL+path))
+	}
+}
+
+// The header strip of each page an Admin tool opens leads its title with
+// "Admin ›" for an Admin, linking back to the Admin page. Anyone else has no
+// Admin page to go back to, and sees the title alone.
+func TestAdminToolPagesLeadWithAnAdminBreadcrumbForAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	h.SignIn("sam@example.com")
+	ada := signInClient(t, ts.URL, "ada@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct{ path, title string }{
+		{"/dimensions", "Dimensions"},
+		{"/fields", "Fields"},
+		{"/imports", "Import Goals"},
+		{"/definition-log", "Definition log"},
+	} {
+		header := pageHeaderOf(t, getPage(t, ada, ts.URL+tc.path))
+		title := pageTitleIn(t, header)
+		if got := textOf(title); got != tc.title {
+			t.Errorf("an Admin's %s header reads %q, want %q", tc.path, got, tc.title)
+		}
+		crumb := linkTo(header, "/admin")
+		if crumb == nil {
+			t.Errorf("an Admin's %s header has no link to the Admin page", tc.path)
+			continue
+		}
+		if got := textOf(crumb); got != "Admin" {
+			t.Errorf("an Admin's %s breadcrumb reads %q, want Admin", tc.path, got)
+		}
+		if !precedes(crumb, title) {
+			t.Errorf("an Admin's %s breadcrumb doesn't come before the title", tc.path)
+		}
+
+		page := getPage(t, sam, ts.URL+tc.path)
+		if linkTo(page, "/admin") != nil {
+			t.Errorf("a non-Admin's %s links to the Admin page", tc.path)
+		}
+		if hasTestID(page, "nav-admin") {
+			t.Errorf("a non-Admin's %s has the Admin nav item", tc.path)
+		}
+		if got := textOf(pageTitleIn(t, pageHeaderOf(t, page))); got != tc.title {
+			t.Errorf("a non-Admin's %s header reads %q, want %q", tc.path, got, tc.title)
+		}
+	}
+}
+
+// pageHeaderOf is the page's header strip.
+func pageHeaderOf(t *testing.T, page *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	strips := findAll(page, func(n *nethtml.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), "page-header") })
+	if len(strips) != 1 {
+		t.Fatalf("page has %d header strips, want 1", len(strips))
+	}
+	return strips[0]
+}
+
+// pageTitleIn is the h1 in a page's header strip.
+func pageTitleIn(t *testing.T, header *nethtml.Node) *nethtml.Node {
+	t.Helper()
+	titles := findAll(header, func(n *nethtml.Node) bool { return n.Data == "h1" })
+	if len(titles) != 1 {
+		t.Fatalf("header strip has %d h1s, want 1", len(titles))
+	}
+	return titles[0]
+}
+
+// A refused switch of a Dimension to one value, re-rendered at the switch's
+// own address below /dimensions, still marks Admin current.
+func TestARefusedDimensionSelectionChangeMarksAdminCurrent(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	teams := h.CreateSeveralValuesDimension(ada, "Team", "Core", "Infra")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, teams.Values[0])
+	h.AssignGoalValue(goal, teams.Values[1])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	path := fmt.Sprintf("/dimensions/%d/selection", teams.ID)
+	page := parsePage(t, postFormBody(t, client, ts.URL+path, url.Values{"selection": {"one"}}))
+	findByTestID(t, page, "selection-refusal")
+	assertAdminCurrent(t, path, page)
+}
+
+// assertAdminCurrent checks that page, at path, marks the sidebar's Admin item
+// current and no other item.
+func assertAdminCurrent(t *testing.T, path string, page *nethtml.Node) {
+	t.Helper()
+	admin := findByTestID(t, page, "nav-admin")
+	if attrOf(admin, "aria-current") != "page" || !slices.Contains(strings.Fields(attrOf(admin, "class")), "on") {
+		t.Errorf("on %s, the Admin item isn't marked current: aria-current=%q class=%q", path, attrOf(admin, "aria-current"), attrOf(admin, "class"))
+	}
+	for _, item := range []string{"nav-home", "nav-goals", "nav-follow-ups", "nav-reports"} {
+		if hasAttr(findByTestID(t, page, item), "aria-current") {
+			t.Errorf("on %s, %s is marked current", path, item)
 		}
 	}
 }

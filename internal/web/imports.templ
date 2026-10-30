@@ -17,7 +17,7 @@ import (
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
 templ importsPage(current *domain.Account, report *importer.Report, flash string) {
 	{{ admin := current != nil && current.IsAdmin }}
-	@framedLayout("Import Goals", current, pageHeader(pageHead{Title: "Import Goals"})) {
+	@framedLayout("Import Goals", current, pageHeader(adminToolHead(current, "Import Goals"))) {
 		@importsStyles()
 		<p class="muted">Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>
 		if !admin {

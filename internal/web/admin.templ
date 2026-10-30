@@ -204,6 +204,17 @@ templ adminPasswordLinks(v passwordLinksView) {
 	</section>
 }
 
+// adminToolHead is the header of a page an Admin tool opens, titled title:
+// under "Admin ›" for an Admin, whose Admin page it was opened from, and the
+// title alone for anyone else, who has no Admin page (DESIGN.md § Page
+// header).
+func adminToolHead(current *domain.Account, title string) pageHead {
+	if current == nil || !current.IsAdmin {
+		return pageHead{Title: title}
+	}
+	return pageHead{Parent: "Admin", ParentHref: "/admin", Title: title}
+}
+
 // adminTool is a row linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
 	<a data-testid={ testID } class="ad-tool" href={ templ.SafeURL(href) }>

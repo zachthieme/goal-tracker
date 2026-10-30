@@ -300,7 +300,7 @@ func fieldsPage(current *domain.Account, fields []domain.Field) templ.Component 
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = framedLayout("Fields", current, pageHeader(pageHead{Title: "Fields"})).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = framedLayout("Fields", current, pageHeader(adminToolHead(current, "Fields"))).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
