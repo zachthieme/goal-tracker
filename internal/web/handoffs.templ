@@ -76,6 +76,19 @@ templ handoffAcceptReject(ho domain.Handoff) {
 	</form>
 }
 
+// pendingStyles are the Pending handoffs page's rules on top of app.css: a
+// section of hairline rows, the decision buttons at the right.
+templ pendingStyles() {
+	<style>
+		.pd-section{display:flex;flex-direction:column;gap:12px}
+		.pd-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}
+		.pd-row{min-height:44px;padding:12px 0;border-bottom:1px solid var(--color-border);box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+		.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+		.pd-actions{display:flex;gap:8px;flex:none}
+		.pd-actions form{margin:0}
+	</style>
+}
+
 // handoffStylesOnce renders the Handoff decision's styles once per page, however
 // many pending Handoffs the page lists (Home and Pending handoffs both carry it).
 var handoffStylesOnce = templ.NewOnceHandle()

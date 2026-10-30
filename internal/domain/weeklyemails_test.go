@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -200,10 +201,14 @@ func TestDigestListsPendingLinkRequests(t *testing.T) {
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
-	for _, want := range []string{"Launch pricing page", "Grow revenue", "kim@example.com", "http://goals.test/links"} {
+	for _, want := range []string{"Launch pricing page", "Grow revenue", "kim@example.com"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("digest does not mention %q:\n%s", want, body)
 		}
+	}
+	// The requests are decided under Home's Requests (#677).
+	if want := "Link requests waiting on you (http://goals.test/home):"; !slices.Contains(strings.Split(body, "\n"), want) {
+		t.Errorf("digest has no line %q:\n%s", want, body)
 	}
 	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
 		t.Errorf("kim owns no parent Goal but was sent %d digests", len(got))

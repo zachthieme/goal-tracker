@@ -6,57 +6,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// freshnessSignalsPage is the Check-in overdue list, with the Goals whose Path
-// to Green is overdue beside it, so both surface as prominently as Red
-// (CONTEXT.md: Check-in overdue, Path to Green).
-//
-//nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) {
-	@layout("Freshness signals", current) {
-		<h1>Freshness signals</h1>
-		<p>Goals whose Check-in is overdue, and Goals still not Green past their Path to Green's target date.</p>
-		<section data-testid="checkin-overdue-section">
-			<h2>Check-in overdue</h2>
-			<p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p>
-			<ul data-testid="checkin-overdue-goals">
-				if len(signals.CheckinOverdue) == 0 {
-					<li data-testid="no-checkin-overdue">No Goal's Check-in is overdue.</li>
-				}
-				for _, gf := range signals.CheckinOverdue {
-					<li data-testid="checkin-overdue-goal">
-						@freshnessItem(gf.Goal, checkinOverdueSince(gf.Freshness))
-					</li>
-				}
-			</ul>
-		</section>
-		<section data-testid="overdue-paths-section">
-			<h2>Path to Green overdue</h2>
-			<p>Active Goals past their Path to Green's target date and not yet Green.</p>
-			<ul data-testid="overdue-paths">
-				if len(signals.OverduePaths) == 0 {
-					<li data-testid="no-overdue-paths">No overdue Paths to Green.</li>
-				}
-				for _, gf := range signals.OverduePaths {
-					<li data-testid="overdue-path">
-						@freshnessItem(gf.Goal, pathOverdue(gf.Freshness, dates))
-					</li>
-				}
-			</ul>
-		</section>
-		<p><a href="/goals">Back to Goals</a></p>
-	}
-}
-
-// freshnessItem names a flagged Goal, its Owner, and why it is flagged.
-templ freshnessItem(g domain.Goal, why string) {
-	@goalRef(g)
-	<span>
-		{ "— Owner " }
-		@person(g.Owner)
-		{ "— " + why }
-	</span>
-}
-
 // goalFreshness flags, at the top of a Goal's page, a Goal that is Check-in
 // overdue or whose Path to Green is overdue, as a banner in Check-in overdue's
 // style. The Check-in overdue banner ends with a link to the Check-in form for

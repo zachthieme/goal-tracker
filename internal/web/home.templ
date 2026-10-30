@@ -308,7 +308,8 @@ templ actionItemRow(l domain.ActionItemListing) {
 	</li>
 }
 
-// linkRequestRow is a link request waiting on the person as the parent's Owner.
+// linkRequestRow is a link request waiting on the person as the parent's Owner,
+// with the requester's note, if any, on its own line under it.
 templ linkRequestRow(l domain.Link) {
 	<li data-testid="home-request">
 		<div class="hm-what">
@@ -318,6 +319,9 @@ templ linkRequestRow(l domain.Link) {
 				@personInBrackets(l.Child.Owner) wants to contribute to
 			</span>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+			if l.Note != "" {
+				<blockquote data-testid="home-request-note" class="hm-note">{ l.Note }</blockquote>
+			}
 		</div>
 		<div class="hm-actions">
 			@homeAcceptReject(fmt.Sprintf("/links/%d", l.ID))
@@ -424,6 +428,7 @@ templ homeStyles() {
 		.hm-what>a{font-size:var(--text-body);font-weight:500}
 		.hm-what>p:not(.hm-meta){flex-basis:100%}
 		.hm-meta{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;color:var(--color-ink-muted);font-size:var(--text-secondary)}
+		.hm-note{flex-basis:100%;margin:0;padding-left:12px;border-left:1px solid var(--color-border);color:var(--color-ink-muted)}
 		.hm-phrase{white-space:nowrap}
 		.hm-list .badge,.hm-list .tag{height:22px;padding:0 8px;gap:4px;border-radius:var(--radius-full);font-size:var(--text-label);font-weight:500;line-height:20px;box-sizing:border-box}
 		.hm-list .badge.lc,.hm-list .tag{background:var(--color-chip-bg);color:var(--color-chip-ink);border:1px solid transparent}

@@ -94,11 +94,11 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 		t.Errorf("parent linked before acceptance:\n%s", parents)
 	}
 
-	// Pat sees the pending request, with the note.
-	inbox := getBody(t, patClient, ts.URL+"/links")
+	// Pat sees the pending request on Home, with the note.
+	requests := textOf(findByTestID(t, getPage(t, patClient, ts.URL+"/home"), "home-requests"))
 	for _, want := range []string{"Migrate displays", "Reduce outages", "displays cause a third of outages"} {
-		if !strings.Contains(inbox, want) {
-			t.Errorf("pending inbox missing %q; body:\n%s", want, inbox)
+		if !strings.Contains(requests, want) {
+			t.Errorf("Home's Requests miss %q; they read %q", want, requests)
 		}
 	}
 
@@ -112,66 +112,13 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 		t.Fatalf("accept link: status %d", resp.StatusCode)
 	}
 
-	// Now Sam's Goal page shows the parent, and Pat's inbox is empty.
+	// Now Sam's Goal page shows the parent, and Home has no Requests for Pat.
 	childBody := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
 	if parents := pageElement(t, childBody, "section", "goal-parents"); !strings.Contains(parents, navTo(parent.ID)) {
 		t.Errorf("child page does not link the accepted parent:\n%s", parents)
 	}
-	if inbox := getBody(t, patClient, ts.URL+"/links"); !strings.Contains(inbox, "No pending requests") {
-		t.Errorf("inbox not empty after accept; body:\n%s", inbox)
-	}
-}
-
-// Each pending link request is a hairline row with Accept as the primary
-// action and a Reject that rejects it at once, with no confirmation (#56). The
-// page sits in the flat frame: its name in the header strip, and no card.
-func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	pat := h.SignIn("pat@example.com")
-	sam := h.SignIn("sam@example.com")
-	link := h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(pat, "Reduce outages", "Outages cost trust."), "")
-
-	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/links")
-
-	row := between(t, page, `data-testid="pending-link"`, "")
-	assertInFlatFrame(t, page, "Pending links")
-	base := fmt.Sprintf("/links/%d", link.ID)
-	assertAcceptReject(t, row, base)
-
-	client := signInClient(t, ts.URL, "pat@example.com")
-	if page := postFormBody(t, client, ts.URL+base+"/reject", url.Values{}); !strings.Contains(page, `data-testid="no-pending-links"`) {
-		t.Errorf("the link request is still pending after Reject:\n%s", page)
-	}
-}
-
-// A pending link's note is set apart by its indent and a 1px neutral rule, not
-// a coloured side stripe (#67).
-func TestPendingLinkNoteIsSetApartByANeutralRule(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	pat := h.SignIn("pat@example.com")
-	sam := h.SignIn("sam@example.com")
-	h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(pat, "Reduce outages", "Outages cost trust."), "Displays drive most outages.")
-
-	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/links")
-
-	pageElement(t, page, "blockquote", "pending-link-note")
-	assertNeutralRule(t, cssRule(t, page, ".pd-note"))
-}
-
-// assertNeutralRule checks a rule indents its element 12px from a 1px left
-// rule in --color-border, the neutral alternative to a coloured side stripe.
-func assertNeutralRule(t *testing.T, rule string) {
-	t.Helper()
-	for _, want := range []string{"padding-left:12px", "border-left:1px solid var(--color-border)"} {
-		if !strings.Contains(rule, want) {
-			t.Errorf("rule lacks %s; rule: %s", want, rule)
-		}
+	if home := getPage(t, patClient, ts.URL+"/home"); hasTestID(home, "home-requests") {
+		t.Errorf("Home still lists Requests after accept:\n%s", renderNode(findByTestID(t, home, "home-requests")))
 	}
 }
 
@@ -389,7 +336,7 @@ func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
 
 // rejectRequest arranges Sam's request, with a note, for his child Goal to
 // contribute to Pat's parent, and Pat rejecting it from the page at from
-// ("/links" or "/home"), returning the page Pat lands on.
+// ("/home"), returning the page Pat lands on.
 func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, from string) (child, parent domain.Goal, pat *http.Client, landed string) {
 	t.Helper()
 	patAcc := h.SignIn("pat@example.com")
@@ -398,18 +345,14 @@ func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 	child = h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
 	link := h.RequestLink(sam, child, parent, "displays cause outages")
 	pat = signInClient(t, ts.URL, "pat@example.com")
-	form := url.Values{}
-	if from == "/home" {
-		action := fmt.Sprintf("/links/%d/reject", link.ID)
-		requests := findByTestID(t, getPage(t, pat, ts.URL+"/home"), "home-requests")
-		rejects := findAll(requests, func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
-		if len(rejects) != 1 {
-			t.Fatalf("Home offers %d Rejects posting to %s, want 1", len(rejects), action)
-		}
-		form = formSubmission(rejects[0])
-		if got := form.Get("return"); got != "/home" {
-			t.Fatalf("Home's Reject returns to %q, want /home: %s", got, renderNode(rejects[0]))
-		}
+	action := fmt.Sprintf("/links/%d/reject", link.ID)
+	rejects := findAll(getPage(t, pat, ts.URL+from), func(n *html.Node) bool { return n.Data == "form" && attrOf(n, "action") == action })
+	if len(rejects) != 1 {
+		t.Fatalf("%s offers %d Rejects posting to %s, want 1", from, len(rejects), action)
+	}
+	form := formSubmission(rejects[0])
+	if got := form.Get("return"); got != from {
+		t.Fatalf("%s's Reject returns to %q, want %s: %s", from, got, from, renderNode(rejects[0]))
 	}
 	resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/reject", ts.URL, link.ID), form)
 	defer func() { _ = resp.Body.Close() }()
@@ -422,51 +365,47 @@ func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 	return child, parent, pat, readBody(t, resp)
 }
 
-// After rejecting a link request, from the pending page or from Home, the page
-// shown next carries a toast saying so with an Undo button, a plain form post;
-// the toast isn't shown on a later visit, and Undo returns to the same page
-// with the request pending again, note and all.
+// After rejecting a link request from Home, Home carries a toast saying so
+// with an Undo button, a plain form post; the toast isn't shown on a later
+// visit, and Undo returns to Home with the request pending again, note and
+// all.
 func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
 	t.Parallel()
 
-	for _, from := range []string{"/links", "/home"} {
-		t.Run(from, func(t *testing.T) {
-			h := testsupport.New(t)
-			ts := newServer(t, h)
-			child, parent, pat, landed := rejectRequest(t, h, ts, from)
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, pat, landed := rejectRequest(t, h, ts, "/home")
 
-			toast := pageElement(t, landed, "aside", "toast")
-			for _, want := range []string{"Migrate displays", "Reduce outages", `method="post"`, "Undo"} {
-				if !strings.Contains(toast, want) {
-					t.Errorf("toast missing %q:\n%s", want, toast)
-				}
-			}
-			if strings.Contains(toast, "<script") {
-				t.Errorf("toast uses script:\n%s", toast)
-			}
-			action := undoAction(t, landed)
+	toast := pageElement(t, landed, "aside", "toast")
+	for _, want := range []string{"Migrate displays", "Reduce outages", `method="post"`, "Undo"} {
+		if !strings.Contains(toast, want) {
+			t.Errorf("toast missing %q:\n%s", want, toast)
+		}
+	}
+	if strings.Contains(toast, "<script") {
+		t.Errorf("toast uses script:\n%s", toast)
+	}
+	action := undoAction(t, landed)
 
-			if later := getBody(t, pat, ts.URL+from); strings.Contains(later, `data-testid="toast"`) {
-				t.Errorf("toast shown again on a later visit:\n%s", later)
-			}
+	if later := getBody(t, pat, ts.URL+"/home"); strings.Contains(later, `data-testid="toast"`) {
+		t.Errorf("toast shown again on a later visit:\n%s", later)
+	}
 
-			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
-			defer func() { _ = resp.Body.Close() }()
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("undo: status %d", resp.StatusCode)
-			}
-			if resp.Request.URL.Path != from {
-				t.Errorf("undo landed on %s, want %s", resp.Request.URL.Path, from)
-			}
-			if page := readBody(t, resp); !strings.Contains(page, navTo(child.ID)) {
-				t.Errorf("the page doesn't list the restored request:\n%s", page)
-			}
-			patAcc := h.SignIn("pat@example.com")
-			pending, _ := h.Service.PendingLinkRequests(context.Background(), patAcc.ID)
-			if len(pending) != 1 || pending[0].Child.ID != child.ID || pending[0].Parent.ID != parent.ID || pending[0].Note != "displays cause outages" {
-				t.Errorf("pending = %+v, want the request back with its note", pending)
-			}
-		})
+	resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("undo: status %d", resp.StatusCode)
+	}
+	if resp.Request.URL.Path != "/home" {
+		t.Errorf("undo landed on %s, want /home", resp.Request.URL.Path)
+	}
+	if page := readBody(t, resp); !strings.Contains(page, navTo(child.ID)) {
+		t.Errorf("the page doesn't list the restored request:\n%s", page)
+	}
+	patAcc := h.SignIn("pat@example.com")
+	pending, _ := h.Service.PendingLinkRequests(context.Background(), patAcc.ID)
+	if len(pending) != 1 || pending[0].Child.ID != child.ID || pending[0].Parent.ID != parent.ID || pending[0].Note != "displays cause outages" {
+		t.Errorf("pending = %+v, want the request back with its note", pending)
 	}
 }
 
@@ -478,7 +417,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
-	_, _, pat, landed := rejectRequest(t, h, ts, "/links")
+	_, _, pat, landed := rejectRequest(t, h, ts, "/home")
 	action := undoAction(t, landed)
 	sam := signInClient(t, ts.URL, "sam@example.com")
 	patAcc := h.SignIn("pat@example.com")
@@ -529,7 +468,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 	t.Run("requested again", func(t *testing.T) {
 		h := testsupport.New(t)
 		ts := newServer(t, h)
-		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
+		child, parent, pat, landed := rejectRequest(t, h, ts, "/home")
 		action := undoAction(t, landed)
 		h.RequestLink(h.SignIn("sam@example.com"), child, parent, "second try")
 
@@ -546,7 +485,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 	t.Run("cycle", func(t *testing.T) {
 		h := testsupport.New(t)
 		ts := newServer(t, h)
-		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
+		child, parent, pat, landed := rejectRequest(t, h, ts, "/home")
 		action := undoAction(t, landed)
 		patAcc, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
 		// Pat links the other way round, and Sam accepts.
@@ -747,7 +686,8 @@ func TestARefusedLinkDecisionLeavesTheRequestPending(t *testing.T) {
 
 // A link accept by someone other than the parent's Owner is refused with a
 // page inside the app giving the reason alone, not the error's "not
-// authorized:" prefix, and linking back to the pending links (#546).
+// authorized:" prefix, and linking back to Home, where the request is
+// decided (#546, #677).
 func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 	t.Parallel()
 
@@ -765,7 +705,7 @@ func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusForbidden)
 	}
-	assertRefusalPage(t, page, "Can't accept link", "Only the parent's Owner may accept a link.", "/links")
+	assertRefusalPage(t, page, "Can't accept link", "Only the parent's Owner may accept a link.", "/home")
 	if got := h.ParentsOf(child); len(got) != 0 {
 		t.Errorf("ParentsOf(child) = %+v after a refused accept, want none", got)
 	}
@@ -773,7 +713,7 @@ func TestARefusedLinkAcceptAnswersWithTheReason(t *testing.T) {
 
 // A link accept refused for making a cycle says so in a sentence a person can
 // read, naming no Goal by its ID (#544), on a page inside the app linking back
-// to the pending links (#546).
+// to Home, where the request is decided (#546, #677).
 func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	t.Parallel()
 
@@ -797,7 +737,7 @@ func TestALinkAcceptThatWouldMakeACycleSaysSoWithoutIDs(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Errorf("status %d, want %d", resp.StatusCode, http.StatusConflict)
 	}
-	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/links")
+	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
 	for _, id := range []int64{parent.ID, child.ID} {
 		if reason := textOf(findByTestID(t, page, "refused-reason")); strings.Contains(reason, fmt.Sprint(id)) {
 			t.Errorf("refused-reason %q names Goal %d by its ID", reason, id)
@@ -919,8 +859,8 @@ func TestALinkDecisionOnNoLinkIsTheNotFoundPage(t *testing.T) {
 
 // Accepting a link request a second time, as a stale second click would, or
 // rejecting one already accepted, is refused with a page inside the app
-// saying it was already accepted, linking back to the page it came from, and
-// leaves the link in place (#549).
+// saying it was already accepted, linking back to the page it came from (Home
+// without one), and leaves the link in place (#549).
 func TestADecisionOnAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
 	t.Parallel()
 
@@ -941,9 +881,9 @@ func TestADecisionOnAnAcceptedLinkSaysItWasAccepted(t *testing.T) {
 		form              url.Values
 		back              string
 	}{
-		{"accept", "Can't accept link", url.Values{}, "/links"},
+		{"accept", "Can't accept link", url.Values{}, "/home"},
 		{"accept", "Can't accept link", url.Values{"return": {"/home"}}, "/home"},
-		{"reject", "Can't reject link", url.Values{}, "/links"},
+		{"reject", "Can't reject link", url.Values{}, "/home"},
 		{"reject", "Can't reject link", url.Values{"return": {"/home"}}, "/home"},
 	}
 	for _, d := range decisions {
@@ -974,8 +914,8 @@ func homeLinkAcceptForm(t *testing.T, pat *http.Client, baseURL string, child do
 }
 
 // Accepting a link request on Home returns to Home, and an Accept refused
-// there, for making a cycle, links Back to Home; one posted from the pending
-// page still returns there (#549).
+// there, for making a cycle, links Back to Home; one posted with no return
+// lands on Home too (#549, #677).
 func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	t.Parallel()
 
@@ -1016,12 +956,12 @@ func TestALinkAcceptReturnsToThePageItCameFrom(t *testing.T) {
 	assertRefusalPage(t, page, "Can't accept link", "Linking these Goals would make a cycle: the parent already contributes to the child.", "/home")
 
 	third := h.CreateGoal(sam, "Replace cabling", "Cables fray.")
-	fromLinks := h.RequestLink(sam, third, parent, "")
-	resp = postForm(t, pat, ts.URL+fmt.Sprintf("/links/%d/accept", fromLinks.ID), url.Values{})
+	noReturn := h.RequestLink(sam, third, parent, "")
+	resp = postForm(t, pat, ts.URL+fmt.Sprintf("/links/%d/accept", noReturn.ID), url.Values{})
 	defer func() { _ = resp.Body.Close() }()
 	_ = readBody(t, resp)
-	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/links" {
-		t.Errorf("Accept without from: status %d at %s, want 200 at /links", resp.StatusCode, resp.Request.URL.Path)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
+		t.Errorf("Accept without from: status %d at %s, want 200 at /home", resp.StatusCode, resp.Request.URL.Path)
 	}
 }
 

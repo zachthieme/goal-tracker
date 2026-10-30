@@ -70,7 +70,7 @@ var (
 	undoLinkRejection = undoKind{
 		tag:      "link-rejection",
 		route:    "/link-rejections/{id}/undo",
-		fallback: "/links",
+		fallback: "/home",
 		message: func(s *Server, r *http.Request, current domain.Account, id int64, token string) string {
 			if ok, err := s.svc.CanUndoLinkRejection(r.Context(), current.ID, id, token); err != nil || !ok {
 				return ""

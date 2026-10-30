@@ -62,62 +62,6 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	}
 }
 
-// The Graph signals page lists the signals found in how Goals are linked and
-// dated: Unlinked Goals, children due later than their parents, and children
-// of a parent that is On Hold or Cancelled.
-func TestGraphSignalsPageListsRisks(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "ada@example.com")
-	ts := newServer(t, h)
-	ada := h.SignIn("ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-
-	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0))
-	h.RequestLink(sam, late, launch, "")
-	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
-	paused := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Paused outcome", "It mattered."))
-	orphaned := h.ActiveChildOf(sam, paused, "Under paused", "Feeds paused.")
-	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
-		GoalID:          paused.ID,
-		AuthorID:        sam.ID,
-		Status:          "Pausing.",
-		Lifecycle:       domain.LifecycleOnHold,
-		LifecycleReason: "Budget freeze.",
-	}); err != nil {
-		t.Fatalf("SubmitCheckin On Hold: %v", err)
-	}
-
-	client := signInClient(t, ts.URL, "sam@example.com")
-	page := getBody(t, client, ts.URL+"/signals")
-
-	if !strings.Contains(page, "<h1>Graph signals</h1><p>Signals found in how Goals are linked and dated.</p>") {
-		t.Errorf("Graph signals page doesn't say where its signals come from; body:\n%s", page)
-	}
-
-	unlinked := pageElement(t, page, "ul", "unlinked-goals")
-	if !strings.Contains(unlinked, navTo(loner.ID)) {
-		t.Errorf("Unlinked list missing %q; section:\n%s", loner.Title, unlinked)
-	}
-	for _, g := range []domain.Goal{launch, late, paused, orphaned} {
-		if strings.Contains(unlinked, navTo(g.ID)) {
-			t.Errorf("Unlinked list includes %q, which is Top-level or aligned", g.Title)
-		}
-	}
-
-	conflicts := pageElement(t, page, "ul", "schedule-conflicts")
-	if !strings.Contains(conflicts, navTo(late.ID)) || !strings.Contains(conflicts, navTo(launch.ID)) {
-		t.Errorf("schedule conflicts do not name both %q and %q; section:\n%s", late.Title, launch.Title, conflicts)
-	}
-
-	halted := pageElement(t, page, "ul", "halted-parents")
-	if !strings.Contains(halted, navTo(orphaned.ID)) || !strings.Contains(halted, "On Hold") {
-		t.Errorf("halted parents do not flag %q under an On Hold parent; section:\n%s", orphaned.Title, halted)
-	}
-}
-
 // Each Goal's page flags the graph signals that touch it: a schedule conflict
 // shows on both the child and the parent, a halted parent shows on the child,
 // and an Unlinked Goal says so.

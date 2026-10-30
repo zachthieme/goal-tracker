@@ -112,7 +112,7 @@ var undoCases = []undoCase{
 	{
 		name: "link rejection",
 		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
-			_, _, pat, landed := rejectRequest(t, h, ts, "/links")
+			_, _, pat, landed := rejectRequest(t, h, ts, "/home")
 			return pat, landed
 		},
 		restored: func(t *testing.T, h *testsupport.Harness) bool {
@@ -122,7 +122,7 @@ var undoCases = []undoCase{
 			}
 			return len(pending) == 1
 		},
-		back:     func(*testing.T, *testsupport.Harness) string { return "/links" },
+		back:     func(*testing.T, *testsupport.Harness) string { return "/home" },
 		again:    "This rejection has already been undone.",
 		notYours: "Only the person who rejected a request may undo it.",
 		writes:   testsupport.Insert,
@@ -418,8 +418,8 @@ func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
 
 // An Undo of something that never happened is refused with 404, on a page
 // saying there's nothing to undo, linking back to the page it names: the Goal
-// page for a link removal (Home without one), Home or the pending page for a
-// rejection.
+// page for a link removal (Home without one), Home for a link rejection, and
+// Home or the pending page for a Handoff's.
 func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 	t.Parallel()
 
@@ -436,7 +436,7 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 		{"/link-removals/4242/undo", url.Values{"return": {fmt.Sprintf("/goals/%d", goal.ID)}}, fmt.Sprintf("/goals/%d", goal.ID)},
 		{"/link-removals/4242/undo", url.Values{}, "/home"},
 		{"/link-removals/nothing/undo", url.Values{"return": {"nothing"}}, "/home"},
-		{"/link-rejections/4242/undo", url.Values{}, "/links"},
+		{"/link-rejections/4242/undo", url.Values{}, "/home"},
 		{"/link-rejections/4242/undo", url.Values{"return": {"/home"}}, "/home"},
 		{"/handoffs/4242/restore", url.Values{}, "/handoffs"},
 		{"/handoffs/4242/restore", url.Values{"return": {"/home"}}, "/home"},

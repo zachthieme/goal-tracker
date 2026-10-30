@@ -8,18 +8,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleGraphSignals shows the signals found in how Goals are linked and dated:
-// the Unlinked Goals, the schedule conflicts, and the Goals whose parent is On
-// Hold or Cancelled.
-func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	signals, err := s.svc.GraphSignals(r.Context())
-	if err != nil {
-		s.serverError(w, r, "could not read graph signals", err)
-		return
-	}
-	render(w, r, http.StatusOK, graphSignalsPage(&current, signals, s.displayDates()))
-}
-
 // handleSetTopLevel marks the Goal in the path a Top-level Goal when top_level
 // is true, and unmarks it when false. Only an Admin may (CONTEXT.md: Top-level
 // Goal): anyone else gets the refusal page, 403, linking Back to the Goal.

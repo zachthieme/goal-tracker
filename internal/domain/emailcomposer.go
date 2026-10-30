@@ -55,9 +55,10 @@ func (l AppLinks) ActionItem(item ActionItem) string {
 	return l.publication(item.DefinitionID, item.PublicationID) + "#action-items"
 }
 
-// PendingLinks links to the link requests waiting on the signed-in person.
+// PendingLinks links to the link requests waiting on the signed-in person:
+// Home, whose Needs you lists them under Requests.
 func (l AppLinks) PendingLinks() string {
-	return l.base + "/links"
+	return l.base + "/home"
 }
 
 // SetPassword links to the page that sets a password with the set-password

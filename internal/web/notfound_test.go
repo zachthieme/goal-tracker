@@ -79,6 +79,22 @@ func TestMissingGoalShowsNotFoundPage(t *testing.T) {
 	assertNotFoundPage(t, pat, ts.URL+"/goals/999999", "/home")
 }
 
+// The Graph signals, Freshness signals and Pending links pages are retired:
+// Follow-ups shows the signals and Home the link requests, so a signed-in
+// person following an old link to one gets the Not found page (#677).
+func TestRetiredSignalsAndPendingLinksPagesAreNotFound(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("pat@example.com")
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	for _, path := range []string{"/signals", "/freshness", "/links"} {
+		assertNotFoundPage(t, pat, ts.URL+path, "/home")
+	}
+}
+
 // A Goal address that isn't a number names nothing either.
 func TestMalformedGoalAddressShowsNotFoundPage(t *testing.T) {
 	t.Parallel()
