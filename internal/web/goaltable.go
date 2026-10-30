@@ -504,40 +504,33 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	edits, err := tableEdits(r.PostForm)
 	if err != nil {
 		// A cell or value no table posts, quoted as posted.
-		s.refuse(w, r, "Can't save Goals", saved, err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save Goals", Back: saved})
 		return
 	}
-	err = s.svc.EditGoalValues(r.Context(), current.ID, edits)
-	switch {
-	case err == nil:
-		http.Redirect(w, r, saved, http.StatusSeeOther)
-		return
-	case errors.Is(err, domain.ErrNotAuthorized), errors.Is(err, domain.ErrNotFound):
-		s.refuse(w, r, "Can't save Goals", saved, err)
-		return
-	case !errors.Is(err, domain.ErrValidation):
-		s.serverError(w, r, "could not save values", err)
+	if err := s.svc.EditGoalValues(r.Context(), current.ID, edits); err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save Goals", Back: saved,
+			Form: asPage(func(err error) (templ.Component, error) {
+				q.Set("edit", "1")
+				r.URL.RawQuery = q.Encode()
+				view, verr := s.goalsListView(r, current)
+				if verr != nil {
+					return nil, fmt.Errorf("list goals: %w", verr)
+				}
+				view.Table.Typed = r.PostForm
+				var refusal *domain.ValueEditError
+				if errors.As(err, &refusal) {
+					view.Table.Bad = map[string]string{}
+					for _, c := range refusal.Cells {
+						view.Table.Bad[cellNameOf(c.GoalID, c.DimensionID, c.FieldID)] = sentence(c.Message)
+					}
+				} else {
+					view.Table.Refusal = refusalSentence(err)
+				}
+				return goalsPage(&current, view), nil
+			})})
 		return
 	}
-
-	q.Set("edit", "1")
-	r.URL.RawQuery = q.Encode()
-	view, verr := s.goalsListView(r, current)
-	if verr != nil {
-		s.serverError(w, r, "could not list goals", verr)
-		return
-	}
-	view.Table.Typed = r.PostForm
-	var refusal *domain.ValueEditError
-	if errors.As(err, &refusal) {
-		view.Table.Bad = map[string]string{}
-		for _, c := range refusal.Cells {
-			view.Table.Bad[cellNameOf(c.GoalID, c.DimensionID, c.FieldID)] = sentence(c.Message)
-		}
-	} else {
-		view.Table.Refusal = refusalSentence(err)
-	}
-	render(w, r, http.StatusUnprocessableEntity, goalsPage(&current, view))
+	http.Redirect(w, r, saved, http.StatusSeeOther)
 }
 
 // tableCellRef is one cell of the Goal table's edit form, read off its inputs'

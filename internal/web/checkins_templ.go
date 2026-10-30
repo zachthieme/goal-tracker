@@ -2762,7 +2762,7 @@ var swapErrorPageScript = templ.ComponentScript{Call: "htmx.swap('body', event.d
 // checkinStylesOnce renders the Check-in form's styles once per page, as the
 // Check-in page asks for them twice: checkinPage calls checkinStyles, and so
 // does the checkinForm inside it, which needs its own call because
-// renderCheckinFormError and renderCheckinFormAgain render it alone for htmx
+// a refused form and renderCheckinFormAgain render it alone for htmx
 // swaps.
 var checkinStylesOnce = templ.NewOnceHandle()
 

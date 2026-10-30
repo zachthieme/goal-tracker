@@ -258,7 +258,7 @@ func (s *Server) dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (in
 // or value that isn't there for its input, but a missing record would be the
 // Not found page.
 func (s *Server) writeDimensionError(w http.ResponseWriter, r *http.Request, err error) {
-	s.refuse(w, r, "Can't change Dimension", "/dimensions", err)
+	s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Dimension", Back: "/dimensions"})
 }
 
 // selectionLabel says whether a Goal takes one of d's values or several.

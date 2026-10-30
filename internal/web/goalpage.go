@@ -31,7 +31,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		return
 	}
 	view.Toast = s.undoToast(w, r, current)
-	r = takeActionItemRefusal(w, r)
+	r = takeFormRefusal(w, r)
 	view.Open = goalForm(r.URL.Query().Get("open"))
 	view.openRefused(r)
 	view.History = view.History.narrowed(r.URL.Query())
@@ -66,7 +66,7 @@ type goalView struct {
 	// against target shown on the Goal page (CONTEXT.md: Metric).
 	Trends []metricTrend
 	// Open is the one form the page shows open in place, from its ?open=
-	// address or a refused submit's refusal (refuseGoalForm), or "" for none.
+	// address or a refused submit's refusal (goalPageForm), or "" for none.
 	// FormError is why that form's last submit was refused and FormInput what
 	// it sent, so it comes back as it was left.
 	// PickerError is why Contribute to a Goal's submit was refused for
@@ -110,6 +110,30 @@ const (
 	formTitleWhyItMatters goalForm = "title-why-it-matters"
 )
 
+// fields are the inputs form posts, whose values come back with its refusal
+// (goalPageForm).
+func (form goalForm) fields() []string {
+	switch form {
+	case formHandoff:
+		return []string{"to_email"}
+	case formReassign, formDelegates:
+		return []string{"email"}
+	case formTitleWhyItMatters:
+		return []string{"title", "why_it_matters"}
+	case formParentLink:
+		return []string{"parent_id", "note"}
+	case formMilestones:
+		return []string{"name", "target_date"}
+	case formDimensions:
+		return []string{"dimension_id", "value_id", "new_value"}
+	case formFields:
+		return []string{"field_id", "value"}
+	case formDraftHighlight:
+		return []string{"kind", "note"}
+	}
+	return nil
+}
+
 // offers reports whether the viewer may use form on this Goal: whether the
 // domain permits them what the form does (domain.GoalPermissions), and, for
 // the Dimension values and Fields forms, whether there is any to set.
@@ -146,10 +170,10 @@ func (v goalView) offers(form goalForm) bool {
 
 // openRefused opens the Goal page form whose submit was refused, if r carries
 // its refusal and the page still offers it to the viewer, as it was left: why
-// it was refused and what it sent (refuseGoalForm). It wins over ?open=. An
+// it was refused and what it sent (goalPageForm). It wins over ?open=. An
 // Action Item form's refusal names no Goal page form, so opens none.
 func (v *goalView) openRefused(r *http.Request) {
-	ref, ok := refusalIn(r.Context())
+	ref, ok := formRefusalIn(r.Context())
 	if !ok || ref.ID != 0 || !v.offers(goalForm(ref.Form)) {
 		return
 	}

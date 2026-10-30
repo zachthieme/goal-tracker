@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -278,26 +280,20 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
 		return
 	}
-	if errors.Is(err, domain.ErrNotAuthorized) {
-		// Only an edit can be, and only when the editor lost the right to
-		// since editableReport checked.
-		if saved.ID == 0 {
-			s.refuse(w, r, "Can't save Report", "/reports", err)
-			return
-		}
-		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10), err)
-		return
+	// Only an edit can be refused for who is asking, and only when the
+	// editor lost the right to since editableReport checked.
+	rf := refused{Err: err, Heading: "Can't save Report", Back: "/reports",
+		Form: asPage(func(err error) (templ.Component, error) {
+			v.Problems = problemsOf(err)
+			if err := s.loadReportBuilder(r, &v); err != nil {
+				return nil, fmt.Errorf("load the builder: %w", err)
+			}
+			return reportBuilderPage(&current, v), nil
+		})}
+	if saved.ID != 0 {
+		rf.Heading, rf.Back = "Can't edit Report", "/reports/"+strconv.FormatInt(saved.ID, 10)
 	}
-	if !errors.Is(err, domain.ErrValidation) {
-		s.serverError(w, r, "could not save the report", err)
-		return
-	}
-	v.Problems = problemsOf(err)
-	if err := s.loadReportBuilder(r, &v); err != nil {
-		s.serverError(w, r, "could not load the builder", err)
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, reportBuilderPage(&current, v))
+	s.answerRefused(w, r, rf)
 }
 
 // handleReportMatches answers the builder's form, as it is typed, with only its

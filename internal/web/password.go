@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -74,15 +76,23 @@ func (s *Server) handleSetPassword(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A password refused comes back as the form, saying why. No one is
+	// signed in, so nothing else it refuses reaches the refusal page.
+	refuse := func(err error) {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't set password", Back: "/",
+			Form: asPage(func(err error) (templ.Component, error) {
+				return setPasswordPage(acc.Email, token, refusalSentence(err)), nil
+			})})
+	}
 	password := r.FormValue("password")
 	if password != r.FormValue("confirm") {
-		render(w, r, http.StatusUnprocessableEntity, setPasswordPage(acc.Email, token, "The two passwords don't match."))
+		refuse(domain.Refuse(domain.ErrValidation, "The two passwords don't match."))
 		return
 	}
 	signedIn, err := s.svc.SetPassword(r.Context(), token, password)
 	switch {
 	case errors.Is(err, domain.ErrPasswordRules):
-		render(w, r, http.StatusUnprocessableEntity, setPasswordPage(acc.Email, token, refusalSentence(err)))
+		refuse(domain.Refuse(domain.ErrValidation, "%s", domain.Reason(err)))
 		return
 	case errors.Is(err, domain.ErrLinkInvalid):
 		render(w, r, http.StatusGone, setPasswordNoticePage(passwordLinkGone))

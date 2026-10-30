@@ -1,9 +1,13 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
+
+	"github.com/a-h/templ"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -11,9 +15,9 @@ import (
 // handleLogDraftHighlight logs a Draft Highlight on the path's Goal, written by
 // the current Account (CONTEXT.md: Draft Highlight). A plain post returns to
 // the Goal page, and a refused note redirects to the Goal page, where the log
-// form is open with the reason beside it and what was sent in it
-// (refuseGoalForm). The Highlight editor's htmx post gets the block back
-// either way (renderDraftHighlights).
+// form is open with the reason above it and what was sent in it
+// (goalPageForm). The Highlight editor's htmx post gets the block back
+// either way (draftHighlightsBlock).
 // A log refused for anything but what was typed, plain or htmx, is the
 // refusal page, headed Can't change highlight and linking Back to the Goal.
 func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -27,21 +31,21 @@ func (s *Server) handleLogDraftHighlight(w http.ResponseWriter, r *http.Request,
 		Kind:     r.FormValue("kind"),
 		Note:     r.FormValue("note"),
 	})
-	if isHTMX(r) && (err == nil || errors.Is(err, domain.ErrValidation)) {
-		s.renderDraftHighlights(w, r, goalID, current, draftHighlightRefusalOf(r, 0, err))
+	if err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change highlight", Back: goalPath(goalID),
+			Form: s.goalPageForm(goalID, current, formDraftHighlight),
+			Partial: func(err error) (templ.Component, error) {
+				return s.draftHighlightsBlock(r.Context(), goalID, current, draftHighlightRefusalOf(r, 0, err))
+			}})
 		return
 	}
-	if err != nil && !errors.Is(err, domain.ErrValidation) {
-		s.refuse(w, r, "Can't change highlight", goalPath(goalID), err)
-		return
-	}
-	s.writeFormResult(w, r, goalID, current, formDraftHighlight, err)
+	s.answerDraftHighlightsChanged(w, r, goalID, current)
 }
 
 // handleEditDraftHighlight changes the path's pending Draft Highlight to the
 // kind and note sent and returns to its Goal's page, or for the Highlight
-// editor's htmx post, gives back the Draft Highlights block, the refused
-// edit open in it again (renderDraftHighlights).
+// editor's htmx post, gives back the Draft Highlights block, a refused
+// edit open in it again (draftHighlightsBlock).
 func (s *Server) handleEditDraftHighlight(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -49,15 +53,11 @@ func (s *Server) handleEditDraftHighlight(w http.ResponseWriter, r *http.Request
 		return
 	}
 	draft, err := s.svc.EditDraftHighlight(r.Context(), current.ID, id, r.FormValue("kind"), r.FormValue("note"))
-	if errors.Is(err, domain.ErrValidation) && isHTMX(r) {
-		// The edit was refused for what was typed, so the Draft Highlight
-		// exists and the viewer may see it.
-		if refused, lookErr := s.svc.DraftHighlight(r.Context(), current.ID, id); lookErr == nil {
-			s.renderDraftHighlights(w, r, refused.GoalID, current, draftHighlightRefusalOf(r, id, err))
-			return
-		}
+	if err != nil {
+		s.answerRefused(w, r, s.refusedDraftHighlight(r, id, current, err, true))
+		return
 	}
-	s.writeDraftHighlightResult(w, r, id, draft, current, "could not edit draft highlight", err)
+	s.answerDraftHighlightsChanged(w, r, draft.GoalID, current)
 }
 
 // handleDeleteDraftHighlight deletes the path's pending Draft Highlight and
@@ -70,33 +70,52 @@ func (s *Server) handleDeleteDraftHighlight(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	draft, err := s.svc.DeleteDraftHighlight(r.Context(), current.ID, id)
-	s.writeDraftHighlightResult(w, r, id, draft, current, "could not delete draft highlight", err)
+	if err != nil {
+		s.answerRefused(w, r, s.refusedDraftHighlight(r, id, current, err, false))
+		return
+	}
+	s.answerDraftHighlightsChanged(w, r, draft.GoalID, current)
 }
 
-// writeDraftHighlightResult answers an edit or delete of the Draft Highlight
-// id, draft as it was changed: done, a plain post returns to its Goal page and
-// an htmx one gets the Draft Highlights block as it now stands. Refused, it is
-// the refusal page: a 422 for what was typed, a 403 for someone who may not,
-// and the Not found page for one no longer pending. A refused change returns
+// refusedDraftHighlight is an edit or delete of the Draft Highlight id
+// refused with err, headed Can't change highlight. A refused change returns
 // no Draft Highlight, so the way back is read again: its Goal page, or Home
-// for a viewer who may not see it.
-func (s *Server) writeDraftHighlightResult(w http.ResponseWriter, r *http.Request, id int64, draft domain.DraftHighlight, current domain.Account, failed string, err error) {
-	switch {
-	case err == nil && isHTMX(r):
-		s.renderDraftHighlights(w, r, draft.GoalID, current, draftHighlightRefusal{})
-	case err == nil:
-		http.Redirect(w, r, goalPath(draft.GoalID), http.StatusSeeOther)
-	case errors.Is(err, domain.ErrValidation), errors.Is(err, domain.ErrNotAuthorized):
-		back := "/home"
-		if refused, lookErr := s.svc.DraftHighlight(r.Context(), current.ID, id); lookErr == nil {
-			back = goalPath(refused.GoalID)
-		}
-		s.refuse(w, r, "Can't change highlight", back, err)
-	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, r)
-	default:
-		s.serverError(w, r, failed, err)
+// for a viewer who may not see it. A refused edit from the Highlight editor
+// (editing) comes back open in the Draft Highlights block, when it can be
+// read.
+func (s *Server) refusedDraftHighlight(r *http.Request, id int64, current domain.Account, err error, editing bool) refused {
+	rf := refused{Err: err, Heading: "Can't change highlight", Back: "/home"}
+	draft, lookErr := s.svc.DraftHighlight(r.Context(), current.ID, id)
+	if lookErr != nil {
+		return rf
 	}
+	rf.Back = goalPath(draft.GoalID)
+	if editing {
+		rf.Partial = func(err error) (templ.Component, error) {
+			return s.draftHighlightsBlock(r.Context(), draft.GoalID, current, draftHighlightRefusalOf(r, id, err))
+		}
+	}
+	return rf
+}
+
+// answerDraftHighlightsChanged answers a change to the Goal goalID's Draft
+// Highlights, done: a plain post returns to its Goal page and the Highlight
+// editor's htmx post gets the Draft Highlights block as it now stands.
+func (s *Server) answerDraftHighlightsChanged(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account) {
+	if !isHTMX(r) {
+		http.Redirect(w, r, goalPath(goalID), http.StatusSeeOther)
+		return
+	}
+	block, err := s.draftHighlightsBlock(r.Context(), goalID, current, draftHighlightRefusal{})
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFound(w, r)
+		return
+	}
+	if err != nil {
+		s.serverError(w, r, "could not load goal", err)
+		return
+	}
+	answerSwap(w, r, block)
 }
 
 // draftHighlightRefusal is a Save from the Highlight editor that the Goal page's
@@ -119,30 +138,24 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 	return draftHighlightRefusal{ID: id, Reason: sentence(domain.Reason(err)), Kind: r.PostForm.Get("kind"), Note: r.PostForm.Get("note")}
 }
 
-// renderDraftHighlights answers the Highlight editor's htmx post with the Goal
-// page's Draft Highlights block for htmx to swap in place, a refusal included
-// (answerSwap). A refused log comes back with the
-// block's log form open, its reason and what was typed in it, for the editor
-// to open on; a refused edit marks its Draft Highlight the same way. When the
-// page no longer offers the log form, such as once the Goal is Done, a refused
-// log or edit has no editor to open on: the reason comes back on the refusal
-// page, 422, linking Back to the Goal, which the editor swaps in.
-func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused draftHighlightRefusal) {
-	view, err := s.goalPageView(r.Context(), goalID, current)
+// draftHighlightsBlock is the Goal page's Draft Highlights block for the
+// Highlight editor's htmx post to swap in place (answerSwap). A refused log
+// comes back with the block's log form open, its reason and what was typed in
+// it, for the editor to open on; a refused edit marks its Draft Highlight the
+// same way. When the page no longer offers the log form, such as once the
+// Goal is Done, a refused log or edit has no editor to open on, so there is
+// no block (nil) and the reason comes back on the refusal page.
+func (s *Server) draftHighlightsBlock(ctx context.Context, goalID int64, current domain.Account, refused draftHighlightRefusal) (templ.Component, error) {
+	view, err := s.goalPageView(ctx, goalID, current)
 	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			s.notFound(w, r)
-			return
-		}
-		s.serverError(w, r, "could not load goal", err)
-		return
+		return nil, err
 	}
 	if refused.Reason != "" && !view.offers(formDraftHighlight) {
-		s.refuse(w, r, "Can't change highlight", goalPath(goalID), domain.Refuse(domain.ErrValidation, "%s", refused.Reason))
-		return
+		return nil, nil
 	}
 	if refused.Reason != "" && refused.ID == 0 {
-		view.Open, view.FormError, view.FormInput = formDraftHighlight, refused.Reason, r.PostForm
+		view.Open, view.FormError = formDraftHighlight, refused.Reason
+		view.FormInput = url.Values{"kind": {refused.Kind}, "note": {refused.Note}}
 	}
-	answerSwap(w, r, draftHighlightBlock(view, refused))
+	return draftHighlightBlock(view, refused), nil
 }

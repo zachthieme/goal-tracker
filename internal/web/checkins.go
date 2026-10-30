@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -76,7 +78,7 @@ func (s *Server) loadCheckinView(w http.ResponseWriter, r *http.Request, goalID 
 		return checkinView{}, false
 	}
 	if view.CheckinRefusal != nil {
-		s.refuse(w, r, "Can't check in", goalPath(goalID), view.CheckinRefusal)
+		s.answerRefused(w, r, refused{Err: view.CheckinRefusal, Heading: "Can't check in", Back: goalPath(goalID)})
 		return checkinView{}, false
 	}
 	return view, true
@@ -168,6 +170,29 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			OffTargetConfirmed: offTargetConfirmed,
 		})
 	}
+	// A refused Check-in comes back as the form, as typed, saying why: htmx
+	// swaps in the form alone, and a plain post gets the whole Check-in page
+	// around it at 422 (#587). A Green with a Metric off target is a
+	// question, not a field's error: the form warns about the Metrics and
+	// offers to save the Green anyway.
+	refusedForm := func(err error) checkinFormData {
+		var offTarget *domain.GreenOffTargetError
+		if errors.As(err, &offTarget) {
+			d := formData(nil)
+			d.OffTarget = offTarget.Metrics
+			return d
+		}
+		return formData(err)
+	}
+	refuse := func(err error) {
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't check in", Back: goalPath(goalID),
+			Partial: func(err error) (templ.Component, error) {
+				return checkinForm(refusedForm(err)), nil
+			},
+			Form: asPage(func(err error) (templ.Component, error) {
+				return checkinPage(&current, view, refusedForm(err)), nil
+			})})
+	}
 
 	// Add another records nothing: it re-renders the form, everything typed
 	// kept, with one more Highlight row. A form that warned a Metric is off
@@ -216,7 +241,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	}
 	dates.applyTo(&in, &unparsed)
 	if err := unparsed.err(); err != nil {
-		s.renderCheckinFormError(w, r, current, view, formData(err))
+		refuse(err)
 		return
 	}
 	// The offered rows come first, as on the form, so the domain numbers
@@ -229,21 +254,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	}
 
 	if _, err := s.svc.SubmitCheckin(r.Context(), in); err != nil {
-		// A Green with a Metric off target is a question, not a field's
-		// error: the form comes back as typed, warning about the Metrics and
-		// offering to save the Green anyway.
-		var offTarget *domain.GreenOffTargetError
-		if errors.As(err, &offTarget) {
-			d := formData(nil)
-			d.OffTarget = offTarget.Metrics
-			s.renderCheckinFormError(w, r, current, view, d)
-			return
-		}
-		if errors.Is(err, domain.ErrValidation) {
-			s.renderCheckinFormError(w, r, current, view, formData(err))
-			return
-		}
-		s.refuse(w, r, "Can't check in", goalPath(goalID), err)
+		refuse(err)
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
@@ -436,39 +447,39 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	if _, err := s.svc.SubmitNoChangeCheckin(r.Context(), goalID, current.ID); err != nil {
-		s.renderNoChangeRefusal(w, r, current, goalID, err)
+		s.answerRefused(w, r, s.refusedNoChange(r, current, goalID, err))
 		return
 	}
 	s.confirmNoChange(w, r, goalID)
 }
 
-// renderNoChangeRefusal shows why a No change couldn't be recorded. One the
-// reader may not make is refused (refuse) at 403 with the reason the rule gave,
-// and Back to the Goal, without loading the Check-in page. A refusal that means
-// "write a full Check-in" (no previous Check-in, a Goal that isn't Active, a
-// Health the roll-up or an overdue Milestone now rules out), an
-// ErrValidation, is the only one that loads the page: it lands the reader on
-// the Goal's Check-in page with the reason as the form's error, a sentence
-// reading as the No change card gives it: htmx gets the page with the Check-in
-// page's URL pushed (answerPushedPage), a plain post gets it at 422. If the
-// page then refuses the reader, that refusal is given as it is, and a page
-// that can't be loaded is a logged 500. Anything else is refused too: a Goal
-// that doesn't exist gets the Not found page, and a failure a logged 500.
-func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
-	if !errors.Is(err, domain.ErrValidation) {
-		s.refuse(w, r, "Can't check in", goalPath(goalID), err, refuseFailureSaying("The No change couldn't be recorded. Try again."))
-		return
+// refusedNoChange is why a No change couldn't be recorded, err, as
+// answerRefused answers it. One the reader may not make is refused at 403
+// with the reason the rule gave, and Back to the Goal, without loading the
+// Check-in page. A refusal that means "write a full Check-in" (no previous
+// Check-in, a Goal that isn't Active, a Health the roll-up or an overdue
+// Milestone now rules out), an ErrValidation, is the only one that loads the
+// page: it lands the reader on the Goal's Check-in page with the reason as
+// the form's error, a sentence reading as the No change card gives it: htmx
+// gets the page with the Check-in page's URL pushed (answerPushedPage), a
+// plain post gets it at 422. If the page then refuses the reader, that
+// refusal is given as it is. Anything else is refused too: a Goal that
+// doesn't exist gets the Not found page, and a failure, or a page that can't
+// be loaded, a logged 500 saying the No change couldn't be recorded.
+func (s *Server) refusedNoChange(r *http.Request, current domain.Account, goalID int64, err error) refused {
+	page := func(err error) (templ.Component, error) {
+		view, viewErr := s.checkinView(r.Context(), goalID, current)
+		switch {
+		case viewErr != nil:
+			return nil, viewErr
+		case view.CheckinRefusal != nil:
+			return nil, view.CheckinRefusal
+		}
+		return checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err)))), nil
 	}
-	view, viewErr := s.checkinView(r.Context(), goalID, current)
-	switch {
-	case viewErr != nil:
-		s.refuse(w, r, "Can't check in", goalPath(goalID), viewErr, refuseFailureSaying("The Goal couldn't be loaded, so nothing was recorded. Try again."))
-	case view.CheckinRefusal != nil:
-		s.refuse(w, r, "Can't check in", goalPath(goalID), view.CheckinRefusal)
-	default:
-		page := checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err))))
-		answerPushedPage(w, r, http.StatusUnprocessableEntity, page, "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
-	}
+	return refused{Err: err, Heading: "Can't check in", Back: goalPath(goalID),
+		Partial: page, Pushed: goalPath(goalID) + "/checkin", Form: asPage(page),
+		Options: []refusalOption{refuseFailureSaying("The No change couldn't be recorded. Try again.")}}
 }
 
 // noChangeReason is why a No change was refused, as the Check-in form shows it,
@@ -507,25 +518,10 @@ func plainReasonShown(err error, shown displayDates) string {
 	return msg
 }
 
-// renderCheckinFormError re-renders the Check-in form with a validation message.
-// For an htmx request it returns the form alone for htmx to swap in place
-// (answerSwap); a plain post gets the whole Check-in page, view, around it at 422 (#587). The form keeps the
-// context the Check-in page's loader read for it (checkinView.withContext):
-// the Goal's Rolled-up Health beside the Owner's Health (ADR-0003), its Run
-// off Green for the Path to Green's heading, the latest Check-in's Back to
-// Green by date, and whom an ask would go to.
-func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
-	if isHTMX(r) {
-		answerSwap(w, r, checkinForm(data))
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, checkinPage(&current, view, data))
-}
-
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
 // Check-in page, view, around it. The form keeps the context the page's loader
-// read for it, as renderCheckinFormError's does.
+// read for it, as a refused form's does.
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, view checkinView, data checkinFormData) {
 	if isHTMX(r) {
 		answerSwap(w, r, checkinForm(data))

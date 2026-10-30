@@ -414,7 +414,7 @@ func comment(c domain.Comment, d discussion, reply bool) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.Author {
-			refused, open := actionItemRefusalFor(ctx, "comment-action-item-form", c.ID)
+			refused, open := formRefusalFor(ctx, "comment-action-item-form", c.ID)
 			var templ_7745c5c3_Var17 = []any{templ.KV("rp-reply", reply)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var17...)
 			if templ_7745c5c3_Err != nil {
@@ -610,7 +610,7 @@ func publicationActionItems(d discussion) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.Author {
-			refused, open := actionItemRefusalFor(ctx, "action-item-form", 0)
+			refused, open := formRefusalFor(ctx, "action-item-form", 0)
 			goals := d.actionItemGoalChoices()
 			about := refusedGoalChoice(refused, goals)
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<details")
@@ -733,7 +733,7 @@ func publicationActionItems(d discussion) templ.Component {
 // email and its due date, and its description — required when it is created
 // directly, and otherwise defaulting to the comment's. When the form was just
 // refused, each holds what was posted, with its reason beside it.
-func actionItemFields(textRequired bool, refused actionItemRefusal) templ.Component {
+func actionItemFields(textRequired bool, refused formRefusal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -884,7 +884,7 @@ func actionItemFields(textRequired bool, refused actionItemRefusal) templ.Compon
 
 // actionItemFieldError is why the just-refused form's input was refused,
 // beside its control, which names it; nothing when it wasn't.
-func actionItemFieldError(refused actionItemRefusal, input string) templ.Component {
+func actionItemFieldError(refused formRefusal, input string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1089,7 +1089,7 @@ func closeActionItemForm(item domain.ActionItem, returnTo string) templ.Componen
 			templ_7745c5c3_Var44 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		refused, open := actionItemRefusalFor(ctx, "close-action-item", item.ID)
+		refused, open := formRefusalFor(ctx, "close-action-item", item.ID)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<details data-testid=\"close-toggle\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -1193,7 +1193,7 @@ func reassignActionItemForm(item domain.ActionItem, returnTo string) templ.Compo
 			templ_7745c5c3_Var48 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		refused, open := actionItemRefusalFor(ctx, "reassign-action-item", item.ID)
+		refused, open := formRefusalFor(ctx, "reassign-action-item", item.ID)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<details data-testid=\"reassign-toggle\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

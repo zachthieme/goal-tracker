@@ -26,15 +26,12 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 	} else {
 		_, err = s.svc.UnmarkTopLevel(r.Context(), current.ID, goalID)
 	}
+	if errors.Is(err, domain.ErrValidation) { // #701
+		s.serverError(w, r, "could not set Top-level", err)
+		return
+	}
 	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrNotAuthorized):
-			s.refuse(w, r, "Can't change Top-level", goalPath(goalID), err)
-		case errors.Is(err, domain.ErrNotFound):
-			s.notFound(w, r)
-		default:
-			s.serverError(w, r, "could not set Top-level", err)
-		}
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Top-level", Back: goalPath(goalID)})
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)

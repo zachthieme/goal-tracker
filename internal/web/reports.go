@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/export"
 )
@@ -59,7 +61,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	}
 	// Closing an Action Item comes back to this draft, baseline and all, and
 	// a refused one to its form here.
-	r = takeActionItemRefusal(w, r)
+	r = takeFormRefusal(w, r)
 	if v, ok := s.loadReportDraftView(w, r, current, def, r.URL.RequestURI()); ok {
 		render(w, r, http.StatusOK, reportDraftPage(&current, v))
 	}
@@ -210,7 +212,7 @@ func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current 
 		return domain.ReportDefinition{}, false
 	}
 	if err := s.svc.RequireReportEditor(r.Context(), current.ID, def); err != nil {
-		s.refuse(w, r, "Can't edit Report", "/reports/"+strconv.FormatInt(def.ID, 10), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't edit Report", Back: "/reports/" + strconv.FormatInt(def.ID, 10)})
 		return domain.ReportDefinition{}, false
 	}
 	return def, true
@@ -342,14 +344,10 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 	hx := isHTMX(r)
 	target := narrativeDraftPath(r, id)
 	if err := s.svc.CurateNarrative(r.Context(), current.ID, id, in); err != nil {
-		switch {
-		case errors.Is(err, domain.ErrNotFound):
-			s.notFound(w, r)
-		case hx && errors.Is(err, domain.ErrValidation):
-			answerUnswapped(w, r, saveStatus("Not saved: "+refusalSentence(err), true))
-		default:
-			s.refuse(w, r, "Can't save narrative", target, err)
-		}
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save narrative", Back: target, Unswapped: true,
+			Partial: func(err error) (templ.Component, error) {
+				return saveStatus("Not saved: "+refusalSentence(err), true), nil
+			}})
 		return
 	}
 	if hx {
@@ -405,13 +403,23 @@ func narrativeFormInput(w http.ResponseWriter, r *http.Request) (domain.CurateNa
 // none. One that isn't a date is refused, written to w on the refusal page
 // headed heading with Back to the draft without it, and ok is false.
 func (s *Server) reportBaseline(w http.ResponseWriter, r *http.Request, heading string, id int64) (baseline time.Time, ok bool) {
-	var unparsed formProblems
-	baseline = unparsed.date("baseline", r.URL.Query().Get("baseline"), "")
-	if err := unparsed.err(); err != nil {
-		s.refuse(w, r, heading, "/reports/"+strconv.FormatInt(id, 10), err)
+	baseline, err := pickedBaseline(r)
+	if err != nil {
+		s.answerRefused(w, r, refused{Err: err, Heading: heading, Back: "/reports/" + strconv.FormatInt(id, 10)})
 		return time.Time{}, false
 	}
 	return baseline, true
+}
+
+// pickedBaseline is the baseline the reader picked, as reportBaseline reads
+// it, refused when it isn't a date.
+func pickedBaseline(r *http.Request) (time.Time, error) {
+	var unparsed formProblems
+	baseline := unparsed.date("baseline", r.URL.Query().Get("baseline"), "")
+	if err := unparsed.err(); err != nil {
+		return time.Time{}, err
+	}
+	return baseline, nil
 }
 
 // narrativeDraftPath is the draft of the Report Definition id, against the
@@ -491,51 +499,70 @@ func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	// The form offers the Report's Highlights whatever the narrative, so
-	// the draft with the posted narrative serves it, or, when refused, the
-	// draft as saved, which a plain post's page reads anyway.
-	status, code := "", http.StatusOK
 	posted, err := s.svc.PreviewNarrative(r.Context(), current.ID, def, baseline, in)
-	refused := errors.Is(err, domain.ErrValidation)
-	switch {
-	case refused:
-		status, code = "Not saved: "+refusalSentence(err), http.StatusUnprocessableEntity
-	case err != nil:
-		s.refuse(w, r, "Can't save narrative", narrativeDraftPath(r, def.ID), err)
-		return
-	default:
-		if status, err = s.narrativeStatus(r, def.ID, in); err != nil {
-			s.serverError(w, r, "could not compare the narrative", err)
-			return
-		}
-	}
-	if isHTMX(r) {
-		if refused {
-			if posted, err = s.svc.DraftReport(r.Context(), def, baseline); err != nil {
-				s.serverError(w, r, "could not build the draft", err)
-				return
-			}
-		}
-		pubs, err := s.svc.ListPublications(r.Context(), def.ID)
-		if err != nil {
-			s.serverError(w, r, "could not load publications", err)
-			return
-		}
-		chip := newBaselineChip(posted, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-		answerSwap(w, r, narrativeFormAgain(postedNarrativeForm(posted, chip, r.Form, addNote), status))
+	if err != nil {
+		// The form offers the Report's Highlights whatever the narrative,
+		// so, refused, the draft as saved serves it, saying why.
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't save narrative", Back: narrativeDraftPath(r, def.ID),
+			Partial: func(err error) (templ.Component, error) {
+				saved, err2 := s.svc.DraftReport(r.Context(), def, baseline)
+				if err2 != nil {
+					return nil, fmt.Errorf("build the draft: %w", err2)
+				}
+				return s.narrativeFormAgainSection(r, def, saved, addNote, "Not saved: "+refusalSentence(err))
+			},
+			Form: asPage(func(err error) (templ.Component, error) {
+				return s.narrativeFormAgainPage(r, current, def, baseline, nil, addNote, "Not saved: "+refusalSentence(err))
+			})})
 		return
 	}
-	// The page shows the narrative as saved, and the form as posted.
-	v, err := s.reportDraftView(r, current, def, baseline, narrativeDraftPath(r, def.ID))
+	status, err := s.narrativeStatus(r, def.ID, in)
+	if err != nil {
+		s.serverError(w, r, "could not compare the narrative", err)
+		return
+	}
+	answer := s.narrativeFormAgainSection
+	if !isHTMX(r) {
+		answer = func(r *http.Request, def domain.ReportDefinition, posted domain.Report, addNote, status string) (templ.Component, error) {
+			return s.narrativeFormAgainPage(r, current, def, baseline, &posted, addNote, status)
+		}
+	}
+	again, err := answer(r, def, posted, addNote, status)
 	if err != nil {
 		s.serverError(w, r, "could not load the draft", err)
 		return
 	}
-	if refused {
-		posted = v.Report
+	render(w, r, http.StatusOK, again)
+}
+
+// narrativeFormAgainSection is the Narrative section, for htmx to swap in
+// (answerSwap), its form as posted, over report, with one more note box in
+// section addNote, and the save status saying status out of band.
+func (s *Server) narrativeFormAgainSection(r *http.Request, def domain.ReportDefinition, report domain.Report, addNote, status string) (templ.Component, error) {
+	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load publications: %w", err)
 	}
-	v.Form, v.Status = postedNarrativeForm(posted, v.Chip, r.Form, addNote), status
-	render(w, r, code, reportDraftPage(&current, v))
+	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+	return narrativeFormAgain(postedNarrativeForm(report, chip, r.Form, addNote), status), nil
+}
+
+// narrativeFormAgainPage is the whole draft page, showing the narrative as
+// saved, Publish… included, and the compose form as posted, over posted, or
+// the draft as saved when posted is nil, with one more note box in section
+// addNote and the save status saying status. The page's forms come back to
+// the draft.
+func (s *Server) narrativeFormAgainPage(r *http.Request, current domain.Account, def domain.ReportDefinition, baseline time.Time, posted *domain.Report, addNote, status string) (templ.Component, error) {
+	v, err := s.reportDraftView(r, current, def, baseline, narrativeDraftPath(r, def.ID))
+	if err != nil {
+		return nil, fmt.Errorf("load the draft: %w", err)
+	}
+	report := v.Report
+	if posted != nil {
+		report = *posted
+	}
+	v.Form, v.Status = postedNarrativeForm(report, v.Chip, r.Form, addNote), status
+	return reportDraftPage(&current, v), nil
 }
 
 // narrativeForm is what the draft's compose form shows: each Highlight in the
@@ -635,7 +662,7 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 			s.notFound(w, r)
 			return
 		}
-		s.refuse(w, r, "Can't publish Report", narrativeDraftPath(r, id), err)
+		s.answerRefused(w, r, refused{Err: err, Heading: "Can't publish Report", Back: narrativeDraftPath(r, id)})
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub), http.StatusSeeOther)
@@ -653,7 +680,7 @@ func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, c
 		s.serverError(w, r, "could not load the discussion", err)
 		return
 	}
-	r = takeActionItemRefusal(w, r)
+	r = takeFormRefusal(w, r)
 	render(w, r, http.StatusOK, publicationPage(&current, pub, d, s.pdf != nil))
 }
 
@@ -830,7 +857,7 @@ func (s *Server) handleAddReportDelegate(w http.ResponseWriter, r *http.Request,
 	}
 	email := r.FormValue("email")
 	err := s.svc.AddReportDelegateByEmail(r.Context(), current.ID, def.ID, email)
-	s.writeReportDelegateResult(w, r, current, def, email, err)
+	s.answerReportDelegateCommand(w, r, current, def, email, err)
 }
 
 // handleRemoveReportDelegate revokes the Report Delegate the form names by
@@ -847,25 +874,29 @@ func (s *Server) handleRemoveReportDelegate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	err = s.svc.RemoveReportDelegate(r.Context(), current.ID, def.ID, accountID)
-	s.writeReportDelegateResult(w, r, current, def, "", err)
+	s.answerReportDelegateCommand(w, r, current, def, "", err)
 }
 
-// writeReportDelegateResult redirects back to def's draft on success; a refusal
-// for who is asking is 403, and a refused email (posted) the draft page again,
-// 422, saying why.
-func (s *Server) writeReportDelegateResult(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, email string, err error) {
+// answerReportDelegateCommand redirects back to def's draft on success; a
+// refusal for who is asking is 403, and a refused email (posted) the draft
+// page again, 422, saying why beside the Delegates form.
+func (s *Server) answerReportDelegateCommand(w http.ResponseWriter, r *http.Request, current domain.Account, def domain.ReportDefinition, email string, err error) {
 	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
-	switch {
-	case err == nil:
+	if err == nil {
 		http.Redirect(w, r, draft, http.StatusSeeOther)
-	case errors.Is(err, domain.ErrValidation):
-		v, ok := s.loadReportDraftView(w, r, current, def, draft)
-		if !ok {
-			return
-		}
-		v.Management.Email, v.Management.Refused = email, refusalSentence(err)
-		render(w, r, http.StatusUnprocessableEntity, reportDraftPage(&current, v))
-	default:
-		s.refuse(w, r, "Can't change Report Delegates", draft, err)
+		return
 	}
+	s.answerRefused(w, r, refused{Err: err, Heading: "Can't change Report Delegates", Back: draft,
+		Form: asPage(func(err error) (templ.Component, error) {
+			baseline, baselineErr := pickedBaseline(r)
+			if baselineErr != nil {
+				return nil, baselineErr
+			}
+			v, loadErr := s.reportDraftView(r, current, def, baseline, draft)
+			if loadErr != nil {
+				return nil, fmt.Errorf("load the draft: %w", loadErr)
+			}
+			v.Management.Email, v.Management.Refused = email, refusalSentence(err)
+			return reportDraftPage(&current, v), nil
+		})})
 }
