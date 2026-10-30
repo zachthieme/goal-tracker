@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
@@ -67,6 +68,14 @@ func requiredValues(dims []db.Dimension, fields []Field, carried, set map[int64]
 		}
 	}
 	return out
+}
+
+// AnyRequired reports whether any of dims or fields is required: marked
+// required by an Admin and not Retired, as requiredValues counts it. Only then
+// can a Goal be Incomplete (CONTEXT.md: Incomplete).
+func AnyRequired(dims []Dimension, fields []Field) bool {
+	return slices.ContainsFunc(dims, func(d Dimension) bool { return d.Required && !d.Retired }) ||
+		slices.ContainsFunc(fields, func(f Field) bool { return f.Required && !f.Retired })
 }
 
 // MissingRequired names the required Dimensions and Fields a Goal has no value

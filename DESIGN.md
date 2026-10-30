@@ -923,9 +923,11 @@ and so on).
       `--color-ink-2`. A chip holding a select draws its own chevron. In
       order: **Scope** (see Scope), **Health** (Any Health, Red, Yellow,
       Green, No Health), **Lifecycle** (Any Lifecycle, then Proposed through
-      Cancelled), **Incomplete** (a checkbox chip), **+ Filter** (a dashed
-      edge, only when there are Dimensions) and **Group by** (Health, or a
-      Dimension, in the List layout when there are Dimensions).
+      Cancelled), **Missing required values** (a checkbox chip keeping the
+      Incomplete Goals, only when some Dimension or Field not Retired is
+      required), **+ Filter** (a dashed edge, only when there are
+      Dimensions) and **Group by** (Health, or a Dimension, in the List
+      layout when there are Dimensions).
     - **Set chips:** a set chip takes `--color-primary-subtle` with
       `--color-ink` text and reads its key before its value in
       `--color-ink-muted` ("Health: Red"). An unset Health or Lifecycle chip
