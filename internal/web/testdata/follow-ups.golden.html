@@ -13,4 +13,112 @@
 			b.setAttribute("aria-expanded", open ? "true" : "false");
 			target.hidden = !open;
 		});
+	</script><script>
+		(function () {
+			var pickerSelector = "input[data-person-picker]";
+			var lastID = 0;
+			function resultsOf(input) {
+				var p = input.closest(".person-picker");
+				return p && p.querySelector(".person-results");
+			}
+			function hide(list) {
+				list.hidden = true;
+				list.innerHTML = "";
+			}
+			// forget drops any search input is waiting on, so its answer, if
+			// one comes, isn't shown.
+			function forget(input) {
+				clearTimeout(input.personTimer);
+				input.personAsked = (input.personAsked || 0) + 1;
+			}
+			function upgrade() {
+				document.querySelectorAll(pickerSelector).forEach(function (input) {
+					var list = resultsOf(input);
+					if (!list || input.hasAttribute("aria-controls")) return;
+					if (!list.id) {
+						do { lastID++; } while (document.getElementById("person-results-" + lastID));
+						list.id = "person-results-" + lastID;
+					}
+					input.type = "text";
+					input.placeholder = "Name or email";
+					input.autocomplete = "off";
+					input.setAttribute("aria-autocomplete", "list");
+					input.setAttribute("aria-controls", list.id);
+				});
+			}
+			document.addEventListener("DOMContentLoaded", upgrade);
+			document.addEventListener("htmx:load", upgrade);
+			document.addEventListener("input", function (e) {
+				var input = e.target;
+				if (!input.matches || !input.matches(pickerSelector)) return;
+				var list = resultsOf(input);
+				if (!list) return;
+				forget(input);
+				var asked = input.personAsked;
+				var q = input.value.trim();
+				if (!q) {
+					hide(list);
+					return;
+				}
+				input.personTimer = setTimeout(function () {
+					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+						.then(function (r) { return r.ok ? r.text() : ""; })
+						.then(function (html) {
+							// Only the latest answer, and only while the person is
+							// still in the picker.
+							if (asked !== input.personAsked || !list.parentNode.contains(document.activeElement)) return;
+							list.innerHTML = html;
+							list.hidden = html.trim() === "";
+						});
+				}, 300);
+			});
+			// Keep focus in the input while a result is pressed, so the
+			// focusout below doesn't hide the results before the click.
+			document.addEventListener("mousedown", function (e) {
+				if (e.target.closest && e.target.closest(".person-results")) e.preventDefault();
+			});
+			document.addEventListener("click", function (e) {
+				var b = e.target.closest && e.target.closest("[data-pick-person]");
+				var picker = b && b.closest(".person-picker");
+				if (picker) {
+					var input = picker.querySelector(pickerSelector);
+					forget(input);
+					input.value = b.getAttribute("data-email");
+					hide(b.closest(".person-results"));
+					input.focus();
+				}
+				document.querySelectorAll(".person-results:not([hidden])").forEach(function (list) {
+					if (!list.parentNode.contains(e.target)) hide(list);
+				});
+			});
+			document.addEventListener("keydown", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (!input || !list) return;
+				var results = Array.prototype.slice.call(list.querySelectorAll("[data-pick-person]"));
+				var at = results.indexOf(e.target);
+				if (e.key === "Escape" && !list.hidden) {
+					e.preventDefault();
+					forget(input);
+					hide(list);
+					input.focus();
+				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
+					e.preventDefault();
+					results[Math.min(at + 1, results.length - 1)].focus();
+				} else if (e.key === "ArrowUp" && at >= 0) {
+					e.preventDefault();
+					(at === 0 ? input : results[at - 1]).focus();
+				}
+			});
+			document.addEventListener("focusout", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (input) forget(input);
+				if (list && !list.hidden) hide(list);
+			});
+		})();
 	</script></head><body><div><header><a href="/home"><span aria-hidden="true"></span>Goal Tracker</a><a href="/home"><span>Home </span><span>10</span></a> <details><summary>Menu</summary></details><div><form method="get" action="/goals" role="search"><label for="sb-search-q">Search Goals</label> <input id="sb-search-q" type="search" name="q" placeholder="Search"/></form><nav aria-label="Main"><a data-testid="nav-home" href="/home"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 7.5 8 3l5.5 4.5V13.5H10v-4H6v4H2.5z"></path></svg>Home<span>10</span></a><a data-testid="nav-goals" href="/goals"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5"></circle> <circle cx="8" cy="8" r="2"></circle></svg>Goals</a><a aria-current="page" data-testid="nav-follow-ups" href="/follow-ups"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 14.5v-12M3.5 3h8.5l-1.75 3L12 9H3.5"></path></svg>Follow-ups<span>12</span></a><a data-testid="nav-reports" href="/reports"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5.5L12 4v10.5H4zM9.5 1.5V4H12M6 8h4M6 11h4"></path></svg>Reports</a><a data-testid="nav-admin" href="/admin"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 1.5 13 3.5v4c0 3-2.2 5.3-5 7-2.8-1.7-5-4-5-7v-4z"></path></svg>Admin</a></nav><details data-testid="person-menu"><summary><span aria-hidden="true">AA</span> <span><span title="admin@example.com">Ada Admin</span></span></summary><div><p data-testid="current-user">Signed in as <span><button type="button" aria-expanded="false" title="admin@example.com">Ada Admin</button><span hidden="">admin@example.com</span></span> (Admin)</p><form data-testid="theme-menu" method="post" action="/theme" aria-label="Theme"><p aria-hidden="true">Theme</p><input type="hidden" name="return" value="/follow-ups"/> <button data-testid="theme-system" type="submit" name="theme" value="system" aria-current="true">System</button><button data-testid="theme-light" type="submit" name="theme" value="light">Light</button><button data-testid="theme-dark" type="submit" name="theme" value="dark">Dark</button></form><form method="post" action="/signout"><button type="submit">Sign out</button></form></div></details></div></header><div><div id="follow-ups-head"><div><h1>Follow-ups</h1><p data-testid="follow-ups-attention"><strong>12</strong> Goals to review in Mine, most urgent first.</p></div><div><button type="button" data-testid="follow-ups-meanings" popovertarget="follow-ups-meanings">What each signal means</button><div id="follow-ups-meanings" popover=""><dl><dt>Red</dt><dd>Active Goals whose latest Check-in is Red.</dd><dt>Yellow</dt><dd>Active Goals whose latest Check-in is Yellow.</dd><dt>Asks for help</dt><dd>Red or Yellow Goals whose Path to Green asks for help from the Owner&#39;s Manager, until the Owner unmarks it or the Goal is back to Green.</dd><dt>Check-in overdue</dt><dd>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</dd><dt>Path to Green overdue</dt><dd>Active Goals past their Path to Green&#39;s target date and not yet Green.</dd><dt>Milestone overdue</dt><dd>Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in.</dd><dt>Action Item overdue</dt><dd>An Action Item about this Goal, raised in a Report, is past its due date.</dd><dt>Ownerless</dt><dd>Active Goals whose Owner has left the company and hasn&#39;t been replaced.</dd><dt>Unlinked</dt><dd>Active Goals that contribute to no other Goal and aren&#39;t Top-level.</dd><dt>Schedule conflicts</dt><dd>Goals due later than a Goal they contribute to.</dd><dt>Parent On Hold or Cancelled</dt><dd>Goals contributing to a Goal that is On Hold or Cancelled.</dd></dl></div></div></div><main><form method="get" action="/follow-ups" data-testid="follow-ups-filters" hx-get="/follow-ups" hx-trigger="submit, change" hx-target="#follow-ups-body" hx-select="#follow-ups-body" hx-select-oob="#follow-ups-head" hx-swap="outerHTML" hx-push-url="true" hx-sync="this:replace" hx-history="false"><label><span aria-hidden="true">Scope:</span><select data-testid="follow-ups-scope" name="org" aria-label="Scope"><option value="all">Everyone</option> <option value="mine" selected="">Mine</option> <optgroup label="Other orgs"><option value="2">Morgan Wu (morgan@example.com)</option><option value="3">Priya Raman (priya@example.com)</option><option value="4">Sam Lee (sam@example.com)</option></optgroup></select></label><label><span aria-hidden="true">Team:</span> <select data-testid="follow-ups-value" data-dimension="Team" name="value" aria-label="Team"><option value="" selected="">Team: any</option> <option value="1">Platform</option><option value="2">Growth</option></select></label><noscript><button type="submit">Apply</button></noscript></form><div id="follow-ups-body"><nav data-testid="follow-ups-groups" aria-label="Follow-ups by who acts"><a data-testid="follow-ups-group-health" href="/follow-ups?group=health"><span>Not Green</span> <span data-testid="follow-up-group-count">7</span> <span><span data-testid="follow-up-signal" data-kind="red">Red · 2</span><span data-testid="follow-up-signal" data-kind="yellow">Yellow · 5</span><span data-testid="follow-up-signal" data-kind="asks-for-help">Asks for help · 1</span></span></a><a data-testid="follow-ups-group-owner" href="/follow-ups?group=owner"><span>Waiting on a Check-in</span> <span data-testid="follow-up-group-count">5</span> <span><span data-testid="follow-up-signal" data-kind="checkin-overdue">Check-in overdue · 2</span><span data-testid="follow-up-signal" data-kind="path-overdue">Path to Green overdue · 2</span><span data-testid="follow-up-signal" data-kind="milestone-overdue">Milestone overdue · 1</span></span></a><div data-testid="follow-ups-group-followup"><span>Action Items overdue</span> <span>No Action Item is overdue.</span></div><a data-testid="follow-ups-group-plan" href="/follow-ups?group=plan"><span>Placement and dates</span> <span data-testid="follow-up-group-count">10</span> <span><span data-testid="follow-up-signal" data-kind="unlinked">Unlinked · 10</span></span></a><div data-testid="follow-ups-group-admin"><span>Needs an Admin</span> <span>Nothing needs an Admin.</span></div></nav> <div><table id="follow-ups-table" data-testid="follow-ups-table"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Next step"></th></tr></thead> <tbody><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Red"><span></span><span>Red</span></span> <span data-testid="follow-up-run-off-green">· 2 wks</span></td><td data-testid="follow-up-goal"><a href="/goals/16">Goal 14</a> <span><span data-testid="follow-up-signal" data-kind="path-overdue"><button type="button" popovertarget="follow-up-means-path-overdue" aria-describedby="follow-up-means-path-overdue">Path to Green 3 days overdue</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/16/checkin">Check in</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Red"><span></span><span>Red</span></span> <span data-testid="follow-up-run-off-green">· 2 wks</span></td><td data-testid="follow-up-goal"><a href="/goals/49">Goal 44</a> <span><span data-testid="follow-up-signal" data-kind="path-overdue"><button type="button" popovertarget="follow-up-means-path-overdue" aria-describedby="follow-up-means-path-overdue">Path to Green 2 days overdue</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/49/checkin">Check in</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Yellow"><span></span><span>Yellow</span></span> <span data-testid="follow-up-run-off-green">· 2 wks</span></td><td data-testid="follow-up-goal"><a href="/goals/26">Goal 23</a> <span><span data-testid="follow-up-signal" data-kind="asks-for-help"><button type="button" popovertarget="follow-up-means-asks-for-help" aria-describedby="follow-up-means-asks-for-help">Asks for help · no one above the Owner</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/26?open=parent-link">Link to a parent</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Yellow"><span></span><span>Yellow</span></span> <span data-testid="follow-up-run-off-green">· 1 wk</span></td><td data-testid="follow-up-goal"><a href="/goals/3">Goal 02</a> <span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/3?open=parent-link">Link to a parent</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Yellow"><span></span><span>Yellow</span></span> <span data-testid="follow-up-run-off-green">· 1 wk</span></td><td data-testid="follow-up-goal"><a href="/goals/36">Goal 32</a> <span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/36?open=parent-link">Link to a parent</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Yellow"><span></span><span>Yellow</span></span> <span data-testid="follow-up-run-off-green">· 2 wks</span></td><td data-testid="follow-up-goal"><a href="/goals/17">Goal 14 child</a> <span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/17">Open Goal</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Yellow"><span></span><span>Yellow</span></span> <span data-testid="follow-up-run-off-green">· 2 wks</span></td><td data-testid="follow-up-goal"><a href="/goals/50">Goal 44 child</a> <span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/50">Open Goal</a></td></tr><tr data-testid="follow-up-row"><td><span data-testid="follow-up-health">—</span> </td><td data-testid="follow-up-goal"><a href="/goals/13">Goal 11</a> <span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/13?open=parent-link">Link to a parent</a></td></tr><tr data-testid="follow-up-row"><td><span data-testid="follow-up-health">—</span> </td><td data-testid="follow-up-goal"><a href="/goals/46">Goal 41</a> <span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/46?open=parent-link">Link to a parent</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Green"><span></span><span>Green</span></span> </td><td data-testid="follow-up-goal"><a href="/goals/30">Goal 26</a> <span><span data-testid="follow-up-signal" data-kind="milestone-overdue"><button type="button" popovertarget="follow-up-means-milestone-overdue" aria-describedby="follow-up-means-milestone-overdue">Milestone 4 days overdue</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/30/checkin">Check in</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Green"><span></span><span>Green</span></span> </td><td data-testid="follow-up-goal"><a href="/goals/7">Goal 05</a> <span><span data-testid="follow-up-signal" data-kind="checkin-overdue"><button type="button" popovertarget="follow-up-means-checkin-overdue" aria-describedby="follow-up-means-checkin-overdue">Check-in overdue · 7 days, checks in every 1 day</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/7/checkin">Check in</a></td></tr><tr data-testid="follow-up-row"><td>  <span data-testid="follow-up-health" title="Green"><span></span><span>Green</span></span> </td><td data-testid="follow-up-goal"><a href="/goals/40">Goal 35</a> <span><span data-testid="follow-up-signal" data-kind="checkin-overdue"><button type="button" popovertarget="follow-up-means-checkin-overdue" aria-describedby="follow-up-means-checkin-overdue">Check-in overdue · 5 days, checks in every 1 day</button></span><span data-testid="follow-up-signal" data-kind="unlinked"><button type="button" popovertarget="follow-up-means-unlinked" aria-describedby="follow-up-means-unlinked">Unlinked · no parent Goal, not Top-level</button></span></span></td><td data-testid="follow-up-owner">You</td><td data-testid="follow-up-fix"><a href="/goals/40/checkin">Check in</a></td></tr></tbody></table><div id="follow-up-means-red" popover=""><strong>Red</strong> Active Goals whose latest Check-in is Red.</div><div id="follow-up-means-yellow" popover=""><strong>Yellow</strong> Active Goals whose latest Check-in is Yellow.</div><div id="follow-up-means-asks-for-help" popover=""><strong>Asks for help</strong> Red or Yellow Goals whose Path to Green asks for help from the Owner&#39;s Manager, until the Owner unmarks it or the Goal is back to Green.</div><div id="follow-up-means-checkin-overdue" popover=""><strong>Check-in overdue</strong> Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</div><div id="follow-up-means-path-overdue" popover=""><strong>Path to Green overdue</strong> Active Goals past their Path to Green&#39;s target date and not yet Green.</div><div id="follow-up-means-milestone-overdue" popover=""><strong>Milestone overdue</strong> Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in.</div><div id="follow-up-means-unlinked" popover=""><strong>Unlinked</strong> Active Goals that contribute to no other Goal and aren&#39;t Top-level.</div></div></div></main></div></div></body></html>

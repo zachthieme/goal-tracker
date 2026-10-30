@@ -248,19 +248,10 @@ templ actionItemFields(textRequired bool, refused actionItemRefusal) {
 		}
 		@actionItemFieldError(refused, domain.InputActionItemText)
 	</label>
-	<label>
-		Owner
-		<input
-			type="email"
-			name="owner"
-			required
-			if refused.Form != "" {
-				value={ refused.typed(domain.InputActionItemOwner) }
-			}
-			{ refused.controlAttrs(domain.InputActionItemOwner)... }
-		/>
+	<div class="person-field">
+		@personPicker(personField{Name: "owner", Value: refused.typed(domain.InputActionItemOwner), Caption: "Owner", Attrs: refused.controlAttrs(domain.InputActionItemOwner)})
 		@actionItemFieldError(refused, domain.InputActionItemOwner)
-	</label>
+	</div>
 	<label>
 		Due
 		<input
@@ -339,19 +330,10 @@ templ reassignActionItemForm(item domain.ActionItem, returnTo string) {
 		<summary class="btn sm">Reassign</summary>
 		<form data-testid="reassign-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/reassign", item.ID)) }>
 			<input type="hidden" name="return" value={ returnTo }/>
-			<label>
-				New owner
-				<input
-					type="email"
-					name="owner"
-					required
-					if open {
-						value={ refused.typed(domain.InputActionItemOwner) }
-					}
-					{ refused.controlAttrs(domain.InputActionItemOwner)... }
-				/>
+			<div class="person-field">
+				@personPicker(personField{Name: "owner", Value: refused.typed(domain.InputActionItemOwner), Caption: "New owner", Attrs: refused.controlAttrs(domain.InputActionItemOwner)})
 				@actionItemFieldError(refused, domain.InputActionItemOwner)
-			</label>
+			</div>
 			<button type="submit" class="btn primary sm">Reassign</button>
 		</form>
 	</details>

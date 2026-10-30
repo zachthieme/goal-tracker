@@ -307,6 +307,16 @@ tr:last-child td{border-bottom:none}
 tr[aria-selected=true] td{background:var(--color-primary-light)}
 .field{display:flex;flex-direction:column;gap:8px}
 .field>span{font-weight:600;font-size:var(--text-secondary);color:var(--color-ink)}
+/* The person picker (personPicker): its results drop down under the input,
+ * as wide as the picker and no wider than the window, over what follows, so
+ * they never push the form's buttons down; an email wraps rather than
+ * scrolling the page sideways. A picker refused (person-field) keeps its
+ * reason under it. */
+.person-picker{position:relative}
+.person-field{display:flex;flex-direction:column;gap:4px}
+.person-results{position:absolute;left:0;right:0;top:100%;z-index:20;max-width:calc(100vw - 32px);margin:4px 0 0;padding:4px;list-style:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-sizing:border-box}
+.person-result{display:flex;flex-direction:column;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit;font-weight:400;overflow-wrap:anywhere}
+.person-result:hover,.person-result:focus-visible{background:var(--color-surface-hover)}
 .hint{font-size:var(--text-secondary);color:var(--color-ink-muted);font-weight:400}
 .inline-form{display:inline}
 input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],textarea,select{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 16px;height:40px;box-sizing:border-box}
@@ -365,4 +375,4 @@ fieldset{min-width:0}
 /* A touch screen: 44px hit targets, and a type scale read at arm's length,
  * 16px body, 15px secondary copy and section headings, muted copy in the
  * body's ink while labels keep theirs (DESIGN.md § Typography) */
-@media (pointer:coarse){:root{--text-body:16px;--text-secondary:15px;--text-h2:15px;}.muted{color:var(--color-ink-2)}.navitem,.sb-org-person,.theme-choice,.sb-person>summary{min-height:44px}.sb-org-person{line-height:44px;height:auto}.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}.filter-chip{height:auto;min-height:44px}.filter-chip select{min-height:42px}}
+@media (pointer:coarse){:root{--text-body:16px;--text-secondary:15px;--text-h2:15px;}.muted{color:var(--color-ink-2)}.navitem,.sb-org-person,.theme-choice,.sb-person>summary{min-height:44px}.sb-org-person{line-height:44px;height:auto}.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}.filter-chip{height:auto;min-height:44px}.person-result{min-height:44px}.filter-chip select{min-height:42px}}

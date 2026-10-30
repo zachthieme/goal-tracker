@@ -157,6 +157,7 @@ templ framedLayout(title string, current *domain.Account, header templ.Component
 			<link rel="stylesheet" href={ stylesheetURL }/>
 			<script src={ htmxURL }></script>
 			@disclosure()
+			@personPickerScript()
 		</head>
 		if current != nil {
 			<body class="framed">

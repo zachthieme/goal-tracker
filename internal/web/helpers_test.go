@@ -184,11 +184,15 @@ func postForm(t *testing.T, client *http.Client, rawURL string, form url.Values)
 }
 
 // postFormStatus posts form to rawURL, as postForm does, and returns the
-// response's status, closing its body unread.
+// response's status, its body read and dropped.
 func postFormStatus(t *testing.T, client *http.Client, rawURL string, form url.Values) int {
 	t.Helper()
 	resp := postForm(t, client, rawURL, form)
 	defer func() { _ = resp.Body.Close() }()
+	// Read the page to its end, so the server has finished it — the page a
+	// redirect lands on is still rendering once its first bytes arrive — before
+	// the test goes on, say to advance the clock that page reads.
+	_ = readBody(t, resp)
 	return resp.StatusCode
 }
 

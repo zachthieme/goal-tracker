@@ -4186,3 +4186,25 @@ func TestParentPickerErrorIsInTheDangerInkStyles(t *testing.T) {
 		}
 	}
 }
+
+// The person picker's results drop down under its input, over what follows,
+// rather than pushing the form's buttons down (#667).
+func TestPersonPickerResultsDropDownUnderItsInput(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for sel, wants := range map[string][]string{
+		".person-picker":  {"position:relative"},
+		".person-results": {"position:absolute", "top:100%"},
+	} {
+		decls, ok := ruleFor(css, sel)
+		for _, want := range wants {
+			if !ok || !strings.Contains(decls, want) {
+				t.Errorf("app.css %s{%s} doesn't declare %s", sel, decls, want)
+			}
+		}
+	}
+}

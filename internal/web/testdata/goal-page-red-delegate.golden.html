@@ -13,6 +13,114 @@
 			b.setAttribute("aria-expanded", open ? "true" : "false");
 			target.hidden = !open;
 		});
+	</script><script>
+		(function () {
+			var pickerSelector = "input[data-person-picker]";
+			var lastID = 0;
+			function resultsOf(input) {
+				var p = input.closest(".person-picker");
+				return p && p.querySelector(".person-results");
+			}
+			function hide(list) {
+				list.hidden = true;
+				list.innerHTML = "";
+			}
+			// forget drops any search input is waiting on, so its answer, if
+			// one comes, isn't shown.
+			function forget(input) {
+				clearTimeout(input.personTimer);
+				input.personAsked = (input.personAsked || 0) + 1;
+			}
+			function upgrade() {
+				document.querySelectorAll(pickerSelector).forEach(function (input) {
+					var list = resultsOf(input);
+					if (!list || input.hasAttribute("aria-controls")) return;
+					if (!list.id) {
+						do { lastID++; } while (document.getElementById("person-results-" + lastID));
+						list.id = "person-results-" + lastID;
+					}
+					input.type = "text";
+					input.placeholder = "Name or email";
+					input.autocomplete = "off";
+					input.setAttribute("aria-autocomplete", "list");
+					input.setAttribute("aria-controls", list.id);
+				});
+			}
+			document.addEventListener("DOMContentLoaded", upgrade);
+			document.addEventListener("htmx:load", upgrade);
+			document.addEventListener("input", function (e) {
+				var input = e.target;
+				if (!input.matches || !input.matches(pickerSelector)) return;
+				var list = resultsOf(input);
+				if (!list) return;
+				forget(input);
+				var asked = input.personAsked;
+				var q = input.value.trim();
+				if (!q) {
+					hide(list);
+					return;
+				}
+				input.personTimer = setTimeout(function () {
+					fetch("/people/search?q=" + encodeURIComponent(q), { credentials: "same-origin" })
+						.then(function (r) { return r.ok ? r.text() : ""; })
+						.then(function (html) {
+							// Only the latest answer, and only while the person is
+							// still in the picker.
+							if (asked !== input.personAsked || !list.parentNode.contains(document.activeElement)) return;
+							list.innerHTML = html;
+							list.hidden = html.trim() === "";
+						});
+				}, 300);
+			});
+			// Keep focus in the input while a result is pressed, so the
+			// focusout below doesn't hide the results before the click.
+			document.addEventListener("mousedown", function (e) {
+				if (e.target.closest && e.target.closest(".person-results")) e.preventDefault();
+			});
+			document.addEventListener("click", function (e) {
+				var b = e.target.closest && e.target.closest("[data-pick-person]");
+				var picker = b && b.closest(".person-picker");
+				if (picker) {
+					var input = picker.querySelector(pickerSelector);
+					forget(input);
+					input.value = b.getAttribute("data-email");
+					hide(b.closest(".person-results"));
+					input.focus();
+				}
+				document.querySelectorAll(".person-results:not([hidden])").forEach(function (list) {
+					if (!list.parentNode.contains(e.target)) hide(list);
+				});
+			});
+			document.addEventListener("keydown", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (!input || !list) return;
+				var results = Array.prototype.slice.call(list.querySelectorAll("[data-pick-person]"));
+				var at = results.indexOf(e.target);
+				if (e.key === "Escape" && !list.hidden) {
+					e.preventDefault();
+					forget(input);
+					hide(list);
+					input.focus();
+				} else if (e.key === "ArrowDown" && !list.hidden && results.length) {
+					e.preventDefault();
+					results[Math.min(at + 1, results.length - 1)].focus();
+				} else if (e.key === "ArrowUp" && at >= 0) {
+					e.preventDefault();
+					(at === 0 ? input : results[at - 1]).focus();
+				}
+			});
+			document.addEventListener("focusout", function (e) {
+				var picker = e.target.closest && e.target.closest(".person-picker");
+				if (!picker || (e.relatedTarget && picker.contains(e.relatedTarget))) return;
+				var input = picker.querySelector(pickerSelector);
+				var list = picker.querySelector(".person-results");
+				if (input) forget(input);
+				if (list && !list.hidden) hide(list);
+			});
+		})();
 	</script></head><body><div><header><a href="/home"><span aria-hidden="true"></span>Goal Tracker</a><a href="/home"><span>Home </span><span>3</span></a> <details><summary>Menu</summary></details><div><form method="get" action="/goals" role="search"><label for="sb-search-q">Search Goals</label> <input id="sb-search-q" type="search" name="q" placeholder="Search"/></form><nav aria-label="Main"><a data-testid="nav-home" href="/home"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 7.5 8 3l5.5 4.5V13.5H10v-4H6v4H2.5z"></path></svg>Home<span>3</span></a><a aria-current="page" data-testid="nav-goals" href="/goals"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5"></circle> <circle cx="8" cy="8" r="2"></circle></svg>Goals</a><a data-testid="nav-follow-ups" href="/follow-ups"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3.5 14.5v-12M3.5 3h8.5l-1.75 3L12 9H3.5"></path></svg>Follow-ups<span>5</span></a><a data-testid="nav-reports" href="/reports"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 1.5h5.5L12 4v10.5H4zM9.5 1.5V4H12M6 8h4M6 11h4"></path></svg>Reports</a></nav><section data-testid="sidebar-org" aria-labelledby="sb-org-head"><h2 id="sb-org-head">My org</h2><ul><li><a data-testid="sidebar-org-person" href="/goals?org=6" title="mia@example.com">Mia Park</a></li><li><a data-testid="sidebar-org-person" href="/goals?org=3" title="priya@example.com">Priya Raman</a></li></ul></section><details data-testid="person-menu"><summary><span aria-hidden="true">MW</span> <span><span title="morgan@example.com">Morgan Wu</span></span></summary><div><p data-testid="current-user">Signed in as <span><button type="button" aria-expanded="false" title="morgan@example.com">Morgan Wu</button><span hidden="">morgan@example.com</span></span></p><form data-testid="theme-menu" method="post" action="/theme" aria-label="Theme"><p aria-hidden="true">Theme</p><input type="hidden" name="return" value="/goals/5"/> <button data-testid="theme-system" type="submit" name="theme" value="system" aria-current="true">System</button><button data-testid="theme-light" type="submit" name="theme" value="light">Light</button><button data-testid="theme-dark" type="submit" name="theme" value="dark">Dark</button></form><form method="post" action="/signout"><button type="submit">Sign out</button></form></div></details></div></header><div><div data-testid="goal-page-header"><nav data-testid="goal-breadcrumb" aria-label="Breadcrumb"><a href="/goals">Goals</a> <span aria-hidden="true">›</span> <span aria-current="page">Goal 04</span></nav><div data-testid="goal-actions"><a data-testid="checkin-link" href="/goals/5/checkin">Check in</a> <details data-testid="goal-more"><summary aria-label="More actions" title="More actions">More ▾</summary><div><ul><li><a href="/goals/5/suggest-parent">Suggest a parent</a></li><li><a href="/goals/new?parent=5">Add a child Goal</a></li><li><a href="/goals/5?open=dimensions">Edit Dimension values</a></li><li><a href="/goals/5?open=fields">Edit Fields</a></li><li><a href="/goals/5/checkin?lifecycle=On+Hold">Put on hold…</a></li><li><a href="/goals/5/checkin?lifecycle=Done">Mark done…</a></li><li><a href="/goals/5/checkin?lifecycle=Cancelled">Cancel…</a></li></ul></div></details></div></div><main><div><div><p data-testid="goal-path-overdue" role="alert"><strong>Path to Green overdue</strong><span>meant to be back to Green by Jan 5</span></p><section data-testid="goal-signals" aria-label="Graph signals"><p data-testid="goal-unlinked" role="alert"><strong>Unlinked</strong><span>this Active Goal contributes to no other Goal and isn&#39;t Top-level.</span></p></section><p data-testid="goal-incomplete" role="status"><strong>Incomplete</strong><span>no value yet in Team</span></p></div><div><header data-testid="goal-head"><h1 data-testid="goal-title">Goal 04</h1><article data-testid="goal" aria-labelledby="why-it-matters-label"><h2 id="why-it-matters-label">Why it matters</h2><p data-testid="goal-why-it-matters">It matters.</p><button type="button" aria-expanded="false" aria-controls="why-it-matters-help" title="The customer problem this Goal addresses and what is expected to change when it succeeds.">What goes here?</button><p id="why-it-matters-help" hidden="">The customer problem this Goal addresses and what is expected to change when it succeeds.</p></article></header><aside data-testid="goal-sidebar" aria-label="Properties"><div data-testid="goal-meta"><dl><div><dt>Health</dt><dd>  <span title="Red"><span></span><span>Red</span></span> </dd></div><div><dt>Lifecycle</dt><dd><span data-testid="goal-lifecycle">Active</span></dd></div><div><dt>Kind</dt><dd><span data-testid="goal-kind"><button type="button" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span></dd></div></dl><p id="kind-help" hidden="">Has a delivery date. Its Health is judged against that date and its Milestones.</p><div data-testid="goal-people"><dl><div><dt>Owner</dt><dd><strong data-testid="goal-owner"><span><button type="button" aria-expanded="false" title="sam@example.com">Sam Lee</button><span hidden="">sam@example.com</span></span></strong></dd></div></dl><div data-testid="goal-pending-handoff">Handoff to <span><button type="button" aria-expanded="false" title="priya@example.com">Priya Raman</button><span hidden="">priya@example.com</span></span> pending </div><section data-testid="goal-delegates"><div><h3>Delegates</h3></div><ul data-testid="delegate-list"><li data-testid="delegate"><span><button type="button" aria-expanded="false" title="morgan@example.com">Morgan Wu</button><span hidden="">morgan@example.com</span></span></li></ul><button type="button" aria-expanded="false" aria-controls="delegate-help" title="Someone the Owner authorizes to write Check-ins and set this Goal&#39;s Dimension values and Fields. The Owner stays accountable.">What is a Delegate?</button><p id="delegate-help" hidden="">Someone the Owner authorizes to write Check-ins and set this Goal&#39;s Dimension values and Fields. The Owner stays accountable.</p></section></div><dl><div><dt>Cadence</dt><dd><span data-testid="goal-cadence">every 7 days</span></dd></div><div><dt>Delivers</dt><dd><span data-testid="goal-delivery-date"><del>Jul 2</del> <strong>Aug 2</strong></span></dd></div></dl></div><section data-testid="goal-dimensions"><div><h3>Dimensions</h3><a aria-label="Edit Dimensions" data-testid="open-dimensions" href="/goals/5?open=dimensions">Edit</a></div><button type="button" aria-expanded="false" aria-controls="dimension-values-help" title="Values from lists an Admin defines, such as Pillar or Quarter, used to filter and group Goals.">What are Dimension values?</button><p id="dimension-values-help" hidden="">Values from lists an Admin defines, such as Pillar or Quarter, used to filter and group Goals.</p><dl><div data-testid="goal-dimension"><dt>Team</dt><dd><span data-testid="goal-dimension-unassigned">unassigned</span></dd></div></dl><p><a href="/dimensions">All Dimensions →</a></p></section><section data-testid="goal-field-block"><div><h3>Fields</h3><a aria-label="Edit Fields" data-testid="open-fields" href="/goals/5?open=fields">Edit</a></div><ul data-testid="goal-fields"><li data-testid="goal-field"><span>Budget</span> <br/><span data-testid="goal-field-value"><span>5000</span> USD</span></li></ul><p><a href="/fields">All Fields →</a></p></section><section data-testid="goal-parents"><div><h3>Contributes to</h3></div><ul><li data-testid="no-parents">This Goal contributes to nothing yet.</li></ul></section><section data-testid="goal-children"><h3>Contributed to by</h3><ul><li><span>  <span title="Yellow"><span></span><span>Yellow</span></span> <a href="/goals/6">Goal 04 child</a> <span></span></span> <span>Owner <span><button type="button" aria-expanded="false" title="sam@example.com">Sam Lee</button><span hidden="">sam@example.com</span></span></span></li></ul></section></aside><div data-testid="goal-main"><section data-testid="goal-checkins"><h2>Latest status</h2><dl data-testid="goal-status-cells"><div data-testid="goal-health-cell"><dt>Owner&#39;s Health</dt><dd>  <span data-testid="goal-health" title="Red"><span></span><span>Red</span></span> <span data-testid="goal-run-off-green">· 2 wks</span></dd></div><div data-testid="goal-rollup-cell"><dt>Rolled-up Health</dt><dd>  <span data-testid="goal-rollup-health" title="Yellow: the lowest Health among Active children"><span></span><span>Yellow</span></span> </dd></div><div data-testid="goal-back-to-green-cell"><dt>Back to Green by</dt><dd><span>Jan 5</span> </dd></div></dl><p data-testid="goal-status">Blocked on the vendor.</p><p data-testid="goal-path-to-green"><strong>Path to Green:</strong> Find another vendor. — back to Green by Jan 5</p> <p data-testid="goal-ask-for-help"><strong>Asks for help</strong> of <span><button type="button" aria-expanded="false" title="morgan@example.com">Morgan Wu</button><span hidden="">morgan@example.com</span></span> <a href="#comments">Answer</a></p> <p data-testid="goal-rollup-explanation"><strong>Why this differs from the Rolled-up Health:</strong> The vendor blocks it whatever the child does.</p> <p><span><button type="button" aria-expanded="false" title="sam@example.com">Sam Lee</button><span hidden="">sam@example.com</span></span> · Jan 8</p></section><section data-testid="goal-metrics"><h2>Metrics</h2><div data-testid="goal-metric"><div><h3>Vendor quotes</h3><p>0 → 3 quotes by Jan 7</p></div><div><svg role="img" aria-label="Vendor quotes: 2 readings, rising from 1 to 2 quotes, toward the target of 3 quotes" viewBox="0 0 240 56" width="240" height="56"><line x1="0" x2="240" y1="5.0" y2="5.0" stroke-width="1" stroke-dasharray="4 3"></line> <polyline points="5.0,51.0 235.0,28.0" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline> <circle cx="5.0" cy="51.0" r="6" fill="transparent"><title>Jan 8: 1 quotes</title></circle> <circle cx="235.0" cy="28.0" r="6" fill="transparent"><title>Jan 8: 2 quotes</title></circle> <circle cx="235.0" cy="28.0" r="4" stroke-width="2"><title>Jan 8: 2 quotes</title></circle></svg></div><p><span data-testid="metric-current">2</span> <span>quotes</span></p><details><summary>Readings (2)</summary><ol data-testid="metric-trend"><li data-testid="metric-reading"><span>Jan 8: <span>1</span> quotes</span> <span>(target 3)</span></li><li data-testid="metric-reading"><span>Jan 8: <span>2</span> quotes</span> <span>(target 3)</span></li></ol></details></div></section><section data-testid="goal-milestones"><div><h2>Milestones</h2><a aria-label="Add a Milestone" data-testid="open-milestones" href="/goals/5?open=milestones">+ Add</a></div><p><span data-testid="goal-slip-count">1</span> slip · <span data-testid="goal-milestone-churn">2</span> added or removed since Active</p><div><table><thead><tr><th>Status</th><th>Date</th><th>Milestone</th></tr></thead> <tbody><tr data-testid="goal-milestone"><td><span data-testid="milestone-mark">Overdue</span></td><td><span>Jan 6</span> </td><td>Security review</td></tr><tr data-testid="goal-milestone"><td><span data-testid="milestone-mark">Slipped</span></td><td><span>Feb 5</span> <del>Jan 22</del> </td><td>Vendor contract</td></tr><tr data-testid="goal-milestone"><td></td><td><span>Apr 2</span> </td><td>Beta</td></tr></tbody></table></div></section><section data-testid="goal-draft-highlights" id="draft-highlights" data-highlight-editor="" data-kind-optional="" data-hl-noun="Draft Highlight" hx-on:htmx:response-error="htmx.swap(&#39;body&#39;, event.detail.xhr.responseText, {swapStyle: &#39;innerHTML&#39;})"><div><h2>Draft Highlights</h2><button type="button" data-testid="draft-highlight-add" data-highlight-add="" data-hl-url="/goals/5/draft-highlights">+ Log a highlight</button><a aria-label="Log a highlight" data-testid="open-draft-highlight" href="/goals/5?open=draft-highlight">+ Log a highlight</a></div><div data-hl-items=""></div><ul><li data-testid="draft-highlight" data-hl-url="/draft-highlights/1" data-hl-kind="Insight" data-hl-note="The second vendor looks faster."><span><strong>Insight</strong>  The second vendor looks faster.</span> <span><span><button type="button" aria-expanded="false" title="morgan@example.com">Morgan Wu</button><span hidden="">morgan@example.com</span></span> · Jan 8, 01:04</span><form data-testid="delete-draft-highlight" method="post" action="/draft-highlights/1/delete" hx-post="/draft-highlights/1/delete" hx-target="#draft-highlights" hx-swap="outerHTML" data-hl-actions=""><button type="submit" data-hl-js-label="Remove">Delete</button></form></li></ul><template id="highlight-editor"><div data-testid="highlight-editor" role="group"><h3 data-hl-heading=""></h3><p data-hl-draft="">Draft · logged by <span data-hl-logged-by=""></span></p><input type="hidden" data-hl-kind-hidden=""/> <label data-hl-kind-select="">Kind <select><option value="" selected="">None</option> <option value="Insight">Insight</option> <option value="Accomplishment">Accomplishment</option> <option value="Miss">Miss</option></select></label> <label>Note <textarea data-hl-note=""></textarea></label><div><button type="button" data-hl-save="">Save</button> <button type="button" data-hl-cancel="">Cancel</button> <button type="button" data-hl-remove="">Remove</button></div></div></template><template id="highlight-item"><div data-testid="highlight-item"><p><strong data-testid="highlight-item-kind"></strong>: <span data-testid="highlight-item-note"></span></p><p data-hl-draft="">Draft · logged by <span data-hl-logged-by=""></span></p><div><button type="button" data-hl-edit="">Edit</button> <button type="button" data-hl-remove="">Remove</button></div></div></template><script>
 		(function () {
 			var editorTemplate = document.getElementById("highlight-editor");

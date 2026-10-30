@@ -1092,5 +1092,5 @@ func TestARefusedActionItemTooLongToCarryBackAnswersWithTheRefusalPage(t *testin
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status %d, want 422", resp.StatusCode)
 	}
-	assertRefusalPage(t, page, "Can't add Action Item", `No account with email "nobody@example.com".`, pubPath)
+	assertRefusalPage(t, page, "Can't add Action Item", `No account with email "nobody@example.com" — check the address or pick from the list.`, pubPath)
 }

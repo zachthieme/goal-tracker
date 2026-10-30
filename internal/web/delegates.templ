@@ -123,7 +123,7 @@ templ delegatesSection(v goalView) {
 					class="gp-inline"
 					action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
 				>
-					<input type="email" name="email" value={ v.FormInput.Get("email") } aria-label="Delegate email" placeholder="Delegate email" required autofocus/>
+					@personPicker(personField{Name: "email", Value: v.FormInput.Get("email"), Caption: "Delegate email", CaptionHidden: true, Autofocus: true})
 					<button type="submit" class="btn sm">Add Delegate</button>
 				</form>
 			}

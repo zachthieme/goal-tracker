@@ -282,7 +282,35 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
     await page.goto(`/goals/${goal.id}`);
     await page.getByRole("link", { name: "Manage Delegates" }).click();
     const add = page.getByTestId("add-delegate");
-    await add.getByRole("textbox", { name: "Delegate email" }).fill(delegate.email);
+    const field = add.getByRole("textbox", { name: "Delegate email" });
+    const results = add.getByTestId("person-results");
+    // The person picker searches by Name or email, its results named by the
+    // input they drop down under.
+    await expect(field).toHaveAttribute("placeholder", "Name or email");
+    await expect(field).toHaveAttribute("aria-controls", (await results.getAttribute("id")) ?? "missing id");
+    const pick = results
+      .getByTestId("person-result")
+      .filter({ hasText: delegate.email })
+      .getByRole("button", { name: delegate.name });
+
+    // Escape, or tabbing out, hides the results, so they never cover the
+    // button below.
+    await field.fill(delegate.name);
+    await expect(pick).toBeVisible();
+    await field.press("Escape");
+    await expect(results).toBeHidden();
+    await field.fill("");
+    await field.fill(delegate.name);
+    await expect(pick).toBeVisible();
+    await field.press("Tab");
+    await expect(results).toBeHidden();
+
+    // Picking the person by Name puts their email in the field.
+    await field.fill("");
+    await field.fill(delegate.name);
+    await pick.click();
+    await expect(results).toBeHidden();
+    await expect(field).toHaveValue(delegate.email);
     await add.getByRole("button", { name: "Add Delegate" }).click();
     await expect(page.getByTestId("delegate-list").getByRole("button", { name: delegate.name })).toBeVisible();
   });
