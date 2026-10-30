@@ -262,6 +262,19 @@ func (v goalView) pathPriorDates() []time.Time {
 	return domain.BackToGreenPriorDates(v.DateSlips, v.RunOffGreen)
 }
 
+// milestoneSlipCount is how many of the Goal's Date Slips moved a Milestone's
+// date, a Removed Milestone's earlier slips included; delivery-date and
+// back-to-Green slips aren't counted (CONTEXT.md: Date Slip).
+func (v goalView) milestoneSlipCount() int {
+	n := 0
+	for _, s := range v.DateSlips {
+		if s.MilestoneID != 0 {
+			n++
+		}
+	}
+	return n
+}
+
 // lifecycleNote explains the Goal's current Lifecycle from the Check-in that
 // moved it there: the outcome of a Done Goal, or the reason it is On Hold or
 // Cancelled (CONTEXT.md: Lifecycle). It is empty when there is nothing to say,

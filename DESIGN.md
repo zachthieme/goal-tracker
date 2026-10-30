@@ -1195,7 +1195,10 @@ and so on).
     **Edit Metric** disclosure. At 600px and below the sparkline drops to its
     own line.
   - **Milestones:** a muted "3 slips · 1 added or removed since Active" line,
-    then a table with no fill: muted 12px Status, Date and Milestone labels and
+    where the slips are the Milestones' date slips only ("1 slip" for one),
+    not the delivery date's or the back-to-Green date's. The line shows only
+    when the Goal has Milestones and has been Active; otherwise "No Milestones
+    yet." or the table stands alone. Then a table with no fill: muted 12px Status, Date and Milestone labels and
     hairline rows. Status is the Milestone's mark badge or blank: a badge
     showing its word, **Overdue** in the Red tint (`badge r`), **Slipped** in
     the Yellow (`badge y`), and **Done**, **Removed** and **New** neutral

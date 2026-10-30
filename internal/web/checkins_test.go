@@ -171,9 +171,9 @@ func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
 
 // An Owner moves the delivery date later in a Check-in through the web form,
 // with a reason and a Yellow Health. The Goal page then shows the date history
-// struck through (~~old~~ new) on the head's metadata line, the reason, and the
-// slip count. This is the Date
-// Slip smoke test (ticket #5).
+// struck through (~~old~~ new) on the head's metadata line and the reason; the
+// Milestones' slip count counts only Milestone date slips, so it stays at 0.
+// This is the Date Slip smoke test (ticket #5).
 func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	t.Parallel()
 
@@ -210,8 +210,8 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	if slips := textOf(findByTestID(t, findByTestID(t, page, "goal-history"), "entry-slips")); !strings.Contains(slips, "Vendor API delayed two weeks.") {
 		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason: %q", slips)
 	}
-	if got := textOf(findByTestID(t, page, "goal-slip-count")); got != "1" {
-		t.Errorf("Goal page shows a slip count of %q, want 1", got)
+	if got := textOf(findByTestID(t, page, "goal-slip-count")); got != "0" {
+		t.Errorf("Goal page shows a Milestone slip count of %q after a delivery-date slip, want 0", got)
 	}
 }
 
