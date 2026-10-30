@@ -206,8 +206,8 @@ func TestOnlyTheCreatorAReportDelegateOrAnAdminManagesAReport(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s publishing: %v", who.name, err)
 		}
-		if pub.PublishedBy.ID != who.as.ID || pub.Report.Definition.Name != name {
-			t.Errorf("publication %d: by %d named %q, want by %s named %q", i, pub.PublishedBy.ID, pub.Report.Definition.Name, who.name, name)
+		if pub.PublishedBy.ID != who.as.ID || pub.Name != name {
+			t.Errorf("publication %d: by %d named %q, want by %s named %q", i, pub.PublishedBy.ID, pub.Name, who.name, name)
 		}
 	}
 }

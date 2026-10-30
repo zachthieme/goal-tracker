@@ -46,19 +46,19 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 		item.DefinitionID != def.ID || item.CommentID != question.ID || item.Closed {
 		t.Errorf("action item %+v, want an open item from the comment, owned by the owner, due %v", item, due)
 	}
-	if got, err := h.Service.GetPublication(ctx, first.ID); err != nil || len(got.Report.ActionItems) != 0 {
-		t.Errorf("the publication it was raised on now lists %+v (err %v), want it unchanged", got.Report.ActionItems, err)
+	if got, err := h.Service.GetPublication(ctx, first.ID); err != nil || slices.ContainsFunc(got.Facts, isFact(domain.ReportFactActionItems)) {
+		t.Errorf("the publication it was raised on now lists Action Items (err %v), want it unchanged: %v", err, factOutline(got.Facts))
 	}
 
 	h.Clock.Advance(7 * day)
 	second := h.PublishReport(author, def)
-	if len(second.Report.ActionItems) != 1 || second.Report.ActionItems[0].ID != item.ID {
-		t.Fatalf("next publication's Action Items %+v, want the open item", second.Report.ActionItems)
+	if items := h.PublicationFact(second, domain.ReportFactActionItems).ActionItems; len(items) != 1 || items[0].ID != item.ID {
+		t.Fatalf("next publication's Action Items %+v, want the open item", items)
 	}
 	h.Clock.Advance(7 * day)
 	third := h.PublishReport(author, def)
-	if len(third.Report.ActionItems) != 1 {
-		t.Fatalf("third publication's Action Items %+v, want the still-open item", third.Report.ActionItems)
+	if items := h.PublicationFact(third, domain.ReportFactActionItems).ActionItems; len(items) != 1 {
+		t.Fatalf("third publication's Action Items %+v, want the still-open item", items)
 	}
 
 	closed, err := h.Service.CloseActionItem(ctx, owner.ID, item.ID, "  Second quote is in: 20% cheaper.  ")
@@ -71,11 +71,15 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 
 	h.Clock.Advance(7 * day)
 	fourth := h.PublishReport(author, def)
-	if len(fourth.Report.ActionItems) != 0 {
-		t.Errorf("publication after closing lists %+v, want no Action Items", fourth.Report.ActionItems)
+	if slices.ContainsFunc(fourth.Facts, isFact(domain.ReportFactActionItems)) {
+		t.Errorf("publication after closing lists Action Items, want none: %v", factOutline(fourth.Facts))
 	}
-	if got, err := h.Service.GetPublication(ctx, second.ID); err != nil || len(got.Report.ActionItems) != 1 || got.Report.ActionItems[0].Closed {
-		t.Errorf("earlier publication's frozen Action Items %+v (err %v), want the item as it stood, open", got.Report.ActionItems, err)
+	got, err := h.Service.GetPublication(ctx, second.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if items := h.PublicationFact(got, domain.ReportFactActionItems).ActionItems; len(items) != 1 || items[0].ID != item.ID || items[0].Closed {
+		t.Errorf("earlier publication's frozen Action Items %+v, want the item as it stood, open", items)
 	}
 }
 

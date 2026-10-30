@@ -6,7 +6,7 @@ import "time"
 // (Report.Facts) or one part of an exception block (ReportBlock.Facts).
 type ReportFactKind string
 
-// The kinds of a Report's own facts, in the order Publication.Facts lists
+// The kinds of a Report's own facts, in the order PublicationFacts lists
 // them.
 const (
 	ReportFactByline            ReportFactKind = "byline"
@@ -78,9 +78,11 @@ const (
 )
 
 // ReportScheduleConflictGroup is one side of a block's Schedule conflicts: the
-// words it opens with and the Goals at the other end, in the block's order.
+// words it opens with, the Goals at the other end, in the block's order, and
+// the word each reads before its delivery date, "due".
 type ReportScheduleConflictGroup struct {
 	Words     string
+	DueWords  string
 	Conflicts []ReportScheduleConflict
 }
 
@@ -105,7 +107,7 @@ func ReportScheduleConflictGroups(conflicts []ReportScheduleConflict) []ReportSc
 			}
 		}
 		if len(cs) > 0 {
-			groups = append(groups, ReportScheduleConflictGroup{Words: side.words, Conflicts: cs})
+			groups = append(groups, ReportScheduleConflictGroup{Words: side.words, DueWords: ReportConflictOtherDue, Conflicts: cs})
 		}
 	}
 	return groups
@@ -132,12 +134,10 @@ type ReportFact struct {
 	Movement ReportMovementLine
 	// ActionItems are the Report's open Action Items.
 	ActionItems []ActionItem
-	// Narrative is the narrative's sections, each under its own heading
-	// (NarrativeSection.Heading).
-	Narrative []NarrativeSection
-	// Exceptions are the exception blocks, each listing its own facts
-	// (ReportBlock.Facts).
-	Exceptions []ReportBlock
+	// Narrative is the narrative's sections, each under its own heading.
+	Narrative []ReportNarrativeSection
+	// Blocks are the exception blocks, each its own facts (ReportBlock.Facts).
+	Blocks []ReportBlockFacts
 	// Lines are the one-line Goals, On track.
 	Lines []SelectedGoal
 	// MembershipChanges are the Goals that entered or left the Report.
@@ -147,8 +147,9 @@ type ReportFact struct {
 	Head ReportBlockHead
 	// Changes say what changed on the block's Goal since the baseline.
 	Changes []string
-	// ScheduleConflicts are the Schedule conflicts the block's Goal is in.
-	ScheduleConflicts []ReportScheduleConflict
+	// ScheduleConflictGroups are the Schedule conflicts the block's Goal is
+	// in, by side (ReportScheduleConflictGroups).
+	ScheduleConflictGroups []ReportScheduleConflictGroup
 	// Goals are the Goals a block links to: those it contributes to, or
 	// those behind it, Supported by.
 	Goals []LinkedGoal
@@ -177,21 +178,13 @@ type ReportByline struct {
 // ReportSince is what a Report reads its changes against: its previous
 // publication, from the instant it was published, or its baseline date.
 type ReportSince struct {
-	// Previous is set when it reads them against its previous publication.
-	Previous bool
 	// At is the instant the previous publication was published, or the
 	// baseline date.
 	At time.Time
-}
-
-// Words names what a Report reads its changes against when it is the previous
-// publication, "the previous publication"; read against a date, it is "", and
-// each output writes the date as it writes dates.
-func (s ReportSince) Words() string {
-	if s.Previous {
-		return ReportPreviousPublication
-	}
-	return ""
+	// Words name what it reads them against when it is the previous
+	// publication, "the previous publication"; read against a date, they are
+	// "", and each output writes the date as it writes dates.
+	Words string
 }
 
 // ReportMovementLine is the line counting the Goals that moved since what the
@@ -205,31 +198,49 @@ type ReportMovementLine struct {
 // Since is what r reads its changes against.
 func (r Report) Since() ReportSince {
 	if r.Previous.ID != 0 {
-		return ReportSince{Previous: true, At: r.Previous.PublishedAt}
+		return ReportSince{At: r.Previous.PublishedAt, Words: ReportPreviousPublication}
 	}
 	return ReportSince{At: r.Baseline}
 }
 
-// Facts lists a publication's facts in order: its byline, how it selected its
-// Goals as it read when published (none for a publication frozen before
-// selections were), then its Report's (Report.Facts).
-func (p Publication) Facts() []ReportFact {
+// ReportNarrativeSection is one section of a Report's narrative as its facts
+// show it: its heading ("Insights"), the author's notes, and the Highlights
+// they picked into it.
+type ReportNarrativeSection struct {
+	Heading    string
+	Notes      []string
+	Highlights []NarrativeHighlight
+}
+
+// ReportBlockFacts is one exception block as its facts list it
+// (ReportBlock.Facts), with the id of its Goal.
+type ReportBlockFacts struct {
+	GoalID int64
+	Facts  []ReportFact
+}
+
+// PublicationFacts lists the facts of r published by by at the instant at, in
+// order: its byline, how it selected its Goals in plain words (scope, left out
+// when ""), then r's own (Report.Facts), its blocks read as of at. They are
+// what a publication freezes.
+func PublicationFacts(r Report, by Account, at time.Time, scope string) []ReportFact {
 	facts := []ReportFact{{
 		Kind: ReportFactByline, Label: "Published",
-		Byline: ReportByline{PublishedBy: p.PublishedBy, PublishedAt: p.PublishedAt, Since: p.Report.Since()},
+		Byline: ReportByline{PublishedBy: by, PublishedAt: at, Since: r.Since()},
 	}}
-	if p.Scope != "" {
-		facts = append(facts, ReportFact{Kind: ReportFactSelection, Label: "Selection", Text: p.Scope})
+	if scope != "" {
+		facts = append(facts, ReportFact{Kind: ReportFactSelection, Label: "Selection", Text: scope})
 	}
-	return append(facts, p.Report.Facts()...)
+	return append(facts, r.Facts(at)...)
 }
 
 // Facts lists a Report's own parts in order, each only when it has it: its
-// Goals counted by Health when it selects any, the line counting what moved
-// (none on a Report frozen before Reports counted it), its open Action Items,
-// the introduction, the narrative, the exceptions, the one-line Goals On
-// track, and the Goals that entered or left it.
-func (r Report) Facts() []ReportFact {
+// Goals counted by Health when it selects any, the line counting what moved,
+// its open Action Items, the introduction, the narrative, the exceptions, each
+// block's facts read as of asOf (ReportBlock.Facts), the one-line Goals On
+// track, and the Goals that entered or left it. asOf is the instant its Report
+// is published, or now on a draft.
+func (r Report) Facts(asOf time.Time) []ReportFact {
 	var facts []ReportFact
 	if len(r.Exceptions) > 0 || len(r.Lines) > 0 {
 		facts = append(facts, ReportFact{Kind: ReportFactHealthCounts, Label: "Health", HealthCounts: r.HealthCounts()})
@@ -244,10 +255,18 @@ func (r Report) Facts() []ReportFact {
 		facts = append(facts, ReportFact{Kind: ReportFactIntroduction, Text: r.Definition.Introduction})
 	}
 	if len(r.Narrative) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactNarrative, Narrative: r.Narrative})
+		sections := make([]ReportNarrativeSection, 0, len(r.Narrative))
+		for _, n := range r.Narrative {
+			sections = append(sections, ReportNarrativeSection{Heading: n.Heading(), Notes: n.Notes, Highlights: n.Highlights})
+		}
+		facts = append(facts, ReportFact{Kind: ReportFactNarrative, Narrative: sections})
 	}
 	if len(r.Exceptions) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactExceptions, Label: "Exceptions", Exceptions: r.Exceptions})
+		blocks := make([]ReportBlockFacts, 0, len(r.Exceptions))
+		for _, b := range r.Exceptions {
+			blocks = append(blocks, ReportBlockFacts{GoalID: b.Goal.ID, Facts: b.Facts(asOf)})
+		}
+		facts = append(facts, ReportFact{Kind: ReportFactExceptions, Label: "Exceptions", Blocks: blocks})
 	}
 	if len(r.Lines) > 0 {
 		facts = append(facts, ReportFact{Kind: ReportFactOnTrack, Label: "On track", Lines: r.Lines})
@@ -278,34 +297,24 @@ type ReportBlockHead struct {
 // ReportPathToGreen is a block's Path to Green: the plan, the date it is back
 // to Green by with the dates that slipped from within the Run off Green,
 // earliest first, how many times it slipped, and whether that date had passed
-// as of the instant the block is read at (PathToGreenOverdueAt).
+// as of the instant the block is read at (PathToGreenOverdueAt); ByWords lead
+// the back-to-Green date, "back to Green by", and OverdueWords mark it
+// overdue, "Overdue".
 type ReportPathToGreen struct {
-	Plan       string
-	By         time.Time
-	PriorDates []time.Time
-	Slips      int
-	Overdue    bool
+	Plan         string
+	By           time.Time
+	PriorDates   []time.Time
+	Slips        int
+	Overdue      bool
+	ByWords      string
+	OverdueWords string
 }
-
-// ByWords leads the back-to-Green date: "back to Green by".
-func (ReportPathToGreen) ByWords() string { return ReportBackToGreenBy }
-
-// OverdueWords marks an overdue Path to Green: "Overdue".
-func (ReportPathToGreen) OverdueWords() string { return ReportPathOverdue }
 
 // ReportAsk is a block's Ask for help: whom it asks, nil when no one is above
-// the Owner.
+// the Owner, and then the Words saying so, "no one above the Owner".
 type ReportAsk struct {
 	Addressee *Account
-}
-
-// Words say whom an Ask for help asks when it names no one: "no one above the
-// Owner"; it is "" when it names its Addressee.
-func (a ReportAsk) Words() string {
-	if a.Addressee == nil {
-		return ReportNoOneAboveTheOwner
-	}
-	return ""
+	Words     string
 }
 
 // ReportMilestoneMark is a block's Milestone with the one mark it shows
@@ -315,10 +324,11 @@ type ReportMilestoneMark struct {
 	Mark string
 }
 
-// Reading is a Metric's latest reading, written by num, or "no reading yet".
+// Reading is a Metric's latest reading, written by num, or its NoReadingWords,
+// "no reading yet", when it has none.
 func (m ReportMetric) Reading(num func(float64) string) string {
 	if !m.Read {
-		return ReportNoReadingYet
+		return m.NoReadingWords
 	}
 	return num(m.Current)
 }
@@ -354,7 +364,7 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 		facts = append(facts, ReportFact{Kind: ReportFactChanged, Label: "Changed", Changes: b.Changes})
 	}
 	if len(b.ScheduleConflicts) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactScheduleConflict, Label: "Schedule conflict", ScheduleConflicts: b.ScheduleConflicts})
+		facts = append(facts, ReportFact{Kind: ReportFactScheduleConflict, Label: "Schedule conflict", ScheduleConflictGroups: ReportScheduleConflictGroups(b.ScheduleConflicts)})
 	}
 	if len(b.ContributesTo) > 0 {
 		facts = append(facts, ReportFact{Kind: ReportFactContributesTo, Label: "Contributes to", Goals: b.ContributesTo})
@@ -370,10 +380,15 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 		facts = append(facts, ReportFact{Kind: ReportFactPathToGreen, Label: "Path to Green", PathToGreen: ReportPathToGreen{
 			Plan: b.PathToGreen, By: b.PathTargetDate, PriorDates: b.PriorPathTargetDates,
 			Slips: len(b.PriorPathTargetDates), Overdue: PathToGreenOverdueAt(b, asOf),
+			ByWords: ReportBackToGreenBy, OverdueWords: ReportPathOverdue,
 		}})
 	}
 	if b.AsksForHelp {
-		facts = append(facts, ReportFact{Kind: ReportFactAskForHelp, Label: "Asks for help", Ask: ReportAsk{Addressee: b.AskAddressee}})
+		ask := ReportAsk{Addressee: b.AskAddressee}
+		if ask.Addressee == nil {
+			ask.Words = ReportNoOneAboveTheOwner
+		}
+		facts = append(facts, ReportFact{Kind: ReportFactAskForHelp, Label: "Asks for help", Ask: ask})
 	}
 	if len(b.Milestones) > 0 {
 		marks := make([]ReportMilestoneMark, 0, len(b.Milestones))
@@ -383,7 +398,12 @@ func (b ReportBlock) Facts(asOf time.Time) []ReportFact {
 		facts = append(facts, ReportFact{Kind: ReportFactMilestones, Label: "Milestones", Milestones: marks})
 	}
 	if len(b.Metrics) > 0 {
-		facts = append(facts, ReportFact{Kind: ReportFactMetrics, Label: "Metrics", Metrics: b.Metrics})
+		metrics := make([]ReportMetric, 0, len(b.Metrics))
+		for _, m := range b.Metrics {
+			m.NoReadingWords, m.AgainstWords = ReportNoReadingYet, ReportAgainstATargetOf
+			metrics = append(metrics, m)
+		}
+		facts = append(facts, ReportFact{Kind: ReportFactMetrics, Label: "Metrics", Metrics: metrics})
 	}
 	if count := b.RolledUp.CountLine(); b.RolledUp.Present || count != "" {
 		facts = append(facts, ReportFact{Kind: ReportFactRolledUp, Label: "Rolled-up Health", RolledUp: ReportRolledUp{

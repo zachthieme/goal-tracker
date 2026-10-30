@@ -177,7 +177,7 @@ func TestReportOrgRuleFollowsAManagerChange(t *testing.T) {
 	org := orgFixture(h)
 	def := h.SaveReportDefinition(org.vp, domain.SaveReportDefinitionInput{Name: "Mia's org", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{orgRule(domain.RuleIs, org.mia)}})
 	first := h.PublishReport(org.vp, def)
-	if got, want := append(blockIDs(first.Report), lineIDs(first.Report)...), org.goals(org.mia, org.ian); !sameSet(got, want) {
+	if got, want := publishedGoalIDs(first), org.goals(org.mia, org.ian); !sameSet(got, want) {
 		t.Fatalf("first publication has %v, want %v", got, want)
 	}
 	h.Clock.Advance(day)
@@ -189,7 +189,7 @@ func TestReportOrgRuleFollowsAManagerChange(t *testing.T) {
 		t.Errorf("after the Manager changes, the draft selects %v, want %v", got, want)
 	}
 	second := h.PublishReport(org.vp, def)
-	assertMembershipChanges(t, byGoal(t, second.Report.MembershipChanges), map[int64]string{
+	assertMembershipChanges(t, byGoal(t, h.PublicationFact(second, domain.ReportFactMembershipChanges).MembershipChanges), map[int64]string{
 		org.goalOf[org.ida.ID].ID: "Added: " + domain.MembershipNowMatches,
 		org.goalOf[org.ian.ID].ID: "Left: " + domain.MembershipNoLongerMatches,
 	})
@@ -197,7 +197,7 @@ func TestReportOrgRuleFollowsAManagerChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if got, want := append(blockIDs(kept.Report), lineIDs(kept.Report)...), org.goals(org.mia, org.ian); !sameSet(got, want) {
+	if got, want := publishedGoalIDs(kept), org.goals(org.mia, org.ian); !sameSet(got, want) {
 		t.Errorf("the first publication now has %v, want its snapshot %v", got, want)
 	}
 }
@@ -866,10 +866,10 @@ func TestUpdateReportDefinitionChangesOnlyTheDraft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublication: %v", err)
 	}
-	if frozen.Report.Definition.Name != "Platform MBR" {
-		t.Errorf("publication's name = %q, want the old %q", frozen.Report.Definition.Name, "Platform MBR")
+	if frozen.Name != "Platform MBR" {
+		t.Errorf("publication's name = %q, want the old %q", frozen.Name, "Platform MBR")
 	}
-	if got, want := append(blockIDs(frozen.Report), lineIDs(frozen.Report)...), []int64{onPlatform.ID, picked.ID}; !sameSet(got, want) {
+	if got, want := publishedGoalIDs(frozen), []int64{onPlatform.ID, picked.ID}; !sameSet(got, want) {
 		t.Errorf("publication's Goals = %v, want the old %v", got, want)
 	}
 }

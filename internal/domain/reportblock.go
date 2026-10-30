@@ -26,30 +26,26 @@ type Report struct {
 	Lines       []SelectedGoal
 	// Added counts the selected Goals in only through the Definition's Also
 	// include, and LeftOut its Leave out Goals the rules would otherwise have
-	// selected, for its scope. They aren't frozen with the snapshot; only the
-	// scope they are said in is.
-	Added   int `json:"-"`
-	LeftOut int `json:"-"`
+	// selected, for its scope. A publication freezes only the scope they are
+	// said in.
+	Added   int
+	LeftOut int
 	// Highlights are every Highlight in scope since the baseline, for the
-	// author to curate while preparing a publication. They are not frozen
-	// with the snapshot; only the narrative the author curates from them is.
-	Highlights []NarrativeHighlight `json:"-"`
+	// author to curate while preparing a publication. A publication freezes
+	// only the narrative the author curates from them.
+	Highlights []NarrativeHighlight
 	// Narrative is the Report's Insights, Accomplishments, and Misses, curated
-	// by its author from Highlights, with their own text. It is frozen with
-	// the snapshot.
+	// by its author from Highlights, with their own text.
 	Narrative []NarrativeSection
 	// MembershipChanges are the Goals that entered or left the Report since
-	// its Definition's latest publication, whatever the baseline. They are
-	// frozen with the snapshot.
-	MembershipChanges []MembershipChange `json:",omitempty"`
+	// its Definition's latest publication, whatever the baseline.
+	MembershipChanges []MembershipChange
 	// Movement counts what moved since the baseline, for the line a Report
-	// opens with. It is frozen with the snapshot; one frozen before Reports
-	// counted it has none.
-	Movement *ReportMovement `json:",omitempty"`
+	// opens with.
+	Movement *ReportMovement
 	// changedGoalIDs are the selected Goals the draft judged changed since
 	// its baseline (goalHistory.changed), in selection order, kept so the
-	// Reports list counts its changes without reading them again. They are
-	// not frozen with the snapshot.
+	// Reports list counts its changes without reading them again.
 	changedGoalIDs []int64
 }
 
@@ -75,17 +71,15 @@ type ReportBlock struct {
 	Health string
 	// PriorHealth is the Goal's Health at the baseline, set only when its
 	// Health has changed since, shown beside it ("Yellow · was Green").
-	PriorHealth string `json:",omitempty"`
+	PriorHealth string
 	// RunOffGreenWeeks is the Goal's Run off Green in weeks when the Report
 	// was drafted, shown beside its Health ("Red · 5 wks"); see RunOffGreen.
-	// It is 0 when the Goal isn't Yellow or Red. It is frozen with the
-	// snapshot, so a later Check-in doesn't change a publication's count; a
-	// snapshot frozen before Reports showed it has 0.
-	RunOffGreenWeeks int `json:",omitempty"`
+	// It is 0 when the Goal isn't Yellow or Red.
+	RunOffGreenWeeks int
 	// Changes say in words what changed on the Goal since the baseline, in
 	// the order reportChanges gives them ("Turned Red", "Delivery date
 	// slipped 3 weeks"); a Goal whose trouble is only standing has none.
-	Changes []string `json:",omitempty"`
+	Changes []string
 	// Badges flag what the reader must not miss, in the order BadgeNew,
 	// BadgeNewDate, BadgeCheckinOverdue, BadgeOwnerless, BadgeOnHold.
 	Badges []string
@@ -102,10 +96,8 @@ type ReportBlock struct {
 	// PriorPathTargetDates are the dates the back-to-Green date slipped from
 	// within the Goal's current Run off Green, earliest first (see
 	// BackToGreenPriorDates), struck through beside PathTargetDate as a
-	// Milestone's are. It is frozen with the snapshot, so a later slip doesn't
-	// change a publication's; a snapshot frozen before Reports showed them has
-	// none.
-	PriorPathTargetDates []time.Time `json:",omitempty"`
+	// Milestone's are.
+	PriorPathTargetDates []time.Time
 	Explanation          string
 	Milestones           []ReportMilestone
 	Metrics              []ReportMetric
@@ -113,37 +105,31 @@ type ReportBlock struct {
 	// ContributesTo are the Goals this one contributes to that the Report
 	// holds. Behind are the Goals that contribute to it that the Report holds,
 	// and the Red and Yellow Active ones it doesn't, which set its Rolled-up
-	// Health (#246). Both are Red first, then Yellow, then the rest, and a
-	// snapshot frozen before Reports named them has neither.
-	ContributesTo []LinkedGoal `json:",omitempty"`
-	Behind        []LinkedGoal `json:",omitempty"`
+	// Health (#246). Both are Red first, then Yellow, then the rest.
+	ContributesTo []LinkedGoal
+	Behind        []LinkedGoal
 	// ScheduleConflicts are the Schedule conflicts the Goal is in, as the
 	// child first, then as the parent (reportScheduleConflicts), with the Goal
-	// at the other end wherever it is. A snapshot frozen before Reports named
-	// them has none.
-	ScheduleConflicts []ReportScheduleConflict `json:",omitempty"`
+	// at the other end wherever it is.
+	ScheduleConflicts []ReportScheduleConflict
 	// Fields are the Goal's values in the Fields the definition chose, shown
 	// as labelled values beside the Goal, never in the narrative (ADR 0005).
-	Fields []FieldValue `json:",omitempty"`
+	Fields []FieldValue
 	// AsksForHelp marks an Ask for help open when the Report was drafted: the
 	// Goal Active, its latest Check-in Yellow or Red and asking (CONTEXT.md:
 	// Ask for help). AskAddressee is whom it asked then, nil when no one was
-	// above the Owner. Both are frozen with the publication, so a later
-	// Check-in or directory change doesn't alter them; a snapshot frozen
-	// before Reports showed asks has neither.
-	AsksForHelp  bool     `json:",omitempty"`
-	AskAddressee *Account `json:",omitempty"`
+	// above the Owner.
+	AsksForHelp  bool
+	AskAddressee *Account
 	// Timezone is the IANA name of the zone the Goal was judged in when the
 	// Report was drafted (see Service.GoalTimezone): its Owner's, or the
-	// company's. It is frozen with the snapshot, so a publication marks its
-	// Milestones and Path to Green overdue by the date it was published there,
-	// whatever the Owner's Timezone is later; a block frozen before it has "",
-	// read as UTC (see Location).
-	Timezone string `json:",omitempty"`
+	// company's, so a block marks its Milestones and Path to Green overdue by
+	// the date in that zone (see Location).
+	Timezone string
 }
 
 // Location is the zone b's Timezone names, the one its Goal's dates are
-// judged in, and UTC for a block with none or a name that doesn't load.
+// judged in, and UTC for a name that doesn't load.
 func (b ReportBlock) Location() *time.Location {
 	if loc, ok := loadTimezone(b.Timezone); ok {
 		return loc
@@ -162,9 +148,7 @@ func (b ReportBlock) ShowsExplanation() bool {
 // PathToGreenOverdueAt reports whether b's Path to Green had missed its
 // back-to-Green date as of asOf — the instant its Report was published, or now
 // on a draft — judged in b's Location as Freshness judges a Goal's
-// (pathToGreenPastTarget): never on a Green, non-Active or undated block. It
-// needs only what a frozen Report snapshot holds, so every surface marks it the
-// same way, older publications included.
+// (pathToGreenPastTarget): never on a Green, non-Active or undated block.
 func PathToGreenOverdueAt(b ReportBlock, asOf time.Time) bool {
 	return pathToGreenPastTarget(b.Goal.Lifecycle, b.Health, b.PathTargetDate, asOf, b.Location())
 }
@@ -179,11 +163,15 @@ type ReportMilestone struct {
 }
 
 // ReportMetric is a Metric against its target: Current is its latest reading,
-// and Read is false when it has none yet.
+// and Read is false when it has none yet. On a block's facts, NoReadingWords
+// stand for a reading it lacks, "no reading yet", and AgainstWords join its
+// reading to its target, "against a target of".
 type ReportMetric struct {
-	Metric  Metric
-	Current float64
-	Read    bool
+	Metric         Metric
+	Current        float64
+	Read           bool
+	NoReadingWords string
+	AgainstWords   string
 }
 
 // Badges a ReportBlock can carry. New marks a Goal created since the baseline

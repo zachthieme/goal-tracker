@@ -56,7 +56,7 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 		if err != nil {
 			return err
 		}
-		if !pub.Report.covers(goalID) {
+		if !pub.Covers(goalID) {
 			return Refuse(ErrValidation, "goal %d is not in this publication", goalID)
 		}
 		if c, err = tx.createComment(ctx, actorID, pubID, goalID, 0, body); err != nil {

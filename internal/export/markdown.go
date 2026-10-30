@@ -4,6 +4,7 @@ package export
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,33 +13,34 @@ import (
 )
 
 // Markdown renders a published Report as Markdown with the same content as its
-// snapshot page, in the order and words its facts list them
-// (domain.Publication.Facts): who published it and when, what it read its
-// changes against, how it selected its Goals as it read when published
-// (nothing for a publication frozen before selections were), its Goals counted
-// by Health and Check-in overdue when it selects any, the line counting what
-// moved since then, its open Action Items, the introduction, the narrative
-// curated from Highlights, each exception's full MBR block (writeBlock), most
-// urgent first, every other selected Goal On track one line, each Goal with
-// the Fields the Report chose, and the Goals that entered or left it
-// (CONTEXT.md: Report). It writes only the Markdown: headings, emphasis,
+// publication page, in the order and words its facts list them
+// (domain.PublicationFacts), as frozen when it was published: who published
+// it and when, what it read its changes against, how it selected its Goals as
+// it read when published, its Goals counted by Health and Check-in overdue
+// when it selects any, the line counting what moved since then, its open
+// Action Items, the introduction, the narrative curated from Highlights, each
+// exception's full MBR block (writeBlock), most urgent first, every other
+// selected Goal On track one line, each Goal with the Fields the Report chose,
+// and the Goals that entered or left it (CONTEXT.md: Report). It writes only the Markdown: headings, emphasis,
 // escaping, dates and numbers. With no hover to show an email, a person's
 // first mention reads Name (email) and later ones their Name (CONTEXT.md:
 // Name).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
 	var people domain.Mentions
-	r := p.Report
-	fmt.Fprintf(&b, "# %s\n\n", text(r.Definition.Name))
+	fmt.Fprintf(&b, "# %s\n\n", text(p.Name))
 	// "No Goals selected." stands where the Goals would, before the Goals
-	// that entered or left.
-	noGoals := len(r.Exceptions) == 0 && len(r.Lines) == 0
-	for _, f := range p.Facts() {
+	// that entered or left, when no fact holds any: no exceptions and none On
+	// track.
+	noGoals := !slices.ContainsFunc(p.Facts, func(f domain.ReportFact) bool {
+		return f.Kind == domain.ReportFactExceptions || f.Kind == domain.ReportFactOnTrack
+	})
+	for _, f := range p.Facts {
 		if noGoals && f.Kind == domain.ReportFactMembershipChanges {
 			b.WriteString("\nNo Goals selected.\n")
 			noGoals = false
 		}
-		writeFact(&b, &people, f, p.PublishedAt)
+		writeFact(&b, &people, f)
 	}
 	if noGoals {
 		b.WriteString("\nNo Goals selected.\n")
@@ -46,13 +48,12 @@ func Markdown(p domain.Publication) string {
 	return b.String()
 }
 
-// writeFact writes one of a publication's facts, read as of asOf, the instant
-// it was published.
-func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact, asOf time.Time) {
+// writeFact writes one of a publication's facts.
+func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact) {
 	switch f.Kind {
 	case domain.ReportFactByline:
 		fmt.Fprintf(b, "%s %s by %s. ", f.Label, fmtPublished(f.Byline.PublishedAt), text(people.Of(f.Byline.PublishedBy)))
-		if words := f.Byline.Since.Words(); words != "" {
+		if words := f.Byline.Since.Words; words != "" {
 			fmt.Fprintf(b, "Changes since %s, %s.\n", words, fmtPublished(f.Byline.Since.At))
 		} else {
 			fmt.Fprintf(b, "Changes since %s.\n", fmtDate(f.Byline.Since.At))
@@ -64,7 +65,7 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 		fmt.Fprintf(b, "\n**%s:** %d %s · %d %s · %d %s · %d %s\n", f.Label,
 			h.Red, domain.HealthRed, h.Yellow, domain.HealthYellow, h.Green, domain.HealthGreen, h.CheckinOverdue, domain.BadgeCheckinOverdue)
 	case domain.ReportFactMovement:
-		since := f.Movement.Since.Words()
+		since := f.Movement.Since.Words
 		if since == "" {
 			since = fmtDate(f.Movement.Since.At)
 		}
@@ -82,7 +83,7 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 		fmt.Fprintf(b, "\n%s\n", text(f.Text))
 	case domain.ReportFactNarrative:
 		for _, sec := range f.Narrative {
-			fmt.Fprintf(b, "\n## %s\n", sec.Heading())
+			fmt.Fprintf(b, "\n## %s\n", sec.Heading)
 			for _, note := range sec.Notes {
 				fmt.Fprintf(b, "\n%s\n", text(note))
 			}
@@ -95,8 +96,8 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 		}
 	case domain.ReportFactExceptions:
 		fmt.Fprintf(b, "\n## %s\n", f.Label)
-		for _, blk := range f.Exceptions {
-			writeBlock(b, people, blk, asOf)
+		for _, blk := range f.Blocks {
+			writeBlock(b, people, blk)
 		}
 	case domain.ReportFactOnTrack:
 		fmt.Fprintf(b, "\n## %s\n\n", f.Label)
@@ -119,8 +120,8 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 }
 
 // writeBlock writes an exception Goal's full MBR block from its facts
-// (domain.ReportBlock.Facts), read as of asOf, the instant the Report was
-// published: its Health, which leads a Goal's title everywhere, then the title
+// (domain.ReportBlock.Facts), as read the instant the Report was published:
+// its Health, which leads a Goal's title everywhere, then the title
 // and badges ("### Red · Launch in EU"); the Owner, Lifecycle, Run off Green
 // as published ("5 wks"), what the Health was when it changed since the
 // baseline and the due date with its history struck through; then each of its
@@ -129,8 +130,8 @@ func writeFact(b *strings.Builder, people *domain.Mentions, f domain.ReportFact,
 // ("2026-10-03 ~~2026-09-12~~ · 2 slips") and marked Overdue once that date
 // has passed ("— **Overdue**"). A Milestone's name is set off by " · " from its
 // date's slip count when that shows.
-func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
-	for _, f := range blk.Facts(asOf) {
+func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlockFacts) {
+	for _, f := range blk.Facts {
 		writeBlockFact(b, people, f)
 	}
 }
@@ -156,7 +157,7 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 	case domain.ReportFactChanged:
 		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, strings.Join(f.Changes, " · "))
 	case domain.ReportFactScheduleConflict:
-		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, scheduleConflicts(people, f.ScheduleConflicts))
+		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, scheduleConflicts(people, f.ScheduleConflictGroups))
 	case domain.ReportFactContributesTo:
 		fmt.Fprintf(b, "\n\n**%s:** %s", f.Label, linkedGoals(f.Goals))
 	case domain.ReportFactFields:
@@ -167,16 +168,16 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 		fmt.Fprintf(b, "\n**%s:** %s\n", f.Label, text(f.Text))
 	case domain.ReportFactPathToGreen:
 		path := f.PathToGreen
-		fmt.Fprintf(b, "\n**%s:** %s (%s %s)", f.Label, text(path.Plan), path.ByWords(), milestoneDate(path.By, path.PriorDates))
+		fmt.Fprintf(b, "\n**%s:** %s (%s %s)", f.Label, text(path.Plan), path.ByWords, milestoneDate(path.By, path.PriorDates))
 		if path.Overdue {
-			fmt.Fprintf(b, " — **%s**", path.OverdueWords())
+			fmt.Fprintf(b, " — **%s**", path.OverdueWords)
 		}
 		b.WriteString("\n")
 	case domain.ReportFactAskForHelp:
 		if f.Ask.Addressee != nil {
 			fmt.Fprintf(b, "\n**%s** of %s\n", f.Label, text(people.Of(*f.Ask.Addressee)))
 		} else {
-			fmt.Fprintf(b, "\n**%s** (%s)\n", f.Label, f.Ask.Words())
+			fmt.Fprintf(b, "\n**%s** (%s)\n", f.Label, f.Ask.Words)
 		}
 	case domain.ReportFactMilestones:
 		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
@@ -203,7 +204,7 @@ func writeBlockFact(b *strings.Builder, people *domain.Mentions, f domain.Report
 		fmt.Fprintf(b, "\n**%s:**\n\n", f.Label)
 		for _, m := range f.Metrics {
 			fmt.Fprintf(b, "- %s: %s %s %s %s by %s (baseline %s, %s)\n",
-				text(m.Metric.Name), m.Reading(fmtNum), domain.ReportAgainstATargetOf, fmtNum(m.Metric.Target), text(m.Metric.Unit),
+				text(m.Metric.Name), m.Reading(fmtNum), m.AgainstWords, fmtNum(m.Metric.Target), text(m.Metric.Unit),
 				fmtDate(m.Metric.TargetDate), fmtNum(m.Metric.Baseline), m.Metric.Direction)
 		}
 	case domain.ReportFactRolledUp:
@@ -240,20 +241,20 @@ func linkedGoals(goals []domain.LinkedGoal) string {
 }
 
 // scheduleConflicts names the Schedule conflicts an exception block's Goal is
-// in by side (domain.ReportScheduleConflictGroups), the sides joined by "; ",
-// each its words, then each Goal at the other end with its Owner and delivery
-// date, joined by " · ": "Parent Goal due earlier · Open in Iberia (Pat
+// in by side, as its fact groups them (domain.ReportScheduleConflictGroups),
+// the sides joined by "; ", each its words, then each Goal at the other end
+// with its Owner, its words before a date and its delivery date, joined by
+// " · ": "Parent Goal due earlier · Open in Iberia (Pat
 // Parker), due 2026-10-15; Contributing Goal due later · Lisbon office (Sam
 // Lee), due 2026-12-01". With no base URL to link from, the other Goal is a
 // name, not a link.
-func scheduleConflicts(people *domain.Mentions, conflicts []domain.ReportScheduleConflict) string {
-	groups := domain.ReportScheduleConflictGroups(conflicts)
+func scheduleConflicts(people *domain.Mentions, groups []domain.ReportScheduleConflictGroup) string {
 	sides := make([]string, 0, len(groups))
 	for _, g := range groups {
 		entries := []string{g.Words}
 		for _, c := range g.Conflicts {
 			entries = append(entries, fmt.Sprintf("%s (%s), %s %s",
-				text(c.Title), text(people.Of(c.Owner)), domain.ReportConflictOtherDue, fmtDate(c.Due)))
+				text(c.Title), text(people.Of(c.Owner)), g.DueWords, fmtDate(c.Due)))
 		}
 		sides = append(sides, strings.Join(entries, " · "))
 	}

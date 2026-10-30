@@ -3,7 +3,6 @@ package domain
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,33 +10,57 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
-// Publication is a published Report: a snapshot of a Report Definition's
-// Report frozen when it was published (CONTEXT.md: Report Definition). It is
-// written once and never changes, however the Goals it covers change later.
+// Publication is a published Report: a Report Definition's Report frozen
+// when it was published, as its facts read then, every word and link included
+// (CONTEXT.md: Report Definition). It is written once and never changes,
+// however the Goals it covers, or how Reports word a fact, change later. It is
+// stored as a publication record (publicationrecord.go).
 type Publication struct {
 	ID           int64
 	DefinitionID int64
-	// PublishedBy is who published it, frozen as they were shown then, the
-	// same way the snapshot freezes its Owners.
+	// Name is the Report Definition's name as it was published.
+	Name string
+	// PublishedBy is who published it, as they were shown then, from its
+	// byline fact.
 	PublishedBy Account
 	PublishedAt time.Time
-	// Scope is the Report's selection in plain words, as it read when
-	// published; empty for publications from before selections were frozen.
-	Scope string
-	// Report is the Report as it read when published, exactly as rendered. It
-	// is stored as JSON of the Report view model, so renaming a field of
-	// Report (or of a type it holds) drops that field from earlier snapshots.
-	Report Report
+	// Facts are its facts as PublicationFacts listed them when it was
+	// published.
+	Facts []ReportFact
 }
 
-// snapshot is a Publication as stored: the Report as it read when published
-// and, beside it, the publisher as they were shown then and the Report's
-// selection in plain words. A snapshot frozen before publishers were has no
-// PublishedBy, and one frozen before selections were has no Scope.
-type snapshot struct {
-	Report
-	PublishedBy *Account `json:",omitempty"`
-	Scope       string   `json:",omitempty"`
+// Covers reports whether the publication holds the Goal goalID, as an
+// exception block or a line On track.
+func (p Publication) Covers(goalID int64) bool {
+	for _, g := range p.Goals() {
+		if g.ID == goalID {
+			return true
+		}
+	}
+	return false
+}
+
+// Goals are the Goals the publication holds, by ID and Title as published:
+// its exception blocks' Goals, then its Goals On track.
+func (p Publication) Goals() []Goal {
+	var out []Goal
+	for _, f := range p.Facts {
+		switch f.Kind {
+		case ReportFactExceptions:
+			for _, b := range f.Blocks {
+				for _, bf := range b.Facts {
+					if bf.Kind == ReportFactBlockHead {
+						out = append(out, Goal{ID: bf.Head.GoalID, Title: bf.Head.Title})
+					}
+				}
+			}
+		case ReportFactOnTrack:
+			for _, sg := range f.Lines {
+				out = append(out, Goal{ID: sg.Goal.ID, Title: sg.Goal.Title})
+			}
+		}
+	}
+	return out
 }
 
 // PreviousPublication identifies the publication a Report reads its changes
@@ -49,11 +72,11 @@ type PreviousPublication struct {
 
 // PublishReport publishes the Report Definition defID: it drafts the Report
 // against baseline, as DraftReport does — so by default against the previous
-// publication — and freezes the result, its curated narrative included, and
-// how it selects in plain words. The next publication's narrative then starts
-// empty. Only the Definition's creator, a Report Delegate or an Admin may
-// publish it (ErrNotAuthorized); actorID records who did, in the publication
-// and in the Report log.
+// publication — and freezes its facts as they read then (PublicationFacts), its
+// curated narrative and how it selects in plain words included. The next
+// publication's narrative then starts empty. Only the Definition's creator, a
+// Report Delegate or an Admin may publish it (ErrNotAuthorized); actorID
+// records who did, in the publication and in the Report log.
 //
 // Drafting reads a lot, so it runs before the transaction that writes the
 // publication (ADR 0009: nothing slow inside a transaction); that transaction
@@ -71,19 +94,22 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 	return s.writePublication(ctx, draft)
 }
 
-// draftedPublication is a Report drafted and frozen for publishing, not yet
+// draftedPublication is a Report drafted for publishing, not yet frozen or
 // written: PublishReport's first step, run outside any transaction.
 type draftedPublication struct {
-	actorID int64
-	defID   int64
-	frozen  []byte
+	actorID   int64
+	defID     int64
+	report    Report
+	publisher Account
+	scope     string
 	// logged is the id of the Definition's newest Report log entry when
 	// drafting began, 0 when it had none.
 	logged int64
 }
 
-// draftPublication drafts and freezes the Report Definition defID's Report
-// for actorID to publish, against baseline.
+// draftPublication drafts the Report Definition defID's Report for actorID to
+// publish, against baseline, with its publisher and how it selects in plain
+// words.
 func (s *Service) draftPublication(ctx context.Context, actorID, defID int64, baseline time.Time) (draftedPublication, error) {
 	// Noted before the Definition is read, so a change made at any point of
 	// the draft is newer.
@@ -107,15 +133,13 @@ func (s *Service) draftPublication(ctx context.Context, actorID, defID int64, ba
 	if err != nil {
 		return draftedPublication{}, err
 	}
-	frozen, err := json.Marshal(snapshot{Report: report, PublishedBy: &publisher, Scope: scope})
-	if err != nil {
-		return draftedPublication{}, fmt.Errorf("freeze report: %w", err)
-	}
-	return draftedPublication{actorID: actorID, defID: def.ID, frozen: frozen, logged: logged}, nil
+	return draftedPublication{actorID: actorID, defID: def.ID, report: report, publisher: publisher, scope: scope, logged: logged}, nil
 }
 
-// writePublication writes draft as a publication, in its own transaction, and
-// starts the next publication's narrative empty.
+// writePublication freezes draft's facts (PublicationFacts) as of now and
+// writes them as a publication, in its own transaction, and starts the next
+// publication's narrative empty. The clock is read once: the instant it is
+// published is the one its blocks are read as of.
 func (s *Service) writePublication(ctx context.Context, draft draftedPublication) (Publication, error) {
 	var row db.ReportPublication
 	if err := s.WithinTx(ctx, func(tx *Service) error {
@@ -129,11 +153,16 @@ func (s *Service) writePublication(ctx context.Context, draft draftedPublication
 		if logged != draft.logged {
 			return Refuse(ErrValidation, "The Report changed while it was being published. Publish it again.")
 		}
+		now := s.clock.Now()
+		frozen, err := freezePublication(draft.report.Definition.Name, PublicationFacts(draft.report, draft.publisher, now, draft.scope))
+		if err != nil {
+			return err
+		}
 		if row, err = tx.queries.CreateReportPublication(ctx, db.CreateReportPublicationParams{
 			ReportDefinitionID: draft.defID,
 			PublishedBy:        draft.actorID,
-			PublishedAt:        s.clock.Now().Format(timeFormat),
-			Snapshot:           string(draft.frozen),
+			PublishedAt:        now.Format(timeFormat),
+			Snapshot:           string(frozen),
 		}); err != nil {
 			return fmt.Errorf("create publication: %w", err)
 		}
@@ -145,7 +174,7 @@ func (s *Service) writePublication(ctx context.Context, draft draftedPublication
 	}); err != nil {
 		return Publication{}, err
 	}
-	return s.publicationFromRow(ctx, row)
+	return publicationFromRow(row)
 }
 
 // publishableDefinition returns the Report Definition defID if actorID may
@@ -171,7 +200,7 @@ func (s *Service) GetPublication(ctx context.Context, id int64) (Publication, er
 		}
 		return Publication{}, fmt.Errorf("get publication: %w", err)
 	}
-	return s.publicationFromRow(ctx, row)
+	return publicationFromRow(row)
 }
 
 // ListPublications returns the Report Definition defID's publications, newest
@@ -183,7 +212,7 @@ func (s *Service) ListPublications(ctx context.Context, defID int64) ([]Publicat
 	}
 	out := make([]Publication, 0, len(rows))
 	for _, row := range rows {
-		p, err := s.publicationFromRow(ctx, row)
+		p, err := publicationFromRow(row)
 		if err != nil {
 			return nil, err
 		}
@@ -192,73 +221,21 @@ func (s *Service) ListPublications(ctx context.Context, defID int64) ([]Publicat
 	return out, nil
 }
 
-func (s *Service) publicationFromRow(ctx context.Context, row db.ReportPublication) (Publication, error) {
-	var snap snapshot
-	if err := json.Unmarshal([]byte(row.Snapshot), &snap); err != nil {
+// publicationFromRow reads a stored publication from its record
+// (thawPublication), refusing a record it can't read.
+func publicationFromRow(row db.ReportPublication) (Publication, error) {
+	name, facts, err := thawPublication([]byte(row.Snapshot))
+	if err != nil {
 		return Publication{}, fmt.Errorf("read publication %d: %w", row.ID, err)
 	}
-	by, err := s.publisher(ctx, row.PublishedBy, snap)
-	if err != nil {
-		return Publication{}, err
-	}
 	publishedAt, _ := time.Parse(timeFormat, row.PublishedAt)
-	return Publication{
-		ID:           row.ID,
-		DefinitionID: row.ReportDefinitionID,
-		PublishedBy:  by,
-		PublishedAt:  publishedAt,
-		Scope:        snap.Scope,
-		Report:       snap.Report,
-	}, nil
-}
-
-// publisher is who published snap, as they were shown when it was published.
-func (s *Service) publisher(ctx context.Context, id int64, snap snapshot) (Account, error) {
-	if snap.PublishedBy != nil {
-		return *snap.PublishedBy, nil
-	}
-	// Frozen before publishers were: show them as the snapshot shows its
-	// people, as frozen there if they are among them.
-	people := snap.people()
-	for _, p := range people {
-		if p.ID == id {
-			return p, nil
+	p := Publication{ID: row.ID, DefinitionID: row.ReportDefinitionID, Name: name, PublishedAt: publishedAt, Facts: facts}
+	for _, f := range facts {
+		if f.Kind == ReportFactByline {
+			p.PublishedBy = f.Byline.PublishedBy
 		}
 	}
-	row, err := s.queries.GetAccount(ctx, id)
-	if err != nil {
-		return Account{}, fmt.Errorf("look up publisher: %w", err)
-	}
-	by := accountFromRow(row)
-	// A snapshot from before Names shows its people by email, its Name set to
-	// it (see Account.UnmarshalJSON); show the publisher the same way.
-	for _, p := range people {
-		if p.Email != "" && p.Name == p.Email {
-			by.Name = by.Email
-			break
-		}
-	}
-	return by, nil
-}
-
-// people is every person the Report shows, as it shows them.
-func (r Report) people() []Account {
-	var out []Account
-	for _, a := range r.ActionItems {
-		out = append(out, a.Owner, a.CreatedBy)
-	}
-	for _, b := range r.Exceptions {
-		out = append(out, b.Goal.Owner)
-	}
-	for _, sg := range r.Lines {
-		out = append(out, sg.Goal.Owner)
-	}
-	for _, n := range r.Narrative {
-		for _, h := range n.Highlights {
-			out = append(out, h.Highlight.Owner)
-		}
-	}
-	return out
+	return p, nil
 }
 
 // previousPublication returns the latest publication of the Report Definition

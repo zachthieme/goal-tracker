@@ -11,12 +11,12 @@ import (
 // contributes to, or one behind its Rolled-up Health (#246). InReport marks a
 // Goal the same Report holds, as an exception block or one line, and Health is
 // then the Health the Report shows for it; a child outside the Report has its
-// latest Check-in's. It is frozen with the snapshot.
+// latest Check-in's.
 type LinkedGoal struct {
 	GoalID   int64
 	Title    string
-	Health   string `json:",omitempty"`
-	InReport bool   `json:",omitempty"`
+	Health   string
+	InReport bool
 }
 
 // linkReportBlocks names, on each of r's exception blocks, the Goals it
@@ -81,17 +81,15 @@ func linkedHealthRank(health string) int {
 // ReportScheduleConflict is one Schedule conflict an exception block's Goal is
 // in, as the block names it, whether or not the Report holds the Goal at the
 // other end (CONTEXT.md: Report): that Goal, its Owner and its delivery date,
-// Due, and the block's Goal's own, OwnDue. AsParent marks the block's Goal as
-// the parent, the other Goal a child due after it; otherwise the block's Goal
-// is the child, due after the other Goal it contributes to. It is frozen with
-// the snapshot, so a publication keeps the dates it had when published.
+// Due. AsParent marks the block's Goal as the parent, the other Goal a child
+// due after it; otherwise the block's Goal is the child, due after the other
+// Goal it contributes to.
 type ReportScheduleConflict struct {
-	AsParent bool `json:",omitempty"`
+	AsParent bool
 	GoalID   int64
 	Title    string
 	Owner    Account
 	Due      time.Time
-	OwnDue   time.Time
 }
 
 // reportScheduleConflicts are the Schedule conflicts g is in through its
@@ -103,13 +101,13 @@ func reportScheduleConflicts(g Goal, parents, children []Goal) []ReportScheduleC
 	for _, c := range goalScheduleConflicts(g, parents, children) {
 		if c.Child.ID == g.ID {
 			asChild = append(asChild, ReportScheduleConflict{
-				GoalID: c.Parent.ID, Title: c.Parent.Title, Owner: c.Parent.Owner, Due: c.Parent.DeliveryDate, OwnDue: g.DeliveryDate,
+				GoalID: c.Parent.ID, Title: c.Parent.Title, Owner: c.Parent.Owner, Due: c.Parent.DeliveryDate,
 			})
 			continue
 		}
 		asParent = append(asParent, ReportScheduleConflict{
 			AsParent: true,
-			GoalID:   c.Child.ID, Title: c.Child.Title, Owner: c.Child.Owner, Due: c.Child.DeliveryDate, OwnDue: g.DeliveryDate,
+			GoalID:   c.Child.ID, Title: c.Child.Title, Owner: c.Child.Owner, Due: c.Child.DeliveryDate,
 		})
 	}
 	for _, cs := range [][]ReportScheduleConflict{asChild, asParent} {

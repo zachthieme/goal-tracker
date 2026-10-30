@@ -17,21 +17,31 @@ func date(y int, m time.Month, d int) time.Time {
 
 var boss = domain.Account{ID: 1, Email: "boss@example.com"}
 
+// report is a Report with the given exceptions and lines, read against a
+// chosen date.
+func report(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) domain.Report {
+	return domain.Report{
+		Definition: domain.ReportDefinition{ID: 3, Name: "EU MBR", Introduction: "Quarterly business review."},
+		Baseline:   date(2026, 1, 12),
+		Exceptions: exceptions,
+		Lines:      lines,
+	}
+}
+
+// published is r published by boss, saying how it selects in the words scope
+// ("" for none), its facts as a publication freezes them.
+func published(r domain.Report, scope string) domain.Publication {
+	at := time.Date(2026, 2, 21, 9, 30, 0, 0, time.UTC)
+	return domain.Publication{
+		ID: 7, DefinitionID: 3, Name: r.Definition.Name, PublishedBy: boss, PublishedAt: at,
+		Facts: domain.PublicationFacts(r, boss, at, scope),
+	}
+}
+
 // publication is a published Report with the given exceptions and lines, read
 // against a chosen date.
 func publication(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) domain.Publication {
-	return domain.Publication{
-		ID:           7,
-		DefinitionID: 3,
-		PublishedBy:  boss,
-		PublishedAt:  time.Date(2026, 2, 21, 9, 30, 0, 0, time.UTC),
-		Report: domain.Report{
-			Definition: domain.ReportDefinition{ID: 3, Name: "EU MBR", Introduction: "Quarterly business review."},
-			Baseline:   date(2026, 1, 12),
-			Exceptions: exceptions,
-			Lines:      lines,
-		},
-	}
+	return published(report(exceptions, lines), "")
 }
 
 // The export opens with the Report's name, who published it and when, what it
@@ -70,8 +80,9 @@ Quarterly business review.
 func TestMarkdownNamesThePreviousPublication(t *testing.T) {
 	t.Parallel()
 
-	pub := publication(nil, nil)
-	pub.Report.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
+	r := report(nil, nil)
+	r.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
+	pub := published(r, "")
 
 	want := "Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since the previous publication, 2026-01-20 14:05 UTC.\n"
 	if got := export.Markdown(pub); !strings.Contains(got, want) {
@@ -212,36 +223,6 @@ func TestMarkdownMarksMilestonesInTheBlocksTimezone(t *testing.T) {
 	}
 }
 
-// A publication frozen before Milestones read mark, date, name exports in that
-// form: its snapshot already holds all the mark needs.
-func TestMarkdownListsTheMilestonesOfAnOlderSnapshotAsMarkDateName(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
-		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
-		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null}]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write an older snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	md := export.Markdown(got)
-	want := "- **[Overdue]** 2025-12-20 ~~2025-12-01~~ Beta\n- **[New]** 2026-03-01 GA\n"
-	if !strings.Contains(md, want) {
-		t.Errorf("Markdown:\n%s\nwant the Milestones to read:\n%s", md, want)
-	}
-}
-
 // What people type is exported as written: Markdown in a title or status is
 // escaped so it cannot strike through, embolden, link, or start a list, and a
 // line break reads as a space, as it does on the snapshot page.
@@ -276,10 +257,11 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 func TestMarkdownOpensWithActionItems(t *testing.T) {
 	t.Parallel()
 
-	pub := publication(nil, nil)
-	pub.Report.ActionItems = []domain.ActionItem{
+	r := report(nil, nil)
+	r.ActionItems = []domain.ActionItem{
 		{Text: "Get a *second* vendor quote.", Owner: boss, DueDate: date(2026, 3, 1)},
 	}
+	pub := published(r, "")
 
 	want := `# EU MBR
 
@@ -305,8 +287,8 @@ func TestMarkdownCarriesTheNarrative(t *testing.T) {
 	t.Parallel()
 
 	alice := domain.Account{ID: 2, Email: "alice@example.com"}
-	pub := publication(nil, nil)
-	pub.Report.Narrative = []domain.NarrativeSection{
+	r := report(nil, nil)
+	r.Narrative = []domain.NarrativeSection{
 		{Kind: domain.HighlightInsight, Notes: []string{"Pricing drives churn.", "Discounts don't save accounts."}},
 		{Kind: domain.HighlightAccomplishment, Notes: []string{"EU is open for business."}, Highlights: []domain.NarrativeHighlight{{
 			Highlight: domain.Highlight{Kind: domain.HighlightAccomplishment, Note: "Signed the *first* EU customer.", Owner: alice},
@@ -314,6 +296,7 @@ func TestMarkdownCarriesTheNarrative(t *testing.T) {
 			GoalTitle: "Launch in EU",
 		}}},
 	}
+	pub := published(r, "")
 
 	want := `# EU MBR
 
@@ -337,36 +320,6 @@ No Goals selected.
 `
 	if got := export.Markdown(pub); got != want {
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-// A publication frozen when a section held at most one of the author's notes
-// exports that note as before: its own paragraph under the section heading,
-// before the Highlights picked into it.
-func TestMarkdownKeepsTheNoteOfASnapshotFromBeforeSeveralNotes(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[{"Kind":"Accomplishment","Text":"EU is open for business.",` +
-		`"Highlights":[{"Highlight":{"ID":1,"Kind":"Accomplishment","Note":"Signed the first EU customer.",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Accomplishment"}]}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-several-notes snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	md := export.Markdown(got)
-	want := "\n## Accomplishments\n\nEU is open for business.\n\n- Signed the first EU customer. — boss, Launch in EU\n"
-	if !strings.Contains(md, want) {
-		t.Errorf("Markdown:\n%s\nwant the Accomplishments to read:\n%s", md, want)
 	}
 }
 
@@ -530,8 +483,8 @@ func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
 }
 
 // The export opens, under its byline and before its Action Items, with the
-// line counting what moved since the baseline, as the snapshot page does; a
-// publication frozen before Reports counted it has none (CONTEXT.md: Report).
+// line counting what moved since the baseline, as the publication page does
+// (CONTEXT.md: Report).
 func TestMarkdownOpensWithWhatMovedSinceTheBaseline(t *testing.T) {
 	t.Parallel()
 
@@ -562,19 +515,15 @@ func TestMarkdownOpensWithWhatMovedSinceTheBaseline(t *testing.T) {
 			want: byline + "Changes since the previous publication, 2026-01-20 14:05 UTC.\n" +
 				"\nNo movement since the previous publication.\n\n## Open Action Items\n",
 		},
-		{
-			name: "frozen before Reports counted it",
-			want: byline + "Changes since 2026-01-12.\n\n## Open Action Items\n",
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pub := publication(nil, nil)
+			r := report(nil, nil)
 			if tc.previous {
-				pub.Report.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
+				r.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
 			}
-			pub.Report.Movement = tc.movement
-			pub.Report.ActionItems = []domain.ActionItem{{Text: "Call legal.", Owner: boss, DueDate: date(2026, 3, 1)}}
-			if got := export.Markdown(pub); !strings.Contains(got, tc.want) {
+			r.Movement = tc.movement
+			r.ActionItems = []domain.ActionItem{{Text: "Call legal.", Owner: boss, DueDate: date(2026, 3, 1)}}
+			if got := export.Markdown(published(r, "")); !strings.Contains(got, tc.want) {
 				t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, tc.want)
 			}
 		})
@@ -591,7 +540,7 @@ func TestMarkdownCountsTheReportsGoalsByHealth(t *testing.T) {
 	block := func(health string, badges ...string) domain.ReportBlock {
 		return domain.ReportBlock{Goal: domain.Goal{Title: health + " Goal", Owner: boss, Lifecycle: domain.LifecycleActive}, Health: health, Badges: badges}
 	}
-	pub := publication(
+	r := report(
 		[]domain.ReportBlock{block(domain.HealthRed, domain.BadgeCheckinOverdue), block(domain.HealthRed), block(domain.HealthYellow)},
 		[]domain.SelectedGoal{
 			{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen},
@@ -599,8 +548,8 @@ func TestMarkdownCountsTheReportsGoalsByHealth(t *testing.T) {
 			{Goal: domain.Goal{Title: "Hire a PM", Owner: boss}, Health: domain.HealthGreen},
 		},
 	)
-	pub.Scope = "Team: Platform"
-	pub.Report.Movement = &domain.ReportMovement{New: 1}
+	r.Movement = &domain.ReportMovement{New: 1}
+	pub := published(r, "Team: Platform")
 
 	want := "Changes since 2026-01-12.\n\n**Selection:** Team: Platform\n\n" +
 		"**Health:** 2 Red · 1 Yellow · 3 Green · 1 Check-in overdue\n\n" +
@@ -647,8 +596,8 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 }
 
 // A publication says how it selected its Goals directly under its byline,
-// before what moved, escaped like anything else people typed; one frozen
-// before selections were says nothing about it.
+// before what moved, escaped like anything else people typed; one with no
+// Selection says nothing about it.
 func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
 	t.Parallel()
 
@@ -667,10 +616,9 @@ func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			pub := publication(nil, nil)
-			pub.Scope = tc.scope
-			pub.Report.Movement = &domain.ReportMovement{New: 1}
-			if got := export.Markdown(pub); !strings.Contains(got, tc.want) {
+			r := report(nil, nil)
+			r.Movement = &domain.ReportMovement{New: 1}
+			if got := export.Markdown(published(r, tc.scope)); !strings.Contains(got, tc.want) {
 				t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, tc.want)
 			}
 		})
@@ -730,8 +678,8 @@ func TestMarkdownNamesEachScheduleConflictOfABlock(t *testing.T) {
 		Health:  domain.HealthGreen,
 		Changes: []string{"Back to Green"},
 		ScheduleConflicts: []domain.ReportScheduleConflict{
-			{GoalID: 7, Title: "Open in Iberia", Owner: pat, Due: date(2026, 10, 15), OwnDue: own},
-			{AsParent: true, GoalID: 8, Title: "Fit_out the floor", Owner: sam, Due: date(2026, 12, 1), OwnDue: own},
+			{GoalID: 7, Title: "Open in Iberia", Owner: pat, Due: date(2026, 10, 15)},
+			{AsParent: true, GoalID: 8, Title: "Fit_out the floor", Owner: sam, Due: date(2026, 12, 1)},
 		},
 	}}, nil)
 
@@ -770,32 +718,6 @@ func TestMarkdownSaysWhomABlockAsksForHelp(t *testing.T) {
 		if !strings.Contains(md, want) {
 			t.Errorf("Markdown:\n%s\nwant it to hold:\n%s", md, want)
 		}
-	}
-}
-
-// A block frozen before Reports showed asks says nothing of one.
-func TestMarkdownOfASnapshotFromBeforeAsksSaysNoAsk(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	ctx := context.Background()
-	boss := h.SignIn("boss@example.com")
-	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
-	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","Lifecycle":"Active",` +
-		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"Health":"Red","PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-01T00:00:00Z"}]}`
-	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
-		t.Fatalf("write a pre-asks snapshot: %v", err)
-	}
-
-	got, err := h.Service.GetPublication(ctx, pub.ID)
-	if err != nil {
-		t.Fatalf("GetPublication: %v", err)
-	}
-	md := export.Markdown(got)
-	if !strings.Contains(md, "**Path to Green:** Hire counsel.") || strings.Contains(md, "Asks for help") {
-		t.Errorf("Markdown:\n%s\nwant the Path to Green and no ask", md)
 	}
 }
 
@@ -889,11 +811,12 @@ func TestMarkdownStrikesNoDateEqualToItsOwn(t *testing.T) {
 func TestMarkdownListsTheGoalsThatEnteredOrLeft(t *testing.T) {
 	t.Parallel()
 
-	pub := publication(nil, []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen}})
-	pub.Report.MembershipChanges = []domain.MembershipChange{
+	r := report(nil, []domain.SelectedGoal{{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen}})
+	r.MembershipChanges = []domain.MembershipChange{
 		{Goal: domain.Goal{Title: "Hire a PM"}, Direction: domain.MembershipAdded, Reason: domain.MembershipPickedByHand},
 		{Goal: domain.Goal{Title: "Old *launch*"}, Direction: domain.MembershipLeft, Reason: domain.MembershipNoLongerMatches},
 	}
+	pub := published(r, "")
 
 	want := `## On track
 
@@ -908,8 +831,8 @@ func TestMarkdownListsTheGoalsThatEnteredOrLeft(t *testing.T) {
 		t.Errorf("Markdown:\n%s\nwant it to end:\n%s", got, want)
 	}
 
-	pub.Report.MembershipChanges = nil
-	if got := export.Markdown(pub); strings.Contains(got, "entered or left") {
+	r.MembershipChanges = nil
+	if got := export.Markdown(published(r, "")); strings.Contains(got, "entered or left") {
 		t.Errorf("Markdown of a Report with no membership changes lists some:\n%s", got)
 	}
 }

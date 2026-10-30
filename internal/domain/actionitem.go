@@ -32,13 +32,13 @@ type ActionItem struct {
 	ClosingNote   string
 	// GoalID is the Goal in the Report it is about, and GoalTitle that Goal's
 	// title; they are 0 and "" when it is about the Report as a whole. One
-	// raised from a comment is about the comment's Goal. A publication's
-	// snapshot freezes GoalTitle as it read at publishing.
+	// raised from a comment is about the comment's Goal. A publication
+	// freezes GoalTitle as it read at publishing.
 	GoalID    int64
 	GoalTitle string
 	// ReassignedFrom is who owned it before its most recent reassignment, or
-	// nil if it has never been reassigned. A publication's snapshot freezes it
-	// as it stood at publishing.
+	// nil if it has never been reassigned. A publication freezes it as it
+	// stood at publishing.
 	ReassignedFrom *Account
 }
 
@@ -100,7 +100,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 			if text == "" {
 				text = c.Body
 			}
-		} else if goalID != 0 && !pub.Report.covers(goalID) {
+		} else if goalID != 0 && !pub.Covers(goalID) {
 			return inputError(InputActionItemGoal, "goal %d is not in this publication", goalID)
 		}
 		if text == "" {
