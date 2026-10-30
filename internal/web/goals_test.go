@@ -7152,8 +7152,10 @@ func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
 	}
 }
 
-// ownerOnlyRoute is one of the Goal-changing routes only the Goal's Owner may
-// use (#191): its path for a Goal and Metric, and a form that changes the Goal.
+// ownerOnlyRoute is one of the Goal-changing routes a stranger to the Goal may
+// not use (#191) — Edit Metric and Activate are the Owner's alone, and Why it
+// matters is open to the Owner or an Admin: its path for a Goal and Metric,
+// and a form that changes the Goal.
 type ownerOnlyRoute struct {
 	name string
 	path func(goalID, metricID int64) string

@@ -49,6 +49,10 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, c
 // handleSetDimensionSelection switches the Dimension in the path between a Goal
 // taking one of its values and several. Switching to one is refused while Goals
 // carry several, and the page comes back naming them. Only an Admin may.
+//
+// That refusal is answered here, not through answerRefused, on purpose: its
+// list of the Goals still carrying several values is a designed refusal on the
+// Dimensions page (DESIGN.md, .dm-refusal), not a reason beside a form.
 func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {

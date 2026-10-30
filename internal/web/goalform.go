@@ -818,6 +818,10 @@ type linkedParent struct {
 // writes the answer — Not found, the refusal page, 403, for anyone the rule
 // refuses for who they are, and a redirect to the Goal's page once it is no longer Proposed — and
 // ok is false.
+//
+// It switches on the error kind itself, not through answerRefused, on purpose:
+// it is the define page's load guard, not a command's answer, and a Goal no
+// longer definable (ErrValidation) isn't refused but sent to its own page.
 func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current domain.Account) (g domain.Goal, ok bool) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
