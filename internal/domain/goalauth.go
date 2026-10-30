@@ -50,24 +50,3 @@ func (s *Service) recordImportedGoal(goalID int64) {
 		s.goalImport.created[goalID] = true
 	}
 }
-
-// RequireCheckinAuthor allows actorID to write goalID's Check-ins only if they
-// are its Owner or a Delegate and haven't Departed, by the rule SubmitCheckin
-// applies (checkinAuthorRuleRefusal), whatever its Lifecycle; anyone else is
-// refused with ErrNotAuthorized, and a missing Goal is ErrNotFound. The Goal
-// page asks it before offering the Check-in form.
-func (s *Service) RequireCheckinAuthor(ctx context.Context, actorID, goalID int64) error {
-	_, err := s.openGoalCommand(ctx, actorID, goalID, func(a goalActor, g Goal) error {
-		return checkinAuthorRuleRefusal(a, g, submitCheckinAct)
-	}, nil)
-	return err
-}
-
-// RequireGoalValueSetter allows actorID to set goalID's Dimension values and
-// Fields only if they are its Owner, a Delegate or an Admin, by the rule
-// setting them applies; anyone else is refused with ErrNotAuthorized, and a
-// missing Goal is ErrNotFound. The Goal page asks it before offering their
-// forms.
-func (s *Service) RequireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
-	return s.requireGoalValueSetter(ctx, actorID, goalID, setDimensionValuesAct)
-}
