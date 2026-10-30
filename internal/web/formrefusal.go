@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -252,6 +253,8 @@ func pagePath(p string) string {
 // shown straight after it, as undoCookie carries an Undo: scoped to that
 // page's path and cleared the moment the page reads it, so the form comes
 // back open, as it was left, once, and a reload shows the plain page (#660).
+// A refusal the page doesn't take straight away expires on its own after
+// formRefusalCookieLife.
 // It is echoed only to the browser that set it, and the page escapes what it
 // shows of it, so it needs no signing.
 const formRefusalCookie = "gt_refused"
@@ -260,6 +263,12 @@ const formRefusalCookie = "gt_refused"
 // longer one, too long for a browser to keep with the rest, is answered with
 // the refusal page instead.
 const formRefusalMaxBytes = 3000
+
+// formRefusalCookieLife is how long a refusal's cookie lives: long enough for
+// the browser to follow the redirect to its page, short enough that a refusal
+// not taken then, its page failing to load or never visited, doesn't come
+// back on a later visit (#709).
+const formRefusalCookieLife = time.Minute
 
 // The cookie's value holds the refusal's page, form, id, fields and reason
 // under their own keys, each problem under formRefusalProblem and what was
@@ -309,6 +318,7 @@ func setFormRefusal(w http.ResponseWriter, path string, refusal formRefusal) boo
 		Name:     formRefusalCookie,
 		Value:    value,
 		Path:     path,
+		MaxAge:   int(formRefusalCookieLife.Seconds()),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})

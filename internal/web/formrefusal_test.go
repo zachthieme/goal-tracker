@@ -174,6 +174,41 @@ func TestARefusedCommandIsAnsweredInPlaceOrOnTheRefusalPage(t *testing.T) {
 	}
 }
 
+// A refused form's cookie lives only long enough for the redirect to its page
+// to be followed, so a refusal not taken then — the page failed to load, or
+// was never visited — doesn't come back on a later visit. Its page, flags and
+// clearing are as before.
+func TestARefusedFormsCookieExpiresSoonAfterTheRedirect(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv := web.NewServer(h.Service)
+	srv.HandleFormRefusalPageForTest()
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	h.SignIn("sam@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	srv.HandleFormRefusalForTest("POST /form-refusal-test/short-lived", web.FormRefusalCaseForTest{
+		Err:     &domain.InputError{Input: "name", Message: "a thing needs a name"},
+		Form:    "on-page",
+		Fields:  []string{"name", "note"},
+		Offered: true,
+	})
+
+	resp := postRefused(t, noRedirects(sam), ts.URL+"/form-refusal-test/short-lived", url.Values{"name": {"Typed name"}}, false)
+	cookie := resp.cookie
+	if cookie == nil {
+		t.Fatalf("set no refusal cookie; answered %d", resp.status)
+	}
+	if life := int(web.FormRefusalCookieLifeForTest.Seconds()); cookie.MaxAge <= 0 || cookie.MaxAge > life {
+		t.Errorf("refusal cookie Max-Age %d, want 1 to %d seconds", cookie.MaxAge, life)
+	}
+	if cookie.Path != web.FormRefusalPageForTest || !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("refusal cookie path %q, HttpOnly %t, SameSite %v; want %q, HttpOnly, Lax",
+			cookie.Path, cookie.HttpOnly, cookie.SameSite, web.FormRefusalPageForTest)
+	}
+}
+
 // refusedAnswer is how a refused post was answered, unfollowed: its status,
 // where it redirects, the refused form's cookie it sets (nil for none), and
 // its body.
