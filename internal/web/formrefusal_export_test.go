@@ -19,6 +19,9 @@ const (
 	FormRefusalBackForTest = "/goals/12"
 )
 
+// FormRefusalCookieLifeForTest is how long a refused form's cookie lives.
+const FormRefusalCookieLifeForTest = formRefusalCookieLife
+
 // FormRefusalCaseForTest is how a test-only command, refused with Err,
 // states its refusal to answerRefused: Form is "on-page" (its form, posting
 // Fields and in one sentence when OneSentence, sits on
