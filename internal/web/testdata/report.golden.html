@@ -173,6 +173,10 @@
 					var boxes = form.querySelectorAll('input[name^="include-"]');
 					count.textContent = form.querySelectorAll('input[name^="include-"]:checked').length + " of " + boxes.length + " in";
 				}
+				// A failed save's reason is about what was sent, not what is
+				// typed now.
+				var notSaved = document.querySelector('[data-testid="publish-not-saved"]');
+				if (notSaved) notSaved.hidden = true;
 				markUnsaved();
 			}
 			function markUnsaved() {
