@@ -1816,10 +1816,18 @@ and so on).
     each save keeps current ("12 Goals · 3 exceptions · 4 Highlights ·
     changes since <baseline>. Readers can comment on the frozen copy."), then
     a quiet **Cancel** and a primary **Publish**. While the Narrative has
-    unsaved changes it refuses: under the summary it says "**Save the
-    narrative first.**" and Publish is disabled. Without script there's no
-    unsaved state to track, and Publish works as ever. At 600px and below it
-    spans the window less 16px each side.
+    unsaved changes, under the summary it says "**Your narrative changes will
+    be saved first.**" and the primary button reads **Save and publish**:
+    pressing it saves the Narrative as Save narrative does and publishes only
+    once that save succeeds. When it doesn't, nothing is published, the
+    button stays Save and publish, the save status says what it says for any
+    save, and the panel says why: "The narrative wasn't saved: <reason>" for a
+    refusal, "The narrative wasn't saved." for an error or no answer. If the
+    author changes the form while the save is on its way, those changes are
+    unsaved again and it doesn't publish. With nothing unsaved the button
+    reads Publish. Without script there's no unsaved state to track, and
+    Publish works as ever. At 600px and below it spans the window less 16px
+    each side.
   - **Columns (`.rp-draft-page`):** the main column, at most 780px, then
     56px, then the narrow column, 300px, both from the top. The page widens
     to 1200px for them (`.page:has(>.rp-draft-page)`). At 960px of the

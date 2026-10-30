@@ -3316,6 +3316,13 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	if attrOf(form, "method") != "post" || attrOf(form, "action") != path+"/publications" || buttonNamed(form, "Publish") == nil {
 		t.Errorf("the default publish form is not a POST to the publications with no baseline; form:\n%s", renderNode(form))
 	}
+	// The server never knows of unsaved changes: script shows these (#672).
+	if unsaved := findByTestID(t, confirm, "publish-unsaved"); !hasAttr(unsaved, "hidden") || textOf(unsaved) != "Your narrative changes will be saved first." {
+		t.Errorf("Publish… shows, or misstates, that unsaved changes will be saved first:\n%s", renderNode(unsaved))
+	}
+	if notSaved := findByTestID(t, confirm, "publish-not-saved"); !hasAttr(notSaved, "hidden") || textOf(notSaved) != "" {
+		t.Errorf("Publish… says the narrative wasn't saved before anything tried to save it:\n%s", renderNode(notSaved))
+	}
 	if cancel := findByTestID(t, confirm, "publish-cancel"); attrOf(cancel, "href") != path || textOf(cancel) != "Cancel" {
 		t.Errorf("Cancel does not reload the draft; link:\n%s", renderNode(cancel))
 	}
