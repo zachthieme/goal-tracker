@@ -315,6 +315,52 @@ test.describe("the New goal form's Milestone and Metric editor", () => {
     await expect(warning).toHaveCount(0);
     await expect(delivery).toHaveAccessibleDescription("A Dated Goal needs a delivery date.");
   });
+
+  test("(m) a Milestone's Name is described by its hint, then why it was refused, in each editor", async ({
+    page,
+  }) => {
+    await fillWhat(page, "Launch the EU storefront");
+    await page.getByRole("button", { name: "+ Milestone" }).click();
+    await know(page).getByTestId("milestone-editor").getByLabel("Date").fill(appToday());
+    const refused = page.waitForResponse(
+      (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/goals/new",
+    );
+    await page.getByRole("button", { name: "Save as Proposed" }).click();
+    expect((await refused).status()).toBe(422);
+
+    const editor = know(page).getByTestId("milestone-editor");
+    const name = editor.getByLabel("Name");
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+    const refusedName = await name.getAttribute("name");
+    await expect(name).toHaveAttribute("aria-describedby", `${refusedName}-hint ${refusedName}-error`);
+    await expect(editor.getByTestId("milestone-name-hint")).toHaveAttribute("id", `${refusedName}-hint`);
+    await expect(editor.getByTestId("input-error")).toHaveAttribute("id", `${refusedName}-error`);
+    await expect(editor.getByTestId("input-error")).toHaveText("A Milestone needs a name.");
+    expect(
+      await editor
+        .locator('[data-testid="milestone-name-hint"], [data-testid="input-error"]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid"))),
+    ).toEqual(["milestone-name-hint", "input-error"]);
+
+    await name.fill("Beta in the EU");
+    await editor.getByRole("button", { name: "Save" }).click();
+    await expect(know(page).getByTestId("milestone-item")).toHaveCount(1);
+    await page.getByRole("button", { name: "+ Milestone" }).click();
+    const added = know(page).getByTestId("milestone-editor");
+    const addedName = await added.getByLabel("Name").getAttribute("name");
+    expect(addedName).toMatch(/^milestones\[\d+\]\.name$/);
+    await expect(added.getByLabel("Name")).toHaveAttribute("aria-describedby", `${addedName}-hint`);
+    await expect(added.locator(`[id="${addedName}-hint"]`)).toHaveAttribute("data-testid", "milestone-name-hint");
+    expect(
+      await added
+        .locator("[name], [id], [aria-describedby]")
+        .evaluateAll((els) =>
+          els.flatMap((el) =>
+            ["name", "id", "aria-describedby"].map((a) => el.getAttribute(a) ?? "").filter((v) => v.includes("__i__")),
+          ),
+        ),
+    ).toEqual([]);
+  });
 });
 
 // dayBefore is the ISO date the day before iso.
