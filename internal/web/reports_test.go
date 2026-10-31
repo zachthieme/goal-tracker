@@ -5680,13 +5680,13 @@ func TestReportBlockHeadLeadsWithAHealthPillThenTheTitle(t *testing.T) {
 	}
 }
 
-// An exception block lays its facts out as a story beside a facts rail:
-// under the head, full width, what changed, its Schedule conflict and the
-// Goals it contributes to; then the story, of its status, the Path to Green
-// box with the Ask for help, Why it matters and the Owner's explanation; and
-// the rail, of its Owner and Lifecycle, due date, Fields, Metrics, Rolled-up
+// An exception block lays its facts out as a story beside a facts rail: the
+// story, of its head, what changed, its Schedule conflict, the Goals it
+// contributes to, its status, the Path to Green box with the Ask for help,
+// Why it matters and the Owner's explanation; and the rail beside it from the
+// head down, of its Owner and Lifecycle, due date, Fields, Metrics, Rolled-up
 // Health and the Goals behind it; then its Milestones, full width under both
-// (#712). Every fact the block shows, it shows on the publication and its
+// (#712, #713). Every fact the block shows, it shows on the publication and its
 // print page alike.
 func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 	t.Parallel()
@@ -5704,7 +5704,7 @@ func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 			t.Fatalf("%s: the story and then the rail aren't two columns of one row: %s", name, renderNode(block))
 		}
 		for column, ids := range map[*nethtml.Node][]string{
-			story: {"report-status", "report-path-box", "report-ask-for-help", "report-why-it-matters", "report-health-explanation"},
+			story: {"report-health", "report-changes", "report-schedule-conflicts", "report-contributes-to", "report-status", "report-path-box", "report-ask-for-help", "report-why-it-matters", "report-health-explanation"},
 			rail:  {"report-owner", "report-due", "report-fields", "report-metrics", "report-rollup", "report-behind-it"},
 		} {
 			var prev *nethtml.Node
@@ -5722,10 +5722,8 @@ func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 		if owner := findByTestID(t, block, "report-owner").Parent; textOf(owner) != "Bo Boss · Active" {
 			t.Errorf("%s: the rail's Owner reads %q, want the Owner then the Lifecycle", name, textOf(owner))
 		}
-		for _, id := range []string{"report-changes", "report-schedule-conflicts", "report-contributes-to"} {
-			if n := findByTestID(t, block, id); !precedes(n, story.Parent) || within(n, story.Parent) {
-				t.Errorf("%s: %s doesn't come before both columns", name, id)
-			}
+		if title := headingNamed(block, g.Title); !within(title, story) || !precedes(title, findByTestID(t, block, "report-status")) {
+			t.Errorf("%s: the title isn't at the top of the story, beside the rail", name)
 		}
 		if ms := findByTestID(t, block, "report-milestones"); within(ms, story.Parent) || !precedes(rail, ms) {
 			t.Errorf("%s: the Milestones aren't under both columns", name)

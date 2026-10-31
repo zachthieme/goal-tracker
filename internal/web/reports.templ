@@ -1293,25 +1293,26 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 
 // reportBlock is an exception Goal's full MBR block, an entry ruled off from
 // the next by a hairline, laid out from its facts (domain.ReportBlock.Facts)
-// as a story beside a facts rail (DESIGN.md § A publication, #712). Its head
-// is one line: its Health as a pill holding its Run off Green and, when it
-// changed since the baseline, what it was after that ("Yellow · 2 wks · was
-// Green"), then the title as the block's heading, then its other badges.
-// Under the head, full width, sit the line saying what changed ("Changed:
-// Turned Red · 1 Milestone slipped"), its Schedule conflicts, and the Goals in
-// the Report it contributes to ("Contributes to: [Red] Growth ↓"). Then two
-// columns: the story, of its latest status as the lead, then, on a Red or
+// as a story beside a facts rail (DESIGN.md § A publication, #712, #713).
+// Two columns: the story, opening with its head, one line: its Health as a
+// pill holding its Run off Green and, when it changed since the baseline,
+// what it was after that ("Yellow · 2 wks · was Green"), then the title as
+// the block's heading, then its other badges. Under the head sit the line
+// saying what changed ("Changed: Turned Red · 1 Milestone slipped"), its
+// Schedule conflicts, and the Goals in the Report it contributes to
+// ("Contributes to: [Red] Growth ↓"), then its latest status as the lead, then, on a Red or
 // Yellow Goal, the block's one tinted box, in its Health's tint
 // (pathTintClass), headed "Path to Green" with its back-to-Green date
 // (reportPathHead) over the plan, and an Ask for help open when the Report was
 // drafted, then Why it matters and the Owner's explanation when the block
 // shows it, labelled with both Healths (reportExplanationLabel); and beside
-// it, ruled off by a hairline, the facts rail, each a label over its value:
+// it from the head down, ruled off by a hairline, the facts rail, each a label over its value:
 // Owner and Lifecycle, the due date with its history struck through, the
 // Fields the definition chose, Metrics against target, the Rolled-up Health
 // with how many children are Red, Yellow and Check-in overdue ("2 of 6 Red ·
 // 1 Yellow · 1 overdue"), and the Goals behind it, one a line. Under 720px
-// wide, or in a block too narrow for both, the rail stacks under the story. Its Milestones follow, full
+// wide, or in a block too narrow for both, the rail stacks under the whole
+// story, head included. Its Milestones follow, full
 // width (reportBlockMilestones). Its marks and Overdue are its facts', judged
 // when they were drafted or published in the zone its Goal was judged in (see
 // domain.ReportBlock.Facts). Each Goal it names links to its place in the
@@ -1320,11 +1321,11 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 templ reportBlock(b domain.ReportBlockFacts, d discussion) {
 	{{ l := reportBlockLayoutOf(b) }}
 	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.GoalID) }>
-		for _, f := range l.top {
-			@reportBlockFact(f, d)
-		}
 		<div class="rp-cols">
 			<div data-testid="report-story" class="rp-story">
+				for _, f := range l.top {
+					@reportBlockFact(f, d)
+				}
 				for _, f := range l.lead {
 					@reportBlockFact(f, d)
 				}
@@ -1360,12 +1361,12 @@ templ reportBlock(b domain.ReportBlockFacts, d discussion) {
 }
 
 // reportBlockLayout is where an exception block's page puts each of its
-// facts: the head, and full width under it what changed, its Schedule
-// conflicts and the Goals it contributes to (top); in the story, its status
-// (lead), its Path to Green with the Ask for help (path), then Why it matters
-// and the Owner's explanation (about); in the rail, its Fields, Metrics,
-// Rolled-up Health and the Goals behind it, under the Owner and due date the
-// head holds; and its Milestones full width under both (below).
+// facts: in the story, the head, and under it what changed, its Schedule
+// conflicts and the Goals it contributes to (top), then its status (lead),
+// its Path to Green with the Ask for help (path), then Why it matters and the
+// Owner's explanation (about); in the rail, level with the head, its Fields,
+// Metrics, Rolled-up Health and the Goals behind it, under the Owner and due
+// date the head holds; and its Milestones full width under both (below).
 type reportBlockLayout struct {
 	head                                   domain.ReportBlockHead
 	top, lead, path, about, rail, below []domain.ReportFact
