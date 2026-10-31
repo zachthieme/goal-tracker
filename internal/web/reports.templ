@@ -211,11 +211,17 @@ templ reportDraftPage(current *domain.Account, v reportDraftView) {
 				// publication.
 				<div data-testid="report-snapshot" class="rp-body">
 					if m.Manage {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.Discussion, &v.Form)
+						@reportBodyStory(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.Discussion, &v.Form)
 					} else {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), v.Discussion, nil)
+						@reportBodyStory(withoutReportFacts(facts, domain.ReportFactIntroduction), v.Discussion, nil)
 					}
 				</div>
+			</div>
+			// The Goal sections follow the narrative, before the sidebar, so
+			// the grid can span them under it and a one-column page reads
+			// them between the two.
+			<div data-testid="report-goals" class="rp-body rp-goals">
+				@reportGoalSections(facts, v.Discussion)
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)
@@ -961,13 +967,27 @@ templ publicationSelection(facts []domain.ReportFact) {
 // for a reader who may manage it, compose is the form composing its narrative
 // in place, which stands before its Goals.
 templ reportBody(facts []domain.ReportFact, d discussion, compose *narrativeForm) {
-	{{ story, goals := splitReportGoals(facts) }}
+	@reportBodyStory(facts, d, compose)
+	@reportGoalSections(facts, d)
+}
+
+// reportBodyStory is the part of a Report's body before its Goals, with
+// compose, when it isn't nil, after it (reportBody).
+templ reportBodyStory(facts []domain.ReportFact, d discussion, compose *narrativeForm) {
+	{{ story, _ := splitReportGoals(facts) }}
 	for _, f := range story {
 		@reportFact(f, d)
 	}
 	if compose != nil {
 		@narrativeCuration(*compose)
 	}
+}
+
+// reportGoalSections is the part of a Report's body about its Goals, or "No
+// Goals selected." when it selects none (reportBody). The draft page spans
+// it under its sidebar (DESIGN.md § A Report's draft page).
+templ reportGoalSections(facts []domain.ReportFact, d discussion) {
+	{{ _, goals := splitReportGoals(facts) }}
 	if !reportSelectsGoals(facts) {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
@@ -1293,25 +1313,26 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 
 // reportBlock is an exception Goal's full MBR block, an entry ruled off from
 // the next by a hairline, laid out from its facts (domain.ReportBlock.Facts)
-// as a story beside a facts rail (DESIGN.md § A publication, #712). Its head
-// is one line: its Health as a pill holding its Run off Green and, when it
-// changed since the baseline, what it was after that ("Yellow · 2 wks · was
-// Green"), then the title as the block's heading, then its other badges.
-// Under the head, full width, sit the line saying what changed ("Changed:
-// Turned Red · 1 Milestone slipped"), its Schedule conflicts, and the Goals in
-// the Report it contributes to ("Contributes to: [Red] Growth ↓"). Then two
-// columns: the story, of its latest status as the lead, then, on a Red or
+// as a story beside a facts rail (DESIGN.md § A publication, #712, #713).
+// Two columns: the story, opening with its head, one line: its Health as a
+// pill holding its Run off Green and, when it changed since the baseline,
+// what it was after that ("Yellow · 2 wks · was Green"), then the title as
+// the block's heading, then its other badges. Under the head sit the line
+// saying what changed ("Changed: Turned Red · 1 Milestone slipped"), its
+// Schedule conflicts, and the Goals in the Report it contributes to
+// ("Contributes to: [Red] Growth ↓"), then its latest status as the lead, then, on a Red or
 // Yellow Goal, the block's one tinted box, in its Health's tint
 // (pathTintClass), headed "Path to Green" with its back-to-Green date
 // (reportPathHead) over the plan, and an Ask for help open when the Report was
 // drafted, then Why it matters and the Owner's explanation when the block
 // shows it, labelled with both Healths (reportExplanationLabel); and beside
-// it, ruled off by a hairline, the facts rail, each a label over its value:
+// it from the head down, ruled off by a hairline, the facts rail, each a label over its value:
 // Owner and Lifecycle, the due date with its history struck through, the
 // Fields the definition chose, Metrics against target, the Rolled-up Health
 // with how many children are Red, Yellow and Check-in overdue ("2 of 6 Red ·
 // 1 Yellow · 1 overdue"), and the Goals behind it, one a line. Under 720px
-// wide, or in a block too narrow for both, the rail stacks under the story. Its Milestones follow, full
+// wide, or in a block too narrow for both, the rail stacks under the whole
+// story, head included. Its Milestones follow, full
 // width (reportBlockMilestones). Its marks and Overdue are its facts', judged
 // when they were drafted or published in the zone its Goal was judged in (see
 // domain.ReportBlock.Facts). Each Goal it names links to its place in the
@@ -1320,11 +1341,11 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 templ reportBlock(b domain.ReportBlockFacts, d discussion) {
 	{{ l := reportBlockLayoutOf(b) }}
 	<article data-testid="report-exception" class="rp-block" id={ fmt.Sprintf("goal-%d", b.GoalID) }>
-		for _, f := range l.top {
-			@reportBlockFact(f, d)
-		}
 		<div class="rp-cols">
 			<div data-testid="report-story" class="rp-story">
+				for _, f := range l.top {
+					@reportBlockFact(f, d)
+				}
 				for _, f := range l.lead {
 					@reportBlockFact(f, d)
 				}
@@ -1360,12 +1381,12 @@ templ reportBlock(b domain.ReportBlockFacts, d discussion) {
 }
 
 // reportBlockLayout is where an exception block's page puts each of its
-// facts: the head, and full width under it what changed, its Schedule
-// conflicts and the Goals it contributes to (top); in the story, its status
-// (lead), its Path to Green with the Ask for help (path), then Why it matters
-// and the Owner's explanation (about); in the rail, its Fields, Metrics,
-// Rolled-up Health and the Goals behind it, under the Owner and due date the
-// head holds; and its Milestones full width under both (below).
+// facts: in the story, the head, and under it what changed, its Schedule
+// conflicts and the Goals it contributes to (top), then its status (lead),
+// its Path to Green with the Ask for help (path), then Why it matters and the
+// Owner's explanation (about); in the rail, level with the head, its Fields,
+// Metrics, Rolled-up Health and the Goals behind it, under the Owner and due
+// date the head holds; and its Milestones full width under both (below).
 type reportBlockLayout struct {
 	head                                   domain.ReportBlockHead
 	top, lead, path, about, rail, below []domain.ReportFact
@@ -1587,7 +1608,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 
 // reportBlockMilestones is an exception block's Milestones, full width under
 // its story and rail: headed "Milestones" with a summary of their marks
-// (reportMilestoneSummary), then one row each of three aligned columns, its
+// (reportMilestoneSummary), when any counts, then one row each of three aligned columns, its
 // mark, its date, and its name, in the order the facts list them. The date
 // shows the date it last slipped from struck through beside it and, once it
 // slipped more than once, the count under it ("3 slips"); a Removed
@@ -1597,7 +1618,9 @@ templ reportBlockMilestones(label string, marks []domain.ReportMilestoneMark, d 
 	<section class="rp-ms">
 		<div class="rp-ms-head">
 			<h4 class="label">{ label }</h4>
-			<span data-testid="report-milestone-summary" class="small muted">{ reportMilestoneSummary(marks) }</span>
+			if summary := reportMilestoneSummary(marks); summary != "" {
+				<span data-testid="report-milestone-summary" class="small muted">{ summary }</span>
+			}
 		</div>
 		<ul data-testid="report-milestones" class="rp-ms-rows">
 			for _, m := range marks {
@@ -1636,7 +1659,7 @@ templ reportBlockMilestones(label string, marks []domain.ReportMilestoneMark, d 
 // reportMilestoneSummary sums up a block's Milestones by their marks: how
 // many of them are Done, out of all but the Removed, then how many are
 // Overdue and how many Slipped, each only when there are some: "1 of 5 done ·
-// 1 overdue · 1 slipped".
+// 1 overdue · 1 slipped". It is "" when none counts, every one Removed.
 func reportMilestoneSummary(marks []domain.ReportMilestoneMark) string {
 	var total, done, overdue, slipped int
 	for _, m := range marks {
@@ -1651,6 +1674,9 @@ func reportMilestoneSummary(marks []domain.ReportMilestoneMark) string {
 			slipped++
 		}
 		total++
+	}
+	if total == 0 {
+		return ""
 	}
 	summary := fmt.Sprintf("%d of %d done", done, total)
 	if overdue > 0 {
@@ -1962,8 +1988,8 @@ templ reportStyles() {
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;flex-direction:column;gap:4px}
 		.rp-head h1{margin:0 0 4px;font-size:26px;font-weight:700;line-height:1.2}
-		.rp-main h2,.rp-read h2{font-size:18px;font-weight:650;line-height:1.3}
-		.rp-main section>h2,.rp-read section>h2,.rp-curation-head{margin-top:20px;padding-top:20px;border-top:1px solid var(--color-border)}
+		.rp-main h2,.rp-goals h2,.rp-read h2{font-size:18px;font-weight:650;line-height:1.3}
+		.rp-main section>h2,.rp-goals section>h2,.rp-read section>h2,.rp-curation-head{margin-top:20px;padding-top:20px;border-top:1px solid var(--color-border)}
 		.rp-exceptions>h2>.num{font-size:var(--text-body);font-weight:500}
 		.rp-actions{display:flex;gap:8px}
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2031,11 +2057,14 @@ templ reportStyles() {
 		.rp-card-title{flex:1;min-width:0}
 		.rp-card-head h3{font-size:16px;font-weight:600;line-height:1.4}
 		.rp-card-title>a{color:var(--color-ink)}
+		.rp-card-title>a:hover{color:var(--color-primary-strong)}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:4px;align-items:center;min-height:22px;border-radius:var(--radius-full);white-space:nowrap;box-sizing:border-box}
 		.rp-health>.small:last-child{padding-right:8px}
 		.rp-health>.badge{border-radius:var(--radius-full)}
-		.rp-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:16px 24px;align-items:start}
+		/* The story is capped at 680px so its lines don't run long, and the
+		 * rail at 320px; each takes an even share of a narrower block. */
+		.rp-cols{display:grid;grid-template-columns:minmax(0,680px) minmax(0,320px);gap:16px 24px;align-items:start}
 		.rp-story{display:flex;flex-direction:column;gap:16px;min-width:0}
 		.rp-story p{margin:0}
 		.rp-lead,.rp-about{display:flex;flex-direction:column;gap:4px}
@@ -2068,9 +2097,8 @@ templ reportStyles() {
 		 * date. */
 		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-block .rp-ms-rows{grid-template-columns:auto minmax(0,1fr)}.rp-ms-name{grid-column:2}}
 		/* Under 720px wide a block stacks its facts rail under its story,
-		 * ruled off above rather than beside it, and so does a block too
-		 * narrow for both, as in the draft's main column beside its sidebar
-		 * in a window under about 1200px. */
+		 * head included, ruled off above rather than beside it, and so does
+		 * a block too narrow for both. */
 		@media (max-width:720px){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
 		@container rp-block (max-width:34rem){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
 		.rp-block ul{margin:0;padding-left:20px}
@@ -2147,9 +2175,15 @@ templ reportStyles() {
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
 		.page:has(>.rp-draft-page){max-width:1200px;container:rp-draft/inline-size}
-		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:56px;align-items:start}
+		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:24px 56px;align-items:start}
 		.rp-draft-page>*{min-width:0}
-		@container rp-draft (max-width:960px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
+		/* The sidebar sits beside the narrative, and the Goal sections, after
+		 * both in the markup, span the page under them, 24px under the
+		 * narrative as within it. A one-column page reads them in the
+		 * markup's order, the sidebar 40px under the Goal sections. */
+		.rp-draft-page>.rp-side{grid-column:2;grid-row:1}
+		.rp-draft-page>.rp-goals{grid-column:1/-1;grid-row:2}
+		@container rp-draft (max-width:960px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:24px}.rp-draft-page>.rp-side{grid-column:auto;grid-row:auto;margin-top:16px}.rp-draft-page>.rp-goals{grid-row:auto}}
 		.rp-intro{margin:0;font-size:15px;line-height:1.7;color:var(--color-ink)}
 		.rp-compose-section{display:flex;flex-direction:column}
 		.rp-compose-section:last-of-type{border-bottom:1px solid var(--color-border)}

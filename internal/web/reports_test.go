@@ -2166,7 +2166,7 @@ func TestDraftMainColumnReadsAsTheReportOverHTTP(t *testing.T) {
 		if formFields(page, "introduction") != nil {
 			t.Errorf("%s: the draft offers to edit the Introduction", who)
 		}
-		for _, gone := range []string{"compose-panel", "draft-panes", "draft-introduction", "report-goals", "report-goal", "scope-summary"} {
+		for _, gone := range []string{"compose-panel", "draft-panes", "draft-introduction", "report-goal", "scope-summary"} {
 			if hasTestID(page, gone) {
 				t.Errorf("%s: the draft still has %s", who, gone)
 			}
@@ -2216,7 +2216,7 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	if buttonNamed(form, "Save narrative") == nil {
 		t.Errorf("the composer has no Save narrative")
 	}
-	if !precedes(findByTestID(t, main, "health-summary"), composer) || !precedes(composer, findByTestID(t, main, "needs-attention")) {
+	if !precedes(findByTestID(t, main, "health-summary"), composer) || !precedes(composer, findByTestID(t, page, "needs-attention")) {
 		t.Errorf("the composer isn't between the Health summary and the exceptions")
 	}
 	if hasTestID(page, "report-narrative") {
@@ -2260,7 +2260,7 @@ func TestDraftComposesTheNarrativeInTheMainColumnOverHTTP(t *testing.T) {
 	if got := textsOf(findAllByTestID(narrative, "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
 		t.Errorf("the reader reads the notes %q, want the saved one", got)
 	}
-	if !precedes(findByTestID(t, main, "health-summary"), narrative) || !precedes(narrative, findByTestID(t, main, "needs-attention")) {
+	if !precedes(findByTestID(t, main, "health-summary"), narrative) || !precedes(narrative, findByTestID(t, page, "needs-attention")) {
 		t.Errorf("the reader's narrative isn't between the Health summary and the exceptions")
 	}
 	side = findByTestID(t, page, "draft-side")
@@ -2846,7 +2846,8 @@ func TestDraftHistoryMergesPublicationsWithTheReportLogOverHTTP(t *testing.T) {
 }
 
 // The draft's main column is the publication: the same Health summary and
-// Report body a reader will see, read off the same components. The export
+// Report body a reader will see, read off the same components, its Goal
+// sections following it in report-goals (#713). The export
 // links and the Action Items raised on a publication stay on the publication,
 // since a draft has nothing to export or discuss yet.
 func TestDraftMainColumnIsThePublicationOverHTTP(t *testing.T) {
@@ -2874,9 +2875,13 @@ func TestDraftMainColumnIsThePublicationOverHTTP(t *testing.T) {
 			t.Errorf("the main column's %s tile: %q, want a count of %s", tile, count, want)
 		}
 	}
-	for _, want := range []string{"report-introduction", "needs-attention", "on-track"} {
-		if !hasTestID(main, want) {
-			t.Errorf("the main column's Report misses %s", want)
+	if !hasTestID(main, "report-introduction") {
+		t.Errorf("the main column's Report misses report-introduction")
+	}
+	goals := findByTestID(t, page, "report-goals")
+	for _, want := range []string{"needs-attention", "on-track"} {
+		if !hasTestID(goals, want) {
+			t.Errorf("the draft's Goal sections miss %s", want)
 		}
 	}
 	for _, publicationOnly := range []string{"report-export", "publication-action-items"} {
@@ -2959,7 +2964,7 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 	}
 	draft := getPage(t, client, draftURL)
 	second := h.PublishReport(boss, def)
-	for name, page := range map[string]*nethtml.Node{"draft": findByTestID(t, draft, "report-draft"), "publication": getPage(t, client, pubURL(second))} {
+	for name, page := range map[string]*nethtml.Node{"draft": findByTestID(t, draft, "report-goals"), "publication": getPage(t, client, pubURL(second))} {
 		list := findByTestID(t, page, "membership-changes")
 		if headingNamed(list, "Goals that entered or left this report") == nil {
 			t.Errorf("%s list has no heading:\n%s", name, renderNode(list))
@@ -5680,13 +5685,13 @@ func TestReportBlockHeadLeadsWithAHealthPillThenTheTitle(t *testing.T) {
 	}
 }
 
-// An exception block lays its facts out as a story beside a facts rail:
-// under the head, full width, what changed, its Schedule conflict and the
-// Goals it contributes to; then the story, of its status, the Path to Green
-// box with the Ask for help, Why it matters and the Owner's explanation; and
-// the rail, of its Owner and Lifecycle, due date, Fields, Metrics, Rolled-up
+// An exception block lays its facts out as a story beside a facts rail: the
+// story, of its head, what changed, its Schedule conflict, the Goals it
+// contributes to, its status, the Path to Green box with the Ask for help,
+// Why it matters and the Owner's explanation; and the rail beside it from the
+// head down, of its Owner and Lifecycle, due date, Fields, Metrics, Rolled-up
 // Health and the Goals behind it; then its Milestones, full width under both
-// (#712). Every fact the block shows, it shows on the publication and its
+// (#712, #713). Every fact the block shows, it shows on the publication and its
 // print page alike.
 func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 	t.Parallel()
@@ -5704,7 +5709,7 @@ func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 			t.Fatalf("%s: the story and then the rail aren't two columns of one row: %s", name, renderNode(block))
 		}
 		for column, ids := range map[*nethtml.Node][]string{
-			story: {"report-status", "report-path-box", "report-ask-for-help", "report-why-it-matters", "report-health-explanation"},
+			story: {"report-health", "report-changes", "report-schedule-conflicts", "report-contributes-to", "report-status", "report-path-box", "report-ask-for-help", "report-why-it-matters", "report-health-explanation"},
 			rail:  {"report-owner", "report-due", "report-fields", "report-metrics", "report-rollup", "report-behind-it"},
 		} {
 			var prev *nethtml.Node
@@ -5722,10 +5727,8 @@ func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
 		if owner := findByTestID(t, block, "report-owner").Parent; textOf(owner) != "Bo Boss · Active" {
 			t.Errorf("%s: the rail's Owner reads %q, want the Owner then the Lifecycle", name, textOf(owner))
 		}
-		for _, id := range []string{"report-changes", "report-schedule-conflicts", "report-contributes-to"} {
-			if n := findByTestID(t, block, id); !precedes(n, story.Parent) || within(n, story.Parent) {
-				t.Errorf("%s: %s doesn't come before both columns", name, id)
-			}
+		if title := headingNamed(block, g.Title); !within(title, story) || !precedes(title, findByTestID(t, block, "report-status")) {
+			t.Errorf("%s: the title isn't at the top of the story, beside the rail", name)
 		}
 		if ms := findByTestID(t, block, "report-milestones"); within(ms, story.Parent) || !precedes(rail, ms) {
 			t.Errorf("%s: the Milestones aren't under both columns", name)
@@ -5842,6 +5845,69 @@ func TestReportMilestonesAreRowsUnderASummary(t *testing.T) {
 		}
 		if !slices.EqualFunc(rows, want, slices.Equal) {
 			t.Errorf("%s: the Milestones' rows read\n %q\nwant mark, date and name\n %q", name, rows, want)
+		}
+	}
+}
+
+// A block whose Milestones are all Removed has nothing for a summary to
+// count, so its Milestones show no summary, not "0 of 0 done", and still list
+// the Removed rows (#713).
+func TestReportMilestonesAllRemovedShowNoSummary(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	b.Milestones = []domain.ReportMilestone{
+		{Milestone: domain.Milestone{ID: 46, GoalID: g.ID, Name: "Launch party", TargetDate: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC), Status: domain.MilestoneRemoved, RemovedReason: "Budget cut."}},
+		{Milestone: domain.Milestone{ID: 47, GoalID: g.ID, Name: "Swag", TargetDate: time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC), Status: domain.MilestoneRemoved, RemovedReason: "Out of stock."}},
+	}
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		block := reportBlockOf(t, parsePage(t, page), g)
+		if hasTestID(block, "report-milestone-summary") {
+			t.Errorf("%s: an all-Removed block shows a summary, %q", name, textOf(findByTestID(t, block, "report-milestone-summary")))
+		}
+		if got := textsOf(findAllByTestID(block, "report-milestone")); !slices.Equal(got, []string{"Removed May 20, 2026 Launch party — Budget cut.", "Removed May 25, 2026 Swag — Out of stock."}) {
+			t.Errorf("%s: the Milestones' rows read %q, want both Removed rows", name, got)
+		}
+	}
+}
+
+// A draft's Goal sections, its exceptions and Goals On track, sit in a
+// container of their own under its narrative, after it and before the
+// sidebar holding Delegates and History, so they can span the page under the
+// sidebar and, where the page is one column, still read between the two
+// (DESIGN.md § A Report's draft page, #713).
+func TestReportDraftGoalSectionsFollowTheNarrativeBeforeTheSidebar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
+	ts := newServer(t, h)
+
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	draft, goals, side := findByTestID(t, page, "report-draft"), findByTestID(t, page, "report-goals"), findByTestID(t, page, "draft-side")
+	for _, id := range []string{"needs-attention", "on-track-section"} {
+		n := findByTestID(t, page, id)
+		if !within(n, goals) || within(n, draft) {
+			t.Errorf("%s isn't in report-goals, outside report-draft", id)
+		}
+	}
+	if within(goals, draft) || !precedes(draft, goals) || !precedes(goals, side) {
+		t.Errorf("report-goals doesn't come after report-draft and before draft-side")
+	}
+	for _, id := range []string{"report-delegates", "report-history"} {
+		if !within(findByTestID(t, page, id), side) {
+			t.Errorf("%s isn't in draft-side", id)
 		}
 	}
 }

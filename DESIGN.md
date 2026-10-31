@@ -1338,9 +1338,9 @@ and so on).
     Then the Dimension and Field forms in their groups. Add a Milestone under the
     Milestones table (a name, a date and **Add Milestone**, for the Owner or a
     Delegate until the Goal is Done or Cancelled); the name holds the example
-    "e.g. Storage add-on on sale to every existing customer" and asks under
+    "e.g. Add-on on sale to all customers" and asks under
     it, in `.hint`, "What will exist, and for whom, when this is done",
-    which describes it (`milestoneNameHint`, #712). Without script, the Draft
+    which describes it (`milestoneNameHint`, #712, #713). Without script, the Draft
     Highlight form in its section.
   - **Heading links (`.gp-group-head`):** a section or rail group whose form
     opens in place has a small link at the right of its heading, shown only to
@@ -1656,8 +1656,8 @@ and so on).
     Removed, with a reason for a date change and for Removed), then any being
     added and one blank row, under the one hint, across the grid, that every
     new row's name names: "What will exist, and for whom, when this is done".
-    Each new name holds the example "e.g. Storage add-on on sale to every
-    existing customer" (#712).
+    Each new name holds the example "e.g. Add-on on sale to all customers"
+    (#712, #713).
   - **Lifecycle:** radios in a wrapping row (Keep Active, Put On Hold, Mark
     Done and Cancel; Resume and Cancel for an On Hold Goal), then the Reason
     and, for any Goal not On Hold, the Outcome. With script, a Check-in that
@@ -1944,13 +1944,20 @@ and so on).
     Publish works as ever. At 600px and below it spans the window less 16px
     each side.
   - **Columns (`.rp-draft-page`):** the main column, at most 780px, then
-    56px, then the narrow column, 300px, both from the top. The page widens
-    to 1200px for them (`.page:has(>.rp-draft-page)`). At 960px of the
-    page's content width and under — a container query on the page body
-    (`rp-draft`), so the sidebar counts — they stack, the narrow column under
-    the main one at full width, 40px apart. A 1280px window leaves about
-    1040px of content, so it keeps both columns, the main one about 680px. Each shrinks to the window rather than to its
-    widest content, so at 390px nothing scrolls sideways.
+    56px, then the narrow column, 300px, both from the top of the first row
+    (the narrow one placed in row 1, column 2). The Goal sections
+    (`report-goals`, `.rp-goals`) follow in the second row, spanning both
+    columns and the gap (`grid-column:1/-1`), 24px under the main column, as
+    they sat inside it before (#713). In the markup they come after the main
+    column and before the narrow one. The page widens to 1200px for them
+    (`.page:has(>.rp-draft-page)`). At 960px of the page's content width and
+    under — a container query on the page body (`rp-draft`), so the sidebar
+    counts — they stack in the markup's order: the main column, the Goal
+    sections 24px under it, then the narrow column at full width 40px under
+    them, so what is seen, read and focused keeps one order. A 1280px window
+    leaves about 1040px of content, so it keeps both columns, the main one
+    about 680px. Each shrinks to the window rather than to its widest
+    content, so at 390px nothing scrolls sideways.
   - **Main column (`report-draft`):** the Report as readers get it, top to
     bottom:
     - **Name:** the Report's name as the page's `h1` (§ Type scale, the
@@ -1965,11 +1972,14 @@ and so on).
       (**Edit definition**, in the header).
     - **The Report's content:** the Health summary, the movement line, the Open
       Action Items, keeping Close and Reassign, each coming back to the draft,
-      the narrative, then the exceptions, On track, and the Goals that
-      entered or left, as a publication shows them (§ A publication). The
+      then the narrative, as a publication shows them (§ A publication). The
       narrative is the published one, left out when empty, for anyone who
       may not manage the Report; for its creator, a Report Delegate or an
       Admin it is the composer, **Narrative**.
+  - **Goal sections (`report-goals`):** under the main column and the
+    narrow one, the full width of the page: the exceptions, On track, and
+    the Goals that entered or left, or "No Goals selected.", as a
+    publication shows them (§ A publication).
   - **Narrative (`narrativeCuration`, `.rp-curation`):** a "Narrative" `h2`
     under the section heading's rule, with a small muted "Highlights since <baseline> · 2 of 5 in" beside it
     while there are Highlights to pick, or else "No Highlights to pick since
@@ -2047,8 +2057,9 @@ and so on).
     scale), two muted lines ("Published Nov
     7, 2026, 15:04 by <Name> · changes since the previous publication, …" and
     "Selection: …"), the Report's content, then Action Items raised here.
-  - **The Report's content (`reportContent`), which the draft's main column
-    reads too:**
+  - **The Report's content (`reportContent`), which the draft reads too, its
+    Goal sections, from Exceptions on, spanning the page under its sidebar
+    (`report-goals`):**
     - **Health summary (`healthSummary`, `.rp-summary`):** one row sized to
       its content, not a grid of tiles and with no rules: a "Health" label
       (`.label`, the Report's level 4), then four pairs, Red, Yellow, Green
@@ -2082,25 +2093,29 @@ and so on).
     - **Exceptions N:** the count beside the heading, 14px muted. Each
       exception is an entry (`.rp-block`), separated from the next by 20px
       of space and one 1px hairline; the first, right under the heading, has
-      no rule of its own. It reads as a story beside a facts rail (#712).
+      no rule of its own. It reads as a story beside a facts rail, the
+      rail starting level with the block's title (#712, #713).
       - **Head (`.rp-card-head`), one line:** the Health as a pill in its
         tint and ink (`.rp-health` with the Health's `.r`/`.y`/`.g`/`.lc`,
         `--radius-full`) holding its shape chip and, small, "· 2 wks" and
         "· was Green"; then the title as the block's `h3` (16px, 600, in
         `--color-ink`, `.rp-card-title`), linking to the Goal with a link's
-        hover and focus; then at the right its other badges (Check-in
+        hover, its underline and `--color-primary-strong`
+        (`.rp-card-title>a:hover`), and focus; then at the right its other badges (Check-in
         overdue as the chip, Ownerless in Red, New Date in Yellow, the rest
         as `badge lc`). At 600px and below, and in a block 28rem wide or
         narrower (a container query), the Health and title keep their line
         and the badges drop under them; nothing is reordered.
-      - **Under the head, full width:** "**Changed:** …", "**Schedule
-        conflict:** …" and "**Contributes to:** …", small.
-      - **Two columns (`.rp-cols`):** the story, then the facts rail at
-        most 220px wide, 24px apart, the rail ruled off by a 1px
-        `--color-border` hairline at its left with 24px inside it. Under
-        720px wide (a media query), and in a block 34rem wide or narrower,
-        the rail stacks under the story, ruled off above it instead.
-      - **The story (`.rp-story`), 16px apart:** the Status as the lead, a
+      - **Two columns (`.rp-cols`):** the story, at most 680px wide so its
+        lines don't run long, then the facts rail at most 320px wide, 24px
+        apart, each taking an even share of a block too narrow for both at
+        their widest; the rail ruled off by a 1px `--color-border` hairline
+        at its left with 24px inside it. Under 720px wide (a media query),
+        and in a block 34rem wide or narrower, the rail stacks under the
+        whole story, head included, ruled off above it instead.
+      - **The story (`.rp-story`), 16px apart:** the head; under it
+        "**Changed:** …", "**Schedule conflict:** …" and "**Contributes
+        to:** …", small; then the Status as the lead, a
         small `.label` over it at the body size plus 2px in `--color-ink`
         (`.rp-lead-text`); the Path to Green box with the Ask for help;
         Why it matters, its label over it in muted ink; and the Owner's
@@ -2108,7 +2123,8 @@ and so on).
         Yellow when its Goals roll up Red" (the export and the frozen record
         keep "Why the Health differs", which the label stays without a
         Health or a Rolled-up Health).
-      - **The facts rail (`.rp-rail`, a `dl`), 13px, items 12px apart:**
+      - **The facts rail (`.rp-rail`, a `dl`), 13px, items 12px apart,
+        from the top of the story, so Owner sits level with the title:**
         each a `.label` over its value: Owner, then " · " and the Lifecycle;
         Due, when the Goal has one, slipped dates struck through; Fields, one
         to a line; Metrics in their words ("19 against a target of 37 desks
@@ -2117,7 +2133,8 @@ and so on).
       - **Milestones (`.rp-ms`), full width under both:** a "Milestones"
         `.label` heading with its summary at the right, small and muted, "1
         of 5 done · 1 overdue · 1 slipped", the overdue and slipped counts
-        only when there are some and the Removed left out of the total. Then
+        only when there are some and the Removed left out of the total; with
+        every Milestone Removed there is nothing to count, and no summary. Then
         one row each, in the facts' order, of three aligned columns
         (`.rp-ms-rows`, a grid its rows share through `subgrid`): the mark
         (empty for none), the date with the one it last slipped from struck
@@ -2509,8 +2526,10 @@ given):
   Overdue or Slipped mark, Ownerless, New Date and a Path to Green's Overdue
   in the Health colour they take on screen, and Check-in overdue in its grey
   chip with a dashed edge. Body text stays black.
-- A Goal block lays out as on screen: the story beside a 13rem facts rail
-  (`.rp-cols`), the rail at 9.5pt behind a 0.5pt `--print-rule` hairline,
+- A Goal block lays out as on screen: the story, opening with the head,
+  Changed, Schedule conflict and Contributes to, beside a 13rem facts rail
+  (`.rp-cols`) that starts level with the title; the screen's 680px and
+  320px caps don't apply. The rail is at 9.5pt behind a 0.5pt `--print-rule` hairline,
   each of its labels in the small-caps `.label` style and `--print-ink-2`
   over its value with no indent; the Status leads the story at 12pt. The
   page is narrower than the screen's 720px breakpoint but keeps the two

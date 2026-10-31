@@ -5182,7 +5182,7 @@ func TestCheckinNewMilestoneNamesAskWhatWillBeDelivered(t *testing.T) {
 		t.Fatalf("the new Milestone rows show %d hints, want one reading %q above the first: %q", len(hints), hint, textsOf(hints))
 	}
 	for _, name := range formFields(doc, "new_milestone_name") {
-		if name.Description != hint || name.Placeholder != "e.g. Storage add-on on sale to every existing customer" {
+		if name.Description != hint || name.Placeholder != "e.g. Add-on on sale to all customers" {
 			t.Errorf("a new Milestone's name is described by %q with the placeholder %q, want the hint and the example", name.Description, name.Placeholder)
 		}
 	}

@@ -5884,7 +5884,7 @@ func struckDates(current time.Time, prior []time.Time, dates displayDates) templ
 // delivered (#712).
 const (
 	milestoneNameHintText = "What will exist, and for whom, when this is done"
-	milestoneNameExample  = "e.g. Storage add-on on sale to every existing customer"
+	milestoneNameExample  = "e.g. Add-on on sale to all customers"
 )
 
 // milestoneNameHint is the hint under a field naming a Milestone

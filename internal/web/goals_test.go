@@ -8412,7 +8412,7 @@ func TestGoalPageAddMilestoneAsksWhatWillBeDelivered(t *testing.T) {
 	if want := "What will exist, and for whom, when this is done"; name.Description != want {
 		t.Errorf("Add Milestone's name is described by %q, want %q: %s", name.Description, want, renderNode(name.Node.Parent))
 	}
-	if want := "e.g. Storage add-on on sale to every existing customer"; name.Placeholder != want {
+	if want := "e.g. Add-on on sale to all customers"; name.Placeholder != want {
 		t.Errorf("Add Milestone's name has the placeholder %q, want %q", name.Placeholder, want)
 	}
 }

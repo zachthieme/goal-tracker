@@ -95,9 +95,9 @@ async function saveReport(page: Page): Promise<number> {
 }
 
 // reportGoalTitles are the titles of the Goals the draft Report holds: each
-// exception's block and each On track row.
+// exception's block and each On track row, in its Goal sections.
 async function reportGoalTitles(page: Page): Promise<string[]> {
-  const draft = page.getByTestId("report-draft");
+  const draft = page.getByTestId("report-goals");
   const blocks = await draft.getByTestId("report-exception").locator("h3").allTextContents();
   const lines = await draft.getByTestId("selected-goal").locator(".rp-track-goal > a").allTextContents();
   return [...blocks, ...lines].map((title) => title.trim());
@@ -186,7 +186,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
 
     // It worked if: the Report shows him their Health and Paths to Green as
     // their Owners report them.
-    const preview = page.getByTestId("report-draft");
+    const preview = page.getByTestId("report-goals");
     const troubled = preview.getByTestId("report-exception").filter({ hasText: picks.troubled.title });
     await expect(troubled.getByTestId("report-health")).toHaveText(new RegExp(`${picks.troubled.health}$`));
     await expect(troubled.getByTestId("report-path-to-green")).toContainText(picks.troubled.path_to_green);
@@ -206,9 +206,8 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     // from following Contributes to links (ADR 0007).
     for (const child of picks.children) {
       expect(titles, `child Goal "${child.title}" isn't in the Report`).not.toContain(child.title);
-      await expect(page.getByTestId("report-draft").getByRole("link", { name: child.title, exact: true })).toHaveCount(
-        0,
-      );
+      const draft = page.getByTestId("report-draft").or(page.getByTestId("report-goals"));
+      await expect(draft.getByRole("link", { name: child.title, exact: true })).toHaveCount(0);
     }
   });
 

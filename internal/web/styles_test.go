@@ -1328,9 +1328,12 @@ func TestHealthChipShrinksToItsShapeStyles(t *testing.T) {
 
 // The draft's body is two columns, the Report's main column at most 780px
 // beside a 300px one for its Delegates and History, 56px apart, in a page
-// wide enough to hold them. Under 960px of the page's content width — a
-// container query on the page body, so the sidebar counts — the narrow column
-// moves under the main one at full width (#473), so a 1280px window keeps them side by side (#477).
+// wide enough to hold them; its Goal sections follow in a row of their own,
+// spanning both columns and the gap (#713), 24px under the main column as
+// they read inside it before. Under 960px of the page's content width — a
+// container query on the page body, so the sidebar counts — the page is one
+// column, the narrow one under the Goal sections at full width, 40px apart
+// (#473), so a 1280px window keeps them side by side (#477).
 func TestReportDraftColumnsStackUnder960pxStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1342,20 +1345,24 @@ func TestReportDraftColumnsStackUnder960pxStyles(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
 	doc := parsePage(t, page)
-	main, side := findByTestID(t, doc, "report-draft"), findByTestID(t, doc, "draft-side")
+	main, goals, side := findByTestID(t, doc, "report-draft"), findByTestID(t, doc, "report-goals"), findByTestID(t, doc, "draft-side")
 	body := main.Parent
-	if side.Parent != body || !slices.Contains(strings.Fields(attrOf(body, "class")), "rp-draft-page") || attrOf(body.Parent, "class") != "page" {
-		t.Fatalf("the main and narrow columns aren't the page body's .rp-draft-page's own: %s", renderNode(body))
+	if side.Parent != body || goals.Parent != body || !slices.Contains(strings.Fields(attrOf(body, "class")), "rp-draft-page") || attrOf(body.Parent, "class") != "page" {
+		t.Fatalf("the main and narrow columns and the Goal sections aren't the page body's .rp-draft-page's own: %s", renderNode(body))
 	}
-	if !precedes(main, side) {
-		t.Errorf("the narrow column comes before the main one, so it wouldn't stack under it")
+	if !precedes(main, goals) || !precedes(goals, side) {
+		t.Errorf("the Goal sections don't come between the main and narrow columns, so they wouldn't stack in that order")
 	}
+	assertReportsCarriesClass(t, "the narrow column", side, "rp-side")
+	assertReportsCarriesClass(t, "the Goal sections", goals, "rp-goals")
 
 	styles := between(t, page, "<style>", "</style>")
 	for sel, wants := range map[string][]string{
 		".page:has(>.rp-draft-page)": {"container:rp-draft/inline-size", "max-width:1200px"},
-		".rp-draft-page":             {"display:grid", "grid-template-columns:minmax(0,780px) minmax(0,300px)", "gap:56px"},
+		".rp-draft-page":             {"display:grid", "grid-template-columns:minmax(0,780px) minmax(0,300px)", "gap:24px 56px"},
 		".rp-draft-page>*":           {"min-width:0"},
+		".rp-draft-page>.rp-side":    {"grid-column:2", "grid-row:1"},
+		".rp-draft-page>.rp-goals":   {"grid-column:1/-1", "grid-row:2"},
 	} {
 		decls, ok := ruleFor(styles, sel)
 		for _, want := range wants {
@@ -1368,6 +1375,8 @@ func TestReportDraftColumnsStackUnder960pxStyles(t *testing.T) {
 	if decls, ok := ruleFor(narrow, ".rp-draft-page"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
 		t.Errorf("under 960px .rp-draft-page{%s} isn't one full-width column", decls)
 	}
+	assertReportsRuleDeclares(t, narrow, ".rp-draft-page>.rp-side", "grid-column:auto", "grid-row:auto", "margin-top:16px")
+	assertReportsRuleDeclares(t, narrow, ".rp-draft-page>.rp-goals", "grid-row:auto")
 }
 
 // The draft's History hangs its entries off a rule, each on a marker: the
@@ -1512,9 +1521,11 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 	if decls, ok := ruleFor(css, ".label"); !ok || !strings.Contains(decls, "font-size:var(--text-label)") || !strings.Contains(decls, "color:var(--color-ink-muted)") {
 		t.Errorf(".label{%s} isn't a muted label at --text-label", decls)
 	}
-	for name, c := range map[string]struct{ url, column string }{
-		"draft":       {fmt.Sprintf("%s/reports/%d", ts.URL, def.ID), "rp-main"},
-		"publication": {fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID), "rp-read"},
+	// The draft reads its Goal sections in .rp-goals, spanning under its
+	// sidebar, and the rest of the Report in .rp-main (#713).
+	for name, c := range map[string]struct{ url, column, goals string }{
+		"draft":       {fmt.Sprintf("%s/reports/%d", ts.URL, def.ID), "rp-main", "rp-goals"},
+		"publication": {fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID), "rp-read", "rp-read"},
 	} {
 		page := getBody(t, client, c.url)
 		doc := parsePage(t, page)
@@ -1522,7 +1533,11 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 		if len(column) != 1 {
 			t.Fatalf("%s has %d .%s columns, want 1", name, len(column), c.column)
 		}
-		if heading := findByTestID(t, findByTestID(t, column[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
+		goals := findAll(doc, func(n *html.Node) bool { return slices.Contains(strings.Fields(attrOf(n, "class")), c.goals) })
+		if len(goals) != 1 {
+			t.Fatalf("%s has %d .%s columns, want 1", name, len(goals), c.goals)
+		}
+		if heading := findByTestID(t, findByTestID(t, goals[0], "needs-attention"), "needs-attention-count").Parent; heading.Data != "h2" || heading.Parent.Data != "section" {
 			t.Errorf("%s: the Exceptions heading isn't its section's own h2: %s", name, renderNode(heading))
 		}
 		// The manager composes the draft's narrative under the composer's
@@ -1548,6 +1563,8 @@ func TestReportHeadingScaleStyles(t *testing.T) {
 			".rp-head h1":                  {"font-size:26px", "font-weight:700"},
 			"." + c.column + " h2":         {"font-size:18px", "font-weight:650"},
 			"." + c.column + " section>h2": {"border-top:1px solid var(--color-border)", "margin-top:20px"},
+			"." + c.goals + " h2":          {"font-size:18px", "font-weight:650"},
+			"." + c.goals + " section>h2":  {"border-top:1px solid var(--color-border)", "margin-top:20px"},
 			".rp-curation-head":            {"border-top:1px solid var(--color-border)", "margin-top:20px"},
 			".rp-exceptions>h2>.num":       {"font-size:var(--text-body)"},
 			".rp-exceptions>h2+.rp-block":  {"border-top:none"},
@@ -4316,12 +4333,13 @@ func TestDimensionsRowRefusalSitsUnderItsInputStyles(t *testing.T) {
 	}
 }
 
-// An exception block's story and facts rail are two columns, the rail the
-// narrower, ruled off by a hairline; under 720px wide the rail stacks under
-// the story, ruled off above it instead, and so it does in a block too narrow
-// for both. The block's Status
-// leads its story a step above the body's size, and its title reads in the
-// ink, not a link's colour (#712, TestReportBlockLaysOutAStoryBesideAFactsRail).
+// An exception block's story and facts rail are two columns, the story at
+// most 680px and the rail at most 320px, ruled off by a hairline; under 720px
+// wide the rail stacks under the story, ruled off above it instead, and so it
+// does in a block too narrow for both. The block's Status leads its story a
+// step above the body's size, and its title reads in the ink, not a link's
+// colour, until hovered, when it turns the links' teal, its rule beating the
+// ink's (#712, #713, TestReportBlockLaysOutAStoryBesideAFactsRail).
 func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
 	t.Parallel()
 
@@ -4342,10 +4360,12 @@ func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
 	assertReportsCarriesClass(t, "the title", headingNamed(block, g.Title), "rp-card-title")
 
 	styles := reportsStyleSheetIn(doc)
-	assertReportsRuleDeclares(t, styles, ".rp-cols", "display:grid", "grid-template-columns:minmax(0,1fr) minmax(0,220px)")
+	assertReportsRuleDeclares(t, styles, ".rp-cols", "display:grid", "grid-template-columns:minmax(0,680px) minmax(0,320px)")
 	assertReportsRuleDeclares(t, styles, ".rp-rail", "border-left:1px solid var(--color-border)")
 	assertReportsRuleDeclares(t, styles, ".rp-lead-text", "font-size:calc(var(--text-body) + 2px)")
 	assertReportsRuleDeclares(t, styles, ".rp-card-title>a", "color:var(--color-ink)")
+	// .rp-card-title>a:hover is (0,2,1), over .rp-card-title>a's (0,1,1).
+	assertReportsRuleDeclares(t, styles, ".rp-card-title>a:hover", "color:var(--color-primary-strong)")
 	for _, query := range []string{"@media (max-width:720px)", "@container rp-block (max-width:34rem)"} {
 		narrow := mediaBlock(t, styles, query)
 		assertReportsRuleDeclares(t, narrow, ".rp-cols", "grid-template-columns:minmax(0,1fr)")
