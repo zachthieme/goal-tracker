@@ -1587,7 +1587,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 
 // reportBlockMilestones is an exception block's Milestones, full width under
 // its story and rail: headed "Milestones" with a summary of their marks
-// (reportMilestoneSummary), then one row each of three aligned columns, its
+// (reportMilestoneSummary), when any counts, then one row each of three aligned columns, its
 // mark, its date, and its name, in the order the facts list them. The date
 // shows the date it last slipped from struck through beside it and, once it
 // slipped more than once, the count under it ("3 slips"); a Removed
@@ -1597,7 +1597,9 @@ templ reportBlockMilestones(label string, marks []domain.ReportMilestoneMark, d 
 	<section class="rp-ms">
 		<div class="rp-ms-head">
 			<h4 class="label">{ label }</h4>
-			<span data-testid="report-milestone-summary" class="small muted">{ reportMilestoneSummary(marks) }</span>
+			if summary := reportMilestoneSummary(marks); summary != "" {
+				<span data-testid="report-milestone-summary" class="small muted">{ summary }</span>
+			}
 		</div>
 		<ul data-testid="report-milestones" class="rp-ms-rows">
 			for _, m := range marks {
@@ -1636,7 +1638,7 @@ templ reportBlockMilestones(label string, marks []domain.ReportMilestoneMark, d 
 // reportMilestoneSummary sums up a block's Milestones by their marks: how
 // many of them are Done, out of all but the Removed, then how many are
 // Overdue and how many Slipped, each only when there are some: "1 of 5 done ·
-// 1 overdue · 1 slipped".
+// 1 overdue · 1 slipped". It is "" when none counts, every one Removed.
 func reportMilestoneSummary(marks []domain.ReportMilestoneMark) string {
 	var total, done, overdue, slipped int
 	for _, m := range marks {
@@ -1651,6 +1653,9 @@ func reportMilestoneSummary(marks []domain.ReportMilestoneMark) string {
 			slipped++
 		}
 		total++
+	}
+	if total == 0 {
+		return ""
 	}
 	summary := fmt.Sprintf("%d of %d done", done, total)
 	if overdue > 0 {

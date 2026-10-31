@@ -5845,3 +5845,30 @@ func TestReportMilestonesAreRowsUnderASummary(t *testing.T) {
 		}
 	}
 }
+
+// A block whose Milestones are all Removed has nothing for a summary to
+// count, so its Milestones show no summary, not "0 of 0 done", and still list
+// the Removed rows (#713).
+func TestReportMilestonesAllRemovedShowNoSummary(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	b.Milestones = []domain.ReportMilestone{
+		{Milestone: domain.Milestone{ID: 46, GoalID: g.ID, Name: "Launch party", TargetDate: time.Date(2026, 5, 20, 0, 0, 0, 0, time.UTC), Status: domain.MilestoneRemoved, RemovedReason: "Budget cut."}},
+		{Milestone: domain.Milestone{ID: 47, GoalID: g.ID, Name: "Swag", TargetDate: time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC), Status: domain.MilestoneRemoved, RemovedReason: "Out of stock."}},
+	}
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		block := reportBlockOf(t, parsePage(t, page), g)
+		if hasTestID(block, "report-milestone-summary") {
+			t.Errorf("%s: an all-Removed block shows a summary, %q", name, textOf(findByTestID(t, block, "report-milestone-summary")))
+		}
+		if got := textsOf(findAllByTestID(block, "report-milestone")); !slices.Equal(got, []string{"Removed May 20, 2026 Launch party — Budget cut.", "Removed May 25, 2026 Swag — Out of stock."}) {
+			t.Errorf("%s: the Milestones' rows read %q, want both Removed rows", name, got)
+		}
+	}
+}
