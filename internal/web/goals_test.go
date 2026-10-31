@@ -8395,3 +8395,24 @@ func TestARefusedMilestoneOrMetricEditWithNoRowToComeBackToAnswersWithTheRefusal
 		assertRefusalPage(t, page, "Can't change Goal", c.reason, fmt.Sprintf("/goals/%d", c.goal.ID))
 	}
 }
+
+// The Goal page's Add Milestone asks what will exist, and for whom, when the
+// Milestone is done: a hint under its name that describes it, beside an
+// example name as its placeholder (#712).
+func TestGoalPageAddMilestoneAsksWhatWillBeDelivered(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Sell storage", "Storage is our largest upsell.")
+	ts := newServer(t, h)
+
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, g)+"?open=milestones")
+	name := formField(t, findByTestID(t, page, "add-milestone"), "name")
+	if want := "What will exist, and for whom, when this is done"; name.Description != want {
+		t.Errorf("Add Milestone's name is described by %q, want %q: %s", name.Description, want, renderNode(name.Node.Parent))
+	}
+	if want := "e.g. Storage add-on on sale to every existing customer"; name.Placeholder != want {
+		t.Errorf("Add Milestone's name has the placeholder %q, want %q", name.Placeholder, want)
+	}
+}

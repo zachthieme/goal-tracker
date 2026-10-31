@@ -795,7 +795,10 @@ templ goalPage(current *domain.Account, v goalView) {
 						if v.opens(formMilestones) {
 							@openGoalForm(v, formMilestones, "Add Milestone") {
 								<form data-testid="add-milestone" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
-									<input type="text" name="name" value={ v.FormInput.Get("name") } aria-label="Milestone name" placeholder="Milestone name" required autofocus/>
+									<span class="gp-milestone-name">
+										<input type="text" name="name" value={ v.FormInput.Get("name") } aria-label="Milestone name" placeholder={ milestoneNameExample } aria-describedby="add-milestone-name-hint" required autofocus/>
+										@milestoneNameHint("add-milestone-name-hint")
+									</span>
 									<input type="date" name="target_date" value={ v.FormInput.Get("target_date") } aria-label="Milestone date" required/>
 									<button type="submit" class="btn sm">Add Milestone</button>
 								</form>
@@ -1117,6 +1120,8 @@ templ goalPageStyles() {
 		.gp-block{display:flex;flex-direction:column;gap:12px}
 		.gp-block>.help{align-self:flex-start}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+		.gp-inline:has(>.gp-milestone-name){align-items:flex-start}
+		.gp-milestone-name{display:flex;flex-direction:column;gap:4px;flex:1 1 240px;min-width:0}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:var(--text-secondary);font-weight:600}
 		.rp-thread{border-left:1px solid var(--color-border);padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
@@ -1579,6 +1584,21 @@ templ struckDates(current time.Time, prior []time.Time, dates displayDates) {
 	for _, d := range domain.StruckDates(current, prior) {
 		<del>{ dates.date(d) }</del>{ " " }
 	}
+}
+
+// What every field naming a Milestone asks of the name, under the field, and
+// the example name it holds as its placeholder: a name that says what will be
+// delivered (#712).
+const (
+	milestoneNameHintText = "What will exist, and for whom, when this is done"
+	milestoneNameExample  = "e.g. Storage add-on on sale to every existing customer"
+)
+
+// milestoneNameHint is the hint under a field naming a Milestone
+// (milestoneNameHintText), with the id the field names in its
+// aria-describedby.
+templ milestoneNameHint(id string) {
+	<small id={ id } data-testid="milestone-name-hint" class="hint">{ milestoneNameHintText }</small>
 }
 
 // milestoneMarkBadge is a Milestone's mark (domain.MilestoneMarkOf) as a

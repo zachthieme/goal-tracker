@@ -1924,9 +1924,9 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	}
 }
 
-// The print page lays a Goal block out as the screen does (#475): Why it
-// matters and Status as the facts of a description list, and the Path to
-// Green in a box of its own. An overdue Path to Green says Overdue in its
+// The print page lays a Goal block out as the screen does (#475, #712): the
+// Status leading its story, the Path to Green in a box of its own, then Why
+// it matters. An overdue Path to Green says Overdue in its
 // badge, and one on time doesn't (#478). The label column, and the box's
 // tint, are TestPrintPageLaysOutTheGoalBlockAsOnScreenStyles.
 func TestPrintPageLaysOutTheGoalBlockAsOnScreen(t *testing.T) {
@@ -1950,13 +1950,12 @@ func TestPrintPageLaysOutTheGoalBlockAsOnScreen(t *testing.T) {
 		{yellow, true},
 	} {
 		block := reportBlockOf(t, doc, c.goal)
-		for _, id := range []string{"report-why-it-matters", "report-status"} {
-			dd := findByTestID(t, block, id)
-			if dl := dd.Parent.Parent; dd.Data != "dd" || dl == nil || dl.Data != "dl" {
-				t.Errorf("%q's %s isn't a fact of a description list: %s", c.goal.Title, id, renderNode(dd.Parent))
-			}
-		}
+		story := findByTestID(t, block, "report-story")
+		status, why := findByTestID(t, story, "report-status"), findByTestID(t, story, "report-why-it-matters")
 		box := findByTestID(t, block, "report-path-box")
+		if !within(box, story) || !precedes(status, box) || !precedes(box, why) {
+			t.Errorf("%q's story doesn't read Status, the Path to Green box, then Why it matters: %s", c.goal.Title, renderNode(story))
+		}
 		if badge := hasTestID(box, "path-overdue"); badge != c.overdue {
 			t.Errorf("%q's Path to Green box shows the Overdue badge %v, want %v: %s", c.goal.Title, badge, c.overdue, renderNode(box))
 		}
@@ -2047,7 +2046,7 @@ var reportMarkedMilestones = []string{
 	"Done Feb 1, 2026 Pilot",
 	"New Mar 10, 2026 Docs",
 	"Slipped Apr 12, 2026 Apr 2, 2026 Beta",
-	"Slipped Apr 20, 2026 Mar 20, 2026 · 3 slips · Vendor sign-off",
+	"Slipped Apr 20, 2026 Mar 20, 2026 3 slips Vendor sign-off",
 	"May 1, 2026 Runbook",
 	"Removed May 20, 2026 Launch party — Budget cut.",
 	"Jun 15, 2026 GA launch",
@@ -4810,11 +4809,12 @@ func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T)
 				if got := textsOf(findAllByTestID(path, "report-back-to-green-slips")); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
 					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), renderNode(path))
 				}
-				if !strings.HasSuffix(runningText(path), ")") {
-					t.Errorf("%s's back-to-Green date does not close its parenthesis: %q", name, runningText(path))
+				head := findByTestID(t, path, "report-path-head")
+				if plan := findByTestID(t, path, "report-path-plan"); runningText(plan) != "Hire counsel." {
+					t.Errorf("%s's plan reads %q, want the plan alone, its date in the header line", name, runningText(plan))
 				}
-				if want := "· " + tc.count + ")"; tc.count != "" && !strings.HasSuffix(runningText(path), want) {
-					t.Errorf("%s's path doesn't end %q: %q", name, want, runningText(path))
+				if want := "· " + tc.count; tc.count != "" && !strings.HasSuffix(runningText(head), want) {
+					t.Errorf("%s's header line doesn't end %q: %q", name, want, runningText(head))
 				}
 			}
 		})
@@ -4910,8 +4910,8 @@ func TestPublicationFrozenWithAPriorBackToGreenDateEqualToItsOwnStrikesNoneOverH
 		if hasTestID(path, "report-back-to-green-slips") || strings.Contains(runningText(path), "slip") {
 			t.Errorf("%s counts the slips: %q", name, runningText(path))
 		}
-		if want := "by Jun 9, 2026)"; !strings.HasSuffix(runningText(path), want) {
-			t.Errorf("%s's path doesn't end %q: %q", name, want, runningText(path))
+		if want := "by Jun 9, 2026"; !strings.HasSuffix(runningText(findByTestID(t, path, "report-path-head")), want) {
+			t.Errorf("%s's header line doesn't end %q: %q", name, want, runningText(path))
 		}
 	}
 }
@@ -5496,13 +5496,22 @@ func TestARefusedReportActionAnswersWithTheRefusalPage(t *testing.T) {
 // The publication page shows every fact a publication lists, and every fact
 // of each of its blocks, its label and its words, as the Markdown export does
 // (testsupport.CheckShowsEveryReportFact); so does its Print page, but for the
-// Health counts, which it leaves out.
+// Health counts, which it leaves out. The Owner's explanation shows its words
+// under the label the page composes from both Healths, in place of the
+// fact's own (#712, TestReportExplanationIsLabelledWithBothHealths).
 func TestReportPageAndPrintShowEveryReportFact(t *testing.T) {
 	t.Parallel()
 
 	pub := testsupport.ReportFactParityPublication()
-	testsupport.CheckShowsEveryReportFact(t, "page", textOf(parsePage(t, web.RenderPublicationContent(pub, time.UTC))))
-	testsupport.CheckShowsEveryReportFact(t, "Print page", textOf(parsePage(t, web.RenderPublicationPrint(pub, time.UTC))), domain.ReportFactHealthCounts)
+	page := textOf(parsePage(t, web.RenderPublicationContent(pub, time.UTC)))
+	printed := textOf(parsePage(t, web.RenderPublicationPrint(pub, time.UTC)))
+	testsupport.CheckShowsEveryReportFact(t, "page", page, domain.ReportFactExplanation)
+	testsupport.CheckShowsEveryReportFact(t, "Print page", printed, domain.ReportFactHealthCounts, domain.ReportFactExplanation)
+	for output, text := range map[string]string{"page": page, "Print page": printed} {
+		if want := "Why Red when its Goals roll up Yellow The fit-out crew is ahead."; !strings.Contains(text, want) {
+			t.Errorf("the %s lacks the Owner's explanation under both Healths, %q:\n%s", output, want, text)
+		}
+	}
 }
 
 // reportsGoldenFixture is four Report Definitions, each in a different place
@@ -5583,4 +5592,256 @@ func TestReportsListDraftHistoryAndNarrativeSavedRenderAsGolden(t *testing.T) {
 		t.Fatalf("save narrative: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
 	assertGolden(t, "report-narrative-saved.golden.html", body)
+}
+
+// storyRailBlock is an exception block holding every fact a block can show,
+// laid out by hand: a Yellow Goal, 9 weeks off Green and Red at the
+// baseline, whose Rolled-up Health is Red, with Milestones marked Done,
+// Overdue, Slipped, New, unmarked and Removed (#712).
+func storyRailBlock() (domain.Goal, domain.ReportBlock) {
+	boss := domain.Account{ID: 1, Email: "boss@example.com", Name: "Bo Boss"}
+	mia := domain.Account{ID: 2, Email: "mia@example.com", Name: "Mia Chen"}
+	day := func(m time.Month, d int) time.Time { return time.Date(2026, m, d, 0, 0, 0, 0, time.UTC) }
+	g := domain.Goal{
+		ID: 21, Title: "Storage add-on for every customer", WhyItMatters: "Storage is our largest upsell.",
+		Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: day(time.June, 30),
+	}
+	milestone := func(id int64, name string, date time.Time, status string) domain.Milestone {
+		return domain.Milestone{ID: id, GoalID: g.ID, Name: name, TargetDate: date, Status: status}
+	}
+	return g, domain.ReportBlock{
+		Goal: g, Health: domain.HealthYellow, PriorHealth: domain.HealthRed, RunOffGreenWeeks: 9,
+		Changes:       []string{"Improved to Yellow"},
+		Badges:        []string{domain.BadgeNewDate},
+		PriorDueDates: []time.Time{day(time.May, 31)},
+		ScheduleConflicts: []domain.ReportScheduleConflict{
+			{GoalID: 31, Title: "Bill for storage", Owner: mia, Due: day(time.May, 15)},
+		},
+		ContributesTo:  []domain.LinkedGoal{{GoalID: 32, Title: "Grow revenue", Health: domain.HealthRed}},
+		Fields:         []domain.FieldValue{{Field: domain.Field{ID: 1, Name: "Region", Type: domain.FieldShortText}, Value: "EMEA"}},
+		Status:         "Billing is wired; pricing awaits sign-off.",
+		PathToGreen:    "Ship pricing once finance signs off.",
+		PathTargetDate: day(time.March, 1), PriorPathTargetDates: []time.Time{day(time.February, 1), day(time.February, 15)},
+		AsksForHelp: true, AskAddressee: &mia,
+		Milestones: []domain.ReportMilestone{
+			{Milestone: milestone(41, "Billing wired", day(time.January, 15), domain.MilestoneDone)},
+			{Milestone: milestone(42, "Pricing signed off", day(time.February, 20), domain.MilestonePlanned)},
+			{Milestone: milestone(43, "Storage add-on on sale to every existing customer", day(time.April, 10), domain.MilestonePlanned), PriorDates: []time.Time{day(time.March, 20), day(time.April, 1)}},
+			{Milestone: milestone(44, "Docs", day(time.April, 20), domain.MilestonePlanned), New: true},
+			{Milestone: milestone(45, "Runbook", day(time.May, 1), domain.MilestonePlanned)},
+			{Milestone: domain.Milestone{ID: 46, GoalID: g.ID, Name: "Launch party", TargetDate: day(time.May, 20), Status: domain.MilestoneRemoved, RemovedReason: "Budget cut."}},
+		},
+		Metrics: []domain.ReportMetric{{
+			Metric:  domain.Metric{ID: 51, Name: "Attach rate", Unit: "percent", Direction: domain.MetricUp, Baseline: 104, Target: 112, TargetDate: day(time.May, 11)},
+			Current: 109.69, Read: true,
+		}},
+		RolledUp:    domain.RolledUpHealth{Health: domain.HealthRed, Present: true, ActiveChildren: 3, RedChildren: 1},
+		Behind:      []domain.LinkedGoal{{GoalID: 33, Title: "Price the add-on", Health: domain.HealthRed, InReport: true}, {GoalID: 34, Title: "Write the docs", Health: domain.HealthGreen}},
+		Explanation: "Pricing is the only blocker and finance meets Monday.",
+	}
+}
+
+// An exception block's head is one line: its Health as a pill holding its
+// Run off Green and the Health it was at the baseline ("Yellow · 9 wks · was
+// Red"), then its title as the block's heading, linking to its Goal, then
+// its badges (#712).
+func TestReportBlockHeadLeadsWithAHealthPillThenTheTitle(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		block := reportBlockOf(t, parsePage(t, page), g)
+		pill := findByTestID(t, block, "report-health").Parent
+		if got := textOf(pill); got != "Yellow · 9 wks · was Red" {
+			t.Errorf("%s: the head's Health pill reads %q, want %q", name, got, "Yellow · 9 wks · was Red")
+		}
+		title := headingNamed(block, g.Title)
+		if title == nil || title.Data != "h3" {
+			t.Fatalf("%s: the block has no h3 heading %q: %s", name, g.Title, renderNode(block))
+		}
+		if link := linkTo(title, fmt.Sprintf("/goals/%d", g.ID)); link == nil || textOf(link) != g.Title {
+			t.Errorf("%s: the title doesn't link to its Goal: %s", name, renderNode(title))
+		}
+		if title.Parent != pill.Parent || !precedes(pill, title) {
+			t.Errorf("%s: the Health pill and then the title aren't one line of the head: %s", name, renderNode(pill.Parent))
+		}
+		if strings.Contains(textOf(title.Parent), b.Goal.Owner.Name) {
+			t.Errorf("%s: the head still shows the Owner, which the rail holds: %s", name, textOf(title.Parent))
+		}
+		badge := findByTestID(t, block, "report-badge")
+		if !precedes(title, badge) || textOf(badge) != domain.BadgeNewDate {
+			t.Errorf("%s: the badges don't follow the title: %s", name, renderNode(pill.Parent))
+		}
+	}
+}
+
+// An exception block lays its facts out as a story beside a facts rail:
+// under the head, full width, what changed, its Schedule conflict and the
+// Goals it contributes to; then the story, of its status, the Path to Green
+// box with the Ask for help, Why it matters and the Owner's explanation; and
+// the rail, of its Owner and Lifecycle, due date, Fields, Metrics, Rolled-up
+// Health and the Goals behind it; then its Milestones, full width under both
+// (#712). Every fact the block shows, it shows on the publication and its
+// print page alike.
+func TestReportBlockLaysOutAStoryBesideAFactsRail(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		block := reportBlockOf(t, parsePage(t, page), g)
+		story, rail := findByTestID(t, block, "report-story"), findByTestID(t, block, "report-rail")
+		if story.Parent != rail.Parent || !precedes(story, rail) {
+			t.Fatalf("%s: the story and then the rail aren't two columns of one row: %s", name, renderNode(block))
+		}
+		for column, ids := range map[*nethtml.Node][]string{
+			story: {"report-status", "report-path-box", "report-ask-for-help", "report-why-it-matters", "report-health-explanation"},
+			rail:  {"report-owner", "report-due", "report-fields", "report-metrics", "report-rollup", "report-behind-it"},
+		} {
+			var prev *nethtml.Node
+			for _, id := range ids {
+				n := findByTestID(t, block, id)
+				if !within(n, column) {
+					t.Errorf("%s: %s isn't in the %s column", name, id, attrOf(column, "data-testid"))
+				}
+				if prev != nil && !precedes(prev, n) {
+					t.Errorf("%s: %s comes before %s", name, id, attrOf(prev, "data-testid"))
+				}
+				prev = n
+			}
+		}
+		if owner := findByTestID(t, block, "report-owner").Parent; textOf(owner) != "Bo Boss · Active" {
+			t.Errorf("%s: the rail's Owner reads %q, want the Owner then the Lifecycle", name, textOf(owner))
+		}
+		for _, id := range []string{"report-changes", "report-schedule-conflicts", "report-contributes-to"} {
+			if n := findByTestID(t, block, id); !precedes(n, story.Parent) || within(n, story.Parent) {
+				t.Errorf("%s: %s doesn't come before both columns", name, id)
+			}
+		}
+		if ms := findByTestID(t, block, "report-milestones"); within(ms, story.Parent) || !precedes(rail, ms) {
+			t.Errorf("%s: the Milestones aren't under both columns", name)
+		}
+		rows := findAll(findByTestID(t, block, "report-behind-it"), func(n *nethtml.Node) bool { return n.Data == "li" })
+		if got := textsOf(rows); !slices.Equal(got, []string{"Red Price the add-on ↓", "Green Write the docs"}) {
+			t.Errorf("%s: Supported by lists %q, one Goal a line with its Health, want %q", name, got, []string{"Red Price the add-on ↓", "Green Write the docs"})
+		}
+	}
+}
+
+// The Path to Green box opens with a header line: "Path to Green" and its
+// back-to-Green date as drafted, the date it last slipped from struck
+// through, its count of slips and Overdue; the plan reads under it on its own,
+// none of them in it (#712).
+func TestReportPathToGreenHeadsTheBoxWithItsDate(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		box := findByTestID(t, reportBlockOf(t, parsePage(t, page), g), "report-path-box")
+		head, plan := findByTestID(t, box, "report-path-head"), findByTestID(t, box, "report-path-plan")
+		if want := "Path to Green back to Green by Mar 1, 2026 Feb 15, 2026 · 2 slips Overdue"; textOf(head) != want {
+			t.Errorf("%s: the box's header line reads %q, want %q", name, textOf(head), want)
+		}
+		if got := struckThrough(head); !slices.Equal(got, []string{"Feb 15, 2026"}) {
+			t.Errorf("%s: the header line strikes through %q, want the date it last slipped from", name, got)
+		}
+		for _, id := range []string{"report-back-to-green-slips", "path-overdue"} {
+			if !hasTestID(head, id) {
+				t.Errorf("%s: the header line has no %s: %s", name, id, renderNode(head))
+			}
+		}
+		if textOf(plan) != b.PathToGreen || !precedes(head, plan) {
+			t.Errorf("%s: the plan reads %q under the header line, want %q alone", name, textOf(plan), b.PathToGreen)
+		}
+	}
+}
+
+// The Owner's explanation is labelled with both Healths it explains, the
+// block's and its Rolled-up Health: "Why Yellow when its Goals roll up Red".
+// Shown with no Rolled-up Health beside it, only a count of children
+// Check-in overdue, it keeps "Why the Health differs" (#712).
+func TestReportExplanationIsLabelledWithBothHealths(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	overdueOnly := b
+	overdueOnly.Goal.ID, overdueOnly.Goal.Title = 22, "Open Tokyo"
+	overdueOnly.RolledUp = domain.RolledUpHealth{ActiveChildren: 2, CheckinOverdueChildren: 1}
+	pub := reportBlocksPublication(at, b, overdueOnly)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		doc := parsePage(t, page)
+		for _, c := range []struct {
+			goal domain.Goal
+			want string
+		}{
+			{g, "Why Yellow when its Goals roll up Red"},
+			{overdueOnly.Goal, "Why the Health differs"},
+		} {
+			label := findByTestID(t, reportBlockOf(t, doc, c.goal), "report-health-explanation-label")
+			if textOf(label) != c.want {
+				t.Errorf("%s: %q's explanation is labelled %q, want %q", name, c.goal.Title, textOf(label), c.want)
+			}
+		}
+	}
+}
+
+// An exception block's Milestones are full width under its columns, headed
+// with a summary of their marks that leaves the Removed out: "1 of 5 done · 1
+// overdue · 1 slipped". Each is a row of its mark, its date and its name, in
+// that order, the date with the one it last slipped from struck through and
+// its count of slips; one with no mark leaves its mark empty (#712).
+func TestReportMilestonesAreRowsUnderASummary(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	g, b := storyRailBlock()
+	pub := reportBlocksPublication(at, b)
+	for name, page := range map[string]string{
+		"publication": web.RenderPublicationContent(pub, time.UTC),
+		"print":       web.RenderPublicationPrint(pub, time.UTC),
+	} {
+		block := reportBlockOf(t, parsePage(t, page), g)
+		if got := textOf(findByTestID(t, block, "report-milestone-summary")); got != "1 of 5 done · 1 overdue · 1 slipped" {
+			t.Errorf("%s: the Milestones' summary reads %q, want %q", name, got, "1 of 5 done · 1 overdue · 1 slipped")
+		}
+		var rows [][]string
+		for _, li := range findAllByTestID(block, "report-milestone") {
+			var cells []string
+			for c := li.FirstChild; c != nil; c = c.NextSibling {
+				if c.Type == nethtml.ElementNode {
+					cells = append(cells, textOf(c))
+				}
+			}
+			rows = append(rows, cells)
+		}
+		want := [][]string{
+			{"Done", "Jan 15, 2026", "Billing wired"},
+			{"Overdue", "Feb 20, 2026", "Pricing signed off"},
+			{"Slipped", "Apr 10, 2026 Apr 1, 2026 2 slips", "Storage add-on on sale to every existing customer"},
+			{"New", "Apr 20, 2026", "Docs"},
+			{"", "May 1, 2026", "Runbook"},
+			{"Removed", "May 20, 2026", "Launch party — Budget cut."},
+		}
+		if !slices.EqualFunc(rows, want, slices.Equal) {
+			t.Errorf("%s: the Milestones' rows read\n %q\nwant mark, date and name\n %q", name, rows, want)
+		}
+	}
 }

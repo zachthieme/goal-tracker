@@ -3274,3 +3274,52 @@ func TestAGoalFormRefusedForWhoIsAskingIsTheRefusalPage(t *testing.T) {
 		assertRefusalPage(t, page, c.heading, c.reason, c.back)
 	}
 }
+
+// milestoneNameHint is what every Milestone name field asks of the name, and
+// milestoneNameExample the example name it shows as its placeholder (#712).
+const (
+	milestoneNameHint    = "What will exist, and for whom, when this is done"
+	milestoneNameExample = "e.g. Storage add-on on sale to every existing customer"
+)
+
+// Each Milestone name on the Goal form asks what will exist, and for whom,
+// when it is done: a hint under the input that describes it, beside an
+// example name as its placeholder, on a row, on the row's <template> and on
+// the editor's script clones. A refused Name is described by its error as
+// well as the hint. A Metric's name asks nothing of the kind (#712).
+func TestGoalFormMilestoneNameAsksWhatWillBeDelivered(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	doc := getPage(t, client, ts.URL+"/goals/new")
+	names := append(formFields(doc, "milestones[0].name"), formFields(doc, "milestones[__i__].name")...)
+	if len(names) != 3 {
+		t.Fatalf("the form has %d Milestone names, want the row's, its <template>'s and the editor's", len(names))
+	}
+	// The row <template> and the editor's carry the same ids, numbered by
+	// script once cloned, so each is read beside its own input.
+	for _, f := range names {
+		hint := findByTestID(t, f.Node.Parent, "milestone-name-hint")
+		if textOf(hint) != milestoneNameHint || attrOf(f.Node, "aria-describedby") != attrOf(hint, "id") || f.Placeholder != milestoneNameExample {
+			t.Errorf("a Milestone name isn't described by the hint under it, %q, with the placeholder %q: %s",
+				milestoneNameHint, milestoneNameExample, renderNode(f.Node.Parent))
+		}
+	}
+	if row := names[0]; row.Description != milestoneNameHint {
+		t.Errorf("the Milestone row's name is described by %q, want %q", row.Description, milestoneNameHint)
+	}
+	if metric := formField(t, doc, "metrics[0].name"); metric.Description != "" || metric.Placeholder != "" {
+		t.Errorf("a Metric's name asks %q with the placeholder %q, want nothing", metric.Description, metric.Placeholder)
+	}
+
+	refused := parsePage(t, refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{"milestones[0].date": "2026-11-02"})))
+	name := formField(t, refused, "milestones[0].name")
+	if attrOf(name.Node, "aria-invalid") != "true" || !strings.HasPrefix(name.Description, milestoneNameHint+" ") ||
+		name.Description == milestoneNameHint+" " {
+		t.Errorf("a refused Milestone name is described by %q, want the hint and then why it was refused: %s", name.Description, renderNode(name.Node.Parent))
+	}
+}

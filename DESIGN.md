@@ -276,7 +276,7 @@ A Report, on its draft and its publication, reads on its own four levels
 | 1 | The Report's name (`.rp-head h1`) | 26 / 1.2, 24 at 600px and below | 700 |
 | 2 | Its section headings (`.rp-main h2`, `.rp-read h2`): Open Action Items, Narrative, Exceptions, On track, Goals that entered or left | 18 / 1.3, under a full-width 1px `--color-border` rule, about 44px below what comes before | 650 |
 | 3 | A Goal block's title (`.rp-card-head h3`) | 16 / 1.4 | 600 |
-| 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
+| 4 | A Goal block's labels (`.label`): Status, Why it matters, the explanation, its rail's Owner, Due, Fields, Metrics, Rolled-up Health and Supported by, and Milestones; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
 
 The Exceptions count sits beside its heading in muted tabular figures at
 `--text-body` (14px, 16px on a touch screen),
@@ -1337,7 +1337,10 @@ and so on).
     picked when it comes back.
     Then the Dimension and Field forms in their groups. Add a Milestone under the
     Milestones table (a name, a date and **Add Milestone**, for the Owner or a
-    Delegate until the Goal is Done or Cancelled). Without script, the Draft
+    Delegate until the Goal is Done or Cancelled); the name holds the example
+    "e.g. Storage add-on on sale to every existing customer" and asks under
+    it, in `.hint`, "What will exist, and for whom, when this is done",
+    which describes it (`milestoneNameHint`, #712). Without script, the Draft
     Highlight form in its section.
   - **Heading links (`.gp-group-head`):** a section or rail group whose form
     opens in place has a small link at the right of its heading, shown only to
@@ -1651,7 +1654,10 @@ and so on).
     then the Planned Milestones as a grid under muted Milestone, Date and
     Status labels (each its name in 600, its date, and Planned, Done or
     Removed, with a reason for a date change and for Removed), then any being
-    added and one blank row, "Add a Milestone".
+    added and one blank row, under the one hint, across the grid, that every
+    new row's name names: "What will exist, and for whom, when this is done".
+    Each new name holds the example "e.g. Storage add-on on sale to every
+    existing customer" (#712).
   - **Lifecycle:** radios in a wrapping row (Keep Active, Put On Hold, Mark
     Done and Cancel; Resume and Cancel for an On Hold Goal), then the Reason
     and, for any Goal not On Hold, the Outcome. With script, a Check-in that
@@ -1792,7 +1798,10 @@ and so on).
     editor below the items, in the Highlight editor's look
     (`itemEditorStyles`: a 2px `--color-border-strong` rule at its left, a
     13px, 600 heading, the fields, and the Save and Cancel row): "New
-    Milestone" asks for Name and Date, the Name two-thirds of the row; "New
+    Milestone" asks for Name and Date, the Name two-thirds of the row, with
+    the example name as its placeholder and the hint "What will exist, and
+    for whom, when this is done" under it, which describes it (as on the
+    rows without script, #712); "New
     Metric" for Name, Unit, Baseline, Target, Target date, and Direction only
     while the target equals the baseline, two to a row. **Save**
     (`.btn.primary.sm`) stays disabled until the server would take what's
@@ -2073,36 +2082,63 @@ and so on).
     - **Exceptions N:** the count beside the heading, 14px muted. Each
       exception is an entry (`.rp-block`), separated from the next by 20px
       of space and one 1px hairline; the first, right under the heading, has
-      no rule of its own. Its
-      head reads Health first: its Health badge with "· 2 wks" and "· was
-      Green" small and muted straight after it (`.rp-health`), then its title
-      (16px, linking to the Goal) over a small muted "Owner · Lifecycle · due
-      Nov 7, 2026", slipped dates struck through, then at the right its other
-      badges (Check-in overdue as the chip, Ownerless in Red, New Date in
-      Yellow, the rest as `badge lc`). At 600px and below, and in a block
-      28rem wide or narrower (a container query), the Health and title keep
-      their line and the badges drop
-      under them; nothing is reordered.
-      Under it sit "**Changed:** …", "**Contributes to:** …" and the Report
-      Definition's Fields. Then its labelled rows (`.rp-facts`, a `dl`): each
-      label a `.label` (12px, 500, `--color-ink-muted`) in a 120px column
-      beside what it labels, 16px apart, rows 8px apart; at 600px and below,
-      and in a block 28rem wide or narrower, the label goes above it. Why it
-      matters and Status come first, as plain text with no tint or box.
+      no rule of its own. It reads as a story beside a facts rail (#712).
+      - **Head (`.rp-card-head`), one line:** the Health as a pill in its
+        tint and ink (`.rp-health` with the Health's `.r`/`.y`/`.g`/`.lc`,
+        `--radius-full`) holding its shape chip and, small, "· 2 wks" and
+        "· was Green"; then the title as the block's `h3` (16px, 600, in
+        `--color-ink`, `.rp-card-title`), linking to the Goal with a link's
+        hover and focus; then at the right its other badges (Check-in
+        overdue as the chip, Ownerless in Red, New Date in Yellow, the rest
+        as `badge lc`). At 600px and below, and in a block 28rem wide or
+        narrower (a container query), the Health and title keep their line
+        and the badges drop under them; nothing is reordered.
+      - **Under the head, full width:** "**Changed:** …", "**Schedule
+        conflict:** …" and "**Contributes to:** …", small.
+      - **Two columns (`.rp-cols`):** the story, then the facts rail at
+        most 220px wide, 24px apart, the rail ruled off by a 1px
+        `--color-border` hairline at its left with 24px inside it. Under
+        720px wide (a media query), and in a block 34rem wide or narrower,
+        the rail stacks under the story, ruled off above it instead.
+      - **The story (`.rp-story`), 16px apart:** the Status as the lead, a
+        small `.label` over it at the body size plus 2px in `--color-ink`
+        (`.rp-lead-text`); the Path to Green box with the Ask for help;
+        Why it matters, its label over it in muted ink; and the Owner's
+        explanation when the block shows it, labelled with both Healths, "Why
+        Yellow when its Goals roll up Red" (the export and the frozen record
+        keep "Why the Health differs", which the label stays without a
+        Health or a Rolled-up Health).
+      - **The facts rail (`.rp-rail`, a `dl`), 13px, items 12px apart:**
+        each a `.label` over its value: Owner, then " · " and the Lifecycle;
+        Due, when the Goal has one, slipped dates struck through; Fields, one
+        to a line; Metrics in their words ("19 against a target of 37 desks
+        by Jun 30, 2026 (baseline 4, up)"); Rolled-up Health with its count;
+        Supported by, one Goal a line with its Health.
+      - **Milestones (`.rp-ms`), full width under both:** a "Milestones"
+        `.label` heading with its summary at the right, small and muted, "1
+        of 5 done · 1 overdue · 1 slipped", the overdue and slipped counts
+        only when there are some and the Removed left out of the total. Then
+        one row each, in the facts' order, of three aligned columns
+        (`.rp-ms-rows`, a grid its rows share through `subgrid`): the mark
+        (empty for none), the date with the one it last slipped from struck
+        through and "3 slips" under it, and the name, wrapping in its own
+        column, a Removed one's struck through with why. In a block 28rem
+        wide or narrower the name goes under its date.
     - **Path to Green, the block's one tinted box (`.rp-tint`):** only on a
       Red or Yellow Goal, in that Health's tint (`.rp-tint-r`,
       `--health-r-bg`, or `.rp-tint-y`, `--health-y-bg`), `--radius-md`,
-      12px × 16px padding: "**Path to Green:** …" with its back-to-Green date,
-      the label in the Health's ink (`--health-r-ink` / `--health-y-ink`),
-      and any **Asks for help** with it. The back-to-Green date shows the date
-      it last slipped from in the Run off Green struck through, and " · n
-      slips" once it slipped more than once, as a Milestone's date does ("back
-      to Green by Oct 3, 2026 ~~Sep 12, 2026~~ · 3 slips"). A Path to Green past its date keeps
-      the Health's tint and carries a Red **Overdue** badge. A Green Goal's
-      block, and one that is only Check-in overdue, has no tinted box.
-      The rest of the labelled rows follow: Milestones and Metrics, each a
-      list, Rolled-up Health with its count, Supported by, and Why the Health
-      differs.
+      12px × 16px padding. A header line (`.rp-path-head`) has "PATH TO
+      GREEN" at the left, 12px uppercase in the Health's ink
+      (`--health-r-ink` / `--health-y-ink`), and at the right, 13px, the
+      back-to-Green date as drafted with the date it last slipped from in
+      the Run off Green struck through and " · n slips" once it slipped more
+      than once, as a Milestone's date does ("back to Green by Oct 3, 2026
+      ~~Sep 12, 2026~~ · 3 slips"), each kept whole, wrapping under the label
+      when the box is narrow. The plan reads under it, and any **Asks for
+      help** after that. A Path to Green past its date keeps the Health's
+      tint and carries a Red **Overdue** badge at the end of the header line.
+      A Green Goal's block, and one that is only Check-in overdue, has no
+      tinted box.
     - **On track:** a table with no fill (Health, Goal, Owner, Due) in its own
       scrolling container; at 600px and below each row becomes a ruled grid,
       its Health then the Goal on one line, the Owner and Due under the Goal.
@@ -2461,8 +2497,8 @@ given):
   paper units. The 4px grid doesn't apply.
 - Page margins are 18mm top and bottom and 16mm at the sides.
 - A Goal's Health comes before its title, as on screen: an exception's head
-  reads its Health, its "· 2 wks" and "· was Green", then the title, then the
-  other badges, and a linked Goal reads "[Red] Alpha ledger ↓". Health shows
+  reads its Health as a pill in its tint holding its "· 2 wks" and "· was
+  Green", then the title, then the other badges, and a linked Goal reads "[Red] Alpha ledger ↓". Health shows
   as a badge in its tint and ink, with its shape and its word shown beside it
   (on screen the word is screen-reader text), so it reads without the
   colour. The shape is the screen's drawn `.dot` (Red's octagon, Yellow's
@@ -2473,13 +2509,18 @@ given):
   Overdue or Slipped mark, Ownerless, New Date and a Path to Green's Overdue
   in the Health colour they take on screen, and Check-in overdue in its grey
   chip with a dashed edge. Body text stays black.
-- A Goal block lays out as on screen. Why it matters, Status, Milestones,
-  Metrics and the block's other facts sit in a label column (`.rp-facts`): the
-  label 7.5rem wide in the small-caps `.label` style and `--print-ink-2`, its
-  value beside it with no indent.
+- A Goal block lays out as on screen: the story beside a 13rem facts rail
+  (`.rp-cols`), the rail at 9.5pt behind a 0.5pt `--print-rule` hairline,
+  each of its labels in the small-caps `.label` style and `--print-ink-2`
+  over its value with no indent; the Status leads the story at 12pt. The
+  page is narrower than the screen's 720px breakpoint but keeps the two
+  columns, which fit on paper. The Milestones follow, full width, under a
+  small-caps heading with their summary at the right, a row each of mark,
+  date and name in aligned columns.
 - A Red or Yellow Goal's Path to Green, with its Ask for help, sits in a box
-  tinted in that Health (`.rp-tint-r` or `.rp-tint-y`), as on screen, with
-  its "Path to Green:" label in the Health's ink. The Health decides the
+  tinted in that Health (`.rp-tint-r` or `.rp-tint-y`), as on screen, its
+  header line holding "Path to Green" in the Health's ink and the
+  back-to-Green date, slips and Overdue at the right, over the plan. The Health decides the
   tint, not the date: a Path to Green past its date keeps its Health's tint
   and says so in its Overdue badge, so an overdue Yellow one prints Yellow.
 - Coloured badges and the Path to Green box set `print-color-adjust: exact`

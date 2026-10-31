@@ -1336,7 +1336,8 @@ func TestCheckinNewMilestoneErrorShownNextToItsRowAmongNamesakes(t *testing.T) {
 }
 
 // A refused new Milestone's name and date are marked invalid and described by
-// the row's error; the empty row after it is not (#690).
+// the row's error, the name after the hint every new name names (#712); the
+// empty row after it is not (#690).
 func TestCheckinRefusedNewMilestoneMarksItsNameAndDateInvalid(t *testing.T) {
 	t.Parallel()
 
@@ -1358,13 +1359,14 @@ func TestCheckinRefusedNewMilestoneMarksItsNameAndDateInvalid(t *testing.T) {
 	if got := attrOf(refused, "id"); got != "checkin-error-new_milestone_0" {
 		t.Errorf("the new Milestone's error id = %q, want checkin-error-new_milestone_0", got)
 	}
-	want := textOf(refused)
-	for _, name := range []string{"new_milestone_name", "new_milestone_date"} {
+	const hint = "What will exist, and for whom, when this is done"
+	for name, described := range map[string]string{"new_milestone_name": hint + " ", "new_milestone_date": ""} {
+		want := described + textOf(refused)
 		if f := formField(t, rows[0], name); attrOf(f.Node, "aria-invalid") != "true" || f.Description != want {
 			t.Errorf("the new Milestone's %s is aria-invalid %q, described %q; want it invalid, described %q", name, attrOf(f.Node, "aria-invalid"), f.Description, want)
 		}
-		if f := formField(t, rows[1], name); hasAttr(f.Node, "aria-invalid") || hasAttr(f.Node, "aria-describedby") {
-			t.Errorf("the empty row's %s is marked invalid or described: %q", name, f.Description)
+		if f := formField(t, rows[1], name); hasAttr(f.Node, "aria-invalid") || f.Description != strings.TrimSpace(described) {
+			t.Errorf("the empty row's %s is marked invalid or described by %q, want %q", name, f.Description, strings.TrimSpace(described))
 		}
 	}
 }
@@ -5156,5 +5158,49 @@ func TestCheckinRefusedPlainSubmitAnswersTheCheckinPage(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// A Check-in's new Milestone rows ask, once above the first, what will exist,
+// and for whom, when each is done: every row's name is described by that
+// hint and holds an example name as its placeholder. A refused one is
+// described by its error as well, after the hint (#712).
+func TestCheckinNewMilestoneNamesAskWhatWillBeDelivered(t *testing.T) {
+	t.Parallel()
+
+	const hint = "What will exist, and for whom, when this is done"
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	doc := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	hints := findAllByTestID(doc, "milestone-name-hint")
+	rows := findAllByTestID(doc, "checkin-new-milestone")
+	if len(hints) != 1 || textOf(hints[0]) != hint || len(rows) == 0 || !precedes(hints[0], rows[0]) {
+		t.Fatalf("the new Milestone rows show %d hints, want one reading %q above the first: %q", len(hints), hint, textsOf(hints))
+	}
+	for _, name := range formFields(doc, "new_milestone_name") {
+		if name.Description != hint || name.Placeholder != "e.g. Storage add-on on sale to every existing customer" {
+			t.Errorf("a new Milestone's name is described by %q with the placeholder %q, want the hint and the example", name.Description, name.Placeholder)
+		}
+	}
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Adding docs."},
+		"new_milestone_name": {"Docs"},
+	})
+	rows = findAllByTestID(parsePage(t, body), "checkin-new-milestone")
+	if len(rows) != 2 {
+		t.Fatalf("form shows %d new Milestone rows, want the one typed and an empty one", len(rows))
+	}
+	refused := textOf(findByTestID(t, rows[0], "checkin-error"))
+	if f := formField(t, rows[0], "new_milestone_name"); f.Description != hint+" "+refused {
+		t.Errorf("the refused new Milestone's name is described by %q, want the hint, then %q", f.Description, refused)
+	}
+	if f := formField(t, rows[1], "new_milestone_name"); f.Description != hint || hasAttr(f.Node, "aria-invalid") {
+		t.Errorf("the empty row's name is described by %q, invalid %t; want the hint alone", f.Description, hasAttr(f.Node, "aria-invalid"))
 	}
 }

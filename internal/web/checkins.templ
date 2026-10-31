@@ -291,6 +291,25 @@ func (errs checkinFormErrors) attrs(input string) templ.Attributes {
 	return templ.Attributes{"aria-invalid": "true", "aria-describedby": checkinErrorID(input)}
 }
 
+// attrsDescribedBy is attrs for input, described first by the elements ids
+// names, as a new Milestone's name is by the hint above the new rows, then by
+// its error when it has one.
+func (errs checkinFormErrors) attrsDescribedBy(input string, ids ...string) templ.Attributes {
+	attrs := templ.Attributes{}
+	if errs.of(input) != "" {
+		attrs["aria-invalid"] = "true"
+		ids = append(ids, checkinErrorID(input))
+	}
+	if len(ids) > 0 {
+		attrs["aria-describedby"] = strings.Join(ids, " ")
+	}
+	return attrs
+}
+
+// checkinNewMilestoneHintID is the id of the hint above a Check-in's new
+// Milestone rows (milestoneNameHint).
+const checkinNewMilestoneHintID = "checkin-new-milestone-hint"
+
 // checkinErrorID is the id of the error about input on the Check-in form.
 func checkinErrorID(input string) string {
 	return "checkin-error-" + input
@@ -1433,6 +1452,7 @@ templ checkinStyles() {
 			.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}
+			.ms-grid>.hint{grid-column:1/-1}
 			.ms-name{font-weight:600;align-self:center}
 			.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}
 			.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}
@@ -1517,10 +1537,13 @@ templ checkinDateFields(d checkinDatesFormData, errs checkinFormErrors) {
 					</div>
 				</div>
 			}
+			// The hint asks once, above the first new row, what each new
+			// Milestone delivers; every new row's name names it.
+			@milestoneNameHint(checkinNewMilestoneHintID)
 			for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
 				<div data-testid="checkin-new-milestone" class="ms-row">
 					<label>
-						<input type="text" name="new_milestone_name" value={ row.Name } placeholder="Add a Milestone" aria-label="New Milestone name" { errs.attrs(domain.CheckinNewMilestoneInput(i))... }/>
+						<input type="text" name="new_milestone_name" value={ row.Name } placeholder={ milestoneNameExample } aria-label="New Milestone name" { errs.attrsDescribedBy(domain.CheckinNewMilestoneInput(i), checkinNewMilestoneHintID)... }/>
 					</label>
 					<div>
 						<label>
