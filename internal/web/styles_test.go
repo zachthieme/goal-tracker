@@ -1840,7 +1840,7 @@ func TestPublicationSplitsExceptionsFromOnTrackStyles(t *testing.T) {
 // and a Green Goal's block, or one only Check-in overdue, has no tinted box, on
 // the draft and the publication alike (#475,
 // TestReportBlockTintsOnlyAPathToGreen). The tints' colours are
-// TestReportBlockLabelColumnAndPathTintStyles.
+// TestReportBlockRailLabelsAndPathTintStyles.
 func TestReportBlockTintsOnlyAPathToGreenStyles(t *testing.T) {
 	t.Parallel()
 

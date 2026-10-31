@@ -276,7 +276,7 @@ A Report, on its draft and its publication, reads on its own four levels
 | 1 | The Report's name (`.rp-head h1`) | 26 / 1.2, 24 at 600px and below | 700 |
 | 2 | Its section headings (`.rp-main h2`, `.rp-read h2`): Open Action Items, Narrative, Exceptions, On track, Goals that entered or left | 18 / 1.3, under a full-width 1px `--color-border` rule, about 44px below what comes before | 650 |
 | 3 | A Goal block's title (`.rp-card-head h3`) | 16 / 1.4 | 600 |
-| 4 | A Goal block's labels (`.rp-facts dt.label`): Why it matters, Status, Milestones, Metrics, Rolled-up Health, Supported by; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
+| 4 | A Goal block's labels (`.label`): Status, Why it matters, the explanation, its rail's Owner, Due, Fields, Metrics, Rolled-up Health and Supported by, and Milestones; the Health summary's "Health" (`.label`) | 12, `--color-ink-muted` | 500 |
 
 The Exceptions count sits beside its heading in muted tabular figures at
 `--text-body` (14px, 16px on a touch screen),
