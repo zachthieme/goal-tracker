@@ -1189,7 +1189,7 @@ func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *
 // exception's block and each On track row, sorted.
 func draftGoalTitles(t *testing.T, draft string) []string {
 	t.Helper()
-	main := findByTestID(t, parsePage(t, draft), "report-draft")
+	main := findByTestID(t, parsePage(t, draft), "report-goals")
 	var titles []string
 	for _, testID := range []string{"report-exception", "selected-goal"} {
 		for _, g := range findAllByTestID(main, testID) {

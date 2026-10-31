@@ -211,11 +211,17 @@ templ reportDraftPage(current *domain.Account, v reportDraftView) {
 				// publication.
 				<div data-testid="report-snapshot" class="rp-body">
 					if m.Manage {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.Discussion, &v.Form)
+						@reportBodyStory(withoutReportFacts(facts, domain.ReportFactIntroduction, domain.ReportFactNarrative), v.Discussion, &v.Form)
 					} else {
-						@reportBody(withoutReportFacts(facts, domain.ReportFactIntroduction), v.Discussion, nil)
+						@reportBodyStory(withoutReportFacts(facts, domain.ReportFactIntroduction), v.Discussion, nil)
 					}
 				</div>
+			</div>
+			// The Goal sections follow the narrative, before the sidebar, so
+			// the grid can span them under it and a one-column page reads
+			// them between the two.
+			<div data-testid="report-goals" class="rp-body rp-goals">
+				@reportGoalSections(facts, v.Discussion)
 			</div>
 			<aside data-testid="draft-side" class="rp-body rp-side">
 				@reportDelegates(m)
@@ -961,13 +967,27 @@ templ publicationSelection(facts []domain.ReportFact) {
 // for a reader who may manage it, compose is the form composing its narrative
 // in place, which stands before its Goals.
 templ reportBody(facts []domain.ReportFact, d discussion, compose *narrativeForm) {
-	{{ story, goals := splitReportGoals(facts) }}
+	@reportBodyStory(facts, d, compose)
+	@reportGoalSections(facts, d)
+}
+
+// reportBodyStory is the part of a Report's body before its Goals, with
+// compose, when it isn't nil, after it (reportBody).
+templ reportBodyStory(facts []domain.ReportFact, d discussion, compose *narrativeForm) {
+	{{ story, _ := splitReportGoals(facts) }}
 	for _, f := range story {
 		@reportFact(f, d)
 	}
 	if compose != nil {
 		@narrativeCuration(*compose)
 	}
+}
+
+// reportGoalSections is the part of a Report's body about its Goals, or "No
+// Goals selected." when it selects none (reportBody). The draft page spans
+// it under its sidebar (DESIGN.md § A Report's draft page).
+templ reportGoalSections(facts []domain.ReportFact, d discussion) {
+	{{ _, goals := splitReportGoals(facts) }}
 	if !reportSelectsGoals(facts) {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
@@ -1968,8 +1988,8 @@ templ reportStyles() {
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;flex-direction:column;gap:4px}
 		.rp-head h1{margin:0 0 4px;font-size:26px;font-weight:700;line-height:1.2}
-		.rp-main h2,.rp-read h2{font-size:18px;font-weight:650;line-height:1.3}
-		.rp-main section>h2,.rp-read section>h2,.rp-curation-head{margin-top:20px;padding-top:20px;border-top:1px solid var(--color-border)}
+		.rp-main h2,.rp-goals h2,.rp-read h2{font-size:18px;font-weight:650;line-height:1.3}
+		.rp-main section>h2,.rp-goals section>h2,.rp-read section>h2,.rp-curation-head{margin-top:20px;padding-top:20px;border-top:1px solid var(--color-border)}
 		.rp-exceptions>h2>.num{font-size:var(--text-body);font-weight:500}
 		.rp-actions{display:flex;gap:8px}
 		.rp-crumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2153,9 +2173,15 @@ templ reportStyles() {
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
 		.page:has(>.rp-draft-page){max-width:1200px;container:rp-draft/inline-size}
-		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:56px;align-items:start}
+		.rp-draft-page{display:grid;grid-template-columns:minmax(0,780px) minmax(0,300px);gap:24px 56px;align-items:start}
 		.rp-draft-page>*{min-width:0}
-		@container rp-draft (max-width:960px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:40px}}
+		/* The sidebar sits beside the narrative, and the Goal sections, after
+		 * both in the markup, span the page under them, 24px under the
+		 * narrative as within it. A one-column page reads them in the
+		 * markup's order, the sidebar 40px under the Goal sections. */
+		.rp-draft-page>.rp-side{grid-column:2;grid-row:1}
+		.rp-draft-page>.rp-goals{grid-column:1/-1;grid-row:2}
+		@container rp-draft (max-width:960px){.rp-draft-page{grid-template-columns:minmax(0,1fr);gap:24px}.rp-draft-page>.rp-side{grid-column:auto;grid-row:auto;margin-top:16px}.rp-draft-page>.rp-goals{grid-row:auto}}
 		.rp-intro{margin:0;font-size:15px;line-height:1.7;color:var(--color-ink)}
 		.rp-compose-section{display:flex;flex-direction:column}
 		.rp-compose-section:last-of-type{border-bottom:1px solid var(--color-border)}
