@@ -1426,12 +1426,11 @@ func TestReportDraftHistoryMarkersStyles(t *testing.T) {
 	}
 }
 
-// A Goal block's labels — Why it matters, Status, Milestones, Metrics,
-// Rolled-up Health and Supported by — sit in a 120px column beside what they
-// label, and above it at a phone's width or in a narrow block. Its one tinted
-// box is a Red or Yellow Goal's Path to Green, in that Health's tint with its
-// label in the Health's ink: no other rule tints it (#475).
-func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
+// A Goal block's facts rail sets each label — Owner, Metrics, Rolled-up
+// Health, Supported by — over what it labels (#712). Its one tinted box is a
+// Red or Yellow Goal's Path to Green, in that Health's tint with its label in
+// the Health's ink: no other rule tints it (#475).
+func TestReportBlockRailLabelsAndPathTintStyles(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1443,7 +1442,7 @@ func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
 	block := findByTestID(t, parsePage(t, page), "report-exception")
-	for _, testID := range []string{"report-why-it-matters", "report-status", "report-milestones"} {
+	for _, testID := range []string{"report-owner", "report-due"} {
 		n := findByTestID(t, block, testID)
 		for n.Data != "dd" {
 			n = n.Parent
@@ -1453,15 +1452,15 @@ func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
 		for dt != nil && dt.Type != html.ElementNode {
 			dt = dt.NextSibling
 		}
-		if dl := row.Parent; dl.Data != "dl" || !slices.Contains(strings.Fields(attrOf(dl, "class")), "rp-facts") ||
+		if rail := row.Parent; rail.Data != "dl" || !slices.Contains(strings.Fields(attrOf(rail, "class")), "rp-rail") ||
 			dt == nil || dt.Data != "dt" || !slices.Contains(strings.Fields(attrOf(dt, "class")), "label") {
-			t.Errorf("%s isn't a labelled row of the block's .rp-facts: %s", testID, renderNode(row.Parent))
+			t.Errorf("%s isn't a labelled item of the block's .rp-rail: %s", testID, renderNode(row.Parent))
 		}
 	}
 
 	styles := between(t, page, "<style>", "</style>")
 	for sel, wants := range map[string][]string{
-		".rp-facts>div":             {"display:grid", "grid-template-columns:120px minmax(0,1fr)"},
+		".rp-rail>div":              {"display:flex", "flex-direction:column"},
 		".rp-tint-r":                {"background:var(--health-r-bg)"},
 		".rp-tint-y":                {"background:var(--health-y-bg)"},
 		".rp-tint-r .rp-tint-label": {"color:var(--health-r-ink)"},
@@ -1483,11 +1482,6 @@ func TestReportBlockLabelColumnAndPathTintStyles(t *testing.T) {
 	}
 	if want := []string{".rp-tint-r", ".rp-tint-y"}; !slices.Equal(tinting, want) {
 		t.Errorf("the rules tinting a block's box are %q, want Red's and Yellow's alone, %q", tinting, want)
-	}
-	for _, query := range []string{"@media (max-width:600px)", "@container rp-block (max-width:28rem)"} {
-		if decls, ok := ruleFor(mediaBlock(t, styles, query), ".rp-facts>div"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
-			t.Errorf("%s .rp-facts>div{%s} doesn't put the label above what it labels", query, decls)
-		}
 	}
 }
 
@@ -2104,7 +2098,7 @@ func TestReportCardHeadLeadsWithItsHealthStyles(t *testing.T) {
 		if title := linkTo(block, "/goals/"+strconv.FormatInt(red.ID, 10)); title == nil {
 			t.Errorf("%s's block doesn't link its title: %s", where, renderNode(block))
 		} else {
-			assertReportsCarriesClass(t, where+"'s title", title.Parent.Parent, "rp-card-title")
+			assertReportsCarriesClass(t, where+"'s title", title.Parent, "rp-card-title")
 		}
 		assertReportsCarriesClass(t, where+"'s badges", findByTestID(t, block, "report-badge").Parent, "rp-badges")
 	}
@@ -2256,8 +2250,9 @@ func TestPrintPageColoursOverdueMarksStyles(t *testing.T) {
 	}
 }
 
-// The print page lays a Goal block out as the screen does (#475), Why it
-// matters and Status in a label column, and the Path to Green in a box tinted
+// The print page lays a Goal block out as the screen does (#475, #712), its
+// story beside its facts rail behind a hairline, each rail label over its
+// value with no indent, and the Path to Green in a box tinted
 // in its Goal's Health, Red or Yellow, kept when printed. An overdue Path to
 // Green keeps its Health's tint, so an overdue Yellow one prints Yellow, not
 // Red (#478, TestPrintPageLaysOutTheGoalBlockAsOnScreen).
@@ -2285,19 +2280,20 @@ func TestPrintPageLaysOutTheGoalBlockAsOnScreenStyles(t *testing.T) {
 		{yellow, "rp-tint-y"},
 	} {
 		block := reportBlockOf(t, doc, c.goal)
-		for _, id := range []string{"report-why-it-matters", "report-status"} {
-			assertReportsCarriesClass(t, c.goal.Title+"'s "+id+" list", findByTestID(t, block, id).Parent.Parent, "rp-facts")
-		}
+		assertReportsCarriesClass(t, c.goal.Title+"'s story", findByTestID(t, block, "report-story"), "rp-story")
+		assertReportsCarriesClass(t, c.goal.Title+"'s rail", findByTestID(t, block, "report-rail"), "rp-rail")
 		assertReportsCarriesClass(t, c.goal.Title+"'s Path to Green box", findByTestID(t, block, "report-path-box"), "rp-tint", c.tint)
 	}
 
 	style := reportsStyleSheetIn(doc)
-	facts := printPageRule(t, style, ".rp-facts")
-	if !strings.Contains(facts, "display: grid;") || !strings.Contains(facts, "grid-template-columns: 7.5rem") || !strings.Contains(facts, "margin: 0.3rem 0;") {
-		t.Errorf("print page doesn't lay Why it matters and Status out in a label column: .rp-facts { %s }", facts)
+	if cols := printPageRule(t, style, ".rp-cols"); !strings.Contains(cols, "display: grid;") || !strings.Contains(cols, "grid-template-columns: minmax(0, 1fr) 13rem;") {
+		t.Errorf("print page doesn't lay the story and the rail out side by side: .rp-cols { %s }", cols)
 	}
-	if dd := printPageRule(t, style, ".rp-facts dd"); !strings.Contains(dd, "margin: 0;") {
-		t.Errorf("print page indents a fact's value by the browser's dd margin: .rp-facts dd { %s }", dd)
+	if rail := printPageRule(t, style, ".rp-rail"); !strings.Contains(rail, "border-left: 0.5pt solid var(--print-rule);") {
+		t.Errorf("print page doesn't rule the rail off by a hairline: .rp-rail { %s }", rail)
+	}
+	if dd := printPageRule(t, style, ".rp-rail dd"); !strings.Contains(dd, "margin: 0;") {
+		t.Errorf("print page indents a fact's value by the browser's dd margin: .rp-rail dd { %s }", dd)
 	}
 	tint := printPageRule(t, style, ".rp-tint")
 	for _, want := range []string{"padding: 0.2rem 0.5rem;", "border-radius: 2pt;", "-webkit-print-color-adjust: exact;", " print-color-adjust: exact;"} {
@@ -4318,4 +4314,38 @@ func TestDimensionsRowRefusalSitsUnderItsInputStyles(t *testing.T) {
 	if rule := cssRule(t, body, ".dm-row>.alert"); !strings.Contains(rule, "flex-basis:100%") {
 		t.Errorf(".dm-row>.alert is %q, want it a line of its own", rule)
 	}
+}
+
+// An exception block's story and facts rail are two columns, the rail the
+// narrower, ruled off by a hairline; in a block under 720px wide the rail
+// stacks under the story, ruled off above it instead. The block's Status
+// leads its story a step above the body's size, and its title reads in the
+// ink, not a link's colour (#712, TestReportBlockLaysOutAStoryBesideAFactsRail).
+func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	block := reportBlockOf(t, doc, g)
+	story, rail := findByTestID(t, block, "report-story"), findByTestID(t, block, "report-rail")
+	assertReportsCarriesClass(t, "the story", story, "rp-story")
+	assertReportsCarriesClass(t, "the rail", rail, "rp-rail")
+	assertReportsCarriesClass(t, "the story and rail's row", story.Parent, "rp-cols")
+	assertReportsCarriesClass(t, "the Status", findByTestID(t, block, "report-status"), "rp-lead-text")
+	assertReportsCarriesClass(t, "the title", headingNamed(block, g.Title), "rp-card-title")
+
+	styles := reportsStyleSheetIn(doc)
+	assertReportsRuleDeclares(t, styles, ".rp-cols", "display:grid", "grid-template-columns:minmax(0,1fr) minmax(0,240px)")
+	assertReportsRuleDeclares(t, styles, ".rp-rail", "border-left:1px solid var(--color-border)")
+	assertReportsRuleDeclares(t, styles, ".rp-lead-text", "font-size:calc(var(--text-body) + 2px)")
+	assertReportsRuleDeclares(t, styles, ".rp-card-title>a", "color:var(--color-ink)")
+	narrow := mediaBlock(t, styles, "@container rp-block (max-width:720px)")
+	assertReportsRuleDeclares(t, narrow, ".rp-cols", "grid-template-columns:minmax(0,1fr)")
+	assertReportsRuleDeclares(t, narrow, ".rp-rail", "border-left:none", "border-top:1px solid var(--color-border)")
 }
