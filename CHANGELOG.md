@@ -18,6 +18,13 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Improvements:**
 - [user] A Report's exception block now reads as a story beside a facts rail, on the draft, the publication and its print page: the head leads with the Health as a pill holding its Run off Green and what it was, then the title as the heading; the Status leads the story, then the Path to Green box, headed by its back-to-Green date, slips and Overdue over the plan, Why it matters, and the Owner's explanation labelled with both Healths ("Why Yellow when its Goals roll up Red"); Owner and Lifecycle, Due, Fields, Metrics, Rolled-up Health and Supported by sit in a rail beside it, which stacks under the story below 720px wide; and the Milestones follow full width, one row each of mark, date and name, under a summary such as "1 of 5 done · 1 overdue · 1 slipped" (#712).
 - [user] Every Milestone name field, on the Goal form, the Goal page's Add Milestone and a Check-in's new Milestones, now asks "What will exist, and for whom, when this is done" under the field, read out with it by screen readers, and shows an example name as its placeholder (#712).
+- [user] A Report draft's Goal sections, from Exceptions down, now span the page's full width under Delegates and History, and each exception block's facts rail is wider (up to 320px) beside a story capped at 680px, starting level with the Goal's title, on the draft, the publication and print (#713).
+- [user] A Report block whose Milestones are all Removed no longer reads "0 of 0 done"; it lists the Removed Milestones with no summary (#713).
+- [user] A Report block's Goal title turns teal on hover, as other links do (#713).
+- [user] The Milestone name example is shorter, "e.g. Add-on on sale to all customers", so it no longer cuts off on the Check-in and the Goal page (#713).
+
+**Testing:**
+- [internal] An e2e test pins how the New goal form's script describes a Milestone's Name: an editor reopened by a refused submit names the hint, then why it was refused, with the moved error after the hint, and a new editor from + Milestone names its own hint with no `__i__` left in any `name`, `id` or `aria-describedby` (#714).
 
 ### Collected changes — October 30, 2026
 
