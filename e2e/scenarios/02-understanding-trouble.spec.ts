@@ -101,7 +101,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(block.getByTestId("report-metric")).toHaveCount(goal.metrics);
       const health = await healthOf(block.getByTestId("report-health"));
       if (health === "Red" || health === "Yellow") {
-        await expect(block.getByTestId("report-path-to-green")).toContainText(`Path to Green: ${goal.path_to_green}`);
+        await expect(block.getByTestId("report-path-head")).toContainText("Path to Green");
+        await expect(block.getByTestId("report-path-plan")).toHaveText(goal.path_to_green);
       }
     }
     expect(exceptions.length, "Platform has exceptions to show in full").toBeGreaterThan(0);
@@ -495,10 +496,9 @@ async function coreContent(report: Locator): Promise<CoreContent> {
   const exceptions = [];
   for (const block of await report.getByTestId("report-exception").all()) {
     const title = (await block.getByRole("heading", { level: 3 }).textContent())?.trim() ?? "";
-    const path = (await block.getByTestId("report-path-to-green").count())
-      ? ((await block.getByTestId("report-path-to-green").textContent()) ?? "")
+    const plan = (await block.getByTestId("report-path-plan").count())
+      ? ((await block.getByTestId("report-path-plan").textContent()) ?? "").trim()
       : "";
-    const plan = path.match(/Path to Green:\s*(.*?)\s*\(back to Green by/s)?.[1] ?? "";
     exceptions.push({ title, pathToGreen: plan });
   }
   return {

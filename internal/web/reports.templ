@@ -1310,8 +1310,8 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // Owner and Lifecycle, the due date with its history struck through, the
 // Fields the definition chose, Metrics against target, the Rolled-up Health
 // with how many children are Red, Yellow and Check-in overdue ("2 of 6 Red ·
-// 1 Yellow · 1 overdue"), and the Goals behind it, one a line. In a block
-// under 720px wide the rail stacks under the story. Its Milestones follow, full
+// 1 Yellow · 1 overdue"), and the Goals behind it, one a line. Under 720px
+// wide, or in a block too narrow for both, the rail stacks under the story. Its Milestones follow, full
 // width (reportBlockMilestones). Its marks and Overdue are its facts', judged
 // when they were drafted or published in the zone its Goal was judged in (see
 // domain.ReportBlock.Facts). Each Goal it names links to its place in the
@@ -1514,7 +1514,7 @@ templ reportBlockFact(f domain.ReportFact, d discussion) {
 				<p data-testid="report-path-head" class="rp-path-head">
 					<strong class="rp-tint-label">{ f.Label }</strong>
 					<span class="rp-path-by">
-						{ path.ByWords } { showDateYear(path.By) }@reportBackToGreenPrior(path)
+						{ path.ByWords } <span>{ showDateYear(path.By) }</span>@reportBackToGreenPrior(path)
 						if path.Overdue {
 							{ " " }<strong data-testid="path-overdue" class="badge r">{ path.OverdueWords }</strong>
 						}
@@ -2032,9 +2032,10 @@ templ reportStyles() {
 		.rp-card-head h3{font-size:16px;font-weight:600;line-height:1.4}
 		.rp-card-title>a{color:var(--color-ink)}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
-		.rp-health{display:inline-flex;gap:4px;align-items:center;min-height:22px;padding:0 8px 0 0;border-radius:var(--radius-full);white-space:nowrap;box-sizing:border-box}
+		.rp-health{display:inline-flex;gap:4px;align-items:center;min-height:22px;border-radius:var(--radius-full);white-space:nowrap;box-sizing:border-box}
+		.rp-health>.small:last-child{padding-right:8px}
 		.rp-health>.badge{border-radius:var(--radius-full)}
-		.rp-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:16px 24px;align-items:start}
+		.rp-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:16px 24px;align-items:start}
 		.rp-story{display:flex;flex-direction:column;gap:16px;min-width:0}
 		.rp-story p{margin:0}
 		.rp-lead,.rp-about{display:flex;flex-direction:column;gap:4px}
@@ -2049,6 +2050,7 @@ templ reportStyles() {
 		.rp-path-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px;margin-bottom:4px}
 		.rp-path-head .rp-tint-label{font-size:var(--text-label);letter-spacing:.06em;text-transform:uppercase}
 		.rp-path-by{font-size:var(--text-secondary)}
+		.rp-path-by>*{white-space:nowrap}
 		.rp-ms{display:flex;flex-direction:column;gap:8px}
 		.rp-ms-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px}
 		.rp-ms-head>h4{margin:0}
@@ -2065,9 +2067,12 @@ templ reportStyles() {
 		 * 600px rule does for a phone, and puts a Milestone's name under its
 		 * date. */
 		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-block .rp-ms-rows{grid-template-columns:auto minmax(0,1fr)}.rp-ms-name{grid-column:2}}
-		/* A block under 720px wide stacks its facts rail under its story,
-		 * ruled off above rather than beside it. */
-		@container rp-block (max-width:720px){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
+		/* Under 720px wide a block stacks its facts rail under its story,
+		 * ruled off above rather than beside it, and so does a block too
+		 * narrow for both, as in the draft's main column beside its sidebar
+		 * in a window under about 1200px. */
+		@media (max-width:720px){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
+		@container rp-block (max-width:34rem){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
 		.rp-block ul{margin:0;padding-left:20px}
 		.rp-scroll{overflow-x:auto}
 		.rp-scroll th{background:none;padding:8px 12px}
