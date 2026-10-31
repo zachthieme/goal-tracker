@@ -13,6 +13,12 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 31, 2026
+
+**Improvements:**
+- [user] A Report's exception block now reads as a story beside a facts rail, on the draft, the publication and its print page: the head leads with the Health as a pill holding its Run off Green and what it was, then the title as the heading; the Status leads the story, then the Path to Green box, headed by its back-to-Green date, slips and Overdue over the plan, Why it matters, and the Owner's explanation labelled with both Healths ("Why Yellow when its Goals roll up Red"); Owner and Lifecycle, Due, Fields, Metrics, Rolled-up Health and Supported by sit in a rail beside it, which stacks under the story below 720px wide; and the Milestones follow full width, one row each of mark, date and name, under a summary such as "1 of 5 done · 1 overdue · 1 slipped" (#712).
+- [user] Every Milestone name field, on the Goal form, the Goal page's Add Milestone and a Check-in's new Milestones, now asks "What will exist, and for whom, when this is done" under the field, read out with it by screen readers, and shows an example name as its placeholder (#712).
+
 ### Collected changes — October 30, 2026
 
 **Improvements:**
