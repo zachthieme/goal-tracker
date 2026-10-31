@@ -346,7 +346,7 @@ templ milestoneEditorTemplate() {
 			<h4 class="ie-editor-head" data-measure-heading>New Milestone</h4>
 			<input type="hidden" name={ inputEditing } value="Milestone"/>
 			<div class="gf-milestone-fields">
-				@goalFormRowInput(goalFormView{}, "Name", "text", name("name"), "")
+				@milestoneNameRowInput(goalFormView{}, name("name"), "")
 				@goalFormRowInput(goalFormView{}, "Date", "date", name("date"), "")
 			</div>
 			@measureEditorActions()
@@ -422,10 +422,11 @@ templ goalFormExisting(v goalFormView) {
 	}
 }
 
-// milestoneRowFields is one Milestone row: Name and Date.
+// milestoneRowFields is one Milestone row: Name, asking what the Milestone
+// delivers (milestoneNameRowInput), and Date.
 templ milestoneRowFields(v goalFormView, name func(part string) string, m milestoneRow) {
 	<div data-testid="milestone-row" class="gf-row">
-		@goalFormRowInput(v, "Name", "text", name("name"), m.Name)
+		@milestoneNameRowInput(v, name("name"), m.Name)
 		@goalFormRowInput(v, "Date", "date", name("date"), m.Date)
 	</div>
 }
@@ -491,6 +492,43 @@ templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 		@goalFormInputError(v, input)
 		@goalFormInputWarning(v, input)
 	</label>
+}
+
+// milestoneNameRowInput is a Milestone's Name on a row or its editor, as
+// goalFormRowInput's, with an example name as its placeholder and, under the
+// input, the hint asking what will exist, and for whom, when it is done
+// (milestoneNameHint). The hint describes the input, ahead of why it was
+// refused or what it warns of.
+templ milestoneNameRowInput(v goalFormView, input, value string) {
+	<label class="field">
+		<span>Name</span>
+		<input
+			type="text"
+			id={ input }
+			name={ input }
+			value={ value }
+			placeholder={ milestoneNameExample }
+			if v.bad(input) != "" {
+				aria-invalid="true"
+			}
+			aria-describedby={ goalFormDescribedBy(v, input, input+"-hint") }
+		/>
+		@milestoneNameHint(input + "-hint")
+		@goalFormInputError(v, input)
+		@goalFormInputWarning(v, input)
+	</label>
+}
+
+// goalFormDescribedBy is the ids describing the named input: first, the ids
+// given, then its error's when it was refused and its warning's when it warns.
+func goalFormDescribedBy(v goalFormView, input string, ids ...string) string {
+	if v.bad(input) != "" {
+		ids = append(ids, input+"-error")
+	}
+	if v.warning(input) != "" {
+		ids = append(ids, input+"-warning")
+	}
+	return strings.Join(ids, " ")
 }
 
 // goalFormRowsScript marks the form gf-js and upgrades How you'll know's rows
@@ -625,9 +663,9 @@ templ goalFormRowsScript() {
 				el.index = i;
 				el.restore = restore;
 				if (restore) el.querySelector("[data-measure-heading]").textContent = "Edit " + noun[section];
-				el.querySelectorAll("[name], [id]").forEach(function (input) {
-					["name", "id"].forEach(function (a) {
-						if (input.hasAttribute(a)) input.setAttribute(a, input.getAttribute(a).replace("__i__", String(i)));
+				el.querySelectorAll("[name], [id], [aria-describedby]").forEach(function (input) {
+					["name", "id", "aria-describedby"].forEach(function (a) {
+						if (input.hasAttribute(a)) input.setAttribute(a, input.getAttribute(a).replace(/__i__/g, String(i)));
 					});
 				});
 				parts[section].forEach(function (part) {
@@ -637,16 +675,28 @@ templ goalFormRowsScript() {
 			}
 
 			// showErrors moves why each of row's inputs was refused onto the
-			// editor's input of the same name.
+			// editor's input of the same name, which keeps what describes it
+			// already, as a Milestone name's hint, ahead of why.
 			function showErrors(row, editor, section, i) {
 				parts[section].forEach(function (part) {
 					var was = field(row, section, i, part);
 					if (was.getAttribute("aria-invalid") !== "true") return;
 					var input = field(editor, section, i, part);
 					input.setAttribute("aria-invalid", "true");
-					input.setAttribute("aria-describedby", was.getAttribute("aria-describedby"));
-					var why = row.querySelector('[id="' + was.getAttribute("aria-describedby") + '"]');
-					if (why) input.after(why);
+					var ids = (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+					var at = input;
+					ids.forEach(function (id) {
+						at = editor.querySelector('[id="' + id + '"]') || at;
+					});
+					(was.getAttribute("aria-describedby") || "").split(/\s+/).forEach(function (id) {
+						if (!id || ids.indexOf(id) >= 0) return;
+						var why = row.querySelector('[id="' + id + '"]');
+						if (!why) return;
+						ids.push(id);
+						at.after(why);
+						at = why;
+					});
+					input.setAttribute("aria-describedby", ids.join(" "));
 				});
 			}
 
