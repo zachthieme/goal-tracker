@@ -4333,12 +4333,13 @@ func TestDimensionsRowRefusalSitsUnderItsInputStyles(t *testing.T) {
 	}
 }
 
-// An exception block's story and facts rail are two columns, the rail the
-// narrower, ruled off by a hairline; under 720px wide the rail stacks under
-// the story, ruled off above it instead, and so it does in a block too narrow
-// for both. The block's Status
-// leads its story a step above the body's size, and its title reads in the
-// ink, not a link's colour (#712, TestReportBlockLaysOutAStoryBesideAFactsRail).
+// An exception block's story and facts rail are two columns, the story at
+// most 680px and the rail at most 320px, ruled off by a hairline; under 720px
+// wide the rail stacks under the story, ruled off above it instead, and so it
+// does in a block too narrow for both. The block's Status leads its story a
+// step above the body's size, and its title reads in the ink, not a link's
+// colour, until hovered, when it turns the links' teal, its rule beating the
+// ink's (#712, #713, TestReportBlockLaysOutAStoryBesideAFactsRail).
 func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
 	t.Parallel()
 
@@ -4359,10 +4360,12 @@ func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
 	assertReportsCarriesClass(t, "the title", headingNamed(block, g.Title), "rp-card-title")
 
 	styles := reportsStyleSheetIn(doc)
-	assertReportsRuleDeclares(t, styles, ".rp-cols", "display:grid", "grid-template-columns:minmax(0,1fr) minmax(0,220px)")
+	assertReportsRuleDeclares(t, styles, ".rp-cols", "display:grid", "grid-template-columns:minmax(0,680px) minmax(0,320px)")
 	assertReportsRuleDeclares(t, styles, ".rp-rail", "border-left:1px solid var(--color-border)")
 	assertReportsRuleDeclares(t, styles, ".rp-lead-text", "font-size:calc(var(--text-body) + 2px)")
 	assertReportsRuleDeclares(t, styles, ".rp-card-title>a", "color:var(--color-ink)")
+	// .rp-card-title>a:hover is (0,2,1), over .rp-card-title>a's (0,1,1).
+	assertReportsRuleDeclares(t, styles, ".rp-card-title>a:hover", "color:var(--color-primary-strong)")
 	for _, query := range []string{"@media (max-width:720px)", "@container rp-block (max-width:34rem)"} {
 		narrow := mediaBlock(t, styles, query)
 		assertReportsRuleDeclares(t, narrow, ".rp-cols", "grid-template-columns:minmax(0,1fr)")

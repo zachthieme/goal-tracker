@@ -2057,11 +2057,14 @@ templ reportStyles() {
 		.rp-card-title{flex:1;min-width:0}
 		.rp-card-head h3{font-size:16px;font-weight:600;line-height:1.4}
 		.rp-card-title>a{color:var(--color-ink)}
+		.rp-card-title>a:hover{color:var(--color-primary-strong)}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-health{display:inline-flex;gap:4px;align-items:center;min-height:22px;border-radius:var(--radius-full);white-space:nowrap;box-sizing:border-box}
 		.rp-health>.small:last-child{padding-right:8px}
 		.rp-health>.badge{border-radius:var(--radius-full)}
-		.rp-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:16px 24px;align-items:start}
+		/* The story is capped at 680px so its lines don't run long, and the
+		 * rail at 320px; each takes an even share of a narrower block. */
+		.rp-cols{display:grid;grid-template-columns:minmax(0,680px) minmax(0,320px);gap:16px 24px;align-items:start}
 		.rp-story{display:flex;flex-direction:column;gap:16px;min-width:0}
 		.rp-story p{margin:0}
 		.rp-lead,.rp-about{display:flex;flex-direction:column;gap:4px}
@@ -2094,9 +2097,8 @@ templ reportStyles() {
 		 * date. */
 		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-block .rp-ms-rows{grid-template-columns:auto minmax(0,1fr)}.rp-ms-name{grid-column:2}}
 		/* Under 720px wide a block stacks its facts rail under its story,
-		 * ruled off above rather than beside it, and so does a block too
-		 * narrow for both, as in the draft's main column beside its sidebar
-		 * in a window under about 1200px. */
+		 * head included, ruled off above rather than beside it, and so does
+		 * a block too narrow for both. */
 		@media (max-width:720px){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
 		@container rp-block (max-width:34rem){.rp-cols{grid-template-columns:minmax(0,1fr)}.rp-rail{padding:16px 0 0;border-left:none;border-top:1px solid var(--color-border)}}
 		.rp-block ul{margin:0;padding-left:20px}
