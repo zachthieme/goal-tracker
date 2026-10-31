@@ -3276,10 +3276,10 @@ func TestAGoalFormRefusedForWhoIsAskingIsTheRefusalPage(t *testing.T) {
 }
 
 // milestoneNameHint is what every Milestone name field asks of the name, and
-// milestoneNameExample the example name it shows as its placeholder (#712).
+// milestoneNameExample the example name it shows as its placeholder (#712, #713).
 const (
 	milestoneNameHint    = "What will exist, and for whom, when this is done"
-	milestoneNameExample = "e.g. Storage add-on on sale to every existing customer"
+	milestoneNameExample = "e.g. Add-on on sale to all customers"
 )
 
 // Each Milestone name on the Goal form asks what will exist, and for whom,
