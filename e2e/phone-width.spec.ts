@@ -172,10 +172,12 @@ test("at 390px a Report card's Health leads its title, and its badges drop under
   await signIn(page, admin);
   await buildRuleReport(page, "Platform team");
   // The draft's narrow column, its Delegates and Report log, comes under
-  // the Report at full width.
+  // the Report, its Goal sections included, at full width.
   const main = (await page.getByTestId("report-draft").boundingBox())!;
+  const goals = (await page.getByTestId("report-goals").boundingBox())!;
   const side = (await page.getByTestId("draft-side").boundingBox())!;
-  expect(side.y, "the Delegates and Report log sit under the Report").toBeGreaterThanOrEqual(main.y + main.height);
+  expect(goals.y, "the Goal sections sit under the narrative").toBeGreaterThanOrEqual(main.y + main.height);
+  expect(side.y, "the Delegates and Report log sit under the Report").toBeGreaterThanOrEqual(goals.y + goals.height);
   expect(Math.abs(side.width - main.width), "the narrow column spans the Report's width").toBeLessThanOrEqual(1);
   const cards = page.getByTestId("report-exception");
   await expect(cards.first()).toBeVisible();

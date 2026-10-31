@@ -366,7 +366,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, manifest }) => {
     await rule.getByTestId("rule-values").getByRole("radio", { name: team.team, exact: true }).check();
     await priya.getByRole("button", { name: "Save report" }).click();
     await expect(priya).toHaveURL(/\/reports\/\d+$/);
-    const goals = priya.getByTestId("report-draft").locator('[data-testid="report-exception"], [data-testid="selected-goal"]');
+    const goals = priya.getByTestId("report-goals").locator('[data-testid="report-exception"], [data-testid="selected-goal"]');
     await expect(goals.filter({ hasText: goalB.title })).toHaveCount(1);
   });
 });

@@ -627,9 +627,10 @@ function reportDate(date: string): string {
   return `${month} ${d}, ${y}`;
 }
 
-// draftReport is the draft page's main column: the Report as readers get it.
+// draftReport is the draft page's Report as readers get it: its main column
+// and the Goal sections that span the page under the sidebar.
 function draftReport(page: Page) {
-  return page.getByTestId("report-draft");
+  return page.getByTestId("report-draft").or(page.getByTestId("report-goals"));
 }
 
 // reportSections are the parts of a published Report, in the order a reader
