@@ -34,6 +34,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] Web tests pin "No Goals selected." in a draft's Goal sections, not its narrative column, and the one-column draft's 24px gap between the narrative and the Goal sections (#715).
 - [internal] The web style tests, one 4,477-line `styles_test.go`, now live one file per area (`styles_checkins_test.go`, `styles_home_test.go`, `styles_reports_test.go`, `styles_followups_test.go`, `styles_goals_test.go`, `styles_admin_test.go`), with rules more than one area uses in `styles_shared_test.go`, so two tickets share a style-test file only when they work in the same area. The tests moved unchanged; `homeStyleSheetIn` and `assertHomeRuleDeclares`, which tests outside Home call too, moved to `helpers_test.go` (#720).
+- [internal] The comment over `helpers_test.go`'s string helpers no longer lists `links_test.go` and `reports_test.go`, which call none of them (#721).
 
 **Documentation:**
 - [ops] docs/install.md's Docker examples name v0.4.0.

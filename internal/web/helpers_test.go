@@ -1511,9 +1511,9 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 
 // The string helpers below read a page's markup as a string, for the tests in
 // other areas that still call them (drafthighlights_test.go, goalform_test.go,
-// handoffs_test.go, links_test.go, reports_test.go, styles_checkins_test.go,
-// styles_home_test.go, suggestions_test.go). goals_test.go and home_test.go read their pages
-// through the parser helpers instead.
+// handoffs_test.go, styles_checkins_test.go, styles_home_test.go,
+// suggestions_test.go). goals_test.go and home_test.go read their pages through
+// the parser helpers instead.
 
 // hasClass reports whether an open tag's class attribute holds class.
 func hasClass(openTag, class string) bool {
