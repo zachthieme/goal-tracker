@@ -449,13 +449,14 @@ templ reportDelegates(m reportManagement) {
 
 // draftHistoryShown is how many of a draft's History entries, after the
 // Draft, it shows before Show all.
-const draftHistoryShown = 20
+const draftHistoryShown = 5
 
 // reportHistory is the draft's History, in its narrow column: first the Draft,
 // reading changes since r's baseline, then history, newest first: each
 // publication, linking to it, and every other change in the Report log, each
 // with who and when in the company's timezone (loc). The newest
-// draftHistoryShown show up front and the rest behind Show all. Anyone who
+// draftHistoryShown show up front and the rest behind Show all, scrolling in
+// place so opening it lengthens the narrow column only so far. Anyone who
 // can open the Report reads it; nobody can change it (CONTEXT.md: Report log).
 // Saving the narrative swaps it in out of band (oob), with the save's entry.
 templ reportHistory(r domain.Report, history []domain.ReportHistoryEntry, loc *time.Location, oob bool) {
@@ -481,7 +482,7 @@ templ reportHistory(r domain.Report, history []domain.ReportHistoryEntry, loc *t
 		if len(history) > draftHistoryShown {
 			<details data-testid="report-history-more">
 				<summary>{ fmt.Sprintf("Show all %d", len(history)) }</summary>
-				<ol class="rp-history-list">
+				<ol class="rp-history-list rp-history-older" tabindex="0" aria-label="Older History">
 					for _, e := range history[draftHistoryShown:] {
 						@draftHistoryItem(e, loc)
 					}
@@ -2096,6 +2097,11 @@ templ reportStyles() {
 		 * 600px rule does for a phone, and puts a Milestone's name under its
 		 * date. */
 		@container rp-block (max-width:28rem){.rp-card-head{flex-wrap:wrap}.rp-badges{flex-basis:100%;justify-content:flex-start}.rp-block .rp-ms-rows{grid-template-columns:auto minmax(0,1fr)}.rp-ms-name{grid-column:2}}
+		/* A block under 61.5rem (984px) gives its story two-thirds of its
+		 * width and its rail one-third, the rail reaching its 320px at 984px,
+		 * rather than splitting evenly until the rail is full. The stacking
+		 * blocks below come after it, so they win in a narrower block. */
+		@container rp-block (max-width:61.5rem){.rp-cols{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}}
 		/* Under 720px wide a block stacks its facts rail under its story,
 		 * head included, ruled off above rather than beside it, and so does
 		 * a block too narrow for both. */
@@ -2194,6 +2200,7 @@ templ reportStyles() {
 		.rp-history-list{list-style:none;margin:0 0 0 4px;padding:0 0 0 20px;border-left:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
 		.rp-history-list>li{position:relative;display:flex;flex-direction:column;gap:4px}
 		.rp-history>details>.rp-history-list{margin-top:12px}
+		.rp-history-older{max-height:320px;overflow-y:auto}
 		.rp-mark{position:absolute;left:-25px;top:5px;width:10px;height:10px;box-sizing:border-box;border-radius:50%;background:var(--color-ink-muted);box-shadow:0 0 0 2px var(--color-canvas)}
 		.rp-mark-draft{background:var(--color-canvas);border:1.5px solid var(--color-ink-muted)}
 		.rp-mark-published{background:var(--color-primary)}

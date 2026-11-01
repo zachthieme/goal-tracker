@@ -1375,6 +1375,11 @@ func TestReportDraftColumnsStackUnder960pxStyles(t *testing.T) {
 	if decls, ok := ruleFor(narrow, ".rp-draft-page"); !ok || !strings.Contains(decls, "grid-template-columns:minmax(0,1fr)") {
 		t.Errorf("under 960px .rp-draft-page{%s} isn't one full-width column", decls)
 	}
+	// 24px between the narrative and the Goal sections, and with the narrow
+	// column's 16px margin, 40px above it (#715).
+	if decls, _ := ruleFor(narrow, ".rp-draft-page"); !slices.Contains(strings.Split(decls, ";"), "gap:24px") {
+		t.Errorf("under 960px .rp-draft-page{%s} doesn't set its rows 24px apart", decls)
+	}
 	assertReportsRuleDeclares(t, narrow, ".rp-draft-page>.rp-side", "grid-column:auto", "grid-row:auto", "margin-top:16px")
 	assertReportsRuleDeclares(t, narrow, ".rp-draft-page>.rp-goals", "grid-row:auto")
 }
@@ -1432,6 +1437,45 @@ func TestReportDraftHistoryMarkersStyles(t *testing.T) {
 				t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
 			}
 		}
+	}
+}
+
+// Opened, the History entries behind Show all scroll inside a list at most
+// 320px tall, so they lengthen the narrow column only so far; the newest five
+// above it aren't capped (#715, TestALongDraftHistoryShowsTheNewestFiveFirst).
+func TestReportDraftOlderHistoryScrollsInPlaceStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR 0", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	for i := 1; i <= 6; i++ {
+		h.Clock.Advance(time.Minute)
+		if _, err := h.Service.UpdateReportDefinition(context.Background(), boss.ID, def.ID, domain.SaveReportDefinitionInput{
+			Name: fmt.Sprintf("MBR %d", i), Mode: domain.ReportModePicked, Picked: []int64{g.ID},
+		}); err != nil {
+			t.Fatalf("UpdateReportDefinition: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	history := findByTestID(t, parsePage(t, page), "report-history")
+	older := findAllByTestID(findByTestID(t, history, "report-history-more"), "report-history-entry")
+	if len(older) == 0 {
+		t.Fatalf("History has nothing behind Show all: %s", renderNode(history))
+	}
+	assertReportsCarriesClass(t, "the list behind Show all", older[0].Parent, "rp-history-list", "rp-history-older")
+	assertReportsCarriesClass(t, "the newest entries' list", findByTestID(t, history, "report-history-draft").Parent, "rp-history-list")
+	if flatFrameHasClass(findByTestID(t, history, "report-history-draft").Parent, "rp-history-older") {
+		t.Errorf("the newest entries' list carries rp-history-older, so it would scroll too")
+	}
+
+	styles := between(t, page, "<style>", "</style>")
+	assertReportsRuleDeclares(t, styles, ".rp-history-older", "max-height:320px", "overflow-y:auto")
+	if decls, _ := ruleFor(styles, ".rp-history-list"); strings.Contains(decls, "max-height") {
+		t.Errorf(".rp-history-list{%s} caps the newest entries' list too", decls)
 	}
 }
 
@@ -4370,5 +4414,33 @@ func TestReportBlockRailStacksUnderTheStoryBelow720pxStyles(t *testing.T) {
 		narrow := mediaBlock(t, styles, query)
 		assertReportsRuleDeclares(t, narrow, ".rp-cols", "grid-template-columns:minmax(0,1fr)")
 		assertReportsRuleDeclares(t, narrow, ".rp-rail", "border-left:none", "border-top:1px solid var(--color-border)")
+	}
+}
+
+// An exception block narrower than 61.5rem (984px) gives its story two-thirds
+// of its width and the rail one-third, the rail reaching its 320px at 984px,
+// so a mid-width block doesn't split evenly. The rule comes before both
+// stacking blocks, so they still win in a narrower block (#715).
+func TestReportBlockStoryTakesTwoThirdsAtMidWidthsStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+
+	doc := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	assertReportsCarriesClass(t, "the block", reportBlockOf(t, doc, g), "rp-block")
+
+	styles := reportsStyleSheetIn(doc)
+	const midWidth = "@container rp-block (max-width:61.5rem)"
+	assertReportsRuleDeclares(t, mediaBlock(t, styles, midWidth), ".rp-cols", "grid-template-columns:minmax(0,2fr) minmax(0,1fr)")
+	at := strings.Index(styles, midWidth+"{")
+	for _, stacking := range []string{"@media (max-width:720px)", "@container rp-block (max-width:34rem)"} {
+		if stacks := strings.Index(styles, stacking+"{"); stacks < 0 || at > stacks {
+			t.Errorf("the %s block doesn't come before the %s block, so it would win over the stacked column", midWidth, stacking)
+		}
 	}
 }

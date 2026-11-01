@@ -5349,9 +5349,9 @@ func TestReportLogShowsOnTheDraftToAnyoneSignedIn(t *testing.T) {
 	}
 }
 
-// A long History shows its newest 20 entries after the Draft, and the rest
-// behind Show all, counting publications and the Report log together.
-func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
+// A long History shows its newest 5 entries after the Draft, and the rest
+// behind Show all, counting publications and the Report log together (#715).
+func TestALongDraftHistoryShowsTheNewestFiveFirst(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -5379,8 +5379,8 @@ func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
 	rest := findAllByTestID(more, "report-history-entry")
 	// 22 renames, Created and two publications, whose Published log entries
 	// they stand for.
-	if len(all) != 25 || len(rest) != 5 {
-		t.Fatalf("History shows %d entries, %d behind Show all; want 25, 5 behind it", len(all), len(rest))
+	if len(all) != 25 || len(rest) != 20 {
+		t.Fatalf("History shows %d entries, %d behind Show all; want 25, 20 behind it", len(all), len(rest))
 	}
 	if first := textOf(all[0]); !strings.HasPrefix(first, "Published ") {
 		t.Errorf("the newest entry reads %q, want the last publication", first)
@@ -5388,11 +5388,17 @@ func TestALongDraftHistoryShowsTheNewestTwentyFirst(t *testing.T) {
 	if shown := textOf(more); !strings.HasPrefix(shown, "Show all 25 ") {
 		t.Errorf("the rest of History reads %q, want it behind Show all 25", shown)
 	}
-	if got := textOf(rest[0]); !strings.HasPrefix(got, "Title: Rename 3 → Rename 4 ") {
-		t.Errorf("the first entry behind Show all reads %q, want the 21st newest", got)
+	if got := textOf(rest[0]); !strings.HasPrefix(got, "Title: Rename 17 → Rename 18 ") {
+		t.Errorf("the first entry behind Show all reads %q, want the 6th newest", got)
 	}
 	if last := textOf(rest[len(rest)-1]); !strings.HasPrefix(last, "Created") {
 		t.Errorf("the oldest entry reads %q, want Created", last)
+	}
+	// Opened, the older entries scroll in place, so the list behind Show all
+	// takes the keyboard's focus and is named for a screen reader.
+	older := rest[0].Parent
+	if older.Data != "ol" || attrOf(older, "tabindex") != "0" || attrOf(older, "aria-label") != "Older History" {
+		t.Errorf("the list behind Show all isn't a focusable list named Older History: %s", renderNode(older))
 	}
 }
 
@@ -5909,5 +5915,30 @@ func TestReportDraftGoalSectionsFollowTheNarrativeBeforeTheSidebar(t *testing.T)
 		if !within(findByTestID(t, page, id), side) {
 			t.Errorf("%s isn't in draft-side", id)
 		}
+	}
+}
+
+// A draft whose Report selects no Goals says so where its Goal sections
+// would be, in report-goals under the narrative, not in report-draft
+// (DESIGN.md § A Report's draft page, #715).
+func TestReportDraftSaysNoGoalsSelectedInItsGoalSections(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Reds", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleHealth, Op: domain.RuleIs, Values: []string{domain.HealthRed}},
+	}})
+	ts := newServer(t, h)
+
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	draft, goals := findByTestID(t, page, "report-draft"), findByTestID(t, page, "report-goals")
+	if got := textOf(goals); got != "No Goals selected." {
+		t.Errorf("report-goals reads %q, want No Goals selected.", got)
+	}
+	if strings.Contains(textOf(draft), "No Goals selected.") {
+		t.Errorf("report-draft also reads No Goals selected.: %q", textOf(draft))
 	}
 }

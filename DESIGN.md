@@ -2043,10 +2043,13 @@ and so on).
       "Published" entries are left out, as the publications stand for them
       and link.
 
-    Times are in the company's timezone. The newest 20 entries after the
-    Draft show, the rest behind **Show all N**, N counting them all. Everyone
-    who can open the Report reads it, and nothing on it can be changed or
-    undone.
+    Times are in the company's timezone. The newest 5 entries after the
+    Draft show, the rest behind **Show all N**, N counting them all, so a
+    long History doesn't push the Goal sections down. Opened, the older
+    entries scroll in place in a list at most 320px tall
+    (`.rp-history-older`), which takes the keyboard's focus and is named
+    "Older History"; the newest five aren't capped. Everyone who can open the
+    Report reads it, and nothing on it can be changed or undone.
 - **A publication (`publicationPage` in `reports.templ`):** a published
   Report, frozen, in a reading column.
   - **Header strip:** the breadcrumb "Reports › <Report Definition> › Nov 7,
@@ -2108,8 +2111,10 @@ and so on).
         and the badges drop under them; nothing is reordered.
       - **Two columns (`.rp-cols`):** the story, at most 680px wide so its
         lines don't run long, then the facts rail at most 320px wide, 24px
-        apart, each taking an even share of a block too narrow for both at
-        their widest; the rail ruled off by a 1px `--color-border` hairline
+        apart. A block under 61.5rem (984px) wide, a container query, splits
+        2 : 1 instead, the story two-thirds and the rail one-third, the rail
+        reaching its 320px at 984px, so a mid-width block doesn't split
+        evenly; the rail ruled off by a 1px `--color-border` hairline
         at its left with 24px inside it. Under 720px wide (a media query),
         and in a block 34rem wide or narrower, the rail stacks under the
         whole story, head included, ruled off above it instead.
