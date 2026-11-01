@@ -45,7 +45,12 @@ export default defineConfig({
   // Chromium, so the gate's `playwright install chromium` downloads nothing.
   gates: [
     { cmd: "make generate-check", label: "generate" },
-    { cmd: "make lint", label: "lint" },
+    // perMerge: lint also runs after each wave member's merge, so a co-wave
+    // compile clash (a redeclared name, a stale caller in a test file) undoes
+    // just that member's merge and sends it back, instead of parking the whole
+    // wave red-base with no culprit. golangci-lint's typecheck compiles the
+    // tests, and a green run takes about 2s (#710).
+    { cmd: "make lint", label: "lint", perMerge: true },
     { cmd: "make test", label: "test" },
     {
       cmd: "make e2e",
