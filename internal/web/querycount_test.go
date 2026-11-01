@@ -211,7 +211,7 @@ func assertGolden(t *testing.T, name, got string) {
 // normaliseGoldenHTML keeps only what a page says and offers: it drops every
 // inline <style> element, every class attribute, and the ?v= fingerprint on
 // static asset URLs, so a golden doesn't change when only styling does.
-// Styling is covered by styles_test.go instead.
+// Styling is covered by the styles_<area>_test.go files instead.
 func normaliseGoldenHTML(t *testing.T, page string) string {
 	t.Helper()
 	// With scripting off, <noscript> holds elements rather than raw text, so

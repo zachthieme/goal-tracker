@@ -24,7 +24,8 @@ import (
 // and the Goal page's status — text, fields, links, buttons and test IDs — read
 // through the parser helpers in helpers_test.go, so a cosmetic change to the
 // markup breaks none of them. The styles these pages carry are tested in
-// styles_test.go.
+// styles_checkins_test.go and, for the Goal page's status,
+// styles_goals_test.go.
 
 // A Yellow Check-in submitted without a Path to Green comes back with the
 // validation errors rendered in the form, next to the Path to Green fields, so the
@@ -1929,7 +1930,7 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 
 // Health is picked from a radio group, not a select, picked from the latest
 // Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
-// while Green is picked (styles_test.go).
+// while Green is picked (styles_checkins_test.go).
 func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
 	t.Parallel()
 
@@ -4384,7 +4385,7 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 // links back to the Goal, whether it has a No change to offer and Contributed
 // to by to show or not; it is the page's only title (DESIGN.md § Check-in
 // page). That it sits in the flat frame, with no card, is tested in
-// styles_test.go.
+// styles_checkins_test.go.
 func TestCheckinPageIsAFlatForm(t *testing.T) {
 	t.Parallel()
 
@@ -4850,7 +4851,7 @@ func checkinAddBar(t *testing.T, page *html.Node) *html.Node {
 // kind, standing for the Highlights section's own add buttons, then Move a
 // date or Milestone and Pause, finish or cancel, each controlling its section.
 // None submits. That it shows only once script has run is tested in
-// styles_test.go (ticket #365).
+// styles_checkins_test.go (ticket #365).
 func TestCheckinPageHasAddToThisCheckinBar(t *testing.T) {
 	t.Parallel()
 

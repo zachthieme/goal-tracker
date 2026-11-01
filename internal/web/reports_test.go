@@ -1965,7 +1965,7 @@ func TestPrintPageLaysOutTheGoalBlockAsOnScreen(t *testing.T) {
 // A publication's On track table gives each Goal's discussion a row of its
 // own under the Goal's, its one cell spanning the row's four columns: Health,
 // Goal, Owner and Due. How the rows stack at a phone's width is pinned in
-// styles_test.go (TestOnTrackRowsStackAtPhoneWidthStyles).
+// styles_reports_test.go (TestOnTrackRowsStackAtPhoneWidthStyles).
 func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1996,7 +1996,7 @@ func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 // An exception card's due date reads as the date it slipped from, struck
 // through, then the date it is now, and a Milestone's dates read as its date
 // then the one it slipped from, struck through (#180). That neither breaks
-// mid-date on a phone is pinned in styles_test.go
+// mid-date on a phone is pinned in styles_reports_test.go
 // (TestExceptionCardDatesDoNotBreakStyles).
 func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 	t.Parallel()

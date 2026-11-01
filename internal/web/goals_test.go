@@ -790,7 +790,7 @@ func goalShows(root *nethtml.Node, emailAddr, label string) bool {
 // within each. Each row leads with its Health's shape alone, named by an
 // aria-label so colour is never the only signal, and a Goal with no Health
 // shows its Lifecycle as a chip. Nothing sits in a card. The classes that
-// draw the shapes and the chip are styles_test.go's
+// draw the shapes and the chip are styles_goals_test.go's
 // (TestGoalListGroupsByHealthProblemsFirstInEachStyles).
 func TestGoalListGroupsByHealthProblemsFirstInEach(t *testing.T) {
 	t.Parallel()
@@ -3208,8 +3208,8 @@ func goalActivateButtonIn(t *testing.T, root *nethtml.Node) *nethtml.Node {
 
 // A Proposed Goal's checklist marks each item not yet met with a neutral ○
 // "to do", as the New goal form does, never a red ✗ "missing", and each met
-// item ✓ "done". How the marks are tinted is pinned in styles_test.go
-// (TestProposedGoalChecklistMarksUnmetItemsToDoStyles).
+// item ✓ "done". How the marks are tinted is pinned in
+// styles_goals_test.go (TestProposedGoalChecklistMarksUnmetItemsToDoStyles).
 func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 	t.Parallel()
 
@@ -3458,7 +3458,8 @@ func disclosureScript(t *testing.T, root *nethtml.Node) string {
 // Space, and reports whether they are open, so neither needs hover. The
 // wording is the one the hover title always carried. The Why it matters shows no
 // heading, but assistive technology still hears it labelled "Why it matters".
-// How the What goes here? button is drawn is pinned in styles_test.go
+// How the What goes here? button is drawn is pinned in
+// styles_goals_test.go
 // (TestGoalPageExplainsWhyItMattersAndTopLevelOnActivationStyles).
 func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivation(t *testing.T) {
 	t.Parallel()
@@ -4290,7 +4291,7 @@ func goalMentions(root *nethtml.Node, s string) bool {
 // stale link filtering or grouping by it is ignored rather than narrowing the
 // list with no control to undo it. A Goal's row still shows its value, marked
 // retired. Restoring the Dimension returns it to both (CONTEXT.md: Retired).
-// How the value is drawn is pinned in styles_test.go
+// How the value is drawn is pinned in styles_goals_test.go
 // (TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTPStyles).
 func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	t.Parallel()

@@ -561,6 +561,36 @@ func ruleFor(block, sel string) (string, bool) {
 
 var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
+// homeStyleSheetIn is the stylesheet Home carries itself, its homeStyles: the
+// text of the page's <style> elements, in order.
+func homeStyleSheetIn(root *html.Node) string {
+	var b strings.Builder
+	for _, s := range findAll(root, func(n *html.Node) bool { return n.Data == "style" }) {
+		for c := s.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.TextNode {
+				b.WriteString(c.Data)
+			}
+		}
+	}
+	return b.String()
+}
+
+// assertHomeRuleDeclares fails unless css has a rule for sel declaring each
+// of wants.
+func assertHomeRuleDeclares(t *testing.T, css, sel string, wants ...string) {
+	t.Helper()
+	decls, ok := ruleFor(css, sel)
+	if !ok {
+		t.Errorf("there is no %s rule", sel)
+		return
+	}
+	for _, want := range wants {
+		if !strings.Contains(decls, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, decls, want)
+		}
+	}
+}
+
 // The Follow-ups row helpers below read a row's markup as a string, for the
 // Nudge and Suggest a parent tests that reach a row from the Follow-ups page
 // (nudges_test.go, suggestions_test.go). followups_test.go reads its rows
@@ -911,7 +941,8 @@ func flatFrameHasClass(n *html.Node, class string) bool {
 // by test ID, by the text it reads, by a form field's name and label, by a
 // link's address and a button's text. An assertion made through them holds
 // whatever the markup around it, so renaming a class or wrapping a section in
-// a <div> breaks no test. Style rules are tested in styles_test.go.
+// a <div> breaks no test. Style rules are tested in the styles_<area>_test.go
+// files.
 
 // parsePage parses a page, or a fragment of one such as an htmx re-render, to
 // query with the helpers below.
@@ -1480,8 +1511,8 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 
 // The string helpers below read a page's markup as a string, for the tests in
 // other areas that still call them (drafthighlights_test.go, goalform_test.go,
-// handoffs_test.go, links_test.go, reports_test.go, styles_test.go,
-// suggestions_test.go). goals_test.go and home_test.go read their pages
+// handoffs_test.go, links_test.go, reports_test.go, styles_checkins_test.go,
+// styles_home_test.go, suggestions_test.go). goals_test.go and home_test.go read their pages
 // through the parser helpers instead.
 
 // hasClass reports whether an open tag's class attribute holds class.
