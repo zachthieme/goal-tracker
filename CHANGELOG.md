@@ -13,6 +13,15 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — November 1, 2026
+
+**Improvements:**
+- [user] A Report draft's History shows its newest 5 entries, with the rest behind Show all, so a long History no longer pushes the Goal sections down; opened, the older entries scroll in place in a list at most 320px tall that the keyboard can reach (#715).
+- [user] An exception block between about 720px and 984px wide gives its story two-thirds of the width and its facts rail one-third, rather than splitting evenly, on the draft and the publication (#715).
+
+**Testing:**
+- [internal] Web tests pin "No Goals selected." in a draft's Goal sections, not its narrative column, and the one-column draft's 24px gap between the narrative and the Goal sections (#715).
+
 ### Collected changes — October 31, 2026
 
 **Improvements:**
