@@ -30,6 +30,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] Web tests pin "No Goals selected." in a draft's Goal sections, not its narrative column, and the one-column draft's 24px gap between the narrative and the Goal sections (#715).
 
+**Documentation:**
+- [ops] docs/install.md's Docker examples name v0.4.0.
+
 ### Collected changes — October 31, 2026
 
 **Improvements:**

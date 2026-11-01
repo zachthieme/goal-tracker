@@ -87,12 +87,12 @@ in the `/data` volume (`GOAL_TRACKER_DB` is `/data/goal-tracker.db`):
 docker run -d --name goal-tracker --restart unless-stopped -p 127.0.0.1:8080:8080 \
   -v goal-tracker-data:/data \
   -v /etc/goal-tracker/people.csv:/etc/goal-tracker/people.csv:ro \
-  --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.3.0
+  --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.4.0
 ```
 
 To build the image yourself instead, run
 `docker build --build-arg VERSION=<tag> -t goal-tracker .` in the repo, at the
-release tag you checked out (`--build-arg VERSION=v0.3.0`), and use
+release tag you checked out (`--build-arg VERSION=v0.4.0`), and use
 `goal-tracker` as the image name. The Admin page and the startup log show that
 version; without the argument they say it is unknown.
 
