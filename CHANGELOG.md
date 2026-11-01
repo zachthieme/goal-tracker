@@ -37,7 +37,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The comment over `helpers_test.go`'s string helpers no longer lists `links_test.go` and `reports_test.go`, which call none of them (#721).
 
 **Documentation:**
-- [ops] docs/install.md's Docker examples name v0.4.0.
+- [ops] docs/install.md's Docker examples name v0.4.1.
 
 ### Collected changes — October 31, 2026
 
