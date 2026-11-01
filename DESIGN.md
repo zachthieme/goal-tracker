@@ -2323,7 +2323,9 @@ and so on).
     commit and time the line already names; the startup log keeps the full
     version. The commit and its day are left out when unknown, as in a Docker
     image, which names only the version its `VERSION` build argument gave it,
-    or "Version unknown" without one.
+    or "Version unknown" without one. A version given that way is shown as
+    given, minus its build metadata, even a pseudo-version, since it may be
+    the only commit the line names.
   - **Confirming:** Remove Admin… and Mark returned… ask to confirm with
     script, and post at once without it. A refusal shows under its form in
     `--color-danger-ink`. At 600px and below a field-plus-button form wraps.

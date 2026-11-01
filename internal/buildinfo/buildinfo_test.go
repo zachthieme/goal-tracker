@@ -85,8 +85,23 @@ func TestALinkTimeVersionOverridesTheRecordedOne(t *testing.T) {
 	t.Parallel()
 
 	for name, bi := range map[string]*debug.BuildInfo{"(devel)": built("(devel)"), "tagged": built("v0.3.0"), "no build info": nil} {
-		if got := buildinfo.From(bi, "v9.9.9").Version; got != "v9.9.9" {
-			t.Errorf("%s: Version = %q, want the override v9.9.9", name, got)
+		info := buildinfo.From(bi, "v9.9.9")
+		if info.Version != "v9.9.9" {
+			t.Errorf("%s: Version = %q, want the override v9.9.9", name, info.Version)
+		}
+		if !info.LinkTime {
+			t.Errorf("%s: From = %+v, want LinkTime for the override", name, info)
+		}
+	}
+}
+
+// A version Go recorded, or none at all, isn't a link-time one.
+func TestARecordedVersionIsNotALinkTimeOne(t *testing.T) {
+	t.Parallel()
+
+	for name, bi := range map[string]*debug.BuildInfo{"(devel)": built("(devel)"), "tagged": built("v0.3.0"), "no build info": nil} {
+		if info := buildinfo.From(bi, ""); info.LinkTime {
+			t.Errorf("%s: From = %+v, want LinkTime false with no override", name, info)
 		}
 	}
 }
@@ -134,14 +149,19 @@ func TestATaggedBuildWithUncommittedChangesShowsItsTag(t *testing.T) {
 	}
 }
 
-// A link-time version is shown as given, apart from its build metadata.
+// A link-time version is shown as given, apart from its build metadata, even
+// a pseudo-version: a Docker build names no commit, so the version may be the
+// only one the line names. One that is only build metadata reads "unknown".
 func TestALinkTimeVersionIsShownAsGiven(t *testing.T) {
 	t.Parallel()
 
 	for override, want := range map[string]string{
-		"v0.3.0":             "Version v0.3.0",
-		"v0.3.0-5-g478f0655": "Version v0.3.0-5-g478f0655",
-		"v0.3.0+docker":      "Version v0.3.0",
+		"v0.3.0":                               "Version v0.3.0",
+		"v0.3.0-5-g478f0655":                   "Version v0.3.0-5-g478f0655",
+		"v0.3.0+docker":                        "Version v0.3.0",
+		"v0.3.1-0.20261101011535-ed5b6ba7f196": "Version v0.3.1-0.20261101011535-ed5b6ba7f196",
+		"v0.3.1-0.20261101011535-ed5b6ba7f196+dirty": "Version v0.3.1-0.20261101011535-ed5b6ba7f196",
+		"+dirty": "Version unknown",
 	} {
 		if got := buildinfo.From(nil, override).Line(day); got != want {
 			t.Errorf("override %q: Line = %q, want %q", override, got, want)

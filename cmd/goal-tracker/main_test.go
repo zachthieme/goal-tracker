@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/buildinfo"
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -1735,6 +1736,30 @@ func (l listeningRecords) Handle(_ context.Context, r slog.Record) error {
 //
 //nolint:paralleltest // sets the process environment, through serveEnv
 func TestTheStartupLogNamesTheVersion(t *testing.T) {
+	if version := startupLogVersion(t); version == "" {
+		t.Error("the \"goal-tracker listening\" record has no version, or an empty one")
+	}
+}
+
+// The startup log names a link-time version whole, pseudo-version and build
+// metadata included, though the Admin page shows less of it.
+//
+//nolint:paralleltest // sets buildinfo.Version and the process environment
+func TestTheStartupLogNamesALinkTimeVersionWhole(t *testing.T) {
+	const given = "v0.3.1-0.20261101011535-ed5b6ba7f196+dirty"
+	was := buildinfo.Version
+	buildinfo.Version = given
+	t.Cleanup(func() { buildinfo.Version = was })
+
+	if version := startupLogVersion(t); version != given {
+		t.Errorf("the \"goal-tracker listening\" record's version = %q, want %q", version, given)
+	}
+}
+
+// startupLogVersion runs the app until it is listening and returns the
+// version its "goal-tracker listening" record names.
+func startupLogVersion(t *testing.T) string {
+	t.Helper()
 	serveEnv(t)
 	ctx, stop := context.WithCancel(t.Context())
 	defer stop()
@@ -1763,7 +1788,5 @@ func TestTheStartupLogNamesTheVersion(t *testing.T) {
 		}
 		return true
 	})
-	if version == "" {
-		t.Error("the \"goal-tracker listening\" record has no version, or an empty one")
-	}
+	return version
 }
