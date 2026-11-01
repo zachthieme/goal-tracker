@@ -9,6 +9,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/module"
 )
 
 // Version, when set at link time, is the version shown, in place of the one
@@ -84,12 +86,10 @@ func From(bi *debug.BuildInfo, override string) Info {
 // Line says info as the Admin page shows it, with day saying the commit time:
 // "Version v0.3.0 · commit 478f0655 · committed Oct 31", leaving out what
 // isn't known and ending "· uncommitted changes" when the tree was modified.
+// The version is shortened (shownVersion), since the rest of the line already
+// says what a pseudo-version and its build metadata would.
 func (info Info) Line(day func(time.Time) string) string {
-	version := info.Version
-	if version == "" {
-		version = unknown
-	}
-	parts := []string{"Version " + version}
+	parts := []string{"Version " + shownVersion(info.Version)}
 	if info.Commit != "" {
 		parts = append(parts, "commit "+info.Commit)
 	}
@@ -100,4 +100,26 @@ func (info Info) Line(day func(time.Time) string) string {
 		parts = append(parts, "uncommitted changes")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// untagged is how Line shows a pseudo-version with no release before it.
+const untagged = "untagged"
+
+// shownVersion is version as Line shows it: without build metadata ("+dirty"),
+// and a pseudo-version as the release it follows with a "+" ("v0.3.0+"), or
+// "untagged" when no release came before it.
+func shownVersion(version string) string {
+	version, _, _ = strings.Cut(version, "+")
+	if module.IsPseudoVersion(version) {
+		if base, err := module.PseudoVersionBase(version); err == nil {
+			if base == "" {
+				return untagged
+			}
+			return base + "+"
+		}
+	}
+	if version == "" {
+		return unknown
+	}
+	return version
 }
