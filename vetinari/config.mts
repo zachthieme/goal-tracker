@@ -93,9 +93,9 @@ export default defineConfig({
   // DESIGN.md is on nearly every UI ticket's Touches: line, so counting it put
   // one ticket in each wave (a 40-issue campaign planned 32 waves, about 14
   // without it); replaying 23 pairs of nearby campaign branches that both edited
-  // it with git merge-tree gave no conflict. styles_test.go stays counted: its
-  // tests are appended at the end of the file, and the merge replay in
-  // jjforge/vetinari#611 found a real conflict in it.
+  // it with git merge-tree gave no conflict. The style tests aren't waived:
+  // they live one styles_<area>_test.go per area (#720), so two tickets share
+  // one only when they work in the same area, and a clash there is real.
   waivedFiles: ["DESIGN.md"],
 
   // Sandcastle needs a writable global git config host-side; this machine's

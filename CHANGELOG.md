@@ -29,7 +29,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Infrastructure:**
 - [internal] Campaigns run the lint gate after each wave member's merge as well as at wave end, so a co-wave compile clash sends back only the member that caused it rather than parking the whole wave (#710).
-- [internal] The campaign config waives `DESIGN.md` through vetinari's `waivedFiles` instead of filtering it out of every ticket's file-set, so the plan reports it as waived (#699).
+- [internal] The campaign config waives `DESIGN.md` through vetinari's `waivedFiles` instead of filtering it out of every ticket's file-set, so the plan reports it as waived (#699). Its comment says the style tests need no waiver now that they live one file per area (#720).
 
 **Testing:**
 - [internal] Web tests pin "No Goals selected." in a draft's Goal sections, not its narrative column, and the one-column draft's 24px gap between the narrative and the Goal sections (#715).
