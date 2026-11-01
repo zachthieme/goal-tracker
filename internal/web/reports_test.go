@@ -5394,11 +5394,14 @@ func TestALongDraftHistoryShowsTheNewestFiveFirst(t *testing.T) {
 	if last := textOf(rest[len(rest)-1]); !strings.HasPrefix(last, "Created") {
 		t.Errorf("the oldest entry reads %q, want Created", last)
 	}
-	// Opened, the older entries scroll in place, so the list behind Show all
+	// Opened, the older entries scroll in place, in a list inside a box that
 	// takes the keyboard's focus and is named for a screen reader.
-	older := rest[0].Parent
-	if older.Data != "ol" || attrOf(older, "tabindex") != "0" || attrOf(older, "aria-label") != "Older History" {
-		t.Errorf("the list behind Show all isn't a focusable list named Older History: %s", renderNode(older))
+	list, scroller := rest[0].Parent, rest[0].Parent.Parent
+	if list.Data != "ol" {
+		t.Errorf("the entries behind Show all aren't a list: %s", renderNode(list))
+	}
+	if attrOf(scroller, "tabindex") != "0" || attrOf(scroller, "aria-label") != "Older History" {
+		t.Errorf("the box the entries behind Show all scroll in isn't focusable and named Older History: %s", renderNode(scroller))
 	}
 }
 
