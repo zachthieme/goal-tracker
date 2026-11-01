@@ -3,15 +3,7 @@
 // Machine-local state (logs, parked tasks, secrets) lives in .vetinari.local/,
 // which is gitignored and never committed. Modeled on pike's config (also Go).
 import { resolve } from "node:path";
-import {
-  defaultFileSet,
-  defineConfig,
-  githubBlockedBy,
-  githubFetchTask,
-  githubFindingReporter,
-  githubIssuesByLabel,
-  githubMarkPendingVerify,
-} from "vetinari";
+import { defaultFileSet, defineConfig, githubTracker } from "vetinari";
 
 export default defineConfig({
   project: "goal-tracker",
@@ -79,11 +71,14 @@ export default defineConfig({
   // Fails the image fast, before an agent is launched, if the toolchain is missing.
   toolchainProbe: "go version && golangci-lint --version && claude --version && git --version",
 
-  // Tasks are GitHub issues; closed issues are rejected rather than worked on.
-  fetchTask: githubFetchTask("zachthieme/goal-tracker"),
-
-  // Native GitHub "blocked by" links drive dependency-ordered campaign waves.
-  blockedBy: githubBlockedBy("zachthieme/goal-tracker"),
+  // The GitHub tracker preset wires every tracker seam against this repo's
+  // `origin` (zachthieme/goal-tracker): fetchTask (closed issues are rejected),
+  // blockedBy for dependency-ordered waves, listByLabel for `campaign
+  // ready-for-agent`, onIssueMerged (`pending-verify`), reportFinding (filed from
+  // the host, since the container holds no GitHub credentials; `needs-triage` by
+  // default), and findOpenIssue + postComment, so a repeat finding gets a "seen
+  // again" comment instead of a duplicate issue.
+  ...githubTracker(),
 
   // Which files a ticket touches, for keeping a wave file-disjoint.
   fileSet: defaultFileSet(),
@@ -97,18 +92,6 @@ export default defineConfig({
   // tests are appended at the end of the file, and the merge replay in
   // jjforge/vetinari#611 found a real conflict in it.
   waivedFiles: ["DESIGN.md"],
-
-  // Lets `campaign ready-for-agent` select its issue set from the tracker.
-  listByLabel: githubIssuesByLabel("zachthieme/goal-tracker"),
-
-  // After a merged wave's base gate passes: add `pending-verify`, drop
-  // `ready-for-agent`. Best-effort — a failed label write never fails the run.
-  onIssueMerged: githubMarkPendingVerify("zachthieme/goal-tracker"),
-
-  // After a run, harvest defects the agent noticed but did not fix and file them
-  // as issues from the host. The container holds no GitHub credentials, so this
-  // is the only way a finding outlives it.
-  reportFinding: githubFindingReporter("zachthieme/goal-tracker", { labels: ["needs-triage"] }),
 
   // Sandcastle needs a writable global git config host-side; this machine's
   // real one is a read-only nix store symlink. Host-side only — never the
