@@ -25,6 +25,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] A Report draft's older History entries, behind Show all, show their timeline markers whole, not cut in half by the scrolling list (#716).
+- [ops] The Admin page's Version line shows a version given at link time (the Docker `VERSION` build argument, or `-ldflags "-X …/internal/buildinfo.Version=…"`) as given, minus its build metadata, even when it is a pseudo-version, rather than shortening it to the release it follows ("v0.3.0+") and losing the only commit a Docker build names (#719).
 
 **Testing:**
 - [internal] Web tests pin "No Goals selected." in a draft's Goal sections, not its narrative column, and the one-column draft's 24px gap between the narrative and the Goal sections (#715).
