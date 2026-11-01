@@ -2317,7 +2317,11 @@ and so on).
     running build: "Version v0.3.0 · commit 478f0655 · committed Oct 31",
     the commit day shown as other days are (with its year outside the
     current one), then "· uncommitted changes" when the tree built from had
-    any. The commit and its day are left out when unknown, as in a Docker
+    any. The version drops its build metadata ("+dirty"), and an untagged
+    build shows the release it follows with a "+" ("v0.3.0+"), or
+    "untagged" before the first, rather than Go's long pseudo-version, whose
+    commit and time the line already names; the startup log keeps the full
+    version. The commit and its day are left out when unknown, as in a Docker
     image, which names only the version its `VERSION` build argument gave it,
     or "Version unknown" without one.
   - **Confirming:** Remove Admin… and Mark returned… ask to confirm with

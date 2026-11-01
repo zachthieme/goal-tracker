@@ -40,7 +40,7 @@ func TestTheAdminPageNamesTheRunningVersion(t *testing.T) {
 		{"tagged", buildinfo.Info{Version: "v0.3.0", Commit: "478f0655", CommitTime: time.Date(2026, 1, 1, 23, 6, 28, 0, time.UTC)},
 			"Version v0.3.0 · commit 478f0655 · committed Jan 1"},
 		{"modified, committed last year", buildinfo.Info{Version: "v0.3.1-0.20251031230628-478f0655bc83+dirty", Commit: "478f0655", CommitTime: time.Date(2025, 10, 31, 23, 6, 28, 0, time.UTC), Modified: true},
-			"Version v0.3.1-0.20251031230628-478f0655bc83+dirty · commit 478f0655 · committed Oct 31, 2025 · uncommitted changes"},
+			"Version v0.3.0+ · commit 478f0655 · committed Oct 31, 2025 · uncommitted changes"},
 		{"unknown", buildinfo.Info{Version: "unknown"}, "Version unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
