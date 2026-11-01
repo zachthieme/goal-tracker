@@ -23,8 +23,11 @@ another area's file.
   `internal/web/helpers_test.go`; a helper more than one area needs goes there,
   not in an area's `_test.go`. New web tests assert through its parser
   helpers (`findByTestID`, `textOf`, `formField`, `linkTo`, `buttonNamed`) on
-  what a person sees and can do, not by matching markup, and style rules and
-  the classes they select are tested in `styles_test.go`.
+  what a person sees and can do, not by matching markup. Style rules and the
+  classes they select are tested in `styles_<area>_test.go`, one per area like
+  the other area files (`styles_goals_test.go`, `styles_reports_test.go`, …),
+  with rules that more than one area uses in `styles_shared_test.go`; a new
+  area adds its own `styles_<area>_test.go`.
 - **Domain** (`internal/domain/`): `domain.go` holds only the `Service`, its
   constructor, the Service-wide options (`Option`, `WithTimezone`,
   `WithBaseURL`), and the Service-wide helpers (`WithinTx`, `Now`, `Timezone`,
