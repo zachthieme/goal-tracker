@@ -17,12 +17,70 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/buildinfo"
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 	nethtml "golang.org/x/net/html"
 )
+
+// The foot of the Admin page names the build the server was given: its
+// version, its commit, and the day the commit was made (with its year outside
+// the current one), saying so when the tree had uncommitted changes, and
+// leaving out what isn't known. Only an Admin sees it.
+func TestTheAdminPageNamesTheRunningVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		info buildinfo.Info
+		want string
+	}{
+		{"tagged", buildinfo.Info{Version: "v0.3.0", Commit: "478f0655", CommitTime: time.Date(2026, 1, 1, 23, 6, 28, 0, time.UTC)},
+			"Version v0.3.0 · commit 478f0655 · committed Jan 1"},
+		{"modified, committed last year", buildinfo.Info{Version: "v0.3.1-0.20251031230628-478f0655bc83+dirty", Commit: "478f0655", CommitTime: time.Date(2025, 10, 31, 23, 6, 28, 0, time.UTC), Modified: true},
+			"Version v0.3.1-0.20251031230628-478f0655bc83+dirty · commit 478f0655 · committed Oct 31, 2025 · uncommitted changes"},
+		{"unknown", buildinfo.Info{Version: "unknown"}, "Version unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t, "ada@example.com")
+			ts := httptest.NewServer(web.NewServer(h.Service, web.WithBuildInfo(tc.info)))
+			t.Cleanup(ts.Close)
+			h.SignIn("ada@example.com")
+			h.SignIn("sam@example.com")
+
+			page := getPage(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/admin")
+			if got := textOf(findByTestID(t, page, "admin-version")); got != tc.want {
+				t.Errorf("admin-version reads %q, want %q", got, tc.want)
+			}
+
+			resp, err := ctxGet(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/admin")
+			if err != nil {
+				t.Fatalf("GET /admin: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+			if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-version") {
+				t.Errorf("non-Admin GET /admin: status %d, want 403 without the version", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// A server given no build info says its version is unknown.
+func TestTheAdminPageSaysTheVersionIsUnknownWithoutBuildInfo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+
+	page := getPage(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/admin")
+	if got := textOf(findByTestID(t, page, "admin-version")); got != "Version unknown" {
+		t.Errorf("admin-version reads %q, want %q", got, "Version unknown")
+	}
+}
 
 // The Admin page is the home of the Admin tools: an Admin sees rows linking to
 // Dimensions and to Import goals; anyone else is refused.

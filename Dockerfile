@@ -2,7 +2,7 @@
 # Chromium for PDF downloads. (The campaign agents' image is
 # vetinari/Dockerfile; this one shares its build context and .dockerignore.)
 #
-#   docker build -t goal-tracker .
+#   docker build --build-arg VERSION=v0.3.0 -t goal-tracker .
 #   docker run -p 8080:8080 -v goal-tracker-data:/data \
 #     -e GOAL_TRACKER_SIGNIN=password -e GOAL_TRACKER_SESSION_KEY=... \
 #     -e GOAL_TRACKER_BASE_URL=https://goals.example.com goal-tracker
@@ -23,7 +23,12 @@ RUN go mod download
 # reach the image.
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+# The image's release tag, which the Admin page and the startup log show:
+# docker build --build-arg VERSION=v0.3.0. With no checkout in the build, Go
+# can't name a version itself, so without it the image's version is unknown.
+ARG VERSION
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-s -w${VERSION:+ -X github.com/zachthieme/goal-tracker/internal/buildinfo.Version=$VERSION}" \
     -o /out/goal-tracker ./cmd/goal-tracker
 
 FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8

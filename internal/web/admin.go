@@ -10,6 +10,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/zachthieme/goal-tracker/internal/buildinfo"
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -20,6 +21,14 @@ import (
 func WithDirectorySync(sync *directory.Sync) Option {
 	return func(s *Server) {
 		s.directorySync = sync
+	}
+}
+
+// WithBuildInfo names info, the running build, at the foot of the Admin page.
+// Without it the page says the version is unknown.
+func WithBuildInfo(info buildinfo.Info) Option {
+	return func(s *Server) {
+		s.buildInfo = info
 	}
 }
 
@@ -78,7 +87,7 @@ func (s *Server) adminPageFor(r *http.Request, current domain.Account, links *pa
 	if err != nil {
 		return nil, fmt.Errorf("read the Admins: %w", err)
 	}
-	return adminPage(&current, s.directorySyncStatus(), links, admins, awaitingReassignment(goals), departed), nil
+	return adminPage(&current, s.directorySyncStatus(), links, admins, awaitingReassignment(goals), departed, s.buildInfo.Line(s.displayDates().dayOf)), nil
 }
 
 // refusedAdminForm is a refused form on the Admin page, err, as

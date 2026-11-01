@@ -90,8 +90,11 @@ docker run -d --name goal-tracker --restart unless-stopped -p 127.0.0.1:8080:808
   --env-file /etc/goal-tracker/env ghcr.io/zachthieme/goal-tracker:v0.3.0
 ```
 
-To build the image yourself instead, run `docker build -t goal-tracker .` in
-the repo and use `goal-tracker` as the image name.
+To build the image yourself instead, run
+`docker build --build-arg VERSION=<tag> -t goal-tracker .` in the repo, at the
+release tag you checked out (`--build-arg VERSION=v0.3.0`), and use
+`goal-tracker` as the image name. The Admin page and the startup log show that
+version; without the argument they say it is unknown.
 
 The settings in step 4 go in the env file, without `GOAL_TRACKER_ADDR`,
 `GOAL_TRACKER_DB` or `GOAL_TRACKER_CHROME`, which the image sets. Two differ

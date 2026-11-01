@@ -11,12 +11,13 @@ import (
 // password sign-in (nil, it shows nothing), then the Admins, then the
 // Ownerless Goals waiting for an Admin to reassign them (CONTEXT.md:
 // Ownerless), then the Departed people an Admin can mark returned (CONTEXT.md:
-// Departed). It sits in the flat frame: its title in the page header, and
+// Departed), and at its foot version, the running build (buildinfo.Info.Line).
+// It sits in the flat frame: its title in the page header, and
 // every part a plain section of rows, its forms included (DESIGN.md §
 // Admin page).
 //
 //nolint:contextcheck // templ hands its closures Render's ctx in a struct field, which contextcheck can't follow
-templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account) {
+templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account, version string) {
 	@framedLayout("Admin", current, pageHeader(pageHead{Title: "Admin"})) {
 		@adminStyles()
 		<p class="muted">The tools only an Admin uses.</p>
@@ -93,6 +94,7 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 				</div>
 			}
 		</section>
+		<p data-testid="admin-version" class="muted small">{ version }</p>
 	}
 }
 

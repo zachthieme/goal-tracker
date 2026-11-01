@@ -2310,6 +2310,13 @@ and so on).
        `badge lc`, or a muted "No Goals are waiting for reassignment."
     5. **Departed people:** each by Name, with **Mark returned…**, or a muted
        "No departed people."
+  - **Version (`admin-version`):** at the foot, a muted small line naming the
+    running build: "Version v0.3.0 · commit 478f0655 · committed Oct 31",
+    the commit day shown as other days are (with its year outside the
+    current one), then "· uncommitted changes" when the tree built from had
+    any. The commit and its day are left out when unknown, as in a Docker
+    image, which names only the version its `VERSION` build argument gave it,
+    or "Version unknown" without one.
   - **Confirming:** Remove Admin… and Mark returned… ask to confirm with
     script, and post at once without it. A refusal shows under its form in
     `--color-danger-ink`. At 600px and below a field-plus-button form wraps.
