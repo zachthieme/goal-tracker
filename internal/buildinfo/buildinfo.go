@@ -13,8 +13,8 @@ import (
 	"golang.org/x/mod/module"
 )
 
-// Version, when set at link time, is the version shown, in place of the one
-// Go records:
+// Version, when set at link time, is the version shown, as given apart from
+// its build metadata, in place of the one Go records:
 //
 //	go build -ldflags "-X github.com/zachthieme/goal-tracker/internal/buildinfo.Version=v0.3.0"
 //
@@ -39,6 +39,9 @@ type Info struct {
 	CommitTime time.Time
 	// Modified is whether the tree built from had uncommitted changes.
 	Modified bool
+	// LinkTime is whether Version was set at link time (Version, the package
+	// variable) rather than recorded by Go.
+	LinkTime bool
 }
 
 // Read is the running binary's Info, with Version overriding the version Go
@@ -55,7 +58,7 @@ func Read() Info {
 // version when it isn't empty. A version Go couldn't name, "(devel)", reads
 // as "unknown".
 func From(bi *debug.BuildInfo, override string) Info {
-	info := Info{Version: override}
+	info := Info{Version: override, LinkTime: override != ""}
 	if bi == nil {
 		if info.Version == "" {
 			info.Version = unknown
@@ -86,10 +89,11 @@ func From(bi *debug.BuildInfo, override string) Info {
 // Line says info as the Admin page shows it, with day saying the commit time:
 // "Version v0.3.0 · commit 478f0655 · committed Oct 31", leaving out what
 // isn't known and ending "· uncommitted changes" when the tree was modified.
-// The version is shortened (shownVersion), since the rest of the line already
-// says what a pseudo-version and its build metadata would.
+// A version Go recorded is shortened (shownVersion), since the rest of the
+// line already says what a pseudo-version and its build metadata would; a
+// link-time one only drops its build metadata.
 func (info Info) Line(day func(time.Time) string) string {
-	parts := []string{"Version " + shownVersion(info.Version)}
+	parts := []string{"Version " + shownVersion(info.Version, info.LinkTime)}
 	if info.Commit != "" {
 		parts = append(parts, "commit "+info.Commit)
 	}
@@ -106,11 +110,13 @@ func (info Info) Line(day func(time.Time) string) string {
 const untagged = "untagged"
 
 // shownVersion is version as Line shows it: without build metadata ("+dirty"),
-// and a pseudo-version as the release it follows with a "+" ("v0.3.0+"), or
-// "untagged" when no release came before it.
-func shownVersion(version string) string {
+// and, unless it was set at link time (linkTime), a pseudo-version as the
+// release it follows with a "+" ("v0.3.0+"), or "untagged" when no release
+// came before it. A link-time version is otherwise shown as given: a Docker
+// build names no commit, so its version may be the only one the line names.
+func shownVersion(version string, linkTime bool) string {
 	version, _, _ = strings.Cut(version, "+")
-	if module.IsPseudoVersion(version) {
+	if !linkTime && module.IsPseudoVersion(version) {
 		if base, err := module.PseudoVersionBase(version); err == nil {
 			if base == "" {
 				return untagged
