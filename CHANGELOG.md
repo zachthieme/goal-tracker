@@ -21,6 +21,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Improvements:**
 - [user] A Report draft's History shows its newest 5 entries, with the rest behind Show all, so a long History no longer pushes the Goal sections down; opened, the older entries scroll in place in a list at most 320px tall that the keyboard can reach (#715).
 - [user] An exception block between about 720px and 984px wide gives its story two-thirds of the width and its facts rail one-third, rather than splitting evenly, on the draft and the publication (#715).
+- [ops] The Admin page names an untagged build by the release it follows ("Version v0.3.0+ · commit ed5b6ba7 · …", or "untagged" before the first release) instead of repeating Go's long pseudo-version, and drops "+dirty" since the line already says "uncommitted changes"; the startup log still names the full version (#718).
 
 **Bug fixes:**
 - [user] A Report draft's older History entries, behind Show all, show their timeline markers whole, not cut in half by the scrolling list (#716).
