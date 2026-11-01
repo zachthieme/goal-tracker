@@ -1713,3 +1713,57 @@ func TestRunStartsEveryJobAndStopsThemBeforeTheDatabaseCloses(t *testing.T) {
 		t.Errorf("a job stopped after the database closed:\n%s", log.String())
 	}
 }
+
+// listeningRecords is a log handler that sends each "goal-tracker listening"
+// record, so a test can read what it says.
+type listeningRecords chan slog.Record
+
+func (l listeningRecords) Enabled(context.Context, slog.Level) bool { return true }
+func (l listeningRecords) WithAttrs([]slog.Attr) slog.Handler       { return l }
+func (l listeningRecords) WithGroup(string) slog.Handler            { return l }
+
+func (l listeningRecords) Handle(_ context.Context, r slog.Record) error {
+	if r.Message == "goal-tracker listening" {
+		l <- r.Clone()
+	}
+	return nil
+}
+
+// The startup log line names the running build's version, so whoever reads
+// the log knows which build it was. A test binary has no VCS stamp, so here
+// it is "unknown"; it is never left out.
+//
+//nolint:paralleltest // sets the process environment, through serveEnv
+func TestTheStartupLogNamesTheVersion(t *testing.T) {
+	serveEnv(t)
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	listening := make(listeningRecords, 1)
+	_, done := startRunLogging(t, ctx, listening)
+	defer func() {
+		stop()
+		if err := <-done; err != nil {
+			t.Errorf("run, asked to stop: %v", err)
+		}
+	}()
+
+	var rec slog.Record
+	// startRunLogging returns once its own handler has the record, which may
+	// be before this one does.
+	select {
+	case rec = <-listening:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run started listening without logging a \"goal-tracker listening\" record")
+	}
+	var version string
+	rec.Attrs(func(a slog.Attr) bool {
+		if a.Key == "version" {
+			version = a.Value.String()
+			return false
+		}
+		return true
+	})
+	if version == "" {
+		t.Error("the \"goal-tracker listening\" record has no version, or an empty one")
+	}
+}

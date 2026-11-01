@@ -22,6 +22,7 @@ import (
 	"time"
 	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
 
+	"github.com/zachthieme/goal-tracker/internal/buildinfo"
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
 	"github.com/zachthieme/goal-tracker/internal/directory"
@@ -137,9 +138,11 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 		_, err = fmt.Fprintln(stdout, svc.PasswordLinkURL(link.Token))
 		return err
 	}
+	build := buildinfo.Read()
 	webOpts := []web.Option{
 		web.WithLogger(logger),
 		web.WithSecureCookies(strings.HasPrefix(cfg.baseURL, "https://")),
+		web.WithBuildInfo(build),
 	}
 	if cfg.signIn == signInDev {
 		logger.Warn("GOAL_TRACKER_SIGNIN=dev: anyone who can reach the app can sign in as anyone. For development and tests only.")
@@ -220,8 +223,13 @@ func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writ
 	if metricsLn != nil {
 		logger.Info("goal-tracker serving metrics", "addr", metricsLn.Addr().String(), "path", "/metrics")
 	}
-	logger.Info("goal-tracker listening", "addr", ln.Addr().String(), "db", cfg.dbPath, "timezone", loc.String(),
+	listening := []any{"version", build.Version}
+	if build.Commit != "" {
+		listening = append(listening, "commit", build.Commit)
+	}
+	listening = append(listening, "addr", ln.Addr().String(), "db", cfg.dbPath, "timezone", loc.String(),
 		"weekly_emails", fmt.Sprintf("%s %02d:%02d", weekly.Day, weekly.Hour, weekly.Minute))
+	logger.Info("goal-tracker listening", listening...)
 
 	// The metrics listener serves until the app's does, and the app's until
 	// the metrics listener stops on its own.

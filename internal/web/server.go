@@ -18,6 +18,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/zachthieme/goal-tracker/internal/buildinfo"
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -57,6 +58,9 @@ type Server struct {
 	// metrics, when set, counts and times every request answered (see
 	// WithRequestMetrics).
 	metrics *RequestMetrics
+	// buildInfo is the running build, which the Admin page names (see
+	// WithBuildInfo); unset, its version is unknown.
+	buildInfo buildinfo.Info
 }
 
 // Option configures a Server as NewServer builds it.
