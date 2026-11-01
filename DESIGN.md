@@ -2046,9 +2046,12 @@ and so on).
     Times are in the company's timezone. The newest 5 entries after the
     Draft show, the rest behind **Show all N**, N counting them all, so a
     long History doesn't push the Goal sections down. Opened, the older
-    entries scroll in place in a list at most 320px tall
+    entries scroll in place in a box at most 320px tall around their list
     (`.rp-history-older`), which takes the keyboard's focus and is named
-    "Older History"; the newest five aren't capped. Everyone who can open the
+    "Older History"; the newest five aren't capped. The box, not the list
+    drawing the rule, scrolls: padded 8px on the left and pulled back as
+    much, it keeps each marker and its ring inside what it clips, and the
+    older entries' rule in line with the newest entries'. Everyone who can open the
     Report reads it, and nothing on it can be changed or undone.
 - **A publication (`publicationPage` in `reports.templ`):** a published
   Report, frozen, in a reading column.

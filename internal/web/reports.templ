@@ -482,11 +482,13 @@ templ reportHistory(r domain.Report, history []domain.ReportHistoryEntry, loc *t
 		if len(history) > draftHistoryShown {
 			<details data-testid="report-history-more">
 				<summary>{ fmt.Sprintf("Show all %d", len(history)) }</summary>
-				<ol class="rp-history-list rp-history-older" tabindex="0" aria-label="Older History">
-					for _, e := range history[draftHistoryShown:] {
-						@draftHistoryItem(e, loc)
-					}
-				</ol>
+				<div class="rp-history-older" role="region" tabindex="0" aria-label="Older History">
+					<ol class="rp-history-list">
+						for _, e := range history[draftHistoryShown:] {
+							@draftHistoryItem(e, loc)
+						}
+					</ol>
+				</div>
 			</details>
 		}
 	</section>
@@ -2199,8 +2201,7 @@ templ reportStyles() {
 		.rp-delegate-add .person-picker{flex:1 1 200px}
 		.rp-history-list{list-style:none;margin:0 0 0 4px;padding:0 0 0 20px;border-left:1px solid var(--color-border);display:flex;flex-direction:column;gap:12px}
 		.rp-history-list>li{position:relative;display:flex;flex-direction:column;gap:4px}
-		.rp-history>details>.rp-history-list{margin-top:12px}
-		.rp-history-older{max-height:320px;overflow-y:auto}
+		.rp-history-older{max-height:320px;overflow-y:auto;margin-top:12px;margin-left:-8px;padding-left:8px}
 		.rp-mark{position:absolute;left:-25px;top:5px;width:10px;height:10px;box-sizing:border-box;border-radius:50%;background:var(--color-ink-muted);box-shadow:0 0 0 2px var(--color-canvas)}
 		.rp-mark-draft{background:var(--color-canvas);border:1.5px solid var(--color-ink-muted)}
 		.rp-mark-published{background:var(--color-primary)}

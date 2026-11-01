@@ -1443,6 +1443,8 @@ func TestReportDraftHistoryMarkersStyles(t *testing.T) {
 // Opened, the History entries behind Show all scroll inside a list at most
 // 320px tall, so they lengthen the narrow column only so far; the newest five
 // above it aren't capped (#715, TestALongDraftHistoryShowsTheNewestFiveFirst).
+// A box around the list scrolls, not the list drawing the timeline, so the
+// markers hanging off its rule aren't cut in half (#716).
 func TestReportDraftOlderHistoryScrollsInPlaceStyles(t *testing.T) {
 	t.Parallel()
 
@@ -1466,7 +1468,12 @@ func TestReportDraftOlderHistoryScrollsInPlaceStyles(t *testing.T) {
 	if len(older) == 0 {
 		t.Fatalf("History has nothing behind Show all: %s", renderNode(history))
 	}
-	assertReportsCarriesClass(t, "the list behind Show all", older[0].Parent, "rp-history-list", "rp-history-older")
+	list, scroller := older[0].Parent, older[0].Parent.Parent
+	assertReportsCarriesClass(t, "the list behind Show all", list, "rp-history-list")
+	assertReportsCarriesClass(t, "the box the list behind Show all scrolls in", scroller, "rp-history-older")
+	if flatFrameHasClass(list, "rp-history-older") {
+		t.Errorf("the list behind Show all scrolls itself, so it clips its own markers: %s", renderNode(list))
+	}
 	assertReportsCarriesClass(t, "the newest entries' list", findByTestID(t, history, "report-history-draft").Parent, "rp-history-list")
 	if flatFrameHasClass(findByTestID(t, history, "report-history-draft").Parent, "rp-history-older") {
 		t.Errorf("the newest entries' list carries rp-history-older, so it would scroll too")
@@ -1474,8 +1481,32 @@ func TestReportDraftOlderHistoryScrollsInPlaceStyles(t *testing.T) {
 
 	styles := between(t, page, "<style>", "</style>")
 	assertReportsRuleDeclares(t, styles, ".rp-history-older", "max-height:320px", "overflow-y:auto")
-	if decls, _ := ruleFor(styles, ".rp-history-list"); strings.Contains(decls, "max-height") {
-		t.Errorf(".rp-history-list{%s} caps the newest entries' list too", decls)
+	timeline, _ := ruleFor(styles, ".rp-history-list")
+	if !strings.Contains(timeline, "border-left") {
+		t.Errorf(".rp-history-list{%s} doesn't draw the timeline", timeline)
+	}
+	for _, scrolls := range []string{"max-height", "overflow"} {
+		if strings.Contains(timeline, scrolls) {
+			t.Errorf(".rp-history-list{%s} declares %s, so the timeline would scroll and clip its markers", timeline, scrolls)
+		}
+	}
+	// A marker hangs 4.5px left of the rule, and its ring 2px more: the box
+	// scrolling the older entries pads them clear of its clipping edge, and
+	// pulls back by as much so their rule lines up with the newest entries'.
+	box, _ := ruleFor(styles, ".rp-history-older")
+	px := func(v string) int {
+		n, err := strconv.Atoi(strings.TrimSuffix(v, "px"))
+		if err != nil {
+			t.Fatalf("%q isn't a length in px", v)
+		}
+		return n
+	}
+	pad := px(declValue(t, box, "padding-left"))
+	if pad < 8 {
+		t.Errorf(".rp-history-older{%s} pads its entries %dpx, too little to keep their markers whole; want at least 8px", box, pad)
+	}
+	if pull := px(declValue(t, box, "margin-left")); pull != -pad {
+		t.Errorf(".rp-history-older{%s} pulls back %dpx for %dpx of padding, so the older entries' rule doesn't line up with the newest entries'", box, -pull, pad)
 	}
 }
 
