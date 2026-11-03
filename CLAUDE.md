@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Goal Tracker: an MBR-caliber goal-tracking tool. Goals, Metrics, Milestones, Check-ins, and Reports. The domain language is in `CONTEXT.md` and the key decisions are in `docs/adr/`.
+Goal Tracker: a company's goals, checked in on every week, ready for the business review. Goals, Metrics, Milestones, Check-ins, and Reports. The domain language is in `CONTEXT.md` and the key decisions are in `docs/adr/`.
 
 ## Code layout
 

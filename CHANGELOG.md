@@ -38,6 +38,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [ops] docs/install.md's Docker examples name v0.4.1.
+- [internal] CLAUDE.md opens with the README's one-line description in place of "an MBR-caliber goal-tracking tool".
 
 ### Collected changes — October 31, 2026
 
